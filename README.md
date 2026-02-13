@@ -40,7 +40,7 @@ OpenGlasses transforms your Ray-Ban Meta smart glasses into a hands-free AI assi
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/OpenGlasses.git
+git clone https://github.com/straff2002/OpenGlasses.git
 cd OpenGlasses
 ```
 
@@ -194,7 +194,7 @@ MIT License - see LICENSE file for details
 
 ## Credits
 
-Built by [Greig](https://github.com/yourusername) at Skunkworks NZ
+Built by [Greig McQueen](https://github.com/straff2002) at Skunkworks NZ
 
 Powered by:
 - [Anthropic Claude](https://www.anthropic.com/) - AI Assistant
