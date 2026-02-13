@@ -1,33 +1,27 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeGlasses",
+    name: "OpenGlasses",
     platforms: [
-        .iOS(.v15)
-    ],
-    products: [
-        .library(
-            name: "ClaudeGlasses",
-            targets: ["ClaudeGlasses"]
-        ),
+        .iOS(.v26)
     ],
     dependencies: [
         // Meta Wearables Device Access Toolkit
         .package(url: "https://github.com/facebook/meta-wearables-dat-ios.git", from: "0.3.0"),
 
-        // WhisperKit for on-device speech-to-text
-        .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
     ],
     targets: [
         .target(
-            name: "ClaudeGlasses",
+            name: "OpenGlasses",
             dependencies: [
                 .product(name: "MWDATCore", package: "meta-wearables-dat-ios"),
                 .product(name: "MWDATCamera", package: "meta-wearables-dat-ios"),
-                .product(name: "WhisperKit", package: "WhisperKit"),
             ],
-            path: "ClaudeGlasses/Sources"
+            path: "OpenGlasses/Sources",
+            resources: [
+                .process("Resources")
+            ]
         ),
     ]
 )

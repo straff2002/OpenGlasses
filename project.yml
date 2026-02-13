@@ -1,0 +1,59 @@
+name: OpenGlasses
+options:
+  bundleIdPrefix: com.openglasses
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+packages:
+  meta-wearables-dat-ios:
+    url: https://github.com/facebook/meta-wearables-dat-ios.git
+    from: "0.3.0"
+
+targets:
+  OpenGlasses:
+    type: application
+    platform: iOS
+    sources:
+      - path: OpenGlasses/Sources
+    resources:
+      - path: OpenGlasses/Sources/Resources
+    info:
+      path: OpenGlasses/Info.plist
+      properties:
+        CFBundleName: "OpenGlasses"
+        CFBundleDisplayName: "OpenGlasses"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSMicrophoneUsageDescription: "OpenGlasses needs microphone access to listen for wake words and transcribe your voice commands."
+        NSSpeechRecognitionUsageDescription: "OpenGlasses uses speech recognition to detect the wake word and transcribe your questions for Claude."
+        NSPhotoLibraryAddUsageDescription: "OpenGlasses saves photos taken with your Ray-Ban Meta glasses to your photo library."
+        NSBluetoothAlwaysUsageDescription: "OpenGlasses uses Bluetooth to connect to your Ray-Ban Meta smart glasses."
+        NSBluetoothPeripheralUsageDescription: "OpenGlasses uses Bluetooth to connect to your Ray-Ban Meta smart glasses."
+        UIBackgroundModes:
+          - audio
+          - bluetooth-central
+        LSApplicationQueriesSchemes:
+          - "fb-viewapp"
+        MWDAT:
+          AppLinkURLScheme: "mwdat-YOUR_META_APP_ID"
+          MetaAppID: "YOUR_META_APP_ID"
+          ClientToken: "YOUR_META_CLIENT_TOKEN"
+          TeamID: "$(DEVELOPMENT_TEAM)"
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - "mwdat-YOUR_META_APP_ID"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.OpenGlasses
+        MARKETING_VERSION: "1.2"
+        CURRENT_PROJECT_VERSION: "3"
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - package: meta-wearables-dat-ios
+        product: MWDATCore
+      - package: meta-wearables-dat-ios
+        product: MWDATCamera
