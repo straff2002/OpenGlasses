@@ -186,7 +186,7 @@ Managed via Swift Package Manager:
 
 ## Contributing
 
-This is Skunk0's personal project at Skunkworks NZ. Feel free to fork and adapt for your own use.
+This is a Skunk0 project from Skunkworks NZ. Feel free to fork and adapt for your own use.
 
 ## License
 
