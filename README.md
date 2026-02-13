@@ -186,7 +186,7 @@ Managed via Swift Package Manager:
 
 ## Contributing
 
-This is Greig's personal project at Skunkworks NZ. Feel free to fork and adapt for your own use.
+This is Skunk0's personal project at Skunkworks NZ. Feel free to fork and adapt for your own use.
 
 ## License
 
@@ -194,7 +194,7 @@ MIT License - see LICENSE file for details
 
 ## Credits
 
-Built by [Greig McQueen](https://github.com/straff2002) at Skunkworks NZ
+Built by [Skunk0](https://github.com/straff2002) at Skunkworks NZ
 
 Powered by:
 - [Anthropic Claude](https://www.anthropic.com/) - AI Assistant
