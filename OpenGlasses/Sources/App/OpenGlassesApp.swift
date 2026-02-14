@@ -12,7 +12,7 @@ struct OpenGlassesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environmentObject(appState)
                 .onOpenURL { url in
                     print("🔗 Received URL callback: \(url)")
