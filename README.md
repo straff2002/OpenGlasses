@@ -10,7 +10,7 @@ OpenGlasses transforms your Ray-Ban Meta smart glasses into a hands-free AI assi
 
 ### Core Capabilities
 - **Wake Word Detection**: On-device "Hey Claude" activation using custom wake word model
-- **Voice Transcription**: On-device speech-to-text powered by WhisperKit
+- **Voice Transcription**: Speech-to-text powered by Apple's Speech framework
 - **Claude AI Integration**: Direct API integration with Anthropic's Claude
 - **Audio Playback**: Natural-sounding responses via text-to-speech through glasses speakers
 - **Camera Integration**: Voice-activated photo capture ("take a picture")
@@ -89,7 +89,7 @@ OpenGlasses/
 │   │   ├── ClaudeAPIService.swift   # Anthropic API integration
 │   │   ├── GlassesConnectionService.swift  # Meta SDK connection
 │   │   ├── WakeWordService.swift    # Wake word detection
-│   │   ├── TranscriptionService.swift  # WhisperKit integration
+│   │   ├── TranscriptionService.swift  # Apple Speech integration
 │   │   ├── TextToSpeechService.swift   # Audio playback
 │   │   └── CameraService.swift      # Photo capture
 │   ├── Utils/
@@ -105,7 +105,7 @@ OpenGlasses/
 
 ### Audio Pipeline
 1. **Wake Word Detection**: Continuous background monitoring using on-device ML
-2. **Speech Recognition**: WhisperKit processes audio chunks locally
+2. **Speech Recognition**: Apple Speech framework transcribes audio
 3. **API Communication**: Transcribed text sent to Claude API
 4. **Response Synthesis**: Text-to-speech converts Claude's response
 5. **Audio Routing**: Playback through glasses speakers via Bluetooth
@@ -124,10 +124,9 @@ OpenGlasses/
 
 Managed via Swift Package Manager:
 
-- **meta-wearables-dat-ios** (0.3.0+) - Meta's Device Access Toolkit
+- **meta-wearables-dat-ios** (0.4.0+) - Meta's Device Access Toolkit
   - MWDATCore - Device connection & communication
   - MWDATCamera - Camera access
-- **WhisperKit** - On-device speech recognition (auto-resolved)
 
 ## Configuration Details
 
@@ -166,6 +165,7 @@ Managed via Swift Package Manager:
 - **Wake word not detecting**: Tap "Test Microphone" to restart listener
 - **No audio through glasses**: Check Bluetooth routing in iOS settings
 - **Connection issues**: Press "Connect to Glasses" to re-authorize
+- **"Internal error" when connecting**: You need to enable Developer Mode in the Meta AI app. Go to Meta AI → Settings → About → tap the version number **5 times** → toggle Developer Mode on. This is required for all third-party MWDAT apps.
 
 ## Development Notes
 
@@ -199,7 +199,7 @@ Built by [Skunk0](https://github.com/straff2002) at Skunkworks NZ
 Powered by:
 - [Anthropic Claude](https://www.anthropic.com/) - AI Assistant
 - [Meta Wearables SDK](https://developers.facebook.com/docs/wearables/) - Glasses Integration
-- [WhisperKit](https://github.com/argmaxinc/WhisperKit) - Speech Recognition
+- [Apple Speech Framework](https://developer.apple.com/documentation/speech) - Speech Recognition
 
 ---
 
