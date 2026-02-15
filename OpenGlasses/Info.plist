@@ -23,7 +23,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>mwdat-YOUR_META_APP_ID</string>
+				<string>mwdat-688603774243722</string>
 			</array>
 		</dict>
 	</array>
@@ -38,11 +38,11 @@
 	<key>MWDAT</key>
 	<dict>
 		<key>AppLinkURLScheme</key>
-		<string>mwdat-YOUR_META_APP_ID</string>
+		<string>mwdat-688603774243722</string>
 		<key>ClientToken</key>
-		<string>YOUR_META_CLIENT_TOKEN</string>
+		<string>AR|688603774243722|906db0d1b28450fdb718401ca16b9d60</string>
 		<key>MetaAppID</key>
-		<string>YOUR_META_APP_ID</string>
+		<string>688603774243722</string>
 		<key>TeamID</key>
 		<string>$(DEVELOPMENT_TEAM)</string>
 	</dict>

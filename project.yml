@@ -39,13 +39,13 @@ targets:
         LSApplicationQueriesSchemes:
           - "fb-viewapp"
         MWDAT:
-          AppLinkURLScheme: "mwdat-YOUR_META_APP_ID"
-          MetaAppID: "YOUR_META_APP_ID"
-          ClientToken: "YOUR_META_CLIENT_TOKEN"
+          AppLinkURLScheme: "mwdat-688603774243722"
+          MetaAppID: "688603774243722"
+          ClientToken: "AR|688603774243722|906db0d1b28450fdb718401ca16b9d60"
           TeamID: "$(DEVELOPMENT_TEAM)"
         CFBundleURLTypes:
           - CFBundleURLSchemes:
-              - "mwdat-YOUR_META_APP_ID"
+              - "mwdat-688603774243722"
     entitlements:
       path: OpenGlasses/OpenGlasses.entitlements
       properties:
