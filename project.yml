@@ -46,6 +46,11 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - "mwdat-YOUR_META_APP_ID"
+    entitlements:
+      path: OpenGlasses/OpenGlasses.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:straff2002.github.io/OpenGlasses
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.OpenGlasses
