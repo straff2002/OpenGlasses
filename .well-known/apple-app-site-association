@@ -1,13 +1,1 @@
-{
-  "applinks": {
-    "apps": [],
-    "details": [
-      {
-        "appID": "B9L8ANZQZX.com.openglasses.OpenGlasses",
-        "paths": [
-          "*"
-        ]
-      }
-    ]
-  }
-}
+{"applinks":{"apps":[],"details":[{"appID":"B9L8ANZQZX.com.openglasses.OpenGlasses","paths":["*","/"]}]}}
