@@ -76,6 +76,23 @@ struct PromptPreset: Codable, Identifiable, Equatable {
     var isBuiltIn: Bool
 }
 
+/// A persona bundles a wake word, AI model, and system prompt.
+/// Multiple personas can be active simultaneously — each wake word routes to its own model+prompt.
+struct Persona: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String                      // "Claude", "Jarvis", "Computer"
+    var wakePhrase: String                // "hey claude"
+    var alternativeWakePhrases: [String]   // ["hey cloud", "hey claud"]
+    var modelId: String                   // References ModelConfig.id
+    var presetId: String                  // References PromptPreset.id
+    var enabled: Bool
+
+    /// All phrases this persona responds to (primary + alternatives).
+    var allPhrases: [String] {
+        [wakePhrase] + alternativeWakePhrases
+    }
+}
+
 /// A user-defined tool that maps to a Siri Shortcut or URL scheme
 struct CustomToolDefinition: Codable, Identifiable, Equatable {
     var id: String
@@ -486,6 +503,53 @@ struct Config {
 
     static var activePreset: PromptPreset? {
         savedPresets.first { $0.id == activePresetId }
+    }
+
+    // MARK: - Personas
+
+    static var savedPersonas: [Persona] {
+        if let data = UserDefaults.standard.data(forKey: "savedPersonas"),
+           let personas = try? JSONDecoder().decode([Persona].self, from: data),
+           !personas.isEmpty {
+            return personas
+        }
+        // Migration: create a persona from current config
+        let migrated = Persona(
+            id: UUID().uuidString,
+            name: "OpenGlasses",
+            wakePhrase: wakePhrase,
+            alternativeWakePhrases: alternativeWakePhrases,
+            modelId: activeModelId,
+            presetId: activePresetId,
+            enabled: true
+        )
+        let personas = [migrated]
+        setSavedPersonas(personas)
+        return personas
+    }
+
+    static func setSavedPersonas(_ personas: [Persona]) {
+        if let data = try? JSONEncoder().encode(personas) {
+            UserDefaults.standard.set(data, forKey: "savedPersonas")
+        }
+    }
+
+    /// All enabled personas.
+    static var enabledPersonas: [Persona] {
+        savedPersonas.filter(\.enabled)
+    }
+
+    /// Find which persona matches a detected wake phrase.
+    static func persona(forPhrase phrase: String) -> Persona? {
+        let lower = phrase.lowercased()
+        return enabledPersonas.first { persona in
+            persona.wakePhrase == lower || persona.alternativeWakePhrases.contains(lower)
+        }
+    }
+
+    /// All wake phrases across all enabled personas (for speech recognition boosting).
+    static var allActiveWakePhrases: [String] {
+        enabledPersonas.flatMap(\.allPhrases)
     }
 
     // MARK: - Custom Tool Definitions

@@ -57,6 +57,7 @@
 		A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */; };
 		B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */; };
 		C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */; };
+		D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */; };
 		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
 		E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */; };
 		E547F4974B491D0B9156FD8F /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9886D8FB33DA06C125BEBEBA /* LocationService.swift */; };
@@ -143,6 +144,7 @@
 		B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
 		C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelManagerView.swift; sourceTree = "<group>"; };
+		E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonasView.swift; sourceTree = "<group>"; };
 		3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePreviewView.swift; sourceTree = "<group>"; };
 		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro.mp4; sourceTree = "<group>"; };
 		4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveAudioManager.swift; sourceTree = "<group>"; };
@@ -301,6 +303,7 @@
 				E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */,
 				F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */,
 				D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */,
+				E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */,
 				8BAB04141EE25C5FE20E591C /* StatusIndicator.swift */,
 				6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */,
 				3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */,
@@ -573,6 +576,7 @@
 				A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */,
 				B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */,
 				C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */,
+				D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */,
 				A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */,
 				C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */,
 				9FC6BD9F7F9FD1EF36DAFA00 /* StatusIndicator.swift in Sources */,

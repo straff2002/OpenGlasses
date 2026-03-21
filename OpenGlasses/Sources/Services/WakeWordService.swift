@@ -11,7 +11,8 @@ class WakeWordService: NSObject, ObservableObject {
     @Published var errorMessage: String?
     @Published var debugTranscript: String = ""
 
-    var onWakeWordDetected: (() -> Void)?
+    /// Called when a wake word is detected. Passes the matched phrase so the caller can route to the right persona.
+    var onWakeWordDetected: ((String) -> Void)?
     var onStopCommand: (() -> Void)?
 
     private var audioEngine: AVAudioEngine?
@@ -26,17 +27,24 @@ class WakeWordService: NSObject, ObservableObject {
     /// Track whether wake word already fired for this recognition session (prevent double-fire)
     private var wakeWordFired: Bool = false
 
-    /// Optional callback to forward audio buffers to TranscriptionService
-    private var audioBufferForwarder: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    /// Multiple audio buffer consumers keyed by ID (transcription, captions, rewind, etc.)
+    private var audioBufferForwarders: [String: @Sendable (AVAudioPCMBuffer) -> Void] = [:]
 
+    /// All active wake phrases from all enabled personas.
+    private var allWakePhrases: [String] { Config.allActiveWakePhrases }
+    /// Legacy single phrase for backward compatibility.
     private var wakePhrase: String { Config.wakePhrase }
-    private var alternativePhrases: [String] { Config.alternativeWakePhrases }
     private let stopPhrases = ["stop", "stop stop"]
 
-    /// Dynamic stop phrases that include the current wake word
+    /// Dynamic stop phrases that include all persona wake words
     private var allStopPhrases: [String] {
-        let base = wakePhrase.replacingOccurrences(of: "hey ", with: "")  // e.g. "claude"
-        return stopPhrases + ["\(wakePhrase) stop", "\(base) stop"]
+        var phrases = stopPhrases
+        for persona in Config.enabledPersonas {
+            let base = persona.wakePhrase.replacingOccurrences(of: "hey ", with: "")
+            phrases.append("\(persona.wakePhrase) stop")
+            phrases.append("\(base) stop")
+        }
+        return phrases
     }
 
     override init() {
@@ -49,7 +57,7 @@ class WakeWordService: NSObject, ObservableObject {
         guard !audioSessionConfigured else { return }
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .allowBluetoothHFP, .defaultToSpeaker])
+            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker])
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             audioSessionConfigured = true
 
@@ -206,9 +214,23 @@ class WakeWordService: NSObject, ObservableObject {
         return audioEngine
     }
 
-    /// Set a callback to forward audio buffers to another service (e.g. TranscriptionService)
+    /// Legacy single-forwarder API — routes through the multi-consumer system with key "default"
     func setAudioBufferForwarder(_ forwarder: (@Sendable (AVAudioPCMBuffer) -> Void)?) {
-        audioBufferForwarder = forwarder
+        if let forwarder = forwarder {
+            audioBufferForwarders["default"] = forwarder
+        } else {
+            audioBufferForwarders.removeValue(forKey: "default")
+        }
+    }
+
+    /// Add a named audio buffer consumer. Multiple consumers can listen simultaneously.
+    func addAudioBufferConsumer(id: String, handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) {
+        audioBufferForwarders[id] = handler
+    }
+
+    /// Remove a named audio buffer consumer.
+    func removeAudioBufferConsumer(id: String) {
+        audioBufferForwarders.removeValue(forKey: id)
     }
 
     private func cleanupAudioEngine() {
@@ -238,10 +260,12 @@ class WakeWordService: NSObject, ObservableObject {
         recognitionRequest.shouldReportPartialResults = true
         recognitionRequest.requiresOnDeviceRecognition = false
         recognitionRequest.taskHint = .search  // Short phrase detection
-        // Boost recognition of the wake phrase and its alternatives
-        let allPhrases = [wakePhrase] + alternativePhrases
-        recognitionRequest.contextualStrings = allPhrases
-        print("🎤 Wake phrase: '\(wakePhrase)', alternatives: \(alternativePhrases), contextualStrings: \(allPhrases)")
+        // Boost recognition of all persona wake phrases
+        let personaPhrases = Config.allActiveWakePhrases
+        let contextPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
+        recognitionRequest.contextualStrings = contextPhrases
+        let personaNames = Config.enabledPersonas.map(\.name)
+        print("🎤 Personas: \(personaNames), contextualStrings: \(contextPhrases)")
 
         // Reuse existing engine if it's already running AND has a valid format
         if let engine = audioEngine, engine.isRunning {
@@ -291,7 +315,12 @@ class WakeWordService: NSObject, ObservableObject {
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
-            self?.audioBufferForwarder?(buffer)
+            // Fan out to all registered audio consumers
+            if let forwarders = self?.audioBufferForwarders {
+                for (_, handler) in forwarders {
+                    handler(buffer)
+                }
+            }
         }
 
         engine.prepare()
@@ -324,10 +353,10 @@ class WakeWordService: NSObject, ObservableObject {
             return
         }
 
-        if !wakeWordFired && containsWakePhrase(transcript) {
-            print("🎤 Wake word detected in: '\(transcript)'")
+        if !wakeWordFired, let matched = matchedWakePhrase(transcript) {
+            print("🎤 Wake word detected: '\(matched)' in: '\(transcript)'")
             wakeWordFired = true
-            handleWakeWordDetected()
+            handleWakeWordDetected(matchedPhrase: matched)
         }
 
         if result.isFinal { restartRecognition() }
@@ -343,22 +372,24 @@ class WakeWordService: NSObject, ObservableObject {
         return false
     }
 
-    private func containsWakePhrase(_ transcript: String) -> Bool {
-        // Log every transcript so we can see what the recognizer hears
-        print("🎤 Heard: '\(transcript)' (looking for: '\(wakePhrase)')")
-        if transcript.contains(wakePhrase) { return true }
-        for phrase in alternativePhrases {
-            if transcript.contains(phrase) { return true }
+    /// Check all persona wake phrases and return the matched one, or nil.
+    private func matchedWakePhrase(_ transcript: String) -> String? {
+        let lower = transcript.lowercased()
+        for persona in Config.enabledPersonas {
+            if lower.contains(persona.wakePhrase) { return persona.wakePhrase }
+            for alt in persona.alternativeWakePhrases {
+                if lower.contains(alt) { return persona.wakePhrase }  // Return primary, not the alt
+            }
         }
-        return false
+        // Legacy fallback: check single wake phrase
+        if lower.contains(wakePhrase) { return wakePhrase }
+        return nil
     }
 
-    private func handleWakeWordDetected() {
+    private func handleWakeWordDetected(matchedPhrase: String) {
         lastDetectionTime = Date()
-        // Stop recognition task but KEEP the audio engine running
-        // so TranscriptionService can reuse it (crucial for background mode)
         pauseRecognition()
-        onWakeWordDetected?()
+        onWakeWordDetected?(matchedPhrase)
     }
 
     /// Stop the recognition task without killing the audio engine

@@ -4,10 +4,6 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    @State private var wakeWordInput = Config.wakePhrase
-    @State private var wakeWordAltsInput = Config.alternativeWakePhrases.joined(separator: ", ")
-    @State private var selectedPreset = Config.wakePhrase
-
     // Model configs editing
     @State private var modelConfigs: [ModelConfig] = Config.savedModels
     @State private var editingModel: ModelConfig? = nil
@@ -37,54 +33,25 @@ struct SettingsView: View {
     @State private var openClawGatewayToken = Config.openClawGatewayToken
     @State private var openClawTestStatus: String = ""
 
-    private let wakeWordPresets = [
-        "hey openglasses", "hey claude", "hey jarvis", "hey rayban", "hey computer", "hey assistant"
-    ]
-
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: Wake Word
+                // MARK: Personas
                 Section {
-                    Picker("Preset", selection: $selectedPreset) {
-                        Text("Hey OpenGlasses").tag("hey openglasses")
-                        Text("Hey Claude").tag("hey claude")
-                        Text("Hey Jarvis").tag("hey jarvis")
-                        Text("Hey Rayban").tag("hey rayban")
-                        Text("Hey Computer").tag("hey computer")
-                        Text("Hey Assistant").tag("hey assistant")
-                        if !wakeWordPresets.contains(wakeWordInput.lowercased()) && !wakeWordInput.isEmpty {
-                            Text("Custom: \(wakeWordInput)").tag(wakeWordInput.lowercased())
+                    NavigationLink {
+                        PersonasView()
+                    } label: {
+                        HStack {
+                            Label("Personas", systemImage: "person.2")
+                            Spacer()
+                            Text("\(Config.enabledPersonas.count) active")
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .onChange(of: selectedPreset) { _, newValue in
-                        wakeWordInput = newValue
-                        let defaults = Config.defaultAlternativesForPhrase(newValue)
-                        wakeWordAltsInput = defaults.joined(separator: ", ")
-                    }
-
-                    TextField("Custom wake phrase", text: $wakeWordInput)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: wakeWordInput) { _, newValue in
-                            if !wakeWordPresets.contains(newValue.lowercased()) {
-                                selectedPreset = newValue.lowercased()
-                            }
-                        }
-
-                    if wakeWordInput.split(separator: " ").count < 2 {
-                        Label("Use at least 2 words to avoid false triggers", systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                    }
-
-                    TextField("Alternative spellings (comma separated)", text: $wakeWordAltsInput)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
                 } header: {
-                    Text("Wake Word")
+                    Text("Personas")
                 } footer: {
-                    Text("Add alternate spellings to catch speech-to-text errors, e.g. \"hey cloud\" for \"hey claude.\"")
+                    Text("Each persona has its own wake word, AI model, and personality. Say any persona's wake word to activate it.")
                 }
 
                 // MARK: AI Models
@@ -262,13 +229,7 @@ struct SettingsView: View {
     // MARK: - Save Settings
 
     private func saveSettings() {
-        Config.setWakePhrase(wakeWordInput)
-        let alts = wakeWordAltsInput
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty }
-        Config.setAlternativeWakePhrases(alts)
-
+        // Wake word is now managed per-persona in PersonasView
         Config.setSavedModels(modelConfigs)
 
         if !modelConfigs.contains(where: { $0.id == Config.activeModelId }) {

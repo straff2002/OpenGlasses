@@ -221,6 +221,7 @@ class AppState: ObservableObject {
     @Published var lastResponse: String = ""
     @Published var errorMessage: String?
     @Published var currentMode: AppMode = Config.appMode
+    @Published var activePersona: Persona?
 
     let glassesService = GlassesConnectionService()
     let wakeWordService = WakeWordService()
@@ -464,13 +465,20 @@ class AppState: ObservableObject {
             }
         }
 
-        wakeWordService.onWakeWordDetected = { [weak self] in
+        wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
                 guard let self = self else { return }
-                // Prevent double-triggering if already in conversation
                 guard !self.inConversation && !self.isProcessing else {
                     print("⚠️ Wake word ignored - already in conversation")
                     return
+                }
+                // Route to the persona that owns this wake phrase
+                if let persona = Config.persona(forPhrase: matchedPhrase) {
+                    self.activePersona = persona
+                    Config.setActiveModelId(persona.modelId)
+                    Config.setActivePresetId(persona.presetId)
+                    self.llmService.refreshActiveModel()
+                    print("🎭 Persona activated: \(persona.name) (model: \(persona.modelId))")
                 }
                 await self.handleWakeWordDetected()
             }
@@ -1079,6 +1087,7 @@ class AppState: ObservableObject {
     func returnToWakeWord() async {
         isListening = false
         inConversation = false
+        activePersona = nil
         wakeWordService.listenForStop = false
         speechService.playDisconnectTone()
         // End active conversation thread
