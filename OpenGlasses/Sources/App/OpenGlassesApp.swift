@@ -53,6 +53,34 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
         }
         return false
     }
+
+    /// Handle background URLSession events (model downloads completing while app is suspended).
+    /// The Hub library uses a background URLSession with identifier "{bundleId}.hub.hubclient.background".
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        print("📥 Background URLSession event for: \(identifier)")
+        // The Hub library's background session delegate handles the actual download completion.
+        // We just need to store the completion handler so the system knows we processed the event.
+        BackgroundSessionCompletionStore.shared.completionHandler = completionHandler
+    }
+}
+
+/// Stores the background session completion handler so it can be called after downloads finish.
+final class BackgroundSessionCompletionStore {
+    static let shared = BackgroundSessionCompletionStore()
+    var completionHandler: (() -> Void)? {
+        didSet {
+            // Call it after a short delay — the Hub session delegate processes events first
+            if let handler = completionHandler {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    handler()
+                    self.completionHandler = nil
+                    print("📥 Background session completion handler called")
+                }
+            }
+        }
+    }
 }
 
 final class OpenGlassesSceneDelegate: NSObject, UIWindowSceneDelegate {

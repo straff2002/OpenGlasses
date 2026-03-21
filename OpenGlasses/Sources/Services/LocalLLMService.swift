@@ -168,18 +168,24 @@ final class LocalLLMService: ObservableObject {
         return appSupport.appendingPathComponent("LocalModels", isDirectory: true)
     }
 
+    /// The models subdirectory where Hub stores model repos.
+    private var modelsSubdir: URL {
+        modelDirectory.appendingPathComponent("models", isDirectory: true)
+    }
+
+    /// Get the on-disk path for a model (matches Hub's storage: downloadBase/models/{org}/{name}).
+    private func modelPath(_ modelId: String) -> URL {
+        modelsSubdir.appendingPathComponent(modelId, isDirectory: true)
+    }
+
     /// Check if a model is downloaded.
     func isModelDownloaded(_ modelId: String) -> Bool {
-        let modelDir = modelDirectory.appendingPathComponent(
-            "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
-        return FileManager.default.fileExists(atPath: modelDir.path)
+        FileManager.default.fileExists(atPath: modelPath(modelId).path)
     }
 
     /// Get size of a downloaded model on disk.
     func modelSizeOnDisk(_ modelId: String) -> Int64 {
-        let modelDir = modelDirectory.appendingPathComponent(
-            "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
-        return directorySize(modelDir)
+        directorySize(modelPath(modelId))
     }
 
     /// Delete a downloaded model.
@@ -187,28 +193,36 @@ final class LocalLLMService: ObservableObject {
         if loadedModelId == modelId {
             unloadModel()
         }
-        let modelDir = modelDirectory.appendingPathComponent(
-            "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
-        if FileManager.default.fileExists(atPath: modelDir.path) {
-            try FileManager.default.removeItem(at: modelDir)
+        let path = modelPath(modelId)
+        if FileManager.default.fileExists(atPath: path.path) {
+            try FileManager.default.removeItem(at: path)
             print("🗑️ Deleted local model: \(modelId)")
         }
     }
 
-    /// List all downloaded model IDs.
+    /// List all downloaded model IDs by scanning the models directory.
     func downloadedModelIds() -> [String] {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: modelDirectory, includingPropertiesForKeys: nil
+        // Hub stores as: downloadBase/models/{org}/{modelName}
+        guard let orgs = try? FileManager.default.contentsOfDirectory(
+            at: modelsSubdir, includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
-        return contents
-            .filter { $0.lastPathComponent.hasPrefix("models--") }
-            .map {
-                $0.lastPathComponent
-                    .replacingOccurrences(of: "models--", with: "")
-                    .replacingOccurrences(of: "--", with: "/")
+        var ids: [String] = []
+        for orgDir in orgs {
+            guard orgDir.hasDirectoryPath || (try? orgDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+            let org = orgDir.lastPathComponent
+            if org.hasPrefix(".") { continue }
+            if let models = try? FileManager.default.contentsOfDirectory(
+                at: orgDir, includingPropertiesForKeys: nil
+            ) {
+                for modelDir in models {
+                    let modelName = modelDir.lastPathComponent
+                    if modelName.hasPrefix(".") { continue }
+                    ids.append("\(org)/\(modelName)")
+                }
             }
-            .sorted()
+        }
+        return ids.sorted()
     }
 
     // MARK: - Helpers
