@@ -1,17 +1,21 @@
 import SwiftUI
 
 /// Large central ambient status indicator — the visual heartbeat of the app.
-/// Adapts to both Direct and Gemini Live modes.
+/// Adapts to Direct, Gemini Live, and OpenAI Realtime modes.
 /// When glasses aren't connected, acts as a connect button.
 struct StatusIndicator: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
+    @ObservedObject var openAISession: OpenAIRealtimeSessionManager
 
     /// Outer ring pulse
     @State private var ringScale: CGFloat = 1.0
     @State private var ringOpacity: Double = 0.3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isGemini: Bool { appState.currentMode == .geminiLive }
+    private var isOpenAI: Bool { appState.currentMode == .openaiRealtime }
+    private var isRealtime: Bool { appState.currentMode.isRealtime }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -40,8 +44,8 @@ struct StatusIndicator: View {
                     .foregroundStyle(ringColor)
                     .symbolEffect(.pulse, isActive: isPulsing)
 
-                // Camera streaming badge (Gemini Live)
-                if isGemini && appState.cameraService.isStreaming {
+                // Camera streaming badge (realtime modes)
+                if isRealtime && appState.cameraService.isStreaming {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 10, height: 10)
@@ -66,17 +70,20 @@ struct StatusIndicator: View {
             VStack(spacing: 4) {
                 Text(statusLabel)
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
 
                 Text(modeLabel)
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
 
                 // Connection hint when not connected
                 if !appState.isConnected {
-                    Text("Tap to connect glasses")
+                    Text("Tap to connect your glasses")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.cyan.opacity(0.7))
+                        .foregroundStyle(.cyan.opacity(0.7))
                         .padding(.top, 4)
                 }
             }
@@ -84,23 +91,30 @@ struct StatusIndicator: View {
             // Tool call status
             if isGemini && session.toolCallStatus.isActive {
                 toolCallPill(session.toolCallStatus.displayText, color: .purple)
-            } else if !isGemini && appState.llmService.toolCallStatus.isActive {
+            } else if !isRealtime && appState.llmService.toolCallStatus.isActive {
                 toolCallPill(appState.llmService.toolCallStatus.displayText, color: .purple)
             }
 
             // Reconnecting
             if isGemini && session.reconnecting {
-                Text("Reconnecting...")
+                Text("Reconnecting…")
                     .font(.system(size: 12))
-                    .foregroundColor(.orange.opacity(0.8))
+                    .foregroundStyle(.orange.opacity(0.8))
+            }
+            if isOpenAI && openAISession.reconnecting {
+                Text("Reconnecting…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange.opacity(0.8))
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(statusLabel). \(modeLabel)")
+        .accessibilityHint(appState.isConnected ? "" : "Double-tap to connect your glasses")
     }
 
     // MARK: - Computed Properties
 
     private var iconName: String {
-        // Not connected — show glasses icon
         if !appState.isConnected {
             return "eyeglasses"
         }
@@ -108,6 +122,14 @@ struct StatusIndicator: View {
         if isGemini {
             switch session.connectionState {
             case .ready where session.isModelSpeaking: return "speaker.wave.3.fill"
+            case .ready: return "waveform.circle.fill"
+            case .connecting, .settingUp: return "antenna.radiowaves.left.and.right"
+            case .error: return "exclamationmark.triangle.fill"
+            case .disconnected: return "waveform.circle"
+            }
+        } else if isOpenAI {
+            switch openAISession.connectionState {
+            case .ready where openAISession.isModelSpeaking: return "speaker.wave.3.fill"
             case .ready: return "waveform.circle.fill"
             case .connecting, .settingUp: return "antenna.radiowaves.left.and.right"
             case .error: return "exclamationmark.triangle.fill"
@@ -131,6 +153,14 @@ struct StatusIndicator: View {
             case .error: return .red
             case .disconnected: return .gray
             }
+        } else if isOpenAI {
+            switch openAISession.connectionState {
+            case .ready where openAISession.isModelSpeaking: return .orange
+            case .ready: return .cyan
+            case .connecting, .settingUp: return .orange
+            case .error: return .red
+            case .disconnected: return .gray
+            }
         } else {
             if appState.isListening { return .cyan }
             if appState.speechService.isSpeaking { return .orange }
@@ -143,6 +173,8 @@ struct StatusIndicator: View {
 
         if isGemini {
             return session.isActive && session.connectionState == .ready
+        } else if isOpenAI {
+            return openAISession.isActive && openAISession.connectionState == .ready
         } else {
             return appState.isListening
         }
@@ -151,23 +183,33 @@ struct StatusIndicator: View {
     private var statusLabel: String {
         if !appState.isConnected {
             let status = appState.glassesService.connectionStatus
-            if status == "Not connected" { return "No Glasses" }
+            if status == "Not connected" { return "Glasses Not Connected" }
             return status
         }
 
         if isGemini {
             if !session.isActive { return "Ready" }
             switch session.connectionState {
-            case .ready where session.isModelSpeaking: return "Speaking..."
-            case .ready: return "Listening..."
-            case .connecting: return "Connecting..."
-            case .settingUp: return "Setting up..."
-            case .error(let msg): return "Error: \(msg)"
-            case .disconnected: return session.reconnecting ? "Reconnecting..." : "Disconnected"
+            case .ready where session.isModelSpeaking: return "Speaking…"
+            case .ready: return "Listening…"
+            case .connecting: return "Connecting…"
+            case .settingUp: return "Setting Up…"
+            case .error(let msg): return msg
+            case .disconnected: return session.reconnecting ? "Reconnecting…" : "Disconnected"
+            }
+        } else if isOpenAI {
+            if !openAISession.isActive { return "Ready" }
+            switch openAISession.connectionState {
+            case .ready where openAISession.isModelSpeaking: return "Speaking…"
+            case .ready: return "Listening…"
+            case .connecting: return "Connecting…"
+            case .settingUp: return "Setting Up…"
+            case .error(let msg): return msg
+            case .disconnected: return openAISession.reconnecting ? "Reconnecting…" : "Disconnected"
             }
         } else {
-            if appState.isListening { return "Listening..." }
-            if appState.speechService.isSpeaking { return "Speaking..." }
+            if appState.isListening { return "Listening…" }
+            if appState.speechService.isSpeaking { return "Speaking…" }
             return "Ready"
         }
     }
@@ -175,8 +217,10 @@ struct StatusIndicator: View {
     private var modeLabel: String {
         if isGemini {
             return "Gemini Live"
+        } else if isOpenAI {
+            return "OpenAI Realtime"
         } else {
-            return "Direct \u{2022} \(appState.llmService.activeModelName)"
+            return "Voice · \(appState.llmService.activeModelName)"
         }
     }
 
@@ -187,7 +231,7 @@ struct StatusIndicator: View {
             ProgressView().scaleEffect(0.7).tint(.white)
             Text(text)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundStyle(.white.opacity(0.9))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
@@ -196,6 +240,11 @@ struct StatusIndicator: View {
     }
 
     private func startRingAnimation() {
+        guard !reduceMotion else {
+            ringScale = 1.0
+            ringOpacity = 0.6
+            return
+        }
         withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
             ringScale = 1.12
             ringOpacity = 0.6
@@ -203,7 +252,7 @@ struct StatusIndicator: View {
     }
 
     private func stopRingAnimation() {
-        withAnimation(.easeOut(duration: 0.5)) {
+        withAnimation(.easeOut(duration: reduceMotion ? 0.01 : 0.5)) {
             ringScale = 1.0
             ringOpacity = 0.3
         }

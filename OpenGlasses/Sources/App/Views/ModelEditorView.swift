@@ -8,6 +8,12 @@ struct ModelEditorView: View {
     @State private var apiKey: String
     @State private var model: String
     @State private var baseURL: String
+    @State private var supportsVision: Bool
+
+    @State private var availableModels: [ModelFetcher.RemoteModel] = []
+    @State private var isFetchingModels: Bool = false
+    @State private var fetchError: String?
+    @State private var keyValidated: Bool = false
 
     let modelId: String
     let onSave: (ModelConfig) -> Void
@@ -20,58 +26,33 @@ struct ModelEditorView: View {
         _apiKey = State(initialValue: config.apiKey)
         _model = State(initialValue: config.model)
         _baseURL = State(initialValue: config.baseURL)
+        _supportsVision = State(initialValue: config.visionEnabled)
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section("Display Name") {
-                    TextField("e.g. Claude Sonnet, GPT-4o", text: $name)
-                        .autocorrectionDisabled()
-                }
-
-                Section("Provider") {
-                    Picker("Provider", selection: $selectedProvider) {
-                        ForEach(LLMProvider.allCases, id: \.self) { provider in
-                            Text(provider.displayName).tag(provider)
-                        }
-                    }
-                    .onChange(of: selectedProvider) { _, newProvider in
-                        baseURL = newProvider.defaultBaseURL
-                        if model.isEmpty || LLMProvider.allCases.contains(where: { $0.defaultModel == model }) {
-                            model = newProvider.defaultModel
-                        }
-                    }
-                }
-
-                Section("Configuration") {
-                    SecureField("API Key", text: $apiKey)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    TextField("Model", text: $model)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    if selectedProvider == .custom {
-                        TextField("Base URL", text: $baseURL)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .font(.caption)
-                    }
-
-                    Text(providerHelpText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                ModelFormView(
+                    name: $name,
+                    selectedProvider: $selectedProvider,
+                    apiKey: $apiKey,
+                    model: $model,
+                    baseURL: $baseURL,
+                    supportsVision: $supportsVision,
+                    availableModels: $availableModels,
+                    isFetchingModels: $isFetchingModels,
+                    fetchError: $fetchError,
+                    keyValidated: $keyValidated,
+                    resetModelOnProviderChange: false
+                )
             }
             .navigationTitle("Edit Model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let updated = ModelConfig(
                             id: modelId,
@@ -79,23 +60,14 @@ struct ModelEditorView: View {
                             provider: selectedProvider.rawValue,
                             apiKey: apiKey,
                             model: model,
-                            baseURL: baseURL
+                            baseURL: baseURL,
+                            supportsVision: supportsVision
                         )
                         onSave(updated)
                         dismiss()
                     }
                 }
             }
-        }
-    }
-
-    private var providerHelpText: String {
-        switch selectedProvider {
-        case .anthropic: return "console.anthropic.com"
-        case .openai: return "platform.openai.com"
-        case .gemini: return "aistudio.google.com"
-        case .groq: return "console.groq.com"
-        case .custom: return "Any OpenAI-compatible API endpoint"
         }
     }
 }

@@ -7,8 +7,6 @@ struct SettingsView: View {
     @State private var wakeWordInput = Config.wakePhrase
     @State private var wakeWordAltsInput = Config.alternativeWakePhrases.joined(separator: ", ")
     @State private var selectedPreset = Config.wakePhrase
-    @State private var elevenLabsKeyInput = Config.elevenLabsAPIKey
-    @State private var selectedVoice = Config.elevenLabsVoiceId
     @State private var systemPromptInput = Config.systemPrompt
 
     // Model configs editing
@@ -16,7 +14,22 @@ struct SettingsView: View {
     @State private var editingModel: ModelConfig? = nil
     @State private var showAddModel = false
 
-    // OpenClaw settings
+    // Intelligence settings
+    @State private var intentClassifierEnabled = Config.intentClassifierEnabled
+    @State private var userMemoryEnabled = Config.userMemoryEnabled
+    @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
+
+    // Privacy filter
+    @State private var privacyFilterEnabled = Config.privacyFilterEnabled
+
+    // Service settings (owned here, bound to ServicesSettingsView)
+    @State private var elevenLabsKeyInput = Config.elevenLabsAPIKey
+    @State private var selectedVoice = Config.elevenLabsVoiceId
+    @State private var emotionAwareTTSEnabled = Config.emotionAwareTTSEnabled
+    @State private var perplexityKeyInput = Config.perplexityAPIKey
+    @State private var broadcastPlatform = Config.broadcastPlatform
+    @State private var broadcastRTMPURL = Config.broadcastRTMPURL
+    @State private var broadcastStreamKey = Config.broadcastStreamKey
     @State private var openClawEnabled = Config.openClawEnabled
     @State private var openClawConnectionMode = Config.openClawConnectionMode
     @State private var openClawLanHost = Config.openClawLanHost
@@ -25,21 +38,17 @@ struct SettingsView: View {
     @State private var openClawGatewayToken = Config.openClawGatewayToken
     @State private var openClawTestStatus: String = ""
 
-    private let mutedOrange = Color(red: 0.78, green: 0.56, blue: 0.32)
-    private let mutedRed = Color(red: 0.75, green: 0.30, blue: 0.30)
-    private let mutedBlue = Color(red: 0.38, green: 0.52, blue: 0.68)
-    private let mutedGreen = Color(red: 0.35, green: 0.62, blue: 0.45)
-
     private let wakeWordPresets = [
-        "hey claude", "hey jarvis", "hey rayban", "hey computer", "hey assistant"
+        "hey openglasses", "hey claude", "hey jarvis", "hey rayban", "hey computer", "hey assistant"
     ]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // MARK: Wake Word
-                Section("Wake Word") {
+                Section {
                     Picker("Preset", selection: $selectedPreset) {
+                        Text("Hey OpenGlasses").tag("hey openglasses")
                         Text("Hey Claude").tag("hey claude")
                         Text("Hey Jarvis").tag("hey jarvis")
                         Text("Hey Rayban").tag("hey rayban")
@@ -65,19 +74,18 @@ struct SettingsView: View {
                         }
 
                     if wakeWordInput.split(separator: " ").count < 2 {
-                        Text("Use at least 2 words (e.g. \"hey jarvis\") to avoid false triggers")
-                            .font(.caption)
-                            .foregroundColor(mutedOrange)
+                        Label("Use at least 2 words to avoid false triggers", systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
                     }
 
                     TextField("Alternative spellings (comma separated)", text: $wakeWordAltsInput)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .font(.caption)
-
-                    Text("Alternatives catch misrecognitions, e.g. \"hey cloud\" for \"hey claude\"")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                } header: {
+                    Text("Wake Word")
+                } footer: {
+                    Text("Add alternate spellings to catch speech-to-text errors, e.g. \"hey cloud\" for \"hey claude.\"")
                 }
 
                 // MARK: AI Models
@@ -89,27 +97,33 @@ struct SettingsView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(model.name)
-                                        .font(.body.weight(.medium))
-                                        .foregroundColor(.primary)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
                                     HStack(spacing: 4) {
                                         Text(model.llmProvider.displayName)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                        if model.visionEnabled {
+                                            Image(systemName: "eye")
+                                                .font(.caption2)
+                                                .foregroundStyle(.blue)
+                                        }
                                         if !model.apiKey.isEmpty {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .font(.caption2)
-                                                .foregroundColor(.green)
+                                                .foregroundStyle(.green)
                                         } else {
                                             Image(systemName: "exclamationmark.circle")
                                                 .font(.caption2)
-                                                .foregroundColor(mutedOrange)
+                                                .foregroundStyle(.orange)
                                         }
                                     }
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .font(.footnote)
+                                    .foregroundStyle(.tertiary)
                             }
                         }
                     }
@@ -121,106 +135,73 @@ struct SettingsView: View {
                         showAddModel = true
                     } label: {
                         Label("Add Model", systemImage: "plus.circle.fill")
-                            .foregroundColor(mutedBlue)
                     }
                 } header: {
                     Text("AI Models")
                 } footer: {
-                    Text("Configure multiple models and switch between them on the main screen")
+                    Text("Add API keys for different AI providers. Switch models anytime from the main screen.")
                 }
 
                 // MARK: System Prompt
                 Section {
                     TextEditor(text: $systemPromptInput)
-                        .font(.caption)
                         .frame(minHeight: 150)
 
-                    Button("Reset to Default") {
+                    Button("Reset to Default", role: .destructive) {
                         systemPromptInput = Config.defaultSystemPrompt
                     }
-                    .font(.caption)
-                    .foregroundColor(mutedRed)
+                    .font(.footnote)
                 } header: {
                     Text("System Prompt")
                 } footer: {
-                    Text("This prompt is sent with every message to guide the AI's behaviour")
+                    Text("This prompt shapes how the AI responds. It's included with every message.")
                 }
 
-                // MARK: ElevenLabs
-                Section("ElevenLabs Voice (Optional)") {
-                    SecureField("ElevenLabs API key", text: $elevenLabsKeyInput)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    Picker("Voice", selection: $selectedVoice) {
-                        Text("Rachel (warm female)").tag("21m00Tcm4TlvDq8ikWAM")
-                        Text("Bella (young female)").tag("EXAVITQu4vr4xnSDxMaL")
-                        Text("Adam (deep male)").tag("pNInz6obpgDQGcFmaJgB")
-                        Text("Antoni (friendly male)").tag("ErXwobaYiN019PkySvjV")
-                        Text("Daniel (British male)").tag("onwK4e9ZLuTAKqWW03F9")
-                    }
-
-                    Text("Free tier: 10k chars/month at elevenlabs.io")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if elevenLabsKeyInput.isEmpty {
-                        Text("Without ElevenLabs, iOS built-in voice is used")
-                            .font(.caption)
-                            .foregroundColor(mutedOrange)
-                    }
-                }
-
-                // MARK: OpenClaw
+                // MARK: Intelligence
                 Section {
-                    Toggle("Enable OpenClaw", isOn: $openClawEnabled)
-
-                    if openClawEnabled {
-                        SecureField("Gateway Token", text: $openClawGatewayToken)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-
-                        Picker("Connection", selection: $openClawConnectionMode) {
-                            ForEach(OpenClawConnectionMode.allCases, id: \.self) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-
-                        if openClawConnectionMode != .tunnel {
-                            TextField("LAN Host", text: $openClawLanHost)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .font(.caption)
-
-                            TextField("Port", text: $openClawPort)
-                                .keyboardType(.numberPad)
-                                .font(.caption)
-                        }
-
-                        if openClawConnectionMode != .lan {
-                            TextField("Tunnel Host", text: $openClawTunnelHost)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .font(.caption)
-                        }
-
-                        Button {
-                            testOpenClawConnection()
-                        } label: {
-                            HStack {
-                                Text("Test Connection")
-                                if !openClawTestStatus.isEmpty {
-                                    Spacer()
-                                    Text(openClawTestStatus)
-                                        .font(.caption)
-                                        .foregroundColor(openClawTestStatus.contains("Connected") ? mutedGreen : mutedRed)
-                                }
-                            }
-                        }
-                    }
+                    Toggle("Intent Classifier", isOn: $intentClassifierEnabled)
+                    Toggle("User Memory", isOn: $userMemoryEnabled)
+                    Toggle("Conversation History", isOn: $conversationPersistenceEnabled)
                 } header: {
-                    Text("OpenClaw Agent Gateway")
+                    Text("Intelligence")
                 } footer: {
-                    Text("Connect to OpenClaw on your Mac for 56+ tools: messaging, web search, smart home, and more")
+                    Text("Intent classifier ignores nearby conversations so only your voice triggers a response. Memory saves facts you share (your name, preferences) across sessions. History keeps previous conversations for context.")
+                }
+
+                // MARK: Privacy
+                Section {
+                    Toggle("Blur Bystander Faces", isOn: $privacyFilterEnabled)
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("Automatically blurs faces of people nearby in recordings and streams.")
+                }
+
+                // MARK: Services & Integrations
+                Section {
+                    NavigationLink {
+                        ServicesSettingsView(
+                            appState: appState,
+                            elevenLabsKeyInput: $elevenLabsKeyInput,
+                            selectedVoice: $selectedVoice,
+                            emotionAwareTTSEnabled: $emotionAwareTTSEnabled,
+                            perplexityKeyInput: $perplexityKeyInput,
+                            broadcastPlatform: $broadcastPlatform,
+                            broadcastRTMPURL: $broadcastRTMPURL,
+                            broadcastStreamKey: $broadcastStreamKey,
+                            openClawEnabled: $openClawEnabled,
+                            openClawConnectionMode: $openClawConnectionMode,
+                            openClawLanHost: $openClawLanHost,
+                            openClawPort: $openClawPort,
+                            openClawTunnelHost: $openClawTunnelHost,
+                            openClawGatewayToken: $openClawGatewayToken,
+                            openClawTestStatus: $openClawTestStatus
+                        )
+                    } label: {
+                        Label("Services & Integrations", systemImage: "square.grid.2x2")
+                    }
+                } footer: {
+                    Text("ElevenLabs voice, Perplexity search, live streaming, and OpenClaw gateway.")
                 }
             }
             .navigationTitle("Settings")
@@ -268,6 +249,20 @@ struct SettingsView: View {
         Config.setElevenLabsAPIKey(elevenLabsKeyInput)
         Config.setElevenLabsVoiceId(selectedVoice)
 
+        Config.setPerplexityAPIKey(perplexityKeyInput)
+        Config.setPrivacyFilterEnabled(privacyFilterEnabled)
+        appState.privacyFilter.isEnabled = privacyFilterEnabled
+
+        Config.setEmotionAwareTTSEnabled(emotionAwareTTSEnabled)
+
+        Config.setIntentClassifierEnabled(intentClassifierEnabled)
+        Config.setUserMemoryEnabled(userMemoryEnabled)
+        Config.setConversationPersistenceEnabled(conversationPersistenceEnabled)
+
+        Config.setBroadcastPlatform(broadcastPlatform)
+        Config.setBroadcastRTMPURL(broadcastRTMPURL)
+        Config.setBroadcastStreamKey(broadcastStreamKey)
+
         Config.setOpenClawEnabled(openClawEnabled)
         Config.setOpenClawConnectionMode(openClawConnectionMode)
         Config.setOpenClawLanHost(openClawLanHost)
@@ -285,34 +280,6 @@ struct SettingsView: View {
                 appState.wakeWordService.stopListening()
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 try? await appState.wakeWordService.startListening()
-            }
-        }
-    }
-
-    private func testOpenClawConnection() {
-        openClawTestStatus = "Testing..."
-        Config.setOpenClawEnabled(openClawEnabled)
-        Config.setOpenClawConnectionMode(openClawConnectionMode)
-        Config.setOpenClawLanHost(openClawLanHost)
-        if let port = Int(openClawPort) {
-            Config.setOpenClawPort(port)
-        }
-        Config.setOpenClawTunnelHost(openClawTunnelHost)
-        Config.setOpenClawGatewayToken(openClawGatewayToken)
-
-        appState.openClawBridge.clearCachedEndpoint()
-        Task {
-            await appState.openClawBridge.checkConnection()
-            switch appState.openClawBridge.connectionState {
-            case .connected:
-                let via = appState.openClawBridge.resolvedConnection?.label ?? "unknown"
-                openClawTestStatus = "Connected via \(via)"
-            case .unreachable(let msg):
-                openClawTestStatus = "Unreachable: \(msg)"
-            case .notConfigured:
-                openClawTestStatus = "Not configured"
-            case .checking:
-                openClawTestStatus = "Checking..."
             }
         }
     }

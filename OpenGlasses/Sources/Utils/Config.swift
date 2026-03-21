@@ -8,10 +8,51 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     var apiKey: String
     var model: String
     var baseURL: String
+    /// Optional user override for whether this model accepts image input.
+    /// When nil, the app falls back to provider/model-name heuristics.
+    var supportsVision: Bool? = nil
 
     /// Convenience to get the LLMProvider enum
     var llmProvider: LLMProvider {
         LLMProvider(rawValue: provider) ?? .custom
+    }
+
+    /// Whether this model should receive image input when the app has an image available.
+    var visionEnabled: Bool {
+        supportsVision ?? Self.inferredSupportsVision(provider: llmProvider, model: model, baseURL: baseURL)
+    }
+
+    static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {
+        switch provider {
+        case .anthropic, .gemini, .openai:
+            return true
+        case .groq:
+            return false
+        case .qwen:
+            // Qwen3.5-plus and qwen-vl models support vision
+            let lowerModel = model.lowercased()
+            return lowerModel.contains("vl") || lowerModel.contains("plus") || lowerModel.contains("max") || lowerModel.contains("omni")
+        case .zai, .minimax, .custom:
+            let lowerModel = model.lowercased()
+            let lowerBaseURL = baseURL.lowercased()
+
+            let knownVisionHints = [
+                "vision", "gpt-4", "gpt-4.1", "gpt-4o", "o1", "o3",
+                "claude-3", "claude-4", "sonnet", "opus",
+                "gemini", "vl", "qwen-vl", "qwen2.5-vl", "qvq",
+                "pixtral", "llava", "minicpm-v", "glm-4.1v"
+            ]
+
+            if knownVisionHints.contains(where: { lowerModel.contains($0) }) {
+                return true
+            }
+
+            if lowerBaseURL.contains("openrouter.ai") {
+                return knownVisionHints.contains(where: { lowerModel.contains($0) })
+            }
+
+            return false
+        }
     }
 
     /// Create a new config with defaults for a provider
@@ -42,6 +83,21 @@ struct Config {
         UserDefaults.standard.set(key, forKey: "anthropicAPIKey")
     }
 
+    // MARK: - Onboarding
+
+    static var hasCompletedOnboarding: Bool {
+        UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    }
+
+    static func setHasCompletedOnboarding(_ completed: Bool) {
+        UserDefaults.standard.set(completed, forKey: "hasCompletedOnboarding")
+    }
+
+    /// True when the user hasn't completed onboarding and has no configured API keys.
+    static var needsOnboarding: Bool {
+        !hasCompletedOnboarding && savedModels.allSatisfy { $0.apiKey.isEmpty }
+    }
+
     // MARK: - Wake Word
 
     /// The primary wake word phrase (user-configurable)
@@ -49,7 +105,7 @@ struct Config {
         if let phrase = UserDefaults.standard.string(forKey: "wakePhrase"), !phrase.isEmpty {
             return phrase.lowercased()
         }
-        return "hey claude"
+        return "hey openglasses"
     }
 
     static func setWakePhrase(_ phrase: String) {
@@ -81,6 +137,8 @@ struct Config {
             return ["hey assistance", "a assistant"]
         case "hey rayban":
             return ["hey ray ban", "hey ray-ban", "hey raven", "hey rayben", "hey ray band"]
+        case "hey openglasses":
+            return ["hey open glasses", "hey open glass", "hey openclass", "hey open class", "hey openglass"]
         default:
             return []
         }
@@ -250,7 +308,7 @@ struct Config {
     // MARK: - Custom System Prompt
 
     static let defaultSystemPrompt = """
-    You are a voice assistant running on Ray-Ban Meta smart glasses. Your responses will be spoken aloud via text-to-speech.
+    You are OpenGlasses, a voice assistant running on Ray-Ban Meta smart glasses. Your responses will be spoken aloud via text-to-speech. Your name is OpenGlasses and the user activates you by saying "Hey OpenGlasses".
 
     RESPONSE STYLE:
     - Keep responses CONCISE but COMPLETE — typically 2-4 sentences, longer for complex topics.
@@ -264,6 +322,13 @@ struct Config {
     - Speech recognition may mishear words — interpret the user's intent generously.
     - You have conversational memory within this session, so you can reference previous exchanges.
     - For very complex questions, offer to break the topic into parts: "That's a big topic. Would you like me to start with X?"
+
+    VISION & CAMERA:
+    - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
+    - You CAN see images — never say you lack camera or vision access.
+    - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
+    - For objects, products, landmarks: identify and describe them.
+    - After reading text from an image, offer to copy it to clipboard or translate it.
 
     KNOWLEDGE:
     - Answer confidently from your training knowledge for factual questions.
@@ -447,6 +512,172 @@ struct Config {
     static var isGeminiLiveConfigured: Bool {
         !geminiLiveAPIKey.isEmpty
     }
+
+    // MARK: - OpenAI Realtime Configuration
+
+    /// Find the best OpenAI model config for Realtime mode.
+    /// Prefers a model with "realtime" in the name, falls back to any OpenAI model.
+    static var openAIRealtimeModelConfig: ModelConfig? {
+        let openAIModels = savedModels.filter { $0.provider == LLMProvider.openai.rawValue }
+        // Prefer a model explicitly named for realtime
+        if let realtime = openAIModels.first(where: { $0.model.lowercased().contains("realtime") }) {
+            return realtime
+        }
+        // Fall back to active model if it's OpenAI
+        if let active = activeModel, active.llmProvider == .openai {
+            return active
+        }
+        // Fall back to any OpenAI model
+        return openAIModels.first
+    }
+
+    static var isOpenAIRealtimeConfigured: Bool {
+        openAIRealtimeModelConfig != nil
+    }
+
+    // MARK: - Recording
+
+    static var recordingBitrate: Int {
+        let val = UserDefaults.standard.integer(forKey: "recordingBitrate")
+        return val != 0 ? val : 1_500_000
+    }
+
+    static func setRecordingBitrate(_ bitrate: Int) {
+        UserDefaults.standard.set(bitrate, forKey: "recordingBitrate")
+    }
+
+    // MARK: - Live Broadcast
+
+    static var broadcastPlatform: String {
+        UserDefaults.standard.string(forKey: "broadcastPlatform") ?? "youtube"
+    }
+
+    static func setBroadcastPlatform(_ platform: String) {
+        UserDefaults.standard.set(platform, forKey: "broadcastPlatform")
+    }
+
+    static var broadcastRTMPURL: String {
+        UserDefaults.standard.string(forKey: "broadcastRTMPURL") ?? ""
+    }
+
+    static func setBroadcastRTMPURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "broadcastRTMPURL")
+    }
+
+    static var broadcastStreamKey: String {
+        UserDefaults.standard.string(forKey: "broadcastStreamKey") ?? ""
+    }
+
+    static func setBroadcastStreamKey(_ key: String) {
+        UserDefaults.standard.set(key, forKey: "broadcastStreamKey")
+    }
+
+    static var isBroadcastConfigured: Bool {
+        !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
+    }
+
+    // MARK: - Perplexity Search
+
+    static var perplexityAPIKey: String {
+        if let key = UserDefaults.standard.string(forKey: "perplexityAPIKey"), !key.isEmpty {
+            return key
+        }
+        return ""
+    }
+
+    static func setPerplexityAPIKey(_ key: String) {
+        UserDefaults.standard.set(key, forKey: "perplexityAPIKey")
+    }
+
+    static var isPerplexityConfigured: Bool {
+        !perplexityAPIKey.isEmpty
+    }
+
+    // MARK: - Privacy Filter
+
+    static var privacyFilterEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "privacyFilterEnabled")
+    }
+
+    static func setPrivacyFilterEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "privacyFilterEnabled")
+    }
+
+    // MARK: - Emotion-Aware TTS
+
+    static var emotionAwareTTSEnabled: Bool {
+        let key = "emotionAwareTTSEnabled"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            return true // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setEmotionAwareTTSEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "emotionAwareTTSEnabled")
+    }
+
+    // MARK: - WebRTC Streaming
+
+    static var webRTCSignalingURL: String {
+        if let url = UserDefaults.standard.string(forKey: "webRTCSignalingURL"), !url.isEmpty {
+            return url
+        }
+        return "wss://openglasses-signal.fly.dev/ws"
+    }
+
+    static func setWebRTCSignalingURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "webRTCSignalingURL")
+    }
+
+    static var webRTCViewerBaseURL: String {
+        if let url = UserDefaults.standard.string(forKey: "webRTCViewerBaseURL"), !url.isEmpty {
+            return url
+        }
+        return "https://openglasses-signal.fly.dev/view"
+    }
+
+    static func setWebRTCViewerBaseURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "webRTCViewerBaseURL")
+    }
+
+    // MARK: - Intent Classifier
+
+    static var intentClassifierEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "intentClassifierEnabled")
+    }
+
+    static func setIntentClassifierEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "intentClassifierEnabled")
+    }
+
+    // MARK: - User Memory
+
+    static var userMemoryEnabled: Bool {
+        let key = "userMemoryEnabled"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            return true // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setUserMemoryEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "userMemoryEnabled")
+    }
+
+    // MARK: - Conversation Persistence
+
+    static var conversationPersistenceEnabled: Bool {
+        let key = "conversationPersistenceEnabled"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            return true // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setConversationPersistenceEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "conversationPersistenceEnabled")
+    }
 }
 
 // MARK: - App Mode Enum
@@ -454,11 +685,13 @@ struct Config {
 enum AppMode: String, CaseIterable {
     case direct = "direct"
     case geminiLive = "geminiLive"
+    case openaiRealtime = "openaiRealtime"
 
     var displayName: String {
         switch self {
         case .direct: return "Direct Mode"
         case .geminiLive: return "Gemini Live"
+        case .openaiRealtime: return "OpenAI Realtime"
         }
     }
 
@@ -466,6 +699,12 @@ enum AppMode: String, CaseIterable {
         switch self {
         case .direct: return "Wake word, any LLM provider, text-to-speech"
         case .geminiLive: return "Real-time audio/video streaming via Gemini"
+        case .openaiRealtime: return "Real-time audio/video streaming via OpenAI"
         }
+    }
+
+    /// Whether this mode is a real-time streaming mode (as opposed to wake-word direct mode).
+    var isRealtime: Bool {
+        self == .geminiLive || self == .openaiRealtime
     }
 }

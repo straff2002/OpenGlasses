@@ -7,19 +7,13 @@ struct CircleButton: View {
     var isActive: Bool = false
     var isDisabled: Bool = false
     var badge: String? = nil
+    var label: String? = nil
     let action: () -> Void
 
     private var foreground: Color {
         if isDisabled { return .white.opacity(0.25) }
         if isActive { return .white }
         return .white.opacity(0.85)
-    }
-
-    private var background: some ShapeStyle {
-        if isActive {
-            return AnyShapeStyle(.ultraThinMaterial)
-        }
-        return AnyShapeStyle(.ultraThinMaterial)
     }
 
     var body: some View {
@@ -41,12 +35,12 @@ struct CircleButton: View {
 
                 Image(systemName: icon)
                     .font(.system(size: size * 0.36, weight: .medium))
-                    .foregroundColor(foreground)
+                    .foregroundStyle(foreground)
 
                 if let badge {
                     Text(badge)
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Color.accentColor, in: Capsule())
@@ -57,5 +51,7 @@ struct CircleButton: View {
         }
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)
+        .accessibilityLabel(label ?? icon.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " "))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
