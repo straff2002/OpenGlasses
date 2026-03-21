@@ -68,6 +68,45 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     }
 }
 
+/// A saved system prompt preset
+struct PromptPreset: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var prompt: String
+    var isBuiltIn: Bool
+}
+
+/// A user-defined tool that maps to a Siri Shortcut or URL scheme
+struct CustomToolDefinition: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var description: String
+    var parameters: [CustomToolParam]
+    var actionType: ActionType
+    var shortcutName: String?
+    var urlTemplate: String?
+
+    enum ActionType: String, Codable, CaseIterable {
+        case shortcut
+        case urlScheme
+
+        var displayName: String {
+            switch self {
+            case .shortcut: return "Siri Shortcut"
+            case .urlScheme: return "URL Scheme"
+            }
+        }
+    }
+
+    struct CustomToolParam: Codable, Identifiable, Equatable {
+        var id: String
+        var name: String
+        var type: String  // "string" or "number"
+        var description: String
+        var required: Bool
+    }
+}
+
 /// App configuration and API keys
 struct Config {
     /// Anthropic API key for Claude
@@ -342,7 +381,12 @@ struct Config {
     - Directions/instructions: As many steps as needed, but keep each step concise.
     """
 
+    /// Returns the active preset's prompt, falling back to default.
     static var systemPrompt: String {
+        if let preset = activePreset {
+            return preset.prompt
+        }
+        // Legacy fallback: check old customSystemPrompt key
         if let prompt = UserDefaults.standard.string(forKey: "customSystemPrompt"), !prompt.isEmpty {
             return prompt
         }
@@ -355,6 +399,109 @@ struct Config {
 
     static func resetSystemPrompt() {
         UserDefaults.standard.removeObject(forKey: "customSystemPrompt")
+    }
+
+    // MARK: - Prompt Presets
+
+    static func builtInPresets() -> [PromptPreset] {
+        [
+            PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt, isBuiltIn: true),
+            PromptPreset(id: "preset-concise", name: "Concise", prompt: """
+            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+
+            RULES:
+            - Maximum 1-2 sentences per response. No exceptions unless the user says "explain more."
+            - Never use formatting, lists, or markdown.
+            - Answer directly. Skip pleasantries, hedges, and filler.
+            - If you can't answer in 2 sentences, say the key point and offer to elaborate.
+            - Speech recognition may mishear — interpret generously.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true),
+            PromptPreset(id: "preset-technical", name: "Technical", prompt: """
+            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+
+            RESPONSE STYLE:
+            - Be precise and technical. Use correct terminology.
+            - Include specific numbers, measurements, and data when relevant.
+            - For code/tech questions, give the exact answer first, then brief context.
+            - Keep responses to 2-5 sentences. Be information-dense.
+            - Never use markdown or formatting — this is spoken aloud.
+            - Speech recognition may mishear — interpret generously.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true),
+            PromptPreset(id: "preset-creative", name: "Creative", prompt: """
+            You are OpenGlasses, a witty and warm voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+
+            PERSONALITY:
+            - Be playful, expressive, and engaging — like a clever friend.
+            - Use vivid language, analogies, and gentle humor when appropriate.
+            - Match the user's energy — excited for good news, empathetic for struggles.
+            - Still be helpful and accurate, but make interactions enjoyable.
+            - Keep responses to 2-5 sentences. Be memorable, not lengthy.
+            - Never use markdown or formatting — this is spoken aloud.
+            - Speech recognition may mishear — interpret generously.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true),
+        ]
+    }
+
+    static var savedPresets: [PromptPreset] {
+        if let data = UserDefaults.standard.data(forKey: "savedPromptPresets"),
+           let presets = try? JSONDecoder().decode([PromptPreset].self, from: data),
+           !presets.isEmpty {
+            return presets
+        }
+        // First access: seed with built-ins + migrate any existing custom prompt
+        var presets = builtInPresets()
+        if let custom = UserDefaults.standard.string(forKey: "customSystemPrompt"),
+           !custom.isEmpty, custom != defaultSystemPrompt {
+            let migrated = PromptPreset(
+                id: UUID().uuidString,
+                name: "My Custom Prompt",
+                prompt: custom,
+                isBuiltIn: false
+            )
+            presets.append(migrated)
+            setActivePresetId(migrated.id)
+        } else {
+            setActivePresetId("preset-default")
+        }
+        setSavedPresets(presets)
+        return presets
+    }
+
+    static func setSavedPresets(_ presets: [PromptPreset]) {
+        if let data = try? JSONEncoder().encode(presets) {
+            UserDefaults.standard.set(data, forKey: "savedPromptPresets")
+        }
+    }
+
+    static var activePresetId: String {
+        UserDefaults.standard.string(forKey: "activePromptPresetId") ?? "preset-default"
+    }
+
+    static func setActivePresetId(_ id: String) {
+        UserDefaults.standard.set(id, forKey: "activePromptPresetId")
+    }
+
+    static var activePreset: PromptPreset? {
+        savedPresets.first { $0.id == activePresetId }
+    }
+
+    // MARK: - Custom Tool Definitions
+
+    static var customTools: [CustomToolDefinition] {
+        guard let data = UserDefaults.standard.data(forKey: "customToolDefinitions"),
+              let tools = try? JSONDecoder().decode([CustomToolDefinition].self, from: data) else {
+            return []
+        }
+        return tools
+    }
+
+    static func setCustomTools(_ tools: [CustomToolDefinition]) {
+        if let data = try? JSONEncoder().encode(tools) {
+            UserDefaults.standard.set(data, forKey: "customToolDefinitions")
+        }
     }
 
     // MARK: - ElevenLabs TTS
@@ -677,6 +824,30 @@ struct Config {
 
     static func setConversationPersistenceEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "conversationPersistenceEnabled")
+    }
+
+    // MARK: - Disabled Tools
+
+    static var disabledTools: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: "disabledTools") ?? [])
+    }
+
+    static func setDisabledTools(_ tools: Set<String>) {
+        UserDefaults.standard.set(Array(tools), forKey: "disabledTools")
+    }
+
+    static func isToolEnabled(_ name: String) -> Bool {
+        !disabledTools.contains(name)
+    }
+
+    static func setToolEnabled(_ name: String, enabled: Bool) {
+        var disabled = disabledTools
+        if enabled {
+            disabled.remove(name)
+        } else {
+            disabled.insert(name)
+        }
+        setDisabledTools(disabled)
     }
 }
 

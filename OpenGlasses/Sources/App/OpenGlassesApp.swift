@@ -1,5 +1,6 @@
 import SwiftUI
 import MWDATCore
+import AVFoundation
 import AppIntents
 import UIKit
 
@@ -82,6 +83,7 @@ struct OpenGlassesApp: App {
 
     init() {
         configureWearables()
+        NetworkMonitorService.register()
     }
 
     var body: some Scene {
@@ -198,11 +200,32 @@ class AppState: ObservableObject {
     let llmService = LLMService()
     let speechService = TextToSpeechService()
     let cameraService = CameraService()
+    let videoRecorder = VideoRecordingService()
+    let broadcastService = BroadcastService()
     let locationService = LocationService()
+    let proactiveAlerts = ProactiveAlertService()
+    let ambientCaptions = AmbientCaptionService()
+    let faceRecognition = FaceRecognitionService()
+    let memoryRewind = MemoryRewindService()
+    let privacyFilter = PrivacyFilterService()
+    let webRTCStreaming = WebRTCStreamingService()
 
-    // OpenClaw + Gemini Live
+    /// Pending item to show in the share sheet
+    @Published var pendingShareItem: ShareItem?
+
+    // OpenClaw + Realtime sessions
     let openClawBridge = OpenClawBridge()
     let geminiLiveSession = GeminiLiveSessionManager()
+    let openAIRealtimeSession = OpenAIRealtimeSessionManager()
+
+    // Native tool system
+    let nativeToolRegistry: NativeToolRegistry
+    let nativeToolRouter: NativeToolRouter
+
+    // Tier 1 services
+    let conversationStore = ConversationStore()
+    let userMemory = UserMemoryStore()
+    let intentClassifier = IntentClassifier()
 
     private var cancellables: [Any] = []
     private var isProcessing: Bool = false
@@ -237,31 +260,69 @@ class AppState: ObservableObject {
     }
 
     init() {
+        // Initialize native tool system
+        nativeToolRegistry = NativeToolRegistry(
+            locationService: locationService,
+            conversationStore: conversationStore,
+            faceRecognitionService: faceRecognition,
+            cameraService: cameraService,
+            memoryRewindService: memoryRewind,
+            ambientCaptionService: ambientCaptions,
+            openClawBridge: openClawBridge
+        )
+        nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
+
         addDebugEvent("AppState initialized")
         // Share the audio engine so transcription works in background
         transcriptionService.sharedAudioEngineProvider = wakeWordService
+
+        // Wire Tier 1 services
+        ambientCaptions.wakeWordService = wakeWordService
+        memoryRewind.wakeWordService = wakeWordService
+        faceRecognition.onRecognition = { [weak self] name in
+            Task { @MainActor in
+                // Whisper the name quietly via TTS
+                await self?.speechService.speak("That's \(name).")
+            }
+        }
 
         // Wire OpenClaw bridge to both Direct Mode and Gemini Live
         llmService.openClawBridge = openClawBridge
         geminiLiveSession.openClawBridge = openClawBridge
 
-        // Wire camera frames for Gemini Live:
-        // 1. Direct push: CameraService streams frames directly to session manager (low latency)
+        // Wire native tool router to LLM service and Gemini Live
+        llmService.nativeToolRouter = nativeToolRouter
+        geminiLiveSession.nativeToolRouter = nativeToolRouter
+
+        // Wire camera frames for realtime sessions:
+        // Direct push: CameraService streams frames to whichever session is active
         cameraService.onVideoFrame = { [weak self] image in
-            self?.geminiLiveSession.submitVideoFrame(image)
+            guard let self else { return }
+            if self.currentMode == .geminiLive {
+                self.geminiLiveSession.submitVideoFrame(image)
+            } else if self.currentMode == .openaiRealtime {
+                self.openAIRealtimeSession.submitVideoFrame(image)
+            }
         }
-        // 2. Polling fallback: session manager can also poll the latest frame
+
+        // Polling fallback for both session managers
         geminiLiveSession.onRequestVideoFrame = { [weak self] in
             return self?.cameraService.latestFrame
         }
+        openAIRealtimeSession.onRequestVideoFrame = { [weak self] in
+            return self?.cameraService.latestFrame
+        }
 
-        // Wire location context for Gemini Live — returns current location string
+        // Location context for both
         geminiLiveSession.locationContext = { [weak self] in
             return self?.locationService.locationContext
         }
+        openAIRealtimeSession.locationContext = { [weak self] in
+            return self?.locationService.locationContext
+        }
 
-        // Wire camera start request — session manager can trigger camera streaming on session start
-        geminiLiveSession.onRequestStartCamera = { [weak self] in
+        // Camera start request — shared between both session managers
+        let cameraStartHandler: () async -> Bool = { [weak self] in
             guard let self else { return false }
             if self.cameraService.isStreaming {
                 NSLog("[App] Camera already streaming")
@@ -276,6 +337,8 @@ class AppState: ObservableObject {
                 return false
             }
         }
+        geminiLiveSession.onRequestStartCamera = cameraStartHandler
+        openAIRealtimeSession.onRequestStartCamera = cameraStartHandler
 
         setupServiceCallbacks()
         observeGlassesConnection()
@@ -284,21 +347,44 @@ class AppState: ObservableObject {
         // Mode-specific auto-start
         if currentMode == .direct {
             autoStartListening()
-        } else if currentMode == .geminiLive {
+        } else if currentMode.isRealtime {
             // Pre-start camera streaming so frames are ready when user taps "Start Session"
             Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000) // Wait for glasses connection
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
                 do {
                     try await cameraService.startStreaming()
                 } catch {
-                    print("📹 Camera streaming auto-start failed: \(error.localizedDescription)")
+                    NSLog("[App] Camera streaming auto-start failed: %@", error.localizedDescription)
                 }
             }
         }
         locationService.startTracking()
+
+        // Start proactive calendar alerts — speaks through TTS when events are imminent
+        proactiveAlerts.onAlert = { [weak self] message in
+            guard let self else { return }
+            Task {
+                await self.speechService.speak(message)
+            }
+        }
+        proactiveAlerts.start()
+
+        // Wire geofence alerts — speak via TTS when entering/leaving a region
+        if let geofenceTool = nativeToolRegistry.tool(named: "geofence") as? GeofenceTool {
+            geofenceTool.onAlert = { [weak self] message in
+                guard let self else { return }
+                Task {
+                    await self.speechService.speak(message)
+                }
+            }
+            geofenceTool.restoreGeofences()
+        }
+
+        // Privacy filter — apply saved preference
+        privacyFilter.isEnabled = Config.privacyFilterEnabled
     }
 
-    /// Switch between Direct Mode and Gemini Live mode.
+    /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
     /// Tears down the current mode's audio and starts the new one.
     func switchMode(to mode: AppMode) {
         guard mode != currentMode else { return }
@@ -317,6 +403,9 @@ class AppState: ObservableObject {
             case .geminiLive:
                 geminiLiveSession.stopSession()
                 await cameraService.tearDown()
+            case .openaiRealtime:
+                openAIRealtimeSession.stopSession()
+                await cameraService.tearDown()
             }
 
             // Brief delay for audio session to release
@@ -326,19 +415,25 @@ class AppState: ObservableObject {
             switch mode {
             case .direct:
                 try? await wakeWordService.startListening()
-            case .geminiLive:
+            case .geminiLive, .openaiRealtime:
                 // Start camera streaming so frames are available when session starts
                 do {
                     try await cameraService.startStreaming()
                 } catch {
-                    print("📹 Camera streaming failed to start: \(error.localizedDescription)")
-                    // Non-fatal — Gemini Live can still work with audio only
+                    NSLog("[App] Camera streaming failed to start: %@", error.localizedDescription)
                 }
             }
         }
     }
 
     private func setupServiceCallbacks() {
+        // Wire camera debug events to the on-screen debug log
+        cameraService.onDebugEvent = { [weak self] message in
+            Task { @MainActor in
+                self?.addDebugEvent(message)
+            }
+        }
+
         wakeWordService.onWakeWordDetected = { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -428,6 +523,9 @@ class AppState: ObservableObject {
     /// Observe SDK registration state on launch.
     /// NEVER auto-calls startRegistration() — that must be user-initiated only.
     /// The SDK may auto-reconnect via Bluetooth if previously registered.
+    ///
+    /// IMPORTANT: Devices won't appear in `addDevicesListener` until camera permission
+    /// is granted. We request permission early after reaching state 3 so devices become visible.
     private func autoConnectGlasses() {
         Task {
             // Small delay to let SDK initialize
@@ -440,8 +538,8 @@ class AppState: ObservableObject {
             if state.rawValue >= 3 {
                 // Already registered this session
                 self.hasEverRegistered = true
-                self.isConnected = true
                 self.addDebugEvent("Already registered on launch")
+                await requestEarlyPermission()
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
@@ -449,14 +547,93 @@ class AppState: ObservableObject {
                 self.registrationStateRaw = settledState.rawValue
                 if settledState.rawValue >= 3 {
                     self.hasEverRegistered = true
-                    self.isConnected = true
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
+                    await requestEarlyPermission()
                 } else {
                     self.isConnected = false
                     self.addDebugEvent("State \(settledState.rawValue) — tap Connect to register")
                 }
             }
         }
+    }
+
+    /// Request camera permission early so devices appear in addDevicesListener.
+    /// Per Meta docs: "A device will not appear in devicesStream until the user has
+    /// granted at least one permission (e.g., camera) through the Meta AI app."
+    private func requestEarlyPermission() async {
+        addDebugEvent("Requesting early camera permission for device discovery...")
+
+        // Ensure iOS camera permission first
+        let iosVideoStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        if iosVideoStatus == .notDetermined {
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            if !granted {
+                addDebugEvent("iOS camera permission denied")
+                return
+            }
+        } else if iosVideoStatus == .denied || iosVideoStatus == .restricted {
+            addDebugEvent("iOS camera permission denied/restricted")
+            return
+        }
+
+        // Brief stabilization delay
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+        // Check/request Meta SDK camera permission
+        do {
+            let status = try? await Wearables.shared.checkPermissionStatus(.camera)
+            addDebugEvent("Early check: \(String(describing: status))")
+            if status == .granted {
+                addDebugEvent("Camera permission already granted — devices should appear")
+                // Mark as connected — devices should now appear via listener
+                self.isConnected = true
+                // Also ensure CameraService knows permission is cached
+                cameraService.permissionGranted = true
+                return
+            }
+
+            // Request permission — this deep-links to Meta AI app
+            addDebugEvent("Requesting Meta camera permission...")
+            let result = try await Wearables.shared.requestPermission(.camera)
+            addDebugEvent("Early permission result: \(String(describing: result))")
+            if result == .granted {
+                self.isConnected = true
+                cameraService.permissionGranted = true
+            }
+        } catch {
+            addDebugEvent("Early permission failed: \(error.localizedDescription)")
+            // Still mark as connected based on registration state —
+            // user can retry permission via UI
+            self.isConnected = true
+        }
+
+        // Poll devices list after permission to track when device appears
+        await pollForDevices()
+    }
+
+    /// Poll the devices list after permission grant to track device discovery
+    private func pollForDevices() async {
+        let immediateDevices = Wearables.shared.devices
+        addDebugEvent("Devices immediately after permission: \(immediateDevices.count)")
+
+        // Poll every 2s for up to 30s to see when/if device appears
+        for i in 1...15 {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            let devices = Wearables.shared.devices
+            if !devices.isEmpty {
+                addDebugEvent("Device appeared after \(i*2)s! Count: \(devices.count)")
+                if let firstId = devices.first {
+                    let device = Wearables.shared.deviceForIdentifier(firstId)
+                    addDebugEvent("Device: \(device?.name ?? "unknown") type=\(String(describing: device?.deviceType()))")
+                }
+                self.isConnected = true
+                return
+            }
+            if i % 5 == 0 {
+                addDebugEvent("Still polling for devices... \(i*2)s, count=\(devices.count)")
+            }
+        }
+        addDebugEvent("No device appeared after 30s of polling")
     }
 
     func completeAuthorizationInMetaAI() async {
@@ -470,7 +647,10 @@ class AppState: ObservableObject {
 
         let currentState = Wearables.shared.registrationState.rawValue
         registrationStateRaw = currentState
-        if currentState >= 3 { return }
+        if currentState >= 3 {
+            await requestEarlyPermission()
+            return
+        }
 
         await MainActor.run {
             guard let viewAppUrl = URL(string: "fb-viewapp://") else { return }
@@ -552,8 +732,35 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Capture a photo from the glasses camera and save to camera roll.
-    /// Called by the camera button in the UI (mirrors the "take a picture" voice command).
+    /// Capture a photo from the glasses camera and present the share sheet.
+    func captureAndSharePhoto() async {
+        guard isConnected else {
+            errorMessage = "Connect glasses first"
+            return
+        }
+        do {
+            let photoData = try await cameraService.capturePhoto()
+            // Restore audio for wake word if in direct mode (camera reconfigured audio for Bluetooth)
+            if currentMode == .direct {
+                cameraService.restoreAudioForWakeWord()
+            }
+            if let image = UIImage(data: photoData) {
+                pendingShareItem = ShareItem(items: [image])
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+            }
+        } catch {
+            // Restore audio even on failure
+            if currentMode == .direct {
+                cameraService.restoreAudioForWakeWord()
+            }
+            errorMessage = "Photo failed: \(error.localizedDescription)"
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.error)
+        }
+    }
+
+    /// Legacy capture that saves directly to camera roll (used by voice command).
     func capturePhotoFromGlasses() async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
@@ -561,14 +768,56 @@ class AppState: ObservableObject {
         }
         do {
             let photoData = try await cameraService.capturePhoto()
+            // Restore audio for wake word if in direct mode
+            if currentMode == .direct {
+                cameraService.restoreAudioForWakeWord()
+            }
             cameraService.saveToPhotoLibrary(photoData)
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
             lastResponse = "Photo saved to camera roll"
         } catch {
+            if currentMode == .direct {
+                cameraService.restoreAudioForWakeWord()
+            }
             errorMessage = "Photo failed: \(error.localizedDescription)"
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
+        }
+    }
+
+    /// Toggle video recording on/off.
+    func toggleRecording() async {
+        if videoRecorder.isRecording {
+            if let url = await videoRecorder.stopRecording() {
+                pendingShareItem = ShareItem(items: [url])
+            }
+        } else {
+            do {
+                try videoRecorder.startRecording(
+                    from: cameraService.framePublisher,
+                    bitrate: Config.recordingBitrate
+                )
+            } catch {
+                errorMessage = "Recording failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Toggle live broadcast on/off.
+    func toggleBroadcast() async {
+        if broadcastService.isBroadcasting {
+            broadcastService.stopBroadcast()
+        } else {
+            do {
+                try await broadcastService.startBroadcast(
+                    rtmpURL: Config.broadcastRTMPURL,
+                    streamKey: Config.broadcastStreamKey,
+                    from: cameraService.framePublisher
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -604,6 +853,14 @@ class AppState: ObservableObject {
         return Self.photoPhrases.contains(where: { lower.contains($0) })
     }
 
+    /// Reuse an already-available live frame for vision-capable models without trying to
+    /// start the camera. This avoids re-triggering fragile Meta camera permission flows.
+    private func currentVisionFrameDataIfAvailable() -> Data? {
+        guard Config.activeModel?.visionEnabled == true else { return nil }
+        guard cameraService.isStreaming, let frame = cameraService.latestFrame else { return nil }
+        return frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality)
+    }
+
     func handleTranscription(_ text: String) async {
         guard !isProcessing else {
             print("⚠️ Already processing, ignoring: \(text)")
@@ -615,6 +872,29 @@ class AppState: ObservableObject {
         errorMessage = nil
         speechService.playEndListeningTone()
         print("📝 Transcription: \(text)")
+
+        // Intent classification — filter bystander/filler speech
+        if intentClassifier.isEnabled && !isPhotoCommand(text) && !isStopCommand(text) && !isGoodbyeCommand(text) {
+            let intent = await intentClassifier.classify(transcript: text)
+            if intent == .ignore {
+                print("🚫 Intent classifier: IGNORE — not responding")
+                if inConversation {
+                    isListening = true
+                    transcriptionService.startRecording()
+                } else {
+                    await returnToWakeWord()
+                }
+                return
+            }
+        }
+
+        // Track in conversation store
+        if Config.conversationPersistenceEnabled {
+            if conversationStore.activeThreadId == nil {
+                conversationStore.startThread(mode: currentMode.rawValue)
+            }
+            conversationStore.appendMessage(role: "user", content: text)
+        }
 
         // Voice command: "stop" — interrupt TTS, stay in conversation
         if isStopCommand(text) {
@@ -645,14 +925,26 @@ class AppState: ObservableObject {
         if isPhotoCommand(text) {
             print("📸 Voice command: take a picture")
             isProcessing = true
+            speechService.startThinkingSound()
             await speechService.speak("Taking a picture.")
             do {
                 let photoData = try await cameraService.capturePhoto()
+                // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
+                cameraService.restoreAudioForWakeWord()
                 cameraService.saveToPhotoLibrary(photoData)
                 print("📸 Photo saved, sending to LLM with prompt: \(text)")
 
-                let response = try await llmService.sendMessage(text, locationContext: locationService.locationContext, imageData: photoData)
+                let rawResponse = try await llmService.sendMessage(
+                    text,
+                    locationContext: locationService.locationContext,
+                    imageData: photoData,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+                )
+                let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
                 lastResponse = response
+                if Config.conversationPersistenceEnabled {
+                    conversationStore.appendMessage(role: "assistant", content: response)
+                }
                 print("🤖 \(llmService.activeModelName) (vision): \(response)")
 
                 // Start wake word listener during TTS so user can say "stop"
@@ -661,6 +953,7 @@ class AppState: ObservableObject {
                 stopStopListener()
 
             } catch {
+                cameraService.restoreAudioForWakeWord()
                 print("📸 Photo capture failed: \(error)")
                 lastResponse = "Photo failed: \(error.localizedDescription)"
                 await speechService.speak("Sorry, I couldn't take a photo or process the image. \(error.localizedDescription)")
@@ -677,11 +970,35 @@ class AppState: ObservableObject {
 
         // Normal message — send to LLM
         isProcessing = true
+        speechService.startThinkingSound()
 
         do {
-            let response = try await llmService.sendMessage(text, locationContext: locationService.locationContext)
+            let imageData = currentVisionFrameDataIfAvailable()
+            if imageData != nil {
+                print("🖼️ Reusing live camera frame for \(llmService.activeModelName)")
+            }
+            let rawResponse = try await llmService.sendMessage(
+                text,
+                locationContext: locationService.locationContext,
+                imageData: imageData,
+                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+            )
+
+            // Parse and execute memory commands from the response
+            let response: String
+            if Config.userMemoryEnabled {
+                response = userMemory.parseAndExecuteCommands(in: rawResponse)
+            } else {
+                response = rawResponse
+            }
+
             lastResponse = response
             print("🤖 \(llmService.activeModelName): \(response)")
+
+            // Save to conversation store
+            if Config.conversationPersistenceEnabled {
+                conversationStore.appendMessage(role: "assistant", content: response)
+            }
 
             // Start wake word listener during TTS so user can say "stop"
             startStopListener()
@@ -729,11 +1046,15 @@ class AppState: ObservableObject {
         wakeWordService.pauseRecognitionPublic()
     }
 
-    private func returnToWakeWord() async {
+    func returnToWakeWord() async {
         isListening = false
         inConversation = false
         wakeWordService.listenForStop = false
         speechService.playDisconnectTone()
+        // End active conversation thread
+        if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
+            conversationStore.endThread()
+        }
         do {
             try await wakeWordService.startListening()
             print("✅ Wake word restarted")

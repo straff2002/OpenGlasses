@@ -16,6 +16,7 @@ struct ModelPickerSheet: View {
                 }
         }
         .presentationDetents([.medium, .large])
+        .preferredColorScheme(.light)
     }
 
     @ViewBuilder

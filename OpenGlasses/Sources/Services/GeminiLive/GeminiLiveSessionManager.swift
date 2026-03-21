@@ -21,6 +21,9 @@ class GeminiLiveSessionManager: ObservableObject {
     // Shared OpenClaw bridge (injected from AppState)
     var openClawBridge: OpenClawBridge?
 
+    // Native tool router (injected from AppState)
+    var nativeToolRouter: NativeToolRouter?
+
     // Internal components
     private let geminiService = GeminiLiveService()
     private let audioManager = GeminiLiveAudioManager()
@@ -113,10 +116,8 @@ class GeminiLiveSessionManager: ObservableObject {
         let systemInstruction = buildSystemInstruction()
         NSLog("[Session] System instruction built — length: %d chars, camera streaming: %@",
               systemInstruction.count, isCameraStreaming ? "YES" : "NO")
-        var toolDefs: [[String: Any]] = []
-        if Config.isOpenClawConfigured {
-            toolDefs = ToolDeclarations.allDeclarations()
-        }
+        let includeOpenClaw = Config.isOpenClawConfigured
+        let toolDefs = ToolDeclarations.allDeclarations(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
         geminiService.configure(systemInstruction: systemInstruction, toolDeclarations: toolDefs)
 
         // Wire audio capture → Gemini
@@ -184,10 +185,8 @@ class GeminiLiveSessionManager: ObservableObject {
             Task { @MainActor in
                 NSLog("[Session] Reconnected — re-configuring session")
                 // Re-configure with current settings (including fresh location)
-                var toolDefs: [[String: Any]] = []
-                if Config.isOpenClawConfigured {
-                    toolDefs = ToolDeclarations.allDeclarations()
-                }
+                let includeOpenClaw = Config.isOpenClawConfigured
+                let toolDefs = ToolDeclarations.allDeclarations(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
                 self.geminiService.configure(
                     systemInstruction: self.buildSystemInstruction(),
                     toolDeclarations: toolDefs
@@ -203,12 +202,19 @@ class GeminiLiveSessionManager: ObservableObject {
             }
         }
 
-        // Wire OpenClaw tool calls
-        if let bridge = openClawBridge, Config.isOpenClawConfigured {
-            await bridge.checkConnection()
-            bridge.resetSession()
+        // Wire tool calls — native tools always available, OpenClaw if configured
+        let hasNativeTools = nativeToolRouter != nil
+        let hasOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
 
+        if hasNativeTools || hasOpenClaw {
+            if let bridge = openClawBridge, hasOpenClaw {
+                await bridge.checkConnection()
+                bridge.resetSession()
+            }
+
+            let bridge = openClawBridge ?? OpenClawBridge()
             toolCallRouter = ToolCallRouter(bridge: bridge)
+            toolCallRouter?.nativeToolRouter = nativeToolRouter
 
             geminiService.onToolCall = { [weak self] toolCall in
                 guard let self else { return }
@@ -394,21 +400,90 @@ class GeminiLiveSessionManager: ObservableObject {
             """
         }
 
-        // Add OpenClaw tool instructions if configured
-        if Config.isOpenClawConfigured {
-            prompt += """
+        // Add tool instructions
+        let hasNativeTools = nativeToolRouter != nil
+        let hasOpenClaw = Config.isOpenClawConfigured
+        if hasNativeTools || hasOpenClaw {
+            var toolSection = """
 
 
             TOOLS:
-            You have access to a tool called "execute" that connects you to a powerful personal assistant (OpenClaw). \
-            Use it when the user asks you to take any action: send messages, search the web, manage lists, set reminders, \
-            create notes, control smart home devices, or anything beyond answering a question from your knowledge. \
-            Be detailed in your task description — include names, content, platforms, quantities, etc.
-
-            IMPORTANT: Before calling execute, ALWAYS speak a brief acknowledgment first. For example:
-            - "Sure, let me add that to your shopping list." then call execute.
-            - "Got it, searching for that now." then call execute.
+            You have access to tools. Use the appropriate tool when the user's request matches its capability.
             """
+
+            if let router = nativeToolRouter {
+                let names = router.registry.toolNames
+                toolSection += "\nBuilt-in tools: \(names.joined(separator: ", "))."
+                toolSection += """
+
+            - get_weather: Get current weather and forecast.
+            - get_datetime: Get current date, time, day of week.
+            - daily_briefing: Combined daily briefing (date, weather, news).
+            - calculate: Evaluate math expressions.
+            - convert_units: Convert between units.
+            - set_timer: Set a countdown timer.
+            - pomodoro: Start/stop/check Pomodoro focus sessions.
+            - save_note / list_notes: Save and retrieve notes.
+            - web_search: Search the web.
+            - get_news: Get latest news headlines.
+            - translate: Translate text between languages.
+            - define_word: Look up word definitions.
+            - find_nearby: Search for nearby places.
+            - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, etc).
+            - get_directions: Directions via Apple Maps or Google Maps.
+            - identify_song: Identify a song using Shazam.
+            - music_control: Play, pause, skip, previous, now-playing info.
+            - convert_currency: Convert currencies with live rates.
+            - phone_call: Make a phone call.
+            - send_message: Open Messages with pre-filled text.
+            - copy_to_clipboard: Copy text to clipboard.
+            - flashlight: Toggle flashlight on/off.
+            - device_info: Check battery, storage, low power mode.
+            - save_location / list_saved_locations: Bookmark current spot, find saved spots with distance.
+            - step_count: Today's steps, distance, floors climbed.
+            - emergency_info: Local emergency numbers, GPS coordinates, nearest hospital guidance.
+            - calendar: View schedule, next meeting, create events with reminders.
+            - lookup_contact: Find contact phone/email by name.
+            - reminder: Create/list/complete Apple Reminders with notifications.
+            - set_alarm: Set alarm for specific clock time, list/cancel alarms.
+            - brightness: Adjust screen brightness.
+            - smart_home: Control HomeKit devices — lights, switches, thermostats, locks, scenes.
+            - run_shortcut: Run Apple Shortcuts by name.
+            - summarize_conversation: Summarize current conversation or extract action items.
+            - face_recognition: Remember/forget/list known faces. Auto-recognizes people when camera is active.
+            - memory_rewind: Recall what was said recently — transcribes last few minutes of audio.
+            - geofence: Create location-based reminders that trigger when entering/leaving a place.
+            - send_via: Send messages via WhatsApp, Telegram, or Email (not iMessage).
+            - meeting_summary: Summarize a recent meeting from ambient captions with action items.
+            - fitness_coach: Fitness coaching — start/stop workouts, log exercises, check form via camera, workout history from HealthKit.
+            - openclaw_skills: Discover and manage OpenClaw skills. List available skills, check gateway status.
+            """
+
+                // Inject user-defined custom tool descriptions
+                let customTools = Config.customTools.filter { Config.isToolEnabled($0.name) }
+                for ct in customTools {
+                    toolSection += "\n            - \(ct.name): \(ct.description)"
+                }
+            }
+
+            if hasOpenClaw {
+                toolSection += """
+
+            You also have an "execute" tool for the OpenClaw assistant gateway for actions \
+            the built-in tools cannot handle.
+            """
+            }
+
+            toolSection += """
+
+            TOOL USAGE RULES:
+            1. Before calling any tool, speak a brief acknowledgment first.
+            2. MULTI-STEP CHAINS: You can call multiple tools in sequence. After getting a result, \
+            call another tool if needed. Example: lookup_contact → phone_call, or find_nearby → get_directions.
+            3. Calendar proactive alerts automatically notify the user before events.
+            """
+
+            prompt += toolSection
         }
 
         // Add location context if available

@@ -48,6 +48,13 @@
 		A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4F6A8C0E1B3D5F7A9C2E4 /* OnboardingOverlay.swift */; };
 		C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */; };
 		D0B1AC8DE6F14ECDA4E95204 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */; };
+		A5B6C7D8E9F0A1B2C3D4E5F6 /* PromptInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */; };
+		B6C7D8E9F0A1B2C3D4E5F6A7 /* ToolsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */; };
+		C7D8E9F0A1B2C3D4E5F6A7B8 /* PromptPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */; };
+		D9E0F1A2B3C4D5E6F7A8B9C0 /* CustomToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */; };
+		E1F2A3B4C5D6E7F8A9B0C1D2 /* NetworkMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */; };
+		F3A4B5C6D7E8F9A0B1C2D3E4 /* CustomToolWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */; };
+		A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */; };
 		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
 		E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */; };
 		E547F4974B491D0B9156FD8F /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9886D8FB33DA06C125BEBEBA /* LocationService.swift */; };
@@ -125,6 +132,13 @@
 		36B33F7CD7BFCA62F875015B /* IntentClassifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IntentClassifier.swift; path = OpenGlasses/Sources/Services/IntentClassifier.swift; sourceTree = SOURCE_ROOT; };
 		39CB5B3B95E7FA76233BD1FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInspectorView.swift; sourceTree = "<group>"; };
+		A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsSettingsView.swift; sourceTree = "<group>"; };
+		D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPresetsView.swift; sourceTree = "<group>"; };
+		E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolsView.swift; sourceTree = "<group>"; };
+		F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorView.swift; sourceTree = "<group>"; };
+		A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolWrapper.swift; sourceTree = "<group>"; };
+		B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
 		3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePreviewView.swift; sourceTree = "<group>"; };
 		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro.mp4; sourceTree = "<group>"; };
 		4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveAudioManager.swift; sourceTree = "<group>"; };
@@ -276,7 +290,12 @@
 				AF6538260040B7DF8E861F46 /* ModelPickerSheet.swift */,
 				B2D4F6A8C0E1B3D5F7A9C2E4 /* OnboardingOverlay.swift */,
 				D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */,
+				F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */,
 				39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */,
+				A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */,
+				D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */,
+				E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */,
+				F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */,
 				8BAB04141EE25C5FE20E591C /* StatusIndicator.swift */,
 				6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */,
 				3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */,
@@ -305,6 +324,7 @@
 				BB01010101010101BB010101 /* NativeTool.swift */,
 				BB02020202020202BB020202 /* NativeToolRegistry.swift */,
 				BB03030303030303BB030303 /* NativeToolRouter.swift */,
+				A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */,
 				BB04040404040404BB040404 /* WeatherTool.swift */,
 				BB05050505050505BB050505 /* DateTimeTool.swift */,
 				BB06060606060606BB060606 /* CalculatorTool.swift */,
@@ -361,6 +381,7 @@
 				0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */,
 				CC0D0D0D0D0D0D0DCC0D0D0D /* NativeTools */,
 				92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */,
+				B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */,
 				6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */,
 				633DF6FE961BCCB26868D5AB /* ToolCallRouter.swift */,
 				1F9E1F6B5AC442EC808D2B26 /* TranscriptionService.swift */,
@@ -533,6 +554,13 @@
 				020D1E16DFA6859D1AD0DDFA /* OpenGlassesApp.swift in Sources */,
 				8E52D9A49E71CFE5678E0619 /* RootView.swift in Sources */,
 				D0B1AC8DE6F14ECDA4E95204 /* SettingsView.swift in Sources */,
+				A5B6C7D8E9F0A1B2C3D4E5F6 /* PromptInspectorView.swift in Sources */,
+				B6C7D8E9F0A1B2C3D4E5F6A7 /* ToolsSettingsView.swift in Sources */,
+				C7D8E9F0A1B2C3D4E5F6A7B8 /* PromptPresetsView.swift in Sources */,
+				D9E0F1A2B3C4D5E6F7A8B9C0 /* CustomToolsView.swift in Sources */,
+				E1F2A3B4C5D6E7F8A9B0C1D2 /* NetworkMonitorView.swift in Sources */,
+				F3A4B5C6D7E8F9A0B1C2D3E4 /* CustomToolWrapper.swift in Sources */,
+				A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */,
 				A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */,
 				C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */,
 				9FC6BD9F7F9FD1EF36DAFA00 /* StatusIndicator.swift in Sources */,

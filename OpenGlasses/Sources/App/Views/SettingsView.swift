@@ -7,7 +7,6 @@ struct SettingsView: View {
     @State private var wakeWordInput = Config.wakePhrase
     @State private var wakeWordAltsInput = Config.alternativeWakePhrases.joined(separator: ", ")
     @State private var selectedPreset = Config.wakePhrase
-    @State private var systemPromptInput = Config.systemPrompt
 
     // Model configs editing
     @State private var modelConfigs: [ModelConfig] = Config.savedModels
@@ -144,17 +143,20 @@ struct SettingsView: View {
 
                 // MARK: System Prompt
                 Section {
-                    TextEditor(text: $systemPromptInput)
-                        .frame(minHeight: 150)
-
-                    Button("Reset to Default", role: .destructive) {
-                        systemPromptInput = Config.defaultSystemPrompt
+                    NavigationLink {
+                        PromptPresetsView()
+                    } label: {
+                        HStack {
+                            Label("System Prompt", systemImage: "text.quote")
+                            Spacer()
+                            Text(Config.activePreset?.name ?? "Default")
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .font(.footnote)
                 } header: {
                     Text("System Prompt")
                 } footer: {
-                    Text("This prompt shapes how the AI responds. It's included with every message.")
+                    Text("Choose a prompt preset or create your own to shape how the AI responds.")
                 }
 
                 // MARK: Intelligence
@@ -175,6 +177,38 @@ struct SettingsView: View {
                     Text("Privacy")
                 } footer: {
                     Text("Automatically blurs faces of people nearby in recordings and streams.")
+                }
+
+                // MARK: Transparency
+                Section {
+                    NavigationLink {
+                        ToolsSettingsView(appState: appState)
+                    } label: {
+                        Label("Tools", systemImage: "wrench.and.screwdriver")
+                    }
+
+                    NavigationLink {
+                        CustomToolsView()
+                            .environmentObject(appState)
+                    } label: {
+                        Label("Custom Tools", systemImage: "hammer")
+                    }
+
+                    NavigationLink {
+                        PromptInspectorView(appState: appState)
+                    } label: {
+                        Label("Prompt Inspector", systemImage: "doc.text.magnifyingglass")
+                    }
+
+                    NavigationLink {
+                        NetworkMonitorView()
+                    } label: {
+                        Label("Network Activity", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                } header: {
+                    Text("Transparency")
+                } footer: {
+                    Text("See what tools the AI can use, what context is sent, and what network calls are made.")
                 }
 
                 // MARK: Services & Integrations
@@ -244,7 +278,7 @@ struct SettingsView: View {
         }
         appState.llmService.refreshActiveModel()
 
-        Config.setSystemPrompt(systemPromptInput)
+        // System prompt is now managed via PromptPresetsView
 
         Config.setElevenLabsAPIKey(elevenLabsKeyInput)
         Config.setElevenLabsVoiceId(selectedVoice)

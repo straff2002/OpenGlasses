@@ -6,6 +6,9 @@ enum LLMProvider: String, CaseIterable {
     case openai = "openai"
     case gemini = "gemini"
     case groq = "groq"
+    case zai = "zai"
+    case qwen = "qwen"
+    case minimax = "minimax"
     case custom = "custom"
 
     var displayName: String {
@@ -14,6 +17,9 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "OpenAI (GPT)"
         case .gemini: return "Google (Gemini)"
         case .groq: return "Groq"
+        case .zai: return "Z.ai (Subscription)"
+        case .qwen: return "Qwen (Coding Plan subscription)"
+        case .minimax: return "MiniMax (Subscription)"
         case .custom: return "Custom (OpenAI-compatible)"
         }
     }
@@ -22,7 +28,7 @@ enum LLMProvider: String, CaseIterable {
     var isOpenAICompatible: Bool {
         switch self {
         case .anthropic, .gemini: return false
-        case .openai, .groq, .custom: return true
+        case .openai, .groq, .zai, .qwen, .minimax, .custom: return true
         }
     }
 
@@ -33,6 +39,9 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "https://api.openai.com/v1/chat/completions"
         case .gemini: return "https://generativelanguage.googleapis.com/v1beta"
         case .groq: return "https://api.groq.com/openai/v1/chat/completions"
+        case .zai: return "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        case .qwen: return "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
+        case .minimax: return "https://api.minimaxi.chat/v1/text/chatcompletion_v2"
         case .custom: return "https://api.openai.com/v1/chat/completions"
         }
     }
@@ -44,9 +53,23 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "gpt-4o"
         case .gemini: return "gemini-2.0-flash"
         case .groq: return "llama-3.3-70b-versatile"
+        case .zai: return "glm-4.5"
+        case .qwen: return "qwen3.5-plus"
+        case .minimax: return "MiniMax-Text-01"
         case .custom: return "gpt-4o"
         }
     }
+
+    /// Whether the base URL field should be shown (editable endpoint)
+    var showBaseURL: Bool {
+        switch self {
+        case .custom, .zai, .qwen, .minimax: return true
+        default: return false
+        }
+    }
+
+    /// Whether this provider supports listing models via API
+    var supportsModelListing: Bool { true }
 }
 
 /// Unified LLM service supporting Anthropic Claude and OpenAI-compatible APIs.
@@ -60,6 +83,9 @@ class LLMService: ObservableObject {
     /// Optional OpenClaw bridge for tool calling in direct mode
     var openClawBridge: OpenClawBridge?
 
+    /// Native tool router — when set, enables built-in tools (weather, timer, etc.)
+    var nativeToolRouter: NativeToolRouter?
+
     /// Conversation history for multi-turn context
     private var conversationHistory: [[String: Any]] = []
     private let maxHistoryTurns = 10  // Keep last 10 exchanges
@@ -67,22 +93,141 @@ class LLMService: ObservableObject {
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
 
-    /// Build the full system prompt, optionally including location and OpenClaw context
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool) -> String {
+    /// Build the full system prompt, optionally including location, tools, memory, and vision context
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil) -> String {
         var prompt = Config.systemPrompt
-        if includeTools {
+
+        // Ensure vision awareness is always present, even if user has a custom system prompt
+        if !prompt.lowercased().contains("vision") && !prompt.lowercased().contains("camera") {
             prompt += """
+
+            VISION & CAMERA:
+            - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
+            - You CAN see images — never say you lack camera or vision access.
+            - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
+            - For objects, products, landmarks: identify and describe them.
+            - After reading text from an image, offer to copy it to clipboard or translate it.
+            """
+        }
+
+        if includeTools {
+            var toolSection = """
 
 
             TOOLS:
-            You have access to a tool called "execute" that connects you to a powerful personal assistant (OpenClaw). \
-            Use it when the user asks you to take any action: send messages, search the web, manage lists, set reminders, \
-            create notes, control smart home devices, or anything beyond answering a question from your knowledge. \
-            Be detailed in your task description — include names, content, platforms, quantities, etc.
+            You have access to the following tools. Use the appropriate tool when the user's request matches its capability.
+            """
 
-            IMPORTANT: Before calling execute, ALWAYS speak a brief acknowledgment first. For example:
-            - "Sure, let me add that to your shopping list." then call execute.
-            - "Got it, searching for that now." then call execute.
+            if !nativeToolNames.isEmpty {
+                toolSection += "\nBuilt-in tools: \(nativeToolNames.joined(separator: ", "))."
+                toolSection += """
+
+            - get_weather: Get current weather and forecast.
+            - get_datetime: Get current date, time, day of week.
+            - daily_briefing: Combined daily briefing (date, weather, news) — use for "good morning" or "what's happening today".
+            - calculate: Evaluate math expressions.
+            - convert_units: Convert between units (length, weight, temp, volume, speed, etc).
+            - set_timer: Set a countdown timer with local notification.
+            - pomodoro: Start/stop/check a Pomodoro focus session (25 min work, 5 min break cycles).
+            - save_note / list_notes: Save and retrieve notes locally.
+            - web_search: Search the web via DuckDuckGo.
+            - get_news: Get latest news headlines, optionally by topic.
+            - translate: Translate text between languages.
+            - define_word: Look up word definitions.
+            - find_nearby: Search for nearby places (restaurants, cafes, pharmacies, gas stations, etc).
+            - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, YouTube, Spotify, etc).
+            - get_directions: Directions via Apple Maps or Google Maps (set app='google' for Google Maps).
+            - identify_song: Identify a song playing nearby using Shazam.
+            - music_control: Play, pause, skip, previous track, or get now-playing info (Apple Music).
+            - convert_currency: Convert between currencies with live exchange rates.
+            - phone_call: Make a phone call to a number.
+            - send_message: Open Messages with a pre-filled text to a recipient.
+            - copy_to_clipboard: Copy text to clipboard (great after OCR, translation, or any result the user wants to keep).
+            - flashlight: Turn the device flashlight on/off.
+            - device_info: Check battery level, storage, and low power mode.
+            - save_location / list_saved_locations: Save current spot with a label ("remember where I parked") and find saved spots later with distance.
+            - step_count: Today's steps, walking distance, and floors climbed.
+            - emergency_info: Local emergency numbers for current country, exact GPS coordinates, and guidance to find nearest hospital.
+            - calendar: View today's schedule, next meeting, upcoming week, or create events. Events get a 15-min reminder notification.
+            - lookup_contact: Look up a contact by name to get their phone number or email. Use before phone_call or send_message.
+            - reminder: Create, list, or complete Apple Reminders with due dates and notifications. Syncs with iCloud.
+            - set_alarm: Set an alarm for a specific clock time (e.g. '7 AM tomorrow'). Also list or cancel alarms.
+            - brightness: Adjust screen brightness (0-100, or presets: max, min, dim, bright, up, down).
+            - smart_home: Control HomeKit smart home devices — lights, switches, fans, thermostats, locks, scenes. Say 'list' to see devices.
+            - run_shortcut: Run an Apple Shortcut by name (e.g. 'Start Focus', 'Log Water', any user-created shortcut).
+            - summarize_conversation: Summarize current conversation, extract action items/to-dos. Use when user says "summarize", "recap", or "what did we discuss?"
+            - face_recognition: Remember faces ('remember this person as John'), forget faces, list known people, or toggle auto-recognition on/off.
+            - memory_rewind: Recall what was said recently. Transcribes last few minutes of ambient audio. Use for "what did they just say?" or "what happened?" Must be started first with action='start'.
+            - geofence: Location-based reminders. 'Remind me when I get to the office' or 'alert me when I leave home'. Create, list, delete geofenced alerts.
+            - send_via: Send messages via WhatsApp, Telegram, or Email. Specify channel ('whatsapp', 'telegram', 'email'), recipient, and body.
+            - meeting_summary: Summarize a recent meeting or conversation from ambient captions. Extracts key points, decisions, and action items. Requires ambient captions to be running.
+            - fitness_coach: Fitness coaching — start/stop workouts, log exercises (reps/sets/weight), check form via camera, get workout history from HealthKit, set step goals.
+            - openclaw_skills: Discover and manage OpenClaw skills. List available skills, check gateway status, search for capabilities. Only available when OpenClaw is configured.
+            """
+
+                // Inject user-defined custom tool descriptions
+                let customTools = Config.customTools.filter { Config.isToolEnabled($0.name) }
+                for ct in customTools {
+                    toolSection += "\n            - \(ct.name): \(ct.description)"
+                }
+            }
+
+            if includeOpenClaw {
+                toolSection += """
+
+            You also have an "execute" tool for the OpenClaw personal assistant gateway. \
+            Use it for actions built-in tools cannot handle: sending messages, managing calendar, \
+            controlling smart home devices, complex research, or external integrations.
+            """
+            }
+
+            toolSection += """
+
+            TOOL USAGE RULES:
+            1. Before calling any tool, ALWAYS speak a brief acknowledgment first. For example:
+               - "Sure, let me check the weather." then call get_weather.
+               - "Got it, searching for that now." then call web_search.
+            2. CONTACTS: phone_call and send_message both accept contact NAMES directly (e.g. "Mom", "John"). \
+            They automatically resolve names to phone numbers from the user's contacts. You do NOT need to call \
+            lookup_contact first — just pass the name. If multiple matches exist, the tool returns options for the user to choose. \
+            Only use lookup_contact when the user explicitly asks "what's someone's number?" without wanting to call or text.
+            3. MULTI-STEP CHAINS: You can call multiple tools in sequence. After receiving a tool result, \
+            you may call another tool before responding. Examples:
+               - "Call the nearest pharmacy" → find_nearby (find pharmacy) → phone_call (call the number)
+               - "How do I get to John's house?" → lookup_contact (get address) → get_directions (navigate)
+               - "Save what that sign says" → (read image text) → copy_to_clipboard (save it)
+            4. The calendar proactive alert system will automatically notify the user 10 minutes before events. \
+            You do NOT need to remind them about upcoming events unless they ask.
+            """
+
+            prompt += toolSection
+        }
+        if hasImage {
+            prompt += """
+
+
+            VISION INPUT:
+            This turn includes an image captured from the user's glasses camera. You can analyze that image for this response.
+            Do not say you lack camera or image access when an image is attached. If the image is unclear, say what you can and cannot make out.
+
+            IDENTIFY & OCR:
+            When the user asks to "identify", "read", "OCR", or "what does this say", carefully read ALL text visible in the image.
+            - For signs, menus, labels, documents: transcribe the text accurately.
+            - For foreign language text (e.g. Japanese, Chinese, Korean, Arabic, etc.): first transcribe the original text, then provide a translation into the user's language (English by default). Format as: "[Original text] — [Translation]".
+            - For objects, products, landmarks: describe what you see and identify it.
+            - For barcodes/QR codes: note their presence even if you can't decode them.
+            """
+        }
+        if let memory = memoryContext {
+            prompt += "\n\n\(memory)"
+            prompt += """
+
+
+            MEMORY INSTRUCTIONS:
+            You can remember facts about the user by including [REMEMBER: key = value] in your response.
+            You can forget facts with [FORGET: key]. These tags will be stripped before speaking.
+            Remember things like: their name, preferences, family members, routines, interests.
+            Only remember when the user explicitly shares personal info — don't infer or assume.
             """
         }
         if let location = locationContext {
@@ -91,7 +236,7 @@ class LLMService: ObservableObject {
         return prompt
     }
 
-    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil) async throws -> String {
+    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil) async throws -> String {
         isProcessing = true
         defer { isProcessing = false }
 
@@ -100,17 +245,23 @@ class LLMService: ObservableObject {
         }
 
         let provider = modelConfig.llmProvider
-        let includeTools = Config.isOpenClawConfigured && openClawBridge != nil
-        let fullPrompt = Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools)
+        let hasNativeTools = nativeToolRouter != nil
+        let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
+        let includeTools = hasNativeTools || includeOpenClaw
+        let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
+        let fullPrompt = Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, memoryContext: memoryContext)
 
-        print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(includeTools ? " [OpenClaw enabled]" : "")")
+        var toolsLabel = ""
+        if hasNativeTools { toolsLabel += " [NativeTools]" }
+        if includeOpenClaw { toolsLabel += " [OpenClaw]" }
+        print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(toolsLabel)")
 
         switch provider {
         case .anthropic:
             return try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .gemini:
             return try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
-        case .openai, .groq, .custom:
+        case .openai, .groq, .zai, .qwen, .minimax, .custom:
             return try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         }
     }
@@ -171,7 +322,8 @@ class LLMService: ObservableObject {
             ]
 
             if includeTools {
-                body["tools"] = ToolDeclarations.anthropicTools()
+                let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
+                body["tools"] = ToolDeclarations.anthropicTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -197,7 +349,7 @@ class LLMService: ObservableObject {
             let stopReason = json["stop_reason"] as? String
 
             // Check for tool use blocks
-            if stopReason == "tool_use", includeTools, let bridge = openClawBridge {
+            if stopReason == "tool_use", includeTools {
                 // Find tool_use blocks
                 var toolUseBlocks: [[String: Any]] = []
                 var textParts: [String] = []
@@ -215,17 +367,25 @@ class LLMService: ObservableObject {
                 // Add assistant message with tool_use to history
                 conversationHistory.append(["role": "assistant", "content": content] as [String: Any])
 
-                // Execute each tool call and add results
+                // Execute each tool call via NativeToolRouter
                 for toolUse in toolUseBlocks {
                     guard let toolId = toolUse["id"] as? String,
-                          let input = toolUse["input"] as? [String: Any],
-                          let taskDesc = input["task"] as? String else { continue }
+                          let toolName = toolUse["name"] as? String,
+                          let input = toolUse["input"] as? [String: Any] else { continue }
 
-                    print("🔧 [Anthropic] Tool call: execute(\(taskDesc.prefix(100))...)")
-                    toolCallStatus = .executing("execute")
+                    print("🔧 [Anthropic] Tool call: \(toolName)(\(String(describing: input).prefix(100))...)")
+                    toolCallStatus = .executing(toolName)
 
-                    let result = await bridge.delegateTask(task: taskDesc, toolName: "execute")
-                    toolCallStatus = result.isSuccess ? .completed("execute") : .failed("execute", "Failed")
+                    let result: ToolResult
+                    if let router = nativeToolRouter {
+                        result = await router.handleToolCall(name: toolName, args: input)
+                    } else if let bridge = openClawBridge {
+                        let taskDesc = input["task"] as? String ?? String(describing: input)
+                        result = await bridge.delegateTask(task: taskDesc, toolName: toolName)
+                    } else {
+                        result = .failure("No tool handler available")
+                    }
+                    toolCallStatus = result.isSuccess ? .completed(toolName) : .failed(toolName, "Failed")
 
                     let resultContent: String
                     switch result {
@@ -293,10 +453,10 @@ class LLMService: ObservableObject {
         }
 
         // Add user message to history
-        // Ensure model actually supports vision if an image is provided.
-        // Groq does not support vision natively through this endpoint.
-        // Llama/Mistral models generally don't support OpenAI's image_url struct unless specified.
-        let supportsVision = provider == .openai || config.model.lowercased().contains("vision") || config.model.lowercased().contains("gpt-4")
+        // Ensure we only attach images for models that are configured to accept them.
+        // OpenAI-compatible endpoints vary a lot, so this is driven by the saved model config
+        // with a heuristic fallback in `ModelConfig.visionEnabled`.
+        let supportsVision = config.visionEnabled
         
         if let imageData = imageData, supportsVision {
             let base64String = imageData.base64EncodedString()
@@ -314,6 +474,7 @@ class LLMService: ObservableObject {
             ]
             conversationHistory.append(["role": "user", "content": content])
         } else if imageData != nil && !supportsVision {
+            print("🖼️ Skipping image for model \(config.model) — vision disabled for this model configuration")
             // Drop the image but keep the text, and inform the model
             conversationHistory.append(["role": "user", "content": text + "\n[System note: The user attempted to send an image, but the current model (\(config.model)) does not support image analysis.]"])
         } else {
@@ -339,21 +500,28 @@ class LLMService: ObservableObject {
                 "messages": messages
             ]
 
-            // Only attach Tools if OpenClaw is enabled AND the provider reliably supports it.
+            // Only attach Tools if the provider reliably supports function calling.
             // Custom endpoints (Ollama/LMStudio) often crash with 400 if `tools` array is in the payload.
-            let providerSupportsTools = provider == .openai || provider == .groq
-            
+            let providerSupportsTools = provider == .openai || provider == .groq || provider == .zai || provider == .qwen
+
             if includeTools && providerSupportsTools {
-                body["tools"] = ToolDeclarations.openAITools()
+                let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
+                body["tools"] = ToolDeclarations.openAITools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+            // Debug: log request details (redact base64 images)
+            let debugBody = body.filter { $0.key != "messages" }
+            print("🌐 \(provider.displayName) request: model=\(config.model) url=\(baseURL) keys=\(debugBody.keys.sorted())")
 
             let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let rawBody = String(data: data, encoding: .utf8) ?? "(non-utf8)"
+                print("❌ \(provider.displayName) raw error response (\(statusCode)): \(rawBody.prefix(500))")
                 if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let errorObj = errorJson["error"] as? [String: Any],
                    let errorMsg = errorObj["message"] as? String {
@@ -377,23 +545,31 @@ class LLMService: ObservableObject {
             _ = choices.first?["finish_reason"] as? String
 
             // Check for tool calls
-            if let toolCalls = message["tool_calls"] as? [[String: Any]], !toolCalls.isEmpty, includeTools, let bridge = openClawBridge {
+            if let toolCalls = message["tool_calls"] as? [[String: Any]], !toolCalls.isEmpty, includeTools {
                 // Add assistant message with tool_calls to history
                 conversationHistory.append(message)
 
                 for toolCall in toolCalls {
                     guard let callId = toolCall["id"] as? String,
                           let function = toolCall["function"] as? [String: Any],
+                          let functionName = function["name"] as? String,
                           let argsString = function["arguments"] as? String else { continue }
 
                     let args = (try? JSONSerialization.jsonObject(with: Data(argsString.utf8)) as? [String: Any]) ?? [:]
-                    let taskDesc = args["task"] as? String ?? argsString
 
-                    print("🔧 [OpenAI] Tool call: execute(\(taskDesc.prefix(100))...)")
-                    toolCallStatus = .executing("execute")
+                    print("🔧 [OpenAI] Tool call: \(functionName)(\(String(describing: args).prefix(100))...)")
+                    toolCallStatus = .executing(functionName)
 
-                    let result = await bridge.delegateTask(task: taskDesc, toolName: "execute")
-                    toolCallStatus = result.isSuccess ? .completed("execute") : .failed("execute", "Failed")
+                    let result: ToolResult
+                    if let router = nativeToolRouter {
+                        result = await router.handleToolCall(name: functionName, args: args)
+                    } else if let bridge = openClawBridge {
+                        let taskDesc = args["task"] as? String ?? argsString
+                        result = await bridge.delegateTask(task: taskDesc, toolName: functionName)
+                    } else {
+                        result = .failure("No tool handler available")
+                    }
+                    toolCallStatus = result.isSuccess ? .completed(functionName) : .failed(functionName, "Failed")
 
                     let resultContent: String
                     switch result {
@@ -510,7 +686,8 @@ class LLMService: ObservableObject {
             ]
 
             if includeTools {
-                body["tools"] = ToolDeclarations.geminiRESTTools()
+                let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
+                body["tools"] = ToolDeclarations.geminiRESTTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -539,7 +716,7 @@ class LLMService: ObservableObject {
             // Check for function calls in parts
             let functionCallParts = parts.filter { $0["functionCall"] != nil }
 
-            if !functionCallParts.isEmpty, includeTools, let bridge = openClawBridge {
+            if !functionCallParts.isEmpty, includeTools {
                 // Add model response with function call to history
                 conversationHistory.append([
                     "role": "assistant",
@@ -553,12 +730,18 @@ class LLMService: ObservableObject {
                           let name = funcCall["name"] as? String,
                           let args = funcCall["args"] as? [String: Any] else { continue }
 
-                    let taskDesc = args["task"] as? String ?? String(describing: args)
-
-                    print("🔧 [Gemini] Tool call: \(name)(\(taskDesc.prefix(100))...)")
+                    print("🔧 [Gemini] Tool call: \(name)(\(String(describing: args).prefix(100))...)")
                     toolCallStatus = .executing(name)
 
-                    let result = await bridge.delegateTask(task: taskDesc, toolName: name)
+                    let result: ToolResult
+                    if let router = nativeToolRouter {
+                        result = await router.handleToolCall(name: name, args: args)
+                    } else if let bridge = openClawBridge {
+                        let taskDesc = args["task"] as? String ?? String(describing: args)
+                        result = await bridge.delegateTask(task: taskDesc, toolName: name)
+                    } else {
+                        result = .failure("No tool handler available")
+                    }
                     toolCallStatus = result.isSuccess ? .completed(name) : .failed(name, "Failed")
 
                     let resultContent: [String: Any]
