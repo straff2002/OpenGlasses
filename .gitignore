@@ -33,3 +33,12 @@ Carthage/Build/
 
 # Claude settings
 .claude/
+
+# Dev tooling — keep local, don't push
+.claude/
+.cursor/
+.github/
+.impeccable.md
+CLAUDE.md
+AGENTS.md
+impeccable-style-universal/
