@@ -166,16 +166,23 @@ struct PersonaEditorView: View {
                 }
 
                 Section {
+                    let models = Config.savedModels
                     Picker("AI Model", selection: $selectedModelId) {
                         Text("None").tag("")
-                        ForEach(Config.savedModels) { model in
+                        ForEach(models, id: \.id) { model in
                             Text(model.name).tag(model.id)
                         }
+                    }
+
+                    if models.isEmpty {
+                        Label("Add a model in Settings → AI Models first", systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
                     }
                 } header: {
                     Text("Model")
                 } footer: {
-                    Text("Which AI model responds when this persona is activated.")
+                    Text("Which AI model responds when this persona is activated. Add models in Settings → AI Models.")
                 }
 
                 Section {

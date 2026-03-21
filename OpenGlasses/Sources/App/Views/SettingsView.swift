@@ -215,12 +215,14 @@ struct SettingsView: View {
                 ModelEditorView(model: model) { updated in
                     if let idx = modelConfigs.firstIndex(where: { $0.id == updated.id }) {
                         modelConfigs[idx] = updated
+                        Config.setSavedModels(modelConfigs)
                     }
                 }
             }
             .sheet(isPresented: $showAddModel) {
                 AddModelView { newModel in
                     modelConfigs.append(newModel)
+                    Config.setSavedModels(modelConfigs)
                 }
             }
         }
