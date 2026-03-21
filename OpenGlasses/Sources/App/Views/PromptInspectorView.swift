@@ -120,11 +120,17 @@ struct PromptInspectorView: View {
             isPresent: !toolNames.isEmpty || hasOpenClaw
         ))
 
+        let memoryEnabled = Config.userMemoryEnabled
+        let hasMemories = memoryContext != nil && !(memoryContext?.isEmpty ?? true)
         secs.append(PromptSection(
             name: "User Memory",
             icon: "brain.head.profile.fill",
-            content: memoryContext ?? "No memories stored yet. The AI will remember facts you share when User Memory is enabled.",
-            isPresent: memoryContext != nil && !(memoryContext?.isEmpty ?? true)
+            content: hasMemories
+                ? memoryContext!
+                : memoryEnabled
+                    ? "Enabled — no memories stored yet. Tell the AI facts about yourself and it will remember them."
+                    : "Disabled. Turn on in Settings → Intelligence.",
+            isPresent: memoryEnabled
         ))
 
         secs.append(PromptSection(

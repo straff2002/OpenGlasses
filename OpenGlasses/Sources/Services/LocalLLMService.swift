@@ -1,4 +1,5 @@
 import Foundation
+import Hub
 import MLXLLM
 import MLXLMCommon
 
@@ -13,6 +14,14 @@ final class LocalLLMService: ObservableObject {
     @Published var loadedModelId: String?
 
     private var modelContainer: ModelContainer?
+
+    /// HubApi configured to store models in Application Support (persistent, not purgeable).
+    private let hub: HubApi = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let modelsDir = appSupport.appendingPathComponent("LocalModels", isDirectory: true)
+        try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        return HubApi(downloadBase: modelsDir)
+    }()
 
     // MARK: - Recommended Models
 
@@ -53,27 +62,23 @@ final class LocalLLMService: ObservableObject {
 
     // MARK: - Model Management
 
-    /// Download a model from HuggingFace. Progress is published.
+    /// Download a model from HuggingFace without loading into memory.
+    /// This avoids OOM crashes on devices with limited RAM.
     func downloadModel(_ modelId: String) async throws {
         isDownloading = true
         downloadProgress = 0
         defer { isDownloading = false }
 
-        let config = ModelConfiguration(id: modelId)
-
-        let container = try await LLMModelFactory.shared.loadContainer(
-            configuration: config
-        ) { progress in
+        // Download files only — don't load into GPU memory
+        let repo = Hub.Repo(id: modelId)
+        _ = try await hub.snapshot(from: repo) { progress in
             Task { @MainActor in
                 self.downloadProgress = progress.fractionCompleted
             }
         }
 
-        modelContainer = container
-        loadedModelId = modelId
-        isModelLoaded = true
         downloadProgress = 1.0
-        print("✅ Local model downloaded and loaded: \(modelId)")
+        print("✅ Local model downloaded: \(modelId)")
     }
 
     /// Load an already-downloaded model into memory.
@@ -86,7 +91,7 @@ final class LocalLLMService: ObservableObject {
 
         let config = ModelConfiguration(id: modelId)
         modelContainer = try await LLMModelFactory.shared.loadContainer(
-            configuration: config
+            hub: hub, configuration: config
         ) { progress in
             Task { @MainActor in
                 self.downloadProgress = progress.fractionCompleted
@@ -157,22 +162,22 @@ final class LocalLLMService: ObservableObject {
 
     // MARK: - Storage Info
 
-    /// Get the HuggingFace cache directory.
-    var cacheDirectory: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("huggingface", isDirectory: true)
+    /// Persistent model storage directory (Application Support, never purged by iOS).
+    var modelDirectory: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return appSupport.appendingPathComponent("LocalModels", isDirectory: true)
     }
 
     /// Check if a model is downloaded.
     func isModelDownloaded(_ modelId: String) -> Bool {
-        let modelDir = cacheDirectory.appendingPathComponent(
+        let modelDir = modelDirectory.appendingPathComponent(
             "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
         return FileManager.default.fileExists(atPath: modelDir.path)
     }
 
     /// Get size of a downloaded model on disk.
     func modelSizeOnDisk(_ modelId: String) -> Int64 {
-        let modelDir = cacheDirectory.appendingPathComponent(
+        let modelDir = modelDirectory.appendingPathComponent(
             "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
         return directorySize(modelDir)
     }
@@ -182,7 +187,7 @@ final class LocalLLMService: ObservableObject {
         if loadedModelId == modelId {
             unloadModel()
         }
-        let modelDir = cacheDirectory.appendingPathComponent(
+        let modelDir = modelDirectory.appendingPathComponent(
             "models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
         if FileManager.default.fileExists(atPath: modelDir.path) {
             try FileManager.default.removeItem(at: modelDir)
@@ -193,7 +198,7 @@ final class LocalLLMService: ObservableObject {
     /// List all downloaded model IDs.
     func downloadedModelIds() -> [String] {
         guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: cacheDirectory, includingPropertiesForKeys: nil
+            at: modelDirectory, includingPropertiesForKeys: nil
         ) else { return [] }
 
         return contents

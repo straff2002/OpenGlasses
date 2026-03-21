@@ -8,17 +8,72 @@ struct ToolsSettingsView: View {
     @State private var offlineMode: Bool = Config.offlineModeEnabled
     @State private var searchText = ""
 
-    private var allTools: [(name: String, description: String, params: [String: Any])] {
+    private var allTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         appState.nativeToolRouter.registry.allTools
-            .map { (name: $0.name, description: $0.description, params: $0.parametersSchema) }
-            .sorted { $0.name < $1.name }
+            .map { (name: $0.name, displayName: Self.displayName(for: $0.name), description: $0.description, params: $0.parametersSchema) }
+            .sorted { $0.displayName < $1.displayName }
     }
 
-    private var filteredTools: [(name: String, description: String, params: [String: Any])] {
+    /// Convert tool IDs like "get_weather" → "Weather", "convert_currency" → "Currency Conversion"
+    private static func displayName(for toolName: String) -> String {
+        let overrides: [String: String] = [
+            "get_weather": "Weather",
+            "get_datetime": "Date & Time",
+            "daily_briefing": "Daily Briefing",
+            "calculate": "Calculator",
+            "convert_units": "Unit Conversion",
+            "set_timer": "Timer",
+            "pomodoro": "Pomodoro Timer",
+            "save_note": "Save Note",
+            "list_notes": "Notes",
+            "web_search": "Web Search",
+            "get_news": "News",
+            "translate": "Translation",
+            "define_word": "Dictionary",
+            "find_nearby": "Nearby Places",
+            "open_app": "Open App",
+            "get_directions": "Directions",
+            "identify_song": "Song Recognition",
+            "music_control": "Music Control",
+            "convert_currency": "Currency Conversion",
+            "phone_call": "Phone Call",
+            "send_message": "Send Message",
+            "copy_to_clipboard": "Clipboard",
+            "flashlight": "Flashlight",
+            "device_info": "Device Info",
+            "save_location": "Save Location",
+            "list_saved_locations": "Saved Locations",
+            "step_count": "Step Counter",
+            "emergency_info": "Emergency Info",
+            "calendar": "Calendar",
+            "lookup_contact": "Contacts",
+            "reminder": "Reminders",
+            "set_alarm": "Alarm",
+            "brightness": "Brightness",
+            "smart_home": "Smart Home",
+            "run_shortcut": "Siri Shortcuts",
+            "summarize_conversation": "Summarize",
+            "face_recognition": "Face Recognition",
+            "memory_rewind": "Memory Rewind",
+            "geofence": "Geofence Alerts",
+            "send_via": "Multi-Channel Message",
+            "meeting_summary": "Meeting Summary",
+            "fitness_coach": "Fitness Coach",
+            "openclaw_skills": "OpenClaw Skills",
+        ]
+        if let override = overrides[toolName] { return override }
+        // Fallback: convert_currency → Convert Currency
+        return toolName
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
+    private var filteredTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         if searchText.isEmpty { return allTools }
         let query = searchText.lowercased()
         return allTools.filter {
             $0.name.lowercased().contains(query) ||
+            $0.displayName.lowercased().contains(query) ||
             $0.description.lowercased().contains(query)
         }
     }
@@ -54,12 +109,7 @@ struct ToolsSettingsView: View {
                 ForEach(filteredTools, id: \.name) { tool in
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(tool.description)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-
                             if let properties = tool.params["properties"] as? [String: Any], !properties.isEmpty {
-                                Divider()
                                 Text("Parameters")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -95,10 +145,10 @@ struct ToolsSettingsView: View {
                                 }
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(tool.name)
+                                    Text(tool.displayName)
                                         .font(.body)
                                         .lineLimit(1)
-                                    Text(tool.description)
+                                    Text(tool.name)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
