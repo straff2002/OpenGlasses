@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA47000000000000000000A1 /* GeocodingHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB47000000000000000000A1 /* GeocodingHelper.swift */; };
 		0157D0329B2FCCCE43E96C0B /* ModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF6538260040B7DF8E861F46 /* ModelPickerSheet.swift */; };
 		020D1E16DFA6859D1AD0DDFA /* OpenGlassesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8683007735AA0558FA2461 /* OpenGlassesApp.swift */; };
 		067BF84ACE5DE5A03C059189 /* intro.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 45E3B3049C0DE740FA37ABE1 /* intro.mp4 */; };
@@ -23,10 +22,12 @@
 		4C0747C3D70826C4899E7E00 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = D8AD4E224036184FB764A25D /* MWDATCamera */; };
 		4C4CED95A24B1802131E2F90 /* VideoRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E901D60ADFEFF10CDA463226 /* VideoRecordingService.swift */; };
 		4E2A4520F7A5129BAF1E27ED /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 39CB5B3B95E7FA76233BD1FF /* Assets.xcassets */; };
+		507F2D792F6F59050082DF05 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = F2A3B4C5D6E7F8A9B0C1D3E4 /* MLXLLM */; };
+		507F2D7A2F6F59050082DF05 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A3B4C5D6E7F8A9B0C1D3E4F5 /* MLXLMCommon */; };
+		507F2D7B2F6F59050082DF05 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = B4C5D6E7F8A9B0C1D3E4F5A6 /* MLXVLM */; };
 		6253D50924BD14A6BCA716D5 /* BroadcastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B79FC26FE1B44E77C0753D /* BroadcastService.swift */; };
 		625C2A5558308BD536ED3B7A /* IntentClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B33F7CD7BFCA62F875015B /* IntentClassifier.swift */; };
 		64E33EA57E291566D6E0D155 /* AddModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 541EC20D0D9F29F7D263F544 /* AddModelView.swift */; };
-		8EA2487377A56F5777F2125C /* ModelFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B05C133C21A010BDF1C6CD /* ModelFormView.swift */; };
 		656E2173AA5EE97B5214246E /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F55F6C7D57E354746F791B /* MainView.swift */; };
 		6787CCB157C7A06753420D70 /* BottomControlBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101041B6620C9538B4606796 /* BottomControlBar.swift */; };
 		6826826D842D74BDE1F0F612 /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9AB2B081EA62FA6DE3DCF3BA /* MWDATCore */; };
@@ -34,51 +35,23 @@
 		8A9F7CE62FE4D6297A5D6F3F /* WakeWordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 736455826E1BEAD947489D6E /* WakeWordService.swift */; };
 		8B342F6C5E74DC82271E8933 /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A74F719BE85B202E0BABB969 /* ConversationStore.swift */; };
 		8E52D9A49E71CFE5678E0619 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E73FAAA05B0E98D5A95378 /* RootView.swift */; };
+		8EA2487377A56F5777F2125C /* ModelFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B05C133C21A010BDF1C6CD /* ModelFormView.swift */; };
 		9807600685AD4110F005D0CE /* ModelEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59DC9379EBF3C847016C0C3 /* ModelEditorView.swift */; };
 		9F455A080D71393F4CA2277C /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 27131AD75570EDC61A5105EC /* HaishinKit */; };
 		9FC6BD9F7F9FD1EF36DAFA00 /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BAB04141EE25C5FE20E591C /* StatusIndicator.swift */; };
-		A7ABDC5B2F1FA6F1A7DD60D0 /* GeminiLiveSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7859389D06F057DF4B8BEF4D /* GeminiLiveSessionManager.swift */; };
-		AB63DAA102EAA6B901FE2E53 /* ModelFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */; };
-		B2C3D4E5F6A7B8C9D0E1F2A3 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* RTMPHaishinKit */; };
-		C199BD1439E5E05376764C40 /* GeminiLiveAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */; };
-		C37F78E76D363DD07BE7E125 /* TranscriptOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */; };
-		C81ECAC3E391DA387DA6014E /* GlassesConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA4C5150A11DB81C1E126C1 /* GlassesConnectionService.swift */; };
-		C874226E0CDE20B0AC9FBC26 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37711EA054D65681A6CA4F8 /* Config.swift */; };
-		CEF89D4C24909B998A6664BA /* CircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A347C33EF9746E1A3AFE276 /* CircleButton.swift */; };
-		A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4F6A8C0E1B3D5F7A9C2E4 /* OnboardingOverlay.swift */; };
-		C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */; };
-		D0B1AC8DE6F14ECDA4E95204 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */; };
-		A5B6C7D8E9F0A1B2C3D4E5F6 /* PromptInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */; };
-		B6C7D8E9F0A1B2C3D4E5F6A7 /* ToolsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */; };
-		C7D8E9F0A1B2C3D4E5F6A7B8 /* PromptPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */; };
-		D9E0F1A2B3C4D5E6F7A8B9C0 /* CustomToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */; };
-		E1F2A3B4C5D6E7F8A9B0C1D2 /* NetworkMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */; };
-		F3A4B5C6D7E8F9A0B1C2D3E4 /* CustomToolWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */; };
-		A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */; };
-		B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */; };
-		C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */; };
-		D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */; };
 		A1A1A1A1A1A1A1A1A1A1A1A1 /* VoiceSkillsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */; };
+		A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4F6A8C0E1B3D5F7A9C2E4 /* OnboardingOverlay.swift */; };
 		A2A2A2A2A2A2A2A2A2A2A2A2 /* ObjectMemoryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */; };
 		A3A3A3A3A3A3A3A3A3A3A3A3 /* ContextualNoteTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */; };
 		A4A4A4A4A4A4A4A4A4A4A4A4 /* SocialContextTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */; };
 		A5A5A5A5A5A5A5A5A5A5A5A5 /* HomeAssistantTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */; };
+		A5B6C7D8E9F0A1B2C3D4E5F6 /* PromptInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */; };
+		A5B6C7D8E9F0A1B2C3D4E5F7 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */; };
 		A6A6A6A6A6A6A6A6A6A6A6A6 /* MCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B6B6B6B6B6B6B6B6B6B6B6 /* MCPClient.swift */; };
 		A7A7A7A7A7A7A7A7A7A7A7A7 /* MCPServersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B7B7B7B7B7B7B7B7B7B7B7 /* MCPServersView.swift */; };
+		A7ABDC5B2F1FA6F1A7DD60D0 /* GeminiLiveSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7859389D06F057DF4B8BEF4D /* GeminiLiveSessionManager.swift */; };
 		A8A8A8A8A8A8A8A8A8A8A8A8 /* BarcodeScannerTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B8B8B8B8B8B8B8B8B8B8B8 /* BarcodeScannerTool.swift */; };
 		A9A9A9A9A9A9A9A9A9A9A9A9 /* LiveTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B9B9B9B9B9B9B9B9B9B9B9 /* LiveTranslationService.swift */; };
-		AAAAAAAAAAAAAAAAAAAAAAAA /* LiveTranslationTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */; };
-		ACACACACACACACACACACACAC /* PersonaPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCBCBCBCBCBCBCBCBCBCBCBC /* PersonaPickerSheet.swift */; };
-		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
-		E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */; };
-		E547F4974B491D0B9156FD8F /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9886D8FB33DA06C125BEBEBA /* LocationService.swift */; };
-		EB289A3C17A25E6DED22FA2B /* TextToSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */; };
-		EC0E3F2571BC3922E04CF484 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3951EA5CAF381F4F3192D54 /* LLMService.swift */; };
-		ECEB277B33994D450E4B505A /* ToolCallRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633DF6FE961BCCB26868D5AB /* ToolCallRouter.swift */; };
-		F02082C30D6161DB50FD0E71 /* OpenAIRealtimeSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DC7F9FD93C5E42385EC67E /* OpenAIRealtimeSessionManager.swift */; };
-		F02C16114BC229EB28F88C0F /* ToggleGeminiLiveIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A1DF4D36A2C5CA6CE16D7A /* ToggleGeminiLiveIntent.swift */; };
-		FE147CDAF19ED70FCBAD512C /* OpenAIRealtimeAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48ADF7728705594A1E24017 /* OpenAIRealtimeAudioManager.swift */; };
-		FEAC4201BCF3DA4E217ABCE3 /* UserMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F8F32E3100F8F68BD25A24 /* UserMemoryStore.swift */; };
 		AA01010101010101AA010101 /* NativeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01010101010101BB010101 /* NativeTool.swift */; };
 		AA02020202020202AA020202 /* NativeToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB02020202020202BB020202 /* NativeToolRegistry.swift */; };
 		AA03030303030303AA030303 /* NativeToolRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB03030303030303BB030303 /* NativeToolRouter.swift */; };
@@ -131,10 +104,39 @@
 		AA44444444444444AA444444 /* FitnessCoachingTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB44444444444444BB444444 /* FitnessCoachingTool.swift */; };
 		AA45454545454545AA454545 /* OpenClawSkillsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB45454545454545BB454545 /* OpenClawSkillsTool.swift */; };
 		AA46464646464646AA464646 /* WebRTCStreamingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB46464646464646BB464646 /* WebRTCStreamingService.swift */; };
+		AA47000000000000000000A1 /* GeocodingHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB47000000000000000000A1 /* GeocodingHelper.swift */; };
+		AAAAAAAAAAAAAAAAAAAAAAAA /* LiveTranslationTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */; };
+		AB63DAA102EAA6B901FE2E53 /* ModelFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */; };
+		ACACACACACACACACACACACAC /* PersonaPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCBCBCBCBCBCBCBCBCBCBCBC /* PersonaPickerSheet.swift */; };
+		B2C3D4E5F6A7B8C9D0E1F2A3 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* RTMPHaishinKit */; };
+		B6C7D8E9F0A1B2C3D4E5F6A7 /* ToolsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */; };
+		B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */; };
+		C199BD1439E5E05376764C40 /* GeminiLiveAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */; };
+		C37F78E76D363DD07BE7E125 /* TranscriptOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */; };
+		C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */; };
+		C7D8E9F0A1B2C3D4E5F6A7B8 /* PromptPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */; };
+		C81ECAC3E391DA387DA6014E /* GlassesConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA4C5150A11DB81C1E126C1 /* GlassesConnectionService.swift */; };
+		C874226E0CDE20B0AC9FBC26 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37711EA054D65681A6CA4F8 /* Config.swift */; };
+		C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */; };
+		CEF89D4C24909B998A6664BA /* CircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A347C33EF9746E1A3AFE276 /* CircleButton.swift */; };
+		D0B1AC8DE6F14ECDA4E95204 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */; };
+		D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */; };
+		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
+		D9E0F1A2B3C4D5E6F7A8B9C0 /* CustomToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */; };
+		E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */; };
+		E1F2A3B4C5D6E7F8A9B0C1D2 /* NetworkMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */; };
+		E547F4974B491D0B9156FD8F /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9886D8FB33DA06C125BEBEBA /* LocationService.swift */; };
+		EB289A3C17A25E6DED22FA2B /* TextToSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */; };
+		EC0E3F2571BC3922E04CF484 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3951EA5CAF381F4F3192D54 /* LLMService.swift */; };
+		ECEB277B33994D450E4B505A /* ToolCallRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633DF6FE961BCCB26868D5AB /* ToolCallRouter.swift */; };
+		F02082C30D6161DB50FD0E71 /* OpenAIRealtimeSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DC7F9FD93C5E42385EC67E /* OpenAIRealtimeSessionManager.swift */; };
+		F02C16114BC229EB28F88C0F /* ToggleGeminiLiveIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A1DF4D36A2C5CA6CE16D7A /* ToggleGeminiLiveIntent.swift */; };
+		F3A4B5C6D7E8F9A0B1C2D3E4 /* CustomToolWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */; };
+		FE147CDAF19ED70FCBAD512C /* OpenAIRealtimeAudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48ADF7728705594A1E24017 /* OpenAIRealtimeAudioManager.swift */; };
+		FEAC4201BCF3DA4E217ABCE3 /* UserMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F8F32E3100F8F68BD25A24 /* UserMemoryStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		BB47000000000000000000A1 /* GeocodingHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeocodingHelper.swift; sourceTree = "<group>"; };
 		08B79FC26FE1B44E77C0753D /* BroadcastService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BroadcastService.swift; sourceTree = "<group>"; };
 		09B477C822E8DD47398F74B1 /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
 		0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFetcher.swift; sourceTree = "<group>"; };
@@ -146,27 +148,6 @@
 		36B33F7CD7BFCA62F875015B /* IntentClassifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IntentClassifier.swift; path = OpenGlasses/Sources/Services/IntentClassifier.swift; sourceTree = SOURCE_ROOT; };
 		39CB5B3B95E7FA76233BD1FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInspectorView.swift; sourceTree = "<group>"; };
-		A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsSettingsView.swift; sourceTree = "<group>"; };
-		D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPresetsView.swift; sourceTree = "<group>"; };
-		E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolsView.swift; sourceTree = "<group>"; };
-		F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorView.swift; sourceTree = "<group>"; };
-		A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolWrapper.swift; sourceTree = "<group>"; };
-		B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
-		C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
-		D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelManagerView.swift; sourceTree = "<group>"; };
-		E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonasView.swift; sourceTree = "<group>"; };
-		B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSkillsTool.swift; sourceTree = "<group>"; };
-		B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectMemoryTool.swift; sourceTree = "<group>"; };
-		B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualNoteTool.swift; sourceTree = "<group>"; };
-		B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialContextTool.swift; sourceTree = "<group>"; };
-		B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantTool.swift; sourceTree = "<group>"; };
-		B6B6B6B6B6B6B6B6B6B6B6B6 /* MCPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPClient.swift; sourceTree = "<group>"; };
-		B7B7B7B7B7B7B7B7B7B7B7B7 /* MCPServersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServersView.swift; sourceTree = "<group>"; };
-		B8B8B8B8B8B8B8B8B8B8B8B8 /* BarcodeScannerTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerTool.swift; sourceTree = "<group>"; };
-		B9B9B9B9B9B9B9B9B9B9B9B9 /* LiveTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationService.swift; sourceTree = "<group>"; };
-		BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationTool.swift; sourceTree = "<group>"; };
-		BCBCBCBCBCBCBCBCBCBCBCBC /* PersonaPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaPickerSheet.swift; sourceTree = "<group>"; };
 		3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePreviewView.swift; sourceTree = "<group>"; };
 		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro.mp4; sourceTree = "<group>"; };
 		4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveAudioManager.swift; sourceTree = "<group>"; };
@@ -184,25 +165,23 @@
 		8EA4C5150A11DB81C1E126C1 /* GlassesConnectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesConnectionService.swift; sourceTree = "<group>"; };
 		92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawBridge.swift; sourceTree = "<group>"; };
 		9886D8FB33DA06C125BEBEBA /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
+		A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolWrapper.swift; sourceTree = "<group>"; };
 		A74F719BE85B202E0BABB969 /* ConversationStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ConversationStore.swift; path = OpenGlasses/Sources/Services/ConversationStore.swift; sourceTree = SOURCE_ROOT; };
 		A795DD7E5DB69A5A400298C3 /* OpenGlasses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenGlasses.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7F6E5D4C3B2A1F0E9D8C7B6 /* ToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsSettingsView.swift; sourceTree = "<group>"; };
 		AF6538260040B7DF8E861F46 /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
+		B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSkillsTool.swift; sourceTree = "<group>"; };
+		B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectMemoryTool.swift; sourceTree = "<group>"; };
 		B2D4F6A8C0E1B3D5F7A9C2E4 /* OnboardingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingOverlay.swift; sourceTree = "<group>"; };
+		B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualNoteTool.swift; sourceTree = "<group>"; };
+		B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialContextTool.swift; sourceTree = "<group>"; };
+		B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantTool.swift; sourceTree = "<group>"; };
+		B6B6B6B6B6B6B6B6B6B6B6B6 /* MCPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPClient.swift; sourceTree = "<group>"; };
+		B6C7D8E9F0A1B2C3D4E5F6A8 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
+		B7B7B7B7B7B7B7B7B7B7B7B7 /* MCPServersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServersView.swift; sourceTree = "<group>"; };
 		B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameThrottler.swift; sourceTree = "<group>"; };
-		C59DC9379EBF3C847016C0C3 /* ModelEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelEditorView.swift; sourceTree = "<group>"; };
-		D3B05C133C21A010BDF1C6CD /* ModelFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFormView.swift; sourceTree = "<group>"; };
-		D3951EA5CAF381F4F3192D54 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
-		D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesSettingsView.swift; sourceTree = "<group>"; };
-		D48ADF7728705594A1E24017 /* OpenAIRealtimeAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeAudioManager.swift; sourceTree = "<group>"; };
-		E1F8F32E3100F8F68BD25A24 /* UserMemoryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UserMemoryStore.swift; path = OpenGlasses/Sources/Services/UserMemoryStore.swift; sourceTree = SOURCE_ROOT; };
-		E37711EA054D65681A6CA4F8 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
-		E4A852B1C0D2BD3A656404A5 /* AppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShortcuts.swift; sourceTree = "<group>"; };
-		E782D438FC58E52A9FE4C6FD /* ToolCallModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallModels.swift; sourceTree = "<group>"; };
-		E901D60ADFEFF10CDA463226 /* VideoRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRecordingService.swift; sourceTree = "<group>"; };
-		F18F3CBA78C24423C29D96CB /* LaunchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchScreen.swift; sourceTree = "<group>"; };
-		F3A8CF8F5A8A9BEBC119F818 /* OpenAIRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeService.swift; sourceTree = "<group>"; };
-		F3DC7F9FD93C5E42385EC67E /* OpenAIRealtimeSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeSessionManager.swift; sourceTree = "<group>"; };
-		F4DD6028522D2C2B1D52DD7C /* GeminiLiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveService.swift; sourceTree = "<group>"; };
+		B8B8B8B8B8B8B8B8B8B8B8B8 /* BarcodeScannerTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerTool.swift; sourceTree = "<group>"; };
+		B9B9B9B9B9B9B9B9B9B9B9B9 /* LiveTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationService.swift; sourceTree = "<group>"; };
 		BB01010101010101BB010101 /* NativeTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTool.swift; sourceTree = "<group>"; };
 		BB02020202020202BB020202 /* NativeToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeToolRegistry.swift; sourceTree = "<group>"; };
 		BB03030303030303BB030303 /* NativeToolRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeToolRouter.swift; sourceTree = "<group>"; };
@@ -255,6 +234,30 @@
 		BB44444444444444BB444444 /* FitnessCoachingTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessCoachingTool.swift; sourceTree = "<group>"; };
 		BB45454545454545BB454545 /* OpenClawSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSkillsTool.swift; sourceTree = "<group>"; };
 		BB46464646464646BB464646 /* WebRTCStreamingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCStreamingService.swift; sourceTree = "<group>"; };
+		BB47000000000000000000A1 /* GeocodingHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeocodingHelper.swift; sourceTree = "<group>"; };
+		BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationTool.swift; sourceTree = "<group>"; };
+		BCBCBCBCBCBCBCBCBCBCBCBC /* PersonaPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaPickerSheet.swift; sourceTree = "<group>"; };
+		C59DC9379EBF3C847016C0C3 /* ModelEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelEditorView.swift; sourceTree = "<group>"; };
+		C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
+		D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelManagerView.swift; sourceTree = "<group>"; };
+		D3951EA5CAF381F4F3192D54 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
+		D3B05C133C21A010BDF1C6CD /* ModelFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFormView.swift; sourceTree = "<group>"; };
+		D48ADF7728705594A1E24017 /* OpenAIRealtimeAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeAudioManager.swift; sourceTree = "<group>"; };
+		D4F6B8C0E2A3D5F7B9C1E3A5 /* ServicesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesSettingsView.swift; sourceTree = "<group>"; };
+		D8E9F0A1B2C3D4E5F6A7B8C9 /* PromptPresetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptPresetsView.swift; sourceTree = "<group>"; };
+		E0F1A2B3C4D5E6F7A8B9C0D1 /* CustomToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomToolsView.swift; sourceTree = "<group>"; };
+		E1F8F32E3100F8F68BD25A24 /* UserMemoryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UserMemoryStore.swift; path = OpenGlasses/Sources/Services/UserMemoryStore.swift; sourceTree = SOURCE_ROOT; };
+		E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonasView.swift; sourceTree = "<group>"; };
+		E37711EA054D65681A6CA4F8 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		E4A852B1C0D2BD3A656404A5 /* AppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShortcuts.swift; sourceTree = "<group>"; };
+		E782D438FC58E52A9FE4C6FD /* ToolCallModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallModels.swift; sourceTree = "<group>"; };
+		E901D60ADFEFF10CDA463226 /* VideoRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRecordingService.swift; sourceTree = "<group>"; };
+		F18F3CBA78C24423C29D96CB /* LaunchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchScreen.swift; sourceTree = "<group>"; };
+		F2A3B4C5D6E7F8A9B0C1D2E3 /* NetworkMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorView.swift; sourceTree = "<group>"; };
+		F3A8CF8F5A8A9BEBC119F818 /* OpenAIRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeService.swift; sourceTree = "<group>"; };
+		F3DC7F9FD93C5E42385EC67E /* OpenAIRealtimeSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeSessionManager.swift; sourceTree = "<group>"; };
+		F4DD6028522D2C2B1D52DD7C /* GeminiLiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveService.swift; sourceTree = "<group>"; };
+		F6E5D4C3B2A1F0E9D8C7B6A5 /* PromptInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInspectorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -262,6 +265,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				507F2D7B2F6F59050082DF05 /* MLXVLM in Frameworks */,
+				507F2D7A2F6F59050082DF05 /* MLXLMCommon in Frameworks */,
+				507F2D792F6F59050082DF05 /* MLXLLM in Frameworks */,
 				6826826D842D74BDE1F0F612 /* MWDATCore in Frameworks */,
 				4C0747C3D70826C4899E7E00 /* MWDATCamera in Frameworks */,
 				9F455A080D71393F4CA2277C /* HaishinKit in Frameworks */,
@@ -350,66 +356,6 @@
 			path = OpenGlasses/Sources;
 			sourceTree = "<group>";
 		};
-		CC0D0D0D0D0D0D0DCC0D0D0D /* NativeTools */ = {
-			isa = PBXGroup;
-			children = (
-				BB01010101010101BB010101 /* NativeTool.swift */,
-				BB02020202020202BB020202 /* NativeToolRegistry.swift */,
-				BB03030303030303BB030303 /* NativeToolRouter.swift */,
-				A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */,
-				B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */,
-				B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */,
-				B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */,
-				B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */,
-				B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */,
-				B8B8B8B8B8B8B8B8B8B8B8B8 /* BarcodeScannerTool.swift */,
-				BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */,
-				BB04040404040404BB040404 /* WeatherTool.swift */,
-				BB05050505050505BB050505 /* DateTimeTool.swift */,
-				BB06060606060606BB060606 /* CalculatorTool.swift */,
-				BB07070707070707BB070707 /* UnitConversionTool.swift */,
-				BB08080808080808BB080808 /* TimerTool.swift */,
-				BB09090909090909BB090909 /* RemindersTool.swift */,
-				BB0A0A0A0A0A0A0ABB0A0A0A /* WebSearchTool.swift */,
-				BB0B0B0B0B0B0B0BBB0B0B0B /* NewsTool.swift */,
-				BB0C0C0C0C0C0C0CBB0C0C0C /* TranslationTool.swift */,
-				BB0D0D0D0D0D0D0DBB0D0D0D /* OpenAppTool.swift */,
-				BB0E0E0E0E0E0E0EBB0E0E0E /* DirectionsTool.swift */,
-				BB0F0F0F0F0F0F0FBB0F0F0F /* ShazamTool.swift */,
-				BB10101010101010BB101010 /* CurrencyTool.swift */,
-				BB11111111111111BB111111 /* MusicControlTool.swift */,
-				BB12121212121212BB121212 /* DailyBriefingTool.swift */,
-				BB13131313131313BB131313 /* ClipboardTool.swift */,
-				BB14141414141414BB141414 /* PhoneCallTool.swift */,
-				BB15151515151515BB151515 /* FlashlightTool.swift */,
-				BB16161616161616BB161616 /* DeviceInfoTool.swift */,
-				BB17171717171717BB171717 /* PomodoroTool.swift */,
-				BB18181818181818BB181818 /* LocationSearchTool.swift */,
-				BB19191919191919BB191919 /* WordDefinitionTool.swift */,
-				BB20202020202020BB202020 /* SendMessageTool.swift */,
-				BB21212121212121BB212121 /* SaveLocationTool.swift */,
-				BB22222222222222BB222222 /* PedometerTool.swift */,
-				BB23232323232323BB232323 /* EmergencyInfoTool.swift */,
-				BB24242424242424BB242424 /* CalendarTool.swift */,
-				BB25252525252525BB252525 /* ContactsTool.swift */,
-				BB26262626262626BB262626 /* AppleRemindersTool.swift */,
-				BB27272727272727BB272727 /* AlarmTool.swift */,
-				BB28282828282828BB282828 /* BrightnessTool.swift */,
-				BB30303030303030BB303030 /* ContactLookupHelper.swift */,
-				BB31313131313131BB313131 /* ConversationSummaryTool.swift */,
-				BB32323232323232BB323232 /* HomeKitTool.swift */,
-				BB33333333333333BB333333 /* SiriShortcutsTool.swift */,
-				BB37373737373737BB373737 /* FaceRecognitionTool.swift */,
-				BB38383838383838BB383838 /* MemoryRewindTool.swift */,
-				BB40404040404040BB404040 /* GeofenceTool.swift */,
-				BB41414141414141BB414141 /* SendEmailTool.swift */,
-				BB42424242424242BB424242 /* MeetingSummaryTool.swift */,
-				BB44444444444444BB444444 /* FitnessCoachingTool.swift */,
-				BB45454545454545BB454545 /* OpenClawSkillsTool.swift */,
-			);
-			path = NativeTools;
-			sourceTree = "<group>";
-		};
 		A4BE5203F9D0F9A8B998800D /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -475,6 +421,66 @@
 				6F832542563AAE48BC6A908C /* Views */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		CC0D0D0D0D0D0D0DCC0D0D0D /* NativeTools */ = {
+			isa = PBXGroup;
+			children = (
+				BB01010101010101BB010101 /* NativeTool.swift */,
+				BB02020202020202BB020202 /* NativeToolRegistry.swift */,
+				BB03030303030303BB030303 /* NativeToolRouter.swift */,
+				A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */,
+				B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */,
+				B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */,
+				B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */,
+				B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */,
+				B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */,
+				B8B8B8B8B8B8B8B8B8B8B8B8 /* BarcodeScannerTool.swift */,
+				BBBBBBBBBBBBBBBBBBBBBBBB /* LiveTranslationTool.swift */,
+				BB04040404040404BB040404 /* WeatherTool.swift */,
+				BB05050505050505BB050505 /* DateTimeTool.swift */,
+				BB06060606060606BB060606 /* CalculatorTool.swift */,
+				BB07070707070707BB070707 /* UnitConversionTool.swift */,
+				BB08080808080808BB080808 /* TimerTool.swift */,
+				BB09090909090909BB090909 /* RemindersTool.swift */,
+				BB0A0A0A0A0A0A0ABB0A0A0A /* WebSearchTool.swift */,
+				BB0B0B0B0B0B0B0BBB0B0B0B /* NewsTool.swift */,
+				BB0C0C0C0C0C0C0CBB0C0C0C /* TranslationTool.swift */,
+				BB0D0D0D0D0D0D0DBB0D0D0D /* OpenAppTool.swift */,
+				BB0E0E0E0E0E0E0EBB0E0E0E /* DirectionsTool.swift */,
+				BB0F0F0F0F0F0F0FBB0F0F0F /* ShazamTool.swift */,
+				BB10101010101010BB101010 /* CurrencyTool.swift */,
+				BB11111111111111BB111111 /* MusicControlTool.swift */,
+				BB12121212121212BB121212 /* DailyBriefingTool.swift */,
+				BB13131313131313BB131313 /* ClipboardTool.swift */,
+				BB14141414141414BB141414 /* PhoneCallTool.swift */,
+				BB15151515151515BB151515 /* FlashlightTool.swift */,
+				BB16161616161616BB161616 /* DeviceInfoTool.swift */,
+				BB17171717171717BB171717 /* PomodoroTool.swift */,
+				BB18181818181818BB181818 /* LocationSearchTool.swift */,
+				BB19191919191919BB191919 /* WordDefinitionTool.swift */,
+				BB20202020202020BB202020 /* SendMessageTool.swift */,
+				BB21212121212121BB212121 /* SaveLocationTool.swift */,
+				BB22222222222222BB222222 /* PedometerTool.swift */,
+				BB23232323232323BB232323 /* EmergencyInfoTool.swift */,
+				BB24242424242424BB242424 /* CalendarTool.swift */,
+				BB25252525252525BB252525 /* ContactsTool.swift */,
+				BB26262626262626BB262626 /* AppleRemindersTool.swift */,
+				BB27272727272727BB272727 /* AlarmTool.swift */,
+				BB28282828282828BB282828 /* BrightnessTool.swift */,
+				BB30303030303030BB303030 /* ContactLookupHelper.swift */,
+				BB31313131313131BB313131 /* ConversationSummaryTool.swift */,
+				BB32323232323232BB323232 /* HomeKitTool.swift */,
+				BB33333333333333BB333333 /* SiriShortcutsTool.swift */,
+				BB37373737373737BB373737 /* FaceRecognitionTool.swift */,
+				BB38383838383838BB383838 /* MemoryRewindTool.swift */,
+				BB40404040404040BB404040 /* GeofenceTool.swift */,
+				BB41414141414141BB414141 /* SendEmailTool.swift */,
+				BB42424242424242BB424242 /* MeetingSummaryTool.swift */,
+				BB44444444444444BB444444 /* FitnessCoachingTool.swift */,
+				BB45454545454545BB454545 /* OpenClawSkillsTool.swift */,
+			);
+			path = NativeTools;
 			sourceTree = "<group>";
 		};
 		E1EBF5926D8D2C23FA0E2D01 /* OpenAIRealtime */ = {
@@ -772,12 +778,14 @@
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenGlasses;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.OpenGlasses;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -794,12 +802,14 @@
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenGlasses;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.OpenGlasses;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -906,8 +916,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
 			requirement = {
-				kind = branch;
 				branch = main;
+				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -928,16 +938,6 @@
 			package = C4E037CC662233A5432409C6 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = RTMPHaishinKit;
 		};
-		D8AD4E224036184FB764A25D /* MWDATCamera */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
-			productName = MWDATCamera;
-		};
-		F2A3B4C5D6E7F8A9B0C1D3E4 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1F2A3B4C5D6E7F8A9B0C1D3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLLM;
-		};
 		A3B4C5D6E7F8A9B0C1D3E4F5 /* MLXLMCommon */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E1F2A3B4C5D6E7F8A9B0C1D3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
@@ -947,6 +947,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1F2A3B4C5D6E7F8A9B0C1D3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXVLM;
+		};
+		D8AD4E224036184FB764A25D /* MWDATCamera */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCamera;
+		};
+		F2A3B4C5D6E7F8A9B0C1D3E4 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1F2A3B4C5D6E7F8A9B0C1D3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
