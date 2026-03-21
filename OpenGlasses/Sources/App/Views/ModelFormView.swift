@@ -57,21 +57,36 @@ struct ModelFormView: View {
         if selectedProvider == .local {
             // MARK: Local model section
             Section {
-                TextField("HuggingFace model ID", text: $model)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                let downloaded = localDownloadedModels
+
+                if downloaded.isEmpty {
+                    Label("No models downloaded yet", systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                } else {
+                    Picker("Model", selection: $model) {
+                        ForEach(downloaded, id: \.self) { modelId in
+                            Text(localDisplayName(modelId))
+                                .tag(modelId)
+                        }
+                    }
+                }
 
                 NavigationLink {
                     LocalModelManagerView()
                 } label: {
-                    Label("Manage Local Models", systemImage: "arrow.down.circle")
+                    Label("Download & Manage Models", systemImage: "arrow.down.circle")
                 }
 
                 Toggle("Vision (Image Input)", isOn: $supportsVision)
             } header: {
                 Text("Local Model")
             } footer: {
-                Text("Download models in Manage Local Models, then enter the model ID here. No internet needed after download.")
+                if localDownloadedModels.isEmpty {
+                    Text("Download a model first, then select it here. No internet needed after download.")
+                } else {
+                    Text("Select a downloaded model. Runs entirely on-device — no internet needed.")
+                }
             }
         } else {
             // MARK: Cloud API key section
@@ -188,5 +203,20 @@ struct ModelFormView: View {
         case .custom: return "Any OpenAI-compatible API endpoint"
         case .local: return "On-device inference — no internet needed"
         }
+    }
+
+    // MARK: - Local Model Helpers
+
+    /// List of downloaded local model IDs.
+    private var localDownloadedModels: [String] {
+        LocalLLMService().downloadedModelIds()
+    }
+
+    /// Convert "mlx-community/Qwen2.5-3B-Instruct-4bit" → "Qwen2.5 3B Instruct 4bit"
+    private func localDisplayName(_ modelId: String) -> String {
+        guard let name = modelId.split(separator: "/").last else { return modelId }
+        return String(name)
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
     }
 }

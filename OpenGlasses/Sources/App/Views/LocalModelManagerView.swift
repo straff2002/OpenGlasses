@@ -4,6 +4,7 @@ import SwiftUI
 struct LocalModelManagerView: View {
     @EnvironmentObject var appState: AppState
     @State private var downloadedIds: [String] = []
+    @State private var selectedModelId: String = ""
     @State private var customModelId = ""
     @State private var downloadingModelId: String?
     @State private var downloadError: String?
@@ -36,21 +37,26 @@ struct LocalModelManagerView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(downloadedIds, id: \.self) { modelId in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(modelDisplayName(modelId))
-                                    .lineLimit(1)
-                                Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if localService?.loadedModelId == modelId {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                        Button {
+                            selectModel(modelId)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(modelDisplayName(modelId))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if selectedModelId == modelId {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                }
                             }
                         }
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 deleteModel(modelId)
                             } label: {
@@ -62,7 +68,7 @@ struct LocalModelManagerView: View {
             } header: {
                 Text("Downloaded Models")
             } footer: {
-                Text("Models are stored in the app cache. iOS may reclaim space if storage runs low.")
+                Text("Tap to select. Swipe left to delete. Models are stored persistently and won't be purged by iOS.")
             }
 
             // MARK: Recommended Models
@@ -147,7 +153,24 @@ struct LocalModelManagerView: View {
             }
         }
         .navigationTitle("Local Models")
-        .onAppear { refreshDownloaded() }
+        .onAppear {
+            refreshDownloaded()
+            // Set initial selection from active model config
+            if let activeModel = Config.activeModel, activeModel.llmProvider == .local {
+                selectedModelId = activeModel.model
+            }
+        }
+    }
+
+    private func selectModel(_ modelId: String) {
+        selectedModelId = modelId
+        // Update the active model config if one exists for local provider
+        var models = Config.savedModels
+        if let idx = models.firstIndex(where: { $0.llmProvider == .local }) {
+            models[idx].model = modelId
+            Config.setSavedModels(models)
+            appState.llmService.refreshActiveModel()
+        }
     }
 
     private func downloadModel(_ modelId: String) {

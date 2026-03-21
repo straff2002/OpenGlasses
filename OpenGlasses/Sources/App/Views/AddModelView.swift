@@ -54,7 +54,7 @@ struct AddModelView: View {
                         onAdd(config)
                         dismiss()
                     }
-                    .disabled(apiKey.isEmpty)
+                    .disabled(selectedProvider == .local ? model.isEmpty : apiKey.isEmpty)
                 }
             }
         }
