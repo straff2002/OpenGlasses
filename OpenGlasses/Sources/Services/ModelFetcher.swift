@@ -46,7 +46,7 @@ enum ModelFetcher {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
+        request.timeoutInterval = 30
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -85,7 +85,7 @@ enum ModelFetcher {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
+        request.timeoutInterval = 30
 
         let body: [String: Any] = [
             "model": "qwen3.5-plus",
@@ -121,7 +121,7 @@ enum ModelFetcher {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.timeoutInterval = 10
+        request.timeoutInterval = 30
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -146,7 +146,7 @@ enum ModelFetcher {
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)") else { return [] }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 10
+        request.timeoutInterval = 30
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
