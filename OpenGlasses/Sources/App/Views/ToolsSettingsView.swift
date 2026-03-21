@@ -5,6 +5,7 @@ import SwiftUI
 struct ToolsSettingsView: View {
     @ObservedObject var appState: AppState
     @State private var disabledTools: Set<String> = Config.disabledTools
+    @State private var offlineMode: Bool = Config.offlineModeEnabled
     @State private var searchText = ""
 
     private var allTools: [(name: String, description: String, params: [String: Any])] {
@@ -28,6 +29,18 @@ struct ToolsSettingsView: View {
 
     var body: some View {
         List {
+            Section {
+                Toggle("Offline Mode", isOn: $offlineMode)
+                    .onChange(of: offlineMode) { _, enabled in
+                        Config.setOfflineModeEnabled(enabled)
+                        disabledTools = Config.disabledTools
+                    }
+            } header: {
+                Text("Connectivity")
+            } footer: {
+                Text("Disables weather, web search, news, currency, Shazam, translation, and other internet-requiring tools. The LLM connection is unaffected.")
+            }
+
             Section {
                 LabeledContent("Total tools", value: "\(allTools.count)")
                 LabeledContent("Enabled", value: "\(enabledCount) of \(allTools.count)")

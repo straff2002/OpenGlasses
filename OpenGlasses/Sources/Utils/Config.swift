@@ -849,6 +849,30 @@ struct Config {
         }
         setDisabledTools(disabled)
     }
+
+    // MARK: - Offline Mode
+
+    /// Tools that require an internet connection (excluding LLM which is always needed).
+    static let internetRequiringTools: Set<String> = [
+        "get_weather", "web_search", "get_news", "convert_currency",
+        "identify_song", "translate", "define_word", "daily_briefing",
+        "find_nearby", "get_directions", "openclaw_skills"
+    ]
+
+    static var offlineModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "offlineModeEnabled")
+    }
+
+    static func setOfflineModeEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "offlineModeEnabled")
+        var disabled = disabledTools
+        if enabled {
+            disabled.formUnion(internetRequiringTools)
+        } else {
+            disabled.subtract(internetRequiringTools)
+        }
+        setDisabledTools(disabled)
+    }
 }
 
 // MARK: - App Mode Enum
