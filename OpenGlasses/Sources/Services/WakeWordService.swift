@@ -348,15 +348,31 @@ class WakeWordService: NSObject, ObservableObject {
         if listenForStop && !stopFired && containsStopPhrase(transcript) {
             print("🛑 Stop command detected in: '\(transcript)'")
             stopFired = true
-            pauseRecognition()  // Keep engine alive
+            pauseRecognition()
             onStopCommand?()
             return
         }
 
-        if !wakeWordFired, let matched = matchedWakePhrase(transcript) {
-            print("🎤 Wake word detected: '\(matched)' in: '\(transcript)'")
-            wakeWordFired = true
-            handleWakeWordDetected(matchedPhrase: matched)
+        // Barge-in: detect wake word even during TTS playback → interrupt and start new conversation
+        if let matched = matchedWakePhrase(transcript) {
+            if listenForStop {
+                // Barge-in during TTS — stop speaking and start new conversation
+                print("⚡ Barge-in detected: '\(matched)' during TTS")
+                stopFired = true
+                wakeWordFired = true
+                pauseRecognition()
+                onStopCommand?()  // Stop TTS first
+                // Brief delay then fire wake word for the new conversation
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    self.onWakeWordDetected?(matched)
+                }
+            } else if !wakeWordFired {
+                // Normal wake word detection (not during TTS)
+                print("🎤 Wake word detected: '\(matched)' in: '\(transcript)'")
+                wakeWordFired = true
+                handleWakeWordDetected(matchedPhrase: matched)
+            }
         }
 
         if result.isFinal { restartRecognition() }

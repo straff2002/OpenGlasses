@@ -183,6 +183,11 @@ class LLMService: ObservableObject {
             - meeting_summary: Summarize a recent meeting or conversation from ambient captions. Extracts key points, decisions, and action items. Requires ambient captions to be running.
             - fitness_coach: Fitness coaching — start/stop workouts, log exercises (reps/sets/weight), check form via camera, get workout history from HealthKit, set step goals.
             - openclaw_skills: Discover and manage OpenClaw skills. List available skills, check gateway status, search for capabilities. Only available when OpenClaw is configured.
+            - voice_skills: Voice-taught skills — save (teach a new trigger→action), list (show all), delete, clear. "Learn that when I say 'goodnight', turn off all lights."
+            - object_memory: Remember where physical objects are. Save ('remember my keys are on the counter'), find ('where are my keys?'), list, forget.
+            - contextual_note: Save notes with automatic location and time context. Search notes by keyword or location.
+            - social_context: Remember facts about people. Add facts ('remember John works at Stripe'), recall ('what do I know about John?'), list people.
+            - home_assistant: Control Home Assistant smart home — toggle devices, check states, list entities, run automations. Requires HA URL and token.
             """
 
                 // Inject user-defined custom tool descriptions
@@ -252,6 +257,14 @@ class LLMService: ObservableObject {
         }
         if let location = locationContext {
             prompt += "\n\nUSER LOCATION: \(location)"
+        }
+        // Inject voice-taught skills
+        if let skills = VoiceSkillStore.shared.promptContext() {
+            prompt += "\n\n\(skills)"
+        }
+        // Inject social context (people the user knows)
+        if let social = SocialContextStore.shared.promptContext() {
+            prompt += "\n\n\(social)"
         }
         return prompt
     }

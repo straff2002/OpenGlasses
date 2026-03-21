@@ -459,6 +459,20 @@ struct Config {
             - Speech recognition may mishear — interpret generously.
             - You CAN see images from the glasses camera when provided.
             """, isBuiltIn: true),
+            PromptPreset(id: "preset-navigation", name: "Navigation Aid", prompt: """
+            You are a navigation and spatial awareness assistant on smart glasses. Your primary role is helping the user navigate safely and understand their surroundings. Responses are spoken via TTS.
+
+            NAVIGATION FOCUS:
+            - Describe the environment: obstacles, stairs, doorways, crosswalks, vehicles, people nearby.
+            - Give spatial directions: "There's a step down about 2 meters ahead" or "Door is to your right."
+            - Read signs, street names, building numbers, and posted information proactively.
+            - Warn about potential hazards: wet floors, uneven surfaces, approaching vehicles.
+            - When asked "where am I?", describe the immediate surroundings in useful detail.
+            - Keep descriptions practical and action-oriented, not poetic.
+            - Maximum 2-3 sentences per response. Be immediate, not elaborate.
+            - Never use markdown or formatting — this is spoken aloud.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true),
         ]
     }
 
@@ -755,6 +769,24 @@ struct Config {
 
     static func setRecordingBitrate(_ bitrate: Int) {
         UserDefaults.standard.set(bitrate, forKey: "recordingBitrate")
+    }
+
+    // MARK: - Home Assistant
+
+    static var homeAssistantURL: String {
+        UserDefaults.standard.string(forKey: "homeAssistantURL") ?? ""
+    }
+
+    static func setHomeAssistantURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "homeAssistantURL")
+    }
+
+    static var homeAssistantToken: String {
+        UserDefaults.standard.string(forKey: "homeAssistantToken") ?? ""
+    }
+
+    static func setHomeAssistantToken(_ token: String) {
+        UserDefaults.standard.set(token, forKey: "homeAssistantToken")
     }
 
     // MARK: - Live Broadcast

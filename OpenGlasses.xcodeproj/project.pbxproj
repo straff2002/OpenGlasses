@@ -58,6 +58,11 @@
 		B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */; };
 		C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */; };
 		D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */; };
+		A1A1A1A1A1A1A1A1A1A1A1A1 /* VoiceSkillsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */; };
+		A2A2A2A2A2A2A2A2A2A2A2A2 /* ObjectMemoryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */; };
+		A3A3A3A3A3A3A3A3A3A3A3A3 /* ContextualNoteTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */; };
+		A4A4A4A4A4A4A4A4A4A4A4A4 /* SocialContextTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */; };
+		A5A5A5A5A5A5A5A5A5A5A5A5 /* HomeAssistantTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */; };
 		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
 		E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */; };
 		E547F4974B491D0B9156FD8F /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9886D8FB33DA06C125BEBEBA /* LocationService.swift */; };
@@ -145,6 +150,11 @@
 		C8D9E0F1A2B3C4D5E6F7A8B9 /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		D0E1F2A3B4C5D6E7F8A9B0C1 /* LocalModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelManagerView.swift; sourceTree = "<group>"; };
 		E2F3A4B5C6D7E8F9A0B1C2D3 /* PersonasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonasView.swift; sourceTree = "<group>"; };
+		B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSkillsTool.swift; sourceTree = "<group>"; };
+		B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectMemoryTool.swift; sourceTree = "<group>"; };
+		B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualNoteTool.swift; sourceTree = "<group>"; };
+		B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialContextTool.swift; sourceTree = "<group>"; };
+		B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantTool.swift; sourceTree = "<group>"; };
 		3B6692EEA65ADB1BD263FEFE /* LivePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePreviewView.swift; sourceTree = "<group>"; };
 		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro.mp4; sourceTree = "<group>"; };
 		4EB1758883EBE09AD50C9BEB /* GeminiLiveAudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveAudioManager.swift; sourceTree = "<group>"; };
@@ -333,6 +343,11 @@
 				BB02020202020202BB020202 /* NativeToolRegistry.swift */,
 				BB03030303030303BB030303 /* NativeToolRouter.swift */,
 				A4B5C6D7E8F9A0B1C2D3E4F5 /* CustomToolWrapper.swift */,
+				B1B1B1B1B1B1B1B1B1B1B1B1 /* VoiceSkillsTool.swift */,
+				B2B2B2B2B2B2B2B2B2B2B2B2 /* ObjectMemoryTool.swift */,
+				B3B3B3B3B3B3B3B3B3B3B3B3 /* ContextualNoteTool.swift */,
+				B4B4B4B4B4B4B4B4B4B4B4B4 /* SocialContextTool.swift */,
+				B5B5B5B5B5B5B5B5B5B5B5B5 /* HomeAssistantTool.swift */,
 				BB04040404040404BB040404 /* WeatherTool.swift */,
 				BB05050505050505BB050505 /* DateTimeTool.swift */,
 				BB06060606060606BB060606 /* CalculatorTool.swift */,
@@ -577,6 +592,11 @@
 				B7C8D9E0F1A2B3C4D5E6F7A8 /* LocalLLMService.swift in Sources */,
 				C9D0E1F2A3B4C5D6E7F8A9B0 /* LocalModelManagerView.swift in Sources */,
 				D1E2F3A4B5C6D7E8F9A0B1C2 /* PersonasView.swift in Sources */,
+				A1A1A1A1A1A1A1A1A1A1A1A1 /* VoiceSkillsTool.swift in Sources */,
+				A2A2A2A2A2A2A2A2A2A2A2A2 /* ObjectMemoryTool.swift in Sources */,
+				A3A3A3A3A3A3A3A3A3A3A3A3 /* ContextualNoteTool.swift in Sources */,
+				A4A4A4A4A4A4A4A4A4A4A4A4 /* SocialContextTool.swift in Sources */,
+				A5A5A5A5A5A5A5A5A5A5A5A5 /* HomeAssistantTool.swift in Sources */,
 				A1C3E5F7B9D2A4C6E8F0B1D3 /* OnboardingOverlay.swift in Sources */,
 				C3E5A7B9D1F2C4E6A8B0D2F4 /* ServicesSettingsView.swift in Sources */,
 				9FC6BD9F7F9FD1EF36DAFA00 /* StatusIndicator.swift in Sources */,

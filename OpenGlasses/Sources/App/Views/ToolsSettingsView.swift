@@ -60,6 +60,11 @@ struct ToolsSettingsView: View {
             "meeting_summary": "Meeting Summary",
             "fitness_coach": "Fitness Coach",
             "openclaw_skills": "OpenClaw Skills",
+            "voice_skills": "Voice Skills",
+            "object_memory": "Object Memory",
+            "contextual_note": "Contextual Notes",
+            "social_context": "Social Context",
+            "home_assistant": "Home Assistant",
         ]
         if let override = overrides[toolName] { return override }
         // Fallback: convert_currency → Convert Currency

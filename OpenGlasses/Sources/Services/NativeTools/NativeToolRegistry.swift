@@ -74,6 +74,15 @@ final class NativeToolRegistry {
             register(skillsTool)
         }
 
+        // Tier 4: Voice skills, spatial memory, social context, contextual notes, Home Assistant
+        register(VoiceSkillsTool())
+        register(ObjectMemoryTool(locationService: locationService))
+        register(ContextualNoteTool(locationService: locationService))
+        register(SocialContextTool())
+        if !Config.homeAssistantURL.isEmpty {
+            register(HomeAssistantTool())
+        }
+
         // User-defined custom tools
         registerCustomTools()
     }
