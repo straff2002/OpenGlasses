@@ -4,7 +4,9 @@
     "details": [
       {
         "appID": "B9L8ANZQZX.com.openglasses.OpenGlasses",
-        "paths": ["*"]
+        "paths": [
+          "*"
+        ]
       }
     ]
   }
