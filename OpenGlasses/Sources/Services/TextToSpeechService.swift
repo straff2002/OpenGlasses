@@ -25,8 +25,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     func speak(_ text: String) async {
         guard !text.isEmpty else { return }
 
-        // Cancel any in-progress speech
+        // Cancel any in-progress speech and thinking sound
         stopSpeaking()
+        stopThinkingSound()
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         isSpeaking = true
@@ -51,6 +52,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     }
 
     func stopSpeaking() {
+        stopThinkingSound()
         audioPlayer?.stop()
         audioPlayer = nil
         synthesizer.stopSpeaking(at: .immediate)
