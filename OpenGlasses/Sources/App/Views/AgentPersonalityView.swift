@@ -6,6 +6,7 @@ struct AgentPersonalityView: View {
     @ObservedObject var agentDocs: AgentDocumentStore
     @State private var enabled = Config.agentPersonalityEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
+    @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
 
     var body: some View {
         List {
@@ -60,6 +61,35 @@ struct AgentPersonalityView: View {
                     Text("Agent Documents")
                 } footer: {
                     Text("These follow the OpenClaw agent convention. The soul defines who the agent is, skills define what it can do, and memory stores what it learns. The agent can update its own memory but never modify code — that requires a connected OpenClaw.")
+                }
+
+                // Scheduled tasks
+                Section {
+                    ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                        HStack {
+                            Toggle(isOn: Binding(
+                                get: { task.enabled },
+                                set: { newValue in
+                                    tasks[index].enabled = newValue
+                                    AgentScheduler.saveTasks(tasks)
+                                }
+                            )) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.name)
+                                        .foregroundStyle(.primary)
+                                    Text(task.intervalMinutes == 0
+                                         ? "Once daily"
+                                         : "Every \(task.intervalMinutes) min")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Scheduled Tasks")
+                } footer: {
+                    Text("Background tasks that run automatically. Morning briefing runs once when you first activate. Others run on their interval when the app is idle.")
                 }
 
                 if !Config.agentOnboardingComplete {

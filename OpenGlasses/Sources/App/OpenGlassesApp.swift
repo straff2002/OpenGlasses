@@ -244,6 +244,7 @@ class AppState: ObservableObject {
     let webRTCStreaming = WebRTCStreamingService()
     let liveActivityManager = LiveActivityManager()
     let agentDocs = AgentDocumentStore()
+    let agentScheduler = AgentScheduler()
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
@@ -392,6 +393,12 @@ class AppState: ObservableObject {
         // Wire Watch app connectivity
         WatchConnectivityManager.shared.appState = self
         WatchConnectivityManager.shared.activate()
+
+        // Agent personality: start scheduler if enabled
+        agentScheduler.appState = self
+        if Config.agentPersonalityEnabled {
+            agentScheduler.start()
+        }
 
         setupServiceCallbacks()
         observeGlassesConnection()

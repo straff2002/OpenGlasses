@@ -130,6 +130,7 @@
 		C874226E0CDE20B0AC9FBC26 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37711EA054D65681A6CA4F8 /* Config.swift */; };
 		C94583CC2F29FC38340AEBF3 /* WatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7044DEFEC205F1001E8C27C /* WatchConnectivityService.swift */; };
 		CBB1D8F7179E8A5F82D2B518 /* SendMessageTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929C1AA71FF503821C599B06 /* SendMessageTool.swift */; };
+		CCFC45F1C3DFB7454211DFDD /* AgentScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */; };
 		CD3F08406EC0866BA6A61371 /* MemoryRewindTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952E0414BECBCA231798AAD8 /* MemoryRewindTool.swift */; };
 		CEF89D4C24909B998A6664BA /* CircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A347C33EF9746E1A3AFE276 /* CircleButton.swift */; };
 		D0352863512881B058D5BEAE /* HomeKitTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61A6CD7F3BA005693044545A /* HomeKitTool.swift */; };
@@ -302,6 +303,7 @@
 		AF6538260040B7DF8E861F46 /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
 		B159D4D9A13DEA0D6C548E82 /* WatchMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMainView.swift; sourceTree = "<group>"; };
 		B4B112890F9557304A363B26 /* WatchConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityManager.swift; sourceTree = "<group>"; };
+		B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScheduler.swift; sourceTree = "<group>"; };
 		B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameThrottler.swift; sourceTree = "<group>"; };
 		B99A4BBFB7F9645BC326C15B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		BB233064C68D8491161FBCB7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -551,6 +553,7 @@
 			isa = PBXGroup;
 			children = (
 				73CBD57F21361EB7D09E7C01 /* AgentDocumentStore.swift */,
+				B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */,
 				4E5F97E38F16EA7F7EE6746A /* AmbientCaptionService.swift */,
 				4C480DCE90D3FDF01DCA5960 /* BroadcastService.swift */,
 				09B477C822E8DD47398F74B1 /* CameraService.swift */,
@@ -803,6 +806,7 @@
 				64E33EA57E291566D6E0D155 /* AddModelView.swift in Sources */,
 				5A372CED64E94C1BD52F3D81 /* AgentDocumentStore.swift in Sources */,
 				45B147E93CA83D909B187B5A /* AgentPersonalityView.swift in Sources */,
+				CCFC45F1C3DFB7454211DFDD /* AgentScheduler.swift in Sources */,
 				4B218F08B37EFD2AB9B1A7E8 /* AlarmTool.swift in Sources */,
 				B6D20D0D051FA6631CA59789 /* AmbientCaptionOverlay.swift in Sources */,
 				75038F89648B9762169CE88E /* AmbientCaptionService.swift in Sources */,
