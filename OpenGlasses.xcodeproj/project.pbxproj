@@ -113,6 +113,7 @@
 		ACA728D2BFE8B86A2310D80E /* QuickActionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25BA607B0D7E21C454E3AF17 /* QuickActionsSettingsView.swift */; };
 		B02FDC7E1541E94D4B96437A /* ShazamTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3021DA0A037B84E19352C73 /* ShazamTool.swift */; };
 		B05A555F43E279650778C5E2 /* WebSearchTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D21CFB73A908ADC22C5558 /* WebSearchTool.swift */; };
+		B26CD1DD9250EC1665B8BF7B /* AgentDataExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCCEB9216D26D99EBFFA0B1 /* AgentDataExporter.swift */; };
 		B3C0D61A2268A1B8EF2FB8AF /* DateTimeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A8BF60E21FD914D7C6454F /* DateTimeTool.swift */; };
 		B4D1C4DF82A2911DD5AF6AB3 /* DailyBriefingTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 478A79F180A74BD2D8D9814B /* DailyBriefingTool.swift */; };
 		B6D20D0D051FA6631CA59789 /* AmbientCaptionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF4D7078E1A20842EAC31FE /* AmbientCaptionOverlay.swift */; };
@@ -152,6 +153,7 @@
 		EB289A3C17A25E6DED22FA2B /* TextToSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */; };
 		EC0E3F2571BC3922E04CF484 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3951EA5CAF381F4F3192D54 /* LLMService.swift */; };
 		ECEB277B33994D450E4B505A /* ToolCallRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633DF6FE961BCCB26868D5AB /* ToolCallRouter.swift */; };
+		EDDD862FCD553CDF869642D8 /* AgentNotificationQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F2CC178720C7A1A1B1D354 /* AgentNotificationQueue.swift */; };
 		F01F931154E2BB1C8B7520A3 /* FaceRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4252125BA0BF5D460D5DA5B9 /* FaceRecognitionService.swift */; };
 		F02C16114BC229EB28F88C0F /* ToggleGeminiLiveIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A1DF4D36A2C5CA6CE16D7A /* ToggleGeminiLiveIntent.swift */; };
 		F1DD10D116D5E03FB8740F58 /* PedometerTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E78CF208DDFD831CAC7F324 /* PedometerTool.swift */; };
@@ -255,6 +257,7 @@
 		54F579A510ACEF35A1CAB845 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
 		57E7843AFB7602ACD3B49CE0 /* NewsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsTool.swift; sourceTree = "<group>"; };
 		5EB76EF194BABF01F9FDB042 /* BarcodeScannerTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerTool.swift; sourceTree = "<group>"; };
+		5FCCEB9216D26D99EBFFA0B1 /* AgentDataExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDataExporter.swift; sourceTree = "<group>"; };
 		61A6CD7F3BA005693044545A /* HomeKitTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeKitTool.swift; sourceTree = "<group>"; };
 		633DF6FE961BCCB26868D5AB /* ToolCallRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallRouter.swift; sourceTree = "<group>"; };
 		6351E341B6A5291C9ECCFF41 /* ContactLookupHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLookupHelper.swift; sourceTree = "<group>"; };
@@ -266,6 +269,7 @@
 		6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextToSpeechService.swift; sourceTree = "<group>"; };
 		6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptOverlay.swift; sourceTree = "<group>"; };
 		6E826B880D40D7B71C61899E /* ConnectionBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionBanner.swift; sourceTree = "<group>"; };
+		70F2CC178720C7A1A1B1D354 /* AgentNotificationQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationQueue.swift; sourceTree = "<group>"; };
 		736455826E1BEAD947489D6E /* WakeWordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWordService.swift; sourceTree = "<group>"; };
 		73CBD57F21361EB7D09E7C01 /* AgentDocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDocumentStore.swift; sourceTree = "<group>"; };
 		76A7C5E52386D0F0370FDB77 /* VoiceSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSkillsTool.swift; sourceTree = "<group>"; };
@@ -552,7 +556,9 @@
 		A4BE5203F9D0F9A8B998800D /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				5FCCEB9216D26D99EBFFA0B1 /* AgentDataExporter.swift */,
 				73CBD57F21361EB7D09E7C01 /* AgentDocumentStore.swift */,
+				70F2CC178720C7A1A1B1D354 /* AgentNotificationQueue.swift */,
 				B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */,
 				4E5F97E38F16EA7F7EE6746A /* AmbientCaptionService.swift */,
 				4C480DCE90D3FDF01DCA5960 /* BroadcastService.swift */,
@@ -804,7 +810,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				64E33EA57E291566D6E0D155 /* AddModelView.swift in Sources */,
+				B26CD1DD9250EC1665B8BF7B /* AgentDataExporter.swift in Sources */,
 				5A372CED64E94C1BD52F3D81 /* AgentDocumentStore.swift in Sources */,
+				EDDD862FCD553CDF869642D8 /* AgentNotificationQueue.swift in Sources */,
 				45B147E93CA83D909B187B5A /* AgentPersonalityView.swift in Sources */,
 				CCFC45F1C3DFB7454211DFDD /* AgentScheduler.swift in Sources */,
 				4B218F08B37EFD2AB9B1A7E8 /* AlarmTool.swift in Sources */,

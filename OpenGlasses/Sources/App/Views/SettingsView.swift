@@ -153,6 +153,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink {
                         AgentPersonalityView(agentDocs: appState.agentDocs)
+                            .environmentObject(appState)
                     } label: {
                         HStack {
                             Label("Agent Personality", systemImage: "heart.text.clipboard")

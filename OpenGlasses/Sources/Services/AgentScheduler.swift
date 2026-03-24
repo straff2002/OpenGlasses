@@ -188,7 +188,12 @@ class AgentScheduler: ObservableObject {
             appState.lastResponse = processed
 
             if speakResult {
-                await appState.speechService.speak(processed)
+                // Route through notification queue — it handles connected vs disconnected
+                appState.agentNotificationQueue.enqueue(
+                    message: processed,
+                    source: "Agent Task",
+                    priority: .medium
+                )
             }
 
             NSLog("[AgentScheduler] Task complete: %@", String(processed.prefix(100)))

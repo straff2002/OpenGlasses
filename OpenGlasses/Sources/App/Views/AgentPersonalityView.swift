@@ -4,9 +4,12 @@ import SwiftUI
 /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
 struct AgentPersonalityView: View {
     @ObservedObject var agentDocs: AgentDocumentStore
+    @EnvironmentObject var appState: AppState
     @State private var enabled = Config.agentPersonalityEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
     @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
+    @State private var showShareSheet = false
+    @State private var exportURL: URL?
 
     var body: some View {
         List {
@@ -105,6 +108,16 @@ struct AgentPersonalityView: View {
                 }
 
                 Section {
+                    Button {
+                        exportData()
+                    } label: {
+                        Label("Export Agent Data", systemImage: "square.and.arrow.up")
+                    }
+                } footer: {
+                    Text("Export soul, skills, memory, conversations, and quick actions as a portable zip bundle. Compatible with OpenClaw/nanoclaw agent format.")
+                }
+
+                Section {
                     Button(role: .destructive) {
                         resetToDefaults()
                     } label: {
@@ -119,6 +132,11 @@ struct AgentPersonalityView: View {
         .sheet(item: $editingDocument) { type in
             AgentDocumentEditorView(type: type, store: agentDocs)
         }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = exportURL {
+                ShareSheet(items: [url])
+            }
+        }
     }
 
     private func resetToDefaults() {
@@ -126,6 +144,20 @@ struct AgentPersonalityView: View {
             agentDocs.save(type, content: type.defaultContent)
         }
         Config.setAgentOnboardingComplete(false)
+    }
+
+    private func exportData() {
+        do {
+            let url = try AgentDataExporter.exportAll(
+                agentDocs: agentDocs,
+                memoryStore: appState.userMemory,
+                conversationStore: appState.conversationStore
+            )
+            exportURL = url
+            showShareSheet = true
+        } catch {
+            NSLog("[Export] Failed: %@", error.localizedDescription)
+        }
     }
 }
 

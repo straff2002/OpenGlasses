@@ -264,6 +264,7 @@ class AppState: ObservableObject {
     let liveActivityManager = LiveActivityManager()
     let agentDocs = AgentDocumentStore()
     let agentScheduler = AgentScheduler()
+    let agentNotificationQueue = AgentNotificationQueue()
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
@@ -285,7 +286,7 @@ class AppState: ObservableObject {
     private var cancellables: [Any] = []
     @Published private(set) var isProcessing: Bool = false
     private var hasEverRegistered: Bool = false
-    private var inConversation: Bool = false
+    var inConversation: Bool = false
 
     func addDebugEvent(_ message: String) {
         let formatter = DateFormatter()
@@ -415,6 +416,7 @@ class AppState: ObservableObject {
 
         // Agent personality: start scheduler if enabled
         agentScheduler.appState = self
+        agentNotificationQueue.appState = self
         if Config.agentPersonalityEnabled {
             agentScheduler.start()
         }
@@ -568,8 +570,18 @@ class AppState: ObservableObject {
                 print("📋 Devices changed: \(deviceIds)")
                 self.addDebugEvent("Devices changed: \(deviceIds.count)")
                 if !deviceIds.isEmpty {
+                    let wasDisconnected = !self.isConnected
                     self.hasEverRegistered = true
                     self.isConnected = true
+
+                    // Deliver queued agent notifications on reconnect
+                    if wasDisconnected && Config.agentPersonalityEnabled {
+                        // Delay to let audio session stabilize after Bluetooth reconnect
+                        Task {
+                            try? await Task.sleep(nanoseconds: 3_000_000_000)
+                            self.agentNotificationQueue.onGlassesReconnected()
+                        }
+                    }
                 }
             }
         }
