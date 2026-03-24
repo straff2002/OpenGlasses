@@ -28,15 +28,23 @@ class AgentScheduler: ObservableObject {
             ScheduledTask(
                 id: "morning-briefing",
                 name: "Morning Briefing",
-                prompt: "Give me a brief morning update: what's on my calendar today, any reminders due, and the weather. Keep it to 3-4 sentences.",
+                prompt: "Use your tools to check: 1) today's calendar events, 2) any due reminders, 3) current weather. Summarize in 3-4 spoken sentences. If the day is completely empty, still mention the weather.",
                 intervalMinutes: 0,  // 0 = once per day, on first activation
                 enabled: true,
                 speakResult: true
             ),
             ScheduledTask(
+                id: "calendar-check",
+                name: "Upcoming Events",
+                prompt: "Check the calendar for events in the next 30 minutes. If there's an upcoming meeting or event, remind me with the name, time, and location. If nothing is coming up, there's nothing to report.",
+                intervalMinutes: 15,
+                enabled: true,
+                speakResult: true
+            ),
+            ScheduledTask(
                 id: "periodic-awareness",
-                name: "Periodic Check-in",
-                prompt: "Based on what you know about me (check my memory), is there anything I should be reminded about right now? Only speak up if there's something relevant. If nothing, just say 'All clear.'",
+                name: "Context Check",
+                prompt: "Check my reminders for anything due now or overdue. Check if there are any timer or alarm results pending. If nothing needs attention, there's nothing to report.",
                 intervalMinutes: 30,
                 enabled: false,
                 speakResult: true
@@ -44,7 +52,7 @@ class AgentScheduler: ObservableObject {
             ScheduledTask(
                 id: "memory-reflection",
                 name: "Memory Reflection",
-                prompt: "Review what you've learned about me today. Summarize any new facts, patterns, or preferences you've noticed. Update your memory with a concise summary. If nothing new, say so briefly.",
+                prompt: "Review recent conversations. Extract any new facts, preferences, or patterns worth remembering. Store them in memory using [REMEMBER] commands. This is a background task — no need to speak unless you learned something significant.",
                 intervalMinutes: 120,
                 enabled: false,
                 speakResult: false
@@ -181,15 +189,24 @@ class AgentScheduler: ObservableObject {
 
     // MARK: - Execution
 
-    private func executeAgentPrompt(_ prompt: String, speakResult: Bool) async {
+    private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async {
         guard let appState else { return }
 
         isRunning = true
         defer { isRunning = false }
 
+        // Wrap the prompt so the agent knows to stay quiet when nothing to report
+        let wrappedPrompt = """
+        \(prompt)
+
+        IMPORTANT: If there is nothing noteworthy to report, respond with exactly "[NOTHING]" \
+        and nothing else. Only speak up if there is something the user would actually want to know. \
+        Do not report routine/expected states. Be decisive — either report something useful or say [NOTHING].
+        """
+
         do {
             let response = try await appState.llmService.sendMessage(
-                prompt,
+                wrappedPrompt,
                 locationContext: appState.locationService.locationContext,
                 memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
                 agentContext: appState.currentAgentContext
@@ -199,14 +216,22 @@ class AgentScheduler: ObservableObject {
                 ? appState.userMemory.parseAndExecuteCommands(in: response)
                 : response
 
+            // Check if the agent decided there's nothing to report
+            let trimmed = processed.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == "[NOTHING]" || trimmed.lowercased().contains("[nothing]") {
+                NSLog("[AgentScheduler] Task complete — nothing to report")
+                return
+            }
+
             appState.lastResponse = processed
 
             if speakResult {
-                // Route through notification queue — it handles connected vs disconnected
                 appState.agentNotificationQueue.enqueue(
                     message: processed,
                     source: "Agent Task",
-                    priority: .medium
+                    priority: .medium,
+                    personaId: personaId,
+                    personaName: personaName
                 )
             }
 
