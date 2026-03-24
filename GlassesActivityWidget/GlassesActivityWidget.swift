@@ -2,6 +2,13 @@ import WidgetKit
 import SwiftUI
 import ActivityKit
 
+@main
+struct GlassesActivityWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        GlassesActivityWidget()
+    }
+}
+
 struct GlassesActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: GlassesActivityAttributes.self) { context in
