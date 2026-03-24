@@ -26,6 +26,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>mwdat-688603774243722</string>
+				<string>openglasses</string>
 			</array>
 		</dict>
 	</array>

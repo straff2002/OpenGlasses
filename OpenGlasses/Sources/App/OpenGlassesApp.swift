@@ -121,6 +121,25 @@ struct OpenGlassesApp: App {
                 .environmentObject(appState)
                 .onAppear { AppStateProvider.shared = appState }
                 .onOpenURL { url in
+                    // Handle widget quick action deep links
+                    if url.scheme == "openglasses", url.host == "action" {
+                        let action = url.lastPathComponent
+                        Task { @MainActor in
+                            switch action {
+                            case "ask":
+                                appState.wakeWordService.stopListening()
+                                try? await Task.sleep(nanoseconds: 100_000_000)
+                                await appState.handleWakeWordDetected()
+                            case "photo":
+                                await appState.captureAndAnalyzePhoto()
+                            case "describe":
+                                await appState.capturePhotoAndSend(prompt: "Describe what you see in detail.")
+                            default:
+                                break
+                            }
+                        }
+                        return
+                    }
                     processWearablesCallbackURL(url, source: "SwiftUI")
                 }
         }
@@ -1300,6 +1319,12 @@ class AppState: ObservableObject {
         // End active conversation thread
         if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
             conversationStore.endThread()
+        }
+        // In silent mode, don't restart the wake word listener — agent is still
+        // actionable via watch, widget, Action Button, and manual mic tap
+        if Config.silentMode {
+            print("🔇 Silent mode — wake word listener stays off")
+            return
         }
         do {
             try await wakeWordService.startListening()

@@ -12,7 +12,7 @@ struct GlassesActivityWidgetBundle: WidgetBundle {
 struct GlassesActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: GlassesActivityAttributes.self) { context in
-            // Lock Screen presentation
+            // Lock Screen presentation with quick action buttons
             lockScreenView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
@@ -57,32 +57,69 @@ struct GlassesActivityWidget: Widget {
 
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<GlassesActivityAttributes>) -> some View {
-        HStack(spacing: 12) {
-            // Glasses icon with connection dot
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: "eyeglasses")
-                    .font(.title)
-                    .foregroundStyle(.white)
-                Circle()
-                    .fill(context.state.isConnected ? .green : .red)
-                    .frame(width: 8, height: 8)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(statusText(for: context.state))
-                        .font(.subheadline.weight(.medium))
+        VStack(spacing: 8) {
+            // Status row
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(systemName: "eyeglasses")
+                        .font(.title)
                         .foregroundStyle(.white)
-                    Spacer()
-                    statusIcon(for: context.state)
-                        .foregroundStyle(statusColor(for: context.state))
+                    Circle()
+                        .fill(context.state.isConnected ? .green : .red)
+                        .frame(width: 8, height: 8)
                 }
 
-                if !context.state.lastResponseSnippet.isEmpty {
-                    Text(context.state.lastResponseSnippet)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(statusText(for: context.state))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        statusIcon(for: context.state)
+                            .foregroundStyle(statusColor(for: context.state))
+                    }
+
+                    if !context.state.lastResponseSnippet.isEmpty {
+                        Text(context.state.lastResponseSnippet)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            // Quick action buttons — deep link into the main app
+            if context.state.isConnected {
+                HStack(spacing: 8) {
+                    // Mic button — start listening
+                    Link(destination: URL(string: "openglasses://action/ask")!) {
+                        Label("Ask", systemImage: "mic.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    // Photo button — capture and describe
+                    Link(destination: URL(string: "openglasses://action/photo")!) {
+                        Label("Photo", systemImage: "camera.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    // Describe button — photo + describe prompt
+                    Link(destination: URL(string: "openglasses://action/describe")!) {
+                        Label("Describe", systemImage: "eye")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
         }

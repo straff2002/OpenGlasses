@@ -181,6 +181,17 @@ struct SettingsView: View {
 
                 // MARK: Hardware
                 Section {
+                    Toggle("Silent Mode", isOn: Binding(
+                        get: { Config.silentMode },
+                        set: { newValue in
+                            Config.setSilentMode(newValue)
+                            if newValue {
+                                appState.wakeWordService.stopListening()
+                            } else {
+                                Task { try? await appState.wakeWordService.startListening() }
+                            }
+                        }
+                    ))
                     Toggle("Listen via Glasses Mic", isOn: $useGlassesMicForWakeWord)
                     Toggle("Blur Bystander Faces", isOn: $privacyFilterEnabled)
                     Toggle("Use Phone Mic for Translation", isOn: Binding(
@@ -190,7 +201,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Hardware & Privacy")
                 } footer: {
-                    Text("Glasses mic enables true hands-free (phone in pocket) but drains glasses battery faster. Phone mic for translation picks up nearby speakers through the iPhone mic instead of the glasses — useful for translating what someone next to you is saying.")
+                    Text("Silent Mode turns off the wake word listener — the agent is still actionable via the watch, widget, Action Button, and manual mic tap. Scheduled tasks keep running. Glasses mic enables true hands-free but drains battery faster.")
                 }
 
                 // MARK: Transparency

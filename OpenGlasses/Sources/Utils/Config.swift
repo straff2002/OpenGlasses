@@ -1186,6 +1186,19 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "userMemoryEnabled")
     }
 
+    // MARK: - Silent Mode
+
+    /// When enabled, the wake word listener is off but the agent is still actionable
+    /// via the watch, widget quick actions, Action Button, and manual mic tap.
+    /// Scheduled agent tasks still run in the background.
+    static var silentMode: Bool {
+        UserDefaults.standard.bool(forKey: "silentMode")
+    }
+
+    static func setSilentMode(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "silentMode")
+    }
+
     // MARK: - Agent Personality Mode
 
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
