@@ -22,6 +22,7 @@ options:
     - it
     - nl
     - th
+    - ar
 
 packages:
   meta-wearables-dat-ios:
