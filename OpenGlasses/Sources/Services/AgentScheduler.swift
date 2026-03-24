@@ -22,7 +22,10 @@ class AgentScheduler: ObservableObject {
         var intervalMinutes: Int
         var enabled: Bool
         var lastRun: Date?
-        var speakResult: Bool  // Whether to speak the result via TTS
+        var speakResult: Bool      // Whether to speak the result via TTS
+        var personaId: String?     // Which persona/agent runs this (nil = default/current)
+        var modelId: String?       // Specific model override (nil = persona's model or active model)
+        var createdBy: String?     // Which agent created this task (for audit trail)
 
         static let defaults: [ScheduledTask] = [
             ScheduledTask(
@@ -186,8 +189,8 @@ class AgentScheduler: ObservableObject {
                 if now.timeIntervalSince(lastRun) < interval { continue }
             }
 
-            NSLog("[AgentScheduler] Running task: %@", task.name)
-            await executeAgentPrompt(task.prompt, speakResult: task.speakResult)
+            NSLog("[AgentScheduler] Running task: %@ (model: %@)", task.name, task.modelId ?? "default")
+            await executeTask(task)
             markTaskRun(task.id)
 
             // Only run one task per cycle to avoid overwhelming
@@ -196,6 +199,39 @@ class AgentScheduler: ObservableObject {
     }
 
     // MARK: - Execution
+
+    /// Execute a scheduled task, switching to its designated model/persona if specified.
+    private func executeTask(_ task: ScheduledTask) async {
+        guard let appState else { return }
+
+        // Save current model so we can restore after
+        let previousModelId = Config.activeModelId
+        var personaName: String?
+
+        // Switch to the task's persona/model if specified
+        if let personaId = task.personaId,
+           let persona = Config.enabledPersonas.first(where: { $0.id == personaId }) {
+            Config.setActiveModelId(persona.modelId)
+            Config.setActivePresetId(persona.presetId)
+            appState.llmService.refreshActiveModel()
+            personaName = persona.name
+            NSLog("[AgentScheduler] Switched to persona: %@ (model: %@)", persona.name, persona.modelId)
+        } else if let modelId = task.modelId {
+            Config.setActiveModelId(modelId)
+            appState.llmService.refreshActiveModel()
+            NSLog("[AgentScheduler] Switched to model: %@", modelId)
+        }
+
+        // Run the task
+        await executeAgentPrompt(task.prompt, speakResult: task.speakResult, personaId: task.personaId, personaName: personaName)
+
+        // Restore previous model
+        if task.personaId != nil || task.modelId != nil {
+            Config.setActiveModelId(previousModelId)
+            appState.llmService.refreshActiveModel()
+            NSLog("[AgentScheduler] Restored model: %@", previousModelId)
+        }
+    }
 
     private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async {
         guard let appState else { return }

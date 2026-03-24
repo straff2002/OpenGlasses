@@ -9,18 +9,21 @@ import Foundation
 struct AgentScheduleTool: NativeTool {
     let name = "manage_schedule"
     let description = """
-        Manage your own scheduled background tasks. You can:
+        Manage scheduled background tasks. You can:
         - List current tasks and their status
         - Create new scheduled tasks (prompts that run on an interval)
         - Enable or disable existing tasks
         - Delete tasks you no longer need
+        - Assign tasks to a specific persona/agent (persona_id) or model (model_id)
 
-        Use this to set up recurring checks (email, messages, news), \
-        periodic reminders, or any background work. Tasks run automatically \
-        and only notify the user when there's something worth reporting.
+        DELEGATION: You can create tasks that run on a cheaper/faster model. \
+        For example, assign routine email checks to Haiku while keeping yourself \
+        on Opus for complex reasoning. Use persona_id to delegate to another \
+        agent persona, or model_id to specify a model directly.
 
-        You can also create tasks that call Siri Shortcuts by including \
-        "Run the shortcut 'ShortcutName'" in the prompt.
+        Tasks run automatically and only notify the user when there's something \
+        worth reporting. Include "Run the shortcut 'ShortcutName'" in the prompt \
+        to call Siri Shortcuts.
         """
 
     let parametersSchema: [String: Any] = [
@@ -50,6 +53,14 @@ struct AgentScheduleTool: NativeTool {
             "speak_result": [
                 "type": "boolean",
                 "description": "Whether to speak the result to the user (for create). Default true."
+            ],
+            "persona_id": [
+                "type": "string",
+                "description": "Which persona/agent should run this task. Use a persona ID from the personas list. The task will use that persona's model and prompt. Useful for assigning cheap/fast models to routine checks."
+            ],
+            "model_id": [
+                "type": "string",
+                "description": "Specific model ID override for this task. Use this to assign a fast/cheap model (e.g., Haiku) for routine tasks while keeping the main agent on a smarter model."
             ]
         ],
         "required": ["action"]
@@ -85,12 +96,18 @@ struct AgentScheduleTool: NativeTool {
             }
             let interval = args["interval_minutes"] as? Int ?? 30
             let speak = args["speak_result"] as? Bool ?? true
+            let personaId = args["persona_id"] as? String
+            let modelId = args["model_id"] as? String
 
             let id = taskName.lowercased()
                 .replacingOccurrences(of: " ", with: "-")
                 .filter { $0.isLetter || $0.isNumber || $0 == "-" }
 
-            let newTask = AgentScheduler.ScheduledTask(
+            // Resolve persona name for the response
+            let personaLabel = personaId.flatMap { pid in Config.enabledPersonas.first(where: { $0.id == pid })?.name } ?? ""
+            let modelLabel = modelId.flatMap { mid in Config.savedModels.first(where: { $0.id == mid })?.name } ?? ""
+
+            var newTask = AgentScheduler.ScheduledTask(
                 id: id,
                 name: taskName,
                 prompt: prompt,
@@ -98,10 +115,18 @@ struct AgentScheduleTool: NativeTool {
                 enabled: true,
                 speakResult: speak
             )
+            newTask.personaId = personaId
+            newTask.modelId = modelId
+            newTask.createdBy = "agent"
 
             tasks.append(newTask)
             await MainActor.run { AgentScheduler.saveTasks(tasks) }
-            return "Created task '\(taskName)' (ID: \(id), every \(interval) min, speak: \(speak)). It will run on the next scheduler cycle."
+
+            var details = "Created task '\(taskName)' (ID: \(id), every \(interval) min"
+            if !personaLabel.isEmpty { details += ", agent: \(personaLabel)" }
+            if !modelLabel.isEmpty { details += ", model: \(modelLabel)" }
+            details += "). It will run on the next scheduler cycle."
+            return details
 
         case "enable":
             guard let taskId = args["task_id"] as? String else {
