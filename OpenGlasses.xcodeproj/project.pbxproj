@@ -41,6 +41,7 @@
 		32EAE84A6AFFE69E81EC21C6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 9DBFBEF2763A02A1421213ED /* MLXLMCommon */; };
 		33A3883E9019679A821C11F1 /* GeocodingHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0679379BFB36E617B22C6104 /* GeocodingHelper.swift */; };
 		34E3BF5C773F011A28C87B06 /* LiveTranslationTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C6147CE5F69027F56B754E /* LiveTranslationTool.swift */; };
+		3631893292584C18C7D4FEF5 /* DiscoverCapabilitiesTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0094676031D0F14EC355BBB1 /* DiscoverCapabilitiesTool.swift */; };
 		3E6777A15E47D573A8B16990 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939D1D229A4FEA0E0E45223A /* LiveActivityManager.swift */; };
 		430731D416B1A767E421C53E /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F9E1F6B5AC442EC808D2B26 /* TranscriptionService.swift */; };
 		4482080CDC5B75F5A0A12837 /* ConnectionBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E826B880D40D7B71C61899E /* ConnectionBanner.swift */; };
@@ -205,6 +206,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0094676031D0F14EC355BBB1 /* DiscoverCapabilitiesTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverCapabilitiesTool.swift; sourceTree = "<group>"; };
 		027414D3FDBBF808E2E0F3DB /* GlassesActivityWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = GlassesActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		05E7694407E6C49108269783 /* AgentScheduleTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScheduleTool.swift; sourceTree = "<group>"; };
 		0679379BFB36E617B22C6104 /* GeocodingHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeocodingHelper.swift; sourceTree = "<group>"; };
@@ -504,6 +506,7 @@
 				15A8BF60E21FD914D7C6454F /* DateTimeTool.swift */,
 				220AC9B94458D011A6DC7E37 /* DeviceInfoTool.swift */,
 				D56AC77FDD0C1EBA73F47979 /* DirectionsTool.swift */,
+				0094676031D0F14EC355BBB1 /* DiscoverCapabilitiesTool.swift */,
 				0F69F28651A75BEB39B7F0E1 /* EmergencyInfoTool.swift */,
 				924255FDB4AB583D2ACDB6E3 /* FaceRecognitionTool.swift */,
 				377F92EB5BBCF9661C7C6F1C /* FitnessCoachingTool.swift */,
@@ -853,6 +856,7 @@
 				B3C0D61A2268A1B8EF2FB8AF /* DateTimeTool.swift in Sources */,
 				061F2082F2ED7B2594188FDC /* DeviceInfoTool.swift in Sources */,
 				91DD13D2BC6D1247C9751196 /* DirectionsTool.swift in Sources */,
+				3631893292584C18C7D4FEF5 /* DiscoverCapabilitiesTool.swift in Sources */,
 				D1F26392F6D2318094528B6C /* EmergencyInfoTool.swift in Sources */,
 				F01F931154E2BB1C8B7520A3 /* FaceRecognitionService.swift in Sources */,
 				BB771B3C6F65DCE90E624A1B /* FaceRecognitionTool.swift in Sources */,

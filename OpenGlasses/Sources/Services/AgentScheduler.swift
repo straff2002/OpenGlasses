@@ -57,6 +57,14 @@ class AgentScheduler: ObservableObject {
                 enabled: false,
                 speakResult: false
             ),
+            ScheduledTask(
+                id: "capability-review",
+                name: "Suggest Improvements",
+                prompt: "Use the discover_capabilities tool with category 'all' to see what's available on this device. Then use category 'suggest' to think about useful automations. If you have a genuinely useful suggestion the operator hasn't heard before, propose it briefly. If you've already suggested everything obvious, there's nothing to report.",
+                intervalMinutes: 0,  // Once daily
+                enabled: false,
+                speakResult: true
+            ),
         ]
     }
 

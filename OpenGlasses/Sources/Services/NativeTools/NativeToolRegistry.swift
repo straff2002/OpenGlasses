@@ -88,6 +88,9 @@ final class NativeToolRegistry {
         }
         register(FoodAnalysisTool())
         register(AgentScheduleTool())
+        var discoveryTool = DiscoverCapabilitiesTool()
+        discoveryTool.toolRegistry = self
+        register(discoveryTool)
         register(ChineseAppsTool())
         register(AsianMessagingTool())
         // LiveTranslationTool is registered separately after the service is created
