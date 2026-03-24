@@ -31,7 +31,7 @@ struct PromptPresetsView: View {
                                     }
                                 }
                                 Text(preset.prompt.prefix(80) + (preset.prompt.count > 80 ? "…" : ""))
-                                    .font(.caption)
+                                    .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
@@ -125,7 +125,13 @@ struct PromptPresetEditorView: View {
 
                 Section {
                     TextEditor(text: $prompt)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.primary)
                         .frame(minHeight: 200)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 } header: {
                     Text("System Prompt")
                 } footer: {
