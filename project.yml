@@ -16,13 +16,34 @@ options:
     - cs
     - pl
     - pt-BR
+    - pt-PT
     - es
+    - es-MX
     - fr
+    - fr-CA
     - de
     - it
     - nl
     - th
     - ar
+    - hi
+    - ru
+    - sv
+    - fi
+    - uk
+    - el
+    - tr
+    - da
+    - nb
+    - ro
+    - hu
+    - hr
+    - sk
+    - he
+    - ms
+    - vi
+    - id
+    - ca
 
 packages:
   meta-wearables-dat-ios:
