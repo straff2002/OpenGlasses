@@ -36,20 +36,20 @@ struct PersonasView: View {
                                 HStack(spacing: 4) {
                                     Text(modelName(for: persona.modelId))
                                         .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                     Text("·")
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.secondary)
                                     Text(presetName(for: persona.presetId))
                                         .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .font(.footnote)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .buttonStyle(.plain)

@@ -88,7 +88,7 @@ struct LocalModelManagerView: View {
                                     if model.hasVision {
                                         Label("Vision", systemImage: "eye")
                                             .font(.caption2)
-                                            .foregroundStyle(.blue)
+                                            .foregroundStyle(.tint)
                                     }
                                     if model.hasToolCalling {
                                         Label("Tools", systemImage: "wrench")

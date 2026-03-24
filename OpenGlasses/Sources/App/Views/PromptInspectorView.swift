@@ -52,7 +52,7 @@ struct PromptInspectorView: View {
                                 } else {
                                     Text("Not active")
                                         .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                         }

@@ -72,7 +72,7 @@ struct ModelPickerSheet: View {
                             if model.visionEnabled {
                                 Image(systemName: "eye")
                                     .font(.caption2)
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(.tint)
                                     .accessibilityLabel("Vision enabled")
                             }
                         }

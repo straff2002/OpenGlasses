@@ -96,7 +96,7 @@ struct SettingsView: View {
                                         if model.visionEnabled {
                                             Image(systemName: "eye")
                                                 .font(.caption2)
-                                                .foregroundStyle(.blue)
+                                                .foregroundStyle(.tint)
                                         }
                                         if !model.apiKey.isEmpty {
                                             Image(systemName: "checkmark.circle.fill")
@@ -112,7 +112,7 @@ struct SettingsView: View {
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .font(.footnote)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }

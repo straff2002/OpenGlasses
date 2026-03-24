@@ -44,7 +44,7 @@ struct CustomToolsView: View {
                                 Spacer()
                                 Image(systemName: "chevron.right")
                                     .font(.footnote)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }

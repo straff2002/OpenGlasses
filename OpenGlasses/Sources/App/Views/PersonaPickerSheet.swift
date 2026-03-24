@@ -35,12 +35,12 @@ struct PersonaPickerSheet: View {
                                         let presetName = Config.savedPresets.first { $0.id == persona.presetId }?.name ?? "Default"
                                         Text(modelName)
                                             .font(.caption)
-                                            .foregroundStyle(.tertiary)
+                                            .foregroundStyle(.secondary)
                                         Text("·")
-                                            .foregroundStyle(.tertiary)
+                                            .foregroundStyle(.secondary)
                                         Text(presetName)
                                             .font(.caption)
-                                            .foregroundStyle(.tertiary)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
                                 Spacer()

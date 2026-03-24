@@ -117,7 +117,7 @@ struct NetworkMonitorView: View {
                 }
                 Text(timeAgo(entry.timestamp))
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
     }

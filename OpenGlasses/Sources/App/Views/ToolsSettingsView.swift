@@ -131,7 +131,7 @@ struct ToolsSettingsView: View {
                                             Spacer()
                                             Text(paramInfo["type"] as? String ?? "any")
                                                 .font(.system(.caption2, design: .monospaced))
-                                                .foregroundStyle(.tertiary)
+                                                .foregroundStyle(.secondary)
                                         }
                                     }
                                 }
