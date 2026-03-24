@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 /// Supported LLM providers
 enum LLMProvider: String, CaseIterable {
@@ -12,6 +15,7 @@ enum LLMProvider: String, CaseIterable {
     case openrouter = "openrouter"
     case custom = "custom"
     case local = "local"
+    case appleOnDevice = "appleOnDevice"
 
     var displayName: String {
         switch self {
@@ -24,14 +28,15 @@ enum LLMProvider: String, CaseIterable {
         case .minimax: return "MiniMax (Subscription)"
         case .openrouter: return "OpenRouter (500+ models)"
         case .custom: return "Custom (OpenAI-compatible)"
-        case .local: return "Local (On-Device)"
+        case .local: return "Local (On-Device MLX)"
+        case .appleOnDevice: return "Apple Intelligence"
         }
     }
 
     /// Whether this provider uses the OpenAI-compatible API format
     var isOpenAICompatible: Bool {
         switch self {
-        case .anthropic, .gemini, .local: return false
+        case .anthropic, .gemini, .local, .appleOnDevice: return false
         case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom: return true
         }
     }
@@ -49,6 +54,7 @@ enum LLMProvider: String, CaseIterable {
         case .openrouter: return "https://openrouter.ai/api/v1/chat/completions"
         case .custom: return "https://api.openai.com/v1/chat/completions"
         case .local: return ""
+        case .appleOnDevice: return ""
         }
     }
 
@@ -65,6 +71,7 @@ enum LLMProvider: String, CaseIterable {
         case .openrouter: return "anthropic/claude-sonnet-4"
         case .custom: return "gpt-4o"
         case .local: return "mlx-community/gemma-2-2b-it-4bit"
+        case .appleOnDevice: return "apple-foundation-model"
         }
     }
 
@@ -79,7 +86,7 @@ enum LLMProvider: String, CaseIterable {
     /// Whether this provider requires an API key
     var requiresAPIKey: Bool {
         switch self {
-        case .local: return false
+        case .local, .appleOnDevice: return false
         default: return true
         }
     }
@@ -87,7 +94,7 @@ enum LLMProvider: String, CaseIterable {
     /// Whether this provider supports listing models via API
     var supportsModelListing: Bool {
         switch self {
-        case .local: return false
+        case .local, .appleOnDevice: return false
         default: return true
         }
     }
@@ -110,6 +117,15 @@ class LLMService: ObservableObject {
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
 
+    #if canImport(FoundationModels)
+    private var _appleSession: Any?
+    @available(iOS 26.0, *)
+    private var appleSession: LanguageModelSession? {
+        get { _appleSession as? LanguageModelSession }
+        set { _appleSession = newValue }
+    }
+    #endif
+
     /// Conversation history for multi-turn context
     private var conversationHistory: [[String: Any]] = []
     private let maxHistoryTurns = 10  // Keep last 10 exchanges
@@ -118,7 +134,7 @@ class LLMService: ObservableObject {
     private let maxToolCallIterations = 5
 
     /// Build the full system prompt, optionally including location, tools, memory, and vision context
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil) -> String {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil) -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -267,6 +283,9 @@ class LLMService: ObservableObject {
             Only remember when the user explicitly shares personal info — don't infer or assume.
             """
         }
+        if let playbook = playbookContext {
+            prompt += "\n\n\(playbook)"
+        }
         if let location = locationContext {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
@@ -281,7 +300,7 @@ class LLMService: ObservableObject {
         return prompt
     }
 
-    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil) async throws -> String {
+    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil) async throws -> String {
         isProcessing = true
         defer { isProcessing = false }
 
@@ -294,7 +313,7 @@ class LLMService: ObservableObject {
         let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
         let includeTools = hasNativeTools || includeOpenClaw
         let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
-        let fullPrompt = Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, memoryContext: memoryContext, agentContext: agentContext)
+        let fullPrompt = Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext)
 
         var toolsLabel = ""
         if hasNativeTools { toolsLabel += " [NativeTools]" }
@@ -308,6 +327,8 @@ class LLMService: ObservableObject {
             return try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .local:
             return try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+        case .appleOnDevice:
+            return try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
         case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
             return try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         }
@@ -839,6 +860,50 @@ class LLMService: ObservableObject {
     }
 
     // MARK: - Local (On-Device MLX)
+
+    // MARK: - Apple Foundation Models (On-Device)
+
+    private func sendAppleOnDevice(_ text: String, systemPrompt: String) async throws -> String {
+        #if canImport(FoundationModels)
+        guard #available(iOS 26.0, *) else {
+            throw LLMError.missingAPIKey("Apple Intelligence requires iOS 26+")
+        }
+        return try await sendAppleOnDeviceImpl(text, systemPrompt: systemPrompt)
+        #else
+        throw LLMError.missingAPIKey("Apple Foundation Models requires iOS 26+")
+        #endif
+    }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, *)
+    private func sendAppleOnDeviceImpl(_ text: String, systemPrompt: String) async throws -> String {
+        let availability = SystemLanguageModel.default.availability
+        guard case .available = availability else {
+            switch availability {
+            case .unavailable(let reason):
+                switch reason {
+                case .deviceNotEligible:
+                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence")
+                case .appleIntelligenceNotEnabled:
+                    throw LLMError.missingAPIKey("Enable Apple Intelligence in Settings > Apple Intelligence & Siri")
+                case .modelNotReady:
+                    throw LLMError.missingAPIKey("Apple Intelligence model is still downloading, try again later")
+                @unknown default:
+                    throw LLMError.missingAPIKey("Apple Intelligence unavailable")
+                }
+            default:
+                throw LLMError.missingAPIKey("Apple Intelligence unavailable")
+            }
+        }
+
+        if appleSession == nil {
+            appleSession = LanguageModelSession(instructions: systemPrompt)
+        }
+
+        let response = try await appleSession!.respond(to: text)
+        return response.content
+    }
+    #endif
 
     private func sendLocal(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data? = nil) async throws -> String {
         guard let localService = localLLMService else {

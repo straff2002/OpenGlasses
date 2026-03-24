@@ -71,7 +71,7 @@ struct AgentScheduleTool: NativeTool {
             return "Specify an action: list, create, enable, disable, delete"
         }
 
-        var tasks = await MainActor.run { AgentScheduler.savedTasks() }
+        let tasks = await MainActor.run { AgentScheduler.savedTasks() }
 
         switch action {
         case "list":
@@ -103,7 +103,6 @@ struct AgentScheduleTool: NativeTool {
                 .replacingOccurrences(of: " ", with: "-")
                 .filter { $0.isLetter || $0.isNumber || $0 == "-" }
 
-            // Resolve persona name for the response
             let personaLabel = personaId.flatMap { pid in Config.enabledPersonas.first(where: { $0.id == pid })?.name } ?? ""
             let modelLabel = modelId.flatMap { mid in Config.savedModels.first(where: { $0.id == mid })?.name } ?? ""
 
@@ -119,8 +118,8 @@ struct AgentScheduleTool: NativeTool {
             newTask.modelId = modelId
             newTask.createdBy = "agent"
 
-            tasks.append(newTask)
-            await MainActor.run { AgentScheduler.saveTasks(tasks) }
+            let updatedTasks = tasks + [newTask]
+            await MainActor.run { AgentScheduler.saveTasks(updatedTasks) }
 
             var details = "Created task '\(taskName)' (ID: \(id), every \(interval) min"
             if !personaLabel.isEmpty { details += ", agent: \(personaLabel)" }
@@ -133,8 +132,10 @@ struct AgentScheduleTool: NativeTool {
                 return "Provide the task_id to enable."
             }
             if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
-                tasks[idx].enabled = true
-                await MainActor.run { AgentScheduler.saveTasks(tasks) }
+                var updated = tasks
+                updated[idx].enabled = true
+                let saved = updated
+                await MainActor.run { AgentScheduler.saveTasks(saved) }
                 return "Enabled task '\(tasks[idx].name)'."
             }
             return "Task '\(taskId)' not found."
@@ -144,8 +145,10 @@ struct AgentScheduleTool: NativeTool {
                 return "Provide the task_id to disable."
             }
             if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
-                tasks[idx].enabled = false
-                await MainActor.run { AgentScheduler.saveTasks(tasks) }
+                var updated = tasks
+                updated[idx].enabled = false
+                let saved = updated
+                await MainActor.run { AgentScheduler.saveTasks(saved) }
                 return "Disabled task '\(tasks[idx].name)'."
             }
             return "Task '\(taskId)' not found."
@@ -156,8 +159,10 @@ struct AgentScheduleTool: NativeTool {
             }
             if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
                 let name = tasks[idx].name
-                tasks.remove(at: idx)
-                await MainActor.run { AgentScheduler.saveTasks(tasks) }
+                var updated = tasks
+                updated.remove(at: idx)
+                let saved = updated
+                await MainActor.run { AgentScheduler.saveTasks(saved) }
                 return "Deleted task '\(name)'."
             }
             return "Task '\(taskId)' not found."

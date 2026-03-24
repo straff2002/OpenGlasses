@@ -56,6 +56,7 @@ class GeminiLiveSessionManager: ObservableObject {
     /// Submit a video frame directly (called from CameraService's continuous streaming callback).
     /// This bypasses the polling timer for lower latency.
     func submitVideoFrame(_ image: UIImage) {
+        guard !Config.audioOnlyMode else { return }
         guard isActive else {
             droppedNotActive += 1
             if droppedNotActive <= 3 {

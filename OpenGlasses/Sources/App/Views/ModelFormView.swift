@@ -203,6 +203,7 @@ struct ModelFormView: View {
         case .openrouter: return "500+ models with one API key — openrouter.ai/keys"
         case .custom: return "Any OpenAI-compatible API endpoint"
         case .local: return "On-device inference — no internet needed"
+        case .appleOnDevice: return "Apple Intelligence — built-in, no download, no API key"
         }
     }
 

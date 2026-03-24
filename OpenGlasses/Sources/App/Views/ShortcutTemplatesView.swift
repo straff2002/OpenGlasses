@@ -25,7 +25,7 @@ struct ShortcutTemplatesView: View {
 
                                 Image(systemName: template.icon)
                                     .font(.title3)
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(.primary)
                                     .frame(width: 28)
 
                                 VStack(alignment: .leading, spacing: 2) {

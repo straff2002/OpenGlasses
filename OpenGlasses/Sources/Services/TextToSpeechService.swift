@@ -7,6 +7,13 @@ import AVFoundation
 class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var isSpeaking: Bool = false
 
+    /// When true, TTS only speaks when glasses are connected (privacy mode).
+    /// Set to false to allow phone speaker output without glasses.
+    var requireGlassesForSpeech: Bool = true
+
+    /// Checked before speaking — set by AppState when glasses connect/disconnect.
+    var glassesConnected: Bool = false
+
     private let synthesizer = AVSpeechSynthesizer()
     private var audioPlayer: AVAudioPlayer?
     private var tonePlayer: AVAudioPlayer?  // Separate ref so tone isn't killed by speech
@@ -24,6 +31,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     func speak(_ text: String) async {
         guard !text.isEmpty else { return }
+
+        // Privacy: don't speak through phone speaker when glasses aren't connected
+        if requireGlassesForSpeech && !glassesConnected {
+            print("🔊 TTS: Suppressed — glasses not connected (privacy)")
+            return
+        }
 
         // Cancel any in-progress speech and thinking sound
         stopSpeaking()

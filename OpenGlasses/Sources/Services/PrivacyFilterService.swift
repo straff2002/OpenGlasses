@@ -125,8 +125,8 @@ class PrivacyFilterService: ObservableObject {
             )
 
             // Create an oval mask for natural face shape
-            let maskRect = CIVector(x: ciRect.origin.x, y: ciRect.origin.y,
-                                     z: ciRect.width, w: ciRect.height)
+            _ = CIVector(x: ciRect.origin.x, y: ciRect.origin.y,
+                         z: ciRect.width, w: ciRect.height)
 
             // Use a radial gradient as an elliptical mask
             guard let radialGradient = CIFilter(name: "CIRadialGradient") else { continue }

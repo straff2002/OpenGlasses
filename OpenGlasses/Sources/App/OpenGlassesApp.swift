@@ -166,6 +166,16 @@ struct OpenGlassesApp: App {
                         }
                         return
                     }
+
+                    // Handle quick action buttons from widget
+                    if url.scheme == "openglasses", url.host == "quickaction" {
+                        let actionId = url.lastPathComponent
+                        Task { @MainActor in
+                            guard let action = Config.quickActions.first(where: { $0.id == actionId }) else { return }
+                            await appState.executeQuickAction(action)
+                        }
+                        return
+                    }
                     processWearablesCallbackURL(url, source: "SwiftUI")
                 }
         }
@@ -256,7 +266,17 @@ struct OpenGlassesApp: App {
 /// Global application state
 @MainActor
 class AppState: ObservableObject {
-    @Published var isConnected: Bool = false
+    @Published var isConnected: Bool = false {
+        didSet {
+            speechService.glassesConnected = isConnected
+            // Privacy: stop listening when glasses disconnect
+            if !isConnected && oldValue {
+                wakeWordService.stopListening()
+                isListening = false
+                NSLog("[Privacy] Glasses disconnected — stopped microphone")
+            }
+        }
+    }
     @Published var registrationStateRaw: Int = 0
     @Published var lastCallbackSource: String = "—"
     @Published var lastCallbackURL: String = "—"
@@ -291,12 +311,14 @@ class AppState: ObservableObject {
     let agentDocs = AgentDocumentStore()
     let agentScheduler = AgentScheduler()
     let agentNotificationQueue = AgentNotificationQueue()
+    let playbookStore = PlaybookStore()
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
 
     // OpenClaw + Realtime sessions
     let openClawBridge = OpenClawBridge()
+    let openClawEventClient = OpenClawEventClient()
     let geminiLiveSession = GeminiLiveSessionManager()
     let openAIRealtimeSession = OpenAIRealtimeSessionManager()
 
@@ -358,6 +380,10 @@ class AppState: ObservableObject {
         if var docTool = nativeToolRegistry.tool(named: "edit_agent_docs") as? AgentDocumentTool {
             docTool.agentDocs = agentDocs
             nativeToolRegistry.register(docTool)
+        }
+        if var pbTool = nativeToolRegistry.tool(named: "playbook") as? PlaybookTool {
+            pbTool.playbookStore = playbookStore
+            nativeToolRegistry.register(pbTool)
         }
 
         addDebugEvent("AppState initialized")
@@ -480,6 +506,17 @@ class AppState: ObservableObject {
                 await self.speechService.speak(message)
             }
         }
+        proactiveAlerts.onMeetingPlaybook = { [weak self] title, notes, steps in
+            guard let self else { return }
+            let pbSteps = steps.map { PlaybookStep(title: $0) }
+            let playbook = Playbook(name: title, icon: "person.3", steps: pbSteps, referenceText: notes)
+            self.playbookStore.add(playbook)
+            // Auto-start the meeting playbook
+            _ = self.playbookStore.startPlaybook(playbook.id)
+            Task {
+                await self.speechService.speak("I've loaded the agenda for \(title) with \(steps.count) items. Say 'next' to advance through the agenda.")
+            }
+        }
         proactiveAlerts.start()
 
         // Wire geofence alerts — speak via TTS when entering/leaving a region
@@ -491,6 +528,17 @@ class AppState: ObservableObject {
                 }
             }
             geofenceTool.restoreGeofences()
+        }
+
+        // OpenClaw WebSocket — proactive notifications via TTS
+        openClawEventClient.onNotification = { [weak self] message in
+            guard let self else { return }
+            Task {
+                await self.speechService.speak(message)
+            }
+        }
+        if Config.isOpenClawConfigured {
+            openClawEventClient.connect()
         }
 
         // Privacy filter — apply saved preference
@@ -946,6 +994,59 @@ class AppState: ObservableObject {
 
     /// Capture a photo from the glasses camera and present the share sheet.
     /// Capture a photo and send it to the LLM for analysis (manual camera button).
+    /// Execute a QuickAction by type — used by widget deep links and overlay.
+    func executeQuickAction(_ action: QuickAction) async {
+        switch action.type {
+        case .prompt:
+            guard let text = action.promptText, !text.isEmpty else { return }
+            speechService.startThinkingSound()
+            do {
+                let response = try await llmService.sendMessage(
+                    text,
+                    locationContext: locationService.locationContext,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+                )
+                lastResponse = response
+                await speechService.speak(response)
+            } catch {
+                speechService.stopThinkingSound()
+                errorMessage = error.localizedDescription
+            }
+        case .photo:
+            await captureAndAnalyzePhoto()
+        case .photoThenPrompt:
+            let prompt = action.promptText ?? "Describe what you see."
+            await capturePhotoAndSend(prompt: prompt)
+        case .homeAssistant:
+            guard let service = action.haService else { return }
+            var command = "Call Home Assistant service '\(service)'"
+            if let entity = action.haEntityId, entity != "all" {
+                command += " on entity '\(entity)'"
+            }
+            if let data = action.haData, !data.isEmpty {
+                command += " with data: \(data)"
+            }
+            speechService.startThinkingSound()
+            do {
+                let response = try await llmService.sendMessage(command, locationContext: nil, memoryContext: nil)
+                lastResponse = response
+                await speechService.speak(response)
+            } catch {
+                speechService.stopThinkingSound()
+                errorMessage = error.localizedDescription
+            }
+        case .siriShortcut:
+            guard let name = action.shortcutName, !name.isEmpty else { return }
+            if let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+               let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)") {
+                await UIApplication.shared.open(url)
+            }
+        case .openApp:
+            guard let scheme = action.urlScheme, let url = URL(string: scheme) else { return }
+            await UIApplication.shared.open(url)
+        }
+    }
+
     func captureAndAnalyzePhoto() async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
@@ -1288,7 +1389,8 @@ class AppState: ObservableObject {
                 query,
                 locationContext: locationService.locationContext,
                 imageData: imageData,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
+                playbookContext: playbookStore.playbookContext()
             )
 
             // Parse and execute memory commands from the response

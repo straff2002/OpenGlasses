@@ -6,6 +6,13 @@ import Foundation
 class LiveActivityManager {
     private var currentActivity: Activity<GlassesActivityAttributes>?
 
+    /// Build quick action buttons from user's configured quick actions (top 4).
+    private func quickActionButtons() -> [GlassesActivityAttributes.ContentState.QuickActionButton] {
+        Array(Config.quickActions.prefix(4).map {
+            GlassesActivityAttributes.ContentState.QuickActionButton(id: $0.id, label: $0.label, icon: $0.icon)
+        })
+    }
+
     /// Start a new Live Activity. No-op if one is already running or Live Activities are disabled.
     func start(glassesName: String = "OpenGlasses") {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -29,7 +36,8 @@ class LiveActivityManager {
             lastResponseSnippet: "",
             deviceName: nil,
             batteryLevel: nil,
-            personaButtons: personas
+            personaButtons: personas,
+            quickActionButtons: quickActionButtons()
         )
 
         do {
@@ -58,7 +66,6 @@ class LiveActivityManager {
         guard let activity = currentActivity else { return }
 
         let snippet = String(lastResponse.prefix(80))
-        // Pass top 3 enabled personas as quick-launch buttons
         let personas = Config.enabledPersonas.prefix(3).map {
             GlassesActivityAttributes.ContentState.PersonaButton(id: $0.id, name: $0.name)
         }
@@ -70,7 +77,8 @@ class LiveActivityManager {
             lastResponseSnippet: snippet,
             deviceName: deviceName,
             batteryLevel: batteryLevel,
-            personaButtons: personas
+            personaButtons: personas,
+            quickActionButtons: quickActionButtons()
         )
 
         Task {
@@ -89,7 +97,8 @@ class LiveActivityManager {
             lastResponseSnippet: "",
             deviceName: nil,
             batteryLevel: nil,
-            personaButtons: []
+            personaButtons: [],
+            quickActionButtons: []
         )
 
         Task {

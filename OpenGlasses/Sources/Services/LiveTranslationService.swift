@@ -77,7 +77,7 @@ final class LiveTranslationService: ObservableObject {
             let usePhoneMic = Config.usePhoneMicForTranslation
             let options: AVAudioSession.CategoryOptions = usePhoneMic
                 ? [.mixWithOthers, .defaultToSpeaker]
-                : [.mixWithOthers, .allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+                : [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
             try audioSession.setCategory(.playAndRecord, mode: .measurement, options: options)
             try audioSession.setActive(true)
             print("🌍 Translation mic source: \(usePhoneMic ? "iPhone" : "glasses (Bluetooth)")")

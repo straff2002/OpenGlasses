@@ -19,7 +19,7 @@ class AgentDocumentStore: ObservableObject {
     private let documentsDir: URL
 
     /// Default soul for a fresh install.
-    static let defaultSoul = """
+    nonisolated static let defaultSoul = """
     # OpenGlasses Agent
 
     ## Identity
@@ -77,7 +77,7 @@ class AgentDocumentStore: ObservableObject {
     """
 
     /// Default skills document.
-    static let defaultSkills = """
+    nonisolated static let defaultSkills = """
     # Skills
 
     ## Vision
@@ -125,7 +125,7 @@ class AgentDocumentStore: ObservableObject {
     """
 
     /// Default memory starts empty — the agent builds this over time.
-    static let defaultMemory = """
+    nonisolated static let defaultMemory = """
     # Memory
 
     <!-- This document is updated automatically as the agent learns about you. -->

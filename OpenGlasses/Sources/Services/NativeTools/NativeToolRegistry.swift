@@ -85,10 +85,12 @@ final class NativeToolRegistry {
         // Tier 5: Barcode scanning, live translation, food analysis
         if let camera = cameraService {
             register(BarcodeScannerTool(cameraService: camera))
+            register(DocumentScanTool(cameraService: camera))
         }
         register(FoodAnalysisTool())
         register(AgentScheduleTool())
         register(AgentDocumentTool())
+        register(PlaybookTool())
         var discoveryTool = DiscoverCapabilitiesTool()
         discoveryTool.toolRegistry = self
         register(discoveryTool)

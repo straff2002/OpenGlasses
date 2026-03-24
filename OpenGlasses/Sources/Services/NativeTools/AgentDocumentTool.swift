@@ -132,7 +132,7 @@ struct AgentDocumentTool: NativeTool {
             return "Only soul.md can be customized per persona. Skills and memory are shared across all personas."
         }
 
-        var personas = await MainActor.run { Config.savedPersonas }
+        let personas = await MainActor.run { Config.savedPersonas }
         guard let idx = personas.firstIndex(where: { $0.id == personaId }) else {
             return "Persona '\(personaId)' not found. Use list_personas to see available IDs."
         }
@@ -145,8 +145,10 @@ struct AgentDocumentTool: NativeTool {
         case "append":
             guard let content = args["content"] as? String else { return "Provide content." }
             let current = personas[idx].soulOverride ?? ""
-            personas[idx].soulOverride = current + "\n\n" + content
-            await MainActor.run { Config.setSavedPersonas(personas) }
+            var updated = personas
+            updated[idx].soulOverride = current + "\n\n" + content
+            let saved = updated
+            await MainActor.run { Config.setSavedPersonas(saved) }
             return "Appended to \(personas[idx].name)'s soul."
 
         case "replace_section":
@@ -157,11 +159,13 @@ struct AgentDocumentTool: NativeTool {
             guard let current = personas[idx].soulOverride else {
                 return "\(personas[idx].name) has no custom soul yet. Use append to create one."
             }
-            guard let updated = replaceSection(in: current, header: header, newContent: content) else {
+            guard let replaced = replaceSection(in: current, header: header, newContent: content) else {
                 return "Section '\(header)' not found in \(personas[idx].name)'s soul."
             }
-            personas[idx].soulOverride = updated
-            await MainActor.run { Config.setSavedPersonas(personas) }
+            var updated = personas
+            updated[idx].soulOverride = replaced
+            let saved = updated
+            await MainActor.run { Config.setSavedPersonas(saved) }
             return "Replaced '\(header)' in \(personas[idx].name)'s soul."
 
         default:

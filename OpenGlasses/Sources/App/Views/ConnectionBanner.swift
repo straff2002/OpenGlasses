@@ -161,8 +161,8 @@ struct ConnectionBanner: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .fixedSize()
         .pillBackground()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Active model: \(appState.llmService.activeModelName)")
@@ -179,12 +179,12 @@ struct ConnectionBanner: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
+                .truncationMode(.tail)
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.white.opacity(0.5))
                 .rotationEffect(isExpanded ? .degrees(180) : .zero)
         }
-        .fixedSize()
         .pillBackground(borderColor: isExpanded ? color.opacity(0.4) : Color.white.opacity(0.08))
         .contentShape(Capsule())
         .onTapGesture(perform: action)

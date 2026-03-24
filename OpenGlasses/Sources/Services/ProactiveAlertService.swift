@@ -22,6 +22,9 @@ final class ProactiveAlertService: ObservableObject {
     /// Callback to speak an alert through TTS
     var onAlert: ((String) -> Void)?
 
+    /// Callback to auto-create a playbook from a calendar event's agenda/notes
+    var onMeetingPlaybook: ((String, String, [String]) -> Void)?
+
     // MARK: - Configuration
 
     /// Minutes before event to send first alert
@@ -61,14 +64,7 @@ final class ProactiveAlertService: ObservableObject {
 
     private func checkForAlerts() {
         // Check calendar access
-        let status: EKAuthorizationStatus
-        if #available(iOS 17.0, *) {
-            status = EKEventStore.authorizationStatus(for: .event)
-        } else {
-            status = EKEventStore.authorizationStatus(for: .event)
-        }
-
-        guard status == .authorized || status == .fullAccess else { return }
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
 
         let now = Date()
         let lookAhead = Calendar.current.date(byAdding: .minute, value: earlyAlertMinutes + 1, to: now)!
@@ -93,6 +89,15 @@ final class ProactiveAlertService: ObservableObject {
                 }
                 alert += "."
                 deliverAlert(alert)
+
+                // Auto-create playbook from calendar event notes/agenda
+                if let notes = event.notes, !notes.isEmpty {
+                    let steps = parseAgendaSteps(from: notes)
+                    if steps.count >= 2 {
+                        onMeetingPlaybook?(title, notes, steps)
+                        NSLog("[ProactiveAlerts] Auto-created playbook from '%@' agenda (%d steps)", title, steps.count)
+                    }
+                }
             }
             // Early alert (around 10 minutes)
             else {
@@ -112,7 +117,6 @@ final class ProactiveAlertService: ObservableObject {
 
         // Clean up old event IDs (keep last 100 max)
         if alertedEventIds.count > 100 {
-            let excess = alertedEventIds.count - 50
             alertedEventIds = Set(Array(alertedEventIds).suffix(50))
         }
     }
@@ -137,6 +141,26 @@ final class ProactiveAlertService: ObservableObject {
             trigger: nil // Deliver immediately
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: - Agenda Parsing
+
+    /// Parse bullet points, numbered items, or line-separated items from calendar notes into steps.
+    private func parseAgendaSteps(from notes: String) -> [String] {
+        let lines = notes.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        return lines.compactMap { line in
+            // Strip common prefixes: "- ", "• ", "1. ", "1) ", "* "
+            var cleaned = line
+            if let match = cleaned.range(of: #"^[\-\•\*]\s+"#, options: .regularExpression) {
+                cleaned = String(cleaned[match.upperBound...])
+            } else if let match = cleaned.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) {
+                cleaned = String(cleaned[match.upperBound...])
+            }
+            return cleaned.isEmpty ? nil : cleaned
+        }
     }
 
     // MARK: - Cleanup

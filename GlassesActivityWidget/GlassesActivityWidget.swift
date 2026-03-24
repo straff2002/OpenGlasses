@@ -40,21 +40,8 @@ struct GlassesActivityWidget: Widget {
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        // Persona quick-launch buttons
-                        if !context.state.personaButtons.isEmpty {
-                            HStack(spacing: 6) {
-                                ForEach(context.state.personaButtons, id: \.id) { persona in
-                                    Link(destination: URL(string: "openglasses://persona/\(persona.id)")!) {
-                                        Text(persona.name)
-                                            .font(.caption2.weight(.medium))
-                                            .foregroundStyle(.white)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 4)
-                                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
-                                    }
-                                }
-                            }
-                        }
+                        // Quick-launch buttons: personas first, then quick actions
+                        actionButtons(for: context.state, compact: true)
                     }
                 }
             } compactLeading: {
@@ -120,44 +107,67 @@ struct GlassesActivityWidget: Widget {
                 }
             }
 
-            // Agent quick-launch buttons — personas or fallback to Ask/Photo/Describe
+            // Quick-launch buttons
             if context.state.isConnected {
-                HStack(spacing: 8) {
-                    if !context.state.personaButtons.isEmpty {
-                        ForEach(context.state.personaButtons, id: \.id) { persona in
-                            Link(destination: URL(string: "openglasses://persona/\(persona.id)")!) {
-                                Text(persona.name)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
-                                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-                            }
-                        }
-                    } else {
-                        // Fallback: generic actions when no personas configured
-                        Link(destination: URL(string: "openglasses://action/ask")!) {
-                            Label("Ask", systemImage: "mic.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        Link(destination: URL(string: "openglasses://action/photo")!) {
-                            Label("Photo", systemImage: "camera.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
-                }
+                actionButtons(for: context.state, compact: false)
             }
         }
         .padding(16)
         .background(Color.black.opacity(0.6))
+    }
+
+    // MARK: - Action Buttons
+
+    /// Shows persona buttons if available, otherwise quick action buttons.
+    @ViewBuilder
+    private func actionButtons(for state: GlassesActivityAttributes.ContentState, compact: Bool) -> some View {
+        let fontSize: Font = compact ? .caption2.weight(.medium) : .caption.weight(.medium)
+        let vPadding: CGFloat = compact ? 4 : 6
+        let cornerRadius: CGFloat = compact ? 6 : 8
+
+        HStack(spacing: compact ? 6 : 8) {
+            if !state.personaButtons.isEmpty {
+                ForEach(state.personaButtons, id: \.id) { persona in
+                    Link(destination: URL(string: "openglasses://persona/\(persona.id)")!) {
+                        Text(persona.name)
+                            .font(fontSize)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, vPadding)
+                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
+                    }
+                }
+            } else if !state.quickActionButtons.isEmpty {
+                ForEach(state.quickActionButtons, id: \.id) { action in
+                    Link(destination: URL(string: "openglasses://quickaction/\(action.id)")!) {
+                        Label(action.label, systemImage: action.icon)
+                            .font(fontSize)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, vPadding)
+                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
+                    }
+                }
+            } else {
+                // Fallback: generic actions
+                Link(destination: URL(string: "openglasses://action/ask")!) {
+                    Label("Ask", systemImage: "mic.fill")
+                        .font(fontSize)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, vPadding)
+                        .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
+                }
+                Link(destination: URL(string: "openglasses://action/photo")!) {
+                    Label("Photo", systemImage: "camera.fill")
+                        .font(fontSize)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, vPadding)
+                        .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

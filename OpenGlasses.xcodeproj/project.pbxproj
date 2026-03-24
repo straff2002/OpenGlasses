@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -163,6 +163,12 @@
 		F02C16114BC229EB28F88C0F /* ToggleGeminiLiveIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84A1DF4D36A2C5CA6CE16D7A /* ToggleGeminiLiveIntent.swift */; };
 		F1DD10D116D5E03FB8740F58 /* PedometerTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E78CF208DDFD831CAC7F324 /* PedometerTool.swift */; };
 		F3D2FEB0C8B19224C552B161 /* SendEmailTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7ACBD3E941EFF11CBE075A5 /* SendEmailTool.swift */; };
+		4FABB8F52B0F4AC7A084F8C5 /* OpenClawEventClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E6AE3E9BAD4CEEAFB419E4 /* OpenClawEventClient.swift */; };
+		70219610039B46F6BD326FA8 /* VideoDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9AFB5D83CF43D393B3FF00 /* VideoDecoder.swift */; };
+		0A07A4427A994986BB527790 /* DocumentScanTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48CA6207E13F4EACB4BFCBDE /* DocumentScanTool.swift */; };
+		22C9A19F9C18461587489B8F /* PlaybookStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316D2F160AFB47F8B4C3EC14 /* PlaybookStore.swift */; };
+		61D9ECD8CA094D37ABFC077C /* PlaybookTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FBC8D6EF094F3D91379039 /* PlaybookTool.swift */; };
+		F122F5FC0A8A4A23980E6C62 /* PlaybooksSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D372A4F3EF984A2692BFB043 /* PlaybooksSettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -209,7 +215,7 @@
 
 /* Begin PBXFileReference section */
 		0094676031D0F14EC355BBB1 /* DiscoverCapabilitiesTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverCapabilitiesTool.swift; sourceTree = "<group>"; };
-		027414D3FDBBF808E2E0F3DB /* GlassesActivityWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = GlassesActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		027414D3FDBBF808E2E0F3DB /* GlassesActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GlassesActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		05E7694407E6C49108269783 /* AgentScheduleTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScheduleTool.swift; sourceTree = "<group>"; };
 		0679379BFB36E617B22C6104 /* GeocodingHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeocodingHelper.swift; sourceTree = "<group>"; };
 		094048ED5649B9EECF38A011 /* FoodAnalysisTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodAnalysisTool.swift; sourceTree = "<group>"; };
@@ -251,7 +257,7 @@
 		3C0F8D58645BC6DDBF5EBE6D /* OpenClawSkillsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSkillsTool.swift; sourceTree = "<group>"; };
 		3DC5775635FEDB7D7811D857 /* AgentDocumentTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDocumentTool.swift; sourceTree = "<group>"; };
 		4252125BA0BF5D460D5DA5B9 /* FaceRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceRecognitionService.swift; sourceTree = "<group>"; };
-		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; path = intro.mp4; sourceTree = "<group>"; };
+		45E3B3049C0DE740FA37ABE1 /* intro.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro.mp4; sourceTree = "<group>"; };
 		4691CC4CEA5C75C810866ECA /* AppleRemindersTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRemindersTool.swift; sourceTree = "<group>"; };
 		478A79F180A74BD2D8D9814B /* DailyBriefingTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyBriefingTool.swift; sourceTree = "<group>"; };
 		4853693E7F16A7B1FCCAB6DD /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
@@ -309,7 +315,7 @@
 		9F9681F3CF3D50D4DF29A44E /* ClipboardTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardTool.swift; sourceTree = "<group>"; };
 		A52BFC30C1CD9580378CA279 /* AlarmTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmTool.swift; sourceTree = "<group>"; };
 		A677445964B1185F08CCA323 /* OpenGlassesWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGlassesWatchApp.swift; sourceTree = "<group>"; };
-		A795DD7E5DB69A5A400298C3 /* OpenGlasses.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenGlasses.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A795DD7E5DB69A5A400298C3 /* OpenGlasses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenGlasses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA9668AF5CCD65FEFE951278 /* AsianMessagingTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsianMessagingTool.swift; sourceTree = "<group>"; };
 		AE2D80DD948E2950C2FFF980 /* RemindersTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersTool.swift; sourceTree = "<group>"; };
 		AF6538260040B7DF8E861F46 /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
@@ -359,6 +365,12 @@
 		FB0C5659A007A2FE3733DE35 /* ContactsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsTool.swift; sourceTree = "<group>"; };
 		FB551044FC2A6D421DB0843E /* VideoRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRecordingService.swift; sourceTree = "<group>"; };
 		FEF4D7078E1A20842EAC31FE /* AmbientCaptionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientCaptionOverlay.swift; sourceTree = "<group>"; };
+		17E6AE3E9BAD4CEEAFB419E4 /* OpenClawEventClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawEventClient.swift; sourceTree = "<group>"; };
+		5C9AFB5D83CF43D393B3FF00 /* VideoDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDecoder.swift; sourceTree = "<group>"; };
+		48CA6207E13F4EACB4BFCBDE /* DocumentScanTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentScanTool.swift; sourceTree = "<group>"; };
+		316D2F160AFB47F8B4C3EC14 /* PlaybookStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookStore.swift; sourceTree = "<group>"; };
+		37FBC8D6EF094F3D91379039 /* PlaybookTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookTool.swift; sourceTree = "<group>"; };
+		D372A4F3EF984A2692BFB043 /* PlaybooksSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybooksSettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -456,6 +468,7 @@
 				C5B0FBEDCBFF86613153B4F1 /* PromptPresetsView.swift */,
 				E2A99BC98A3556887F1577B1 /* QuickActionsOverlay.swift */,
 				25BA607B0D7E21C454E3AF17 /* QuickActionsSettingsView.swift */,
+				D372A4F3EF984A2692BFB043 /* PlaybooksSettingsView.swift */,
 				9A48B38555905532425A7161 /* RadialLayout.swift */,
 				F4250EE334890782804BC10D /* ServicesSettingsView.swift */,
 				39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */,
@@ -492,11 +505,13 @@
 			isa = PBXGroup;
 			children = (
 				3DC5775635FEDB7D7811D857 /* AgentDocumentTool.swift */,
+				37FBC8D6EF094F3D91379039 /* PlaybookTool.swift */,
 				05E7694407E6C49108269783 /* AgentScheduleTool.swift */,
 				A52BFC30C1CD9580378CA279 /* AlarmTool.swift */,
 				4691CC4CEA5C75C810866ECA /* AppleRemindersTool.swift */,
 				AA9668AF5CCD65FEFE951278 /* AsianMessagingTool.swift */,
 				5EB76EF194BABF01F9FDB042 /* BarcodeScannerTool.swift */,
+				48CA6207E13F4EACB4BFCBDE /* DocumentScanTool.swift */,
 				788170724766FC134596298C /* BrightnessTool.swift */,
 				8BE07ADBE388B52CC68238D2 /* CalculatorTool.swift */,
 				DF19B90208FE3E6078289AF4 /* CalendarTool.swift */,
@@ -558,7 +573,6 @@
 			isa = PBXGroup;
 			children = (
 				C2C29603985D56F1399EEF82 /* App */,
-				7CE5572E880B36C811A9C417 /* Models */,
 				358B2C987A79B0BACD93E083 /* Resources */,
 				A4BE5203F9D0F9A8B998800D /* Services */,
 				C09D7C6A58FDB78ECFFD562A /* Utils */,
@@ -591,6 +605,9 @@
 				0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */,
 				54F579A510ACEF35A1CAB845 /* NetworkMonitorService.swift */,
 				92A74F270CBABDF72C72C5BD /* OpenClawBridge.swift */,
+				316D2F160AFB47F8B4C3EC14 /* PlaybookStore.swift */,
+				5C9AFB5D83CF43D393B3FF00 /* VideoDecoder.swift */,
+				17E6AE3E9BAD4CEEAFB419E4 /* OpenClawEventClient.swift */,
 				642F3C950294CA183F11F7E7 /* PrivacyFilterService.swift */,
 				8E5C91138E73863A23CB8E49 /* ProactiveAlertService.swift */,
 				BD85B93668F3556CA85DA8D3 /* ShortcutCallbackManager.swift */,
@@ -776,7 +793,6 @@
 				690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
 				68CD19E5A36E44D2151E629D /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -828,6 +844,7 @@
 				B26CD1DD9250EC1665B8BF7B /* AgentDataExporter.swift in Sources */,
 				5A372CED64E94C1BD52F3D81 /* AgentDocumentStore.swift in Sources */,
 				3F2DDF04216579AEEFE4A909 /* AgentDocumentTool.swift in Sources */,
+				61D9ECD8CA094D37ABFC077C /* PlaybookTool.swift in Sources */,
 				EDDD862FCD553CDF869642D8 /* AgentNotificationQueue.swift in Sources */,
 				E89CB6BB8456474494C5DD37 /* AgentScheduleTool.swift in Sources */,
 				CCFC45F1C3DFB7454211DFDD /* AgentScheduler.swift in Sources */,
@@ -839,6 +856,7 @@
 				85A4B462271E5D83D07F56F0 /* AsianMessagingTool.swift in Sources */,
 				3291FD9AEE0E6E983C73C388 /* AskOpenGlassesIntent.swift in Sources */,
 				A813C68B7564A877CEE6D104 /* BarcodeScannerTool.swift in Sources */,
+				0A07A4427A994986BB527790 /* DocumentScanTool.swift in Sources */,
 				6787CCB157C7A06753420D70 /* BottomControlBar.swift in Sources */,
 				65F2D172E5A38232E5C70767 /* BrightnessTool.swift in Sources */,
 				32B9F26B9B892CD88D1ADDD2 /* BroadcastService.swift in Sources */,
@@ -915,6 +933,9 @@
 				DC2844D28DEAE6D2209615C5 /* OpenAIRealtimeSessionManager.swift in Sources */,
 				AC52AEDABEA9070D984E2934 /* OpenAppTool.swift in Sources */,
 				E0D62BE69472F32DE3DB600F /* OpenClawBridge.swift in Sources */,
+				22C9A19F9C18461587489B8F /* PlaybookStore.swift in Sources */,
+				70219610039B46F6BD326FA8 /* VideoDecoder.swift in Sources */,
+				4FABB8F52B0F4AC7A084F8C5 /* OpenClawEventClient.swift in Sources */,
 				04EC3AAD8E678FCDF1FC9C5D /* OpenClawSkillsTool.swift in Sources */,
 				020D1E16DFA6859D1AD0DDFA /* OpenGlassesApp.swift in Sources */,
 				F1DD10D116D5E03FB8740F58 /* PedometerTool.swift in Sources */,
@@ -928,6 +949,7 @@
 				9649CC4B7DBACDADB3C6D4A1 /* PromptPresetsView.swift in Sources */,
 				75CB3F368BACFF287C71249B /* QuickActionsOverlay.swift in Sources */,
 				ACA728D2BFE8B86A2310D80E /* QuickActionsSettingsView.swift in Sources */,
+				F122F5FC0A8A4A23980E6C62 /* PlaybooksSettingsView.swift in Sources */,
 				6B94C6A8653140884D96139B /* QuickVisionIntent.swift in Sources */,
 				55B1EEDF2C214A5879E3CA87 /* RadialLayout.swift in Sources */,
 				9CF6C046A1B6184E96181E1D /* RemindersTool.swift in Sources */,
@@ -1053,6 +1075,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenGlasses/OpenGlasses.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenGlasses;
@@ -1077,6 +1100,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenGlasses/OpenGlasses.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenGlasses;
@@ -1097,6 +1121,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlassesWatch/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.app.watchkitapp;
@@ -1111,6 +1136,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlassesWatch/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.openglasses.app.watchkitapp;
@@ -1180,6 +1206,8 @@
 		D5176476212E023ADFDFF267 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1197,6 +1225,8 @@
 		F12FBB03E632F97AE433EAE3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -48,7 +48,7 @@ class CameraService: ObservableObject {
     var onRegistrationProgress: ((Int) -> Void)?
 
     /// Name of the Photos album where glasses photos are saved.
-    private static let albumName = "Glasses"
+    private nonisolated static let albumName = "Glasses"
 
     // MARK: - Permission
 

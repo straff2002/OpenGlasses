@@ -60,7 +60,7 @@ private struct ThreadRow: View {
                 if thread.messages.contains(where: { $0.imageAttached }) {
                     Image(systemName: "camera.fill")
                         .font(.caption2)
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(.primary)
                 }
 
                 Text(thread.mode.capitalized)
@@ -131,7 +131,7 @@ private struct MessageBubble: View {
                 if message.imageAttached {
                     Label("Photo attached", systemImage: "camera.fill")
                         .font(.caption2)
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(.primary)
                 }
 
                 Text(message.content)

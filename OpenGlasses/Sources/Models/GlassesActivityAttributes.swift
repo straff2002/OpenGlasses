@@ -20,9 +20,18 @@ struct GlassesActivityAttributes: ActivityAttributes {
         /// Each entry is (id, name). Empty if no personas configured.
         var personaButtons: [PersonaButton]
 
+        /// Top 4 quick actions for widget buttons (used when no personas configured).
+        var quickActionButtons: [QuickActionButton]
+
         struct PersonaButton: Codable, Hashable {
             var id: String
             var name: String
+        }
+
+        struct QuickActionButton: Codable, Hashable {
+            var id: String
+            var label: String
+            var icon: String
         }
     }
 }

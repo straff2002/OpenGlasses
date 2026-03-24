@@ -108,7 +108,7 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         switch provider {
         case .anthropic, .gemini, .openai:
             return true
-        case .groq, .local:
+        case .groq, .local, .appleOnDevice:
             return false
         case .qwen:
             // Qwen3.5-plus and qwen-vl models support vision
@@ -419,13 +419,28 @@ struct Config {
     /// All saved model configurations
     static var savedModels: [ModelConfig] {
         guard let data = UserDefaults.standard.data(forKey: modelsKey),
-              let models = try? JSONDecoder().decode([ModelConfig].self, from: data),
+              var models = try? JSONDecoder().decode([ModelConfig].self, from: data),
               !models.isEmpty else {
             // Migrate from legacy single-provider config
             return migrateFromLegacy()
         }
+        // Ensure Apple Intelligence model exists
+        if !models.contains(where: { $0.provider == LLMProvider.appleOnDevice.rawValue }) {
+            models.append(appleIntelligenceDefault)
+            setSavedModels(models)
+        }
         return models
     }
+
+    /// Pre-configured Apple Intelligence model — zero setup, on-device.
+    static let appleIntelligenceDefault = ModelConfig(
+        id: "apple-intelligence",
+        name: "Apple Intelligence",
+        provider: LLMProvider.appleOnDevice.rawValue,
+        apiKey: "",
+        model: "apple-foundation-model",
+        baseURL: ""
+    )
 
     static func setSavedModels(_ models: [ModelConfig]) {
         if let data = try? JSONEncoder().encode(models) {
@@ -1151,6 +1166,17 @@ struct Config {
 
     static func setUseGlassesMicForWakeWord(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "useGlassesMicForWakeWord")
+    }
+
+    // MARK: - Audio-Only Mode
+
+    /// When enabled, disables video frame streaming to save battery. Voice still works.
+    static var audioOnlyMode: Bool {
+        UserDefaults.standard.bool(forKey: "audioOnlyMode")
+    }
+
+    static func setAudioOnlyMode(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "audioOnlyMode")
     }
 
     // MARK: - WebRTC Streaming

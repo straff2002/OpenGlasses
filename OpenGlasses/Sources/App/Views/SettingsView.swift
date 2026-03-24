@@ -96,7 +96,7 @@ struct SettingsView: View {
                                         if model.visionEnabled {
                                             Image(systemName: "eye")
                                                 .font(.caption2)
-                                                .foregroundStyle(.tint)
+                                                .foregroundStyle(.primary)
                                         }
                                         if !model.apiKey.isEmpty {
                                             Image(systemName: "checkmark.circle.fill")
@@ -195,6 +195,10 @@ struct SettingsView: View {
                     ))
                     Toggle("Listen via Glasses Mic", isOn: $useGlassesMicForWakeWord)
                     Toggle("Blur Bystander Faces", isOn: $privacyFilterEnabled)
+                    Toggle("Audio-Only Mode", isOn: Binding(
+                        get: { Config.audioOnlyMode },
+                        set: { Config.setAudioOnlyMode($0) }
+                    ))
                     Toggle("Use Phone Mic for Translation", isOn: Binding(
                         get: { Config.usePhoneMicForTranslation },
                         set: { Config.setUsePhoneMicForTranslation($0) }
@@ -202,7 +206,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Hardware & Privacy")
                 } footer: {
-                    Text("Silent Mode turns off the wake word listener — the agent is still actionable via the watch, widget, Action Button, and manual mic tap. Scheduled tasks keep running. Glasses mic enables true hands-free but drains battery faster.")
+                    Text("Silent Mode turns off the wake word listener — the agent is still actionable via the watch, widget, Action Button, and manual mic tap. Glasses mic enables true hands-free but drains battery faster. Audio-Only disables video streaming to save battery.")
                 }
 
                 // MARK: Transparency
@@ -224,6 +228,12 @@ struct SettingsView: View {
                         QuickActionsSettingsView()
                     } label: {
                         Label("Quick Actions", systemImage: "dial.high")
+                    }
+
+                    NavigationLink {
+                        PlaybooksSettingsView(store: appState.playbookStore)
+                    } label: {
+                        Label("Playbooks", systemImage: "list.clipboard")
                     }
 
                     NavigationLink {

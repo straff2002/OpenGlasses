@@ -25,7 +25,7 @@ struct QuickActionsSettingsView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: action.icon)
                                     .font(.title3)
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(.primary)
                                     .frame(width: 28)
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 6) {
