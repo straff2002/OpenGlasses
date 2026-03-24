@@ -1136,7 +1136,6 @@
 		D5176476212E023ADFDFF267 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1154,7 +1153,6 @@
 		F12FBB03E632F97AE433EAE3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

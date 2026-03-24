@@ -98,13 +98,16 @@ targets:
     sources:
       - path: GlassesActivityWidget
       - path: OpenGlasses/Sources/Models/GlassesActivityAttributes.swift
+    info:
+      path: GlassesActivityWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
-        INFOPLIST_FILE: GlassesActivityWidget/Info.plist
-        GENERATE_INFOPLIST_FILE: "NO"
 
   OpenGlassesWatch:
     type: application

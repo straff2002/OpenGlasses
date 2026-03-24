@@ -18,12 +18,17 @@ struct QuickActionsOverlay: View {
         if appState.isConnected && isIdle && appState.currentMode == .direct {
             RadialLayout(radius: 100) {
                 ForEach(actions) { action in
-                    CircleButton(
-                        icon: action.icon,
-                        size: 44,
-                        label: action.label
-                    ) {
-                        executeAction(action)
+                    VStack(spacing: 4) {
+                        CircleButton(
+                            icon: action.icon,
+                            size: 44,
+                            label: action.label
+                        ) {
+                            executeAction(action)
+                        }
+                        Text(action.label)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
                     }
                 }
             }
@@ -36,8 +41,6 @@ struct QuickActionsOverlay: View {
         Task {
             switch action.type {
             case .prompt(let text):
-                // Use capturePhotoAndSend with a text-only prompt
-                // For text-only prompts, go through the LLM directly
                 appState.speechService.startThinkingSound()
                 do {
                     let rawResponse = try await appState.llmService.sendMessage(
@@ -48,6 +51,7 @@ struct QuickActionsOverlay: View {
                     appState.lastResponse = rawResponse
                     await appState.speechService.speak(rawResponse)
                 } catch {
+                    appState.speechService.stopThinkingSound()
                     appState.errorMessage = error.localizedDescription
                 }
 
