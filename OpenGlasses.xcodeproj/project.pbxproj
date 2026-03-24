@@ -108,6 +108,7 @@
 		AB63DAA102EAA6B901FE2E53 /* ModelFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7B1F6BF2F71B843BF584D3 /* ModelFetcher.swift */; };
 		AC08C67609F362D9C3E17EA8 /* LocalLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99A4BBFB7F9645BC326C15B /* LocalLLMService.swift */; };
 		AC52AEDABEA9070D984E2934 /* OpenAppTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE2A555201772AF1A324F94 /* OpenAppTool.swift */; };
+		ACA728D2BFE8B86A2310D80E /* QuickActionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25BA607B0D7E21C454E3AF17 /* QuickActionsSettingsView.swift */; };
 		B02FDC7E1541E94D4B96437A /* ShazamTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3021DA0A037B84E19352C73 /* ShazamTool.swift */; };
 		B05A555F43E279650778C5E2 /* WebSearchTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D21CFB73A908ADC22C5558 /* WebSearchTool.swift */; };
 		B3C0D61A2268A1B8EF2FB8AF /* DateTimeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A8BF60E21FD914D7C6454F /* DateTimeTool.swift */; };
@@ -222,6 +223,7 @@
 		21C6147CE5F69027F56B754E /* LiveTranslationTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationTool.swift; sourceTree = "<group>"; };
 		220AC9B94458D011A6DC7E37 /* DeviceInfoTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInfoTool.swift; sourceTree = "<group>"; };
 		24FDEE6CFAE6AD8A3F2AC702 /* OpenAIRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeService.swift; sourceTree = "<group>"; };
+		25BA607B0D7E21C454E3AF17 /* QuickActionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionsSettingsView.swift; sourceTree = "<group>"; };
 		29082A436A56096C7F4500C5 /* ToolsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsSettingsView.swift; sourceTree = "<group>"; };
 		2AC3BE7ED439720FFF45458D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		2C8683007735AA0558FA2461 /* OpenGlassesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGlassesApp.swift; sourceTree = "<group>"; };
@@ -432,6 +434,7 @@
 				858140B42DD1633F563E5BFB /* PromptInspectorView.swift */,
 				C5B0FBEDCBFF86613153B4F1 /* PromptPresetsView.swift */,
 				E2A99BC98A3556887F1577B1 /* QuickActionsOverlay.swift */,
+				25BA607B0D7E21C454E3AF17 /* QuickActionsSettingsView.swift */,
 				9A48B38555905532425A7161 /* RadialLayout.swift */,
 				F4250EE334890782804BC10D /* ServicesSettingsView.swift */,
 				39E63B290EDC9DE71ABE9DA2 /* SettingsView.swift */,
@@ -886,6 +889,7 @@
 				10B64E733570FE21A2622316 /* PromptInspectorView.swift in Sources */,
 				9649CC4B7DBACDADB3C6D4A1 /* PromptPresetsView.swift in Sources */,
 				75CB3F368BACFF287C71249B /* QuickActionsOverlay.swift in Sources */,
+				ACA728D2BFE8B86A2310D80E /* QuickActionsSettingsView.swift in Sources */,
 				6B94C6A8653140884D96139B /* QuickVisionIntent.swift in Sources */,
 				55B1EEDF2C214A5879E3CA87 /* RadialLayout.swift in Sources */,
 				9CF6C046A1B6184E96181E1D /* RemindersTool.swift in Sources */,

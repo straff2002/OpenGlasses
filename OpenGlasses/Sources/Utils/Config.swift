@@ -17,23 +17,68 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
     ]
 }
 
-/// A quick action button shown on the main screen.
+/// A user-configurable quick action button shown on the main screen.
 struct QuickAction: Codable, Identifiable {
     var id: String
     var label: String
     var icon: String
-
-    enum ActionType: Codable {
-        case prompt(String)
-        case photo
-        case photoThenPrompt(String)
-    }
     var type: ActionType
 
+    enum ActionType: String, Codable, CaseIterable, Identifiable {
+        case prompt = "prompt"
+        case photo = "photo"
+        case photoThenPrompt = "photoThenPrompt"
+        case homeAssistant = "homeAssistant"
+        case siriShortcut = "siriShortcut"
+        case openApp = "openApp"
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .prompt: return "Text Prompt"
+            case .photo: return "Take Photo"
+            case .photoThenPrompt: return "Photo + Prompt"
+            case .homeAssistant: return "Home Assistant"
+            case .siriShortcut: return "Siri Shortcut"
+            case .openApp: return "Open App"
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .prompt: return "Send a text prompt to the AI"
+            case .photo: return "Capture and describe a photo"
+            case .photoThenPrompt: return "Capture a photo with a custom prompt"
+            case .homeAssistant: return "Call a Home Assistant service"
+            case .siriShortcut: return "Run a Siri Shortcut by name"
+            case .openApp: return "Open an app via URL scheme"
+            }
+        }
+    }
+
+    /// The prompt text (for .prompt and .photoThenPrompt types)
+    var promptText: String?
+    /// Home Assistant service call (e.g., "light.turn_off") for .homeAssistant type
+    var haService: String?
+    /// Home Assistant entity ID (e.g., "light.living_room") for .homeAssistant type
+    var haEntityId: String?
+    /// Extra data as JSON string for .homeAssistant type (e.g., {"brightness": 50})
+    var haData: String?
+    /// Siri Shortcut name for .siriShortcut type
+    var shortcutName: String?
+    /// URL scheme for .openApp type (e.g., "weixin://")
+    var urlScheme: String?
+
     static let defaults: [QuickAction] = [
-        QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt("Describe what you see in this image in detail.")),
-        QuickAction(id: "calendar", label: "Event", icon: "calendar", type: .photoThenPrompt("Extract any event details from this image (dates, times, locations, names) and create a calendar entry summary.")),
-        QuickAction(id: "task", label: "Task", icon: "checklist", type: .photoThenPrompt("Extract any action items or tasks from this image and list them.")),
+        QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
+                    promptText: "Describe what you see in this image in detail."),
+        QuickAction(id: "calendar", label: "Event", icon: "calendar", type: .photoThenPrompt,
+                    promptText: "Extract any event details from this image (dates, times, locations, names) and create a calendar entry summary."),
+        QuickAction(id: "task", label: "Task", icon: "checklist", type: .photoThenPrompt,
+                    promptText: "Extract any action items or tasks from this image and list them."),
+        QuickAction(id: "lights-off", label: "Lights Off", icon: "lightbulb.slash", type: .homeAssistant,
+                    haService: "light.turn_off", haEntityId: "all"),
     ]
 }
 
@@ -814,6 +859,23 @@ struct Config {
 
     static func setUsePhoneMicForTranslation(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "usePhoneMicForTranslation")
+    }
+
+    // MARK: - Quick Actions
+
+    static var quickActions: [QuickAction] {
+        if let data = UserDefaults.standard.data(forKey: "quickActions"),
+           let actions = try? JSONDecoder().decode([QuickAction].self, from: data),
+           !actions.isEmpty {
+            return actions
+        }
+        return QuickAction.defaults
+    }
+
+    static func setQuickActions(_ actions: [QuickAction]) {
+        if let data = try? JSONEncoder().encode(actions) {
+            UserDefaults.standard.set(data, forKey: "quickActions")
+        }
     }
 
     // MARK: - OpenClaw Configuration

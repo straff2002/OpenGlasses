@@ -190,6 +190,12 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
+                        QuickActionsSettingsView()
+                    } label: {
+                        Label("Quick Actions", systemImage: "dial.high")
+                    }
+
+                    NavigationLink {
                         ConversationHistoryView()
                             .environmentObject(appState)
                     } label: {
