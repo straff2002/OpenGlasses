@@ -43,6 +43,12 @@ struct MainView: View {
                     openAISession: openAISession,
                     openClawBridge: appState.openClawBridge
                 )
+                .overlay(alignment: .topTrailing) {
+                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .padding(.trailing, 8)
+                }
                 .padding(.top, 4)
 
                 Spacer()
