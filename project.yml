@@ -98,23 +98,23 @@ targets:
     sources:
       - path: GlassesActivityWidget
       - path: OpenGlasses/Sources/Models/GlassesActivityAttributes.swift
-    info:
-      path: GlassesActivityWidget/Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.OpenGlasses.GlassesActivityWidget
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
+        INFOPLIST_FILE: GlassesActivityWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
 
   OpenGlassesWatch:
     type: application
     platform: watchOS
     sources:
       - path: OpenGlassesWatch
-    info:
-      path: OpenGlassesWatch/Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.OpenGlasses.watchkitapp
         SWIFT_VERSION: "5.9"
+        INFOPLIST_FILE: OpenGlassesWatch/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
         SKIP_INSTALL: "YES"
