@@ -60,7 +60,7 @@ class AgentDataExporter {
         let configSummary: [String: Any] = [
             "exportDate": Date().description,
             "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
-            "agentPersonalityEnabled": Config.agentPersonalityEnabled,
+            "agentModeEnabled": Config.agentModeEnabled,
             "silentMode": Config.silentMode,
             "wakePhrase": Config.wakePhrase,
             "modelTier": Config.modelTier.rawValue,

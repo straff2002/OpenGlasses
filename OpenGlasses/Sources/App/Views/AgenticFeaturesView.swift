@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Settings view for the Agent Personality mode.
+/// Settings view for the Agentic Features mode.
 /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
-struct AgentPersonalityView: View {
+struct AgenticFeaturesView: View {
     @ObservedObject var agentDocs: AgentDocumentStore
     @EnvironmentObject var appState: AppState
-    @State private var enabled = Config.agentPersonalityEnabled
+    @State private var enabled = Config.agentModeEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
     @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
     @State private var showShareSheet = false
@@ -14,7 +14,7 @@ struct AgentPersonalityView: View {
     var body: some View {
         List {
             Section {
-                Toggle("Agent Personality", isOn: $enabled)
+                Toggle("Agentic Features", isOn: $enabled)
                     .onChange(of: enabled) { _, on in
                         Config.setAgentPersonalityEnabled(on)
                     }
@@ -128,7 +128,7 @@ struct AgentPersonalityView: View {
                 }
             }
         }
-        .navigationTitle("Agent Personality")
+        .navigationTitle("Agentic Features")
         .sheet(item: $editingDocument) { type in
             AgentDocumentEditorView(type: type, store: agentDocs)
         }

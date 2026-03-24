@@ -121,7 +121,7 @@ class LLMService: ObservableObject {
     private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil) -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
-        if Config.agentPersonalityEnabled, let agentContext, !agentContext.isEmpty {
+        if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
             prompt = agentContext
         } else {
             prompt = Config.systemPrompt

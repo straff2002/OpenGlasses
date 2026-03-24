@@ -417,7 +417,7 @@ class AppState: ObservableObject {
         // Agent personality: start scheduler if enabled
         agentScheduler.appState = self
         agentNotificationQueue.appState = self
-        if Config.agentPersonalityEnabled {
+        if Config.agentModeEnabled {
             agentScheduler.start()
         }
 
@@ -575,7 +575,7 @@ class AppState: ObservableObject {
                     self.isConnected = true
 
                     // Deliver queued agent notifications on reconnect
-                    if wasDisconnected && Config.agentPersonalityEnabled {
+                    if wasDisconnected && Config.agentModeEnabled {
                         // Delay to let audio session stabilize after Bluetooth reconnect
                         Task {
                             try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -833,7 +833,7 @@ class AppState: ObservableObject {
 
     /// The agent context (soul.md + skills.md + memory.md) if personality mode is enabled.
     var currentAgentContext: String? {
-        Config.agentPersonalityEnabled ? agentDocs.agentContext() : nil
+        Config.agentModeEnabled ? agentDocs.agentContext() : nil
     }
 
     /// Push current state to the Live Activity on Lock Screen / Dynamic Island.

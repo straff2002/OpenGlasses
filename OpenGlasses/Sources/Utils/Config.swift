@@ -1199,16 +1199,16 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "silentMode")
     }
 
-    // MARK: - Agent Personality Mode
+    // MARK: - Agentic Features Mode
 
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
     /// The agent has its own identity and learns about the user over time.
-    static var agentPersonalityEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "agentPersonalityEnabled")
+    static var agentModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "agentModeEnabled")
     }
 
     static func setAgentPersonalityEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "agentPersonalityEnabled")
+        UserDefaults.standard.set(enabled, forKey: "agentModeEnabled")
     }
 
     /// Whether the agent has completed its initial onboarding questions.

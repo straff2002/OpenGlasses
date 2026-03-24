@@ -149,16 +149,16 @@ struct SettingsView: View {
                     Text("Choose a prompt preset or create your own to shape how the AI responds.")
                 }
 
-                // MARK: Agent Personality
+                // MARK: Agentic Features
                 Section {
                     NavigationLink {
-                        AgentPersonalityView(agentDocs: appState.agentDocs)
+                        AgenticFeaturesView(agentDocs: appState.agentDocs)
                             .environmentObject(appState)
                     } label: {
                         HStack {
-                            Label("Agent Personality", systemImage: "heart.text.clipboard")
+                            Label("Agentic Features", systemImage: "bolt.badge.automatic")
                             Spacer()
-                            if Config.agentPersonalityEnabled {
+                            if Config.agentModeEnabled {
                                 Text("On")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -166,7 +166,7 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("Give your glasses their own personality with soul.md, skills, and persistent memory. Compatible with OpenClaw agent conventions.")
+                    Text("Autonomous agent mode: background tasks, notification queue, input channels, scheduled actions, and persistent memory. Compatible with OpenClaw/nanoclaw.")
                 }
 
                 // MARK: Intelligence

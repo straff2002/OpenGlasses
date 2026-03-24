@@ -3,7 +3,7 @@ import UIKit
 
 /// Scheduled background tasks for the agent personality mode.
 /// Runs periodic prompts (morning briefing, email check, self-reflection)
-/// only when Agent Personality is enabled.
+/// only when Agentic Features is enabled.
 @MainActor
 class AgentScheduler: ObservableObject {
     @Published var isRunning = false
@@ -55,7 +55,7 @@ class AgentScheduler: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
-        guard Config.agentPersonalityEnabled else { return }
+        guard Config.agentModeEnabled else { return }
         guard timer == nil else { return }
 
         NSLog("[AgentScheduler] Starting")
@@ -94,7 +94,7 @@ class AgentScheduler: ObservableObject {
 
     /// First-time onboarding: the agent asks questions to populate memory.
     private func runOnboarding() async {
-        guard let appState, Config.agentPersonalityEnabled else { return }
+        guard let appState, Config.agentModeEnabled else { return }
         guard !Config.agentOnboardingComplete else { return }
         guard !appState.isProcessing, !appState.isListening else { return }
 
@@ -123,7 +123,7 @@ class AgentScheduler: ObservableObject {
 
     private func checkMorningBriefing() async {
         guard !morningBriefingDone else { return }
-        guard let appState, Config.agentPersonalityEnabled else { return }
+        guard let appState, Config.agentModeEnabled else { return }
         guard !appState.isProcessing, !appState.isListening else { return }
 
         let tasks = loadTasks()
@@ -144,7 +144,7 @@ class AgentScheduler: ObservableObject {
     // MARK: - Periodic Tasks
 
     private func checkScheduledTasks() async {
-        guard let appState, Config.agentPersonalityEnabled else { return }
+        guard let appState, Config.agentModeEnabled else { return }
         guard !appState.isProcessing, !appState.isListening, !appState.speechService.isSpeaking else { return }
 
         let tasks = loadTasks()
