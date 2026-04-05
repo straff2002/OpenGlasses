@@ -49,8 +49,10 @@ final class NativeToolRegistry {
         register(BrightnessTool())
         register(HomeKitTool())
         register(SiriShortcutsTool())
+        register(QuickActionTool())
         if let store = conversationStore {
             register(ConversationSummaryTool(conversationStore: store))
+            register(SessionSearchTool(conversationStore: store))
         }
         if let faceService = faceRecognitionService, let camera = cameraService {
             register(FaceRecognitionTool(faceService: faceService, cameraService: camera))
@@ -82,11 +84,16 @@ final class NativeToolRegistry {
         // Always register — tool checks config at execution time
         register(HomeAssistantTool())
 
-        // Tier 5: Barcode scanning, live translation, food analysis
+        // Tier 5: Barcode scanning, live translation, food analysis, capture photo, QR context
         if let camera = cameraService {
             register(BarcodeScannerTool(cameraService: camera))
             register(DocumentScanTool(cameraService: camera))
+            register(CapturePhotoTool(cameraService: camera))
+            register(QRContextTool(cameraService: camera))
         }
+
+        // Tier 6: Golf mode
+        register(GolfModeTool(locationService: locationService))
         register(FoodAnalysisTool())
         register(AgentScheduleTool())
         register(AgentDocumentTool())
@@ -127,5 +134,53 @@ final class NativeToolRegistry {
     /// Only enabled tool names — used for system prompt injection.
     var toolNames: [String] {
         Array(tools.keys).filter { Config.isToolEnabled($0) }.sorted()
+    }
+
+    /// Context-aware tool names — filters out tools that aren't relevant to the current state.
+    /// Reduces token usage by only including tools the LLM can actually use right now.
+    func contextualToolNames(
+        glassesConnected: Bool,
+        homeAssistantConfigured: Bool,
+        openClawConfigured: Bool,
+        hasActiveWorkout: Bool = false
+    ) -> [String] {
+        let allEnabled = toolNames
+
+        return allEnabled.filter { name in
+            // Camera-dependent tools: only include when glasses are connected
+            let cameraTools: Set = ["scan_code", "scan_document", "capture_photo", "face_recognition", "qr_context"]
+            if cameraTools.contains(name) && !glassesConnected { return false }
+
+            // Home tools: only include when configured
+            let homeTools: Set = ["smart_home", "home_assistant"]
+            if homeTools.contains(name) && !homeAssistantConfigured { return false }
+
+            // OpenClaw: only include when configured
+            if name == "openclaw_skills" && !openClawConfigured { return false }
+
+            // Meeting summary needs ambient captions running
+            // (still include it — tool gives a helpful error message)
+
+            return true
+        }
+    }
+
+    /// Execute a tool by name with the given arguments.
+    /// Used by the ConversationClassifier for direct (LLM-free) tool calls.
+    func executeTool(name: String, arguments: [String: Any]) async throws -> String {
+        guard let tool = tool(named: name) else {
+            throw NativeToolError.toolNotFound(name)
+        }
+        return try await tool.execute(args: arguments)
+    }
+}
+
+enum NativeToolError: LocalizedError {
+    case toolNotFound(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .toolNotFound(let name): return "Tool '\(name)' not found or disabled"
+        }
     }
 }

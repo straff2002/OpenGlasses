@@ -24,12 +24,26 @@ enum LLMProvider: String, CaseIterable {
         case .gemini: return "Google (Gemini)"
         case .groq: return "Groq"
         case .zai: return "Z.ai (Subscription)"
-        case .qwen: return "Qwen (Coding Plan subscription)"
+        case .qwen: return "Qwen (Subscription)"
         case .minimax: return "MiniMax (Subscription)"
         case .openrouter: return "OpenRouter (500+ models)"
         case .custom: return "Custom (OpenAI-compatible)"
         case .local: return "Local (On-Device MLX)"
         case .appleOnDevice: return "Apple Intelligence"
+        }
+    }
+
+    /// Console URL where users can create/manage API keys.
+    var consoleURL: URL? {
+        switch self {
+        case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
+        case .openai: return URL(string: "https://platform.openai.com/api-keys")
+        case .gemini: return URL(string: "https://aistudio.google.com/apikey")
+        case .groq: return URL(string: "https://console.groq.com/keys")
+        case .minimax: return URL(string: "https://platform.minimaxi.com")
+        case .openrouter: return URL(string: "https://openrouter.ai/keys")
+        case .qwen: return URL(string: "https://dashscope.console.aliyun.com/apiKey")
+        case .zai, .custom, .local, .appleOnDevice: return nil
         }
     }
 
@@ -50,7 +64,7 @@ enum LLMProvider: String, CaseIterable {
         case .groq: return "https://api.groq.com/openai/v1/chat/completions"
         case .zai: return "https://api.z.ai/api/coding/paas/v4/chat/completions"
         case .qwen: return "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
-        case .minimax: return "https://api.minimaxi.chat/v1/text/chatcompletion_v2"
+        case .minimax: return "https://api.minimax.io/v1/chat/completions"
         case .openrouter: return "https://openrouter.ai/api/v1/chat/completions"
         case .custom: return "https://api.openai.com/v1/chat/completions"
         case .local: return ""
@@ -67,10 +81,10 @@ enum LLMProvider: String, CaseIterable {
         case .groq: return "llama-3.3-70b-versatile"
         case .zai: return "glm-4.5"
         case .qwen: return "qwen3.5-plus"
-        case .minimax: return "MiniMax-Text-01"
+        case .minimax: return "MiniMax-M2.7"
         case .openrouter: return "anthropic/claude-sonnet-4"
         case .custom: return "gpt-4o"
-        case .local: return "mlx-community/gemma-2-2b-it-4bit"
+        case .local: return "mlx-community/gemma-4-e2b-it-4bit"
         case .appleOnDevice: return "apple-foundation-model"
         }
     }
@@ -117,6 +131,7 @@ class LLMService: ObservableObject {
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
 
+
     #if canImport(FoundationModels)
     private var _appleSession: Any?
     @available(iOS 26.0, *)
@@ -126,15 +141,22 @@ class LLMService: ObservableObject {
     }
     #endif
 
-    /// Conversation history for multi-turn context
+    /// Conversation history for multi-turn context.
+    /// No artificial turn limit — history persists for the full conversation session.
+    /// Context window is managed by token-aware compaction, not a fixed turn count.
     private var conversationHistory: [[String: Any]] = []
-    private let maxHistoryTurns = 10  // Keep last 10 exchanges
+
+    /// Maximum estimated tokens before compacting the context window.
+    /// When exceeded, older messages are summarized and compressed rather than dropped blindly.
+    private let maxEstimatedTokens = 80_000
 
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
 
-    /// Build the full system prompt, optionally including location, tools, memory, and vision context
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil) async -> String {
+    /// Build the full system prompt, optionally including location, tools, memory, and vision context.
+    /// When `promptSections` is provided (from the ConversationClassifier), irrelevant sections are
+    /// stripped to reduce token count. When nil, all sections are included (backward compatible).
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -143,8 +165,14 @@ class LLMService: ObservableObject {
             prompt = Config.systemPrompt
         }
 
+        // Helper: check if a section should be included. When promptSections is nil (no classifier), include everything.
+        let shouldInclude: (ConversationClassifier.PromptSections) -> Bool = { section in
+            guard let sections = promptSections else { return true }
+            return sections.contains(section)
+        }
+
         // Ensure vision awareness is always present, even if user has a custom system prompt
-        if !prompt.lowercased().contains("vision") && !prompt.lowercased().contains("camera") {
+        if shouldInclude(.vision) && !prompt.lowercased().contains("vision") && !prompt.lowercased().contains("camera") {
             prompt += """
 
             VISION & CAMERA:
@@ -156,7 +184,7 @@ class LLMService: ObservableObject {
             """
         }
 
-        if includeTools {
+        if includeTools && shouldInclude(.tools) {
             var toolSection = """
 
 
@@ -215,6 +243,9 @@ class LLMService: ObservableObject {
             - social_context: Remember facts about people. Add facts ('remember John works at Stripe'), recall ('what do I know about John?'), list people.
             - home_assistant: Control Home Assistant smart home — toggle devices, check states, list entities, run automations, or use 'converse' action to send natural language commands directly to HA (e.g. action=converse, text="turn on the kitchen lights"). ALWAYS try this tool when asked about smart home control. Use entity IDs from the device list below when available; the tool also fuzzy-matches and falls back to HA's voice assistant.
             - scan_code: Scan QR codes or barcodes from the camera. Returns decoded content (URLs, text, product codes). Works offline.
+            - capture_photo: Capture a photo from the glasses camera for visual analysis. Use when you need to see what the user is looking at, or proactively when visual context would help your response.
+            - qr_context: Scan a QR code and load its content as context (museum exhibits, venue info, procedures). Use at museums, venues, or workplaces. Can also load context from a URL directly.
+            - golf_mode: Golf caddy assistant — track shots with GPS, get club recommendations, log scores, view round summary, and get course strategy. Actions: start_round, track_shot, club_recommendation, log_score, round_summary, strategy.
             - live_translate: Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: start, stop, status, set_language.
             """
 
@@ -224,18 +255,32 @@ class LLMService: ObservableObject {
                     toolSection += "\n            - \(ct.name): \(ct.description)"
                 }
 
-                // Inject Home Assistant device list so LLM uses real entity IDs
-                if let haSummary = await HomeAssistantEntityCache.shared.deviceSummaryForPrompt() {
+                // Inject Home Assistant device list so LLM uses real entity IDs (skip if classifier says not needed)
+                if shouldInclude(.homeAssistant),
+                   let haSummary = await HomeAssistantEntityCache.shared.deviceSummaryForPrompt() {
                     toolSection += "\n\n            \(haSummary.replacingOccurrences(of: "\n", with: "\n            "))"
                 }
             }
 
-            if includeOpenClaw {
+            if includeOpenClaw && shouldInclude(.openClaw) {
                 toolSection += """
 
-            You also have an "execute" tool for the OpenClaw personal assistant gateway. \
-            Use it for actions built-in tools cannot handle: sending messages, managing calendar, \
-            controlling smart home devices, complex research, or external integrations.
+            OPENCLAW GATEWAY:
+            You also have an "execute" tool that connects to OpenClaw — a powerful personal assistant \
+            running on the user's computer. It has access to their files, browser, apps, messages, \
+            notes, calendar, contacts, and everything on their machine. It knows things about the \
+            user that you don't.
+            \(!gatewayToolNames.isEmpty ? "\nAvailable gateway skills: \(gatewayToolNames.joined(separator: ", ")).\nUse execute with the matching skill name for these capabilities." : "")
+            Use execute when:
+            - Built-in tools can't handle the request
+            - The user asks about personal info, preferences, or history you don't have
+            - Sending messages on any platform (WhatsApp, Telegram, Slack, email, etc.)
+            - Complex research, drafting, or multi-step tasks
+            - Controlling apps, services, or external integrations
+            - Remembering or recalling anything beyond your conversation context
+
+            NEVER say "I don't know anything about you" — ask OpenClaw via execute instead. \
+            If you're unsure whether you can handle something, use execute. It's your extension.
             """
             }
 
@@ -243,9 +288,11 @@ class LLMService: ObservableObject {
 
             TOOL USAGE RULES:
             CRITICAL: NEVER tell the user a tool is "not configured" or "not set up" — ALWAYS call the tool and let it handle errors. The tools check configuration internally and return helpful messages. Your job is to call them, not to guess their state.
-            1. Before calling any tool, ALWAYS speak a brief acknowledgment first. For example:
+            1. ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool. This prevents awkward \
+            silence while the tool executes. Examples:
                - "Sure, let me check the weather." then call get_weather.
                - "Got it, searching for that now." then call web_search.
+               - "One moment, looking that up." then call web_search.
             2. CONTACTS: phone_call and send_message both accept contact NAMES directly (e.g. "Mom", "John"). \
             They automatically resolve names to phone numbers from the user's contacts. You do NOT need to call \
             lookup_contact first — just pass the name. If multiple matches exist, the tool returns options for the user to choose. \
@@ -257,8 +304,9 @@ class LLMService: ObservableObject {
                - "Save what that sign says" → (read image text) → copy_to_clipboard (save it)
             4. The calendar proactive alert system will automatically notify the user 10 minutes before events. \
             You do NOT need to remind them about upcoming events unless they ask.
-            5. FALLBACK TO OPENCLAW: If a built-in tool fails or cannot complete the request, try the execute (OpenClaw) tool next. \
-            OpenClaw has 56+ skills including smart home, messaging, web search, and more. NEVER tell the user something can't be done without trying OpenClaw first.
+            5. FALLBACK TO OPENCLAW: If a built-in tool fails or you don't have the info the user needs, \
+            use execute (OpenClaw). It has 56+ skills and access to the user's full computer. \
+            NEVER tell the user something can't be done or that you don't know — try OpenClaw first.
             """
 
             prompt += toolSection
@@ -287,8 +335,17 @@ class LLMService: ObservableObject {
             MEMORY INSTRUCTIONS:
             You can remember facts about the user by including [REMEMBER: key = value] in your response.
             You can forget facts with [FORGET: key]. These tags will be stripped before speaking.
-            Remember things like: their name, preferences, family members, routines, interests.
+            Memories persist across all conversations — they are the bridge between sessions.
+
+            What to remember: names, preferences, family members, routines, interests, important dates, relationships, stated goals.
             Only remember when the user explicitly shares personal info — don't infer or assume.
+
+            Memory hygiene — keep memory accurate and compact:
+            - Before adding a fact, check the existing memories listed above. If one already covers that key, update it rather than creating a duplicate.
+            - Merge related facts when possible (e.g. "partner = Alex" plus "Alex's birthday is March 5" → update partner entry to include both).
+            - For time-sensitive facts (e.g. "at the airport", "working on a presentation"), include a date or context so staleness can be evaluated later.
+            - Use [FORGET: key] to remove facts the user corrects or that are clearly no longer true.
+            - When the user says "forget X" or "that's wrong", always issue a [FORGET] command before storing the correction.
             """
         }
         if let playbook = playbookContext {
@@ -298,19 +355,26 @@ class LLMService: ObservableObject {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
         // Inject voice-taught skills
-        if let skills = VoiceSkillStore.shared.promptContext() {
+        if shouldInclude(.tools), let skills = VoiceSkillStore.shared.promptContext() {
             prompt += "\n\n\(skills)"
         }
         // Inject social context (people the user knows)
-        if let social = SocialContextStore.shared.promptContext() {
+        if shouldInclude(.social), let social = SocialContextStore.shared.promptContext() {
             prompt += "\n\n\(social)"
+        }
+        // Inject installed ClawHub skills
+        if shouldInclude(.openClaw), let skillContext = InstalledSkillStore.shared.promptContext() {
+            prompt += "\n\n\(skillContext)"
         }
         return prompt
     }
 
-    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil) async throws -> String {
+    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
         isProcessing = true
         defer { isProcessing = false }
+
+        // Compress context window if conversation history has grown too large
+        compressContextWindowIfNeeded()
 
         guard let modelConfig = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured — add one in Settings")
@@ -321,7 +385,8 @@ class LLMService: ObservableObject {
         let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
         let includeTools = hasNativeTools || includeOpenClaw
         let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
-        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext)
+        let gatewayToolNames = openClawBridge?.availableToolNames ?? []
+        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, promptSections: promptSections)
 
         var toolsLabel = ""
         if hasNativeTools { toolsLabel += " [NativeTools]" }
@@ -345,6 +410,107 @@ class LLMService: ObservableObject {
     /// Clear conversation history (e.g. when starting fresh or switching providers)
     func clearHistory() {
         conversationHistory.removeAll()
+    }
+
+    /// Load a persisted conversation thread into the in-memory history.
+    /// Called when the user resumes a past conversation from the history view.
+    /// The full thread is loaded and then compacted if it exceeds the token budget,
+    /// preserving key signals from earlier messages.
+    func loadConversationHistory(_ messages: [(role: String, content: String)]) {
+        conversationHistory.removeAll()
+        for msg in messages {
+            conversationHistory.append(["role": msg.role, "content": msg.content])
+        }
+        // Compact immediately if the restored history is too large for the context window
+        compressContextWindowIfNeeded()
+        NSLog("[LLM] Loaded %d messages from conversation history (%d after compaction)",
+              messages.count, conversationHistory.count)
+    }
+
+    /// Compress the context window when estimated token count exceeds the budget.
+    ///
+    /// Instead of blindly dropping oldest messages, this uses structured compaction:
+    /// 1. Extracts key signals from messages about to be removed (decisions, names, memory commands, topics)
+    /// 2. Creates a compact summary message that preserves those signals
+    /// 3. Replaces the old messages with the summary + keeps recent context intact
+    ///
+    /// This ensures the agent doesn't "forget" mid-conversation decisions or user facts
+    /// even as the raw message history is trimmed for token budget.
+    private func compressContextWindowIfNeeded() {
+        let estimatedTokens = conversationHistory.reduce(0) { total, msg in
+            let content: String
+            if let text = msg["content"] as? String {
+                content = text
+            } else if let parts = msg["content"] as? [[String: Any]] {
+                // Multi-part content (images + text)
+                content = parts.compactMap { $0["text"] as? String }.joined()
+            } else {
+                content = ""
+            }
+            // ~4 chars per token, minimum 50 for overhead (tool calls, images)
+            return total + max(content.count / 4, 50)
+        }
+
+        guard estimatedTokens > maxEstimatedTokens, conversationHistory.count > 6 else { return }
+
+        let originalCount = conversationHistory.count
+
+        // Keep the most recent messages (at least 6 to preserve current thread)
+        let keepCount = max(6, conversationHistory.count / 3)
+        let messagesToCompress = Array(conversationHistory.prefix(conversationHistory.count - keepCount))
+        let messagesToKeep = Array(conversationHistory.suffix(keepCount))
+
+        // Extract key signals from the messages we're about to compress
+        var signals: [String] = []
+        for msg in messagesToCompress {
+            let role = msg["role"] as? String ?? ""
+            let content: String
+            if let text = msg["content"] as? String {
+                content = text
+            } else if let parts = msg["content"] as? [[String: Any]] {
+                content = parts.compactMap { $0["text"] as? String }.joined(separator: " ")
+            } else {
+                continue
+            }
+
+            // Preserve memory commands (they represent decisions the agent made)
+            if content.contains("[REMEMBER") || content.contains("[FORGET") {
+                let memoryLines = content.components(separatedBy: "\n")
+                    .filter { $0.contains("[REMEMBER") || $0.contains("[FORGET") }
+                signals.append(contentsOf: memoryLines)
+            }
+
+            // Preserve user-stated facts and decisions (short user messages are often important)
+            if role == "user" && content.count < 200 {
+                signals.append("User said: \(content)")
+            }
+
+            // Preserve tool call results (summarized)
+            if role == "assistant" && content.contains("tool_use") {
+                // Just note which tools were called
+                let toolMentions = content.components(separatedBy: "\n")
+                    .filter { $0.contains("tool_use") || $0.contains("tool_call") }
+                    .prefix(3)
+                signals.append(contentsOf: toolMentions)
+            }
+        }
+
+        // Build a compact summary as a system-role message
+        if !signals.isEmpty {
+            let summaryContent = "[Earlier conversation context — \(messagesToCompress.count) messages compressed]\n"
+                + signals.prefix(20).joined(separator: "\n")
+            conversationHistory = [["role": "user", "content": summaryContent]] + messagesToKeep
+        } else {
+            conversationHistory = messagesToKeep
+        }
+
+        let newTokens = conversationHistory.reduce(0) { total, msg in
+            let content = msg["content"] as? String ?? ""
+            return total + max(content.count / 4, 50)
+        }
+
+        NSLog("[LLM] Context compacted: %d → %d messages (~%d → ~%d tokens, %d signals preserved)",
+              originalCount, conversationHistory.count, estimatedTokens, newTokens, signals.count)
     }
 
     /// Refresh the published model name from Config
@@ -399,7 +565,12 @@ class LLMService: ObservableObject {
 
             if includeTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
-                body["tools"] = await MainActor.run { ToolDeclarations.anthropicTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw) }
+                let toolsData: Data = await MainActor.run {
+                    let tools = ToolDeclarations.anthropicTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                }
+                let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                body["tools"] = tools
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -559,6 +730,7 @@ class LLMService: ObservableObject {
         trimHistory()
 
         for iteration in 0..<maxToolCallIterations {
+            try Task.checkCancellation()
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -588,14 +760,22 @@ class LLMService: ObservableObject {
 
             if includeTools && providerSupportsTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
-                body["tools"] = await MainActor.run { ToolDeclarations.openAITools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw) }
+                let toolsData: Data = await MainActor.run {
+                    let tools = ToolDeclarations.openAITools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                }
+                let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                body["tools"] = tools
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request.timeoutInterval = 60 // 60s timeout to prevent app freezing
 
             // Debug: log request details (redact base64 images)
-            let debugBody = body.filter { $0.key != "messages" }
-            print("🌐 \(provider.displayName) request: model=\(config.model) url=\(baseURL) keys=\(debugBody.keys.sorted())")
+            let messageCount = (body["messages"] as? [[String: Any]])?.count ?? 0
+            let hasImage = imageData != nil && supportsVision
+            let bodySize = request.httpBody?.count ?? 0
+            print("🌐 \(provider.displayName) request: model=\(config.model) url=\(baseURL) messages=\(messageCount) hasImage=\(hasImage) bodySize=\(bodySize)")
 
             let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -769,7 +949,12 @@ class LLMService: ObservableObject {
 
             if includeTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
-                body["tools"] = await MainActor.run { ToolDeclarations.geminiRESTTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw) }
+                let toolsData: Data = await MainActor.run {
+                    let tools = ToolDeclarations.geminiRESTTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                }
+                let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                body["tools"] = tools
             }
 
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -1041,10 +1226,16 @@ class LLMService: ObservableObject {
 
     // MARK: - Helpers
 
+    /// Trim history only when token budget is exceeded — no fixed turn limit.
+    /// Preserves recent context and any messages containing memory commands or important decisions.
     private func trimHistory() {
-        if conversationHistory.count > maxHistoryTurns * 2 {
-            conversationHistory = Array(conversationHistory.suffix(maxHistoryTurns * 2))
-        }
+        compressContextWindowIfNeeded()
+    }
+
+    /// Inject a hidden system message into conversation history.
+    /// Used by the memory nudge to prompt periodic review without the user seeing it.
+    func injectSystemMessage(_ message: String) {
+        conversationHistory.append(["role": "user", "content": message])
     }
 }
 

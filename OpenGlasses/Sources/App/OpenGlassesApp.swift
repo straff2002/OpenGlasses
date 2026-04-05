@@ -4,6 +4,11 @@ import MWDATCore
 import AVFoundation
 import AppIntents
 import UIKit
+import CarPlay
+
+extension Notification.Name {
+    static let onboardingCompleted = Notification.Name("onboardingCompleted")
+}
 
 private func processWearablesCallbackURL(_ url: URL, source: String) {
     NSLog("[OpenGlasses] [\(source)] Received URL callback: \(url.absoluteString)")
@@ -40,7 +45,14 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
             processWearablesCallbackURL(url, source: "SceneConnectUserActivity")
         }
 
-        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        // Route CarPlay scenes to the CarPlay delegate
+        if connectingSceneSession.role == UISceneSession.Role(rawValue: "CPTemplateApplicationSceneSessionRoleApplication") {
+            let config = UISceneConfiguration(name: "OpenGlassesCarPlayScene", sessionRole: connectingSceneSession.role)
+            config.delegateClass = CarPlaySceneDelegate.self
+            return config
+        }
+
+        let configuration = UISceneConfiguration(name: "OpenGlassesDeviceScene", sessionRole: connectingSceneSession.role)
         configuration.delegateClass = OpenGlassesSceneDelegate.self
         return configuration
     }
@@ -53,6 +65,13 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
             return true
         }
         return false
+    }
+
+    /// Lock the app to portrait — Info.plist declares all orientations (required on iOS 26
+    /// without UIRequiresFullScreen), but we enforce portrait-only here.
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        return [.portrait, .portraitUpsideDown]
     }
 
     /// Handle background URLSession events (model downloads completing while app is suspended).
@@ -111,7 +130,10 @@ struct OpenGlassesApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        configureWearables()
+        // Defer Wearables SDK (Bluetooth permission) until after onboarding
+        if Config.hasCompletedOnboarding {
+            configureWearables()
+        }
         NetworkMonitorService.register()
     }
 
@@ -147,15 +169,29 @@ struct OpenGlassesApp: App {
                         return
                     }
 
+                    // Handle connect/disconnect deep links (from widget, DI, watch)
+                    if url.scheme == "openglasses", url.host == "connect" {
+                        Task { @MainActor in
+                            await appState.connectAndListen()
+                        }
+                        return
+                    }
+
+                    if url.scheme == "openglasses", url.host == "disconnect" {
+                        Task { @MainActor in
+                            appState.disconnectGlasses()
+                        }
+                        return
+                    }
+
                     // Handle widget quick action deep links
                     if url.scheme == "openglasses", url.host == "action" {
                         let action = url.lastPathComponent
                         Task { @MainActor in
                             switch action {
                             case "ask":
-                                appState.wakeWordService.stopListening()
-                                try? await Task.sleep(nanoseconds: 100_000_000)
-                                await appState.handleWakeWordDetected()
+                                // Reconnect if needed, then listen
+                                await appState.connectAndListen()
                             case "photo":
                                 await appState.captureAndAnalyzePhoto()
                             case "describe":
@@ -183,20 +219,34 @@ struct OpenGlassesApp: App {
             switch newPhase {
             case .background:
                 print("📱 App moved to background — keeping audio alive")
-                appState.liveActivityManager.end()
+                // Don't end Live Activity here — it should persist on the Lock Screen.
+                // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 appState.optimizeForBackground()
+                appState.conversationStore.lock()
             case .active:
                 print("📱 App became active")
                 appState.restoreFromBackground()
-                appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "OpenGlasses")
-                appState.updateLiveActivity()
-                Task {
-                    // Give onOpenURL time to process any pending Meta Auth callbacks
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    
-                    let state = Wearables.shared.registrationState
-                    if state.rawValue < 3 {
-                        print("📋 Registration dropped to \(state.rawValue) after background — waiting for natural reconnect...")
+                if appState.conversationStore.isLocked {
+                    Task { await appState.conversationStore.unlock() }
+                }
+                // Sync listening state from UserDefaults (may have been toggled via widget intent)
+                let storedEnabled = Config.listeningEnabled
+                if appState.listeningEnabled != storedEnabled {
+                    appState.setListeningEnabled(storedEnabled)
+                }
+                if appState.listeningEnabled {
+                    appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "OpenGlasses")
+                    appState.updateLiveActivity()
+                }
+                if Config.hasCompletedOnboarding {
+                    Task {
+                        // Give onOpenURL time to process any pending Meta Auth callbacks
+                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+                        let state = Wearables.shared.registrationState
+                        if state.rawValue < 3 {
+                            print("📋 Registration dropped to \(state.rawValue) after background — waiting for natural reconnect...")
+                        }
                     }
                 }
                 // Only restart wake word listener in Direct Mode
@@ -208,7 +258,7 @@ struct OpenGlassesApp: App {
                             return
                         }
 
-                        if !appState.wakeWordService.isListening && !appState.isListening && appState.isConnected && !appState.micMuted {
+                        if !appState.wakeWordService.isListening && !appState.isListening && appState.isConnected && !appState.micMuted && !Config.silentMode {
                             print("🎤 Restarting wake word listener after foreground...")
                             // Re-configure audio session in case Bluetooth route changed
                             appState.wakeWordService.reconfigureAudioSessionIfNeeded()
@@ -267,18 +317,33 @@ struct OpenGlassesApp: App {
 
 /// Global application state
 @MainActor
-class AppState: ObservableObject {
+class AppState: ObservableObject, AppStateProtocol {
     @Published var isConnected: Bool = false {
         didSet {
             speechService.glassesConnected = isConnected
-            // Privacy: stop listening when glasses disconnect
+            // Clean up hardware-facing interfaces when glasses disconnect.
+            // The agent and in-flight LLM requests keep running — results
+            // can appear in notifications or be read when the app is opened.
             if !isConnected && oldValue {
                 wakeWordService.stopListening()
                 isListening = false
-                NSLog("[Privacy] Glasses disconnected — stopped microphone")
+                inConversation = false
+                glassesIdle = false
+
+                // Stop realtime streaming sessions (they need the BT audio link)
+                if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
+                if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
+
+                // Stop camera streaming and TTS (no speakers to output to)
+                Task { await cameraService.stopStreaming() }
+                speechService.stopSpeaking()
+
+                NSLog("[Privacy] Glasses disconnected — stopped mic, sessions, camera. Agent continues.")
             }
         }
     }
+    /// Glasses are connected but idle (likely in case — sustained audio silence detected).
+    @Published var glassesIdle: Bool = false
     @Published var registrationStateRaw: Int = 0
     @Published var lastCallbackSource: String = "—"
     @Published var lastCallbackURL: String = "—"
@@ -303,7 +368,11 @@ class AppState: ObservableObject {
     @Published var lastResponse: String = ""
     @Published var errorMessage: String?
     @Published var currentMode: AppMode = Config.appMode
-    @Published var activePersona: Persona?
+    @Published var activePersona: Persona? {
+        didSet { userMemory.activePersonaId = activePersona?.id }
+    }
+    @Published var carPlayConnected: Bool = false
+    @Published var listeningEnabled: Bool = Config.listeningEnabled
 
     let glassesService = GlassesConnectionService()
     let wakeWordService = WakeWordService()
@@ -337,6 +406,7 @@ class AppState: ObservableObject {
     let openClawEventClient = OpenClawEventClient()
     let geminiLiveSession = GeminiLiveSessionManager()
     let openAIRealtimeSession = OpenAIRealtimeSessionManager()
+    let backgroundVoice = BackgroundVoiceService()
 
     // Native tool system
     let nativeToolRegistry: NativeToolRegistry
@@ -346,8 +416,11 @@ class AppState: ObservableObject {
     let conversationStore = ConversationStore()
     let userMemory = UserMemoryStore()
     let intentClassifier = IntentClassifier()
+    let conversationClassifier = ConversationClassifier()
 
     private var cancellables: [Any] = []
+    private var autoSleepTask: Task<Void, Never>?
+    private var currentLLMTask: Task<Void, Never>?
     @Published private(set) var isProcessing: Bool = false
     private var hasEverRegistered: Bool = false
     var inConversation: Bool = false
@@ -392,6 +465,14 @@ class AppState: ObservableObject {
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 
+        // Wire "still working" TTS callback for long-running tool executions
+        nativeToolRouter.onLongRunningUpdate = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.speechService.speak(message)
+            }
+        }
+
         // Wire agent document store into the doc editing tool
         if var docTool = nativeToolRegistry.tool(named: "edit_agent_docs") as? AgentDocumentTool {
             docTool.agentDocs = agentDocs
@@ -400,6 +481,10 @@ class AppState: ObservableObject {
         if var pbTool = nativeToolRegistry.tool(named: "playbook") as? PlaybookTool {
             pbTool.playbookStore = playbookStore
             nativeToolRegistry.register(pbTool)
+        }
+        if var qaTool = nativeToolRegistry.tool(named: "quick_action") as? QuickActionTool {
+            qaTool.appState = self
+            nativeToolRegistry.register(qaTool)
         }
 
         addDebugEvent("AppState initialized")
@@ -416,9 +501,10 @@ class AppState: ObservableObject {
             }
         }
 
-        // Wire OpenClaw bridge to both Direct Mode and Gemini Live
+        // Wire OpenClaw bridge to both Direct Mode, Gemini Live, and memory store
         llmService.openClawBridge = openClawBridge
         geminiLiveSession.openClawBridge = openClawBridge
+        userMemory.openClawBridge = openClawBridge
 
         // Wire native tool router to LLM service and Gemini Live
         llmService.nativeToolRouter = nativeToolRouter
@@ -496,27 +582,13 @@ class AppState: ObservableObject {
         }
 
         setupServiceCallbacks()
-        observeGlassesConnection()
-        autoConnectGlasses()
 
-        // Mode-specific auto-start
-        if currentMode == .direct {
-            autoStartListening()
-        } else if currentMode.isRealtime {
-            // Pre-start camera streaming so frames are ready when user taps "Start Session"
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                do {
-                    try await cameraService.startStreaming()
-                } catch {
-                    NSLog("[App] Camera streaming auto-start failed: %@", error.localizedDescription)
-                }
-            }
+        // Defer Wearables.shared calls until after onboarding (requires configure() first)
+        if Config.hasCompletedOnboarding {
+            observeGlassesConnection()
+            autoConnectGlasses()
+            startPermissionRequiringServices()
         }
-        locationService.startTracking()
-
-        // Initialize HomeKit on main thread early (avoids homed XPC failures)
-        HomeKitTool.prepareShared()
 
         // Start proactive calendar alerts — speaks through TTS when events are imminent
         proactiveAlerts.onAlert = { [weak self] message in
@@ -552,13 +624,31 @@ class AppState: ObservableObject {
             geofenceTool.restoreGeofences()
         }
 
-        // OpenClaw WebSocket — proactive notifications via TTS
+        // OpenClaw WebSocket — triage notifications through the agent before speaking
         openClawEventClient.onNotification = { [weak self] message in
             guard let self else { return }
-            Task {
-                await self.speechService.speak(message)
+            Task { @MainActor in
+                await self.triageOpenClawNotification(message)
             }
         }
+        // Sync gateway memories when OpenClaw connects
+        openClawBridge.onGatewayConnected = { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.userMemory.syncFromGateway()
+            }
+        }
+
+        // Streaming TTS — speak partial gateway results as they arrive
+        openClawBridge.onStreamChunk = { [weak self] chunk in
+            guard let self else { return }
+            Task { @MainActor in
+                // Append to visible response and queue for speech
+                self.lastResponse += chunk
+                await self.speechService.speakStreaming(chunk)
+            }
+        }
+
         if Config.isOpenClawConfigured {
             openClawEventClient.connect()
             Task { await openClawBridge.checkConnection() }
@@ -586,9 +676,11 @@ class AppState: ObservableObject {
                 isListening = false
             case .geminiLive:
                 geminiLiveSession.stopSession()
+                backgroundVoice.endBackgroundSession()
                 await cameraService.tearDown()
             case .openaiRealtime:
                 openAIRealtimeSession.stopSession()
+                backgroundVoice.endBackgroundSession()
                 await cameraService.tearDown()
             }
 
@@ -600,6 +692,8 @@ class AppState: ObservableObject {
             case .direct:
                 try? await wakeWordService.startListening()
             case .geminiLive, .openaiRealtime:
+                // Start background voice session to keep audio alive when backgrounded
+                backgroundVoice.startBackgroundSession()
                 // Start camera streaming so frames are available when session starts
                 do {
                     try await cameraService.startStreaming()
@@ -608,6 +702,31 @@ class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Start services that require system permissions (Bluetooth, Location, Mic, HomeKit).
+    /// Called after onboarding completes, or at init if onboarding is already done.
+    func startPermissionRequiringServices() {
+        // Start glasses observers (requires Wearables.configure() first)
+        glassesService.startObserving()
+        observeGlassesConnection()
+        autoConnectGlasses()
+
+        // Mode-specific auto-start (mic permission)
+        if currentMode == .direct {
+            autoStartListening()
+        } else if currentMode.isRealtime {
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                do {
+                    try await cameraService.startStreaming()
+                } catch {
+                    NSLog("[App] Camera streaming auto-start failed: %@", error.localizedDescription)
+                }
+            }
+        }
+        locationService.startTracking()
+        HomeKitTool.prepareShared()
     }
 
     private func setupServiceCallbacks() {
@@ -643,6 +762,13 @@ class AppState: ObservableObject {
             }
         }
 
+        // Voice-activity barge-in: user starts speaking during TTS → stop and process new query
+        wakeWordService.onBargeIn = { [weak self] bargeInText in
+            Task { @MainActor in
+                self?.handleBargeIn(bargeInText)
+            }
+        }
+
         wakeWordService.onBluetoothDisconnected = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -650,6 +776,40 @@ class AppState: ObservableObject {
                     self.isConnected = false
                     NSLog("[Privacy] Bluetooth audio lost — marking glasses disconnected")
                 }
+            }
+        }
+
+        // Glasses in case: sustained silence → stop mic, start auto-sleep timer
+        wakeWordService.onSilenceDetected = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.glassesIdle = true
+                self.wakeWordService.stopListening()
+                self.isListening = false
+                NSLog("[Privacy] Glasses idle (in case?) — mic off. Will restart on BT route change.")
+
+                // Start auto-sleep countdown
+                self.startAutoSleepTimer()
+            }
+        }
+
+        // Glasses back out of case: audio resumes → clear idle, cancel auto-sleep
+        wakeWordService.onAudioResumed = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.cancelAutoSleepTimer()
+                self.glassesIdle = false
+                NSLog("[Privacy] Glasses active again — resuming")
+            }
+        }
+
+        // Bluetooth reconnect (glasses powered back on) → clear idle, cancel auto-sleep
+        wakeWordService.onBluetoothReconnected = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.cancelAutoSleepTimer()
+                self.glassesIdle = false
+                NSLog("[Privacy] Bluetooth reconnected — clearing idle state")
             }
         }
 
@@ -676,12 +836,35 @@ class AppState: ObservableObject {
     }
 
     private func observeGlassesConnection() {
+        // Monitor Bluetooth audio route changes independently of WakeWordService.
+        // This catches disconnects when in realtime mode or silent mode.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue else { return }
+            let route = AVAudioSession.sharedInstance().currentRoute
+            let hasBluetooth = route.outputs.contains { $0.portType == .bluetoothA2DP || $0.portType == .bluetoothHFP || $0.portType == .bluetoothLE }
+            if !hasBluetooth {
+                Task { @MainActor in
+                    guard let self, self.isConnected else { return }
+                    self.isConnected = false
+                    NSLog("[Privacy] Bluetooth audio route lost — marking glasses disconnected")
+                }
+            }
+        }
+
         // Monitor devices list
         let deviceToken = Wearables.shared.addDevicesListener { [weak self] deviceIds in
             Task { @MainActor in
                 guard let self else { return }
-                print("📋 Devices changed: \(deviceIds)")
-                self.addDebugEvent("Devices changed: \(deviceIds.count)")
+                let now = Date()
+                let fmt = DateFormatter()
+                fmt.dateFormat = "HH:mm:ss.SSS"
+                print("📋 Devices changed: \(deviceIds) at \(fmt.string(from: now))")
+                self.addDebugEvent("Devices changed: \(deviceIds.count) at \(fmt.string(from: now))")
                 if !deviceIds.isEmpty {
                     let wasDisconnected = !self.isConnected
                     self.hasEverRegistered = true
@@ -718,6 +901,13 @@ class AppState: ObservableObject {
                     self.hasEverRegistered = true
                     self.isConnected = true
                     UserDefaults.standard.set(true, forKey: "hasRegisteredWithMeta")
+
+                    // Pre-request Meta camera permission so it's ready for first photo
+                    if !self.cameraService.permissionGranted {
+                        Task {
+                            try? await self.cameraService.ensurePermission()
+                        }
+                    }
                 }
             }
         }
@@ -920,6 +1110,12 @@ class AppState: ObservableObject {
                 }
             }
 
+            // Don't auto-start in silent mode — saves battery, user uses tap-to-talk
+            if Config.silentMode {
+                print("🔇 Silent mode — skipping wake word auto-start (battery saver)")
+                return
+            }
+
             if !wakeWordService.isListening {
                 print("🎤 Auto-starting wake word listener...")
                 do {
@@ -937,7 +1133,7 @@ class AppState: ObservableObject {
         print("🛑 User tapped stop")
         speechService.stopSpeaking()
         isProcessing = false
-            speechService.stopThinkingSound()
+        speechService.stopThinkingSound()
         // Stay in conversation — listen for follow-up right away
         if inConversation {
             print("💬 Listening for follow-up after stop...")
@@ -948,9 +1144,54 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Handle voice-activity barge-in: user started speaking during TTS.
+    /// Stop the current response and process the barge-in text as a new query.
+    func handleBargeIn(_ bargeInText: String) {
+        print("⚡ Barge-in: '\(bargeInText)' — stopping TTS and processing")
+        speechService.stopSpeaking()
+        currentLLMTask?.cancel()
+        currentLLMTask = nil
+        isProcessing = false
+        speechService.stopThinkingSound()
+
+        guard inConversation else {
+            Task { await returnToWakeWord() }
+            return
+        }
+
+        // Feed the barge-in text directly into the conversation pipeline
+        // handleTranscription handles conversation store, LLM call, etc.
+        Task {
+            await handleTranscription(bargeInText)
+        }
+    }
+
     /// The agent context (soul.md + skills.md + memory.md) if personality mode is enabled.
     var currentAgentContext: String? {
         Config.agentModeEnabled ? agentDocs.agentContext() : nil
+    }
+
+    /// Master listening toggle — stops/starts wake word detection and Live Activity.
+    func setListeningEnabled(_ enabled: Bool) {
+        listeningEnabled = enabled
+        Config.setListeningEnabled(enabled)
+
+        if enabled {
+            // Restart wake word detection and Live Activity
+            liveActivityManager.start(glassesName: glassesService.deviceName ?? "OpenGlasses")
+            if isConnected {
+                Task { try? await wakeWordService.startListening() }
+            }
+            NSLog("[Listening] Enabled")
+        } else {
+            // Stop everything: wake word, transcription, TTS, Live Activity
+            wakeWordService.stopListening()
+            transcriptionService.stopRecording()
+            speechService.stopSpeaking()
+            liveActivityManager.end()
+            isListening = false
+            NSLog("[Listening] Disabled")
+        }
     }
 
     /// Push current state to the Live Activity on Lock Screen / Dynamic Island.
@@ -969,9 +1210,11 @@ class AppState: ObservableObject {
     /// Cancel current LLM processing or TTS playback and return to wake word listening.
     func cancelCurrentResponse() {
         print("🛑 User cancelled response")
+        currentLLMTask?.cancel()
+        currentLLMTask = nil
         speechService.stopSpeaking()
         isProcessing = false
-            speechService.stopThinkingSound()
+        speechService.stopThinkingSound()
         isListening = false
         inConversation = false
         lastResponse = "Cancelled"
@@ -1277,10 +1520,25 @@ class AppState: ObservableObject {
         }
     }
 
-    func handleWakeWordDetected() async {
-        print("🎤 Wake word detected! Starting conversation...")
+    /// Whether the current conversation was started by an explicit user tap (not wake word).
+    /// When true, TTS speaks through the phone speaker even without glasses connected.
+    private(set) var manuallyTriggered: Bool = false
+
+    func handleWakeWordDetected(manual: Bool = false) async {
+        print("🎤 \(manual ? "Tap-to-talk" : "Wake word") detected! Starting conversation...")
+        manuallyTriggered = manual
         inConversation = true
         isListening = true
+
+        // Allow phone speaker output when user explicitly tapped to talk
+        if manual && !isConnected {
+            speechService.requireGlassesForSpeech = false
+        }
+
+        // Ensure audio session + engine are alive (may be off in silent mode)
+        wakeWordService.configureAudioSession()
+        try? await wakeWordService.ensureAudioEngineRunning()
+
         speechService.playAcknowledgmentTone()
         transcriptionService.startRecording()
         updateLiveActivity()
@@ -1490,49 +1748,116 @@ class AppState: ObservableObject {
             isProcessing = true
             speechService.startThinkingSound()
             await speechService.speak("Taking a picture.")
-            do {
-                let photoData = try await cameraService.capturePhoto()
-                // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
-                cameraService.restoreAudioForWakeWord()
-                cameraService.saveToPhotoLibrary(photoData)
-                print("📸 Photo saved, sending to LLM with prompt: \(query)")
 
-                let rawResponse = try await llmService.sendMessage(
-                    query,
-                    locationContext: locationService.locationContext,
-                    imageData: photoData,
-                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
-                )
-                let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
-                lastResponse = response
-                if Config.conversationPersistenceEnabled {
-                    conversationStore.appendMessage(role: "assistant", content: response)
+            currentLLMTask = Task {
+                do {
+                    let photoData = try await cameraService.capturePhoto()
+                    try Task.checkCancellation()
+                    // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
+                    cameraService.restoreAudioForWakeWord()
+                    cameraService.saveToPhotoLibrary(photoData)
+                    print("📸 Photo saved, sending to LLM with prompt: \(query)")
+
+                    let rawResponse = try await llmService.sendMessage(
+                        query,
+                        locationContext: locationService.locationContext,
+                        imageData: photoData,
+                        memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+                    )
+                    try Task.checkCancellation()
+                    let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+                    lastResponse = response
+                    if Config.conversationPersistenceEnabled {
+                        conversationStore.appendMessage(role: "assistant", content: response)
+                    }
+                    print("🤖 \(llmService.activeModelName) (vision): \(response)")
+
+                    // Start wake word listener during TTS so user can say "stop"
+                    startStopListener()
+                    await speechService.speak(response)
+                    stopStopListener()
+
+                } catch is CancellationError {
+                    print("🛑 Photo/LLM task cancelled")
+                } catch {
+                    cameraService.restoreAudioForWakeWord()
+                    print("📸 Photo capture failed: \(error)")
+                    lastResponse = "Photo failed: \(error.localizedDescription)"
+                    await speechService.speak("Sorry, I couldn't take a photo or process the image. \(error.localizedDescription)")
                 }
-                print("🤖 \(llmService.activeModelName) (vision): \(response)")
-
-                // Start wake word listener during TTS so user can say "stop"
-                startStopListener()
-                await speechService.speak(response)
-                stopStopListener()
-
-            } catch {
-                cameraService.restoreAudioForWakeWord()
-                print("📸 Photo capture failed: \(error)")
-                lastResponse = "Photo failed: \(error.localizedDescription)"
-                await speechService.speak("Sorry, I couldn't take a photo or process the image. \(error.localizedDescription)")
-            }
-            isProcessing = false
-            speechService.stopThinkingSound()
-            if inConversation {
-                isListening = true
-                transcriptionService.startRecording()
-            } else {
-                await returnToWakeWord()
+                isProcessing = false
+                speechService.stopThinkingSound()
+                if inConversation {
+                    // Ensure audio engine is alive after TTS playback
+                    try? await wakeWordService.ensureAudioEngineRunning()
+                    isListening = true
+                    transcriptionService.startRecording()
+                } else {
+                    await returnToWakeWord()
+                }
             }
             return
         }
 
-        // Normal message — send to LLM
+        // Classify the request before deciding how to handle it
+        let turnCount = conversationStore.threads
+            .first(where: { $0.id == conversationStore.activeThreadId })?
+            .messages.filter({ $0.role == "user" }).count ?? 0
+        let hasImage = isPhotoCommand(query) // pre-check; smartCamera may override below
+        let classification = conversationClassifier.classify(query, hasImage: hasImage, conversationTurnCount: turnCount)
+        print("🧭 Classified: complexity=\(String(format: "%.2f", classification.complexity)) tier=\(classification.modelTier.rawValue) direct=\(classification.directToolCall?.toolName ?? "none")")
+
+        // Tier 0: Direct tool call — skip LLM entirely
+        if let directCall = classification.directToolCall,
+           let router = llmService.nativeToolRouter {
+            isProcessing = true
+            do {
+                let result = try await router.registry.executeTool(
+                    name: directCall.toolName,
+                    arguments: directCall.arguments
+                )
+                lastResponse = result
+                print("⚡ Direct tool call: \(directCall.toolName) → \(result)")
+
+                if Config.conversationPersistenceEnabled {
+                    conversationStore.appendMessage(role: "assistant", content: result)
+                }
+
+                startStopListener()
+                await speechService.speak(result)
+                stopStopListener()
+            } catch {
+                // Fall through to normal LLM path if direct call fails
+                print("⚠️ Direct tool call failed, falling back to LLM: \(error)")
+                isProcessing = false
+                // Don't return — continue to normal LLM path below
+            }
+
+            if isProcessing {
+                isProcessing = false
+                if inConversation {
+                    try? await wakeWordService.ensureAudioEngineRunning()
+                    isListening = true
+                    transcriptionService.startRecording()
+                } else {
+                    await returnToWakeWord()
+                }
+                return
+            }
+        }
+
+        // Tier 2: Model selection — temporarily switch to the recommended tier if available and enabled
+        var originalModelId: String?
+        if Config.autoModelRoutingEnabled,
+           let tierModel = Config.modelForTier(classification.modelTier),
+           tierModel.id != Config.activeModelId {
+            originalModelId = Config.activeModelId
+            Config.setActiveModelId(tierModel.id)
+            llmService.refreshActiveModel()
+            print("🧭 Model routed: \(classification.modelTier.rawValue) → \(tierModel.name)")
+        }
+
+        // Normal message — send to LLM (with Tier 1 prompt trimming via sections)
         isProcessing = true
         speechService.startThinkingSound()
 
@@ -1541,16 +1866,23 @@ class AppState: ObservableObject {
             let imageData = await smartCameraImageData(for: query)
             let rawResponse = try await llmService.sendMessage(
                 query,
-                locationContext: locationService.locationContext,
+                locationContext: classification.relevantSections.contains(.location) ? locationService.locationContext : nil,
                 imageData: imageData,
                 memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
-                playbookContext: playbookStore.playbookContext()
+                playbookContext: classification.relevantSections.contains(.playbook) ? playbookStore.playbookContext() : nil,
+                promptSections: classification.relevantSections
             )
 
             // Parse and execute memory commands from the response
             let response: String
             if Config.userMemoryEnabled {
                 response = userMemory.parseAndExecuteCommands(in: rawResponse)
+
+                // Periodic nudge: after N turns, inject a hidden review prompt
+                // into the LLM history so the next response considers what to remember
+                if userMemory.incrementTurnAndCheckNudge() {
+                    llmService.injectSystemMessage(UserMemoryStore.nudgePrompt)
+                }
             } else {
                 response = rawResponse
             }
@@ -1572,11 +1904,19 @@ class AppState: ObservableObject {
             await speechService.speak("Sorry, I encountered an error.")
         }
 
+        // Restore original model if we switched for this request
+        if let originalId = originalModelId {
+            Config.setActiveModelId(originalId)
+            llmService.refreshActiveModel()
+        }
+
         // After responding, stay in conversation — listen for follow-up
         isProcessing = false
-            speechService.stopThinkingSound()
+        speechService.stopThinkingSound()
         if inConversation {
             print("💬 Continuing conversation — listening for follow-up...")
+            // Ensure audio engine is alive after TTS playback (may have been interrupted)
+            try? await wakeWordService.ensureAudioEngineRunning()
             isListening = true
             transcriptionService.startRecording()
         } else {
@@ -1584,22 +1924,76 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Start wake word listener in "stop detection" mode during TTS playback
-    /// Only starts if the audio engine is already running (don't create a new one during TTS)
+    // MARK: - Text Message Input
+
+    /// Send a typed text message (with optional image) to the LLM — same pipeline as voice.
+    func sendTextMessage(_ text: String, imageData: Data? = nil) async {
+        guard !isProcessing else { return }
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+
+        currentTranscription = query
+        isListening = false
+        errorMessage = nil
+
+        // Track in conversation store
+        if Config.conversationPersistenceEnabled {
+            if conversationStore.activeThreadId == nil {
+                conversationStore.startThread(mode: currentMode.rawValue)
+            }
+            conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
+        }
+
+        isProcessing = true
+        speechService.startThinkingSound()
+
+        do {
+            // Use provided image, or fall back to smart camera if no image attached
+            let image: Data?
+            if let imageData {
+                image = imageData
+            } else {
+                image = await smartCameraImageData(for: query)
+            }
+            let rawResponse = try await llmService.sendMessage(
+                query,
+                locationContext: locationService.locationContext,
+                imageData: image,
+                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
+                playbookContext: playbookStore.playbookContext()
+            )
+
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+            lastResponse = response
+
+            if Config.conversationPersistenceEnabled {
+                conversationStore.appendMessage(role: "assistant", content: response)
+            }
+
+            // Speak the response (user can still say "stop")
+            startStopListener()
+            await speechService.speak(response)
+            stopStopListener()
+        } catch {
+            errorMessage = "Failed to get response: \(error.localizedDescription)"
+            await speechService.speak("Sorry, I encountered an error.")
+        }
+
+        isProcessing = false
+        speechService.stopThinkingSound()
+    }
+
+    /// Start wake word listener in "stop detection" mode during TTS playback.
+    /// With .playAndRecord audio session (Bluetooth HFP), mic works during TTS.
     private func startStopListener() {
         wakeWordService.listenForStop = true
-        // Only try if the engine is already alive — don't create a new one during playback
-        if wakeWordService.getAudioEngine()?.isRunning == true {
-            Task {
-                do {
-                    try await wakeWordService.startListening()
-                    print("🎤 Stop listener active during TTS")
-                } catch {
-                    print("⚠️ Could not start stop listener: \(error)")
-                }
+        Task {
+            do {
+                try await wakeWordService.startListening()
+                print("🎤 Stop listener active during TTS")
+            } catch {
+                print("⚠️ Could not start stop listener: \(error)")
             }
-        } else {
-            print("🎤 No running engine for stop listener — skipping")
         }
     }
 
@@ -1610,21 +2004,301 @@ class AppState: ObservableObject {
         wakeWordService.pauseRecognitionPublic()
     }
 
+    // MARK: - OpenClaw Notification Triage
+
+    /// Assess an incoming OpenClaw notification through the agent.
+    /// The agent decides: summarize it, query OpenClaw for clarification, or skip.
+    func triageOpenClawNotification(_ rawMessage: String) async {
+        let trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count > 5 else { return }
+
+        NSLog("[OpenClaw] Triaging notification (%d chars): %@",
+              trimmed.count, String(trimmed.prefix(120)))
+
+        let triagePrompt = """
+        An automated task from OpenClaw (a background service) produced this output:
+
+        ---
+        \(trimmed.prefix(1500))
+        ---
+
+        You have four options:
+        1. SUMMARY: If this is useful and actionable, summarize in 2-3 chatty spoken sentences. \
+        Start with "From OpenClaw:" so the user knows the source. Keep it short and natural.
+        2. CLARIFY: If the output is confusing or incomplete but looks like it was trying to do \
+        something useful, write a question to send back to OpenClaw for clarification. \
+        Start with "CLARIFY:" followed by your question.
+        3. FIX: If the output shows an error or the task failed/broke, send a request back to \
+        OpenClaw to investigate and fix the issue. Start with "FIX:" followed by what to fix.
+        4. SKIP: If the task had nothing to report ("no results", "nothing to do", idle status) \
+        or the output is completely useless gibberish. Stay quiet — don't bother the user.
+
+        Quality bar: Only speak to the user if you have something genuinely worth their attention. \
+        Idle reports, empty results, and "task completed with no output" are all SKIP.
+
+        Reply with one of: your spoken summary, "CLARIFY: question", "FIX: instruction", or "SKIP".
+        """
+
+        do {
+            let response = try await llmService.sendMessage(
+                triagePrompt,
+                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
+                agentContext: currentAgentContext
+            )
+
+            let cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if cleaned.uppercased() == "SKIP" || cleaned.uppercased().hasPrefix("SKIP") {
+                NSLog("[OpenClaw] Agent triaged as skip")
+                return
+            }
+
+            if cleaned.uppercased().hasPrefix("CLARIFY:") {
+                let question = String(cleaned.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines)
+                NSLog("[OpenClaw] Agent requesting clarification: %@", question)
+                await clarifyWithOpenClaw(originalMessage: trimmed, question: question)
+                return
+            }
+
+            if cleaned.uppercased().hasPrefix("FIX:") {
+                let instruction = String(cleaned.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+                NSLog("[OpenClaw] Agent requesting fix: %@", instruction)
+                await requestOpenClawFix(originalMessage: trimmed, instruction: instruction)
+                return
+            }
+
+            // Agent summarized — deliver it
+            lastResponse = cleaned
+            agentNotificationQueue.enqueue(
+                message: cleaned,
+                source: "OpenClaw",
+                priority: .medium
+            )
+        } catch {
+            NSLog("[OpenClaw] Triage failed: %@ — dropping", error.localizedDescription)
+        }
+    }
+
+    /// Query OpenClaw for clarification on a confusing notification, then re-triage.
+    private func clarifyWithOpenClaw(originalMessage: String, question: String) async {
+        guard Config.isOpenClawConfigured else {
+            NSLog("[OpenClaw] Can't clarify — OpenClaw not configured")
+            return
+        }
+
+        let clarifyPrompt = """
+        A background task produced this output, and I need clarification:
+
+        Original output: \(originalMessage.prefix(500))
+
+        My question: \(question)
+
+        Please explain briefly what this task was doing and what the result means for the user.
+        """
+
+        let result = await openClawBridge.delegateTask(task: clarifyPrompt)
+
+        switch result {
+        case .success(let clarification):
+            NSLog("[OpenClaw] Clarification received: %@", String(clarification.prefix(200)))
+
+            // Now summarize the clarified version for the user
+            let summaryPrompt = """
+            OpenClaw originally sent this notification:
+            \(originalMessage.prefix(500))
+
+            When asked for clarification, it explained:
+            \(clarification.prefix(500))
+
+            Summarize this for the user in 2-3 chatty spoken sentences. \
+            Start with "From OpenClaw:" so they know the source. Keep it natural and brief.
+            """
+
+            do {
+                let summary = try await llmService.sendMessage(
+                    summaryPrompt,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
+                    agentContext: currentAgentContext
+                )
+                let cleaned = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleaned.uppercased().hasPrefix("SKIP") else { return }
+
+                lastResponse = cleaned
+                agentNotificationQueue.enqueue(
+                    message: cleaned,
+                    source: "OpenClaw",
+                    priority: .medium
+                )
+            } catch {
+                NSLog("[OpenClaw] Summary after clarification failed: %@", error.localizedDescription)
+            }
+
+        case .failure(let error):
+            NSLog("[OpenClaw] Clarification request failed: %@", error)
+        }
+    }
+
+    /// Send a fix request to OpenClaw when a task is broken, then optionally notify user.
+    private func requestOpenClawFix(originalMessage: String, instruction: String) async {
+        guard Config.isOpenClawConfigured else { return }
+
+        let fixPrompt = """
+        A background task produced an error or broken output. Please investigate and fix if possible.
+
+        Original output: \(originalMessage.prefix(500))
+
+        Issue to fix: \(instruction)
+
+        Try to resolve the issue. If you can fix it, explain what you did briefly. \
+        If you can't, explain why.
+        """
+
+        let result = await openClawBridge.delegateTask(task: fixPrompt)
+
+        switch result {
+        case .success(let response):
+            NSLog("[OpenClaw] Fix response: %@", String(response.prefix(200)))
+            // Only tell the user if the fix is noteworthy
+            let briefCheck = response.lowercased()
+            let isNoteworthy = briefCheck.contains("fixed") ||
+                briefCheck.contains("resolved") ||
+                briefCheck.contains("updated") ||
+                briefCheck.contains("can't") ||
+                briefCheck.contains("cannot")
+            if isNoteworthy {
+                // Re-triage the fix response (single level — won't recurse)
+                lastResponse = response
+                agentNotificationQueue.enqueue(
+                    message: "From OpenClaw: \(String(response.prefix(300)))",
+                    source: "OpenClaw fix",
+                    priority: .low
+                )
+            }
+        case .failure(let error):
+            NSLog("[OpenClaw] Fix request failed: %@", error)
+        }
+    }
+
+    // MARK: - Quick Disconnect
+
+    // MARK: - Connect & Listen
+
+    /// One-tap reconnect — connect glasses and immediately start listening.
+    /// Used by hero capsule, widget, watch, and Dynamic Island reconnect actions.
+    func connectAndListen() async {
+        guard !isConnected else {
+            // Already connected — just start listening
+            wakeWordService.stopListening()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            await handleWakeWordDetected(manual: true)
+            return
+        }
+
+        // Connect glasses
+        await glassesService.connect()
+
+        // Wait for connection to establish — up to 15s on fresh install (DAT registration
+        // can take a while the first time or after re-pairing)
+        for _ in 0..<60 {
+            if isConnected { break }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        guard isConnected else {
+            errorMessage = "Could not connect to glasses"
+            return
+        }
+
+        // Now start listening
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        await handleWakeWordDetected(manual: true)
+    }
+
+    /// Start auto-sleep countdown. If glasses stay idle for N minutes, disconnect.
+    private func startAutoSleepTimer() {
+        cancelAutoSleepTimer()
+        let minutes = Config.autoSleepMinutes
+        guard minutes > 0 else { return }
+
+        autoSleepTask = Task { @MainActor [weak self] in
+            let seconds = UInt64(minutes) * 60
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard let self, !Task.isCancelled, self.glassesIdle, self.isConnected else { return }
+            NSLog("[AutoSleep] Glasses idle for %d min — disconnecting", minutes)
+            self.disconnectGlasses()
+        }
+        NSLog("[AutoSleep] Timer started: %d minutes", minutes)
+    }
+
+    private func cancelAutoSleepTimer() {
+        autoSleepTask?.cancel()
+        autoSleepTask = nil
+    }
+
+    /// Tear down all glasses-dependent services in one tap.
+    /// Stops mic, TTS, camera, realtime sessions, and marks glasses disconnected.
+    /// OpenClaw bridge and agent tasks continue running server-side.
+    func disconnectGlasses() {
+        guard isConnected else { return }
+
+        // Stop all active interactions
+        speechService.stopSpeaking()
+        wakeWordService.stopListening()
+        isListening = false
+        inConversation = false
+        glassesIdle = false
+
+        // Stop realtime sessions
+        if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
+        if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
+
+        // Stop camera + recording
+        Task { await cameraService.stopStreaming() }
+        if videoRecorder.isRecording {
+            Task { _ = await videoRecorder.stopRecording() }
+        }
+
+        // Stop ambient features that use mic/speakers
+        if ambientCaptions.isActive { ambientCaptions.stop() }
+
+        // End conversation thread
+        if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
+            conversationStore.endThread()
+        }
+
+        // Disconnect the glasses (triggers isConnected didSet cleanup too)
+        glassesService.disconnect()
+
+        // Update live activity
+        liveActivityManager.end()
+
+        NSLog("[OpenGlasses] Quick disconnect — all glasses services stopped")
+    }
+
     func returnToWakeWord() async {
+        // Capture whether we were in a conversation before resetting state.
+        // If the user was actively talking, always restart wake word — even in
+        // silent mode (silent mode only suppresses the *initial* auto-start).
+        let wasInConversation = inConversation
+
         isListening = false
         inConversation = false
         activePersona = nil
+        manuallyTriggered = false
         wakeWordService.listenForStop = false
+        // Restore glasses-required TTS policy
+        speechService.requireGlassesForSpeech = true
         speechService.playDisconnectTone()
         updateLiveActivity()
         // End active conversation thread
         if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
             conversationStore.endThread()
         }
-        // In silent mode, don't restart the wake word listener — agent is still
-        // actionable via watch, widget, Action Button, and manual mic tap
-        if Config.silentMode {
-            print("🔇 Silent mode — wake word listener stays off")
+        // In silent mode, don't restart wake word UNLESS we just finished an
+        // active conversation — the user was just talking, so they expect the
+        // mic to come back for the next wake word.
+        if Config.silentMode && !wasInConversation {
+            print("🔇 Silent mode — wake word listener stays off (no active conversation)")
             return
         }
         // Don't restart mic on phone speaker when glasses are disconnected

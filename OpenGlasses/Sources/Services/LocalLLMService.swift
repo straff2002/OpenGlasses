@@ -28,6 +28,15 @@ final class LocalLLMService: ObservableObject {
     // MARK: - Recommended Models
 
     static let recommendedModels: [RecommendedModel] = [
+        // Gemma 4 — best on-device agent model
+        RecommendedModel(
+            id: "mlx-community/gemma-4-e2b-it-4bit",
+            name: "Gemma 4 E2B (Agent)",
+            estimatedSize: "3.6 GB",
+            hasVision: true,
+            hasToolCalling: true,
+            notes: "Best on-device agent — vision, tool calling, 140+ languages"
+        ),
         // Vision models (can see photos from glasses)
         RecommendedModel(
             id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
@@ -45,7 +54,7 @@ final class LocalLLMService: ObservableObject {
             hasToolCalling: false,
             notes: "Tiny vision model — basic photo understanding"
         ),
-        // Text-only models
+        // Text-only MLX models
         RecommendedModel(
             id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
             name: "Qwen 2.5 3B",
@@ -76,6 +85,7 @@ final class LocalLLMService: ObservableObject {
     static let visionModelIds: Set<String> = [
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
         "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
+        "mlx-community/gemma-4-e2b-it-4bit",
     ]
 
     /// Whether the currently loaded model supports vision.

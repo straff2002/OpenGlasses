@@ -1,5 +1,5 @@
 {
-  "originHash" : "5d6bc32599fc6b5e92f8ca16ac4bbc333bd912285b3dc30f16a8b62bc7659909",
+  "originHash" : "5c70638086293fa66f9181ac04ba3393761eb3497c043af50b6d60cb7bfed04c",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shogo4405/HaishinKit.swift.git",
       "state" : {
-        "revision" : "1f5dc201b0ee0e79edd0270d1b6649c7cddf1a1e",
-        "version" : "2.2.4"
+        "revision" : "dc880cb540b8feeb98f64e8b7dcfaaf320b6b2bd",
+        "version" : "2.2.5"
       }
     },
     {
@@ -105,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/huggingface/swift-jinja.git",
       "state" : {
-        "revision" : "f731f03bf746481d4fda07f817c3774390c4d5b9",
-        "version" : "2.3.2"
+        "revision" : "62b91283572c80a9d79fe77e2fa344cfd9233cfa",
+        "version" : "2.0.2"
       }
     },
     {
@@ -143,6 +143,15 @@
       "state" : {
         "revision" : "eed7264ac5e4ec5dfa6165c6e5c5577364344fe4",
         "version" : "1.2.0"
+      }
+    },
+    {
+      "identity" : "systemnotification",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/danielsaidi/SystemNotification.git",
+      "state" : {
+        "revision" : "69c2fa246dabd8d19c7ee62250d0a489a721660f",
+        "version" : "1.4.1"
       }
     },
     {

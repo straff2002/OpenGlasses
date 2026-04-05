@@ -15,6 +15,7 @@ struct LocalModelManagerView: View {
         appState.llmService.localLLMService
     }
 
+
     var body: some View {
         List {
             // MARK: Device Info
@@ -45,7 +46,7 @@ struct LocalModelManagerView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(modelDisplayName(modelId))
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
                                         .font(.caption)
@@ -54,7 +55,7 @@ struct LocalModelManagerView: View {
                                 Spacer()
                                 if selectedModelId == modelId {
                                     Image(systemName: "checkmark")
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                 }
                             }
                         }
@@ -88,7 +89,7 @@ struct LocalModelManagerView: View {
                                     if model.hasVision {
                                         Label("Vision", systemImage: "eye")
                                             .font(.caption2)
-                                            .foregroundStyle(.primary)
+                                            .foregroundStyle(Color(.label))
                                     }
                                     if model.hasToolCalling {
                                         Label("Tools", systemImage: "wrench")

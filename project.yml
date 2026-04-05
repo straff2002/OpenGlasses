@@ -1,10 +1,17 @@
 name: OpenGlasses
+settings:
+  base:
+    DEVELOPMENT_TEAM: B9L8ANZQZX
+    DEAD_CODE_STRIPPING: "YES"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+    CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: "YES"
+    SWIFT_EMIT_LOC_STRINGS: "YES"
 options:
   bundleIdPrefix: com.openglasses
   deploymentTarget:
-    iOS: "17.0"
-    watchOS: "10.0"
-  xcodeVersion: "16.0"
+    iOS: "26.0"
+    watchOS: "26.0"
+  xcodeVersion: "26.0"
   generateEmptyDirectories: true
   developmentLanguage: en
   knownRegions:
@@ -54,6 +61,9 @@ packages:
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm.git
     branch: main
+  SystemNotification:
+    url: https://github.com/danielsaidi/SystemNotification.git
+    from: "1.0.0"
 
 targets:
   OpenGlasses:
@@ -63,17 +73,24 @@ targets:
       - path: OpenGlasses/Sources
     entitlements:
       path: OpenGlasses/OpenGlasses.entitlements
+      properties:
+        com.apple.developer.homekit: true
+        com.apple.developer.carplay-voice-based-conversation: true
+        com.apple.developer.kernel.increased-memory-limit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
-        MARKETING_VERSION: "1.4.0"
-        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "9"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: B9L8ANZQZX
         INFOPLIST_FILE: OpenGlasses/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
+        SKIP_INSTALL: "NO"
     dependencies:
       - package: meta-wearables-dat-ios
         product: MWDATCore
@@ -89,6 +106,8 @@ targets:
         product: MLXLMCommon
       - package: mlx-swift-lm
         product: MLXVLM
+      - package: SystemNotification
+        product: SystemNotification
       - target: GlassesActivityWidget
       - target: OpenGlassesWatch
 
@@ -101,13 +120,20 @@ targets:
     info:
       path: GlassesActivityWidget/Info.plist
       properties:
+        CFBundleDisplayName: "OpenGlasses"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "9"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: B9L8ANZQZX
 
   OpenGlassesWatch:
     type: application
@@ -117,7 +143,34 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "9"
         SWIFT_VERSION: "5.9"
+        DEVELOPMENT_TEAM: B9L8ANZQZX
+        CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: "YES"
+
+schemes:
+  OpenGlasses:
+    build:
+      targets:
+        OpenGlasses: all
+        GlassesActivityWidget: all
+        OpenGlassesWatch: all
+    run:
+      config: Debug
+      debugEnabled: true
+      askForAppToLaunch: false
+      launchAutomaticallySubstyle: 2
+    archive:
+      config: Release
+  OpenGlassesWatch:
+    build:
+      targets:
+        OpenGlassesWatch: all
+    run:
+      config: Debug

@@ -14,6 +14,7 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
         LiveAIMode(id: "reading", name: "Reading Assistant", icon: "text.viewfinder", promptPrefix: "You are a reading assistant. Focus on any visible text — signs, menus, documents, labels, screens. Read text aloud clearly and completely. For foreign languages, first read the original, then translate. Offer to summarize long text.\n\n"),
         LiveAIMode(id: "translator", name: "Live Translator", icon: "globe", promptPrefix: "You are a real-time translator. When you see text or hear speech in a foreign language, translate it naturally. Provide the original text first, then the translation. For signs and menus, translate everything visible.\n\n"),
         LiveAIMode(id: "tutor", name: "Language Tutor", icon: "graduationcap", promptPrefix: "You are a language tutor. Help the user practice the language of the text/signs they show you. Pronounce words clearly, explain grammar, suggest phrases for the situation. Be encouraging and patient.\n\n"),
+        LiveAIMode(id: "golf", name: "Golf Caddy", icon: "figure.golf", promptPrefix: "You are a golf caddy on smart glasses. Help with club selection, read greens, track shots, and provide course strategy. Be confident and decisive. Keep advice brief during play — 1-2 sentences per decision. Celebrate good shots, stay positive on bad ones.\n\n"),
     ]
 }
 
@@ -83,6 +84,102 @@ struct QuickAction: Codable, Identifiable {
 }
 
 /// A saved LLM model configuration
+// MARK: - Gateway Configuration
+
+/// Known gateway providers — users can also add custom ones.
+enum GatewayProvider: String, Codable, CaseIterable, Identifiable {
+    case openclaw = "openclaw"
+    case nanoclaw = "nanoclaw"
+    case nemoclaw = "nemoclaw"
+    case custom = "custom"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .openclaw: return "OpenClaw"
+        case .nanoclaw: return "NanoClaw"
+        case .nemoclaw: return "NemoClaw"
+        case .custom: return "Custom"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .openclaw: return "server.rack"
+        case .nanoclaw: return "desktopcomputer"
+        case .nemoclaw: return "cpu"
+        case .custom: return "gear"
+        }
+    }
+
+    var defaultPort: Int {
+        switch self {
+        case .openclaw: return 18789
+        case .nanoclaw: return 18789
+        case .nemoclaw: return 18789
+        case .custom: return 18789
+        }
+    }
+
+    /// Whether this provider uses the standard OpenClaw WebSocket protocol.
+    var usesOpenClawProtocol: Bool { true }
+}
+
+/// A configured gateway endpoint — could be OpenClaw, NanoClaw, NemoClaw, or custom.
+struct GatewayConfig: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String                    // User label, e.g. "Mac Mini OpenClaw"
+    var provider: String                // GatewayProvider rawValue
+    var lanHost: String                 // LAN/local IP or hostname
+    var port: Int                       // Default 18789
+    var tunnelHost: String              // Tailscale or tunnel URL
+    var token: String                   // Gateway auth token
+    var connectionMode: String          // "auto", "lan", "tunnel"
+    var enabled: Bool
+    var priority: Int                   // Lower = tried first
+
+    var gatewayProvider: GatewayProvider {
+        GatewayProvider(rawValue: provider) ?? .custom
+    }
+
+    var connectionModeEnum: OpenClawConnectionMode {
+        OpenClawConnectionMode(rawValue: connectionMode) ?? .auto
+    }
+
+    /// Build the LAN URL from host + port.
+    var lanURL: String {
+        let host = lanHost.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !host.isEmpty else { return "" }
+        return "\(host):\(port)"
+    }
+
+    /// The tunnel URL (already includes port usually).
+    var tunnelURL: String {
+        tunnelHost.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    var isConfigured: Bool {
+        !token.isEmpty && (!lanHost.isEmpty || !tunnelHost.isEmpty)
+    }
+
+    /// Create a new gateway with defaults for a given provider.
+    static func newGateway(provider: GatewayProvider, priority: Int = 0) -> GatewayConfig {
+        GatewayConfig(
+            id: UUID().uuidString,
+            name: "\(provider.displayName) Gateway",
+            provider: provider.rawValue,
+            lanHost: "",
+            port: provider.defaultPort,
+            tunnelHost: "",
+            token: "",
+            connectionMode: "auto",
+            enabled: true,
+            priority: priority
+        )
+    }
+}
+
 struct ModelConfig: Codable, Identifiable, Equatable {
     var id: String  // UUID string
     var name: String  // User-facing label, e.g. "Claude Sonnet" or "GPT-4o"
@@ -383,6 +480,14 @@ struct Config {
             }
         }
 
+        var subtitle: String {
+            switch self {
+            case .fast: return "Simple queries, quick facts, direct tool calls"
+            case .balanced: return "Most conversations, moderate reasoning"
+            case .best: return "Complex analysis, multi-step tasks, vision"
+            }
+        }
+
         var icon: String {
             switch self {
             case .fast: return "hare"
@@ -391,8 +496,12 @@ struct Config {
             }
         }
 
-        /// Keywords that identify a model as belonging to this tier (matched against model name/ID, case-insensitive).
-        var modelKeywords: [String] {
+        /// UserDefaults key for the model ID assigned to this tier.
+        var modelIdKey: String { "tierModelId_\(rawValue)" }
+
+        /// Fallback keywords used ONLY when no model is explicitly assigned to a tier.
+        /// This allows auto-detection for first-time setup, but explicit assignment always wins.
+        var fallbackKeywords: [String] {
             switch self {
             case .fast: return ["haiku", "flash", "mini", "4o-mini", "gpt-4o-mini", "llama", "mixtral"]
             case .balanced: return ["sonnet", "gpt-4o", "gemini-pro", "gemini-2"]
@@ -409,14 +518,46 @@ struct Config {
         UserDefaults.standard.set(tier.rawValue, forKey: "modelTier")
     }
 
-    /// Find the best model matching a tier from the saved models list.
+    /// Whether automatic model routing is enabled. When off, all requests use the active model.
+    static var autoModelRoutingEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "autoModelRoutingEnabled")
+    }
+
+    static func setAutoModelRoutingEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "autoModelRoutingEnabled")
+    }
+
+    /// Get the model explicitly assigned to a tier by the user.
+    /// Falls back to keyword-based auto-detection if no model is assigned.
     static func modelForTier(_ tier: ModelTier) -> ModelConfig? {
         let models = savedModels
-        let keywords = tier.modelKeywords
+
+        // First: check for explicit user assignment
+        if let assignedId = UserDefaults.standard.string(forKey: tier.modelIdKey),
+           let model = models.first(where: { $0.id == assignedId }) {
+            return model
+        }
+
+        // Fallback: keyword-based auto-detection for first-time users
+        let keywords = tier.fallbackKeywords
         return models.first { model in
             let combined = (model.name + " " + model.model).lowercased()
             return keywords.contains { combined.contains($0) }
         }
+    }
+
+    /// Assign a specific model to a complexity tier.
+    static func setModelForTier(_ tier: ModelTier, modelId: String?) {
+        if let modelId {
+            UserDefaults.standard.set(modelId, forKey: tier.modelIdKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: tier.modelIdKey)
+        }
+    }
+
+    /// Get the model ID currently assigned to a tier (nil if using auto-detection).
+    static func modelIdForTier(_ tier: ModelTier) -> String? {
+        UserDefaults.standard.string(forKey: tier.modelIdKey)
     }
 
     // MARK: - Multi-Model Configurations
@@ -437,6 +578,15 @@ struct Config {
             models.append(appleIntelligenceDefault)
             setSavedModels(models)
         }
+        // Migrate renamed providers
+        var needsSave = false
+        for i in models.indices {
+            if models[i].name == "Qwen (Coding Plan subscription)" {
+                models[i].name = "Qwen (Subscription)"
+                needsSave = true
+            }
+        }
+        if needsSave { setSavedModels(models) }
         return models
     }
 
@@ -551,7 +701,8 @@ struct Config {
     CONTEXT:
     - The user is wearing smart glasses and talking to you hands-free while going about their day.
     - Speech recognition may mishear words — interpret the user's intent generously.
-    - You have conversational memory within this session, so you can reference previous exchanges.
+    - You have full conversational memory within this session and can reference any earlier exchange.
+    - Past conversations are stored and can be resumed — if the user references something from before, check memory first.
     - For very complex questions, offer to break the topic into parts: "That's a big topic. Would you like me to start with X?"
 
     VISION & CAMERA:
@@ -571,6 +722,22 @@ struct Config {
     - Explanations: 3-4 sentences (e.g., "how does X work?")
     - Complex topics: 4-6 sentences, offer to continue (e.g., "Want me to explain more about Y?")
     - Directions/instructions: As many steps as needed, but keep each step concise.
+
+    SELF-AWARENESS:
+    - You are a language model. You may be confidently wrong — hedge when stakes are high.
+    - "I think I did that" is not the same as "I confirmed it worked." When a tool call matters, verify the result.
+    - Speech recognition feeds you imperfect text. Interpret the most likely intent before acting on garbled input.
+
+    ACTION SAFETY:
+    - Freely do: check weather, read info, set timers, take notes, answer questions, play music, get directions
+    - Confirm first: send messages, make calls, create calendar events, control door locks
+    - Always confirm: anything involving money, emergency services, deleting data, or actions affecting other people
+    - Never: share camera feed without permission, reveal conversation history to third parties
+
+    ERROR RECOVERY:
+    - If a tool call fails, say what happened briefly and suggest an alternative — don't just say "I can't."
+    - Don't retry the exact same failing call. Is the service down? Wrong parameters? Missing permissions?
+    - If you hit a dead end, offer the next best option instead of giving up.
     """
 
     /// Returns the active preset's prompt, falling back to default.
@@ -657,6 +824,11 @@ struct Config {
             - Maximum 2-3 sentences per response. Be immediate, not elaborate.
             - Never use markdown or formatting — this is spoken aloud.
             - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true),
+            PromptPreset(id: "preset-ultra-concise", name: "Ultra-Concise", prompt: """
+            Smart glasses voice AI. Spoken output only.
+            One sentence max. No filler. No formatting. Interpret speech errors generously.
+            Can see via camera. Describe only what you see.
             """, isBuiltIn: true),
         ] + modePresets()
     }
@@ -874,6 +1046,111 @@ struct Config {
             - Never use markdown or formatting — this is spoken aloud.
             - You CAN see images from the glasses camera when provided.
             """, isBuiltIn: true, icon: "wineglass", cameraBehavior: "smart"),
+
+            PromptPreset(id: "preset-clinical-assistant", name: "Clinical Assistant", prompt: """
+            You are a clinical documentation assistant on smart glasses for a healthcare professional. Responses are spoken via TTS.
+
+            YOUR ROLE:
+            - Capture clinical observations hands-free during patient encounters.
+            - When shown skin lesions, rashes, or wounds via camera: describe morphology (color, shape, border, distribution, texture), estimate size, note anatomical location, and suggest a differential diagnosis ranked by likelihood.
+            - Structure observations using medical terminology: SOAP notes, HPI elements, ROS findings.
+            - Track vitals, medications, and allergies mentioned during conversation.
+            - Generate clinical summaries on request: "summarize this encounter" produces a structured note with chief complaint, HPI, exam findings, assessment, and plan.
+            - Recall relevant clinical scoring tools when appropriate: PASI for psoriasis, SCORTEN for SJS/TEN, DLQI for quality of life, BSA estimation.
+
+            DERMATOLOGY FOCUS:
+            - For skin findings: describe primary lesion type (macule, papule, plaque, vesicle, nodule, patch), secondary changes (scale, crust, erosion, ulceration), color, distribution pattern, and configuration.
+            - Suggest relevant differentials with key distinguishing features.
+            - Note features concerning for malignancy: asymmetry, border irregularity, color variation, diameter >6mm, evolution (ABCDEs).
+            - Recommend appropriate workup: biopsy type, labs, imaging, or referrals.
+
+            SAFETY:
+            - Always clarify that AI assessment is for documentation support only, not a definitive diagnosis.
+            - Flag urgent findings immediately: suspected melanoma, signs of anaphylaxis, SJS/TEN, necrotizing fasciitis.
+            - Never recommend treatment doses — only note what was discussed or prescribed by the clinician.
+
+            INTERACTION STYLE:
+            - Be precise and clinical. Use correct medical terminology.
+            - Keep descriptions structured and dictation-ready.
+            - Respond in 2-5 sentences. Information-dense, no filler.
+            - When asked to "document this" or "note that", acknowledge briefly and incorporate into the running note.
+            - Never use markdown or formatting — this is spoken aloud.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true, icon: "stethoscope", cameraBehavior: "always"),
+
+            PromptPreset(id: "preset-nutrition-analyzer", name: "Nutrition Analyzer", prompt: """
+            You are a nutrition analysis assistant on smart glasses. Responses are spoken via TTS.
+
+            YOUR ROLE:
+            - Identify food items from camera images: individual ingredients, prepared dishes, packaged foods, restaurant plates.
+            - Estimate nutritional content: calories, protein, carbs, fat, fiber, and key micronutrients.
+            - Read and interpret nutrition labels, ingredient lists, and allergen warnings from packaging.
+            - Provide a health score (1-10) based on nutrient density, processing level, and balance.
+            - Track meals conversationally: "I had oatmeal for breakfast" — accumulate a daily running total.
+            - Flag dietary concerns: high sodium, added sugars, trans fats, common allergens.
+
+            ANALYSIS APPROACH:
+            - For plated meals: identify each component, estimate portion sizes, and sum nutritionals.
+            - For packaged foods: read the label if visible, otherwise estimate from the product name.
+            - Give ranges when uncertain: "roughly 400 to 500 calories."
+            - Compare to daily targets when relevant: "That's about a third of your daily protein."
+
+            INTERACTION STYLE:
+            - Be informative but not judgmental. No guilt-tripping.
+            - Lead with the most useful info: total calories and the macronutrient breakdown.
+            - Offer practical alternatives when asked: "A grilled version would save about 200 calories."
+            - Keep responses to 2-4 sentences. Useful, not preachy.
+            - Never use markdown or formatting — this is spoken aloud.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true, icon: "leaf.circle", cameraBehavior: "smart"),
+
+            PromptPreset(id: "preset-fitness-coach", name: "Fitness Coach", prompt: """
+            You are a hands-free fitness coach on smart glasses. Responses are spoken via TTS.
+
+            YOUR ROLE:
+            - Guide workouts with real-time rep counting and form cues when camera is active.
+            - Identify exercise equipment and suggest exercises for it.
+            - Track sets, reps, and rest periods conversationally: "I just did 12 reps" — log it.
+            - Provide form corrections when you can see the user exercising via camera.
+            - Suggest warm-up routines, cool-down stretches, and workout progressions.
+            - Estimate calories burned based on exercise type, duration, and intensity.
+
+            INTERACTION STYLE:
+            - Be motivating but not annoying. Match energy to the workout phase.
+            - Keep cues short during active sets: "Good depth" or "Keep your back straight."
+            - Between sets, offer brief coaching: "Rest 60 seconds, then we'll do another set."
+            - Announce rep counts and set completions clearly.
+            - Keep responses to 1-3 sentences. The user is exercising.
+            - Never use markdown or formatting — this is spoken aloud.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true, icon: "figure.run", cameraBehavior: "smart"),
+
+            PromptPreset(id: "preset-golf-caddy", name: "Golf Caddy", prompt: """
+            You are a golf caddy assistant on smart glasses. Responses are spoken via TTS.
+
+            YOUR ROLE:
+            - Help the user with club selection based on distance, wind, elevation, and lie.
+            - Track shots with GPS distance measurement between swings.
+            - Log scores per hole and provide running score vs par.
+            - Give strategic advice for each hole: play safe vs aggressive, where to miss, risk/reward.
+            - Read greens when the user is putting (slope, speed, break direction) using camera.
+            - Provide weather awareness: wind direction affects club choice.
+
+            GOLF KNOWLEDGE:
+            - Average amateur distances: Driver 220-240y, 3W 200-210y, 5W 185-195y, 4i 170y, 5i 160y, 6i 150y, 7i 140y, 8i 130y, 9i 120y, PW 110y, GW 95y, SW 80y, LW 65y.
+            - Headwind: add 10%. Tailwind: subtract 10%. Crosswind: aim offset.
+            - Uphill: add 5-10%. Downhill: subtract 5-10%.
+            - From rough: club up. From bunker: open face, aim behind ball.
+
+            INTERACTION STYLE:
+            - Be confident and decisive like a good caddy. "I'd go 7-iron here" not "maybe try a 7?"
+            - Keep it brief during play: 1-2 sentences per shot decision.
+            - Celebrate good shots briefly. On bad shots, focus forward: "No problem, easy up-and-down from there."
+            - Offer unsolicited advice only for strategy (not swing tips unless asked).
+            - Track the round automatically — announce running score after each hole.
+            - Never use markdown or formatting — this is spoken aloud.
+            - You CAN see images from the glasses camera when provided.
+            """, isBuiltIn: true, icon: "figure.golf", cameraBehavior: "smart"),
         ]
     }
 
@@ -1027,6 +1304,22 @@ struct Config {
                     alternativeWakePhrases: ["wine mode", "hey wine"],
                     modelId: "", presetId: "preset-wine-sommelier", enabled: true,
                     icon: "wineglass", isBuiltIn: true),
+            Persona(id: "mode-clinical-assistant", name: "Clinical Assistant", wakePhrase: "hey clinical",
+                    alternativeWakePhrases: ["clinical mode", "hey doctor", "doctor mode"],
+                    modelId: "", presetId: "preset-clinical-assistant", enabled: true,
+                    icon: "stethoscope", isBuiltIn: true),
+            Persona(id: "mode-nutrition-analyzer", name: "Nutrition Analyzer", wakePhrase: "hey nutrition",
+                    alternativeWakePhrases: ["nutrition mode", "hey food", "food mode"],
+                    modelId: "", presetId: "preset-nutrition-analyzer", enabled: true,
+                    icon: "leaf.circle", isBuiltIn: true),
+            Persona(id: "mode-fitness-coach", name: "Fitness Coach", wakePhrase: "hey coach",
+                    alternativeWakePhrases: ["fitness mode", "hey trainer", "workout mode"],
+                    modelId: "", presetId: "preset-fitness-coach", enabled: true,
+                    icon: "figure.run", isBuiltIn: true),
+            Persona(id: "mode-golf-caddy", name: "Golf Caddy", wakePhrase: "hey caddy",
+                    alternativeWakePhrases: ["golf mode", "hey golf", "caddy mode"],
+                    modelId: "", presetId: "preset-golf-caddy", enabled: true,
+                    icon: "figure.golf", isBuiltIn: true),
         ]
     }
 
@@ -1086,6 +1379,14 @@ struct Config {
         if let data = try? JSONEncoder().encode(personas) {
             UserDefaults.standard.set(data, forKey: "savedPersonas")
         }
+    }
+
+    /// Update a persona's modelId in storage (keeps persona in sync when user switches LLM).
+    static func updatePersonaModelId(_ personaId: String, modelId: String) {
+        var personas = savedPersonas
+        guard let idx = personas.firstIndex(where: { $0.id == personaId }) else { return }
+        personas[idx].modelId = modelId
+        setSavedPersonas(personas)
     }
 
     /// All enabled personas.
@@ -1154,6 +1455,16 @@ struct Config {
         UserDefaults.standard.set(voiceId, forKey: "elevenLabsVoiceId")
     }
 
+    /// Preferred iOS TTS voice identifier (used when ElevenLabs is unavailable).
+    /// Empty string means auto-select best available voice.
+    static var iosTTSVoiceId: String {
+        UserDefaults.standard.string(forKey: "iosTTSVoiceId") ?? ""
+    }
+
+    static func setIosTTSVoiceId(_ id: String) {
+        UserDefaults.standard.set(id, forKey: "iosTTSVoiceId")
+    }
+
     // MARK: - App Mode
 
     static var appMode: AppMode {
@@ -1211,6 +1522,15 @@ struct Config {
         }
     }
 
+    /// Whether to show all quick actions on the Voice tab, or only the top 4.
+    static var showAllQuickActions: Bool {
+        UserDefaults.standard.bool(forKey: "showAllQuickActions")
+    }
+
+    static func setShowAllQuickActions(_ show: Bool) {
+        UserDefaults.standard.set(show, forKey: "showAllQuickActions")
+    }
+
     // MARK: - OpenClaw Configuration
 
     static var openClawEnabled: Bool {
@@ -1234,10 +1554,7 @@ struct Config {
     }
 
     static var openClawLanHost: String {
-        if let host = UserDefaults.standard.string(forKey: "openClawLanHost"), !host.isEmpty {
-            return host
-        }
-        return "http://macbook.local"
+        UserDefaults.standard.string(forKey: "openClawLanHost") ?? ""
     }
 
     static func setOpenClawLanHost(_ host: String) {
@@ -1246,7 +1563,7 @@ struct Config {
 
     static var openClawPort: Int {
         let port = UserDefaults.standard.integer(forKey: "openClawPort")
-        return port != 0 ? port : 18789
+        return port != 0 ? port : 0
     }
 
     static func setOpenClawPort(_ port: Int) {
@@ -1276,7 +1593,53 @@ struct Config {
     }
 
     static var isOpenClawConfigured: Bool {
-        openClawEnabled && !openClawGatewayToken.isEmpty
+        // True if legacy single-gateway is configured OR any multi-gateway is configured
+        (openClawEnabled && !openClawGatewayToken.isEmpty) || !enabledGateways.isEmpty
+    }
+
+    // MARK: - Multi-Gateway Configuration
+
+    /// All configured gateways, sorted by priority (lower = first).
+    static var savedGateways: [GatewayConfig] {
+        guard let data = UserDefaults.standard.data(forKey: "savedGateways"),
+              let gateways = try? JSONDecoder().decode([GatewayConfig].self, from: data) else {
+            // Auto-migrate legacy single-gateway config on first access
+            if openClawEnabled && !openClawGatewayToken.isEmpty {
+                let legacy = GatewayConfig(
+                    id: "legacy-openclaw",
+                    name: "OpenClaw",
+                    provider: GatewayProvider.openclaw.rawValue,
+                    lanHost: openClawLanHost,
+                    port: openClawPort,
+                    tunnelHost: openClawTunnelHost,
+                    token: openClawGatewayToken,
+                    connectionMode: openClawConnectionMode.rawValue,
+                    enabled: true,
+                    priority: 0
+                )
+                // Persist the migration so it only happens once
+                setSavedGateways([legacy])
+                NSLog("[Config] Migrated legacy OpenClaw config to gateway system")
+                return [legacy]
+            }
+            return []
+        }
+        return gateways.sorted { $0.priority < $1.priority }
+    }
+
+    static func setSavedGateways(_ gateways: [GatewayConfig]) {
+        guard let data = try? JSONEncoder().encode(gateways) else { return }
+        UserDefaults.standard.set(data, forKey: "savedGateways")
+    }
+
+    /// Enabled gateways only, in priority order.
+    static var enabledGateways: [GatewayConfig] {
+        savedGateways.filter { $0.enabled && $0.isConfigured }
+    }
+
+    /// Whether any gateway is configured and enabled.
+    static var isAnyGatewayConfigured: Bool {
+        !enabledGateways.isEmpty || isOpenClawConfigured
     }
 
     // MARK: - Gemini Live Configuration
@@ -1418,6 +1781,27 @@ struct Config {
         !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
     }
 
+    // MARK: - Camera Quality
+
+    /// Camera stream resolution: "low" (360p), "medium" (504p), "high" (720p). Default: high.
+    static var cameraResolution: String {
+        UserDefaults.standard.string(forKey: "cameraResolution") ?? "high"
+    }
+
+    static func setCameraResolution(_ resolution: String) {
+        UserDefaults.standard.set(resolution, forKey: "cameraResolution")
+    }
+
+    /// Camera stream frame rate. Default: 15.
+    static var cameraFrameRate: Int {
+        let rate = UserDefaults.standard.integer(forKey: "cameraFrameRate")
+        return rate > 0 ? rate : 15
+    }
+
+    static func setCameraFrameRate(_ fps: Int) {
+        UserDefaults.standard.set(fps, forKey: "cameraFrameRate")
+    }
+
     // MARK: - Perplexity Search
 
     static var perplexityAPIKey: String {
@@ -1445,6 +1829,23 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "privacyFilterEnabled")
     }
 
+    // MARK: - Listening Toggle
+
+    /// Master switch for wake word detection + Live Activity.
+    /// When disabled, the app stops listening for wake words and ends the Live Activity.
+    /// Can be toggled from Settings, Siri Shortcuts, or the Live Activity power button.
+    static var listeningEnabled: Bool {
+        let key = "listeningEnabled"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            return true // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setListeningEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "listeningEnabled")
+    }
+
     // MARK: - Emotion-Aware TTS
 
     static var emotionAwareTTSEnabled: Bool {
@@ -1457,6 +1858,39 @@ struct Config {
 
     static func setEmotionAwareTTSEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "emotionAwareTTSEnabled")
+    }
+
+    // MARK: - Scene Watcher
+
+    /// Whether the proactive scene watcher is enabled.
+    static var sceneWatcherEnabled: Bool {
+        let key = "sceneWatcherEnabled"
+        if UserDefaults.standard.object(forKey: key) == nil { return false }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setSceneWatcherEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "sceneWatcherEnabled")
+    }
+
+    /// Scene watcher check interval in seconds. Default 15.
+    static var sceneWatcherInterval: Int {
+        let val = UserDefaults.standard.integer(forKey: "sceneWatcherInterval")
+        return val > 0 ? val : 15
+    }
+
+    static func setSceneWatcherInterval(_ seconds: Int) {
+        UserDefaults.standard.set(seconds, forKey: "sceneWatcherInterval")
+    }
+
+    // MARK: - Accent Color
+
+    static var accentColorName: String {
+        UserDefaults.standard.string(forKey: "accentColorName") ?? "violet"
+    }
+
+    static func setAccentColorName(_ name: String) {
+        UserDefaults.standard.set(name, forKey: "accentColorName")
     }
 
     // MARK: - Glasses Mic for Wake Word
@@ -1574,6 +2008,18 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "silentMode")
     }
 
+    // MARK: - Auto-Sleep
+
+    /// Minutes of idle (glasses in case) before auto-disconnecting. 0 = disabled.
+    static var autoSleepMinutes: Int {
+        let val = UserDefaults.standard.integer(forKey: "autoSleepMinutes")
+        return val > 0 ? val : 5  // Default 5 minutes
+    }
+
+    static func setAutoSleepMinutes(_ minutes: Int) {
+        UserDefaults.standard.set(minutes, forKey: "autoSleepMinutes")
+    }
+
     // MARK: - Agentic Features Mode
 
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
@@ -1670,6 +2116,16 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "conversationPersistenceEnabled")
     }
 
+    // MARK: - Conversation Encryption
+
+    static var conversationEncryptionEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "conversationEncryptionEnabled")
+    }
+
+    static func setConversationEncryptionEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "conversationEncryptionEnabled")
+    }
+
     // MARK: - Disabled Tools
 
     static var disabledTools: Set<String> {
@@ -1736,6 +2192,28 @@ struct Config {
 
     static func setLocalVisionModelId(_ id: String) {
         UserDefaults.standard.set(id, forKey: "localVisionModelId")
+    }
+
+    // MARK: - Agent Model
+
+    /// On-device agent model ID (Gemma 4 E2B by default).
+    static let defaultAgentModelId = "mlx-community/gemma-4-e2b-it-4bit"
+
+    static var agentModelId: String {
+        UserDefaults.standard.string(forKey: "agentModelId") ?? defaultAgentModelId
+    }
+
+    static func setAgentModelId(_ id: String) {
+        UserDefaults.standard.set(id, forKey: "agentModelId")
+    }
+
+    /// Whether the on-device agent model has been downloaded.
+    static var agentModelDownloaded: Bool {
+        UserDefaults.standard.bool(forKey: "agentModelDownloaded")
+    }
+
+    static func setAgentModelDownloaded(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "agentModelDownloaded")
     }
 }
 

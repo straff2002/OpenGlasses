@@ -4,32 +4,87 @@ import SwiftUI
 /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
 struct AgenticFeaturesView: View {
     @ObservedObject var agentDocs: AgentDocumentStore
+    @ObservedObject var localLLM: LocalLLMService
     @EnvironmentObject var appState: AppState
+    @Environment(\.appAccent) private var accent
     @State private var enabled = Config.agentModeEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
     @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
     @State private var showShareSheet = false
     @State private var exportURL: URL?
+    @State private var agentModelReady = Config.agentModelDownloaded
+    @State private var agentDownloadError: String?
 
     var body: some View {
         List {
             Section {
-                Toggle("Agentic Features", isOn: $enabled)
-                    .onChange(of: enabled) { _, on in
-                        Config.setAgentModeEnabled(on)
-                        if on {
-                            appState.agentScheduler.start()
-                        } else {
-                            appState.agentScheduler.stop()
-                        }
+                InfoToggle(
+                    title: "Agentic Features",
+                    isOn: $enabled,
+                    info: "Enables autonomous agent capabilities. The assistant can loop, branch, make decisions, and take multi-step actions without waiting for your input each time. Includes background tasks, a notification queue, scheduled actions, and persistent memory. Each persona can be an independent agent with its own soul, skills, and tools. Compatible with OpenClaw and NanoClaw gateways."
+                )
+                .onChange(of: enabled) { _, on in
+                    Config.setAgentModeEnabled(on)
+                    if on {
+                        appState.agentScheduler.start()
+                    } else {
+                        appState.agentScheduler.stop()
                     }
+                }
             } header: {
                 Text("Agentic Mode")
-            } footer: {
-                Text("Autonomous agent: background tasks, notification queue, scheduled actions, and persistent memory. Each persona can be an independent agent with its own capabilities.")
             }
 
             if enabled {
+                // Agent Model
+                Section {
+                    if agentModelReady {
+                        HStack {
+                            Label("Gemma 4 E2B", systemImage: "cpu")
+                            Spacer()
+                            Text("Ready")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                    } else if localLLM.isDownloading {
+                        HStack {
+                            Label("Gemma 4 E2B", systemImage: "cpu")
+                            Spacer()
+                            ProgressView(value: localLLM.downloadProgress)
+                                .frame(width: 80)
+                            Text(String(format: "%.0f%%", localLLM.downloadProgress * 100))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 40)
+                        }
+                    } else {
+                        Button {
+                            downloadAgentModel()
+                        } label: {
+                            HStack {
+                                Label("Gemma 4 E2B", systemImage: "cpu")
+                                Spacer()
+                                Text("3.6 GB")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("Download")
+                                    .foregroundStyle(accent)
+                            }
+                        }
+                    }
+                    if let error = agentDownloadError {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Agent Model")
+                } footer: {
+                    Text("On-device Gemma 4 handles tool calling and fast queries locally — no internet needed. Cloud models are used for complex reasoning.")
+                }
+
                 // Chattiness
                 Section {
                     Picker("Chattiness", selection: Binding(
@@ -82,7 +137,7 @@ struct AgenticFeaturesView: View {
                                             .foregroundStyle(.secondary)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
-                                            .background(.quaternary, in: Capsule())
+                                            .background(Color(.tertiarySystemFill), in: Capsule())
                                     }
                                     Text(type.description)
                                         .font(.caption)
@@ -99,7 +154,7 @@ struct AgenticFeaturesView: View {
                         }
                     }
                 } header: {
-                    Text("Agent Documents")
+                    Text("Meta Agent")
                 } footer: {
                     Text("These follow the OpenClaw agent convention. The soul defines who the agent is, skills define what it can do, and memory stores what it learns. The agent can update its own memory but never modify code — that requires a connected OpenClaw.")
                 }
@@ -124,31 +179,21 @@ struct AgenticFeaturesView: View {
 
                 // Scheduled tasks
                 Section {
-                    ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                    NavigationLink {
+                        ScheduledTasksView()
+                            .environmentObject(appState)
+                    } label: {
                         HStack {
-                            Toggle(isOn: Binding(
-                                get: { task.enabled },
-                                set: { newValue in
-                                    tasks[index].enabled = newValue
-                                    AgentScheduler.saveTasks(tasks)
-                                }
-                            )) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(task.name)
-                                        .foregroundStyle(.primary)
-                                    Text(task.intervalMinutes == 0
-                                         ? "Once daily"
-                                         : "Every \(task.intervalMinutes) min")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            Label("Scheduled Tasks", systemImage: "clock.arrow.2.circlepath")
+                            Spacer()
+                            let active = tasks.filter(\.enabled).count
+                            Text("\(active)/\(tasks.count) active")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                } header: {
-                    Text("Scheduled Tasks")
                 } footer: {
-                    Text("Background tasks that run automatically. Morning briefing runs once when you first activate. Others run on their interval when the app is idle.")
+                    Text("Background tasks that run automatically. Search, edit prompts, adjust schedules, and add new tasks.")
                 }
 
                 if !Config.agentOnboardingComplete {
@@ -185,12 +230,30 @@ struct AgenticFeaturesView: View {
             }
         }
         .navigationTitle("Agentic Features")
+        .onAppear {
+            // Re-check in case model was downloaded from Local Models view
+            agentModelReady = localLLM.isModelDownloaded(Config.agentModelId)
+            if agentModelReady { Config.setAgentModelDownloaded(true) }
+        }
         .sheet(item: $editingDocument) { type in
             AgentDocumentEditorView(type: type, store: agentDocs)
         }
         .sheet(isPresented: $showShareSheet) {
             if let url = exportURL {
                 ShareSheet(items: [url])
+            }
+        }
+    }
+
+    private func downloadAgentModel() {
+        agentDownloadError = nil
+        Task {
+            do {
+                try await localLLM.downloadModel(Config.agentModelId)
+                Config.setAgentModelDownloaded(true)
+                agentModelReady = true
+            } catch {
+                agentDownloadError = error.localizedDescription
             }
         }
     }
@@ -233,7 +296,7 @@ struct AgentDocumentEditorView: View {
                 .foregroundStyle(.primary)
                 .scrollContentBackground(.hidden)
                 .padding(12)
-                .background(Color(.systemGray6))
+                .background(Color(.secondarySystemGroupedBackground))
                 .navigationTitle(type.filename)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
