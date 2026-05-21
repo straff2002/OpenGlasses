@@ -10,7 +10,7 @@ let package = Package(
         // Meta Wearables Device Access Toolkit
         .package(url: "https://github.com/facebook/meta-wearables-dat-ios.git", from: "0.5.0"),
         // HaishinKit — RTMP live streaming
-        .package(url: "https://github.com/shogo4405/HaishinKit.swift.git", from: "2.0.0"),
+        .package(url: "https://github.com/shogo4405/HaishinKit.swift.git", from: "2.2.5"),
         // MLX Swift LM — on-device LLM inference
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
     ],

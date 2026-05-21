@@ -430,8 +430,11 @@ class GeminiLiveSessionManager: ObservableObject {
             - web_search: Search the web.
             - get_news: Get latest news headlines.
             - translate: Translate text between languages.
+            - translate_sign_menu: Translate visible signs/menus from camera view.
+            - ask_local_phrase: Generate traveler phrases in local language with pronunciation.
             - define_word: Look up word definitions.
             - find_nearby: Search for nearby places.
+            - where_am_i: Describe current location with reverse-geocoded context and GPS coordinates.
             - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, etc).
             - get_directions: Directions via Apple Maps or Google Maps.
             - identify_song: Identify a song using Shazam.

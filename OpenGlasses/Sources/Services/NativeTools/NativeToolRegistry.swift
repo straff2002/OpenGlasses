@@ -24,6 +24,8 @@ final class NativeToolRegistry {
         register(WebSearchTool())
         register(newsTool)
         register(TranslationTool())
+        register(TranslateSignMenuTool())
+        register(AskLocalPhraseTool(locationService: locationService))
         register(OpenAppTool())
         register(DirectionsTool())
         register(ShazamTool())

@@ -50,7 +50,7 @@ packages:
     from: "0.3.0"
   HaishinKit:
     url: https://github.com/shogo4405/HaishinKit.swift.git
-    from: "2.0.0"
+    from: "2.2.5"
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm.git
     branch: main

@@ -133,6 +133,20 @@ class LLMService: ObservableObject {
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
 
+    private func shouldIncludeTools(for text: String, hasNativeTools: Bool, includeOpenClaw: Bool) -> Bool {
+        guard hasNativeTools || includeOpenClaw else { return false }
+        let lower = text.lowercased()
+        let triggers = [
+            "weather", "date", "time", "timer", "alarm", "remind", "calendar",
+            "call", "message", "text ", "music", "flashlight", "brightness",
+            "navigate", "directions", "nearby", "search", "translate",
+            "calculate", "convert", "steps", "battery", "news", "open ",
+            "home assistant", "smart home", "shortcut", "sign", "menu",
+            "phrase", "where am i", "where i am", "where am", "local language"
+        ]
+        return triggers.contains { lower.contains($0) }
+    }
+
     /// Build the full system prompt, optionally including location, tools, memory, and vision context
     private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil) async -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
@@ -179,8 +193,11 @@ class LLMService: ObservableObject {
             - web_search: Search the web via DuckDuckGo.
             - get_news: Get latest news headlines, optionally by topic.
             - translate: Translate text between languages.
+            - translate_sign_menu: Translate visible signs/menus from camera view with original text first, then translation.
+            - ask_local_phrase: Generate traveler phrases in the local language with pronunciation.
             - define_word: Look up word definitions.
             - find_nearby: Search for nearby places (restaurants, cafes, pharmacies, gas stations, etc).
+            - where_am_i: Describe current location with reverse-geocoded place context and GPS coordinates.
             - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, YouTube, Spotify, etc).
             - get_directions: Directions via Apple Maps or Google Maps (set app='google' for Google Maps).
             - identify_song: Identify a song playing nearby using Shazam.
@@ -319,7 +336,7 @@ class LLMService: ObservableObject {
         let provider = modelConfig.llmProvider
         let hasNativeTools = nativeToolRouter != nil
         let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
-        let includeTools = hasNativeTools || includeOpenClaw
+        let includeTools = shouldIncludeTools(for: text, hasNativeTools: hasNativeTools, includeOpenClaw: includeOpenClaw)
         let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
         let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext)
 
@@ -571,10 +588,11 @@ class LLMService: ObservableObject {
             }
 
             // OpenAI format: system prompt is a message in the array
+            let historySlice = provider == .groq ? conversationHistory.suffix(6) : conversationHistory[...]
             var messages: [[String: Any]] = [
                 ["role": "system", "content": systemPrompt]
             ]
-            messages.append(contentsOf: conversationHistory)
+            messages.append(contentsOf: historySlice)
 
             var body: [String: Any] = [
                 "model": config.model,
@@ -945,7 +963,7 @@ class LLMService: ObservableObject {
         }
 
         // Build history — keep only last 2 exchanges for local models (context is precious)
-        let recentHistory = conversationHistory.suffix(4)
+        let recentHistory = conversationHistory.suffix(2)
         var history: [(role: String, content: String)] = []
         for turn in recentHistory {
             if let role = turn["role"] as? String, let content = turn["content"] as? String {
@@ -969,7 +987,8 @@ class LLMService: ObservableObject {
             response = try await localService.generate(
                 userMessage: text,
                 systemPrompt: fullPrompt,
-                history: history
+                history: history,
+                imageData: imageData
             )
         } catch {
             print("❌ Local model generation failed: \(error)")

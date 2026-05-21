@@ -70,6 +70,23 @@ struct QuickAction: Codable, Identifiable {
     /// URL scheme for .openApp type (e.g., "weixin://")
     var urlScheme: String?
 
+    static let travelTemplates: [QuickAction] = [
+        QuickAction(
+            id: "travel-translate-sign-menu",
+            label: "Translate Sign",
+            icon: "text.viewfinder",
+            type: .photoThenPrompt,
+            promptText: "Read all visible text in this image. First provide exact original text, then translate to English. If helpful, use the translate tool to improve accuracy. Keep response concise for glasses."
+        ),
+        QuickAction(
+            id: "travel-ask-local-phrase",
+            label: "Local Phrase",
+            icon: "globe",
+            type: .prompt,
+            promptText: "Help me say this naturally in the local language where I am. If my intent is unclear, ask one short clarification first. Then provide local phrase, pronunciation, and a polite variant. Use the translate tool."
+        ),
+    ]
+
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
                     promptText: "Describe what you see in this image in detail."),
@@ -79,7 +96,7 @@ struct QuickAction: Codable, Identifiable {
                     promptText: "Extract any action items or tasks from this image and list them."),
         QuickAction(id: "lights-off", label: "Lights Off", icon: "lightbulb.slash", type: .homeAssistant,
                     haService: "light.turn_off", haEntityId: "all"),
-    ]
+    ] + travelTemplates
 }
 
 /// A saved LLM model configuration
@@ -608,6 +625,19 @@ struct Config {
         }
         return [
             PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt, isBuiltIn: true),
+            PromptPreset(id: "preset-tokens", name: "Tokens Saver", prompt: """
+            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+
+            RULES:
+            - Reply naturally, directly, and briefly by default. Be complete.
+            - No markdown, lists, or special formatting.
+            - Speech recognition may be wrong; infer likely intent.
+            - If uncertain, say so briefly. If data is missing, say what is needed.
+            - Use conversation context when relevant.
+            - You can see camera images when provided. Never claim you cannot.
+            - OCR/translation: transcribe original text first, then translate.
+            - Use location only when relevant.
+            """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "Concise", prompt: """
             You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
 
@@ -892,6 +922,19 @@ struct Config {
             - 语音识别可能有误——请宽容理解用户意图。
             - 你可以看到眼镜相机拍摄的图片。
             - 当用户说"看看这个"、"这是什么"、"拍张照"等，会自动拍照发送给你。
+            """, isBuiltIn: true),
+            PromptPreset(id: "preset-tokens", name: "代币节省者", prompt: """
+            你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
+
+            规则：
+            - 用中文自然回复，默认简洁但完整。
+            - 不用 Markdown、列表或编号。
+            - 语音识别可能有误，优先按用户意图理解。
+            - 不确定时简短说明；缺少实时或个人数据时明确说明需要什么。
+            - 可利用会话上下文。
+            - 你可以看到眼镜相机图片，不要说看不到。
+            - OCR/翻译请求先转写原文，再给译文。
+            - 仅在相关时使用位置信息。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "简洁", prompt: """
             你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
@@ -1200,7 +1243,11 @@ struct Config {
         if let data = UserDefaults.standard.data(forKey: "quickActions"),
            let actions = try? JSONDecoder().decode([QuickAction].self, from: data),
            !actions.isEmpty {
-            return actions
+            let merged = mergeTravelQuickActions(into: actions)
+            if merged.count != actions.count {
+                setQuickActions(merged)
+            }
+            return merged
         }
         return QuickAction.defaults
     }
@@ -1209,6 +1256,15 @@ struct Config {
         if let data = try? JSONEncoder().encode(actions) {
             UserDefaults.standard.set(data, forKey: "quickActions")
         }
+    }
+
+    private static func mergeTravelQuickActions(into actions: [QuickAction]) -> [QuickAction] {
+        var merged = actions
+        let existingIds = Set(actions.map(\.id))
+        for template in QuickAction.travelTemplates where !existingIds.contains(template.id) {
+            merged.append(template)
+        }
+        return merged
     }
 
     // MARK: - OpenClaw Configuration

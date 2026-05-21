@@ -80,7 +80,6 @@ struct MainView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showSettings) {
             SettingsView(appState: appState)
-                .preferredColorScheme(.light)
         }
         .onChange(of: showSettings) { _, isShowing in
             if !isShowing {
