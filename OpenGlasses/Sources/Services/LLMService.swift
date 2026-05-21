@@ -142,7 +142,7 @@ class LLMService: ObservableObject {
             "navigate", "directions", "nearby", "search", "translate",
             "calculate", "convert", "steps", "battery", "news", "open ",
             "home assistant", "smart home", "shortcut", "sign", "menu",
-            "phrase", "where am i", "where i am", "where am", "local language"
+            "phrase", "local language"
         ]
         return triggers.contains { lower.contains($0) }
     }
@@ -987,8 +987,7 @@ class LLMService: ObservableObject {
             response = try await localService.generate(
                 userMessage: text,
                 systemPrompt: fullPrompt,
-                history: history,
-                imageData: imageData
+                history: history
             )
         } catch {
             print("❌ Local model generation failed: \(error)")

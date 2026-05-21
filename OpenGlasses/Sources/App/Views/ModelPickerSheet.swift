@@ -16,7 +16,6 @@ struct ModelPickerSheet: View {
                 }
         }
         .presentationDetents([.medium, .large])
-        .preferredColorScheme(.light)
     }
 
     @State private var selectedTier: Config.ModelTier = Config.modelTier

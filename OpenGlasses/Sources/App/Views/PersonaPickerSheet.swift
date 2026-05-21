@@ -83,7 +83,6 @@ struct PersonaPickerSheet: View {
             }
         }
         .presentationDetents([.large])
-        .preferredColorScheme(.light)
     }
 
     private func activatePersona(_ persona: Persona) {
