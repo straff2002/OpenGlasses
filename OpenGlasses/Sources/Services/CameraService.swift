@@ -8,7 +8,7 @@ import UIKit
 
 /// Service for capturing photos and streaming video from Ray-Ban Meta smart glasses.
 ///
-/// Uses a single persistent `StreamSession` for both photo capture and video streaming,
+/// Uses a single persistent `Stream` for both photo capture and video streaming,
 /// following Meta's official sample app pattern.
 @MainActor
 class CameraService: ObservableObject {
@@ -22,7 +22,8 @@ class CameraService: ObservableObject {
     }
 
     private let deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
-    private var streamSession: StreamSession?
+    private var deviceSession: DeviceSession?
+    private var streamSession: MWDATCamera.Stream?
     private var photoListenerToken: (any AnyListenerToken)?
     private var stateListenerToken: (any AnyListenerToken)?
     private var videoFrameListenerToken: (any AnyListenerToken)?
@@ -126,23 +127,51 @@ class CameraService: ObservableObject {
     // MARK: - Persistent Session
 
     /// Ensure the persistent stream session exists. Creates it on first call.
-    private func ensureSession() {
+    private func ensureSession() async throws {
         guard streamSession == nil else { return }
-        let session = StreamSession(
-            streamSessionConfig: StreamSessionConfig(
+        if deviceSession?.state == .stopped {
+            deviceSession = nil
+        }
+
+        if deviceSession == nil {
+            let newDeviceSession = try Wearables.shared.createSession(deviceSelector: deviceSelector)
+            deviceSession = newDeviceSession
+        }
+
+        guard let deviceSession else {
+            throw CameraError.captureFailed
+        }
+
+        if deviceSession.state != .started {
+            try deviceSession.start()
+            let deadline = ContinuousClock.now + .seconds(20)
+            while ContinuousClock.now < deadline {
+                if deviceSession.state == .started { break }
+                if deviceSession.state == .stopped { break }
+                try await Task.sleep(nanoseconds: 300_000_000)
+            }
+        }
+
+        guard deviceSession.state == .started else {
+            throw CameraError.streamNotReady
+        }
+
+        guard let stream = try deviceSession.addStream(
+            config: MWDATCamera.StreamConfiguration(
                 videoCodec: .raw,
                 resolution: .high,
-                frameRate: 15
-            ),
-            deviceSelector: deviceSelector
-        )
-        streamSession = session
-        attachListeners(to: session)
-        NSLog("[Camera] Created persistent StreamSession (.high, 15fps)")
+                frameRate: 30
+            )
+        ) else {
+            throw CameraError.streamNotReady
+        }
+        streamSession = stream
+        attachListeners(to: stream)
+        NSLog("[Camera] Created persistent Stream (.high, 30fps, SDK max 720x1280)")
     }
 
     /// Attach all publishers to the session (state, video frames, photo data, errors).
-    private func attachListeners(to session: StreamSession) {
+    private func attachListeners(to session: MWDATCamera.Stream) {
         var frameCount = 0
 
         stateListenerToken = session.statePublisher.listen { [weak self] state in
@@ -230,7 +259,7 @@ class CameraService: ObservableObject {
         defer { isCaptureInProgress = false }
 
         try await ensurePermission()
-        ensureSession()
+        try await ensureSession()
 
         // Wait for stream to be ready (start if needed)
         var lastError: Error?
@@ -245,7 +274,7 @@ class CameraService: ObservableObject {
                 if attempt < 2 {
                     // Reset session and retry
                     await resetSession()
-                    ensureSession()
+                    try await ensureSession()
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }
@@ -302,7 +331,7 @@ class CameraService: ObservableObject {
         guard !isStreaming else { return }
 
         try await ensurePermission()
-        ensureSession()
+        try await ensureSession()
         try await waitForStreaming()
 
         isStreaming = true
@@ -325,11 +354,13 @@ class CameraService: ObservableObject {
         if let session = streamSession {
             await session.stop()
         }
+        deviceSession?.stop()
         stateListenerToken = nil
         videoFrameListenerToken = nil
         photoListenerToken = nil
         errorListenerToken = nil
         streamSession = nil
+        deviceSession = nil
         NSLog("[Camera] Session reset")
     }
 
@@ -412,7 +443,7 @@ class CameraService: ObservableObject {
 
     // MARK: - Error Mapping
 
-    /// Map StreamSession errors to user-friendly descriptions.
+    /// Map stream errors to user-friendly descriptions.
     private static func friendlyErrorMessage(_ error: any Error) -> String {
         let description = String(describing: error).lowercased()
         if description.contains("hingesclosed") {

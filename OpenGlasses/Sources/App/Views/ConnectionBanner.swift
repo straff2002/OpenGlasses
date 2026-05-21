@@ -420,12 +420,6 @@ struct ConnectionBanner: View {
                         .foregroundStyle(.cyan)
                 }
             } else {
-                if let battery = appState.glassesService.batteryLevel {
-                    Text("Battery: \(battery)%")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-
                 Button {
                     cameraPermissionStatus = "checking"
                     appState.cameraService.onRegistrationProgress = { state in

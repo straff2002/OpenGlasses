@@ -12,7 +12,6 @@ class GlassesConnectionService: ObservableObject {
 
     private var devicesListenerToken: (any AnyListenerToken)?
     private var connectedDeviceId: DeviceIdentifier?
-    private var deviceStateSession: DeviceStateSession?
 
     init() {
         observeDevices()

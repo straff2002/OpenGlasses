@@ -1195,9 +1195,15 @@ class AppState: ObservableObject {
             }
         } else {
             do {
+                if !cameraService.isStreaming {
+                    try await cameraService.startStreaming()
+                }
+                let frameSize = cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                let bitrate = max(Config.recordingBitrate, 4_000_000)
                 try videoRecorder.startRecording(
                     from: cameraService.framePublisher,
-                    bitrate: Config.recordingBitrate
+                    bitrate: bitrate,
+                    outputSize: frameSize
                 )
             } catch {
                 errorMessage = "Recording failed: \(error.localizedDescription)"

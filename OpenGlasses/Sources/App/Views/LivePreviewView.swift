@@ -10,6 +10,7 @@ struct LivePreviewView: View {
     @State private var currentFrame: UIImage?
     @State private var isStartingStream = false
     @State private var streamError: String?
+    @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
 
     var body: some View {
         ZStack {
@@ -135,6 +136,7 @@ struct LivePreviewView: View {
         .onAppear {
             // Subscribe to camera frames via callback
             let previousCallback = appState.cameraService.onVideoFrame
+            previousVideoFrameCallback = previousCallback
             appState.cameraService.onVideoFrame = { image in
                 previousCallback?(image)
                 Task { @MainActor in
@@ -142,6 +144,20 @@ struct LivePreviewView: View {
                 }
             }
             startStreamIfNeeded()
+        }
+        .onDisappear {
+            appState.cameraService.onVideoFrame = previousVideoFrameCallback
+            Task {
+                let shouldKeepStreaming =
+                    appState.videoRecorder.isRecording ||
+                    appState.broadcastService.isBroadcasting ||
+                    appState.webRTCStreaming.isStreaming ||
+                    appState.geminiLiveSession.isActive ||
+                    appState.openAIRealtimeSession.isActive
+                if !shouldKeepStreaming {
+                    await appState.cameraService.stopStreaming()
+                }
+            }
         }
     }
 

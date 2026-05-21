@@ -20,6 +20,8 @@ class VideoRecordingService: ObservableObject {
     private nonisolated(unsafe) var adaptor: AVAssetWriterInputPixelBufferAdaptor?
     private nonisolated(unsafe) var startTime: CMTime?
     private nonisolated(unsafe) var frameCount: Int64 = 0
+    private nonisolated(unsafe) var outputWidth: Int = 720
+    private nonisolated(unsafe) var outputHeight: Int = 1280
 
     var formattedDuration: String {
         let mins = Int(recordingDuration) / 60
@@ -28,23 +30,32 @@ class VideoRecordingService: ObservableObject {
     }
 
     /// Start recording frames from the given publisher.
-    func startRecording(from publisher: PassthroughSubject<UIImage, Never>, bitrate: Int = 1_500_000) throws {
+    func startRecording(
+        from publisher: PassthroughSubject<UIImage, Never>,
+        bitrate: Int = 1_500_000,
+        outputSize: CGSize? = nil
+    ) throws {
         guard !isRecording else { return }
 
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "OpenGlasses_\(Int(Date().timeIntervalSince1970)).mp4"
         let url = tempDir.appendingPathComponent(fileName)
 
-        // Clean up any previous file at this path
         try? FileManager.default.removeItem(at: url)
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
 
-        // Video input — dimensions set from first frame
+        let requestedWidth = Int(outputSize?.width ?? 720)
+        let requestedHeight = Int(outputSize?.height ?? 1280)
+        let finalWidth = max(2, (requestedWidth / 2) * 2)
+        let finalHeight = max(2, (requestedHeight / 2) * 2)
+        outputWidth = finalWidth
+        outputHeight = finalHeight
+
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: 640,
-            AVVideoHeightKey: 480,
+            AVVideoWidthKey: finalWidth,
+            AVVideoHeightKey: finalHeight,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: bitrate,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
@@ -55,8 +66,8 @@ class VideoRecordingService: ObservableObject {
 
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 640,
-            kCVPixelBufferHeightKey as String: 480
+            kCVPixelBufferWidthKey as String: finalWidth,
+            kCVPixelBufferHeightKey as String: finalHeight
         ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
@@ -92,7 +103,7 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        NSLog("[Recording] Started → %@", url.lastPathComponent)
+        NSLog("[Recording] Started → %@ (%dx%d @ %d bps)", url.lastPathComponent, finalWidth, finalHeight, bitrate)
     }
 
     /// Stop recording and return the URL of the finished .mp4.
@@ -133,8 +144,8 @@ class VideoRecordingService: ObservableObject {
     private nonisolated func appendFrame(_ image: UIImage) {
         guard let cgImage = image.cgImage else { return }
 
-        let width = cgImage.width
-        let height = cgImage.height
+        let width = outputWidth
+        let height = outputHeight
 
         // Create pixel buffer
         var pixelBuffer: CVPixelBuffer?
