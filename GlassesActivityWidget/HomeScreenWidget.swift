@@ -8,19 +8,31 @@ struct OpenGlassesHomeWidget: Widget {
         StaticConfiguration(kind: kind, provider: HomeWidgetProvider()) { entry in
             HomeWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.14, green: 0.09, blue: 0.07),
-                            Color(red: 0.06, green: 0.05, blue: 0.04)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    HomeWidgetBackground()
                 }
         }
         .configurationDisplayName("OpenGlasses")
         .description("Glasses status and a quick Listen toggle.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+/// Adaptive widget background — warm tinted gradient that switches with the
+/// system appearance. Dark mode keeps the original coffee tones; light mode
+/// uses a soft cream that lets `.primary` text stay legible.
+private struct HomeWidgetBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        LinearGradient(
+            colors: colorScheme == .dark
+                ? [Color(red: 0.14, green: 0.09, blue: 0.07),
+                   Color(red: 0.06, green: 0.05, blue: 0.04)]
+                : [Color(red: 0.99, green: 0.96, blue: 0.93),
+                   Color(red: 0.95, green: 0.91, blue: 0.86)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }
 
@@ -69,10 +81,10 @@ struct HomeWidgetView: View {
             Spacer()
             Text("OpenGlasses")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             Text(entry.isListening ? "Listening" : "Tap to listen")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(.secondary)
             Button(intent: ToggleListeningIntent()) {
                 HStack {
                     Image(systemName: entry.isListening ? "mic.slash.fill" : "mic.fill")
@@ -96,11 +108,11 @@ struct HomeWidgetView: View {
                         .foregroundStyle(accent)
                     Text("OpenGlasses")
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 Text(entry.isListening ? "Listening for wake word" : "Listening disabled")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 statusDot
             }
@@ -124,9 +136,9 @@ struct HomeWidgetView: View {
                         Text("Photo")
                             .font(.caption2.weight(.medium))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .frame(width: 96, height: 30)
-                    .background(Color.white.opacity(0.15), in: Capsule())
+                    .background(Color.primary.opacity(0.1), in: Capsule())
                 }
             }
         }
@@ -139,13 +151,13 @@ struct HomeWidgetView: View {
                     .foregroundStyle(accent)
                 Text("OpenGlasses")
                     .font(.title2.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Spacer()
                 statusDot
             }
             Text(entry.isListening ? "Listening for wake word" : "Listening disabled")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(.secondary)
             Spacer()
             Button(intent: ToggleListeningIntent()) {
                 HStack {
@@ -176,10 +188,10 @@ struct HomeWidgetView: View {
                 Text(label)
                     .font(.caption.weight(.medium))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
         }
     }
 
@@ -189,7 +201,7 @@ struct HomeWidgetView: View {
             .frame(width: 8, height: 8)
             .overlay(
                 Circle()
-                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.3), lineWidth: 1)
             )
     }
 }

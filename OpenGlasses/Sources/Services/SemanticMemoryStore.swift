@@ -199,7 +199,7 @@ class SemanticMemoryStore: ObservableObject {
         let queryVec = embed(query)
         let rows = fetchAllMemories(namespace: namespace)
 
-        var scored: [(MemoryEntry, Float)] = rows.map { row in
+        let scored: [(MemoryEntry, Float)] = rows.map { row in
             if let qv = queryVec, let rv = fetchEmbedding(key: row.keyName, namespace: row.namespace) {
                 return (row, cosineSimilarity(qv, rv))
             }
@@ -601,7 +601,7 @@ class SemanticMemoryStore: ObservableObject {
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
             defer { sqlite3_finalize(stmt) }
-            data.withUnsafeBytes { ptr in
+            _ = data.withUnsafeBytes { ptr in
                 sqlite3_bind_blob(stmt, 1, ptr.baseAddress, Int32(data.count), nil)
             }
             return sqlite3_step(stmt) == SQLITE_DONE
