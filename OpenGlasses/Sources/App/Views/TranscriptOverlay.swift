@@ -7,6 +7,7 @@ struct TranscriptOverlay: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
+    @Environment(\.appAccent) private var accent
 
     @State private var expandedCard: ExpandedCard?
 
@@ -39,24 +40,40 @@ struct TranscriptOverlay: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // Session compaction indicator — gateway trimmed context
+            if appState.openClawBridge.sessionCompacted {
+                HStack(spacing: 6) {
+                    Image(systemName: "scissors")
+                        .font(.system(size: 10))
+                    Text("Context trimmed by gateway")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(accent.opacity(0.8))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .glassEffect(in: .capsule)
+                .transition(.opacity)
+            }
+
             if let error = errorText, !error.isEmpty {
                 transcriptCard(label: "Error", text: error, accent: .red, style: .error)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if !aiText.isEmpty {
-                transcriptCard(label: aiLabel, text: aiText, accent: .cyan, style: .ai)
+                transcriptCard(label: aiLabel, text: aiText, accent: accent, style: .ai)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if !userText.isEmpty {
-                transcriptCard(label: "You", text: userText, accent: .white, style: .user)
+                transcriptCard(label: "You", text: userText, accent: .primary, style: .user)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .padding(.horizontal, 16)
         .animation(.easeInOut(duration: 0.3), value: userText)
         .animation(.easeInOut(duration: 0.3), value: aiText)
+        .animation(.easeInOut(duration: 0.3), value: appState.openClawBridge.sessionCompacted)
         .sheet(item: $expandedCard) { card in
             TranscriptDetailView(label: card.label, text: card.text, accent: card.accent)
         }
@@ -100,33 +117,42 @@ struct TranscriptOverlay: View {
 
     private func transcriptCard(label: String, text: String, accent: Color, style: CardStyle) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(accent.opacity(0.7))
-                .textCase(.uppercase)
-                .tracking(0.5)
+            HStack(spacing: 5) {
+                if style == .ai {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(accent.opacity(0.7))
+                }
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(accent.opacity(0.7))
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                if style == .ai {
+                    Text("AI")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
+                }
+            }
 
             Text(text)
                 .font(.system(size: style == .ai ? 15 : 14, weight: .regular))
-                .foregroundStyle(.white.opacity(style.textOpacity))
+                .foregroundStyle(.primary.opacity(style.textOpacity))
                 .lineLimit(4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, style.verticalPadding)
-        .background(
-            (style == .user ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(accent.opacity(style.borderOpacity), lineWidth: style.borderWidth)
-        )
+        .glassEffect(in: .rect(cornerRadius: 12))
         .contentShape(Rectangle())
         .onTapGesture {
             expandedCard = ExpandedCard(label: label, text: text, accent: accent)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(style == .ai ? "AI-generated response from \(label)" : label)
         .accessibilityHint("Tap to see full response")
     }
 }
@@ -152,21 +178,37 @@ private struct TranscriptDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(accent.opacity(0.7))
-                        .textCase(.uppercase)
-                        .tracking(0.5)
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(accent.opacity(0.7))
+                        Text(label)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(accent.opacity(0.7))
+                            .textCase(.uppercase)
+                            .tracking(0.5)
+                        Text("AI-generated")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.quaternary, in: Capsule())
+                    }
 
                     Text(text)
                         .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(.primary.opacity(0.9))
                         .textSelection(.enabled)
+
+                    // AI disclosure (Apple Generative AI HIG)
+                    Text("This response was generated by AI and may contain errors.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
             }
-            .background(Color.black)
             .navigationTitle("Response")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -183,6 +225,5 @@ private struct TranscriptDetailView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }

@@ -8,8 +8,8 @@ import UIKit
 
 /// Service for capturing photos and streaming video from Ray-Ban Meta smart glasses.
 ///
-/// Uses a single persistent `StreamSession` for both photo capture and video streaming,
-/// following Meta's official sample app pattern.
+/// Uses a persistent `DeviceSession` + `Stream` pair for both photo capture and
+/// video streaming, following Meta's official sample app pattern (DAT SDK 0.7+).
 @MainActor
 class CameraService: ObservableObject {
     @Published var lastPhoto: UIImage?
@@ -21,8 +21,10 @@ class CameraService: ObservableObject {
         case streaming, waiting, stopped
     }
 
-    private let deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
-    private var streamSession: StreamSession?
+    /// Lazily initialized after Wearables.configure() has been called.
+    private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
+    private var deviceSession: DeviceSession?
+    private var streamSession: MWDATCamera.Stream?
     private var photoListenerToken: (any AnyListenerToken)?
     private var stateListenerToken: (any AnyListenerToken)?
     private var videoFrameListenerToken: (any AnyListenerToken)?
@@ -46,6 +48,16 @@ class CameraService: ObservableObject {
 
     /// Optional callback to report SDK registration progress (state 0–3) back to UI.
     var onRegistrationProgress: ((Int) -> Void)?
+
+    // MARK: - HEVC Decoder Stall Detection
+    /// Timestamp of the last successfully decoded video frame.
+    private var lastFrameTime: Date = .distantPast
+    /// Stall detection timer — fires if no frame arrives for 1.5 seconds.
+    private var stallDetectionTask: Task<Void, Never>?
+    /// Whether we're currently recovering from a stall (prevents re-entrant recovery).
+    private var isRecoveringFromStall = false
+    /// Number of consecutive stall recoveries (for diagnostics).
+    private var stallRecoveryCount = 0
 
     /// Name of the Photos album where glasses photos are saved.
     private nonisolated static let albumName = "Glasses"
@@ -126,23 +138,58 @@ class CameraService: ObservableObject {
     // MARK: - Persistent Session
 
     /// Ensure the persistent stream session exists. Creates it on first call.
-    private func ensureSession() {
+    private func ensureSession() async throws {
         guard streamSession == nil else { return }
-        let session = StreamSession(
-            streamSessionConfig: StreamSessionConfig(
+
+        // DAT 0.7: DeviceSession owns the connection; Streams hang off it.
+        if deviceSession?.state == .stopped {
+            deviceSession = nil
+        }
+
+        if deviceSession == nil {
+            deviceSession = try Wearables.shared.createSession(deviceSelector: deviceSelector)
+        }
+
+        guard let deviceSession else { throw CameraError.captureFailed }
+
+        if deviceSession.state != .started {
+            try deviceSession.start()
+            let deadline = ContinuousClock.now + .seconds(20)
+            while ContinuousClock.now < deadline {
+                if deviceSession.state == .started { break }
+                if deviceSession.state == .stopped { break }
+                try await Task.sleep(nanoseconds: 300_000_000)
+            }
+        }
+
+        guard deviceSession.state == .started else {
+            throw CameraError.streamNotReady
+        }
+
+        let resolution: StreamingResolution = {
+            switch Config.cameraResolution {
+            case "low": return .low
+            case "medium": return .medium
+            default: return .high
+            }
+        }()
+        let fps = UInt(Config.cameraFrameRate)
+        guard let stream = try deviceSession.addStream(
+            config: MWDATCamera.StreamConfiguration(
                 videoCodec: .raw,
-                resolution: .high,
-                frameRate: 15
-            ),
-            deviceSelector: deviceSelector
-        )
-        streamSession = session
-        attachListeners(to: session)
-        NSLog("[Camera] Created persistent StreamSession (.high, 15fps)")
+                resolution: resolution,
+                frameRate: fps
+            )
+        ) else {
+            throw CameraError.streamNotReady
+        }
+        streamSession = stream
+        attachListeners(to: stream)
+        NSLog("[Camera] Created persistent Stream (.\(Config.cameraResolution), \(fps)fps)")
     }
 
     /// Attach all publishers to the session (state, video frames, photo data, errors).
-    private func attachListeners(to session: StreamSession) {
+    private func attachListeners(to session: MWDATCamera.Stream) {
         var frameCount = 0
 
         stateListenerToken = session.statePublisher.listen { [weak self] state in
@@ -166,18 +213,21 @@ class CameraService: ObservableObject {
         }
 
         videoFrameListenerToken = session.videoFramePublisher.listen { [weak self] frame in
+            // Immediate pixel buffer copy: `makeUIImage()` copies the pixel data out of
+            // the VideoToolbox buffer pool right away, preventing VT pool exhaustion
+            // that can occur if the buffer is held across async boundaries.
+            let image = frame.makeUIImage()
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, let image else { return }
                 frameCount += 1
-                if let image = frame.makeUIImage() {
-                    self.latestFrame = image
-                    if frameCount <= 3 || frameCount % 30 == 0 {
-                        NSLog("[Camera] Video frame #%d (%dx%d)",
-                              frameCount, Int(image.size.width), Int(image.size.height))
-                    }
-                    self.onVideoFrame?(image)
-                    self.framePublisher.send(image)
+                self.lastFrameTime = Date()
+                self.latestFrame = image
+                if frameCount <= 3 || frameCount % 30 == 0 {
+                    NSLog("[Camera] Video frame #%d (%dx%d)",
+                          frameCount, Int(image.size.width), Int(image.size.height))
                 }
+                self.onVideoFrame?(image)
+                self.framePublisher.send(image)
             }
         }
 
@@ -200,25 +250,36 @@ class CameraService: ObservableObject {
     private func waitForStreaming(timeout: TimeInterval = 20) async throws {
         guard let session = streamSession else { throw CameraError.captureFailed }
 
-        if session.state == .streaming { return }
-
         // Start the session if not already running
         if session.state == .stopped {
             await session.start()
         }
 
-        // Poll for streaming state
+        // Wait for streaming state
         let deadline = ContinuousClock.now + .seconds(timeout)
         while ContinuousClock.now < deadline {
-            if session.state == .streaming { return }
+            if session.state == .streaming { break }
             if session.state == .stopped {
                 NSLog("[Camera] Session stopped unexpectedly while waiting for streaming")
-                break
+                throw CameraError.streamNotReady
             }
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        throw CameraError.streamNotReady
+        if session.state != .streaming {
+            throw CameraError.streamNotReady
+        }
+
+        // Wait for the first video frame to actually arrive — the state becomes
+        // .streaming before data flows, and capturePhoto won't work until then.
+        NSLog("[Camera] Streaming state reached, waiting for first video frame...")
+        while ContinuousClock.now < deadline {
+            if latestFrame != nil { return }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+
+        // Even if no frame arrived, let the caller proceed (fallback will handle it)
+        NSLog("[Camera] No video frame arrived within timeout, proceeding anyway")
     }
 
     // MARK: - Photo Capture
@@ -230,7 +291,7 @@ class CameraService: ObservableObject {
         defer { isCaptureInProgress = false }
 
         try await ensurePermission()
-        ensureSession()
+        try await ensureSession()
 
         // Wait for stream to be ready (start if needed)
         var lastError: Error?
@@ -245,14 +306,14 @@ class CameraService: ObservableObject {
                 if attempt < 2 {
                     // Reset session and retry
                     await resetSession()
-                    ensureSession()
+                    try await ensureSession()
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }
         }
         if let error = lastError { throw error }
 
-        // Capture using continuation
+        // Capture using continuation — with video frame fallback
         let photoData: Data = try await withCheckedThrowingContinuation { continuation in
             self.photoContinuation = continuation
 
@@ -260,16 +321,28 @@ class CameraService: ObservableObject {
             let success = streamSession!.capturePhoto(format: .jpeg)
             if !success {
                 self.photoContinuation = nil
-                continuation.resume(throwing: CameraError.captureFailed)
+                // capturePhoto returned false — fall back to latest video frame
+                if let fallback = self.latestFrameAsJPEG() {
+                    NSLog("[Camera] capturePhoto returned false, using latest video frame")
+                    continuation.resume(returning: fallback)
+                } else {
+                    continuation.resume(throwing: CameraError.captureFailed)
+                }
                 return
             }
 
-            // Timeout after 5 seconds
+            // Timeout after 5 seconds — fall back to latest video frame
             Task {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if let cont = self.photoContinuation {
                     self.photoContinuation = nil
-                    cont.resume(throwing: CameraError.timeout)
+                    if let fallback = self.latestFrameAsJPEG() {
+                        NSLog("[Camera] Photo capture timed out, using latest video frame (%d bytes)", fallback.count)
+                        cont.resume(returning: fallback)
+                    } else {
+                        NSLog("[Camera] Photo capture timed out, no video frame available")
+                        cont.resume(throwing: CameraError.timeout)
+                    }
                 }
             }
         }
@@ -278,11 +351,11 @@ class CameraService: ObservableObject {
             lastPhoto = image
         }
 
-        // Stop streaming after capture to save battery (unless explicitly streaming)
+        // Tear down session after capture to save battery (unless explicitly streaming).
+        // Full reset is required because MWDAT StreamSession can't reliably restart
+        // after stop — a fresh session must be created for the next capture.
         if !isStreaming {
-            if let session = streamSession {
-                await session.stop()
-            }
+            await resetSession()
         }
 
         print("📸 Photo captured: \(photoData.count) bytes")
@@ -290,9 +363,19 @@ class CameraService: ObservableObject {
     }
 
     private func handlePhotoData(_ photoData: PhotoData) {
-        guard let continuation = photoContinuation else { return }
+        guard let continuation = photoContinuation else {
+            NSLog("[Camera] Photo data received but no continuation waiting (timeout may have fired first)")
+            return
+        }
         photoContinuation = nil
+        NSLog("[Camera] Photo captured via SDK (%d bytes)", photoData.data.count)
         continuation.resume(returning: photoData.data)
+    }
+
+    /// Convert the latest video frame to JPEG data for use as a photo fallback.
+    private func latestFrameAsJPEG(quality: CGFloat = 0.85) -> Data? {
+        guard let frame = latestFrame else { return nil }
+        return frame.jpegData(compressionQuality: quality)
     }
 
     // MARK: - Continuous Video Streaming (for Gemini Live)
@@ -302,16 +385,18 @@ class CameraService: ObservableObject {
         guard !isStreaming else { return }
 
         try await ensurePermission()
-        ensureSession()
+        try await ensureSession()
         try await waitForStreaming()
 
         isStreaming = true
+        startStallDetection()
         NSLog("[Camera] Streaming started")
     }
 
     /// Stop continuous video streaming. Session is kept alive for reuse.
     func stopStreaming() async {
         guard isStreaming else { return }
+        stopStallDetection()
         if let session = streamSession {
             await session.stop()
         }
@@ -320,16 +405,70 @@ class CameraService: ObservableObject {
         NSLog("[Camera] Streaming stopped (session kept alive)")
     }
 
+    // MARK: - HEVC Decoder Stall Detection & Auto-Recovery
+
+    /// Start monitoring for decoder stalls (no frames for 1.5 seconds).
+    /// If a stall is detected, the session is torn down and recreated.
+    private func startStallDetection() {
+        stopStallDetection()
+        lastFrameTime = Date()
+        stallDetectionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000) // Check every 0.5s
+                guard !Task.isCancelled, let self else { break }
+                guard self.isStreaming, !self.isRecoveringFromStall else { continue }
+
+                let elapsed = Date().timeIntervalSince(self.lastFrameTime)
+                if elapsed > 1.5 {
+                    NSLog("[Camera] ⚠️ Decoder stall detected (%.1fs since last frame) — auto-recovering", elapsed)
+                    self.isRecoveringFromStall = true
+                    self.stallRecoveryCount += 1
+                    await self.recoverFromStall()
+                    self.isRecoveringFromStall = false
+                }
+            }
+        }
+    }
+
+    /// Stop stall detection monitoring.
+    private func stopStallDetection() {
+        stallDetectionTask?.cancel()
+        stallDetectionTask = nil
+    }
+
+    /// Tear down and recreate the stream session to recover from a decoder stall.
+    private func recoverFromStall() async {
+        NSLog("[Camera] Stall recovery #%d — resetting session", stallRecoveryCount)
+        onDebugEvent?("Camera stall recovery #\(stallRecoveryCount)")
+
+        // Tear down the current session
+        await resetSession()
+
+        // Recreate
+        do {
+            try await ensureSession()
+            try await waitForStreaming()
+            lastFrameTime = Date()
+            NSLog("[Camera] Stall recovery successful — streaming resumed")
+        } catch {
+            NSLog("[Camera] Stall recovery failed: %@", error.localizedDescription)
+            isStreaming = false
+        }
+    }
+
     /// Reset the session completely (for error recovery).
     private func resetSession() async {
         if let session = streamSession {
             await session.stop()
         }
+        deviceSession?.stop()
         stateListenerToken = nil
         videoFrameListenerToken = nil
         photoListenerToken = nil
         errorListenerToken = nil
         streamSession = nil
+        deviceSession = nil
+        latestFrame = nil
         NSLog("[Camera] Session reset")
     }
 
@@ -353,11 +492,13 @@ class CameraService: ObservableObject {
                 return
             }
 
+            // Fetch/create album BEFORE performChanges to avoid nested change block deadlock
+            let album = self.fetchGlassesAlbum()
+
             PHPhotoLibrary.shared().performChanges {
                 let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
 
-                // Find or create the "Glasses" album
-                if let album = self.fetchGlassesAlbum() {
+                if let album {
                     let albumChangeRequest = PHAssetCollectionChangeRequest(for: album)
                     if let placeholder = creationRequest.placeholderForCreatedAsset {
                         albumChangeRequest?.addAssets([placeholder] as NSArray)

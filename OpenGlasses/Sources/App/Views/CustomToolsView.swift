@@ -34,7 +34,7 @@ struct CustomToolsView: View {
                                             .foregroundStyle(.secondary)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
-                                            .background(.quaternary, in: Capsule())
+                                            .background(Color(.tertiarySystemFill), in: Capsule())
                                     }
                                     Text(tool.description)
                                         .font(.caption)

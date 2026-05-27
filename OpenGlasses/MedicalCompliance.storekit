@@ -1,0 +1,169 @@
+{
+  "identifier" : "medical_compliance_storekit",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : "2026-04-05T00:00:00Z",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "medical_compliance",
+      "localizations" : [
+        {
+          "description" : "Encryption, audit logging, biometric lock, FHIR export, and international medical framework compliance for clinical recordings.",
+          "displayName" : "Medical Compliance",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
+          "displayName" : "Medical Compliance",
+          "locale" : "en_AU"
+        },
+        {
+          "description" : "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
+          "displayName" : "Medical Compliance",
+          "locale" : "en_GB"
+        }
+      ],
+      "name" : "Medical Compliance",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "medical_monthly_001",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "medical_monthly_trial",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName" : "Monthly",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName" : "Monthly",
+              "locale" : "en_AU"
+            },
+            {
+              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName" : "Monthly",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.openglasses.medical_compliance_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Medical Compliance Monthly",
+          "subscriptionGroupID" : "medical_compliance",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "medical_annual_001",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "medical_annual_trial",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName" : "Annual",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName" : "Annual",
+              "locale" : "en_AU"
+            },
+            {
+              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName" : "Annual",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.openglasses.medical_compliance_annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Medical Compliance Annual",
+          "subscriptionGroupID" : "medical_compliance",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

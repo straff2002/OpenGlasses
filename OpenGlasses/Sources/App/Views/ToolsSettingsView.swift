@@ -1,4 +1,8 @@
 import SwiftUI
+import EventKit
+import Contacts
+import UserNotifications
+import HealthKit
 
 /// Lists all registered native tools with toggle, description, and parameter info.
 /// Part of the open-source transparency — users can see and control what the AI can do.
@@ -7,6 +11,16 @@ struct ToolsSettingsView: View {
     @State private var disabledTools: Set<String> = Config.disabledTools
     @State private var offlineMode: Bool = Config.offlineModeEnabled
     @State private var searchText = ""
+    @State private var permissionDeniedTool: String?
+
+    /// Tools that require a system permission when enabled.
+    private static let permissionTools: [String: String] = [
+        "calendar": "Calendar access",
+        "reminder": "Reminders access",
+        "lookup_contact": "Contacts access",
+        "set_alarm": "Notification permission",
+        "fitness_coach": "HealthKit access",
+    ]
 
     private var allTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         appState.nativeToolRouter.registry.allTools
@@ -92,15 +106,19 @@ struct ToolsSettingsView: View {
     var body: some View {
         List {
             Section {
-                Toggle("Offline Mode", isOn: $offlineMode)
-                    .onChange(of: offlineMode) { _, enabled in
-                        Config.setOfflineModeEnabled(enabled)
-                        disabledTools = Config.disabledTools
-                    }
+                InfoToggle(
+                    title: "Offline Mode",
+                    isOn: $offlineMode,
+                    info: "Disables all tools that require an internet connection — weather, web search, news, currency conversion, Shazam, translation, and more. The LLM connection itself is unaffected. Useful on planes or in areas with poor connectivity."
+                )
+                .onChange(of: offlineMode) { _, enabled in
+                    Config.setOfflineModeEnabled(enabled)
+                    disabledTools = Config.disabledTools
+                }
             } header: {
                 Text("Connectivity")
             } footer: {
-                Text("Disables weather, web search, news, currency, Shazam, translation, and other internet-requiring tools. The LLM connection is unaffected.")
+                Text("Offline Mode hides every tool that needs the internet — handy on planes or in poor coverage. The AI itself still works if you can reach it.")
             }
 
             Section {
@@ -109,7 +127,7 @@ struct ToolsSettingsView: View {
             } header: {
                 Text("Overview")
             } footer: {
-                Text("Disabled tools won't be included in the AI's system prompt and can't be called.")
+                Text("Disabled tools are stripped from the AI's prompt entirely — it won't even know they exist. Use this to narrow the AI's reach or save tokens.")
             }
 
             Section {
@@ -127,7 +145,7 @@ struct ToolsSettingsView: View {
                                         HStack(alignment: .top, spacing: 8) {
                                             Text(key)
                                                 .font(.system(.caption, design: .monospaced))
-                                                .foregroundStyle(.primary)
+                                                .foregroundStyle(Color(.label))
                                             Spacer()
                                             Text(paramInfo["type"] as? String ?? "any")
                                                 .font(.system(.caption2, design: .monospaced))
@@ -144,11 +162,25 @@ struct ToolsSettingsView: View {
                                 get: { !disabledTools.contains(tool.name) },
                                 set: { enabled in
                                     if enabled {
-                                        disabledTools.remove(tool.name)
+                                        // Request permission if this tool needs one
+                                        if Self.permissionTools[tool.name] != nil {
+                                            Task {
+                                                let granted = await requestPermission(for: tool.name)
+                                                if granted {
+                                                    disabledTools.remove(tool.name)
+                                                    Config.setDisabledTools(disabledTools)
+                                                } else {
+                                                    permissionDeniedTool = Self.permissionTools[tool.name]
+                                                }
+                                            }
+                                        } else {
+                                            disabledTools.remove(tool.name)
+                                            Config.setDisabledTools(disabledTools)
+                                        }
                                     } else {
                                         disabledTools.insert(tool.name)
+                                        Config.setDisabledTools(disabledTools)
                                     }
-                                    Config.setDisabledTools(disabledTools)
                                 }
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -166,6 +198,8 @@ struct ToolsSettingsView: View {
                 }
             } header: {
                 Text("Native Tools")
+            } footer: {
+                Text("Built-in capabilities that run on your phone. Tap a row to see what arguments the AI passes when it calls a tool. Some tools (Calendar, Contacts, Reminders, Health, Notifications) need iOS permission the first time you enable them.")
             }
 
             if Config.isOpenClawConfigured {
@@ -190,5 +224,70 @@ struct ToolsSettingsView: View {
         }
         .navigationTitle("Tools")
         .searchable(text: $searchText, prompt: "Search tools")
+        .alert("Permission Denied", isPresented: Binding(
+            get: { permissionDeniedTool != nil },
+            set: { if !$0 { permissionDeniedTool = nil } }
+        )) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+                permissionDeniedTool = nil
+            }
+            Button("Cancel", role: .cancel) { permissionDeniedTool = nil }
+        } message: {
+            Text("\(permissionDeniedTool ?? "Permission") was denied. You can grant it in Settings.")
+        }
+    }
+
+    // MARK: - Permission Requests
+
+    /// Request the appropriate system permission for a tool. Returns true if granted.
+    private func requestPermission(for toolName: String) async -> Bool {
+        switch toolName {
+        case "calendar":
+            let store = EKEventStore()
+            do {
+                return try await store.requestFullAccessToEvents()
+            } catch {
+                return false
+            }
+        case "reminder":
+            let store = EKEventStore()
+            do {
+                return try await store.requestFullAccessToReminders()
+            } catch {
+                return false
+            }
+        case "lookup_contact":
+            let store = CNContactStore()
+            do {
+                return try await store.requestAccess(for: .contacts)
+            } catch {
+                return false
+            }
+        case "set_alarm":
+            let center = UNUserNotificationCenter.current()
+            do {
+                return try await center.requestAuthorization(options: [.alert, .sound])
+            } catch {
+                return false
+            }
+        case "fitness_coach":
+            let healthStore = HKHealthStore()
+            guard HKHealthStore.isHealthDataAvailable() else { return false }
+            let readTypes: Set<HKObjectType> = [
+                HKObjectType.quantityType(forIdentifier: .stepCount)!,
+                HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
+            ]
+            do {
+                try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+                return true
+            } catch {
+                return false
+            }
+        default:
+            return true
+        }
     }
 }

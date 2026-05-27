@@ -47,7 +47,7 @@ class OpenAIRealtimeAudioManager {
         try session.setCategory(
             .playAndRecord,
             mode: mode,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
+            options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
         )
         try session.setPreferredSampleRate(Self.sampleRate)
         try session.setPreferredIOBufferDuration(0.064)

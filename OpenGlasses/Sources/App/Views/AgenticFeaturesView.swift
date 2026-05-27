@@ -14,6 +14,17 @@ struct AgenticFeaturesView: View {
     @State private var exportURL: URL?
     @State private var agentModelReady = Config.agentModelDownloaded
     @State private var agentDownloadError: String?
+    @State private var selectedAgentModelId = Config.agentModelId
+    @State private var downloadedModelIds: [String] = []
+
+    /// Combined picker entries: local downloaded models + configured cloud models.
+    private var allAgentModelOptions: [(id: String, label: String)] {
+        let local = downloadedModelIds.map { (id: $0, label: "📱 \(modelShortName($0))") }
+        let cloud = Config.savedModels
+            .filter { $0.llmProvider != .local && $0.llmProvider != .appleOnDevice }
+            .map { (id: $0.id, label: "☁️ \($0.name)") }
+        return local + cloud
+    }
 
     var body: some View {
         List {
@@ -33,47 +44,76 @@ struct AgenticFeaturesView: View {
                 }
             } header: {
                 Text("Agentic Mode")
+            } footer: {
+                Text("Off by default. Turn this on if you want the AI to act on its own — running background tasks, scheduling actions, looping through multi-step plans. Tap \(Image(systemName: "info.circle")) above for the full list of what it unlocks.")
             }
 
             if enabled {
                 // Agent Model
                 Section {
-                    if agentModelReady {
-                        HStack {
-                            Label("Gemma 4 E2B", systemImage: "cpu")
-                            Spacer()
-                            Text("Ready")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                    // Picker: local downloaded + configured cloud models
+                    if allAgentModelOptions.isEmpty {
+                        Text("No models available. Download a local model or add a cloud provider below.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Active Model", selection: $selectedAgentModelId) {
+                            ForEach(allAgentModelOptions, id: \.id) { option in
+                                Text(option.label).tag(option.id)
+                            }
                         }
-                    } else if localLLM.isDownloading {
+                        .onChange(of: selectedAgentModelId) { _, newId in
+                            Config.setAgentModelId(newId)
+                            agentModelReady = localLLM.isModelDownloaded(newId)
+                                || Config.savedModels.contains(where: { $0.id == newId })
+                        }
+                    }
+
+                    // In-progress download row with cancel
+                    if localLLM.isDownloading, let dlId = localLLM.downloadingModelId {
                         HStack {
-                            Label("Gemma 4 E2B", systemImage: "cpu")
+                            Label(modelShortName(dlId), systemImage: "arrow.down.circle")
                             Spacer()
-                            ProgressView(value: localLLM.downloadProgress)
-                                .frame(width: 80)
+                            ProgressView(value: localLLM.downloadProgress).frame(width: 60)
                             Text(String(format: "%.0f%%", localLLM.downloadProgress * 100))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 40)
+                                .frame(width: 36)
+                            Button("Cancel") { localLLM.cancelDownload() }
+                                .font(.caption)
+                                .foregroundStyle(.red)
                         }
-                    } else {
-                        Button {
-                            downloadAgentModel()
-                        } label: {
+                    }
+
+                    // Download recommended models not yet downloaded
+                    ForEach(LocalLLMService.recommendedModels.filter { !downloadedModelIds.contains($0.id) }) { model in
+                        if !model.isCompatibleWithDevice {
                             HStack {
-                                Label("Gemma 4 E2B", systemImage: "cpu")
+                                Label(model.name, systemImage: "memorychip")
                                 Spacer()
-                                Text("3.6 GB")
+                                Text("Needs 8 GB RAM")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text("Download")
-                                    .foregroundStyle(accent)
+                                    .foregroundStyle(.orange)
+                            }
+                            .foregroundStyle(.secondary)
+                        } else if !localLLM.isDownloading {
+                            Button {
+                                downloadModel(model.id)
+                            } label: {
+                                HStack {
+                                    Label(model.name, systemImage: "arrow.down.circle")
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Text(model.estimatedSize)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text("Download")
+                                        .foregroundStyle(accent)
+                                }
                             }
                         }
                     }
+
                     if let error = agentDownloadError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
@@ -82,7 +122,7 @@ struct AgenticFeaturesView: View {
                 } header: {
                     Text("Agent Model")
                 } footer: {
-                    Text("On-device Gemma 4 handles tool calling and fast queries locally — no internet needed. Cloud models are used for complex reasoning.")
+                    Text("Pick a downloaded local model (runs offline) or any configured cloud provider. Local handles fast tool calls; cloud handles complex reasoning.")
                 }
 
                 // Chattiness
@@ -231,9 +271,15 @@ struct AgenticFeaturesView: View {
         }
         .navigationTitle("Agentic Features")
         .onAppear {
-            // Re-check in case model was downloaded from Local Models view
-            agentModelReady = localLLM.isModelDownloaded(Config.agentModelId)
+            downloadedModelIds = localLLM.downloadedModelIds()
+            let isCloud = Config.savedModels.contains(where: { $0.id == Config.agentModelId })
+            agentModelReady = isCloud || localLLM.isModelDownloaded(Config.agentModelId)
             if agentModelReady { Config.setAgentModelDownloaded(true) }
+            // If saved agent model is no longer available, reset to first available option
+            if !agentModelReady, let first = allAgentModelOptions.first {
+                Config.setAgentModelId(first.id)
+                selectedAgentModelId = first.id
+            }
         }
         .sheet(item: $editingDocument) { type in
             AgentDocumentEditorView(type: type, store: agentDocs)
@@ -245,15 +291,25 @@ struct AgenticFeaturesView: View {
         }
     }
 
-    private func downloadAgentModel() {
+    private func modelShortName(_ id: String) -> String {
+        String(id.split(separator: "/").last ?? Substring(id))
+    }
+
+    private func downloadModel(_ modelId: String) {
         agentDownloadError = nil
         Task {
             do {
-                try await localLLM.downloadModel(Config.agentModelId)
+                try await localLLM.downloadModel(modelId)
+                downloadedModelIds = localLLM.downloadedModelIds()
+                // Auto-select the newly downloaded model
+                selectedAgentModelId = modelId
+                Config.setAgentModelId(modelId)
                 Config.setAgentModelDownloaded(true)
                 agentModelReady = true
             } catch {
-                agentDownloadError = error.localizedDescription
+                if (error as? CancellationError) == nil {
+                    agentDownloadError = error.localizedDescription
+                }
             }
         }
     }

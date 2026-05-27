@@ -96,6 +96,18 @@ struct ModelFormView: View {
                     .textInputAutocapitalization(.never)
                     .onChange(of: apiKey) { _, _ in resetModelList() }
 
+                if let url = selectedProvider.consoleURL {
+                    Link(destination: url) {
+                        HStack {
+                            Label("Get API Key", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            Text(url.host ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 if selectedProvider.showBaseURL {
                     TextField("Base URL", text: $baseURL)
                         .autocorrectionDisabled()
@@ -114,7 +126,11 @@ struct ModelFormView: View {
                         } else if keyValidated {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
-                            Text("Key valid — \(availableModels.count) models")
+                            Text("Key valid · \(availableModels.count) models")
+                            Spacer()
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         } else {
                             Image(systemName: "arrow.triangle.2.circlepath")
                             Text("Validate key & fetch models")

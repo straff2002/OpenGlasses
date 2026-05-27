@@ -4,6 +4,7 @@ import SwiftUI
 /// Transparency tool — lets users see exactly what data goes to the LLM.
 struct PromptInspectorView: View {
     @ObservedObject var appState: AppState
+    @Environment(\.appAccent) private var accent
 
     @State private var tokenEstimate: Int = 0
     @State private var sections: [PromptSection] = []
@@ -29,6 +30,20 @@ struct PromptInspectorView: View {
                 Text("Token estimate is approximate (~4 characters per token).")
             }
 
+            // MARK: Last Reasoning
+            if let reasoning = appState.llmService.lastReasoning {
+                Section {
+                    Text(reasoning)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } header: {
+                    Label("Last Reasoning", systemImage: "brain")
+                } footer: {
+                    Text("The AI's private chain-of-thought from its most recent response. This is never spoken aloud.")
+                }
+            }
+
             // MARK: Sections breakdown
             Section {
                 ForEach(sections) { section in
@@ -40,10 +55,11 @@ struct PromptInspectorView: View {
                     } label: {
                         HStack {
                             Image(systemName: section.isPresent ? section.icon : "circle.dashed")
-                                .foregroundStyle(section.isPresent ? Color.green : Color.secondary)
+                                .foregroundStyle(section.isPresent ? accent : Color.secondary)
                                 .font(.body)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(section.name)
+                                    .foregroundStyle(section.isPresent ? accent : .secondary)
                                     .lineLimit(1)
                                 if section.isPresent {
                                     Text("\(section.content.count) characters")

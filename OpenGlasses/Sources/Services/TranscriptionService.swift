@@ -1,6 +1,6 @@
 import Foundation
 import AVFoundation
-import Speech
+@preconcurrency import Speech
 
 /// On-device speech transcription using iOS Speech Recognition
 /// Reuses the shared audio engine from WakeWordService to avoid
@@ -21,7 +21,7 @@ class TranscriptionService: ObservableObject {
     private var silenceTimer: Timer?
     private var noSpeechTimer: Timer?
     private let silenceThreshold: TimeInterval = 2.0
-    private let noSpeechTimeout: TimeInterval = 5.0
+    private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
 
     /// Shared audio engine — set by AppState from WakeWordService

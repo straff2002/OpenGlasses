@@ -9,7 +9,11 @@ final class NativeToolRegistry {
          faceRecognitionService: FaceRecognitionService? = nil, cameraService: CameraService? = nil,
          memoryRewindService: MemoryRewindService? = nil,
          ambientCaptionService: AmbientCaptionService? = nil,
-         openClawBridge: OpenClawBridge? = nil) {
+         openClawBridge: OpenClawBridge? = nil,
+         videoRecorder: VideoRecordingService? = nil,
+         audioRecorder: AudioRecordingService? = nil,
+         medicalExportService: MedicalExportService? = nil,
+         semanticMemory: SemanticMemoryStore? = nil) {
         let weatherTool = WeatherTool(locationService: locationService)
         let newsTool = NewsTool()
         let dateTimeTool = DateTimeTool()
@@ -24,6 +28,9 @@ final class NativeToolRegistry {
         register(WebSearchTool())
         register(newsTool)
         register(TranslationTool())
+        register(TranslateSignMenuTool())
+        register(AskLocalPhraseTool(locationService: locationService))
+        register(WhereAmITool(locationService: locationService))
         register(OpenAppTool())
         register(DirectionsTool())
         register(ShazamTool())
@@ -90,6 +97,20 @@ final class NativeToolRegistry {
             register(DocumentScanTool(cameraService: camera))
             register(CapturePhotoTool(cameraService: camera))
             register(QRContextTool(cameraService: camera))
+            if let recorder = videoRecorder {
+                register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,
+                                            medicalExportService: medicalExportService))
+            }
+        }
+
+        // Audio-only recording (lighter than video — no camera needed)
+        if let recorder = audioRecorder {
+            register(AudioRecordingTool(audioRecorder: recorder))
+        }
+
+        // Medical export tool
+        if let exportService = medicalExportService {
+            register(MedicalExportTool(exportService: exportService, videoRecorder: videoRecorder))
         }
 
         // Tier 6: Golf mode
@@ -98,11 +119,24 @@ final class NativeToolRegistry {
         register(AgentScheduleTool())
         register(AgentDocumentTool())
         register(PlaybookTool())
+        // Always registered — tool checks agentModeEnabled at execution time
+        register(YieldToHumanTool())
         var discoveryTool = DiscoverCapabilitiesTool()
         discoveryTool.toolRegistry = self
         register(discoveryTool)
         register(ChineseAppsTool())
         register(AsianMessagingTool())
+
+        // Semantic memory tools — only available when memory is enabled
+        if let memory = semanticMemory {
+            var searchTool = MemorySearchTool()
+            searchTool.memoryStore = memory
+            register(searchTool)
+            var diaryTool = AgentDiaryTool()
+            diaryTool.memoryStore = memory
+            register(diaryTool)
+        }
+
         // LiveTranslationTool is registered separately after the service is created
 
         // User-defined custom tools
@@ -123,6 +157,8 @@ final class NativeToolRegistry {
 
     func tool(named name: String) -> (any NativeTool)? {
         guard Config.isToolEnabled(name) else { return nil }
+        // HIPAA mode disables tools that could leak PHI
+        if Config.hipaaMode, Config.hipaaDisabledTools.contains(name) { return nil }
         return tools[name]
     }
 
@@ -132,8 +168,13 @@ final class NativeToolRegistry {
     }
 
     /// Only enabled tool names — used for system prompt injection.
+    /// HIPAA mode automatically excludes tools that could leak PHI.
     var toolNames: [String] {
-        Array(tools.keys).filter { Config.isToolEnabled($0) }.sorted()
+        Array(tools.keys).filter { name in
+            guard Config.isToolEnabled(name) else { return false }
+            if Config.hipaaMode, Config.hipaaDisabledTools.contains(name) { return false }
+            return true
+        }.sorted()
     }
 
     /// Context-aware tool names — filters out tools that aren't relevant to the current state.
@@ -148,7 +189,7 @@ final class NativeToolRegistry {
 
         return allEnabled.filter { name in
             // Camera-dependent tools: only include when glasses are connected
-            let cameraTools: Set = ["scan_code", "scan_document", "capture_photo", "face_recognition", "qr_context"]
+            let cameraTools: Set = ["scan_code", "scan_document", "capture_photo", "face_recognition", "qr_context", "video_recording"]
             if cameraTools.contains(name) && !glassesConnected { return false }
 
             // Home tools: only include when configured

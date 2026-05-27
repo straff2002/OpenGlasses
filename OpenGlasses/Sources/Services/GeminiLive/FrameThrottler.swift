@@ -8,6 +8,7 @@ class FrameThrottler {
 
     private var lastFrameTime: Date = .distantPast
     private let interval: TimeInterval
+    private var isPaused: Bool = false
 
     /// - Parameter interval: Minimum seconds between forwarded frames (default: from Config).
     init(interval: TimeInterval = Config.geminiLiveVideoFrameInterval) {
@@ -18,9 +19,20 @@ class FrameThrottler {
     private(set) var receivedCount: Int = 0
     private(set) var forwardedCount: Int = 0
 
-    /// Call with every camera frame. Only forwards if enough time has passed.
+    /// Temporarily pause frame forwarding (e.g. during tool execution).
+    func pause() {
+        isPaused = true
+    }
+
+    /// Resume frame forwarding after a pause.
+    func resume() {
+        isPaused = false
+    }
+
+    /// Call with every camera frame. Only forwards if enough time has passed and not paused.
     func submit(_ image: UIImage) {
         receivedCount += 1
+        guard !isPaused else { return }
         let now = Date()
         guard now.timeIntervalSince(lastFrameTime) >= interval else { return }
         lastFrameTime = now

@@ -19,59 +19,215 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private var tonePlayer: AVAudioPlayer?  // Separate ref so tone isn't killed by speech
     private var speechContinuation: CheckedContinuation<Void, Never>?
 
-    /// Track if ElevenLabs quota is exhausted to skip future attempts
-    private var elevenLabsDisabled: Bool = false
+    /// Tracks the current speech task so concurrent calls can be cancelled
+    private var currentSpeechTask: Task<Void, Never>?
+
+    /// Generation counter — incremented on each speak() call. Delegate callbacks
+    /// check this to ignore stale completions from a previous speech session.
+    private var speechGeneration: Int = 0
+
+    /// When ElevenLabs returns quota_exceeded, cache the failure so we skip
+    /// further ElevenLabs calls and go straight to iOS TTS for the session.
+    private var elevenLabsQuotaExhausted = false
 
     override init() {
         super.init()
         synthesizer.delegate = self
     }
 
+    // MARK: - Audio pause hold
+    //
+    // Music/podcasts should fully pause while the agent speaks and resume after. The
+    // actual session swap lives in WakeWordService.pauseOtherAudio/resumeOtherAudio and
+    // is reference-counted there, so this pairs cleanly with the conversation flow's
+    // own pause holds — Music/Podcasts stay paused for the whole interaction even when
+    // multiple TTS utterances and the mic-active period overlap.
+
+    /// Set by AppState — TTS service holds a weak reference so it can pause/resume
+    /// the same shared session the wake-word listener uses.
+    weak var wakeWordService: WakeWordService?
+    private var didHoldPause = false
+
+    private func beginPause() {
+        guard !didHoldPause else { return }
+        wakeWordService?.pauseOtherAudio()
+        didHoldPause = true
+    }
+
+    private func endPause() {
+        guard didHoldPause else { return }
+        didHoldPause = false
+        wakeWordService?.resumeOtherAudio()
+    }
+
     // MARK: - Public API
+
+    /// Reset the ElevenLabs quota cache (call when API key changes or credits are added).
+    func resetElevenLabsQuota() {
+        elevenLabsQuotaExhausted = false
+        print("🔊 ElevenLabs: Quota cache reset")
+    }
 
     func speak(_ text: String) async {
         guard !text.isEmpty else { return }
 
-        // Privacy: don't speak through phone speaker when glasses aren't connected
-        if requireGlassesForSpeech && !glassesConnected {
-            print("🔊 TTS: Suppressed — glasses not connected (privacy)")
+        // Silence if glasses-only mode is on and glasses aren't connected
+        if Config.glassesOnlyAudio && !glassesConnected {
+            print("🔊 TTS: Suppressed — glasses not connected (glasses-only mode)")
             return
         }
 
-        // Cancel any in-progress speech and thinking sound
-        stopSpeaking()
-        stopThinkingSound()
-        try? await Task.sleep(nanoseconds: 50_000_000)
-
-        isSpeaking = true
-
-        let elevenLabsKey = Config.elevenLabsAPIKey
-        if !elevenLabsKey.isEmpty && !elevenLabsDisabled {
-            do {
-                try await speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
-            } catch {
-                print("🔊 TTS: ElevenLabs failed (\(error)), falling back to iOS voice")
-                await speakWithiOS(text: text)
+        // Route to speaker when glasses aren't connected (in playAndRecord sessions)
+        if !glassesConnected {
+            let session = AVAudioSession.sharedInstance()
+            if session.category == .playAndRecord {
+                try? session.overrideOutputAudioPort(.speaker)
             }
-        } else {
-            if elevenLabsDisabled {
-                print("🔊 TTS: ElevenLabs disabled (quota exceeded), using iOS voice")
-            }
-            await speakWithiOS(text: text)
         }
 
-        isSpeaking = false
-        print("🔊 TTS: Finished speaking")
+        // Cancel any in-progress speech (including in-flight network requests)
+        // Do this BEFORE bumping generation so stopSpeaking()'s increment doesn't
+        // invalidate the generation we're about to capture.
+        currentSpeechTask?.cancel()
+        currentSpeechTask = nil
+        streamSpeechTask?.cancel()
+        streamSpeechTask = nil
+        streamBuffer = ""
+        audioPlayer?.stop()
+        audioPlayer = nil
+        synthesizer.stopSpeaking(at: .immediate)
+        speechContinuation?.resume()
+        speechContinuation = nil
+        stopThinkingSound()
+
+        // Bump generation AFTER cleanup — capture the new value
+        speechGeneration += 1
+        let gen = speechGeneration
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        // Check cancellation after the sleep — a newer speak() may have started
+        guard !Task.isCancelled, gen == speechGeneration else {
+            print("🔊 TTS: Skipped — generation changed or task cancelled (gen=\(gen) current=\(speechGeneration))")
+            return
+        }
+
+        isSpeaking = true
+        beginPause()
+
+        // Wrap the actual speech work in a trackable task
+        let task = Task { @MainActor [weak self] in
+            guard let self, gen == self.speechGeneration else {
+                print("🔊 TTS: Task skipped — generation stale")
+                return
+            }
+
+            let elevenLabsKey = Config.elevenLabsAPIKey
+            let useElevenLabs = !elevenLabsKey.isEmpty && !self.elevenLabsQuotaExhausted
+            print("🔊 TTS: Speaking \(text.prefix(60))... (ElevenLabs: \(useElevenLabs)\(self.elevenLabsQuotaExhausted ? ", quota exhausted" : ""))")
+            if useElevenLabs {
+                do {
+                    try Task.checkCancellation()
+                    try await self.speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
+                } catch is CancellationError {
+                    print("🔊 TTS: Cancelled")
+                } catch {
+                    // Only fall back if we weren't cancelled AND generation still matches
+                    guard !Task.isCancelled, gen == self.speechGeneration else {
+                        print("🔊 TTS: Cancelled during fallback")
+                        return
+                    }
+                    print("🔊 TTS: ElevenLabs failed (\(error)), falling back to iOS voice")
+                    await self.speakWithiOS(text: text)
+                }
+            } else {
+                await self.speakWithiOS(text: text)
+            }
+        }
+        currentSpeechTask = task
+
+        // Wait for the speech task to finish
+        await task.value
+
+        // Only clear isSpeaking if this generation is still current
+        if gen == speechGeneration {
+            isSpeaking = false
+            endPause()
+            print("🔊 TTS: Finished speaking")
+        }
+    }
+
+    // MARK: - Streaming TTS
+
+    /// Buffer for accumulating streaming chunks until a sentence boundary.
+    private var streamBuffer = ""
+    private var streamSpeechTask: Task<Void, Never>?
+
+    /// Queue a partial text chunk for streaming speech.
+    /// Accumulates text and speaks at sentence boundaries (. ! ? newline).
+    func speakStreaming(_ chunk: String) async {
+        streamBuffer += chunk
+
+        // Check for sentence boundary in buffer
+        let sentenceEnders: [Character] = [".", "!", "?", "\n"]
+        if let lastEnder = streamBuffer.lastIndex(where: { sentenceEnders.contains($0) }) {
+            let speakableEnd = streamBuffer.index(after: lastEnder)
+            let sentence = String(streamBuffer[streamBuffer.startIndex..<speakableEnd])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            streamBuffer = String(streamBuffer[speakableEnd...])
+
+            if !sentence.isEmpty {
+                // Wait for any current speech to finish, then speak the sentence
+                await streamSpeechTask?.value
+                streamSpeechTask = Task {
+                    await speak(sentence)
+                }
+            }
+        }
+    }
+
+    /// Flush any remaining buffered text and speak it.
+    func flushStreamBuffer() async {
+        let remaining = streamBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        streamBuffer = ""
+        if !remaining.isEmpty {
+            await streamSpeechTask?.value
+            await speak(remaining)
+        }
+        streamSpeechTask = nil
     }
 
     func stopSpeaking() {
         stopThinkingSound()
+        // Bump generation so any in-flight delegate callbacks are ignored
+        speechGeneration += 1
+        currentSpeechTask?.cancel()
+        currentSpeechTask = nil
+        streamSpeechTask?.cancel()
+        streamSpeechTask = nil
+        streamBuffer = ""
         audioPlayer?.stop()
         audioPlayer = nil
         synthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
+        endPause()
         speechContinuation?.resume()
         speechContinuation = nil
+    }
+
+    /// Soft bing — photo captured silently (e.g. during a meeting recording).
+    /// Short, gentle, higher-pitched with a fast decay so it's unobtrusive.
+    func playPhotoTone() {
+        do {
+            let toneData = try Self.generateToneData(frequency: 1200, duration: 0.12, sampleRate: 44100, peakVolume: 0.35)
+            let player = try AVAudioPlayer(data: toneData)
+            self.tonePlayer = player
+            player.volume = 0.45
+            player.prepareToPlay()
+            player.play()
+        } catch {
+            print("🔊 Photo tone failed: \(error)")
+        }
     }
 
     /// High tone — wake word heard, now listening
@@ -115,24 +271,25 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     }
 
     /// Generate a short WAV tone in memory
-    private static func generateToneData(frequency: Double, duration: Double, sampleRate: Double) throws -> Data {
+    private static func generateToneData(frequency: Double, duration: Double, sampleRate: Double, peakVolume: Double = 0.8) throws -> Data {
         let numSamples = Int(sampleRate * duration)
         var samples = [Int16]()
         samples.reserveCapacity(numSamples)
 
         for i in 0..<numSamples {
             let t = Double(i) / sampleRate
-            // Apply a quick fade-in/fade-out envelope to avoid clicks
+            // Apply a quick fade-in/fast-decay envelope to avoid clicks
             let envelope: Double
-            let fadeLen = 0.01  // 10ms fade
-            if t < fadeLen {
-                envelope = t / fadeLen
-            } else if t > duration - fadeLen {
-                envelope = (duration - t) / fadeLen
+            let fadeIn = 0.008   // 8ms fade in
+            let fadeOut = 0.04   // 40ms fade out (longer decay = softer, more bell-like)
+            if t < fadeIn {
+                envelope = t / fadeIn
+            } else if t > duration - fadeOut {
+                envelope = (duration - t) / fadeOut
             } else {
                 envelope = 1.0
             }
-            let sample = sin(2.0 * .pi * frequency * t) * envelope * 0.8
+            let sample = sin(2.0 * .pi * frequency * t) * envelope * peakVolume
             samples.append(Int16(sample * Double(Int16.max)))
         }
 
@@ -270,15 +427,18 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let elapsed = Date().timeIntervalSince(startTime)
         print("🔊 ElevenLabs: Received \(data.count) bytes in \(String(format: "%.1f", elapsed))s")
 
+        // Check cancellation after network wait — a newer speak() may have started
+        try Task.checkCancellation()
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             if let errorStr = String(data: data, encoding: .utf8) {
                 print("🔊 ElevenLabs: Error \(statusCode): \(errorStr)")
-                // Disable ElevenLabs if quota exceeded
+                // Cache quota exhaustion so we skip ElevenLabs for the rest of this session
                 if errorStr.contains("quota_exceeded") {
-                    print("🔊 ElevenLabs: Quota exceeded — disabling for this session")
-                    elevenLabsDisabled = true
+                    print("🔊 ElevenLabs: Quota exhausted — switching to iOS voice for this session")
+                    elevenLabsQuotaExhausted = true
                 }
             }
             throw TTSError.apiError(statusCode: statusCode)
@@ -289,6 +449,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     }
 
     private func playAudioData(_ data: Data) async throws {
+        // If glasses disconnected between network download and playback, discard the audio.
+        // This closes the race where stopSpeaking() ran before audioPlayer was assigned.
+        guard !Task.isCancelled else { return }
+        guard !Config.glassesOnlyAudio || glassesConnected else {
+            print("🔊 TTS: Discarding downloaded audio — glasses not connected (glasses-only mode)")
+            return
+        }
+
         let player = try AVAudioPlayer(data: data)
         self.audioPlayer = player
         player.prepareToPlay()
@@ -305,14 +473,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     private func speakWithiOS(text: String) async {
         let utterance = AVSpeechUtterance(string: text)
-        // Try to use a premium voice if available
-        if let premiumVoice = AVSpeechSynthesisVoice(identifier: "com.apple.voice.premium.en-US.Zoe") {
-            utterance.voice = premiumVoice
-        } else if let enhancedVoice = AVSpeechSynthesisVoice(identifier: "com.apple.voice.enhanced.en-US.Zoe") {
-            utterance.voice = enhancedVoice
-        } else {
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        }
+
+        // Pick the best available English voice: premium > enhanced > default
+        let voice = Self.bestAvailableVoice()
+        utterance.voice = voice
+        print("🔊 iOS TTS: Using voice \(voice?.name ?? "system default") (\(voice?.identifier ?? "nil"), quality=\(voice?.quality.rawValue ?? -1))")
+
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
@@ -321,6 +487,39 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             self.speechContinuation = continuation
             synthesizer.speak(utterance)
         }
+    }
+
+    /// Resolve the iOS TTS voice — uses saved preference or auto-selects best available.
+    private static func bestAvailableVoice() -> AVSpeechSynthesisVoice? {
+        // Use saved preference if set
+        let preferred = Config.iosTTSVoiceId
+        if !preferred.isEmpty, let voice = AVSpeechSynthesisVoice(identifier: preferred) {
+            return voice
+        }
+
+        // Auto-select: best quality English voice available
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+        let englishVoices = allVoices.filter { $0.language.hasPrefix("en") }
+
+        // Sort by quality descending (premium=3, enhanced=2, default=1)
+        let sorted = englishVoices.sorted { $0.quality.rawValue > $1.quality.rawValue }
+
+        if let best = sorted.first, best.quality.rawValue >= 2 {
+            return best
+        }
+
+        // Fallback to standard en-US
+        return AVSpeechSynthesisVoice(language: "en-US")
+    }
+
+    /// All English voices available on this device, grouped by quality.
+    static func availableVoices() -> [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") }
+            .sorted { lhs, rhs in
+                if lhs.quality != rhs.quality { return lhs.quality.rawValue > rhs.quality.rawValue }
+                return lhs.name < rhs.name
+            }
     }
 
     // MARK: - AVSpeechSynthesizerDelegate (iOS fallback)
@@ -356,23 +555,29 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     func startThinkingSound() {
         stopThinkingSound()
 
-        // Soft, warm pulse — low frequency with gentle fade in/out
+        // Gentle ambient breath — filtered noise-like texture, not a bleep
         let sampleRate: Double = 44100
-        let duration: Double = 0.3
-        let frequency: Double = 280  // Lower pitch, warmer tone
-        let amplitude: Float = 0.04  // Half the previous amplitude
+        let duration: Double = 1.2
+        let amplitude: Float = 0.02
         let frameCount = Int(sampleRate * duration)
 
         var samples = [Float](repeating: 0, count: frameCount)
+        // Layer several detuned low frequencies for a soft pad-like hum
+        let freqs: [(Double, Float)] = [
+            (120, 1.0),   // deep fundamental
+            (180, 0.4),   // soft fifth
+            (240, 0.15),  // quiet octave
+        ]
         for i in 0..<frameCount {
             let t = Float(i) / Float(sampleRate)
-            // Smooth raised-cosine envelope (gentler than sine)
             let progress = t / Float(duration)
-            let envelope = 0.5 * (1.0 - cos(2.0 * Float.pi * progress))
-            // Mix fundamental with soft overtone for warmth
-            let fundamental = sin(2 * Float.pi * Float(frequency) * t)
-            let overtone = 0.3 * sin(2 * Float.pi * Float(frequency * 2) * t)
-            samples[i] = amplitude * envelope * (fundamental + overtone)
+            // Long, smooth fade in and out (no sharp attack)
+            let envelope = sin(Float.pi * progress)
+            var mix: Float = 0
+            for (freq, level) in freqs {
+                mix += level * sin(2 * Float.pi * Float(freq) * t)
+            }
+            samples[i] = amplitude * envelope * mix
         }
 
         // Convert to 16-bit PCM WAV
@@ -403,11 +608,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         do {
             thinkingPlayer = try AVAudioPlayer(data: wav)
-            thinkingPlayer?.volume = 0.15
+            thinkingPlayer?.volume = 0.35
 
-            // Gentle pulse every 3 seconds
+            // Soft ambient breath every 2 seconds
             thinkingPlayer?.play()
-            thinkingTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            thinkingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
                 Task { @MainActor [weak self] in
                     self?.thinkingPlayer?.currentTime = 0
                     self?.thinkingPlayer?.play()

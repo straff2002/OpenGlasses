@@ -10,6 +10,7 @@ struct LivePreviewView: View {
     @State private var currentFrame: UIImage?
     @State private var isStartingStream = false
     @State private var streamError: String?
+    @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
 
     var body: some View {
         ZStack {
@@ -19,6 +20,7 @@ struct LivePreviewView: View {
                 Image(uiImage: frame)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .accessibilityLabel("Live camera feed from glasses")
             } else if isStartingStream {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -70,7 +72,7 @@ struct LivePreviewView: View {
                             .font(.title2)
                             .foregroundStyle(.white)
                             .frame(width: 56, height: 56)
-                            .background(Circle().fill(.ultraThinMaterial))
+                            .glassEffect(in: .circle)
                     }
                     .disabled(appState.cameraService.isCaptureInProgress)
                     .accessibilityLabel("Take Photo")
@@ -83,7 +85,7 @@ struct LivePreviewView: View {
                             .font(.system(size: 32))
                             .foregroundStyle(appState.videoRecorder.isRecording ? .red : .white)
                             .frame(width: 56, height: 56)
-                            .background(Circle().fill(.ultraThinMaterial))
+                            .glassEffect(in: .circle)
                     }
                     .accessibilityLabel(appState.videoRecorder.isRecording ? "Stop Recording" : "Start Recording")
 
@@ -96,7 +98,7 @@ struct LivePreviewView: View {
                                 .font(.title2)
                                 .foregroundStyle(appState.broadcastService.isBroadcasting ? .red : .white)
                                 .frame(width: 56, height: 56)
-                                .background(Circle().fill(.ultraThinMaterial))
+                                .glassEffect(in: .circle)
                             if appState.broadcastService.isBroadcasting {
                                 Text("LIVE")
                                     .font(.system(size: 9, weight: .bold))
@@ -120,6 +122,7 @@ struct LivePreviewView: View {
                         Circle()
                             .fill(.red)
                             .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
                         Text(appState.videoRecorder.formattedDuration)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.white)
@@ -128,6 +131,7 @@ struct LivePreviewView: View {
                     .padding(.vertical, 5)
                     .background(Capsule().fill(.black.opacity(0.6)))
                     .padding(.top, 60)
+                    .accessibilityLabel("Recording: \(appState.videoRecorder.formattedDuration)")
                     Spacer()
                 }
             }
@@ -135,6 +139,7 @@ struct LivePreviewView: View {
         .onAppear {
             // Subscribe to camera frames via callback
             let previousCallback = appState.cameraService.onVideoFrame
+            previousVideoFrameCallback = previousCallback
             appState.cameraService.onVideoFrame = { image in
                 previousCallback?(image)
                 Task { @MainActor in
@@ -142,6 +147,20 @@ struct LivePreviewView: View {
                 }
             }
             startStreamIfNeeded()
+        }
+        .onDisappear {
+            appState.cameraService.onVideoFrame = previousVideoFrameCallback
+            Task {
+                let shouldKeepStreaming =
+                    appState.videoRecorder.isRecording ||
+                    appState.broadcastService.isBroadcasting ||
+                    appState.webRTCStreaming.isStreaming ||
+                    appState.geminiLiveSession.isActive ||
+                    appState.openAIRealtimeSession.isActive
+                if !shouldKeepStreaming {
+                    await appState.cameraService.stopStreaming()
+                }
+            }
         }
     }
 

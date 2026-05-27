@@ -13,6 +13,7 @@ struct ConnectionBanner: View {
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
     @ObservedObject var openClawBridge: OpenClawBridge
+    @Environment(\.appAccent) private var accent
 
     @State private var expandedPill: PillType? = nil
     @State private var cameraPermissionStatus: String?
@@ -72,8 +73,7 @@ struct ConnectionBanner: View {
             withAnimation { expandedPill = expandedPill == .glasses ? nil : .glasses }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "eyeglasses")
-                    .font(.system(size: 14, weight: .medium))
+                LogoIcon(size: 16)
                     .foregroundStyle(color)
                 Circle()
                     .fill(color)
@@ -81,13 +81,7 @@ struct ConnectionBanner: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    expandedPill == .glasses ? color.opacity(0.4) : Color.white.opacity(0.08),
-                    lineWidth: 0.5
-                )
-            )
+            .glassEffect(in: .capsule)
         }
         .accessibilityLabel("Glasses: \(label)")
     }
@@ -128,13 +122,7 @@ struct ConnectionBanner: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    expandedPill == .openClaw ? color.opacity(0.4) : Color.white.opacity(0.08),
-                    lineWidth: 0.5
-                )
-            )
+            .glassEffect(in: .capsule)
         }
         .accessibilityLabel("OpenClaw: \(label)")
     }
@@ -160,13 +148,7 @@ struct ConnectionBanner: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    expandedPill == .gemini ? color.opacity(0.4) : Color.white.opacity(0.08),
-                    lineWidth: 0.5
-                )
-            )
+            .glassEffect(in: .capsule)
         }
         .accessibilityLabel("Gemini: \(label)")
     }
@@ -192,13 +174,7 @@ struct ConnectionBanner: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    expandedPill == .openAI ? color.opacity(0.4) : Color.white.opacity(0.08),
-                    lineWidth: 0.5
-                )
-            )
+            .glassEffect(in: .capsule)
         }
         .accessibilityLabel("OpenAI: \(label)")
     }
@@ -206,7 +182,6 @@ struct ConnectionBanner: View {
     // MARK: - Row 2: Model Bar
 
     private var modelBar: some View {
-        let isRealtime = appState.currentMode.isRealtime
         let modelName: String
         let icon: String
         let color: Color
@@ -222,7 +197,7 @@ struct ConnectionBanner: View {
         } else {
             modelName = appState.llmService.activeModelName
             icon = "brain"
-            color = .purple
+            color = AppAccent.aiCoral
         }
 
         return Button {
@@ -248,7 +223,7 @@ struct ConnectionBanner: View {
                         Text(persona.name)
                             .font(.system(size: 11, weight: .medium))
                     }
-                    .foregroundStyle(.cyan.opacity(0.8))
+                    .foregroundStyle(accent.opacity(0.8))
                 }
 
                 Image(systemName: "chevron.down")
@@ -258,13 +233,7 @@ struct ConnectionBanner: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().strokeBorder(
-                    expandedPill == .model ? color.opacity(0.3) : Color.white.opacity(0.06),
-                    lineWidth: 0.5
-                )
-            )
+            .glassEffect(in: .capsule)
         }
         .padding(.horizontal, 16)
         .accessibilityLabel("Model: \(modelName)")
@@ -308,7 +277,7 @@ struct ConnectionBanner: View {
                         ProgressView().scaleEffect(0.7).tint(.white)
                         Text(appState.llmService.toolCallStatus.displayText)
                             .font(.system(size: 11))
-                            .foregroundStyle(.purple.opacity(0.8))
+                            .foregroundStyle(AppAccent.aiCoral.opacity(0.8))
                     }
                 }
             }
@@ -389,7 +358,7 @@ struct ConnectionBanner: View {
                     } label: {
                         Text("Copy Debug Log")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(accent)
                     }
 
                     Button {
@@ -417,15 +386,9 @@ struct ConnectionBanner: View {
                 } label: {
                     Text("Connect Glasses")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(accent)
                 }
             } else {
-                if let battery = appState.glassesService.batteryLevel {
-                    Text("Battery: \(battery)%")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-
                 Button {
                     cameraPermissionStatus = "checking"
                     appState.cameraService.onRegistrationProgress = { state in
@@ -472,7 +435,7 @@ struct ConnectionBanner: View {
                     }
                     .foregroundStyle(
                         cameraPermissionStatus == "granted" ? .green :
-                        cameraPermissionStatus == "error" ? .orange : .cyan
+                        cameraPermissionStatus == "error" ? .orange : accent
                     )
                 }
                 .disabled(cameraPermissionStatus != nil && cameraPermissionStatus != "granted" && cameraPermissionStatus != "error")
@@ -521,7 +484,7 @@ struct ConnectionBanner: View {
                 } label: {
                     Text("Start Session")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(accent)
                 }
             }
 
@@ -577,7 +540,7 @@ struct ConnectionBanner: View {
                 } label: {
                     Text("Start Session")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(accent)
                 }
             }
 
@@ -627,7 +590,7 @@ struct ConnectionBanner: View {
                 } label: {
                     Text("Try Again")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(accent)
                 }
             case .checking:
                 HStack(spacing: 6) {
@@ -652,10 +615,13 @@ struct ConnectionBanner: View {
     private func statusDot(color: Color, text: String) -> some View {
         HStack(spacing: 8) {
             Circle().fill(color).frame(width: 6, height: 6)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.system(size: 12))
                 .foregroundStyle(color == .blue ? .white.opacity(0.6) : color.opacity(0.8))
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }
 
@@ -667,8 +633,7 @@ private extension View {
         self
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(borderColor, lineWidth: 0.5))
+            .glassEffect(in: .capsule)
     }
 
     /// Standard card background used by all expanded detail cards.
@@ -676,7 +641,6 @@ private extension View {
         self
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            .glassEffect(in: .rect(cornerRadius: 12))
     }
 }

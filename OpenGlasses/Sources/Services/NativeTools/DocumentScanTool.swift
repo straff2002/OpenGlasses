@@ -150,10 +150,57 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
         }
     }
 
+    // MARK: - Document Boundary Detection
+
+    /// Detect document boundaries using Vision framework (inspired by NoteBuddy).
+    /// Crops the image to just the document region for better OCR accuracy.
+    private func detectAndCropDocument(_ cgImage: CGImage) -> CGImage? {
+        let request = VNDetectDocumentSegmentationRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+
+        do {
+            try handler.perform([request])
+        } catch {
+            NSLog("[DocumentScan] Document detection failed: %@", error.localizedDescription)
+            return nil
+        }
+
+        guard let result = request.results?.first else {
+            return nil
+        }
+
+        // Use the detected document region to crop
+        let boundingBox = result.boundingBox
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+
+        let cropRect = CGRect(
+            x: boundingBox.origin.x * imageWidth,
+            y: (1 - boundingBox.origin.y - boundingBox.height) * imageHeight,
+            width: boundingBox.width * imageWidth,
+            height: boundingBox.height * imageHeight
+        )
+
+        // Only crop if the detected region is meaningful (not too small or the full image)
+        let area = cropRect.width * cropRect.height
+        let totalArea = imageWidth * imageHeight
+        let ratio = area / totalArea
+
+        guard ratio > 0.1 && ratio < 0.95 else {
+            return nil // Document fills most of frame or detection is too small
+        }
+
+        NSLog("[DocumentScan] Document detected: %.0f%% of frame, cropping", ratio * 100)
+        return cgImage.cropping(to: cropRect)
+    }
+
     // MARK: - Image Enhancement
 
     private func enhanceForOCR(_ cgImage: CGImage) -> CGImage? {
-        let ciImage = CIImage(cgImage: cgImage)
+        // First try to detect and crop to document boundary
+        let documentImage = detectAndCropDocument(cgImage) ?? cgImage
+
+        let ciImage = CIImage(cgImage: documentImage)
         var processed = ciImage
 
         // Increase contrast

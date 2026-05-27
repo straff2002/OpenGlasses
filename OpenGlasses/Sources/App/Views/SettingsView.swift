@@ -74,7 +74,9 @@ struct SettingsView: View {
                     info: "Turns off the always-listening wake word detector. The assistant is still fully functional via the Apple Watch, home screen widget, Action Button, and manual mic tap. Useful in meetings or quiet environments."
                 )
             } header: {
-                Text("Wake Word")
+                Text("Voice")
+            } footer: {
+                Text("The phrase that starts a conversation. Silent Mode keeps the assistant fully available via widget, watch, and Action Button — just without the always-listening mic.")
             }
 
             // MARK: AI Models
@@ -97,15 +99,18 @@ struct SettingsView: View {
                                         Image(systemName: "eye")
                                             .font(.caption2)
                                             .foregroundStyle(Color(.label))
+                                            .accessibilityLabel("Vision enabled")
                                     }
                                     if !model.apiKey.isEmpty {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.caption2)
                                             .foregroundStyle(.green)
+                                            .accessibilityLabel("API key set")
                                     } else {
                                         Image(systemName: "exclamationmark.circle")
                                             .font(.caption2)
                                             .foregroundStyle(.orange)
+                                            .accessibilityLabel("API key missing")
                                     }
                                 }
                             }
@@ -113,9 +118,13 @@ struct SettingsView: View {
                             Image(systemName: "chevron.right")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(model.name), \(model.llmProvider.displayName)\(!model.apiKey.isEmpty ? "" : ", API key missing")\(model.visionEnabled ? ", vision enabled" : "")")
+                    .accessibilityHint("Double-tap to edit")
                 }
                 .onDelete { indexSet in
                     modelConfigs.remove(atOffsets: indexSet)
@@ -129,10 +138,10 @@ struct SettingsView: View {
             } header: {
                 Text("AI Models")
             } footer: {
-                Text("Add API keys for different AI providers. Switch models anytime from the main screen.")
+                Text("Models are the AI you talk to. Add a key for any provider you want — you can switch between them anytime from the main screen.")
             }
 
-            // MARK: Personas
+            // MARK: Personality
             Section {
                 NavigationLink {
                     PersonasView()
@@ -156,7 +165,9 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text("Personas & Prompts")
+                Text("Personality")
+            } footer: {
+                Text("Personas are different characters with their own model + prompt (e.g. a museum docent, a fitness coach). System Prompt tweaks the default voice and behaviour.")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -208,8 +219,16 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text("Intelligence")
+                Text("How It Behaves")
+            } footer: {
+                Text("Intent Classifier ignores nearby chatter so the AI only responds when you're talking to it. Memory and History let the AI remember who you are across sessions. Smart Routing picks the right model for the task; Agentic Features let the AI take multi-step actions on its own.")
             }
+
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            // MARK: — Privacy & Compliance
+            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+            // (Medical Compliance moved into "Glasses & Privacy" below.)
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             // MARK: — Tools & Actions
@@ -255,7 +274,9 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text("Tools & Actions")
+                Text("Tools the AI Can Use")
+            } footer: {
+                Text("Quick Actions are shortcuts you can tap from the widget. Tools are built-in capabilities (camera, search, HomeKit, music…). Custom Tools and Playbooks let you script your own. The Skill Store adds community-built skills.")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -299,11 +320,13 @@ struct SettingsView: View {
                     Label("MCP Servers", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             } header: {
-                Text("Connections")
+                Text("Connected Apps & Services")
+            } footer: {
+                Text("ElevenLabs voices, Perplexity search, broadcast targets, and live-streaming live under Services. Gateways are OpenClaw bridges to your devices (smart home, automations). MCP Servers expose external tool servers the AI can call.")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            // MARK: — Hardware & Privacy
+            // MARK: — Glasses & Privacy
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             Section {
@@ -318,6 +341,37 @@ struct SettingsView: View {
                 } label: {
                     Label("Hardware & Privacy", systemImage: "lock.shield")
                 }
+
+                NavigationLink {
+                    MedicalCompliancePaywallView(
+                        hipaaService: appState.hipaaService,
+                        exportService: appState.medicalExportService
+                    )
+                } label: {
+                    HStack {
+                        Label("Medical Compliance", systemImage: "cross.case.fill")
+                        Spacer()
+                        if StoreKitService.shared.canAccessMedicalCompliance && Config.hipaaMode {
+                            Image(systemName: "cross.case.fill")
+                                .font(.caption)
+                                .foregroundStyle(AppAccent.aiCoral)
+                                .accessibilityHidden(true)
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                                .accessibilityLabel("Active")
+                        } else if !StoreKitService.shared.canAccessMedicalCompliance {
+                            Image(systemName: "cross.case.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+            } header: {
+                Text("Glasses & Privacy")
+            } footer: {
+                Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -372,11 +426,13 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text("Appearance")
+                Text("Look & Feel")
+            } footer: {
+                Text("Theme, accent colour, and which languages the assistant speaks and understands.")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            // MARK: — Developer
+            // MARK: — Advanced
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             Section {
@@ -392,7 +448,9 @@ struct SettingsView: View {
                     Label("Network Activity", systemImage: "antenna.radiowaves.left.and.right")
                 }
             } header: {
-                Text("Developer")
+                Text("Advanced")
+            } footer: {
+                Text("Diagnostic tools for power users — inspect the prompts being sent to the AI and watch live network requests. Useful for debugging or building your own integrations.")
             }
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -431,6 +489,8 @@ struct SettingsView: View {
                 .foregroundStyle(Color(.label))
             } header: {
                 Text("About")
+            } footer: {
+                Text("OpenGlasses is an open-source community project. Join the Discord for help, ideas, and to share what you've built.")
             }
         }
         .navigationTitle("Settings")
@@ -575,11 +635,11 @@ struct TierModelDetailPicker: View {
     let models: [ModelConfig]
     @Binding var selectedModelId: String
 
-    /// Unique providers from saved models (only those with API keys).
+    /// Unique providers from saved models (all providers, not just those with API keys).
     private var providers: [(config: ModelConfig, provider: LLMProvider)] {
         var seen = Set<String>()
         return models.compactMap { model in
-            guard !model.apiKey.isEmpty, seen.insert(model.provider).inserted else { return nil }
+            guard seen.insert(model.provider).inserted else { return nil }
             return (config: model, provider: model.llmProvider)
         }.sorted { $0.provider.displayName < $1.provider.displayName }
     }
@@ -817,6 +877,14 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Uses the phone's microphone instead of the glasses mic for live translation. Useful when holding the phone near the person speaking a foreign language, or when the glasses mic has too much background noise."
                 )
+                InfoToggle(
+                    title: "Glasses Only Audio",
+                    isOn: Binding(
+                        get: { Config.glassesOnlyAudio },
+                        set: { Config.setGlassesOnlyAudio($0) }
+                    ),
+                    info: "When on, the agent and notification sounds are silent if your glasses aren't connected. When off (default), audio plays through the phone speaker even without glasses."
+                )
                 Button {
                     #if !targetEnvironment(simulator)
                     AVCaptureDevice.showSystemUserInterface(.microphoneModes)
@@ -826,6 +894,8 @@ struct HardwarePrivacyView: View {
                 }
             } header: {
                 Text("Hardware")
+            } footer: {
+                Text("Where the mic listens and how audio is routed. Tap any \(Image(systemName: "info.circle")) for a full explanation. Glasses mic uses more battery but is truly hands-free.")
             }
 
             Section {
@@ -836,6 +906,8 @@ struct HardwarePrivacyView: View {
                 )
             } header: {
                 Text("Privacy")
+            } footer: {
+                Text("Bystander Face Blur runs entirely on-device — no images leave your phone.")
             }
 
             Section {
@@ -874,6 +946,8 @@ struct HardwarePrivacyView: View {
                 .disabled(isTogglingEncryption)
             } header: {
                 Text("Security")
+            } footer: {
+                Text("Locks saved conversation transcripts behind Face ID / passcode. The key lives in the Secure Enclave and never leaves your device.")
             }
             .alert("Encrypt Conversations", isPresented: $showEncryptionInfo) {
                 Button("OK", role: .cancel) {}

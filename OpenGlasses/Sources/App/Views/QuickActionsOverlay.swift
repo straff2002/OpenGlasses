@@ -25,13 +25,9 @@ struct QuickActionsOverlay: View {
                     } label: {
                         VStack(spacing: 4) {
                             ZStack {
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .overlay(
-                                        Circle()
-                                            .strokeBorder(.white.opacity(0.15), lineWidth: 1)
-                                    )
+                                Color.clear
                                     .frame(width: 44, height: 44)
+                                    .glassEffect(in: .circle)
 
                                 Image(systemName: action.icon)
                                     .font(.system(size: 17, weight: .medium))
@@ -45,6 +41,8 @@ struct QuickActionsOverlay: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(action.label)
+                    .accessibilityHint("Double-tap to execute")
                 }
             }
             .padding(.top, 8)

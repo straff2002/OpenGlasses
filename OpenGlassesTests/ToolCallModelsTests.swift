@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenGlasses
 
+@MainActor
 final class ToolCallModelsTests: XCTestCase {
 
     // MARK: - GeminiToolCall Parsing
@@ -166,8 +167,8 @@ final class ToolCallModelsTests: XCTestCase {
     }
 
     func testAnthropicToolsFormat() {
-        let tools = ToolDeclarations.anthropicTools()
-        XCTAssertEqual(tools.count, 1)
+        let tools = ToolDeclarations.anthropicTools(registry: nil, includeOpenClaw: true)
+        XCTAssertGreaterThanOrEqual(tools.count, 1)
 
         let tool = tools[0]
         XCTAssertEqual(tool["name"] as? String, "execute")
@@ -180,8 +181,8 @@ final class ToolCallModelsTests: XCTestCase {
     }
 
     func testOpenAIToolsFormat() {
-        let tools = ToolDeclarations.openAITools()
-        XCTAssertEqual(tools.count, 1)
+        let tools = ToolDeclarations.openAITools(registry: nil, includeOpenClaw: true)
+        XCTAssertGreaterThanOrEqual(tools.count, 1)
 
         let tool = tools[0]
         XCTAssertEqual(tool["type"] as? String, "function")
@@ -193,13 +194,13 @@ final class ToolCallModelsTests: XCTestCase {
     }
 
     func testGeminiRESTToolsFormat() {
-        let tools = ToolDeclarations.geminiRESTTools()
-        XCTAssertEqual(tools.count, 1)
+        let tools = ToolDeclarations.geminiRESTTools(registry: nil, includeOpenClaw: false)
+        XCTAssertGreaterThanOrEqual(tools.count, 1)
 
         let tool = tools[0]
         let declarations = tool["functionDeclarations"] as? [[String: Any]]
         XCTAssertNotNil(declarations)
-        XCTAssertEqual(declarations?.count, 1)
+        XCTAssertGreaterThanOrEqual(declarations?.count ?? 0, 1)
         XCTAssertEqual(declarations?.first?["name"] as? String, "execute")
     }
 

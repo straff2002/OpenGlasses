@@ -36,6 +36,12 @@ struct AddModelView: View {
             }
             .navigationTitle("Add Model")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                prefillIfExistingKey(for: selectedProvider)
+            }
+            .onChange(of: selectedProvider) { _, newProvider in
+                prefillIfExistingKey(for: newProvider)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -56,6 +62,47 @@ struct AddModelView: View {
                     }
                     .disabled(selectedProvider == .local ? model.isEmpty : apiKey.isEmpty)
                 }
+            }
+        }
+    }
+
+    // MARK: - Pre-fill from existing saved model
+
+    /// If the user already has a saved model for this provider, pre-fill the API key
+    /// and auto-fetch the model list so they don't have to re-enter credentials.
+    private func prefillIfExistingKey(for provider: LLMProvider) {
+        guard provider != .local, provider != .appleOnDevice,
+              let existing = Config.savedModels.first(where: {
+                  $0.llmProvider == provider && !$0.apiKey.isEmpty
+              }) else { return }
+        apiKey = existing.apiKey
+        if provider.showBaseURL && !existing.baseURL.isEmpty {
+            baseURL = existing.baseURL
+        }
+        // Run fetch after the current onChange cycle (model list was just reset by ModelFormView)
+        Task { await fetchModels() }
+    }
+
+    // MARK: - Model Fetching
+
+    private func fetchModels() async {
+        isFetchingModels = true
+        fetchError = nil
+        let models = await ModelFetcher.fetchModels(
+            provider: selectedProvider,
+            apiKey: apiKey,
+            baseURL: baseURL
+        )
+        isFetchingModels = false
+        if models.isEmpty {
+            fetchError = "Couldn't find any models. Double-check your API key and try again."
+            keyValidated = false
+        } else {
+            availableModels = models
+            keyValidated = true
+            if !models.contains(where: { $0.id == model }) {
+                model = models.first(where: { $0.id == selectedProvider.defaultModel })?.id
+                    ?? models.first?.id ?? model
             }
         }
     }

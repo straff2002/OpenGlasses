@@ -63,6 +63,7 @@ enum ToolCallStatus: Equatable {
     case completed(String)
     case failed(String, String)
     case cancelled(String)
+    case yielded(String)
 
     var displayText: String {
         switch self {
@@ -71,6 +72,7 @@ enum ToolCallStatus: Equatable {
         case .completed(let name): return "Done: \(name)"
         case .failed(let name, let err): return "Failed: \(name) — \(err)"
         case .cancelled(let name): return "Cancelled: \(name)"
+        case .yielded: return "Waiting for you..."
         }
     }
 

@@ -113,11 +113,17 @@ class GeminiLiveSessionManager: ObservableObject {
         }
         NSLog("[Session] Building system instruction — isCameraStreaming: %@", isCameraStreaming ? "YES" : "NO")
 
-        // Configure Gemini with system instruction, vision context, location, and tools
+        // Configure Gemini with system instruction, vision context, location, and tools.
+        // Only declare OpenClaw tools if the gateway is actually connected (prevents Gemini
+        // from attempting tool calls that will fail when gateway is unreachable).
         let systemInstruction = buildSystemInstruction()
         NSLog("[Session] System instruction built — length: %d chars, camera streaming: %@",
               systemInstruction.count, isCameraStreaming ? "YES" : "NO")
-        let includeOpenClaw = Config.isOpenClawConfigured
+        let openClawConnected = openClawBridge?.connectionState == .connected
+        let includeOpenClaw = Config.isOpenClawConfigured && openClawConnected
+        if Config.isOpenClawConfigured && !openClawConnected {
+            NSLog("[Session] OpenClaw configured but not connected — omitting execute tool declaration")
+        }
         let toolDefs = ToolDeclarations.allDeclarations(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
         geminiService.configure(systemInstruction: systemInstruction, toolDeclarations: toolDefs)
 
@@ -216,6 +222,19 @@ class GeminiLiveSessionManager: ObservableObject {
             let bridge = openClawBridge ?? OpenClawBridge()
             toolCallRouter = ToolCallRouter(bridge: bridge)
             toolCallRouter?.nativeToolRouter = nativeToolRouter
+
+            // Pause/resume camera streaming during tool execution to prevent instability
+            // (VisionClaw issue #11: tool-call stability during Gemini Live)
+            toolCallRouter?.onToolExecutionStarted = { [weak self] in
+                guard let self else { return }
+                NSLog("[Session] Tool execution started — pausing frame submission")
+                self.frameThrottler.pause()
+            }
+            toolCallRouter?.onToolExecutionFinished = { [weak self] in
+                guard let self else { return }
+                NSLog("[Session] Tool execution finished — resuming frame submission")
+                self.frameThrottler.resume()
+            }
 
             geminiService.onToolCall = { [weak self] toolCall in
                 guard let self else { return }
@@ -430,8 +449,11 @@ class GeminiLiveSessionManager: ObservableObject {
             - web_search: Search the web.
             - get_news: Get latest news headlines.
             - translate: Translate text between languages.
+            - translate_sign_menu: Translate visible signs/menus from camera view.
+            - ask_local_phrase: Generate traveler phrases in local language with pronunciation.
             - define_word: Look up word definitions.
             - find_nearby: Search for nearby places.
+            - where_am_i: Describe current location with reverse-geocoded place context and GPS coordinates.
             - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, etc).
             - get_directions: Directions via Apple Maps or Google Maps.
             - identify_song: Identify a song using Shazam.
@@ -480,10 +502,12 @@ class GeminiLiveSessionManager: ObservableObject {
             toolSection += """
 
             TOOL USAGE RULES:
-            1. Before calling any tool, speak a brief acknowledgment first.
+            1. ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool (e.g. "Let me check that", \
+            "One moment", "Looking that up"). This prevents awkward silence while the tool runs.
             2. MULTI-STEP CHAINS: You can call multiple tools in sequence. After getting a result, \
             call another tool if needed. Example: lookup_contact → phone_call, or find_nearby → get_directions.
             3. Calendar proactive alerts automatically notify the user before events.
+            4. If a tool takes a long time, you may hear "still working" updates — do not repeat them, just wait for the result.
             """
 
             prompt += toolSection

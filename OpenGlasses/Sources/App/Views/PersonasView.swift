@@ -18,7 +18,7 @@ struct PersonasView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
                                     Text(persona.name)
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     if !persona.enabled {
                                         Text("Off")
@@ -26,7 +26,7 @@ struct PersonasView: View {
                                             .foregroundStyle(.secondary)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
-                                            .background(.quaternary, in: Capsule())
+                                            .background(Color(.tertiarySystemFill), in: Capsule())
                                     }
                                 }
                                 Text("\"\(persona.wakePhrase)\"")
@@ -50,9 +50,13 @@ struct PersonasView: View {
                             Image(systemName: "chevron.right")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(persona.name)\(!persona.enabled ? ", disabled" : ""). Wake phrase: \(persona.wakePhrase). \(modelName(for: persona.modelId))")
+                    .accessibilityHint("Double-tap to edit")
                     .swipeActions(edge: .trailing) {
                         if personas.count > 1 {
                             Button(role: .destructive) {

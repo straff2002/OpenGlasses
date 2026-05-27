@@ -16,7 +16,6 @@ struct ModelPickerSheet: View {
                 }
         }
         .presentationDetents([.medium, .large])
-        .preferredColorScheme(.light)
     }
 
     @State private var selectedTier: Config.ModelTier = Config.modelTier
@@ -62,7 +61,7 @@ struct ModelPickerSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.name)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color(.label))
                             .lineLimit(1)
                         HStack(spacing: 4) {
                             Text("\(model.llmProvider.displayName) · \(model.model)")
@@ -72,7 +71,7 @@ struct ModelPickerSheet: View {
                             if model.visionEnabled {
                                 Image(systemName: "eye")
                                     .font(.caption2)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(Color(.label))
                                     .accessibilityLabel("Vision enabled")
                             }
                         }
@@ -80,7 +79,7 @@ struct ModelPickerSheet: View {
                     Spacer()
                     if model.id == activeId {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color(.label))
                             .accessibilityLabel("Active model")
                     }
                 }

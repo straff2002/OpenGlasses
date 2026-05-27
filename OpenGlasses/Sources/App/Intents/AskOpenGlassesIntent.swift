@@ -123,5 +123,43 @@ struct OpenGlassesShortcuts: AppShortcutsProvider {
             shortTitle: "Describe Environment",
             systemImageName: "eye"
         )
+        AppShortcut(
+            intent: ConnectGlassesIntent(),
+            phrases: [
+                "Connect \(.applicationName)",
+                "\(.applicationName) connect"
+            ],
+            shortTitle: "Connect Glasses",
+            systemImageName: "eyeglasses"
+        )
+        AppShortcut(
+            intent: StartMuseumModeIntent(),
+            phrases: [
+                "\(.applicationName) museum mode",
+                "Start museum guide with \(.applicationName)"
+            ],
+            shortTitle: "Museum Guide",
+            systemImageName: "building.columns"
+        )
+        AppShortcut(
+            intent: DisableListeningIntent(),
+            phrases: [
+                "Turn off \(.applicationName)",
+                "Stop \(.applicationName) listening",
+                "\(.applicationName) stop listening"
+            ],
+            shortTitle: "Stop Listening",
+            systemImageName: "mic.slash"
+        )
+        AppShortcut(
+            intent: EnableListeningIntent(),
+            phrases: [
+                "Turn on \(.applicationName)",
+                "Start \(.applicationName) listening",
+                "\(.applicationName) start listening"
+            ],
+            shortTitle: "Start Listening",
+            systemImageName: "mic.fill"
+        )
     }
 }

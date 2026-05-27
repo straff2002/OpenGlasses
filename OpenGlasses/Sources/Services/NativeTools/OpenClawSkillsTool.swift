@@ -62,7 +62,8 @@ struct OpenClawSkillsTool: NativeTool {
         let endpoint = await bridge.resolveEndpoint()
         let connectionMode = Config.openClawConnectionMode.displayName
 
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        let normalized = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        guard let url = URL(string: "\(normalized)/health") else {
             return "Invalid gateway URL."
         }
 
@@ -78,11 +79,9 @@ struct OpenClawSkillsTool: NativeTool {
             }
 
             if http.statusCode == 200 {
-                // Try to parse models list for extra info
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let models = json["data"] as? [[String: Any]] {
-                    let modelNames = models.compactMap { $0["id"] as? String }
-                    return "Gateway connected via \(connectionMode). Available models: \(modelNames.joined(separator: ", "))."
+                   let status = json["status"] as? String {
+                    return "Gateway connected via \(connectionMode). Status: \(status)."
                 }
                 return "Gateway connected via \(connectionMode). Status: OK."
             } else {
@@ -102,8 +101,8 @@ struct OpenClawSkillsTool: NativeTool {
 
         let endpoint = await bridge.resolveEndpoint()
 
-        // Try the skills endpoint
-        guard let url = URL(string: "\(endpoint)/v1/skills") else {
+        let normalized = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
+        guard let url = URL(string: "\(normalized)/health") else {
             return "Invalid gateway URL."
         }
 

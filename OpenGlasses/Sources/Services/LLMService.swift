@@ -122,6 +122,14 @@ class LLMService: ObservableObject {
     @Published var activeModelName: String = Config.activeModel?.name ?? "No Model"
     @Published var toolCallStatus: ToolCallStatus = .idle
 
+    /// Last chain-of-thought reasoning from <think> tags (nil if none).
+    /// Kept for the Prompt Inspector UI — never spoken aloud.
+    @Published var lastReasoning: String?
+
+    /// Optional conversation store — used to persist LLM-generated summaries
+    /// when the context window is compressed.
+    weak var conversationStore: ConversationStore?
+
     /// Optional OpenClaw bridge for tool calling in direct mode
     var openClawBridge: OpenClawBridge?
 
@@ -156,7 +164,7 @@ class LLMService: ObservableObject {
     /// Build the full system prompt, optionally including location, tools, memory, and vision context.
     /// When `promptSections` is provided (from the ConversationClassifier), irrelevant sections are
     /// stripped to reduce token count. When nil, all sections are included (backward compatible).
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async -> String {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -207,8 +215,11 @@ class LLMService: ObservableObject {
             - web_search: Search the web via DuckDuckGo.
             - get_news: Get latest news headlines, optionally by topic.
             - translate: Translate text between languages.
+            - translate_sign_menu: Translate visible signs/menus from camera view. Returns ORIGINAL text first, then translation.
+            - ask_local_phrase: Generate traveler phrases in the local language with pronunciation and a polite variant.
             - define_word: Look up word definitions.
             - find_nearby: Search for nearby places (restaurants, cafes, pharmacies, gas stations, etc).
+            - where_am_i: Describe the user's current location with reverse-geocoded place context and GPS coordinates.
             - open_app: Open iOS apps (Music, Podcasts, Maps, Google Maps, YouTube, Spotify, etc).
             - get_directions: Directions via Apple Maps or Google Maps (set app='google' for Google Maps).
             - identify_song: Identify a song playing nearby using Shazam.
@@ -244,6 +255,9 @@ class LLMService: ObservableObject {
             - home_assistant: Control Home Assistant smart home — toggle devices, check states, list entities, run automations, or use 'converse' action to send natural language commands directly to HA (e.g. action=converse, text="turn on the kitchen lights"). ALWAYS try this tool when asked about smart home control. Use entity IDs from the device list below when available; the tool also fuzzy-matches and falls back to HA's voice assistant.
             - scan_code: Scan QR codes or barcodes from the camera. Returns decoded content (URLs, text, product codes). Works offline.
             - capture_photo: Capture a photo from the glasses camera for visual analysis. Use when you need to see what the user is looking at, or proactively when visual context would help your response.
+            - audio_recording: Start or stop audio-only recording (no camera — lighter on battery). Saves .m4a to Documents/Recordings with live transcription and a meeting assistant that sends lock screen summaries + suggested questions every 60 seconds. Saying 'take a picture' during recording adds a visual note to the transcript. Actions: start, stop, status. Use when the user says 'record this meeting', 'record audio', 'record this conversation', or 'start audio recording'.
+            - video_recording: Start or stop video+audio recording from the glasses camera and microphone. Recordings save to Photos with no time limit — ideal for interviews, meetings, procedures. Includes live transcription by default (saved as .txt alongside video). Actions: start, stop, status. Params: transcribe (bool, default true). Use when the user says 'start recording', 'record this', 'film this', 'watch what I'm doing', or 'stop recording'.
+            - medical_export: Export clinical transcripts to medical platforms or share manually. Actions: export_fhir (upload to FHIR server), export_file (create file), share (open share sheet), status (check config). Params: format (text/pdf/fhir_json/hl7), transcript (optional, uses latest recording). Use when the user says 'export the transcript', 'send to the EMR', 'share the notes', or 'upload to the health record'.
             - qr_context: Scan a QR code and load its content as context (museum exhibits, venue info, procedures). Use at museums, venues, or workplaces. Can also load context from a URL directly.
             - golf_mode: Golf caddy assistant — track shots with GPS, get club recommendations, log scores, view round summary, and get course strategy. Actions: start_round, track_shot, club_recommendation, log_score, round_summary, strategy.
             - live_translate: Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: start, stop, status, set_language.
@@ -354,6 +368,9 @@ class LLMService: ObservableObject {
         if let location = locationContext {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
+        if let nowPlaying = nowPlayingContext {
+            prompt += "\n\n\(nowPlaying)"
+        }
         // Inject voice-taught skills
         if shouldInclude(.tools), let skills = VoiceSkillStore.shared.promptContext() {
             prompt += "\n\n\(skills)"
@@ -369,12 +386,17 @@ class LLMService: ObservableObject {
         return prompt
     }
 
-    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
+    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
         isProcessing = true
         defer { isProcessing = false }
 
         // Compress context window if conversation history has grown too large
-        compressContextWindowIfNeeded()
+        // Use LLM summarization in agentic mode, heuristic fallback otherwise
+        if Config.agentModeEnabled {
+            await compressContextWindowWithLLM()
+        } else {
+            compressContextWindowIfNeeded()
+        }
 
         guard let modelConfig = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured — add one in Settings")
@@ -386,25 +408,39 @@ class LLMService: ObservableObject {
         let includeTools = hasNativeTools || includeOpenClaw
         let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
         let gatewayToolNames = openClawBridge?.availableToolNames ?? []
-        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, promptSections: promptSections)
+        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, promptSections: promptSections)
 
         var toolsLabel = ""
         if hasNativeTools { toolsLabel += " [NativeTools]" }
         if includeOpenClaw { toolsLabel += " [OpenClaw]" }
         print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(toolsLabel)")
 
+        let rawResponse: String
         switch provider {
         case .anthropic:
-            return try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .gemini:
-            return try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+            rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .local:
-            return try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+            rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .appleOnDevice:
-            return try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
+            rawResponse = try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
         case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
-            return try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         }
+
+        // Strip <think> tags: keep reasoning in history but don't speak it
+        if Config.agentModeEnabled {
+            let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
+            lastReasoning = reasoning
+            if let reasoning {
+                NSLog("[LLMService] Think: %@", String(reasoning.prefix(200)))
+            }
+            return spoken
+        }
+
+        lastReasoning = nil
+        return rawResponse
     }
 
     /// Clear conversation history (e.g. when starting fresh or switching providers)
@@ -513,12 +549,202 @@ class LLMService: ObservableObject {
               originalCount, conversationHistory.count, estimatedTokens, newTokens, signals.count)
     }
 
+    // MARK: - LLM-Based Compression
+
+    /// Compress the context window using an LLM to summarize old messages.
+    /// Falls back to the heuristic compressor on failure.
+    private func compressContextWindowWithLLM() async {
+        let estimatedTokens = conversationHistory.reduce(0) { total, msg in
+            let content: String
+            if let text = msg["content"] as? String {
+                content = text
+            } else if let parts = msg["content"] as? [[String: Any]] {
+                content = parts.compactMap { $0["text"] as? String }.joined()
+            } else {
+                content = ""
+            }
+            return total + max(content.count / 4, 50)
+        }
+
+        guard estimatedTokens > maxEstimatedTokens, conversationHistory.count > 6 else { return }
+
+        // Select messages to compress vs keep
+        let keepCount = max(6, conversationHistory.count / 3)
+        let messagesToCompress = Array(conversationHistory.prefix(conversationHistory.count - keepCount))
+        let messagesToKeep = Array(conversationHistory.suffix(keepCount))
+
+        // Try LLM summarization
+        if let summary = await summarizeMessages(messagesToCompress) {
+            let originalCount = conversationHistory.count
+            let summaryMessage: [String: Any] = [
+                "role": "user",
+                "content": "[Conversation summary — \(messagesToCompress.count) earlier messages]\n\(summary)"
+            ]
+            conversationHistory = [summaryMessage] + messagesToKeep
+
+            let newTokens = conversationHistory.reduce(0) { total, msg in
+                let content = msg["content"] as? String ?? ""
+                return total + max(content.count / 4, 50)
+            }
+            NSLog("[LLM] LLM-compressed: %d → %d messages (~%d → ~%d tokens)",
+                  originalCount, conversationHistory.count, estimatedTokens, newTokens)
+
+            // Persist the summary to the active conversation thread
+            if let store = conversationStore, let threadId = store.activeThreadId {
+                await MainActor.run { store.updateCompressedSummary(summary, for: threadId) }
+            }
+            return
+        }
+
+        // Fallback to heuristic compression
+        NSLog("[LLM] LLM summarization failed, falling back to heuristic compression")
+        compressContextWindowIfNeeded()
+    }
+
+    /// Make a standalone LLM call to summarize a set of messages.
+    /// Uses no tools and a small max_tokens budget. Returns nil on failure.
+    private func summarizeMessages(_ messages: [[String: Any]]) async -> String? {
+        guard let modelConfig = Config.activeModel else { return nil }
+
+        // Build a text representation of the messages
+        var transcript = ""
+        for msg in messages {
+            let role = msg["role"] as? String ?? "unknown"
+            let content: String
+            if let text = msg["content"] as? String {
+                content = text
+            } else if let parts = msg["content"] as? [[String: Any]] {
+                content = parts.compactMap { $0["text"] as? String }.joined(separator: " ")
+            } else {
+                continue
+            }
+            // Truncate very long messages to avoid blowing up the summarization call
+            let truncated = content.count > 500 ? String(content.prefix(500)) + "…" : content
+            transcript += "\(role): \(truncated)\n"
+        }
+
+        guard !transcript.isEmpty else { return nil }
+
+        let summarizationPrompt = """
+        Summarize the following conversation excerpt concisely. Preserve:
+        - All user-stated facts, names, and preferences
+        - Decisions made and commitments given
+        - Tool calls and their key results
+        - Memory commands ([REMEMBER], [FORGET])
+        - Any unresolved questions or action items
+
+        Keep it under 300 words. Use plain text, no formatting.
+
+        CONVERSATION:
+        \(transcript)
+        """
+
+        let provider = modelConfig.llmProvider
+
+        do {
+            // Use a lightweight request — no tools, short max_tokens
+            switch provider {
+            case .anthropic:
+                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue(modelConfig.apiKey, forHTTPHeaderField: "x-api-key")
+                request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+                request.timeoutInterval = 15
+                let body: [String: Any] = [
+                    "model": modelConfig.model,
+                    "max_tokens": 512,
+                    "system": "You are a conversation summarizer. Be concise and factual.",
+                    "messages": [["role": "user", "content": summarizationPrompt]]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let content = json["content"] as? [[String: Any]],
+                      let text = content.first?["text"] as? String else { return nil }
+                return text
+
+            case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
+                var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !baseURL.hasSuffix("/chat/completions") {
+                    baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
+                }
+                guard let url = URL(string: baseURL) else { return nil }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
+                request.timeoutInterval = 15
+                let body: [String: Any] = [
+                    "model": modelConfig.model,
+                    "max_tokens": 512,
+                    "messages": [
+                        ["role": "system", "content": "You are a conversation summarizer. Be concise and factual."],
+                        ["role": "user", "content": summarizationPrompt]
+                    ]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let choices = json["choices"] as? [[String: Any]],
+                      let message = choices.first?["message"] as? [String: Any],
+                      let text = message["content"] as? String else { return nil }
+                return text
+
+            case .gemini:
+                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 15
+                let body: [String: Any] = [
+                    "system_instruction": ["parts": [["text": "You are a conversation summarizer. Be concise and factual."]]],
+                    "contents": [["role": "user", "parts": [["text": summarizationPrompt]]]],
+                    "generationConfig": ["maxOutputTokens": 512]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let candidates = json["candidates"] as? [[String: Any]],
+                      let content = candidates.first?["content"] as? [String: Any],
+                      let parts = content["parts"] as? [[String: Any]],
+                      let text = parts.first?["text"] as? String else { return nil }
+                return text
+
+            case .local, .appleOnDevice:
+                // Not worth running summarization on local models — use heuristic
+                return nil
+            }
+        } catch {
+            NSLog("[LLM] Summarization request failed: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
     /// Refresh the published model name from Config
     func refreshActiveModel() {
         activeModelName = Config.activeModel?.name ?? "No Model"
     }
 
     // MARK: - Anthropic Claude
+
+    /// Route a request to the appropriate cloud provider for a given config.
+    /// Used when a cloud model is selected as the agentic fast-tier model.
+    private func sendCloud(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool) async throws -> String {
+        switch config.llmProvider {
+        case .anthropic:
+            return try await sendAnthropic(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
+        case .gemini:
+            return try await sendGemini(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
+        case .local, .appleOnDevice:
+            throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
+        case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
+            return try await sendOpenAICompatible(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
+        }
+    }
 
     private func sendAnthropic(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?) async throws -> String {
         let apiKey = config.apiKey
@@ -650,6 +876,17 @@ class LLMService: ObservableObject {
                             ]
                         ]
                     ] as [String: Any])
+
+                    // Yield-to-human: break out of the tool loop so the user can act
+                    if toolName == "yield_to_human", case .success(let yieldText) = result,
+                       yieldText.hasPrefix("YIELD_TO_HUMAN:") {
+                        let reason = yieldText
+                            .replacingOccurrences(of: "YIELD_TO_HUMAN: ", with: "")
+                            .replacingOccurrences(of: "\nWaiting for you to say \"done\" or \"continue\" when ready.", with: "")
+                        toolCallStatus = .yielded(toolName)
+                        NSLog("[LLMService] Yielding to human: %@", reason)
+                        return reason
+                    }
                 }
 
                 print("🔄 [Anthropic] Continuing after tool call (iteration \(iteration + 1))")
@@ -707,17 +944,27 @@ class LLMService: ObservableObject {
         
         if let imageData = imageData, supportsVision {
             let base64String = imageData.base64EncodedString()
-            let content: [[String: Any]] = [
-                [
-                    "type": "text",
-                    "text": text
-                ],
-                [
+            // Custom providers proxying to Anthropic API need type:image with base64 source,
+            // not OpenAI's type:image_url format.
+            let isAnthropicProxy = provider == .custom && config.model.lowercased().contains("claude")
+            let imageBlock: [String: Any] = isAnthropicProxy
+                ? [
+                    "type": "image",
+                    "source": [
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64String
+                    ]
+                ]
+                : [
                     "type": "image_url",
                     "image_url": [
                         "url": "data:image/jpeg;base64,\(base64String)"
                     ]
                 ]
+            let content: [[String: Any]] = [
+                ["type": "text", "text": text],
+                imageBlock
             ]
             conversationHistory.append(["role": "user", "content": content])
         } else if imageData != nil && !supportsVision {
@@ -742,11 +989,13 @@ class LLMService: ObservableObject {
                 request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
             }
 
-            // OpenAI format: system prompt is a message in the array
+            // OpenAI format: system prompt is a message in the array.
+            // Groq's free tier has tight TPM limits — trim history aggressively.
+            let historySlice = provider == .groq ? Array(conversationHistory.suffix(6)) : conversationHistory
             var messages: [[String: Any]] = [
                 ["role": "system", "content": systemPrompt]
             ]
-            messages.append(contentsOf: conversationHistory)
+            messages.append(contentsOf: historySlice)
 
             var body: [String: Any] = [
                 "model": config.model,
@@ -844,6 +1093,17 @@ class LLMService: ObservableObject {
                         "tool_call_id": callId,
                         "content": resultContent
                     ])
+
+                    // Yield-to-human: break out of the tool loop so the user can act
+                    if functionName == "yield_to_human", case .success(let yieldText) = result,
+                       yieldText.hasPrefix("YIELD_TO_HUMAN:") {
+                        let reason = yieldText
+                            .replacingOccurrences(of: "YIELD_TO_HUMAN: ", with: "")
+                            .replacingOccurrences(of: "\nWaiting for you to say \"done\" or \"continue\" when ready.", with: "")
+                        toolCallStatus = .yielded(functionName)
+                        NSLog("[LLMService] Yielding to human: %@", reason)
+                        return reason
+                    }
                 }
 
                 print("🔄 [OpenAI] Continuing after tool call (iteration \(iteration + 1))")
@@ -1030,6 +1290,25 @@ class LLMService: ObservableObject {
                     "role": "function",
                     "parts": functionResponseParts
                 ])
+
+                // Yield-to-human: break out of the tool loop so the user can act
+                if functionCallParts.contains(where: {
+                    ($0["functionCall"] as? [String: Any])?["name"] as? String == "yield_to_human"
+                }) {
+                    if let yieldResponse = functionResponseParts.first(where: {
+                        ($0["functionResponse"] as? [String: Any])?["name"] as? String == "yield_to_human"
+                    }),
+                       let response = (yieldResponse["functionResponse"] as? [String: Any])?["response"] as? [String: Any],
+                       let yieldText = response["result"] as? String,
+                       yieldText.hasPrefix("YIELD_TO_HUMAN:") {
+                        let reason = yieldText
+                            .replacingOccurrences(of: "YIELD_TO_HUMAN: ", with: "")
+                            .replacingOccurrences(of: "\nWaiting for you to say \"done\" or \"continue\" when ready.", with: "")
+                        toolCallStatus = .yielded("yield_to_human")
+                        NSLog("[LLMService] Yielding to human: %@", reason)
+                        return reason
+                    }
+                }
 
                 print("🔄 [Gemini] Continuing after tool call (iteration \(iteration + 1))")
                 continue // Loop back to get final response
@@ -1224,6 +1503,50 @@ class LLMService: ObservableObject {
         return cleanResponse
     }
 
+    // MARK: - Local Agent Model
+
+    /// Send a message through the on-device agent model (Gemma 4 via MLX).
+    /// Used for fast-tier queries when agentic mode is enabled.
+    /// Builds its own lightweight prompt and routes through sendLocal().
+    func sendViaLocalAgent(_ text: String, locationContext: String? = nil, memoryContext: String? = nil) async throws -> String {
+        let agentModelId = Config.agentModelId
+
+        let hasNativeTools = nativeToolRouter != nil
+        let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
+        let fullPrompt = await Self.buildSystemPrompt(
+            locationContext: locationContext,
+            includeTools: hasNativeTools,
+            includeOpenClaw: false,
+            hasImage: false,
+            nativeToolNames: nativeToolNames,
+            memoryContext: memoryContext
+        )
+
+        // If a cloud model config is selected as the agent, route through it
+        if let cloudConfig = Config.savedModels.first(where: { $0.id == agentModelId }) {
+            print("🧠 Cloud agent: \(cloudConfig.name)")
+            return try await sendCloud(text, systemPrompt: fullPrompt, config: cloudConfig, includeTools: hasNativeTools)
+        }
+
+        // Otherwise use the local on-device model
+        guard let localService = localLLMService else {
+            throw LLMError.missingAPIKey("Local LLM service not initialized")
+        }
+        if !localService.isModelLoaded || localService.loadedModelId != agentModelId {
+            try await localService.loadModel(agentModelId)
+        }
+        let localConfig = ModelConfig(
+            id: "local-agent",
+            name: "Local Agent",
+            provider: LLMProvider.local.rawValue,
+            apiKey: "",
+            model: agentModelId,
+            baseURL: ""
+        )
+        print("🧠 Local agent: \(agentModelId)")
+        return try await sendLocal(text, systemPrompt: fullPrompt, config: localConfig, includeTools: hasNativeTools)
+    }
+
     // MARK: - Helpers
 
     /// Trim history only when token budget is exceeded — no fixed turn limit.
@@ -1245,6 +1568,37 @@ extension ToolResult {
     var isSuccess: Bool {
         if case .success = self { return true }
         return false
+    }
+}
+
+// MARK: - Think Tag Stripping
+
+extension LLMService {
+    /// Strip `<think>...</think>` blocks from LLM output.
+    /// Returns the spoken text (without think tags) and the extracted reasoning (if any).
+    static func stripThinkTags(_ text: String) -> (spoken: String, reasoning: String?) {
+        let pattern = "<think>[\\s\\S]*?</think>"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return (text, nil)
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, options: [], range: range)
+        guard !matches.isEmpty else { return (text, nil) }
+
+        // Extract all reasoning blocks
+        let reasoning = matches.compactMap { match -> String? in
+            guard let matchRange = Range(match.range, in: text) else { return nil }
+            var block = String(text[matchRange])
+            block = block.replacingOccurrences(of: "<think>", with: "")
+            block = block.replacingOccurrences(of: "</think>", with: "")
+            return block.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.joined(separator: "\n")
+
+        // Remove think tags from the spoken output
+        let spoken = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return (spoken, reasoning.isEmpty ? nil : reasoning)
     }
 }
 

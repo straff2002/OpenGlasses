@@ -20,7 +20,7 @@ class AgentDataExporter {
 
     static func exportAll(
         agentDocs: AgentDocumentStore,
-        memoryStore: UserMemoryStore,
+        memoryStore: SemanticMemoryStore,
         conversationStore: ConversationStore
     ) throws -> URL {
         let fm = FileManager.default

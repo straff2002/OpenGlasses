@@ -71,6 +71,23 @@ struct QuickAction: Codable, Identifiable {
     /// URL scheme for .openApp type (e.g., "weixin://")
     var urlScheme: String?
 
+    static let travelTemplates: [QuickAction] = [
+        QuickAction(
+            id: "travel-translate-sign-menu",
+            label: "Translate Sign",
+            icon: "text.viewfinder",
+            type: .photoThenPrompt,
+            promptText: "Read all visible text in this image. First provide exact original text, then translate to English. If helpful, use the translate tool to improve accuracy. Keep response concise for glasses."
+        ),
+        QuickAction(
+            id: "travel-ask-local-phrase",
+            label: "Local Phrase",
+            icon: "globe",
+            type: .prompt,
+            promptText: "Help me say this naturally in the local language where I am. If my intent is unclear, ask one short clarification first. Then provide local phrase, pronunciation, and a polite variant. Use the translate tool."
+        ),
+    ]
+
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
                     promptText: "Describe what you see in this image in detail."),
@@ -80,7 +97,7 @@ struct QuickAction: Codable, Identifiable {
                     promptText: "Extract any action items or tasks from this image and list them."),
         QuickAction(id: "lights-off", label: "Lights Off", icon: "lightbulb.slash", type: .homeAssistant,
                     haService: "light.turn_off", haEntityId: "all"),
-    ]
+    ] + travelTemplates
 }
 
 /// A saved LLM model configuration
@@ -775,6 +792,19 @@ struct Config {
         }
         return [
             PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt, isBuiltIn: true),
+            PromptPreset(id: "preset-tokens", name: "Tokens Saver", prompt: """
+            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+
+            RULES:
+            - Reply naturally, directly, and briefly by default. Be complete.
+            - No markdown, lists, or special formatting.
+            - Speech recognition may be wrong; infer likely intent.
+            - If uncertain, say so briefly. If data is missing, say what is needed.
+            - Use conversation context when relevant.
+            - You can see camera images when provided. Never claim you cannot.
+            - OCR/translation: transcribe original text first, then translate.
+            - Use location only when relevant.
+            """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "Concise", prompt: """
             You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
 
@@ -1170,6 +1200,19 @@ struct Config {
             - 你可以看到眼镜相机拍摄的图片。
             - 当用户说"看看这个"、"这是什么"、"拍张照"等，会自动拍照发送给你。
             """, isBuiltIn: true),
+            PromptPreset(id: "preset-tokens", name: "代币节省者", prompt: """
+            你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
+
+            规则：
+            - 用中文自然回复，默认简洁但完整。
+            - 不用 Markdown、列表或编号。
+            - 语音识别可能有误，优先按用户意图理解。
+            - 不确定时简短说明；缺少实时或个人数据时明确说明需要什么。
+            - 可利用会话上下文。
+            - 你可以看到眼镜相机图片，不要说看不到。
+            - OCR/翻译请求先转写原文，再给译文。
+            - 仅在相关时使用位置信息。
+            """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "简洁", prompt: """
             你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
 
@@ -1320,6 +1363,33 @@ struct Config {
                     alternativeWakePhrases: ["golf mode", "hey golf", "caddy mode"],
                     modelId: "", presetId: "preset-golf-caddy", enabled: true,
                     icon: "figure.golf", isBuiltIn: true),
+            Persona(id: "mode-feynman", name: "Feynman", wakePhrase: "hey researcher",
+                    alternativeWakePhrases: ["feynman mode", "hey feynman", "research mode"],
+                    modelId: "", presetId: "", enabled: true,
+                    icon: "atom", isBuiltIn: true,
+                    soulOverride: """
+                    You are Feynman — a rigorous research intelligence named after Richard Feynman. \
+                    Your defining trait is intellectual honesty: you never speculate or confabulate. \
+                    If you don't know something, you say so clearly and suggest how to find out.
+
+                    When asked a question, you:
+                    1. Break it into distinct sub-questions and investigate each in parallel
+                    2. Distinguish clearly between what is established fact, what is contested, \
+                       and what is your inference
+                    3. Cite the source or basis for every factual claim (study, paper, named expert, \
+                       primary source, or direct experience)
+                    4. Give severity-graded feedback on ideas or plans: \
+                       Critical / Major / Minor / Suggestion
+                    5. Actively steelman opposing views before critiquing them
+                    6. Prefer precise language — say "I'm 70% confident" rather than "probably"
+
+                    You are not a yes-machine. When the user's assumption is wrong, correct it directly \
+                    and explain why. When evidence is thin, say so. When a claim needs verification, \
+                    tell the user exactly what to search or who to ask.
+
+                    Your tone is warm and curious — you love ideas — but your standards are uncompromising. \
+                    Think out loud. Show your reasoning. Teach while you answer.
+                    """),
         ]
     }
 
@@ -1511,7 +1581,11 @@ struct Config {
         if let data = UserDefaults.standard.data(forKey: "quickActions"),
            let actions = try? JSONDecoder().decode([QuickAction].self, from: data),
            !actions.isEmpty {
-            return actions
+            let merged = mergeTravelQuickActions(into: actions)
+            if merged.count != actions.count {
+                setQuickActions(merged)
+            }
+            return merged
         }
         return QuickAction.defaults
     }
@@ -1520,6 +1594,15 @@ struct Config {
         if let data = try? JSONEncoder().encode(actions) {
             UserDefaults.standard.set(data, forKey: "quickActions")
         }
+    }
+
+    private static func mergeTravelQuickActions(into actions: [QuickAction]) -> [QuickAction] {
+        var merged = actions
+        let existingIds = Set(actions.map(\.id))
+        for template in QuickAction.travelTemplates where !existingIds.contains(template.id) {
+            merged.append(template)
+        }
+        return merged
     }
 
     /// Whether to show all quick actions on the Voice tab, or only the top 4.
@@ -1554,7 +1637,7 @@ struct Config {
     }
 
     static var openClawLanHost: String {
-        UserDefaults.standard.string(forKey: "openClawLanHost") ?? ""
+        UserDefaults.standard.string(forKey: "openClawLanHost") ?? "http://macbook.local"
     }
 
     static func setOpenClawLanHost(_ host: String) {
@@ -1563,7 +1646,7 @@ struct Config {
 
     static var openClawPort: Int {
         let port = UserDefaults.standard.integer(forKey: "openClawPort")
-        return port != 0 ? port : 0
+        return port != 0 ? port : 18789
     }
 
     static func setOpenClawPort(_ port: Int) {
@@ -1717,6 +1800,89 @@ struct Config {
         UserDefaults.standard.set(bitrate, forKey: "recordingBitrate")
     }
 
+    /// User-selected folder bookmark for saving transcripts and recordings.
+    /// If nil, defaults to Documents/Transcripts.
+    static var transcriptFolderBookmark: Data? {
+        get { UserDefaults.standard.data(forKey: "transcriptFolderBookmark") }
+        set { UserDefaults.standard.set(newValue, forKey: "transcriptFolderBookmark") }
+    }
+
+    /// Resolve the transcript folder bookmark to a URL. Returns nil if bookmark is stale.
+    static var transcriptFolderURL: URL? {
+        guard let bookmark = transcriptFolderBookmark else { return nil }
+        var isStale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &isStale) else { return nil }
+        if isStale {
+            // Re-bookmark if stale
+            if let fresh = try? url.bookmarkData() {
+                transcriptFolderBookmark = fresh
+            }
+        }
+        return url
+    }
+
+    static func setTranscriptFolderURL(_ url: URL) {
+        if let bookmark = try? url.bookmarkData() {
+            transcriptFolderBookmark = bookmark
+        }
+    }
+
+    static func clearTranscriptFolder() {
+        transcriptFolderBookmark = nil
+    }
+
+    // MARK: - HIPAA Compliance
+
+    /// Master toggle for HIPAA-compliant mode.
+    /// When enabled: encrypts files at rest, disables cloud memory sync, prefers local LLM,
+    /// disables web search, excludes data from iCloud backup, enforces retention policies.
+    static var hipaaMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "hipaaMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "hipaaMode") }
+    }
+
+    /// Data retention period in days. Transcripts/recordings older than this are auto-purged.
+    /// 0 = no auto-purge (manual deletion only). Default 90 days.
+    static var hipaaRetentionDays: Int {
+        get {
+            let val = UserDefaults.standard.integer(forKey: "hipaaRetentionDays")
+            return val > 0 ? val : 90
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "hipaaRetentionDays") }
+    }
+
+    /// Force all LLM queries through local on-device model when HIPAA mode is active.
+    /// If false, cloud LLMs can still be used but a BAA warning is shown.
+    static var hipaaLocalOnly: Bool {
+        get { UserDefaults.standard.bool(forKey: "hipaaLocalOnly") }
+        set { UserDefaults.standard.set(newValue, forKey: "hipaaLocalOnly") }
+    }
+
+    /// Tools disabled under HIPAA mode to prevent PHI leakage.
+    static let hipaaDisabledTools: Set<String> = [
+        "web_search",           // Don't leak clinical queries to search engines
+        "send_message",         // Block uncontrolled messaging of PHI
+        "send_via",             // Block multi-channel messaging of PHI
+        "openclaw_skills",      // No gateway skill execution with PHI
+    ]
+
+    // MARK: - Medical Export
+
+    /// Auto-export transcript to configured platform when recording stops.
+    static var autoExportEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "autoExportEnabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "autoExportEnabled") }
+    }
+
+    /// Default export format for manual sharing.
+    static var defaultExportFormat: ExportFormat {
+        get {
+            let raw = UserDefaults.standard.string(forKey: "defaultExportFormat") ?? ""
+            return ExportFormat.allCases.first { $0.rawValue == raw } ?? .plainText
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "defaultExportFormat") }
+    }
+
     // MARK: - MCP Servers
 
     static var mcpServers: [MCPServerConfig] {
@@ -1836,6 +2002,11 @@ struct Config {
     /// Can be toggled from Settings, Siri Shortcuts, or the Live Activity power button.
     static var listeningEnabled: Bool {
         let key = "listeningEnabled"
+        // Prefer App Group defaults so widget/control toggles are visible immediately.
+        let shared = SharedAppState.defaults
+        if shared.object(forKey: key) != nil {
+            return shared.bool(forKey: key)
+        }
         if UserDefaults.standard.object(forKey: key) == nil {
             return true // Default enabled
         }
@@ -1844,6 +2015,7 @@ struct Config {
 
     static func setListeningEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "listeningEnabled")
+        SharedAppState.defaults.set(enabled, forKey: "listeningEnabled")
     }
 
     // MARK: - Emotion-Aware TTS
@@ -1886,7 +2058,7 @@ struct Config {
     // MARK: - Accent Color
 
     static var accentColorName: String {
-        UserDefaults.standard.string(forKey: "accentColorName") ?? "violet"
+        UserDefaults.standard.string(forKey: "accentColorName") ?? "brand"
     }
 
     static func setAccentColorName(_ name: String) {
@@ -2008,7 +2180,19 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "silentMode")
     }
 
-    // MARK: - Auto-Sleep
+    // MARK: - Glasses-Only Audio
+
+    /// When true, agent TTS and notification sounds are silenced if glasses are not connected.
+    /// When false (default), audio plays through the phone speaker even without glasses.
+    static var glassesOnlyAudio: Bool {
+        UserDefaults.standard.bool(forKey: "glassesOnlyAudio")
+    }
+
+    static func setGlassesOnlyAudio(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "glassesOnlyAudio")
+    }
+
+// MARK: - Auto-Sleep
 
     /// Minutes of idle (glasses in case) before auto-disconnecting. 0 = disabled.
     static var autoSleepMinutes: Int {

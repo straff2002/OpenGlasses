@@ -4,8 +4,13 @@ import ActivityKit
 
 @main
 struct GlassesActivityWidgetBundle: WidgetBundle {
+    @WidgetBundleBuilder
     var body: some Widget {
         GlassesActivityWidget()
+        OpenGlassesHomeWidget()
+        if #available(iOS 18.0, *) {
+            ListeningControlWidget()
+        }
     }
 }
 
@@ -17,8 +22,7 @@ struct GlassesActivityWidget: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 4) {
-                        Image(systemName: "eyeglasses")
-                            .font(.title2)
+                        LogoIcon(size: 22)
                             .foregroundStyle(context.state.isConnected ? .green : .gray)
                         if let battery = context.state.batteryLevel {
                             Text("\(battery)%")
@@ -40,14 +44,28 @@ struct GlassesActivityWidget: Widget {
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        // Quick-launch buttons: personas first, then quick actions
-                        actionButtons(for: context.state, compact: true)
+                        if context.state.isConnected {
+                            actionButtons(for: context.state, compact: true)
+                        } else {
+                            Link(destination: URL(string: "openglasses://connect")!) {
+                                Label {
+                                    Text("Connect")
+                                } icon: {
+                                    LogoIcon(size: 12)
+                                }
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
+                                .background(.green.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
                     }
                 }
             } compactLeading: {
                 HStack(spacing: 2) {
-                    Image(systemName: "eyeglasses")
-                        .foregroundStyle(context.state.isConnected ? .cyan : .gray)
+                    LogoIcon(size: 14)
+                        .foregroundStyle(context.state.isConnected ? AccentColors.aiCoral : .gray)
                     if let battery = context.state.batteryLevel {
                         Text("\(battery)")
                             .font(.system(size: 9))
@@ -58,8 +76,8 @@ struct GlassesActivityWidget: Widget {
                 statusIcon(for: context.state)
                     .foregroundStyle(statusColor(for: context.state))
             } minimal: {
-                Image(systemName: "eyeglasses")
-                    .foregroundStyle(context.state.isConnected ? .cyan : .gray)
+                LogoIcon(size: 16)
+                    .foregroundStyle(context.state.isConnected ? AccentColors.aiCoral : .gray)
             }
         }
     }
@@ -71,8 +89,7 @@ struct GlassesActivityWidget: Widget {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
                 ZStack(alignment: .bottomTrailing) {
-                    Image(systemName: "eyeglasses")
-                        .font(.title)
+                    LogoIcon(size: 30)
                         .foregroundStyle(.white)
                     Circle()
                         .fill(context.state.isConnected ? .green : .red)
@@ -94,6 +111,15 @@ struct GlassesActivityWidget: Widget {
                             }
                             .foregroundStyle(battery < 20 ? .red : .white.opacity(0.6))
                         }
+                        // Power button to disable listening from Lock Screen
+                        Button(intent: DisableListeningIntent()) {
+                            Image(systemName: "power")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .padding(5)
+                                .background(Circle().fill(.white.opacity(0.15)))
+                        }
+                        .buttonStyle(.plain)
                         statusIcon(for: context.state)
                             .foregroundStyle(statusColor(for: context.state))
                     }
@@ -107,9 +133,22 @@ struct GlassesActivityWidget: Widget {
                 }
             }
 
-            // Quick-launch buttons
+            // Quick-launch buttons or Connect button
             if context.state.isConnected {
                 actionButtons(for: context.state, compact: false)
+            } else {
+                Link(destination: URL(string: "openglasses://connect")!) {
+                    Label {
+                        Text("Connect & Talk")
+                    } icon: {
+                        LogoIcon(size: 16)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(.green.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                }
             }
         }
         .padding(16)
@@ -196,7 +235,7 @@ struct GlassesActivityWidget: Widget {
     }
 
     private func statusColor(for state: GlassesActivityAttributes.ContentState) -> Color {
-        if state.isListening { return .cyan }
+        if state.isListening { return AccentColors.aiCoral }
         if state.isProcessing { return .orange }
         if state.isSpeaking { return .green }
         if state.isConnected { return .green }

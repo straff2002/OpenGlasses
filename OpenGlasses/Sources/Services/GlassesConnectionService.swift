@@ -12,9 +12,19 @@ class GlassesConnectionService: ObservableObject {
 
     private var devicesListenerToken: (any AnyListenerToken)?
     private var connectedDeviceId: DeviceIdentifier?
-    private var deviceStateSession: DeviceStateSession?
 
     init() {
+        // Don't call observeDevices() here — Wearables.configure() may not
+        // have been called yet (deferred until after onboarding).
+        // Call startObserving() explicitly after Wearables is configured.
+        if Config.hasCompletedOnboarding {
+            observeDevices()
+        }
+    }
+
+    /// Begin observing connected devices. Call after Wearables.configure().
+    func startObserving() {
+        guard devicesListenerToken == nil else { return }
         observeDevices()
     }
 
@@ -49,8 +59,16 @@ class GlassesConnectionService: ObservableObject {
 
         do {
             try await Wearables.shared.startRegistration()
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            let stateAfter = Wearables.shared.registrationState
+
+            // Poll registration state — can take up to ~10s on fresh install
+            var stateAfter = Wearables.shared.registrationState
+            let deadline = ContinuousClock.now + .seconds(10)
+            while stateAfter.rawValue < 3, ContinuousClock.now < deadline {
+                connectionStatus = "Registering… (state \(stateAfter.rawValue))"
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                stateAfter = Wearables.shared.registrationState
+            }
+
             print("✅ startRegistration() succeeded, state: \(stateAfter)")
             connectionStatus = stateAfter.rawValue >= 3
                 ? "Waiting for device..."

@@ -25,19 +25,19 @@ struct ShortcutTemplatesView: View {
 
                                 Image(systemName: template.icon)
                                     .font(.title3)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(Color(.label))
                                     .frame(width: 28)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(template.name)
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     Text(template.category)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(.quaternary, in: Capsule())
+                                        .background(Color(.tertiarySystemFill), in: Capsule())
                                 }
 
                                 Spacer()
@@ -47,6 +47,7 @@ struct ShortcutTemplatesView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .buttonStyle(.plain)
 
                         // Expandable detail
                         if expandedId == template.id {
@@ -65,7 +66,7 @@ struct ShortcutTemplatesView: View {
                                         .foregroundStyle(.secondary)
                                         .padding(8)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 6))
+                                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 6))
                                 }
 
                                 // What the agent does with it

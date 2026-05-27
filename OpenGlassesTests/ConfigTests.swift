@@ -49,7 +49,8 @@ final class ConfigTests: XCTestCase {
     func testAppModeEnum() {
         XCTAssertEqual(AppMode.direct.rawValue, "direct")
         XCTAssertEqual(AppMode.geminiLive.rawValue, "geminiLive")
-        XCTAssertEqual(AppMode.allCases.count, 2)
+        XCTAssertEqual(AppMode.openaiRealtime.rawValue, "openaiRealtime")
+        XCTAssertEqual(AppMode.allCases.count, 3)
     }
 
     func testAppModeDisplayName() {
@@ -145,45 +146,19 @@ final class ConfigTests: XCTestCase {
         XCTAssertTrue(Config.isOpenClawConfigured)
     }
 
-    // MARK: - Gemini Live Configuration
+    // MARK: - Gemini Live Configuration (derived from model configs)
 
-    func testGeminiLiveAPIKeyDefault() {
+    func testGeminiLiveAPIKeyDefaultEmpty() {
+        // When no Gemini model is configured, key is empty
         XCTAssertEqual(Config.geminiLiveAPIKey, "")
-    }
-
-    func testGeminiLiveAPIKeySetAndGet() {
-        Config.setGeminiLiveAPIKey("AIza-test-key")
-        XCTAssertEqual(Config.geminiLiveAPIKey, "AIza-test-key")
-    }
-
-    func testGeminiLiveModelDefault() {
-        XCTAssertEqual(Config.geminiLiveModel, "models/gemini-2.5-flash-native-audio-preview-12-2025")
-    }
-
-    func testGeminiLiveModelSetAndGet() {
-        Config.setGeminiLiveModel("models/gemini-2.0-flash-exp")
-        XCTAssertEqual(Config.geminiLiveModel, "models/gemini-2.0-flash-exp")
     }
 
     func testIsGeminiLiveConfiguredWhenNoKey() {
         XCTAssertFalse(Config.isGeminiLiveConfigured)
     }
 
-    func testIsGeminiLiveConfiguredWithKey() {
-        Config.setGeminiLiveAPIKey("test-key")
-        XCTAssertTrue(Config.isGeminiLiveConfigured)
-    }
-
     func testGeminiLiveWebSocketURLNilWhenNoKey() {
         XCTAssertNil(Config.geminiLiveWebSocketURL)
-    }
-
-    func testGeminiLiveWebSocketURLWithKey() {
-        Config.setGeminiLiveAPIKey("my-api-key")
-        let url = Config.geminiLiveWebSocketURL
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.absoluteString.contains("key=my-api-key"))
-        XCTAssertTrue(url!.absoluteString.hasPrefix("wss://"))
     }
 
     // MARK: - Gemini Live Constants
@@ -207,7 +182,7 @@ final class ConfigTests: XCTestCase {
 
     func testOpenClawConnectionModeDisplayNames() {
         XCTAssertEqual(OpenClawConnectionMode.lan.displayName, "LAN (Local Network)")
-        XCTAssertEqual(OpenClawConnectionMode.tunnel.displayName, "Cloudflare Tunnel")
+        XCTAssertEqual(OpenClawConnectionMode.tunnel.displayName, "Tunnel (Remote)")
         XCTAssertEqual(OpenClawConnectionMode.auto.displayName, "Auto (try LAN first)")
     }
 

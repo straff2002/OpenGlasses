@@ -249,8 +249,9 @@ class GeminiLiveService: ObservableObject {
 
     func sendToolResponse(_ response: [String: Any]) {
         guard let task = webSocketTask else { return }
+        nonisolated(unsafe) let responseCopy = response
         sendQueue.async {
-            Self.sendJSONDirect(response, via: task)
+            Self.sendJSONDirect(responseCopy, via: task)
         }
     }
 

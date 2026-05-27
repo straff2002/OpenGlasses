@@ -19,20 +19,6 @@ struct CircleButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Circle()
-                            .fill(isActive ? Color.accentColor.opacity(0.25) : Color.clear)
-                    )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(
-                                isActive ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.12),
-                                lineWidth: 1
-                            )
-                    )
-
                 Image(systemName: icon)
                     .font(.system(size: size * 0.36, weight: .medium))
                     .foregroundStyle(foreground)
@@ -48,6 +34,8 @@ struct CircleButton: View {
                 }
             }
             .frame(width: size, height: size)
+            .background(isActive ? Color.accentColor.opacity(0.15) : Color.clear)
+            .glassEffect(in: .circle)
         }
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)

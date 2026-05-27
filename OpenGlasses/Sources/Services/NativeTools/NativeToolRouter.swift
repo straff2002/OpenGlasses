@@ -7,6 +7,13 @@ final class NativeToolRouter {
     var openClawBridge: OpenClawBridge?
     var mcpClient: MCPClient?
 
+    /// Callback for periodic "still working" updates during long tool executions.
+    /// Set by AppState to speak progress updates via TTS.
+    var onLongRunningUpdate: ((String) -> Void)?
+
+    /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
+    var toolTimeoutSeconds: TimeInterval = 30
+
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
         self.openClawBridge = openClawBridge
@@ -17,21 +24,17 @@ final class NativeToolRouter {
         // 1. Check native tools first
         if let tool = registry.tool(named: name) {
             NSLog("[NativeToolRouter] Executing native tool: %@", name)
-            do {
-                let result = try await tool.execute(args: args)
-                NSLog("[NativeToolRouter] Native tool %@ succeeded: %@", name, String(result.prefix(200)))
-                return .success(result)
-            } catch {
-                NSLog("[NativeToolRouter] Native tool %@ failed: %@", name, error.localizedDescription)
-                return .failure("Tool error: \(error.localizedDescription)")
+            return await executeWithTimeout(name: name) {
+                try await tool.execute(args: args)
             }
         }
 
         // 2. Check MCP servers for the tool
         if let mcp = mcpClient, mcp.discoveredTools.contains(where: { $0.name == name }) {
             NSLog("[NativeToolRouter] Executing MCP tool: %@", name)
-            let result = await mcp.executeTool(name: name, arguments: args)
-            return .success(result)
+            return await executeWithTimeout(name: name) {
+                return await mcp.executeTool(name: name, arguments: args)
+            }
         }
 
         // 3. Fall through to OpenClaw for "execute" or unknown tools
@@ -42,5 +45,60 @@ final class NativeToolRouter {
         }
 
         return .failure("Unknown tool: \(name)")
+    }
+
+    // MARK: - Timeout + "Still Working" Updates
+
+    /// Execute a tool with a timeout and periodic "still working" TTS updates.
+    private func executeWithTimeout(name: String, work: @escaping () async throws -> String) async -> ToolResult {
+        let startTime = Date()
+
+        // "Still working" timer: fires every 10 seconds during long operations
+        let stillWorkingTask = Task { @MainActor [weak self] in
+            var elapsed = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+                guard !Task.isCancelled else { break }
+                elapsed += 10
+                NSLog("[NativeToolRouter] Tool %@ still running after %ds", name, elapsed)
+                self?.onLongRunningUpdate?("Still working on that...")
+            }
+        }
+
+        // Race: tool execution vs timeout
+        let result: ToolResult = await withTaskGroup(of: ToolResult.self) { group in
+            // The actual work
+            group.addTask {
+                do {
+                    let result = try await work()
+                    return .success(result)
+                } catch {
+                    return .failure("Tool error: \(error.localizedDescription)")
+                }
+            }
+
+            // Timeout sentinel
+            group.addTask { [toolTimeoutSeconds] in
+                try? await Task.sleep(nanoseconds: UInt64(toolTimeoutSeconds * 1_000_000_000))
+                return .failure("Tool '\(name)' timed out after \(Int(toolTimeoutSeconds))s")
+            }
+
+            // First to finish wins
+            let first = await group.next()!
+            group.cancelAll()
+            return first
+        }
+
+        stillWorkingTask.cancel()
+
+        let duration = Date().timeIntervalSince(startTime)
+        switch result {
+        case .success(let text):
+            NSLog("[NativeToolRouter] Tool %@ succeeded in %.1fs: %@", name, duration, String(text.prefix(200)))
+        case .failure(let err):
+            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration, err)
+        }
+
+        return result
     }
 }

@@ -18,26 +18,16 @@ struct BrightnessTool: NativeTool {
 
     @MainActor
     private static func getScreenBrightness() -> CGFloat {
-        if #available(iOS 26, *) {
-            // On iOS 26+, UIScreen.main is deprecated but there's no non-view alternative
-            // for brightness control. This is the only way from a non-UI context.
-            return UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.screen.brightness ?? 0.5
-        } else {
-            return UIScreen.main.brightness
-        }
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.brightness ?? 0.5
     }
 
     @MainActor
     private static func setScreenBrightness(_ value: CGFloat) {
-        if #available(iOS 26, *) {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.screen.brightness = value
-        } else {
-            UIScreen.main.brightness = value
-        }
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.brightness = value
     }
 
     func execute(args: [String: Any]) async throws -> String {

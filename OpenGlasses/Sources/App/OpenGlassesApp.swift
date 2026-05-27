@@ -5,6 +5,8 @@ import AVFoundation
 import AppIntents
 import UIKit
 import CarPlay
+import MLXLLM
+import MediaPlayer
 
 extension Notification.Name {
     static let onboardingCompleted = Notification.Name("onboardingCompleted")
@@ -128,6 +130,7 @@ struct OpenGlassesApp: App {
     @UIApplicationDelegateAdaptor(OpenGlassesAppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var isHipaaLocked = Config.hipaaMode
 
     init() {
         // Defer Wearables SDK (Bluetooth permission) until after onboarding
@@ -139,9 +142,27 @@ struct OpenGlassesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(appState)
-                .onAppear { AppStateProvider.shared = appState }
+            ZStack {
+                RootView()
+                    .environmentObject(appState)
+
+                // HIPAA biometric lock overlay
+                if isHipaaLocked {
+                    BiometricLockView(isLocked: $isHipaaLocked)
+                        .transition(.opacity)
+                        .zIndex(999)
+                }
+            }
+            .onAppear {
+                AppStateProvider.shared = appState
+                ListeningChangedObserver.shared.start { newValue in
+                    Task { @MainActor in
+                        if appState.listeningEnabled != newValue {
+                            appState.setListeningEnabled(newValue)
+                        }
+                    }
+                }
+            }
                 .onOpenURL { url in
                     // Handle shortcut x-callback-url results
                     if url.scheme == "openglasses",
@@ -203,6 +224,24 @@ struct OpenGlassesApp: App {
                         return
                     }
 
+                    // Handle listen toggle from widget / Control Center / Action Button
+                    if url.scheme == "openglasses", url.host == "listen" {
+                        let action = url.lastPathComponent
+                        Task { @MainActor in
+                            switch action {
+                            case "on":
+                                appState.setListeningEnabled(true)
+                            case "off":
+                                appState.setListeningEnabled(false)
+                            case "toggle":
+                                appState.setListeningEnabled(!appState.listeningEnabled)
+                            default:
+                                break
+                            }
+                        }
+                        return
+                    }
+
                     // Handle quick action buttons from widget
                     if url.scheme == "openglasses", url.host == "quickaction" {
                         let actionId = url.lastPathComponent
@@ -218,11 +257,19 @@ struct OpenGlassesApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .background:
-                print("📱 App moved to background — keeping audio alive")
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
-                appState.optimizeForBackground()
+                if appState.isConnected {
+                    print("📱 App moved to background — keeping audio alive (glasses connected)")
+                    appState.optimizeForBackground()
+                } else {
+                    print("📱 App moved to background — stopping mic/camera (no glasses)")
+                    appState.wakeWordService.stopListening()
+                    Task { await appState.cameraService.stopStreaming() }
+                }
                 appState.conversationStore.lock()
+                // Re-lock for HIPAA — requires biometric to re-enter
+                if Config.hipaaMode { isHipaaLocked = true }
             case .active:
                 print("📱 App became active")
                 appState.restoreFromBackground()
@@ -350,6 +397,8 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var lastCallbackAt: Date?
     @Published var debugEvents: [String] = []
     @Published var isListening: Bool = false
+    /// Now-playing info captured the moment a conversation starts (nil when nothing was playing).
+    var nowPlayingAtStart: NowPlayingSnapshot? = nil
     @Published var micMuted: Bool = false {
         didSet {
             if micMuted {
@@ -384,6 +433,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let speechService = TextToSpeechService()
     let cameraService = CameraService()
     let videoRecorder = VideoRecordingService()
+    let audioRecorder = AudioRecordingService()
+    let meetingAssistant = MeetingAssistantService()
     let broadcastService = BroadcastService()
     let locationService = LocationService()
     let proactiveAlerts = ProactiveAlertService()
@@ -397,6 +448,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let agentScheduler = AgentScheduler()
     let agentNotificationQueue = AgentNotificationQueue()
     let playbookStore = PlaybookStore()
+    let hipaaService = HIPAAComplianceService()
+    let medicalExportService = MedicalExportService()
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
@@ -414,7 +467,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // Tier 1 services
     let conversationStore = ConversationStore()
-    let userMemory = UserMemoryStore()
+    let userMemory = SemanticMemoryStore()
     let intentClassifier = IntentClassifier()
     let conversationClassifier = ConversationClassifier()
 
@@ -461,7 +514,11 @@ class AppState: ObservableObject, AppStateProtocol {
             cameraService: cameraService,
             memoryRewindService: memoryRewind,
             ambientCaptionService: ambientCaptions,
-            openClawBridge: openClawBridge
+            openClawBridge: openClawBridge,
+            videoRecorder: videoRecorder,
+            audioRecorder: audioRecorder,
+            medicalExportService: medicalExportService,
+            semanticMemory: userMemory
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 
@@ -488,17 +545,56 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         addDebugEvent("AppState initialized")
+
+        // Register Gemma 4 model type — not yet in the official mlx-swift-lm registry
+        Task {
+            await LLMTypeRegistry.shared.registerModelType("gemma4") { data in
+                let config = try JSONDecoder().decode(Gemma4TextConfiguration.self, from: data)
+                return Gemma4TextModel(config)
+            }
+            await LLMTypeRegistry.shared.registerModelType("gemma4_text") { data in
+                let config = try JSONDecoder().decode(Gemma4TextConfiguration.self, from: data)
+                return Gemma4TextModel(config)
+            }
+        }
+
         // Share the audio engine so transcription works in background
         transcriptionService.sharedAudioEngineProvider = wakeWordService
+
+        // TTS borrows the wake-word service so it can pause/resume other audio via the
+        // same reference-counted hold that the active-listening flow uses.
+        speechService.wakeWordService = wakeWordService
 
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService
         memoryRewind.wakeWordService = wakeWordService
+        videoRecorder.wakeWordService = wakeWordService
+        videoRecorder.ambientCaptionService = ambientCaptions
+        videoRecorder.hipaaService = hipaaService
+        videoRecorder.meetingAssistant = meetingAssistant
+        videoRecorder.llmClosure = { [weak self] prompt in
+            guard let self else { throw LLMError.missingAPIKey("AppState deallocated") }
+            return try await self.llmService.sendMessage(prompt)
+        }
+        audioRecorder.wakeWordService = wakeWordService
+        audioRecorder.ambientCaptionService = ambientCaptions
+        audioRecorder.meetingAssistant = meetingAssistant
+        audioRecorder.llmClosure = { [weak self] prompt in
+            guard let self else { throw LLMError.missingAPIKey("AppState deallocated") }
+            return try await self.llmService.sendMessage(prompt)
+        }
+        medicalExportService.hipaaService = hipaaService
         faceRecognition.onRecognition = { [weak self] name in
             Task { @MainActor in
                 // Whisper the name quietly via TTS
                 await self?.speechService.speak("That's \(name).")
             }
+        }
+
+        // HIPAA: enforce retention policy on launch
+        if Config.hipaaMode {
+            hipaaService.enforceRetentionPolicy()
+            hipaaService.log(action: "APP_LAUNCHED", detail: "HIPAA mode active, retention: \(Config.hipaaRetentionDays) days")
         }
 
         // Wire OpenClaw bridge to both Direct Mode, Gemini Live, and memory store
@@ -522,7 +618,16 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
         llmService.localLLMService = localLLMService
+        llmService.conversationStore = conversationStore
         geminiLiveSession.nativeToolRouter = nativeToolRouter
+
+        // Medical export share sheet — triggered by agent tool
+        NotificationCenter.default.addObserver(forName: .medicalExportShareRequest, object: nil, queue: .main) { [weak self] note in
+            guard let url = note.userInfo?["url"] as? URL else { return }
+            Task { @MainActor in
+                self?.pendingShareItem = ShareItem(items: [url])
+            }
+        }
 
         // Wire camera frames for realtime sessions:
         // Direct push: CameraService streams frames to whichever session is active
@@ -848,6 +953,11 @@ class AppState: ObservableObject, AppStateProtocol {
             let route = AVAudioSession.sharedInstance().currentRoute
             let hasBluetooth = route.outputs.contains { $0.portType == .bluetoothA2DP || $0.portType == .bluetoothHFP || $0.portType == .bluetoothLE }
             if !hasBluetooth {
+                // Stop audio immediately on the main thread before it can reroute to phone speaker.
+                // The isConnected didSet also calls stopSpeaking() but goes via async Task — too late.
+                MainActor.assumeIsolated {
+                    self?.speechService.stopSpeaking()
+                }
                 Task { @MainActor in
                     guard let self, self.isConnected else { return }
                     self.isConnected = false
@@ -1189,6 +1299,8 @@ class AppState: ObservableObject, AppStateProtocol {
             transcriptionService.stopRecording()
             speechService.stopSpeaking()
             liveActivityManager.end()
+            // Release any audio pause held by an in-flight conversation so Music/Podcasts resume.
+            wakeWordService.forceResumeOtherAudio()
             isListening = false
             NSLog("[Listening] Disabled")
         }
@@ -1405,6 +1517,54 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Legacy capture that saves directly to camera roll (used by voice command).
+    /// Capture a photo silently — no LLM call, no TTS, transcription keeps running.
+    /// Saves to Documents/Photos/ and injects a timestamped note into the ambient
+    /// caption history so the meeting transcript references the photo at the right moment.
+    func capturePhotoSilently() async {
+        guard isConnected else { return }
+        do {
+            // Start camera briefly if needed (audio recording doesn't use it)
+            let wasStreaming = cameraService.isStreaming
+            if !wasStreaming {
+                try await cameraService.startStreaming()
+                // Give camera a moment to warm up before capturing
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            let photoData = try await cameraService.capturePhoto()
+
+            if currentMode == .direct {
+                cameraService.restoreAudioForWakeWord()
+            }
+            // Stop camera again if we only started it for the capture
+            if !wasStreaming {
+                await cameraService.stopStreaming()
+            }
+
+            // Save to Documents/Photos/ with a timestamped name
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let dir = docs.appendingPathComponent("Photos", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let filename = "OG_\(formatter.string(from: Date())).jpg"
+            let fileURL = dir.appendingPathComponent(filename)
+            try? photoData.write(to: fileURL)
+
+            // Insert a timestamped note into the caption stream so the transcript records it
+            let timeStr = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+            ambientCaptions.insertVisualNote("Photo captured at \(timeStr) — \(filename)")
+
+            // Soft bing through the glasses + taptic on the watch
+            speechService.playPhotoTone()
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+            NSLog("[SilentPhoto] Saved to %@", filename)
+        } catch {
+            NSLog("[SilentPhoto] Failed: %@", error.localizedDescription)
+        }
+    }
+
     func capturePhotoFromGlasses() async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
@@ -1438,9 +1598,15 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         } else {
             do {
+                if !cameraService.isStreaming {
+                    try await cameraService.startStreaming()
+                }
+                let frameSize = cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                let bitrate = max(Config.recordingBitrate, 4_000_000)
                 try videoRecorder.startRecording(
                     from: cameraService.framePublisher,
-                    bitrate: Config.recordingBitrate
+                    bitrate: bitrate,
+                    outputSize: frameSize
                 )
             } catch {
                 errorMessage = "Recording failed: \(error.localizedDescription)"
@@ -1530,14 +1696,15 @@ class AppState: ObservableObject, AppStateProtocol {
         inConversation = true
         isListening = true
 
-        // Allow phone speaker output when user explicitly tapped to talk
-        if manual && !isConnected {
-            speechService.requireGlassesForSpeech = false
-        }
-
         // Ensure audio session + engine are alive (may be off in silent mode)
         wakeWordService.configureAudioSession()
         try? await wakeWordService.ensureAudioEngineRunning()
+
+        // Snapshot what's playing before pausing it
+        nowPlayingAtStart = NowPlayingSnapshot.current()
+
+        // Pause podcasts/music so the user can speak clearly (skips if call in progress)
+        wakeWordService.pauseOtherAudio()
 
         speechService.playAcknowledgmentTone()
         transcriptionService.startRecording()
@@ -1746,17 +1913,19 @@ class AppState: ObservableObject, AppStateProtocol {
         if isPhotoCommand(text) {
             print("📸 Voice command: take a picture")
             isProcessing = true
+            // Start capture immediately — play the shutter tone, no spoken "taking a picture"
+            speechService.playAcknowledgmentTone()
             speechService.startThinkingSound()
-            await speechService.speak("Taking a picture.")
 
             currentLLMTask = Task {
                 do {
+                    // Capture and send to LLM concurrently — no extra round-trip speech
                     let photoData = try await cameraService.capturePhoto()
                     try Task.checkCancellation()
                     // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                     cameraService.restoreAudioForWakeWord()
                     cameraService.saveToPhotoLibrary(photoData)
-                    print("📸 Photo saved, sending to LLM with prompt: \(query)")
+                    print("📸 Photo captured, sending to LLM with prompt: \(query)")
 
                     let rawResponse = try await llmService.sendMessage(
                         query,
@@ -1771,6 +1940,12 @@ class AppState: ObservableObject, AppStateProtocol {
                         conversationStore.appendMessage(role: "assistant", content: response)
                     }
                     print("🤖 \(llmService.activeModelName) (vision): \(response)")
+
+                    // If an audio or video recording is active, inject the description
+                    // into the caption history so the meeting assistant has visual context.
+                    if audioRecorder.isRecording || videoRecorder.isRecording {
+                        ambientCaptions.insertVisualNote(response)
+                    }
 
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
@@ -1848,7 +2023,16 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Tier 2: Model selection — temporarily switch to the recommended tier if available and enabled
         var originalModelId: String?
-        if Config.autoModelRoutingEnabled,
+        var useLocalAgent = false
+
+        // Route fast-tier queries to on-device Gemma 4 when agentic mode is on + model downloaded
+        if classification.modelTier == .fast,
+           Config.agentModeEnabled,
+           Config.agentModelDownloaded,
+           !isPhotoCommand(query) {
+            useLocalAgent = true
+            print("🧠 Routing to local agent (fast tier, agentic mode)")
+        } else if Config.autoModelRoutingEnabled,
            let tierModel = Config.modelForTier(classification.modelTier),
            tierModel.id != Config.activeModelId {
             originalModelId = Config.activeModelId
@@ -1862,16 +2046,28 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.startThinkingSound()
 
         do {
-            // Smart Camera Activation: detect vision intent and auto-capture if needed
-            let imageData = await smartCameraImageData(for: query)
-            let rawResponse = try await llmService.sendMessage(
-                query,
-                locationContext: classification.relevantSections.contains(.location) ? locationService.locationContext : nil,
-                imageData: imageData,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
-                playbookContext: classification.relevantSections.contains(.playbook) ? playbookStore.playbookContext() : nil,
-                promptSections: classification.relevantSections
-            )
+            let rawResponse: String
+            if useLocalAgent {
+                // Fast path: on-device Gemma 4 agent
+                rawResponse = try await llmService.sendViaLocalAgent(
+                    query,
+                    locationContext: classification.relevantSections.contains(.location) ? locationService.locationContext : nil,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+                )
+            } else {
+                // Standard path: cloud LLM
+                let imageData = await smartCameraImageData(for: query)
+                rawResponse = try await llmService.sendMessage(
+                    query,
+                    locationContext: classification.relevantSections.contains(.location) ? locationService.locationContext : nil,
+                    imageData: imageData,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
+                    playbookContext: classification.relevantSections.contains(.playbook) ? playbookStore.playbookContext() : nil,
+                    nowPlayingContext: nowPlayingAtStart?.promptContext,
+                    promptSections: classification.relevantSections
+                )
+            }
+            nowPlayingAtStart = nil  // consumed for this turn
 
             // Parse and execute memory commands from the response
             let response: String
@@ -1881,7 +2077,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // Periodic nudge: after N turns, inject a hidden review prompt
                 // into the LLM history so the next response considers what to remember
                 if userMemory.incrementTurnAndCheckNudge() {
-                    llmService.injectSystemMessage(UserMemoryStore.nudgePrompt)
+                    llmService.injectSystemMessage(SemanticMemoryStore.nudgePrompt)
                 }
             } else {
                 response = rawResponse
@@ -2257,6 +2453,8 @@ class AppState: ObservableObject, AppStateProtocol {
         if videoRecorder.isRecording {
             Task { _ = await videoRecorder.stopRecording() }
         }
+        // Audio recording intentionally continues across glasses disconnects —
+        // the mic falls back to the phone so the meeting capture keeps going.
 
         // Stop ambient features that use mic/speakers
         if ambientCaptions.isActive { ambientCaptions.stop() }
@@ -2286,9 +2484,15 @@ class AppState: ObservableObject, AppStateProtocol {
         activePersona = nil
         manuallyTriggered = false
         wakeWordService.listenForStop = false
-        // Restore glasses-required TTS policy
-        speechService.requireGlassesForSpeech = true
+        // Resume podcasts/music after active listening
+        let resumedMedia = nowPlayingAtStart
+        nowPlayingAtStart = nil
+        wakeWordService.resumeOtherAudio()
         speechService.playDisconnectTone()
+        // Announce what's resuming (e.g. "Resuming Hardcore History by Dan Carlin")
+        if let media = resumedMedia {
+            await speechService.speak("Resuming \(media.displayName).")
+        }
         updateLiveActivity()
         // End active conversation thread
         if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
@@ -2317,5 +2521,43 @@ class AppState: ObservableObject, AppStateProtocol {
             print("❌ Failed to restart listener: \(error)")
             errorMessage = "Tap Test Microphone to restart"
         }
+    }
+}
+
+// MARK: - Now Playing Snapshot
+
+struct NowPlayingSnapshot {
+    let title: String?
+    let artist: String?
+    let albumTitle: String?
+
+    /// Read what's currently playing from MPNowPlayingInfoCenter.
+    static func current() -> NowPlayingSnapshot? {
+        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        guard let info, !info.isEmpty else { return nil }
+        let title = info[MPMediaItemPropertyTitle] as? String
+        let artist = info[MPMediaItemPropertyArtist] as? String
+        let album = info[MPMediaItemPropertyAlbumTitle] as? String
+        guard title != nil || artist != nil else { return nil }
+        return NowPlayingSnapshot(title: title, artist: artist, albumTitle: album)
+    }
+
+    /// One-line description, e.g. "Hardcore History by Dan Carlin" or "Blinding Lights by The Weeknd"
+    var displayName: String {
+        switch (title, artist) {
+        case let (t?, a?): return "\(t) by \(a)"
+        case let (t?, nil): return t
+        case let (nil, a?): return "something by \(a)"
+        default: return "what you were listening to"
+        }
+    }
+
+    /// Short context string injected into the system prompt.
+    var promptContext: String {
+        var parts: [String] = []
+        if let t = title  { parts.append("title: \"\(t)\"") }
+        if let a = artist { parts.append("artist: \"\(a)\"") }
+        if let al = albumTitle, al != title { parts.append("album: \"\(al)\"") }
+        return "NOW PLAYING (paused when user spoke): \(parts.joined(separator: ", ")). If the user asks about the song, podcast, or what was playing, you already know this."
     }
 }

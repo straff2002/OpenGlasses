@@ -6,39 +6,40 @@ struct LaunchScreen: View {
 
     var body: some View {
         ZStack {
-            // Dark background matching the crab image
-            Color(red: 0.14, green: 0.14, blue: 0.14)
+            // Sit on the system UI background — adapts to light/dark mode.
+            Color(.systemBackground)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
 
-                // Crab mascot image from intro video
                 ZStack {
-                    // Glow effect behind the crab
+                    // Soft coral glow behind the logo
                     Circle()
                         .fill(
                             RadialGradient(
                                 colors: [
-                                    Color.blue.opacity(glowPulse ? 0.3 : 0.1),
+                                    AppAccent.aiCoral.opacity(glowPulse ? 0.30 : 0.10),
                                     Color.clear
                                 ],
                                 center: .center,
                                 startRadius: 40,
-                                endRadius: 200
+                                endRadius: 220
                             )
                         )
-                        .frame(width: 400, height: 400)
+                        .frame(width: 420, height: 420)
                         .animation(
                             .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
                             value: glowPulse
                         )
 
-                    Image("LaunchImage")
+                    // Vector logo — template-rendered so it picks up the coral tint.
+                    Image("OpenGlassesLogo")
+                        .renderingMode(.template)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 340)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .foregroundStyle(AppAccent.aiCoral)
+                        .frame(maxWidth: 240)
                         .scaleEffect(isAnimating ? 1.0 : 0.85)
                         .opacity(isAnimating ? 1.0 : 0)
                 }
@@ -46,16 +47,14 @@ struct LaunchScreen: View {
                 Spacer()
                     .frame(height: 32)
 
-                // App name
                 Text("OpenGlasses")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.primary)
                     .opacity(isAnimating ? 1.0 : 0)
 
-                // Tagline
                 Text("Voice-Powered AI Assistant")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
                     .padding(.top, 8)
                     .opacity(isAnimating ? 1.0 : 0)
 

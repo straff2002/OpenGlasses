@@ -59,8 +59,8 @@ class AgentNotificationQueue: ObservableObject {
         // Check chattiness — quiet mode suppresses non-high notifications
         if Config.agentChattiness == .quiet && priority != .high { return }
 
-        if appState.isConnected && !appState.isProcessing && !appState.isListening {
-            // Glasses connected and idle — deliver immediately
+        if appState.isConnected && !appState.glassesIdle && !appState.isProcessing && !appState.isListening {
+            // Glasses connected, worn, and idle — deliver immediately
             Task {
                 await deliverImmediately(message: message, waitForResponse: priority != .low, personaId: personaId, personaName: personaName)
             }
@@ -86,6 +86,7 @@ class AgentNotificationQueue: ObservableObject {
     /// Called when glasses reconnect. Reviews the queue and delivers relevant items.
     func onGlassesReconnected() {
         guard !queue.isEmpty else { return }
+        guard appState?.glassesIdle != true else { return }
 
         // Remove stale notifications
         let before = queue.count
@@ -133,6 +134,12 @@ class AgentNotificationQueue: ObservableObject {
     /// If from a specific persona, announce which agent and activate that persona's wake word.
     private func deliverImmediately(message: String, waitForResponse: Bool, personaId: String? = nil, personaName: String? = nil) async {
         guard let appState else { return }
+
+        // Don't speak to glasses in the case
+        guard !appState.glassesIdle else {
+            NSLog("[AgentQueue] Skipping delivery — glasses idle (in case)")
+            return
+        }
 
         // Play soft notification chime
         appState.speechService.playAcknowledgmentTone()

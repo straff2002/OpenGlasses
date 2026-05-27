@@ -35,7 +35,7 @@ class GeminiLiveAudioManager {
         try session.setCategory(
             .playAndRecord,
             mode: mode,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
+            options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
         )
         try session.setPreferredSampleRate(Config.geminiLiveInputSampleRate)
         try session.setPreferredIOBufferDuration(0.064)

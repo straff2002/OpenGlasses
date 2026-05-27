@@ -13,8 +13,26 @@ class LiveActivityManager {
         })
     }
 
+    /// End any stale Live Activities left over from a previous launch (e.g. after force-quit).
+    func endStaleActivities() {
+        Task {
+            for activity in Activity<GlassesActivityAttributes>.activities {
+                await activity.end(.init(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
+                NSLog("[LiveActivity] Ended stale activity: %@", activity.id)
+            }
+        }
+    }
+
     /// Start a new Live Activity. No-op if one is already running or Live Activities are disabled.
     func start(glassesName: String = "OpenGlasses") {
+        // Clean up any stale activities from previous launches
+        for activity in Activity<GlassesActivityAttributes>.activities where activity.id != currentActivity?.id {
+            Task {
+                await activity.end(.init(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
+                NSLog("[LiveActivity] Cleaned up stale activity: %@", activity.id)
+            }
+        }
+
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             NSLog("[LiveActivity] Activities not enabled")
             return
@@ -86,9 +104,8 @@ class LiveActivityManager {
         }
     }
 
-    /// End the Live Activity immediately.
+    /// End the Live Activity immediately — also kills any stale activities from previous launches.
     func end() {
-        guard let activity = currentActivity else { return }
         let finalState = GlassesActivityAttributes.ContentState(
             isConnected: false,
             isListening: false,
@@ -101,10 +118,21 @@ class LiveActivityManager {
             quickActionButtons: []
         )
 
-        Task {
-            await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
-            NSLog("[LiveActivity] Ended")
+        // End tracked activity
+        if let activity = currentActivity {
+            Task {
+                await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
+                NSLog("[LiveActivity] Ended tracked activity")
+            }
+            currentActivity = nil
         }
-        currentActivity = nil
+
+        // Also kill any stale activities from previous launches (e.g. after force-quit)
+        Task {
+            for activity in Activity<GlassesActivityAttributes>.activities {
+                await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
+                NSLog("[LiveActivity] Ended stale activity: %@", activity.id)
+            }
+        }
     }
 }

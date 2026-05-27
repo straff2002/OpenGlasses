@@ -14,8 +14,10 @@ final class LocalLLMService: ObservableObject {
     @Published var isDownloading = false
     @Published var isGenerating = false
     @Published var loadedModelId: String?
+    @Published var downloadingModelId: String?
 
     private var modelContainer: ModelContainer?
+    private var activeDownloadTask: Task<Void, Error>?
 
     /// HubApi configured to store models in Application Support (persistent, not purgeable).
     private let hub: HubApi = {
@@ -35,7 +37,8 @@ final class LocalLLMService: ObservableObject {
             estimatedSize: "3.6 GB",
             hasVision: true,
             hasToolCalling: true,
-            notes: "Best on-device agent — vision, tool calling, 140+ languages"
+            notes: "Best on-device agent — vision, tool calling, 140+ languages",
+            minimumRAMGB: 8
         ),
         // Vision models (can see photos from glasses)
         RecommendedModel(
@@ -97,13 +100,18 @@ final class LocalLLMService: ObservableObject {
     // MARK: - Model Management
 
     /// Download a model from HuggingFace without loading into memory.
-    /// This avoids OOM crashes on devices with limited RAM.
+    /// Only one download runs at a time — call cancelDownload() first if needed.
     func downloadModel(_ modelId: String) async throws {
+        guard !isDownloading else { return }
         isDownloading = true
+        downloadingModelId = modelId
         downloadProgress = 0
-        defer { isDownloading = false }
+        defer {
+            isDownloading = false
+            downloadingModelId = nil
+            activeDownloadTask = nil
+        }
 
-        // Download files only — don't load into GPU memory
         let repo = Hub.Repo(id: modelId)
         _ = try await hub.snapshot(from: repo) { progress in
             Task { @MainActor in
@@ -113,6 +121,15 @@ final class LocalLLMService: ObservableObject {
 
         downloadProgress = 1.0
         print("✅ Local model downloaded: \(modelId)")
+    }
+
+    /// Cancel any in-progress download and reset state.
+    func cancelDownload() {
+        activeDownloadTask?.cancel()
+        activeDownloadTask = nil
+        isDownloading = false
+        downloadingModelId = nil
+        downloadProgress = 0
     }
 
     /// Load an already-downloaded model into memory.
@@ -318,4 +335,30 @@ struct RecommendedModel: Identifiable {
     let hasVision: Bool
     let hasToolCalling: Bool
     let notes: String
+    /// Minimum device RAM (GB) required to load this model. 0 = no restriction.
+    let minimumRAMGB: Double
+
+    init(id: String, name: String, estimatedSize: String, hasVision: Bool,
+         hasToolCalling: Bool, notes: String, minimumRAMGB: Double = 0) {
+        self.id = id
+        self.name = name
+        self.estimatedSize = estimatedSize
+        self.hasVision = hasVision
+        self.hasToolCalling = hasToolCalling
+        self.notes = notes
+        self.minimumRAMGB = minimumRAMGB
+    }
+
+    /// Whether the current device has enough RAM to run this model.
+    var isCompatibleWithDevice: Bool {
+        guard minimumRAMGB > 0 else { return true }
+        return LocalLLMService.deviceRAMGB >= minimumRAMGB
+    }
+}
+
+extension LocalLLMService {
+    /// Physical RAM of this device in GB.
+    nonisolated static var deviceRAMGB: Double {
+        Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+    }
 }

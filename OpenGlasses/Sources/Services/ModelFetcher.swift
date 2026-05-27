@@ -19,7 +19,9 @@ enum ModelFetcher {
             return await fetchGemini(apiKey: apiKey)
         case .qwen:
             return await fetchQwen(apiKey: apiKey, baseURL: baseURL)
-        case .openai, .groq, .zai, .minimax, .openrouter, .custom:
+        case .minimax:
+            return await fetchMiniMax(apiKey: apiKey, baseURL: baseURL)
+        case .openai, .groq, .zai, .openrouter, .custom:
             return await fetchOpenAICompatible(apiKey: apiKey, baseURL: baseURL)
         case .local, .appleOnDevice:
             return []  // Local/Apple models are managed separately
@@ -111,6 +113,66 @@ enum ModelFetcher {
         } catch {
             return []
         }
+    }
+
+    // MARK: - MiniMax
+
+    private static func fetchMiniMax(apiKey: String, baseURL: String) async -> [RemoteModel] {
+        // First try the standard OpenAI-compatible /models endpoint
+        let openAIResult = await fetchOpenAICompatible(apiKey: apiKey, baseURL: baseURL)
+        if !openAIResult.isEmpty { return openAIResult }
+
+        // MiniMax Coding Plan may not expose /models — validate the key with a
+        // minimal chat request and return known models if the key works.
+        let chatURL: String
+        if baseURL.contains("/chat/completions") || baseURL.contains("/chatcompletion") {
+            chatURL = baseURL
+        } else {
+            chatURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/chat/completions"
+        }
+
+        guard let url = URL(string: chatURL) else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+
+        // Test each known model to find which ones the plan supports
+        let knownModels = [
+            ("MiniMax-M2.7", "MiniMax-M2.7 (reasoning)"),
+            ("MiniMax-M1", "MiniMax-M1 (reasoning)"),
+            ("MiniMax-Text-01", "MiniMax-Text-01"),
+        ]
+
+        var available: [RemoteModel] = []
+        for (modelId, displayName) in knownModels {
+            let body: [String: Any] = [
+                "model": modelId,
+                "max_tokens": 1,
+                "messages": [["role": "user", "content": "hi"]]
+            ]
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else { continue }
+
+                if (200...299).contains(http.statusCode) {
+                    available.append(RemoteModel(id: modelId, name: displayName))
+                } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let error = json["error"] as? [String: Any],
+                          let msg = error["message"] as? String,
+                          msg.contains("not support model") {
+                    // Key is valid but model not on plan — skip but keep checking others
+                    continue
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return available
     }
 
     // MARK: - Anthropic

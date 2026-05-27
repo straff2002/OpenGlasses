@@ -11,15 +11,29 @@ struct PromptPresetsView: View {
         List {
             Section {
                 ForEach(presets) { preset in
-                    Button {
-                        activeId = preset.id
-                        Config.setActivePresetId(preset.id)
-                    } label: {
-                        HStack {
+                    HStack {
+                        // Select radio button
+                        Button {
+                            activeId = preset.id
+                            Config.setActivePresetId(preset.id)
+                        } label: {
+                            Image(systemName: preset.id == activeId ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(preset.id == activeId ? Color.accentColor : .secondary)
+                                .font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(preset.id == activeId ? "Selected: \(preset.name)" : "Select \(preset.name)")
+                        .accessibilityAddTraits(preset.id == activeId ? .isSelected : [])
+                        .accessibilityHint("Double-tap to make this the active prompt")
+
+                        // Tap row to edit
+                        Button {
+                            editingPreset = preset
+                        } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(preset.name)
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     if preset.isBuiltIn {
                                         Text("Built-in")
@@ -27,7 +41,7 @@ struct PromptPresetsView: View {
                                             .foregroundStyle(.secondary)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
-                                            .background(.quaternary, in: Capsule())
+                                            .background(Color(.tertiarySystemFill), in: Capsule())
                                     }
                                 }
                                 Text(preset.prompt.prefix(80) + (preset.prompt.count > 80 ? "…" : ""))
@@ -36,20 +50,16 @@ struct PromptPresetsView: View {
                                     .lineLimit(2)
                             }
                             Spacer()
-                            if preset.id == activeId {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.primary)
-                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit \(preset.name)")
+                        .accessibilityHint("Double-tap to edit this preset")
                     }
                     .swipeActions(edge: .trailing) {
-                        Button {
-                            editingPreset = preset
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.blue)
-
                         if !preset.isBuiltIn {
                             Button(role: .destructive) {
                                 deletePreset(preset)
@@ -62,7 +72,7 @@ struct PromptPresetsView: View {
             } header: {
                 Text("Presets")
             } footer: {
-                Text("Tap to select the active prompt. Swipe to edit or delete custom presets.")
+                Text("Tap the circle to select the active prompt. Tap the row to edit.")
             }
         }
         .navigationTitle("System Prompt")
@@ -121,16 +131,18 @@ struct PromptPresetEditorView: View {
                     TextField("Name", text: $name)
                 } header: {
                     Text("Preset Name")
+                } footer: {
+                    Text("A short label to pick this prompt from the list — e.g. \"Concise\", \"Coding helper\", \"British butler\".")
                 }
 
                 Section {
                     TextEditor(text: $prompt)
                         .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color(.label))
                         .frame(minHeight: 200)
                         .scrollContentBackground(.hidden)
                         .padding(8)
-                        .background(Color(.systemGray6))
+                        .background(Color(.secondarySystemGroupedBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 } header: {
                     Text("System Prompt")

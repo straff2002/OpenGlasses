@@ -1,10 +1,11 @@
 import SwiftUI
+import PhotosUI
 
 /// Bottom control bar — ergonomic layout for thumb and index finger use.
 ///
 /// Layout: Two rows.
 ///   Row 1 (primary):  Wide mic/action capsule — the main touch target.
-///   Row 2 (secondary): [Settings] [Camera] [Preview] [Model] [Persona]
+///   Row 2 (secondary): [Settings] [Camera] [Preview] [Model] [Keyboard]
 ///
 /// The mic capsule is large enough to hit easily with a thumb from either hand.
 /// Secondary buttons are spaced for index finger taps.
@@ -12,11 +13,12 @@ struct BottomControlBar: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
+    @Environment(\.appAccent) private var accent
 
     @Binding var showSettings: Bool
     @Binding var showModelPicker: Bool
     @Binding var showPreview: Bool
-    @Binding var showPersonaPicker: Bool
+    var showChatInput: Binding<Bool>? = nil
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
     private var isGemini: Bool { appState.currentMode == .geminiLive }
@@ -35,7 +37,7 @@ struct BottomControlBar: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            // Primary: wide mic capsule
+            // Primary: wide action capsule
             heroCapsule
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
@@ -46,11 +48,6 @@ struct BottomControlBar: View {
 
             // Secondary: utility row
             HStack(spacing: 0) {
-                BarButton(icon: "gearshape", label: "Settings") {
-                    showSettings = true
-                }
-                .frame(maxWidth: .infinity)
-
                 cameraButton
                     .frame(maxWidth: .infinity)
 
@@ -74,26 +71,25 @@ struct BottomControlBar: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                personaButton
+                if let chatBinding = showChatInput {
+                    BarButton(icon: "keyboard", label: "Type") {
+                        chatBinding.wrappedValue = true
+                    }
                     .frame(maxWidth: .infinity)
+                }
+
+                if appState.isConnected {
+                    BarButton(icon: "moon.fill", label: "Sleep") {
+                        appState.disconnectGlasses()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
             .padding(.horizontal, 8)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .mask(
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.5), .black],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .ignoresSafeArea()
-        )
     }
 
     // MARK: - Hero Capsule
@@ -105,7 +101,7 @@ struct BottomControlBar: View {
                 icon: session.isActive ? "stop.fill" : "play.fill",
                 label: session.isActive ? "Stop Session" : "Start Gemini Live",
                 isActive: session.isActive,
-                color: session.isActive ? .red : .cyan
+                color: session.isActive ? .red : accent
             ) {
                 Task {
                     if session.isActive { session.stopSession() }
@@ -117,7 +113,7 @@ struct BottomControlBar: View {
                 icon: openAISession.isActive ? "stop.fill" : "play.fill",
                 label: openAISession.isActive ? "Stop Session" : "Start OpenAI Realtime",
                 isActive: openAISession.isActive,
-                color: openAISession.isActive ? .red : .cyan
+                color: openAISession.isActive ? .red : accent
             ) {
                 Task {
                     if openAISession.isActive { openAISession.stopSession() }
@@ -133,12 +129,23 @@ struct BottomControlBar: View {
             ) {
                 appState.cancelCurrentResponse()
             }
+        } else if !appState.isConnected {
+            // Disconnected — one tap to reconnect + start listening
+            ActionCapsule(
+                icon: "OpenGlassesLogo",
+                label: "Connect & Talk",
+                color: accent
+            ) {
+                Task {
+                    await appState.connectAndListen()
+                }
+            }
         } else {
             ActionCapsule(
-                icon: appState.isListening ? "mic.fill" : "mic",
+                icon: appState.isListening ? "waveform.circle.fill" : "mic.fill",
                 label: appState.isListening ? "Listening..." : "Tap to talk",
                 isActive: appState.isListening,
-                color: appState.isListening ? .cyan : .white,
+                color: accent,
                 showMuteBadge: appState.micMuted
             ) {
                 Task {
@@ -147,7 +154,7 @@ struct BottomControlBar: View {
                     } else {
                         appState.wakeWordService.stopListening()
                         try? await Task.sleep(nanoseconds: 100_000_000)
-                        await appState.handleWakeWordDetected()
+                        await appState.handleWakeWordDetected(manual: true)
                     }
                 }
             }
@@ -159,7 +166,7 @@ struct BottomControlBar: View {
     @ViewBuilder
     private var cameraButton: some View {
         if !appState.isConnected {
-            BarButton(icon: "eyeglasses", label: "Connect") {
+            BarButton(icon: "OpenGlassesLogo", label: "Connect") {
                 Task { await appState.glassesService.connect() }
             }
         } else if isRealtime {
@@ -190,18 +197,6 @@ struct BottomControlBar: View {
         }
     }
 
-    @ViewBuilder
-    private var personaButton: some View {
-        let activePersona = appState.activePersona
-        let personaCount = Config.enabledPersonas.count
-        BarButton(
-            icon: activePersona?.icon ?? "person.2",
-            label: activePersona?.name ?? "Modes",
-            badge: personaCount > 1 ? "\(personaCount)" : nil
-        ) {
-            showPersonaPicker = true
-        }
-    }
 }
 
 // MARK: - Action Capsule (primary touch target)
@@ -220,9 +215,14 @@ private struct ActionCapsule: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 ZStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(color)
+                    if icon == "OpenGlassesLogo" {
+                        LogoIcon(size: 18)
+                            .foregroundStyle(color)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(color)
+                    }
 
                     if showMuteBadge {
                         Image(systemName: "mic.slash.fill")
@@ -236,27 +236,15 @@ private struct ActionCapsule: View {
 
                 Text(label)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(color.opacity(0.9))
+                    .foregroundStyle(Color(.label))
             }
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule()
-                            .fill(isActive ? color.opacity(0.15) : Color.clear)
-                    )
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(
-                                isActive ? color.opacity(0.4) : Color.white.opacity(0.1),
-                                lineWidth: 1
-                            )
-                    )
-            )
+            .background(isActive ? color.opacity(0.15) : Color.clear)
+            .glassEffect(in: .capsule)
         }
-        .accessibilityLabel(label)
+        .buttonStyle(.plain)
+        .accessibilityLabel(showMuteBadge ? "\(label), microphone muted" : label)
     }
 }
 
@@ -273,23 +261,27 @@ private struct BarButton: View {
     var action: () -> Void = {}
 
     private var foreground: Color {
-        if isDisabled { return .white.opacity(0.25) }
-        if isActive { return .white }
-        return .white.opacity(0.7)
+        if isDisabled { return .secondary }
+        return .primary
     }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
                 ZStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(foreground)
+                    if icon == "OpenGlassesLogo" {
+                        LogoIcon(size: 18)
+                            .foregroundStyle(foreground)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(foreground)
+                    }
 
                     if let badge {
                         Text(badge)
                             .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color(.label))
                             .padding(.horizontal, 3)
                             .padding(.vertical, 1)
                             .background(Color.accentColor, in: Capsule())
@@ -301,7 +293,7 @@ private struct BarButton: View {
                 if !label.isEmpty {
                     Text(label)
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(foreground.opacity(0.7))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
@@ -311,6 +303,7 @@ private struct BarButton: View {
         }
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)
-        .accessibilityLabel(label.isEmpty ? icon : label)
+        .accessibilityLabel(label.isEmpty ? icon.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ") : label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }

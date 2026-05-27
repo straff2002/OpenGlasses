@@ -142,6 +142,19 @@ class AmbientCaptionService: ObservableObject {
 
     // MARK: - Caption Management
 
+    /// Inject a visual description (photo caption) into the caption history.
+    /// Used when a photo is taken during an audio recording so the meeting
+    /// transcript and assistant have context about what was seen.
+    func insertVisualNote(_ description: String) {
+        let note = "[Visual: \(description)]"
+        let entry = CaptionEntry(text: note, timestamp: Date())
+        captionHistory.insert(entry, at: 0)
+        if captionHistory.count > maxHistory {
+            captionHistory = Array(captionHistory.prefix(maxHistory))
+        }
+        print("🎙️ Visual note inserted into caption history")
+    }
+
     private func finalizeCaption(_ text: String) {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 

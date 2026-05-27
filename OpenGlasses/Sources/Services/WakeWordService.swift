@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Speech
+import CallKit
 
 /// Handles wake word detection using iOS Speech Recognition
 /// Listens for "Hey Claude" to trigger voice queries
@@ -14,14 +15,40 @@ class WakeWordService: NSObject, ObservableObject {
     /// Called when a wake word is detected. Passes the matched phrase so the caller can route to the right persona.
     var onWakeWordDetected: ((String) -> Void)?
     var onStopCommand: (() -> Void)?
+    /// Called when the user starts speaking during TTS (voice-activity barge-in).
+    /// Passes the partial transcript so the app can use it as the start of a new query.
+    var onBargeIn: ((String) -> Void)?
     /// Called when Bluetooth audio route is lost (glasses in case / powered off)
     var onBluetoothDisconnected: (() -> Void)?
+    /// Called when sustained silence is detected (glasses likely in case).
+    var onSilenceDetected: (() -> Void)?
+    /// Called when audio resumes after silence (glasses taken out of case).
+    var onAudioResumed: (() -> Void)?
+    /// Called when Bluetooth audio reconnects (glasses powered back on / out of case).
+    var onBluetoothReconnected: (() -> Void)?
+
+    /// Whether the mic is currently paused due to silence (glasses in case).
+    @Published var pausedForSilence: Bool = false
+
+    /// Silence detection: number of consecutive low-RMS buffers.
+    private var silentBufferCount: Int = 0
+    /// RMS threshold below which a buffer is considered "silent".
+    /// Glasses mic in a closed case typically produces near-zero signal.
+    private let silenceRMSThreshold: Float = 0.005
+    /// Number of consecutive silent buffers before declaring silence (~60 seconds at typical buffer rate).
+    private let silenceBufferThreshold: Int = 600
+    /// Whether silence was already reported (prevents repeated callbacks).
+    private var silenceReported: Bool = false
 
     private var audioEngine: AVAudioEngine?
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioSessionConfigured: Bool = false
+    /// When true, don't start continuous wake word listening — only listen when explicitly triggered.
+    /// Set to true when CarPlay is active so we don't hold a recording session open.
+    var carPlayMode: Bool = false
+
     /// When true, also listen for "stop" commands (used during TTS playback)
     var listenForStop: Bool = false
     /// Track whether we already fired a stop for this listening session
@@ -60,19 +87,92 @@ class WakeWordService: NSObject, ObservableObject {
         configureAudioSession()
     }
 
+    /// Pause other audio (podcasts, music) while actively listening.
+    /// Skips if a phone/FaceTime call is in progress so we don't interrupt it.
+    /// Call when transitioning from wake-word standby to active conversation.
+    /// Reference count for hold requests. The pause is applied once for the first holder
+    /// and released only when the last holder asks to resume. This lets the mic-active
+    /// flow and the TTS-speaking flow nest cleanly — Music/Podcasts stay paused for the
+    /// whole interaction and only resume after everything finishes.
+    private var pauseHoldCount: Int = 0
+
+    func pauseOtherAudio() {
+        guard !carPlayMode else { return }
+        // Never interrupt an active phone or FaceTime call
+        let callObserver = CXCallObserver()
+        let hasActiveCall = callObserver.calls.contains { $0.hasConnected && !$0.hasEnded && !$0.isOnHold }
+        guard !hasActiveCall else {
+            print("🎤 Active call detected — skipping audio pause")
+            return
+        }
+        pauseHoldCount += 1
+        guard pauseHoldCount == 1 else {
+            print("🎤 Audio already paused (hold count \(pauseHoldCount))")
+            return
+        }
+        let session = AVAudioSession.sharedInstance()
+        let useGlassesMic = Config.useGlassesMicForWakeWord
+        // Omitting mixWithOthers/duckOthers causes iOS to interrupt (pause) other audio apps
+        let options: AVAudioSession.CategoryOptions = useGlassesMic
+            ? [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
+            : [.defaultToSpeaker]
+        try? session.setCategory(.playAndRecord, mode: .measurement, options: options)
+        try? session.setActive(true)
+        print("🎤 Pausing other audio for active listening")
+    }
+
+    /// Restore other audio (podcasts, music) after active listening ends.
+    /// The .notifyOthersOnDeactivation flag tells paused apps to resume.
+    func resumeOtherAudio() {
+        guard !carPlayMode else { return }
+        guard pauseHoldCount > 0 else { return }
+        pauseHoldCount -= 1
+        guard pauseHoldCount == 0 else {
+            print("🎤 Audio still held by \(pauseHoldCount) other holder(s) — not resuming yet")
+            return
+        }
+        let session = AVAudioSession.sharedInstance()
+        let useGlassesMic = Config.useGlassesMicForWakeWord
+        let options: AVAudioSession.CategoryOptions = useGlassesMic
+            ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
+            : [.mixWithOthers, .defaultToSpeaker]
+        try? session.setCategory(.playAndRecord, mode: .measurement, options: options)
+        // notifyOthersOnDeactivation tells paused apps (Music, Podcasts) they can resume.
+        try? session.setActive(true, options: .notifyOthersOnDeactivation)
+        print("🎤 Restored audio mix — other apps can resume")
+    }
+
+    /// Force release of any held pauses — used when listening is toggled off entirely.
+    func forceResumeOtherAudio() {
+        guard pauseHoldCount > 0 else { return }
+        pauseHoldCount = 1  // resumeOtherAudio will decrement to 0 and restore
+        resumeOtherAudio()
+    }
+
     /// Configure the shared audio session once — call before first use
     func configureAudioSession() {
         guard !audioSessionConfigured else { return }
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            let useGlassesMic = Config.useGlassesMicForWakeWord
-            let options: AVAudioSession.CategoryOptions = useGlassesMic
-                ? [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker]
-                : [.mixWithOthers, .defaultToSpeaker]
-            try audioSession.setCategory(.playAndRecord, mode: .measurement, options: options)
-            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-            audioSessionConfigured = true
-            print("🎤 Mic source: \(useGlassesMic ? "glasses (Bluetooth)" : "phone (built-in)")")
+
+            // In CarPlay mode, only activate recording when explicitly requested
+            // (voice control template showing). Otherwise use playback-only to
+            // avoid disrupting car audio.
+            if carPlayMode {
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
+                try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+                audioSessionConfigured = true
+                print("🎤 CarPlay mode: .playAndRecord + .voiceChat (voice control active)")
+            } else {
+                let useGlassesMic = Config.useGlassesMicForWakeWord
+                let options: AVAudioSession.CategoryOptions = useGlassesMic
+                    ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
+                    : [.mixWithOthers, .defaultToSpeaker]
+                try audioSession.setCategory(.playAndRecord, mode: .measurement, options: options)
+                try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+                audioSessionConfigured = true
+                print("🎤 Mic source: \(useGlassesMic ? "glasses (Bluetooth)" : "phone (built-in)")")
+            }
 
             let route = audioSession.currentRoute
             for input in route.inputs {
@@ -162,6 +262,7 @@ class WakeWordService: NSObject, ObservableObject {
                 print("🎤 Bluetooth device reconnected — restarting with fresh engine")
                 cleanupAudioEngine()
                 isListening = false
+                onBluetoothReconnected?()
                 Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     audioSessionConfigured = false
@@ -190,6 +291,9 @@ class WakeWordService: NSObject, ObservableObject {
         guard !isListening else { return }
         stopFired = false
         wakeWordFired = false
+        silentBufferCount = 0
+        silenceReported = false
+        pausedForSilence = false
 
         let hasPermission = await requestPermissions()
         guard hasPermission else {
@@ -229,12 +333,42 @@ class WakeWordService: NSObject, ObservableObject {
         isListening = false
     }
 
+    /// Fully deactivate the audio session — use when CarPlay voice control is dismissed
+    /// so car audio (FM radio, other apps) can resume.
+    func deactivateAudioSession() {
+        cleanupAudioEngine()
+        isListening = false
+        audioSessionConfigured = false
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            print("🎤 Audio session deactivated (CarPlay voice ended)")
+        } catch {
+            print("🎤 Failed to deactivate audio session: \(error)")
+        }
+    }
+
     func resumeListening() {
         guard !isListening else { return }
         Task { try? await startListening() }
     }
 
     // MARK: - Shared Audio Engine (for TranscriptionService)
+
+    /// Ensure the shared audio engine is running (creates one if needed).
+    /// Call this before `TranscriptionService.startRecording()` to guarantee
+    /// the buffer-forwarding path is alive — e.g. after TTS playback which
+    /// may have interrupted or stopped the engine.
+    func ensureAudioEngineRunning() async throws {
+        if let engine = audioEngine, engine.isRunning { return }
+        // Engine is nil or stopped — restart it (without starting recognition)
+        print("🎤 Audio engine not running — restarting for shared use")
+        try await startListening()
+        // Pause recognition so only the buffer forwarder is active
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+    }
 
     /// Get the current audio engine (for shared use by TranscriptionService)
     func getAudioEngine() -> AVAudioEngine? {
@@ -348,10 +482,50 @@ class WakeWordService: NSObject, ObservableObject {
                     handler(buffer)
                 }
             }
+            // Monitor audio levels for silence detection (glasses in case)
+            self?.checkAudioLevel(buffer: buffer)
         }
 
         engine.prepare()
         try engine.start()
+    }
+
+    // MARK: - Silence Detection (Glasses in Case)
+
+    private nonisolated func checkAudioLevel(buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+
+        // Calculate RMS of the buffer
+        var sum: Float = 0
+        let data = channelData[0]
+        for i in 0..<frames {
+            let sample = data[i]
+            sum += sample * sample
+        }
+        let rms = sqrtf(sum / Float(frames))
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if rms < self.silenceRMSThreshold {
+                self.silentBufferCount += 1
+                if self.silentBufferCount >= self.silenceBufferThreshold && !self.silenceReported {
+                    self.silenceReported = true
+                    self.pausedForSilence = true
+                    NSLog("[WakeWord] Sustained silence detected (%d buffers) — glasses likely in case", self.silentBufferCount)
+                    self.onSilenceDetected?()
+                }
+            } else {
+                if self.silenceReported {
+                    NSLog("[WakeWord] Audio resumed after silence — glasses active again")
+                    self.silenceReported = false
+                    self.pausedForSilence = false
+                    self.onAudioResumed?()
+                }
+                self.silentBufferCount = 0
+            }
+        }
     }
 
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
@@ -371,30 +545,46 @@ class WakeWordService: NSObject, ObservableObject {
         let transcript = result.bestTranscription.formattedString.lowercased()
         debugTranscript = transcript
 
-        // Check for stop command first (during TTS playback)
-        if listenForStop && !stopFired && containsStopPhrase(transcript) {
-            print("🛑 Stop command detected in: '\(transcript)'")
-            stopFired = true
-            pauseRecognition()
-            onStopCommand?()
-            return
-        }
+        // During TTS playback: detect any speech as barge-in interrupt
+        if listenForStop && !stopFired {
+            // Explicit stop command
+            if containsStopPhrase(transcript) {
+                print("🛑 Stop command detected in: '\(transcript)'")
+                stopFired = true
+                pauseRecognition()
+                onStopCommand?()
+                return
+            }
 
-        // Barge-in: detect wake word even during TTS playback → interrupt and start new conversation
-        if let matched = matchedWakePhrase(transcript) {
-            if listenForStop {
-                // Barge-in during TTS — stop speaking and start new conversation
-                print("⚡ Barge-in detected: '\(matched)' during TTS")
+            // Wake word during TTS — interrupt and start new conversation
+            if let matched = matchedWakePhrase(transcript) {
+                print("⚡ Barge-in (wake word): '\(matched)' during TTS")
                 stopFired = true
                 wakeWordFired = true
                 pauseRecognition()
-                onStopCommand?()  // Stop TTS first
-                // Brief delay then fire wake word for the new conversation
+                onStopCommand?()
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     self.onWakeWordDetected?(matched)
                 }
-            } else if !wakeWordFired {
+                return
+            }
+
+            // Voice-activity barge-in: any meaningful speech interrupts TTS
+            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            let wordCount = trimmed.split(separator: " ").count
+            if wordCount >= 2 {
+                print("⚡ Barge-in (voice activity): '\(trimmed)' during TTS")
+                stopFired = true
+                pauseRecognition()
+                onBargeIn?(trimmed)
+                return
+            }
+        }
+
+        // Normal wake word detection (not during TTS)
+        if let matched = matchedWakePhrase(transcript) {
+            if !wakeWordFired {
                 // Normal wake word detection (not during TTS)
                 print("🎤 Wake word detected: '\(matched)' in: '\(transcript)'")
                 wakeWordFired = true
@@ -416,17 +606,68 @@ class WakeWordService: NSObject, ObservableObject {
     }
 
     /// Check all persona wake phrases and return the matched one, or nil.
+    /// Uses exact matching first, then fuzzy Levenshtein distance matching
+    /// to handle speech recognition errors ("Hey Clause", "Hey Cloud" → "Hey Claude").
     private func matchedWakePhrase(_ transcript: String) -> String? {
         let lower = transcript.lowercased()
+        let words = lower.split(separator: " ").map(String.init)
+
+        // Pass 1: Exact substring match (fast path)
         for persona in Config.enabledPersonas {
             if lower.contains(persona.wakePhrase) { return persona.wakePhrase }
             for alt in persona.alternativeWakePhrases {
-                if lower.contains(alt) { return persona.wakePhrase }  // Return primary, not the alt
+                if lower.contains(alt) { return persona.wakePhrase }
             }
         }
-        // Legacy fallback: check single wake phrase
         if lower.contains(wakePhrase) { return wakePhrase }
+
+        // Pass 2: Fuzzy match — check sliding window of word pairs/triples against wake phrases
+        let allPhrases: [(phrase: String, primary: String)] = Config.enabledPersonas.flatMap { persona in
+            [(persona.wakePhrase, persona.wakePhrase)] +
+            persona.alternativeWakePhrases.map { ($0, persona.wakePhrase) }
+        } + [(wakePhrase, wakePhrase)]
+
+        for (phrase, primary) in allPhrases {
+            let phraseWords = phrase.split(separator: " ").map(String.init)
+            let windowSize = phraseWords.count
+            guard windowSize > 0, words.count >= windowSize else { continue }
+
+            for i in 0...(words.count - windowSize) {
+                let window = words[i..<(i + windowSize)].joined(separator: " ")
+                let distance = levenshteinDistance(window, phrase)
+                // Allow up to 2 character edits for short phrases, 3 for longer ones
+                let threshold = phrase.count <= 10 ? 2 : 3
+                if distance <= threshold && distance > 0 {
+                    print("🎤 Fuzzy wake word match: '\(window)' ≈ '\(phrase)' (distance: \(distance))")
+                    return primary
+                }
+            }
+        }
+
         return nil
+    }
+
+    /// Levenshtein edit distance between two strings.
+    private func levenshteinDistance(_ a: String, _ b: String) -> Int {
+        let aChars = Array(a)
+        let bChars = Array(b)
+        let m = aChars.count
+        let n = bChars.count
+        if m == 0 { return n }
+        if n == 0 { return m }
+
+        var prev = Array(0...n)
+        var curr = [Int](repeating: 0, count: n + 1)
+
+        for i in 1...m {
+            curr[0] = i
+            for j in 1...n {
+                let cost = aChars[i - 1] == bChars[j - 1] ? 0 : 1
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+            }
+            prev = curr
+        }
+        return prev[n]
     }
 
     private func handleWakeWordDetected(matchedPhrase: String) {

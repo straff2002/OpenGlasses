@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shogo4405/HaishinKit.swift.git",
       "state" : {
-        "revision" : "1f5dc201b0ee0e79edd0270d1b6649c7cddf1a1e",
-        "version" : "2.2.4"
+        "revision" : "dc880cb540b8feeb98f64e8b7dcfaaf320b6b2bd",
+        "version" : "2.2.5"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/facebook/meta-wearables-dat-ios.git",
       "state" : {
-        "revision" : "2ea30fa228359315baf71c404aec821472e994c1",
-        "version" : "0.5.0"
+        "revision" : "c40db3978a76b97504b85ed9f082be5549c5a486",
+        "version" : "0.7.0"
       }
     },
     {

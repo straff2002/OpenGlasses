@@ -1,5 +1,5 @@
 import Foundation
-import MediaPlayer
+@preconcurrency import MediaPlayer
 
 /// Controls music playback on the device — play, pause, skip, search, and play by name.
 struct MusicControlTool: NativeTool {
@@ -25,42 +25,8 @@ struct MusicControlTool: NativeTool {
             return "No action provided. Use: play, pause, toggle, next, previous, or now_playing."
         }
 
-        let player = MPMusicPlayerController.systemMusicPlayer
-
+        // Search and play-by-name need async work, handle separately
         switch action.lowercased() {
-        case "play":
-            await MainActor.run { player.play() }
-            return nowPlayingDescription(prefix: "Playing", player: player)
-
-        case "pause", "stop":
-            await MainActor.run { player.pause() }
-            return "Music paused."
-
-        case "toggle", "play_pause":
-            // Check current playback state
-            let state = player.playbackState
-            if state == .playing {
-                await MainActor.run { player.pause() }
-                return "Music paused."
-            } else {
-                await MainActor.run { player.play() }
-                return nowPlayingDescription(prefix: "Playing", player: player)
-            }
-
-        case "next", "skip":
-            await MainActor.run { player.skipToNextItem() }
-            // Small delay to let the player update
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            return nowPlayingDescription(prefix: "Skipped to", player: player)
-
-        case "previous", "prev", "back":
-            await MainActor.run { player.skipToPreviousItem() }
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            return nowPlayingDescription(prefix: "Going back to", player: player)
-
-        case "now_playing", "current", "what_is_playing":
-            return nowPlayingDescription(prefix: "Now playing", player: player)
-
         case "search":
             let query = args["query"] as? String ?? ""
             guard !query.isEmpty else { return "What should I search for?" }
@@ -69,90 +35,128 @@ struct MusicControlTool: NativeTool {
         case "play_song":
             let query = args["query"] as? String ?? ""
             guard !query.isEmpty else { return "What song should I play?" }
-            return await playSong(query: query, player: player)
+            return await playSong(query: query)
 
         case "play_artist":
             let query = args["query"] as? String ?? ""
             guard !query.isEmpty else { return "Which artist?" }
-            return await playArtist(query: query, player: player)
-
-        case "shuffle":
-            await MainActor.run {
-                player.shuffleMode = .songs
-                player.play()
-            }
-            return "Shuffling your library."
+            return await playArtist(query: query)
 
         default:
-            return "Unknown action '\(action)'. Use: play, pause, toggle, next, previous, now_playing, search, play_song, play_artist, or shuffle."
+            break
+        }
+
+        // Simple playback controls — all on MainActor
+        return await MainActor.run {
+            let player = MPMusicPlayerController.systemMusicPlayer
+
+            switch action.lowercased() {
+            case "play":
+                player.play()
+                return nowPlayingDescription(prefix: "Playing", player: player)
+
+            case "pause", "stop":
+                player.pause()
+                return "Music paused."
+
+            case "toggle", "play_pause":
+                if player.playbackState == .playing {
+                    player.pause()
+                    return "Music paused."
+                } else {
+                    player.play()
+                    return nowPlayingDescription(prefix: "Playing", player: player)
+                }
+
+            case "next", "skip":
+                player.skipToNextItem()
+                return nowPlayingDescription(prefix: "Skipped to", player: player)
+
+            case "previous", "prev", "back":
+                player.skipToPreviousItem()
+                return nowPlayingDescription(prefix: "Going back to", player: player)
+
+            case "now_playing", "current", "what_is_playing":
+                return nowPlayingDescription(prefix: "Now playing", player: player)
+
+            case "shuffle":
+                player.shuffleMode = .songs
+                player.play()
+                return "Shuffling your library."
+
+            default:
+                return "Unknown action '\(action)'. Use: play, pause, toggle, next, previous, now_playing, search, play_song, play_artist, or shuffle."
+            }
         }
     }
 
     // MARK: - Search & Play
 
     private func searchLibrary(query: String) async -> String {
-        let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyTitle, comparisonType: .contains)
-        let songQuery = MPMediaQuery.songs()
-        songQuery.addFilterPredicate(predicate)
+        return await MainActor.run {
+            let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyTitle, comparisonType: .contains)
+            let songQuery = MPMediaQuery.songs()
+            songQuery.addFilterPredicate(predicate)
 
-        let songs = songQuery.items ?? []
+            let songs = songQuery.items ?? []
 
-        // Also search by artist
-        let artistPredicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyArtist, comparisonType: .contains)
-        let artistQuery = MPMediaQuery.songs()
-        artistQuery.addFilterPredicate(artistPredicate)
-        let artistSongs = artistQuery.items ?? []
+            // Also search by artist
+            let artistPredicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyArtist, comparisonType: .contains)
+            let artistQuery = MPMediaQuery.songs()
+            artistQuery.addFilterPredicate(artistPredicate)
+            let artistSongs = artistQuery.items ?? []
 
-        let allResults = Array(Set(songs + artistSongs)).prefix(5)
+            let allResults = Array(Set(songs + artistSongs)).prefix(5)
 
-        if allResults.isEmpty {
-            return "No songs found matching '\(query)' in your library. Try a different search or open Apple Music/Spotify directly."
+            if allResults.isEmpty {
+                return "No songs found matching '\(query)' in your library. Try a different search or open Apple Music/Spotify directly."
+            }
+
+            let list = allResults.map { item in
+                let title = item.title ?? "Unknown"
+                let artist = item.artist ?? "Unknown"
+                return "'\(title)' by \(artist)"
+            }.joined(separator: ". ")
+
+            return "Found \(allResults.count) songs: \(list). Say 'play song \(allResults.first?.title ?? query)' to play one."
         }
-
-        let list = allResults.map { item in
-            let title = item.title ?? "Unknown"
-            let artist = item.artist ?? "Unknown"
-            return "'\(title)' by \(artist)"
-        }.joined(separator: ". ")
-
-        return "Found \(allResults.count) songs: \(list). Say 'play song \(allResults.first?.title ?? query)' to play one."
     }
 
-    private func playSong(query: String, player: MPMusicPlayerController) async -> String {
-        let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyTitle, comparisonType: .contains)
-        let songQuery = MPMediaQuery.songs()
-        songQuery.addFilterPredicate(predicate)
+    private func playSong(query: String) async -> String {
+        return await MainActor.run {
+            let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyTitle, comparisonType: .contains)
+            let songQuery = MPMediaQuery.songs()
+            songQuery.addFilterPredicate(predicate)
 
-        guard let item = songQuery.items?.first else {
-            return "Couldn't find '\(query)' in your library."
-        }
+            guard let item = songQuery.items?.first else {
+                return "Couldn't find '\(query)' in your library."
+            }
 
-        let collection = MPMediaItemCollection(items: [item])
-        await MainActor.run {
+            let player = MPMusicPlayerController.systemMusicPlayer
+            let collection = MPMediaItemCollection(items: [item])
             player.setQueue(with: collection)
             player.play()
+            return nowPlayingDescription(prefix: "Playing", player: player)
         }
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        return nowPlayingDescription(prefix: "Playing", player: player)
     }
 
-    private func playArtist(query: String, player: MPMusicPlayerController) async -> String {
-        let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyArtist, comparisonType: .contains)
-        let artistQuery = MPMediaQuery.songs()
-        artistQuery.addFilterPredicate(predicate)
+    private func playArtist(query: String) async -> String {
+        return await MainActor.run {
+            let predicate = MPMediaPropertyPredicate(value: query, forProperty: MPMediaItemPropertyArtist, comparisonType: .contains)
+            let artistQuery = MPMediaQuery.songs()
+            artistQuery.addFilterPredicate(predicate)
 
-        guard let items = artistQuery.items, !items.isEmpty else {
-            return "No songs by '\(query)' in your library."
-        }
+            guard let items = artistQuery.items, !items.isEmpty else {
+                return "No songs by '\(query)' in your library."
+            }
 
-        let collection = MPMediaItemCollection(items: items)
-        await MainActor.run {
+            let player = MPMusicPlayerController.systemMusicPlayer
+            let collection = MPMediaItemCollection(items: items)
             player.setQueue(with: collection)
             player.shuffleMode = .songs
             player.play()
+            return "Playing \(items.count) songs by \(items.first?.artist ?? query). \(nowPlayingDescription(prefix: "Starting with", player: player))"
         }
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        return "Playing \(items.count) songs by \(items.first?.artist ?? query). \(nowPlayingDescription(prefix: "Starting with", player: player))"
     }
 
     // MARK: - Info

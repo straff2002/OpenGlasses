@@ -1,12 +1,16 @@
 import Foundation
 
-/// Routes Gemini WebSocket tool calls to the OpenClaw bridge.
+/// Routes Gemini WebSocket tool calls to native tools first, then OpenClaw bridge.
 /// Used in Gemini Live mode when Gemini issues function calls over the WebSocket.
 @MainActor
 class ToolCallRouter {
     private let bridge: OpenClawBridge
     var nativeToolRouter: NativeToolRouter?
     private var inFlightTasks: [String: Task<Void, Never>] = [:]
+
+    /// Callback to pause/resume camera streaming during tool execution (prevents instability).
+    var onToolExecutionStarted: (() -> Void)?
+    var onToolExecutionFinished: (() -> Void)?
 
     init(bridge: OpenClawBridge) {
         self.bridge = bridge
@@ -22,9 +26,22 @@ class ToolCallRouter {
         NSLog("[ToolCall] Received: %@ (id: %@) args: %@",
               callName, callId, String(describing: call.args))
 
+        // Pause camera/audio streaming during tool execution to prevent instability
+        onToolExecutionStarted?()
+
         let task = Task { @MainActor in
-            let taskDesc = call.args["task"] as? String ?? String(describing: call.args)
-            let result = await bridge.delegateTask(task: taskDesc, toolName: callName)
+            // Route through NativeToolRouter first (handles native → MCP → OpenClaw cascade)
+            let result: ToolResult
+            if let router = nativeToolRouter {
+                result = await router.handleToolCall(name: callName, args: call.args)
+            } else {
+                // Fallback: direct OpenClaw delegation (legacy path)
+                let taskDesc = call.args["task"] as? String ?? String(describing: call.args)
+                result = await bridge.delegateTask(task: taskDesc, toolName: callName)
+            }
+
+            // Resume streaming after tool execution
+            self.onToolExecutionFinished?()
 
             guard !Task.isCancelled else {
                 NSLog("[ToolCall] Task %@ was cancelled, skipping response", callId)

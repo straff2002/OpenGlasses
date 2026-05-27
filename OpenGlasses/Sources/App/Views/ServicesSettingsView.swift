@@ -1,4 +1,6 @@
 import SwiftUI
+import AVFoundation
+import UniformTypeIdentifiers
 
 /// Sub-settings view for optional service integrations.
 /// Accessed via NavigationLink from the main SettingsView.
@@ -18,18 +20,18 @@ struct ServicesSettingsView: View {
     @Binding var broadcastRTMPURL: String
     @Binding var broadcastStreamKey: String
 
-    // OpenClaw
-    @Binding var openClawEnabled: Bool
-    @Binding var openClawConnectionMode: OpenClawConnectionMode
-    @Binding var openClawLanHost: String
-    @Binding var openClawPort: String
-    @Binding var openClawTunnelHost: String
-    @Binding var openClawGatewayToken: String
-    @Binding var openClawTestStatus: String
+    // Camera
+    @State private var cameraResolution: String = Config.cameraResolution
+    @State private var cameraFrameRate: Int = Config.cameraFrameRate
+    @State private var showFolderPicker = false
 
     // Home Assistant
     @State private var haURL: String = Config.homeAssistantURL
     @State private var haToken: String = Config.homeAssistantToken
+
+    // iOS Voice
+    @State private var iosVoiceId: String = Config.iosTTSVoiceId
+    private var iosVoices: [AVSpeechSynthesisVoice] { TextToSpeechService.availableVoices() }
 
     var body: some View {
         Form {
@@ -38,6 +40,18 @@ struct ServicesSettingsView: View {
                 SecureField("API Key", text: $elevenLabsKeyInput)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+
+                if elevenLabsKeyInput.isEmpty {
+                    Link(destination: URL(string: "https://elevenlabs.io/app/settings/api-keys")!) {
+                        HStack {
+                            Label("Get API Key", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            Text("elevenlabs.io")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
 
                 Picker("Voice", selection: $selectedVoice) {
                     // Female voices
@@ -68,15 +82,35 @@ struct ServicesSettingsView: View {
                     Text("Thomas — calm, American").tag("GBv7mTt0atIp3Br8iCZE")
                 }
 
-                Toggle("Expressive Voice", isOn: $emotionAwareTTSEnabled)
+                InfoToggle(
+                    title: "Expressive Voice",
+                    isOn: $emotionAwareTTSEnabled,
+                    info: "Detects the emotional tone of responses (happy, calm, concerned, excited) and adjusts the voice to match. ElevenLabs voices change stability and style parameters; iOS voices adjust rate and pitch. Makes the assistant sound more natural and empathetic."
+                )
             } header: {
                 Text("Text-to-Speech")
             } footer: {
                 if elevenLabsKeyInput.isEmpty {
-                    Text("Add an ElevenLabs API key for natural-sounding voices. Without one, the built-in iOS voice is used. Expressive Voice adjusts tone to match content.")
-                } else {
-                    Text("Expressive Voice adjusts tone to match content — warmer for good news, calmer for instructions.")
+                    Text("Add an ElevenLabs API key for natural-sounding voices. Without one, the built-in iOS voice is used.")
                 }
+            }
+
+            // MARK: iOS Voice (fallback)
+            Section {
+                Picker("iOS Voice", selection: $iosVoiceId) {
+                    Text("Auto (best available)").tag("")
+                    ForEach(iosVoices, id: \.identifier) { voice in
+                        Text("\(voice.name) — \(qualityLabel(voice.quality))")
+                            .tag(voice.identifier)
+                    }
+                }
+                .onChange(of: iosVoiceId) { _, newValue in
+                    Config.setIosTTSVoiceId(newValue)
+                }
+            } header: {
+                Text("iOS Voice")
+            } footer: {
+                Text("Used when ElevenLabs is unavailable or quota is exhausted. Download more voices in iOS Settings → Accessibility → Spoken Content → Voices.")
             }
 
             // MARK: Web Search
@@ -84,6 +118,18 @@ struct ServicesSettingsView: View {
                 SecureField("API Key", text: $perplexityKeyInput)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+
+                if perplexityKeyInput.isEmpty {
+                    Link(destination: URL(string: "https://www.perplexity.ai/settings/api")!) {
+                        HStack {
+                            Label("Get API Key", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            Text("perplexity.ai")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             } header: {
                 Text("Web Search")
             } footer: {
@@ -94,13 +140,91 @@ struct ServicesSettingsView: View {
                 }
             }
 
+            // MARK: Camera Quality
+            Section {
+                Picker("Resolution", selection: $cameraResolution) {
+                    Text("360p (Low)").tag("low")
+                    Text("504p (Medium)").tag("medium")
+                    Text("720p (High)").tag("high")
+                }
+                .onChange(of: cameraResolution) { _, value in
+                    Config.setCameraResolution(value)
+                }
+
+                Picker("Frame Rate", selection: $cameraFrameRate) {
+                    Text("2 FPS (Battery Saver)").tag(2)
+                    Text("7 FPS").tag(7)
+                    Text("15 FPS (Default)").tag(15)
+                    Text("24 FPS").tag(24)
+                    Text("30 FPS (Max)").tag(30)
+                }
+                .onChange(of: cameraFrameRate) { _, value in
+                    Config.setCameraFrameRate(value)
+                }
+            } header: {
+                Text("Camera")
+            } footer: {
+                Text("Changes take effect next time the camera session starts. Higher settings use more battery.")
+            }
+
+            // MARK: Recording & Transcripts
+            Section {
+                if let folderURL = Config.transcriptFolderURL {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(.secondary)
+                        Text(folderURL.lastPathComponent)
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Change") {
+                            showFolderPicker = true
+                        }
+                        .font(.caption)
+                    }
+                    Button("Reset to Default", role: .destructive) {
+                        Config.clearTranscriptFolder()
+                    }
+                } else {
+                    Button {
+                        showFolderPicker = true
+                    } label: {
+                        HStack {
+                            Text("Transcript Save Location")
+                            Spacer()
+                            Text("Documents/Transcripts")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Recording & Transcripts")
+            } footer: {
+                Text("Choose where transcripts are saved. Videos always save to the Glasses album in Photos. Transcripts are also accessible via the Files app.")
+            }
+            .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
+                if case .success(let url) = result {
+                    Config.setTranscriptFolderURL(url)
+                }
+            }
+
             // MARK: Streaming
             Section {
                 Picker("Platform", selection: $broadcastPlatform) {
                     Text("YouTube").tag("youtube")
                     Text("Twitch").tag("twitch")
                     Text("Kick").tag("kick")
+                    Text("TikTok").tag("tiktok")
                     Text("Custom RTMP").tag("custom")
+                }
+                .onChange(of: broadcastPlatform) { _, platform in
+                    // Pre-fill RTMP ingest URL for known platforms
+                    switch platform {
+                    case "youtube": broadcastRTMPURL = "rtmp://a.rtmp.youtube.com/live2"
+                    case "twitch": broadcastRTMPURL = "rtmp://live.twitch.tv/app"
+                    case "kick": broadcastRTMPURL = "rtmps://fa723fc1b171.global-contribute.live-video.net/app"
+                    case "tiktok": broadcastRTMPURL = "rtmp://push.tiktokcdn.com/live"
+                    default: break
+                    }
                 }
 
                 TextField("RTMP URL", text: $broadcastRTMPURL)
@@ -118,56 +242,6 @@ struct ServicesSettingsView: View {
                 } else {
                     Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
                 }
-            }
-
-            // MARK: OpenClaw
-            Section {
-                Toggle("Enable OpenClaw", isOn: $openClawEnabled)
-
-                if openClawEnabled {
-                    SecureField("Gateway Token", text: $openClawGatewayToken)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    Picker("Connection", selection: $openClawConnectionMode) {
-                        ForEach(OpenClawConnectionMode.allCases, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-
-                    if openClawConnectionMode != .tunnel {
-                        TextField("LAN Host", text: $openClawLanHost)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-
-                        TextField("Port", text: $openClawPort)
-                            .keyboardType(.numberPad)
-                    }
-
-                    if openClawConnectionMode != .lan {
-                        TextField("Tunnel Host", text: $openClawTunnelHost)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
-
-                    Button("Test Connection") {
-                        testOpenClawConnection()
-                    }
-
-                    if !openClawTestStatus.isEmpty {
-                        HStack {
-                            Image(systemName: openClawTestStatus.contains("Connected") ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(openClawTestStatus.contains("Connected") ? .green : .red)
-                            Text(openClawTestStatus)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } header: {
-                Text("OpenClaw Gateway")
-            } footer: {
-                Text("OpenClaw runs on your Mac and gives the AI access to 56+ tools — messaging, web search, smart home control, and more.")
             }
 
             // MARK: Home Assistant
@@ -195,31 +269,11 @@ struct ServicesSettingsView: View {
         .navigationTitle("Services")
     }
 
-    private func testOpenClawConnection() {
-        openClawTestStatus = "Testing…"
-        Config.setOpenClawEnabled(openClawEnabled)
-        Config.setOpenClawConnectionMode(openClawConnectionMode)
-        Config.setOpenClawLanHost(openClawLanHost)
-        if let port = Int(openClawPort) {
-            Config.setOpenClawPort(port)
-        }
-        Config.setOpenClawTunnelHost(openClawTunnelHost)
-        Config.setOpenClawGatewayToken(openClawGatewayToken)
-
-        appState.openClawBridge.clearCachedEndpoint()
-        Task {
-            await appState.openClawBridge.checkConnection()
-            switch appState.openClawBridge.connectionState {
-            case .connected:
-                let via = appState.openClawBridge.resolvedConnection?.label ?? "unknown"
-                openClawTestStatus = "Connected via \(via)"
-            case .unreachable(let msg):
-                openClawTestStatus = "Unreachable: \(msg)"
-            case .notConfigured:
-                openClawTestStatus = "Not configured"
-            case .checking:
-                openClawTestStatus = "Checking…"
-            }
+    private func qualityLabel(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
+        switch quality {
+        case .premium:  return "Premium"
+        case .enhanced: return "Enhanced"
+        default:        return "Default"
         }
     }
 }

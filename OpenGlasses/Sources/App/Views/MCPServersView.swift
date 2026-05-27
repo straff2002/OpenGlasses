@@ -23,11 +23,12 @@ struct MCPServersView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(server.label)
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     Circle()
                                         .fill(server.enabled ? .green : .gray)
                                         .frame(width: 8, height: 8)
+                                        .accessibilityHidden(true)
                                 }
                                 Text(server.url)
                                     .font(.caption)
@@ -35,7 +36,7 @@ struct MCPServersView: View {
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Toggle("", isOn: Binding(
+                            Toggle("Enable \(server.label)", isOn: Binding(
                                 get: { server.enabled },
                                 set: { enabled in
                                     if let idx = servers.firstIndex(where: { $0.id == server.id }) {
@@ -46,6 +47,8 @@ struct MCPServersView: View {
                             ))
                             .labelsHidden()
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(server.label), \(server.enabled ? "enabled" : "disabled"). \(server.url)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 servers.removeAll { $0.id == server.id }

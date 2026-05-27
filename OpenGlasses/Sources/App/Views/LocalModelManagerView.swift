@@ -46,7 +46,7 @@ struct LocalModelManagerView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(modelDisplayName(modelId))
-                                        .foregroundStyle(Color(.label))
+                                        .foregroundStyle(.primary)
                                         .lineLimit(1)
                                     Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
                                         .font(.caption)
@@ -106,12 +106,17 @@ struct LocalModelManagerView: View {
                             } else if downloadingModelId == model.id {
                                 ProgressView(value: localService?.downloadProgress ?? 0)
                                     .frame(width: 60)
+                            } else if !model.isCompatibleWithDevice {
+                                Label("Needs 8 GB", systemImage: "memorychip")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
                             } else {
                                 Button("Download") {
                                     downloadModel(model.id)
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
+                                .tint(.primary)
                             }
                         }
 

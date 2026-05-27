@@ -137,6 +137,8 @@ class UserMemoryStore: ObservableObject {
 
     /// Push a memory to the gateway for cross-device recall (fire-and-forget).
     private func pushToGateway(key: String, value: String) {
+        // HIPAA: never sync memories to external gateway — PHI must stay on-device
+        guard !Config.hipaaMode else { return }
         guard let bridge = openClawBridge, bridge.connectionState == .connected else { return }
         let persona = activePersonaId
         Task {
@@ -148,6 +150,8 @@ class UserMemoryStore: ObservableObject {
 
     /// Pull relevant memories from the gateway. Call at connect time or before LLM queries.
     func syncFromGateway(query: String? = nil) async {
+        // HIPAA: no external memory access
+        guard !Config.hipaaMode else { return }
         guard let bridge = openClawBridge, bridge.connectionState == .connected else { return }
         let q = query ?? "user preferences facts context"
         let result = await bridge.queryMemory(query: q, limit: maxGatewayResults)

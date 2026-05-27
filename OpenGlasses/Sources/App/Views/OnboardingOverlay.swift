@@ -5,6 +5,7 @@ import SwiftUI
 struct OnboardingOverlay: View {
     @Binding var showSettings: Bool
     @Binding var isVisible: Bool
+    @Environment(\.appAccent) private var accent
 
     var body: some View {
         ZStack {
@@ -16,9 +17,8 @@ struct OnboardingOverlay: View {
 
                 // App icon / title
                 VStack(spacing: 12) {
-                    Image(systemName: "eyeglasses")
-                        .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(.cyan)
+                    LogoIcon(size: 56)
+                        .foregroundStyle(accent)
 
                     Text("Welcome to OpenGlasses")
                         .font(.title2.weight(.semibold))
@@ -29,7 +29,7 @@ struct OnboardingOverlay: View {
                 VStack(alignment: .leading, spacing: 20) {
                     stepRow(
                         number: 1,
-                        icon: "eyeglasses",
+                        icon: "OpenGlassesLogo",
                         title: "Connect Your Glasses",
                         subtitle: "Pair your Ray-Ban Meta glasses via the Meta AI app."
                     )
@@ -62,7 +62,7 @@ struct OnboardingOverlay: View {
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(.cyan, in: RoundedRectangle(cornerRadius: 14))
+                            .background(accent, in: RoundedRectangle(cornerRadius: 14))
                     }
 
                     Button {
@@ -86,11 +86,16 @@ struct OnboardingOverlay: View {
         HStack(alignment: .top, spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(.cyan.opacity(0.15))
+                    .fill(accent.opacity(0.15))
                     .frame(width: 44, height: 44)
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.cyan)
+                if icon == "OpenGlassesLogo" {
+                    LogoIcon(size: 22)
+                        .foregroundStyle(accent)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(accent)
+                }
             }
             .accessibilityHidden(true)
 

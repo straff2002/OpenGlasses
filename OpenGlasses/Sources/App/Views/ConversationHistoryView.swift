@@ -5,7 +5,21 @@ struct ConversationHistoryView: View {
 
     var body: some View {
         List {
-            if appState.conversationStore.threads.isEmpty {
+            if appState.conversationStore.isLocked {
+                ContentUnavailableView {
+                    Label("Conversations Locked", systemImage: "lock.fill")
+                } description: {
+                    Text("Authenticate to view your encrypted conversations.")
+                } actions: {
+                    Button {
+                        Task { await appState.conversationStore.unlock() }
+                    } label: {
+                        Label("Unlock", systemImage: "faceid")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppAccent.aiCoral)
+                }
+            } else if appState.conversationStore.threads.isEmpty {
                 ContentUnavailableView(
                     "No Conversations Yet",
                     systemImage: "bubble.left.and.bubble.right",
@@ -40,45 +54,62 @@ struct ConversationHistoryView: View {
 private struct ThreadRow: View {
     let thread: ConversationThread
 
+    private var displaySummary: String? {
+        // Use stored summary, or generate one on-the-fly for older threads that don't have one yet
+        if let summary = thread.summary, !summary.isEmpty {
+            return summary
+        }
+        return ConversationStore.generateSummary(from: thread.messages)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            // Title row
+            HStack(alignment: .top) {
                 Text(thread.title)
-                    .font(.body)
-                    .lineLimit(1)
+                    .font(.headline)
+                    .lineLimit(2)
                 Spacer()
                 Text(thread.updatedAt, style: .relative)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 8) {
-                Label("\(thread.messages.count)", systemImage: "bubble.left")
-                    .font(.caption)
+            // Summary — the main content of the card
+            if let summary = displaySummary {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            // Metadata pills
+            HStack(spacing: 6) {
+                let turnCount = thread.messages.filter { $0.role == "user" }.count
+                Label("\(turnCount) turn\(turnCount == 1 ? "" : "s")", systemImage: "bubble.left.and.bubble.right")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
 
                 if thread.messages.contains(where: { $0.imageAttached }) {
-                    Image(systemName: "camera.fill")
+                    Label("Photos", systemImage: "camera.fill")
                         .font(.caption2)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer()
 
                 Text(thread.mode.capitalized)
                     .font(.caption2)
+                    .foregroundStyle(AppAccent.aiCoral)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.quaternary)
+                    .background(AppAccent.aiCoral.opacity(0.12))
                     .clipShape(Capsule())
             }
-
-            if let lastMessage = thread.messages.last {
-                Text(lastMessage.content)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(thread.title). \(displaySummary ?? ""). \(thread.messages.filter { $0.role == "user" }.count) turns. \(thread.mode) mode")
     }
 }
 
@@ -86,6 +117,8 @@ private struct ThreadRow: View {
 
 struct ConversationDetailView: View {
     let thread: ConversationThread
+    @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -100,11 +133,32 @@ struct ConversationDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: threadAsText) {
-                    Image(systemName: "square.and.arrow.up")
+                HStack(spacing: 12) {
+                    Button {
+                        resumeConversation()
+                    } label: {
+                        Label("Resume", systemImage: "arrow.uturn.backward.circle")
+                    }
+
+                    ShareLink(item: threadAsText) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
             }
         }
+    }
+
+    /// Resume this conversation — reload its full history into LLMService and set it as active.
+    private func resumeConversation() {
+        // Set this thread as the active thread in ConversationStore
+        _ = appState.conversationStore.resumeThread(thread.id)
+
+        // Replay all messages into LLMService's conversation history
+        let messages = appState.conversationStore.replayMessages(for: thread.id)
+        appState.llmService.loadConversationHistory(messages)
+
+        NSLog("[History] Resumed conversation: %@ (%d messages)", thread.title, messages.count)
+        dismiss()
     }
 
     private var threadAsText: String {
@@ -131,13 +185,13 @@ private struct MessageBubble: View {
                 if message.imageAttached {
                     Label("Photo attached", systemImage: "camera.fill")
                         .font(.caption2)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color(.label))
                 }
 
                 Text(message.content)
                     .font(.body)
                     .padding(12)
-                    .background(message.role == "user" ? Color.blue.opacity(0.15) : Color(.systemGray6))
+                    .background(message.role == "user" ? Color.blue.opacity(0.15) : Color(.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 Text(message.timestamp, style: .time)
@@ -147,5 +201,7 @@ private struct MessageBubble: View {
 
             if message.role != "user" { Spacer(minLength: 60) }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(message.role == "user" ? "You" : "AI"): \(message.content)\(message.imageAttached ? ". Photo attached" : "")")
     }
 }

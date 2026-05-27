@@ -1,104 +1,65 @@
 import SwiftUI
 
-/// Primary interaction view.
-/// Full-screen dark canvas with layered components:
-///   1. ConnectionBanner (top)
-///   2. StatusIndicator (center, ambient)
-///   3. TranscriptOverlay (floating cards above controls)
-///   4. BottomControlBar (bottom edge)
+/// Root tab view — Voice / Modes / History / Settings.
+///
+/// Replaces the previous single-screen modal design with a proper
+/// tab bar matching the OpenVision-style navigation.
 struct MainView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showSettings = false
-    @State private var showModelPicker = false
-    @State private var showPreview = false
-    @State private var showPersonaPicker = false
+    @State private var selectedTab = 0
     @State private var showOnboarding = Config.needsOnboarding
+    @AppStorage("appAppearance") private var appearance: String = "dark"
+    @AppStorage("accentColorName") private var accentColorName: String = "green"
+
+    private var colorScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
+    private var accent: Color {
+        AppAccent.color(for: accentColorName)
+    }
 
     var body: some View {
-        let session = appState.geminiLiveSession
-        let openAISession = appState.openAIRealtimeSession
-
         ZStack {
-            Color.black.ignoresSafeArea()
+            TabView(selection: $selectedTab) {
+                Tab("Voice", systemImage: "waveform", value: 0) {
+                    VoiceTab()
+                }
 
-            VStack(spacing: 0) {
-                // Recording indicator at top
-                if appState.videoRecorder.isRecording {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(.red)
-                            .frame(width: 8, height: 8)
-                        Text("REC \(appState.videoRecorder.formattedDuration)")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.white)
+                Tab("Modes", systemImage: "person.2.fill", value: 1) {
+                    NavigationStack {
+                        PersonaPickerTab(appState: appState)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(.red.opacity(0.3)))
-                    .padding(.top, 8)
                 }
 
-                ConnectionBanner(
-                    session: session,
-                    openAISession: openAISession,
-                    openClawBridge: appState.openClawBridge
-                )
-                .padding(.top, 4)
-
-                Spacer()
-
-                StatusIndicator(session: session, openAISession: openAISession)
-
-                Spacer()
-
-                // Ambient captions (shown on phone screen when active)
-                if appState.ambientCaptions.isActive {
-                    AmbientCaptionOverlay(captionService: appState.ambientCaptions)
-                        .padding(.bottom, 8)
+                Tab("History", systemImage: "clock.arrow.circlepath", value: 2) {
+                    NavigationStack {
+                        ConversationHistoryView()
+                    }
                 }
 
-                TranscriptOverlay(session: session, openAISession: openAISession)
-                    .padding(.bottom, 8)
-
-                BottomControlBar(
-                    session: session,
-                    openAISession: openAISession,
-                    showSettings: $showSettings,
-                    showModelPicker: $showModelPicker,
-                    showPreview: $showPreview,
-                    showPersonaPicker: $showPersonaPicker
-                )
+                Tab("Settings", systemImage: "gearshape.fill", value: 3) {
+                    NavigationStack {
+                        SettingsView(appState: appState)
+                    }
+                }
             }
+            .tabViewStyle(.tabBarOnly)
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tint(accent)
 
             if showOnboarding {
-                OnboardingOverlay(showSettings: $showSettings, isVisible: $showOnboarding)
+                OnboardingView(isVisible: $showOnboarding)
                     .transition(.opacity)
                     .zIndex(1)
             }
         }
+        .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
-        .preferredColorScheme(.dark)
-        .sheet(isPresented: $showSettings) {
-            SettingsView(appState: appState)
-                .preferredColorScheme(.light)
-        }
-        .onChange(of: showSettings) { _, isShowing in
-            if !isShowing {
-                showOnboarding = Config.needsOnboarding
-            }
-        }
-        .sheet(isPresented: $showModelPicker) {
-            ModelPickerSheet(appState: appState)
-        }
-        .sheet(isPresented: $showPersonaPicker) {
-            PersonaPickerSheet(appState: appState)
-        }
-        .fullScreenCover(isPresented: $showPreview) {
-            LivePreviewView()
-                .environmentObject(appState)
-        }
-        .sheet(item: $appState.pendingShareItem) { item in
-            ShareSheet(items: item.items)
-        }
+        .preferredColorScheme(colorScheme)
     }
 }
