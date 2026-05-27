@@ -1601,7 +1601,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenGlasses/OpenGlasses.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
@@ -1625,7 +1625,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = OpenGlassesWatchWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1670,7 +1670,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenGlasses/OpenGlasses.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlasses/Info.plist;
@@ -1695,7 +1695,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenGlassesWatch/OpenGlassesWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlassesWatch/Info.plist;
@@ -1735,7 +1735,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenGlassesWatch/OpenGlassesWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenGlassesWatch/Info.plist;
@@ -1817,7 +1817,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = GlassesActivityWidget/GlassesActivityWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1839,7 +1839,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = OpenGlassesWatchWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1861,7 +1861,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = GlassesActivityWidget/GlassesActivityWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = B9L8ANZQZX;
 				INFOPLIST_FILE = GlassesActivityWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

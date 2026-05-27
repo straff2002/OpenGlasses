@@ -82,7 +82,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2.2.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "11"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -130,7 +130,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2.2.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "11"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -147,7 +147,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
         MARKETING_VERSION: "2.2.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "11"
         SWIFT_VERSION: "5.9"
         DEVELOPMENT_TEAM: B9L8ANZQZX
         CODE_SIGN_STYLE: Automatic
@@ -178,7 +178,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
         MARKETING_VERSION: "2.2.0"
-        CURRENT_PROJECT_VERSION: "9"
+        CURRENT_PROJECT_VERSION: "11"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: B9L8ANZQZX
