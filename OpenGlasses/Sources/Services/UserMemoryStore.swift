@@ -203,51 +203,64 @@ class UserMemoryStore: ObservableObject {
     func parseAndExecuteCommands(in response: String) -> String {
         var cleaned = response
 
-        // Parse [REMEMBER_GLOBAL: key = value] commands (always global)
-        let globalPattern = #"\[REMEMBER_GLOBAL:\s*(.+?)\s*=\s*(.+?)\]"#
-        if let regex = try? NSRegularExpression(pattern: globalPattern, options: []) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
-            for match in matches.reversed() {
-                if let keyRange = Range(match.range(at: 1), in: response),
-                   let valueRange = Range(match.range(at: 2), in: response) {
-                    rememberGlobal(String(response[keyRange]), value: String(response[valueRange]))
-                }
-                if let fullRange = Range(match.range, in: cleaned) {
-                    cleaned.removeSubrange(fullRange)
-                }
-            }
-        }
-
-        // Parse [REMEMBER: key = value] commands (current namespace)
-        let rememberPattern = #"\[REMEMBER:\s*(.+?)\s*=\s*(.+?)\]"#
-        if let regex = try? NSRegularExpression(pattern: rememberPattern, options: []) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
-            for match in matches.reversed() {
-                if let keyRange = Range(match.range(at: 1), in: response),
-                   let valueRange = Range(match.range(at: 2), in: response) {
-                    remember(String(response[keyRange]), value: String(response[valueRange]))
-                }
-                if let fullRange = Range(match.range, in: cleaned) {
-                    cleaned.removeSubrange(fullRange)
-                }
-            }
-        }
-
-        // Parse [FORGET: key] commands
-        let forgetPattern = #"\[FORGET:\s*(.+?)\]"#
-        if let regex = try? NSRegularExpression(pattern: forgetPattern, options: []) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
-            for match in matches.reversed() {
-                if let keyRange = Range(match.range(at: 1), in: response) {
-                    forget(String(response[keyRange]))
-                }
-                if let fullRange = Range(match.range, in: cleaned) {
-                    cleaned.removeSubrange(fullRange)
-                }
-            }
-        }
+        // Each phase re-scans `cleaned` so removals from earlier phases don't
+        // invalidate ranges captured against the original input.
+        cleaned = applyKeyValueCommands(
+            in: cleaned,
+            pattern: #"\[REMEMBER_GLOBAL:\s*(.+?)\s*=\s*(.+?)\]"#,
+            sideEffect: rememberGlobal
+        )
+        cleaned = applyKeyValueCommands(
+            in: cleaned,
+            pattern: #"\[REMEMBER:\s*(.+?)\s*=\s*(.+?)\]"#,
+            sideEffect: remember
+        )
+        cleaned = applyKeyCommands(
+            in: cleaned,
+            pattern: #"\[FORGET:\s*(.+?)\]"#,
+            sideEffect: forget
+        )
 
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func applyKeyValueCommands(
+        in text: String,
+        pattern: String,
+        sideEffect: (String, String) -> Void
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return text }
+        var result = text
+        let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches.reversed() {
+            if let keyRange = Range(match.range(at: 1), in: text),
+               let valueRange = Range(match.range(at: 2), in: text) {
+                sideEffect(String(text[keyRange]), String(text[valueRange]))
+            }
+            if let fullRange = Range(match.range, in: result) {
+                result.removeSubrange(fullRange)
+            }
+        }
+        return result
+    }
+
+    private func applyKeyCommands(
+        in text: String,
+        pattern: String,
+        sideEffect: (String) -> Void
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return text }
+        var result = text
+        let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches.reversed() {
+            if let keyRange = Range(match.range(at: 1), in: text) {
+                sideEffect(String(text[keyRange]))
+            }
+            if let fullRange = Range(match.range, in: result) {
+                result.removeSubrange(fullRange)
+            }
+        }
+        return result
     }
 
     // MARK: - Persistence
