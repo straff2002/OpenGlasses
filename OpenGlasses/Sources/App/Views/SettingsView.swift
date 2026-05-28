@@ -473,7 +473,7 @@ struct SettingsView: View {
                 }
 
                 Button {
-                    let webURL = URL(string: "https://discord.gg/f44q7XWH")!
+                    let webURL = URL(string: "https://discord.gg/8W2qaXJzz9")!
                     UIApplication.shared.open(webURL)
                 } label: {
                     HStack {
