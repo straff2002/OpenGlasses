@@ -261,6 +261,7 @@ class LLMService: ObservableObject {
             - qr_context: Scan a QR code and load its content as context (museum exhibits, venue info, procedures). Use at museums, venues, or workplaces. Can also load context from a URL directly.
             - golf_mode: Golf caddy assistant — track shots with GPS, get club recommendations, log scores, view round summary, and get course strategy. Actions: start_round, track_shot, club_recommendation, log_score, round_summary, strategy.
             - live_translate: Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: start, stop, status, set_language.
+            - field_session: Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support (refrigeration, IT, electrical, automotive). Sessions load a domain knowledge vault and emit an audit log. Use 'start' when the technician begins work, 'end' when they finish. Actions: start, pause, resume, end, status, list, escalate. Params: vault (e.g. 'refrigeration'), asset_id, mode ('ai_only' default), outcome, reason.
             """
 
                 // Inject user-defined custom tool descriptions
@@ -374,6 +375,11 @@ class LLMService: ObservableObject {
         // Inject voice-taught skills
         if shouldInclude(.tools), let skills = VoiceSkillStore.shared.promptContext() {
             prompt += "\n\n\(skills)"
+        }
+        // Inject Field Assist vault content when a session is active.
+        // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
+        if let vaultContext = FieldSessionService.shared.promptContext() {
+            prompt += "\n\n\(vaultContext)"
         }
         // Inject social context (people the user knows)
         if shouldInclude(.social), let social = SocialContextStore.shared.promptContext() {

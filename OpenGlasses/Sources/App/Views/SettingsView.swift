@@ -248,6 +248,18 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    FieldAssistSettingsView()
+                } label: {
+                    HStack {
+                        Label("Field Assist", systemImage: "wrench.adjustable")
+                        Spacer()
+                        if Config.fieldAssistEnabled {
+                            Text("On").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                NavigationLink {
                     CustomToolsView()
                         .environmentObject(appState)
                 } label: {

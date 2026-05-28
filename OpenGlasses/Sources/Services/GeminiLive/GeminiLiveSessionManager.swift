@@ -518,6 +518,12 @@ class GeminiLiveSessionManager: ObservableObject {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
 
+        // Inject Field Assist vault content when a session is active.
+        // Grounds Gemini in domain knowledge (refrigeration, IT, health) with source attribution.
+        if let vaultContext = FieldSessionService.shared.promptContext() {
+            prompt += "\n\n\(vaultContext)"
+        }
+
         return prompt
     }
 

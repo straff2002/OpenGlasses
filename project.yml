@@ -72,12 +72,22 @@ targets:
     platform: iOS
     sources:
       - path: OpenGlasses/Sources
+        excludes:
+          - "Resources/Vaults/**"
+      - path: OpenGlasses/Sources/Resources/Vaults
+        type: folder
+      # Shared with widget/watch targets — defines LogoIcon + AccentColors
+      - path: GlassesActivityWidget/AccentColors.swift
+      # Shared with widget target — UserDefaults-backed listening state
+      - path: GlassesActivityWidget/SharedAppState.swift
     entitlements:
       path: OpenGlasses/OpenGlasses.entitlements
       properties:
         com.apple.developer.homekit: true
         com.apple.developer.carplay-voice-based-conversation: true
         com.apple.developer.kernel.increased-memory-limit: true
+        com.apple.security.application-groups:
+          - group.com.openglasses.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
@@ -118,6 +128,11 @@ targets:
     sources:
       - path: GlassesActivityWidget
       - path: OpenGlasses/Sources/Models/GlassesActivityAttributes.swift
+    entitlements:
+      path: GlassesActivityWidget/GlassesActivityWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openglasses.app
     info:
       path: GlassesActivityWidget/Info.plist
       properties:
@@ -141,6 +156,8 @@ targets:
     platform: watchOS
     sources:
       - path: OpenGlassesWatch
+      # Shared with iOS app — defines LogoIcon + AccentColors
+      - path: GlassesActivityWidget/AccentColors.swift
     entitlements:
       path: OpenGlassesWatch/OpenGlassesWatch.entitlements
     settings:
@@ -164,6 +181,8 @@ targets:
     platform: watchOS
     sources:
       - path: OpenGlassesWatchWidget
+      # Shared with iOS app — defines LogoIcon + AccentColors
+      - path: GlassesActivityWidget/AccentColors.swift
     entitlements:
       path: OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements
     info:

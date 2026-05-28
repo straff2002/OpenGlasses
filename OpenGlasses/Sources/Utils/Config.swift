@@ -2216,6 +2216,47 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "agentModeEnabled")
     }
 
+    // MARK: - Field Assist (B2B)
+
+    /// Master toggle for the Field Assist feature. When off, no vaults are loaded
+    /// and the FieldSessionTool is not registered.
+    static var fieldAssistEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "fieldAssistEnabled")
+    }
+
+    static func setFieldAssistEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "fieldAssistEnabled")
+    }
+
+    /// Developer override that unlocks Field Assist vaults without a paid IAP. Used during
+    /// internal development and demos before per-pack IAP products go live in App Store Connect.
+    static var fieldAssistDeveloperUnlocked: Bool {
+        UserDefaults.standard.bool(forKey: "fieldAssistDeveloperUnlocked")
+    }
+
+    static func setFieldAssistDeveloperUnlocked(_ unlocked: Bool) {
+        UserDefaults.standard.set(unlocked, forKey: "fieldAssistDeveloperUnlocked")
+    }
+
+    /// Preferred vault for new Field Assist sessions (defaults to refrigeration).
+    static var fieldAssistDefaultVaultId: String {
+        UserDefaults.standard.string(forKey: "fieldAssistDefaultVaultId") ?? "refrigeration"
+    }
+
+    static func setFieldAssistDefaultVaultId(_ id: String) {
+        UserDefaults.standard.set(id, forKey: "fieldAssistDefaultVaultId")
+    }
+
+    /// Default session mode for Field Assist ("ai_only" or "human_assisted").
+    /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
+    static var fieldAssistDefaultMode: String {
+        UserDefaults.standard.string(forKey: "fieldAssistDefaultMode") ?? "ai_only"
+    }
+
+    static func setFieldAssistDefaultMode(_ mode: String) {
+        UserDefaults.standard.set(mode, forKey: "fieldAssistDefaultMode")
+    }
+
     // MARK: - Agent Check Intervals
 
     /// How often the agent checks for tasks when glasses are connected (minutes).

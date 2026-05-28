@@ -119,6 +119,12 @@ final class NativeToolRegistry {
         register(AgentScheduleTool())
         register(AgentDocumentTool())
         register(PlaybookTool())
+
+        // Field Assist (B2B) — only registered when the feature is enabled.
+        // Tool checks Config.fieldAssistEnabled at execute time too, so users see a clear message.
+        if Config.fieldAssistEnabled {
+            register(FieldSessionTool())
+        }
         // Always registered — tool checks agentModeEnabled at execution time
         register(YieldToHumanTool())
         var discoveryTool = DiscoverCapabilitiesTool()
