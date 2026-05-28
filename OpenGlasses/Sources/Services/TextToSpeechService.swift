@@ -68,8 +68,35 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         print("🔊 ElevenLabs: Quota cache reset")
     }
 
-    func speak(_ text: String) async {
+    /// Speaks `text` with a verbal urgency: higher urgency speeds up the iOS voice and prepends a
+    /// spoken cue (e.g. "Important: "). Universal — any caller can opt in; defaults to neutral.
+    /// Mapping adapted from the neurobridge project.
+    enum SpeechUrgency {
+        case low, medium, high
+
+        var rateMultiplier: Float {
+            switch self {
+            case .low: return 1.0
+            case .medium: return 1.15
+            case .high: return 1.3
+            }
+        }
+
+        var prefix: String {
+            switch self {
+            case .low, .medium: return ""
+            case .high: return "Important: "
+            }
+        }
+    }
+
+    /// Multiplier applied to the iOS speech rate for the current utterance (driven by urgency).
+    private var activeRateMultiplier: Float = 1.0
+
+    func speak(_ text: String, urgency: SpeechUrgency = .low) async {
         guard !text.isEmpty else { return }
+        activeRateMultiplier = urgency.rateMultiplier
+        let text = urgency.prefix + text
 
         // Silence if glasses-only mode is on and glasses aren't connected
         if Config.glassesOnlyAudio && !glassesConnected {
@@ -479,7 +506,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         utterance.voice = voice
         print("🔊 iOS TTS: Using voice \(voice?.name ?? "system default") (\(voice?.identifier ?? "nil"), quality=\(voice?.quality.rawValue ?? -1))")
 
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        let scaledRate = AVSpeechUtteranceDefaultSpeechRate * activeRateMultiplier
+        utterance.rate = min(max(scaledRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
 

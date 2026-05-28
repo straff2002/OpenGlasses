@@ -696,10 +696,10 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         // Start proactive calendar alerts — speaks through TTS when events are imminent
-        proactiveAlerts.onAlert = { [weak self] message in
+        proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
             Task {
-                await self.speechService.speak(message)
+                await self.speechService.speak(message, urgency: urgency)
             }
         }
         proactiveAlerts.onMeetingPlaybook = { [weak self] title, notes, steps in
@@ -715,15 +715,22 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         proactiveAlerts.start()
 
+        // Configure Live Coach (Plan C) with this AppState's services so the live_coach tool can run.
+        LiveCoachService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
+
+        // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
+        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
+        MCPGlassesServer.shared.startIfEnabled()
+
         // Pre-fetch Home Assistant entity cache for fuzzy matching
         Task { await HomeAssistantEntityCache.shared.refreshIfNeeded() }
 
         // Wire geofence alerts — speak via TTS when entering/leaving a region
         if let geofenceTool = nativeToolRegistry.tool(named: "geofence") as? GeofenceTool {
-            geofenceTool.onAlert = { [weak self] message in
+            geofenceTool.onAlert = { [weak self] message, urgency in
                 guard let self else { return }
                 Task {
-                    await self.speechService.speak(message)
+                    await self.speechService.speak(message, urgency: urgency)
                 }
             }
             geofenceTool.restoreGeofences()
@@ -847,6 +854,12 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self = self else { return }
                 guard !self.inConversation && !self.isProcessing else {
                     print("⚠️ Wake word ignored - already in conversation")
+                    return
+                }
+                // Assistive Mode (A3) owns the camera + LLM loop while active — suppress the
+                // normal wake-word turn so the two pipelines don't contend.
+                guard !AssistiveModeService.shared.isActive else {
+                    print("🧭 Wake word ignored - Assistive Mode active")
                     return
                 }
                 // Route to the persona that owns this wake phrase
@@ -1382,6 +1395,17 @@ class AppState: ObservableObject, AppStateProtocol {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
         }
+    }
+
+    /// Toggle Assistive Mode (A3). Wires the shared service to this AppState's camera/LLM/TTS.
+    func toggleAssistiveMode() {
+        AssistiveModeService.shared.toggle(camera: cameraService, llm: llmService, tts: speechService)
+    }
+
+    /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.
+    func startMCPServer() {
+        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
+        MCPGlassesServer.shared.start()
     }
 
     /// Capture a photo from the glasses camera and present the share sheet.

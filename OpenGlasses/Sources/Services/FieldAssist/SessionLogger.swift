@@ -94,6 +94,24 @@ final class SessionLogger {
         append(Event(timestamp: Date(), kind: .assistantMessage, text: text, payload: payload))
     }
 
+    /// Read back all events from the append-only log, in write order.
+    /// Malformed lines are skipped — the log remains usable after a partial/truncated write.
+    /// Used for crash recovery (e.g. reconstructing an in-progress procedure).
+    func readEvents() -> [Event] {
+        queue.sync {
+            guard let raw = try? String(contentsOf: logURL, encoding: .utf8) else { return [] }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            var events: [Event] = []
+            for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let data = line.data(using: .utf8),
+                      let event = try? decoder.decode(Event.self, from: data) else { continue }
+                events.append(event)
+            }
+            return events
+        }
+    }
+
     // MARK: - Session metadata
 
     /// Write the current session metadata snapshot. Call after lifecycle changes.

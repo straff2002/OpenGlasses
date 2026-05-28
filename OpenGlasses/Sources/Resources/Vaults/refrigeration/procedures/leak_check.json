@@ -1,0 +1,97 @@
+{
+  "id": "leak_check",
+  "title": "Refrigerant Leak Check",
+  "version": "1.0.0",
+  "vault": "refrigeration",
+  "description": "Locate a refrigerant leak on a system suspected of undercharge, following EPA 608 handling requirements.",
+  "safety_notes": [
+    "Confirm proper PPE (refrigerant gloves, eye protection) before working on the circuit.",
+    "Apply LOTO to electrical sources before accessing components inside electrical panels.",
+    "Any refrigerant removed or recovered must be handled per EPA 608 — never vent refrigerant to atmosphere."
+  ],
+  "entry_step": "confirm_suspected_leak",
+  "steps": [
+    {
+      "id": "confirm_suspected_leak",
+      "title": "Confirm a leak is suspected",
+      "instruction": "Confirm why we suspect a leak — typically low charge indicators (low suction, high superheat, low subcool) or a documented refrigerant loss. Tell me the symptoms you're seeing.",
+      "expected_input": "the symptoms indicating possible refrigerant loss",
+      "citations": ["superheat_subcool.md"],
+      "branches": [
+        { "id": "confirmed", "condition": "Symptoms are consistent with low charge / refrigerant loss", "next": "visual_oil_inspection" },
+        { "id": "no_leak_signs", "condition": "No real signs of low charge — symptoms point elsewhere", "next": "no_leak_indicated" }
+      ],
+      "default_next": "visual_oil_inspection"
+    },
+    {
+      "id": "no_leak_indicated",
+      "title": "Leak not indicated",
+      "instruction": "The symptoms don't point to refrigerant loss. A leak check isn't the right path — return to the main diagnostic to investigate airflow, controls, or sensors instead.",
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "visual_oil_inspection",
+      "title": "Visual and oil-trace inspection",
+      "instruction": "Inspect the common leak points — service valves, schrader cores, brazed joints, coil U-bends, and flare fittings. Refrigerant oil often weeps at a leak and leaves an oily residue. Did you find any oily residue or obvious damage?",
+      "expected_input": "any oily residue, damage, or suspect joints found",
+      "branches": [
+        { "id": "found_visible", "condition": "Found an oily/visible suspect leak point", "next": "confirm_with_detector" },
+        { "id": "nothing_visible", "condition": "Nothing obvious found visually", "next": "electronic_detector_sweep" }
+      ],
+      "default_next": "electronic_detector_sweep"
+    },
+    {
+      "id": "electronic_detector_sweep",
+      "title": "Electronic leak detector sweep",
+      "instruction": "Using a calibrated electronic leak detector, sweep slowly (about 1 inch/second) along the low side first, then the high side, keeping the probe below the lines since most refrigerants are heavier than air. Did the detector alarm at a specific location?",
+      "expected_input": "whether the detector alarmed and where",
+      "branches": [
+        { "id": "detector_hit", "condition": "Detector alarmed at a specific location", "next": "confirm_with_detector" },
+        { "id": "no_hit", "condition": "No detector hit anywhere on the system", "next": "nitrogen_pressure_test" }
+      ],
+      "default_next": "confirm_with_detector"
+    },
+    {
+      "id": "confirm_with_detector",
+      "title": "Confirm the leak with bubbles",
+      "instruction": "Confirm the suspected location with bubble solution — a steady stream of bubbles confirms the leak. Mark the confirmed leak location. Is the leak confirmed?",
+      "expected_input": "whether bubbles confirm the leak",
+      "branches": [
+        { "id": "confirmed_leak", "condition": "Bubbles confirm an active leak", "next": "document_and_repair" },
+        { "id": "false_positive", "condition": "No bubbles — the earlier indication was a false positive", "next": "electronic_detector_sweep" }
+      ],
+      "default_next": "document_and_repair"
+    },
+    {
+      "id": "nitrogen_pressure_test",
+      "title": "Standing pressure test with dry nitrogen",
+      "instruction": "No leak found at operating pressure. Recover the refrigerant per EPA 608, then pressurize with dry nitrogen to the manufacturer's test pressure and hold a standing test. A pressure drop over the hold time confirms a leak; re-sweep with detector and bubbles to locate it.",
+      "expected_input": "whether pressure held or dropped",
+      "safety_note": "Recover refrigerant per EPA 608 before introducing nitrogen. Never exceed the rated test pressure, and use a regulator.",
+      "citations": ["epa_608.md", "safety.md"],
+      "branches": [
+        { "id": "pressure_dropped", "condition": "Pressure dropped — leak confirmed, now locate it", "next": "confirm_with_detector" },
+        { "id": "pressure_held", "condition": "Pressure held — no leak detected", "next": "no_leak_found" }
+      ],
+      "default_next": "confirm_with_detector"
+    },
+    {
+      "id": "document_and_repair",
+      "title": "Document and repair the leak",
+      "instruction": "Photograph the confirmed leak location for the record. Recover refrigerant per EPA 608, repair the joint/component, pressure-test the repair, evacuate, and recharge to nameplate. Log the repair as the leak resolution.",
+      "safety_note": "Recover refrigerant per EPA 608 before opening the circuit to make the repair.",
+      "citations": ["epa_608.md"],
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "no_leak_found",
+      "title": "No leak found",
+      "instruction": "Both operating-pressure and standing-nitrogen tests found no leak. The low charge may be from a prior service or a very slow leak below detection. Recommend documenting findings and escalating for extended monitoring or a longer standing test.",
+      "citations": ["epa_608.md"],
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

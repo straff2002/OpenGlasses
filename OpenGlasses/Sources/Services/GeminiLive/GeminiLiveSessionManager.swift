@@ -482,6 +482,16 @@ class GeminiLiveSessionManager: ObservableObject {
             - meeting_summary: Summarize a recent meeting from ambient captions with action items.
             - fitness_coach: Fitness coaching — start/stop workouts, log exercises, check form via camera, workout history from HealthKit.
             - openclaw_skills: Discover and manage OpenClaw skills. List available skills, check gateway status.
+            - field_session: Start/pause/resume/end/query a Field Assist session for grounded domain-specific technical support (refrigeration, etc.). Loads a knowledge vault and emits an audit log. Actions: start, pause, resume, end, status, list, escalate, export (work-order PDF + audit JSON).
+            - procedure_runner: Run a guided step-by-step procedure inside an active Field Assist session. Actions: list, start, next, previous, repeat, status, complete. Pass 'choice' to 'next' when the active step (shown under ACTIVE PROCEDURE in this prompt) offers branch choices.
+            - domain_calc: Refrigeration math grounded in vault PT charts — pt_lookup, superheat, subcool. Temps °F, pressures PSIG. Params: operation, refrigerant, and the relevant pressures/temps.
+            - equipment_lookup: Look up an error code/fault/model in the active session's vault — read aloud (query) or via on-device camera OCR (omit query or set use_camera). Returns the matching reference section with its source.
+            - reading_assist: Read text in front of the user via the glasses camera (on-device OCR). Modes: read, simplify (level 1-5), translate (target_language), define. Use for 'read this', 'simplify this', 'translate this sign', 'what does this word mean'.
+            - health_vault: Query/update the user's Personal Health Vault (biometrics, conditions, diet, labs, medications, wearables). 'query' grounds a health question in their own notes (cite the file); 'log' records a new entry. Never fabricate health data.
+            - aircraft_overhead: Report aircraft flying near the user using live ADS-B data + their location. Use for "what's flying overhead?". Param: radius_miles (default 25).
+            - live_coach: Real-time one-sentence coaching from the glasses camera. Actions: start (domain: sports_tactics/cooking_form/posture/guitar/climbing/custom), stop, status. Use for "coach my form", "watch my technique".
+            - photo_log: Capture a glasses-camera photo, attach it to the session audit log with a caption, and return it for analysis. Use to document gauge readings and evidence.
+            - escalate_to_expert: Escalate the active session to a human expert when you can't safely resolve it or the technician asks for a person. Actions: request (reason), status, resolve, cancel. Live video is Phase 5 — for now it's logged and the expert pool is notified.
             """
 
                 // Inject user-defined custom tool descriptions

@@ -17,7 +17,11 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'escalate' to flag the session for a human expert."
+                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
+            ],
+            "format": [
+                "type": "string",
+                "description": "On 'export': 'pdf', 'json', or 'both' (default). 'pdf' is the customer-facing work order; 'json' is the structured audit record."
             ],
             "vault": [
                 "type": "string",
@@ -65,8 +69,10 @@ final class FieldSessionTool: NativeTool {
             return await historySummary(service: service)
         case "escalate":
             return await escalate(args: args, service: service)
+        case "export":
+            return await exportSession(args: args, service: service)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'pause', 'resume', 'end', 'status', 'list', or 'escalate'."
+            return "Unknown action '\(action)'. Use 'start', 'pause', 'resume', 'end', 'status', 'list', 'escalate', or 'export'."
         }
     }
 
@@ -152,8 +158,26 @@ final class FieldSessionTool: NativeTool {
             return "No active session to escalate."
         }
         let reason = (args["reason"] as? String) ?? "Technician requested human expert."
-        service.recordEscalation(reason: reason)
-        // Human-assisted bridge is Phase 5; for now we record + acknowledge.
-        return "Escalation logged. A human expert will be paged. Reason: \(reason)"
+        // Route through the EscalationCoordinator so the state machine + audit logging stay in one
+        // place. The live expert bridge is Phase 5; for now this records + notifies (stub).
+        _ = await EscalationCoordinator.shared.requestExpert(reason: reason)
+        return "Escalation logged. The expert pool has been notified. Reason: \(reason)"
+    }
+
+    private func exportSession(args: [String: Any], service: FieldSessionService) async -> String {
+        let formats: Set<SessionExporter.Format>
+        switch (args["format"] as? String)?.lowercased() {
+        case "pdf": formats = [.pdf]
+        case "json": formats = [.json]
+        default: formats = [.json, .pdf]
+        }
+        do {
+            let urls = try service.exportSession(formats: formats)
+            if urls.isEmpty { return "Nothing to export — no session found." }
+            let names = urls.map { $0.lastPathComponent }.joined(separator: ", ")
+            return "Exported session record: \(names). Saved in the session folder for warranty/EPA/work-order use."
+        } catch {
+            return "Could not export: \(error.localizedDescription)"
+        }
     }
 }

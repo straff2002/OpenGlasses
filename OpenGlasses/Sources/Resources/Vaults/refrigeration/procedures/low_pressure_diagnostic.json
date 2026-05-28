@@ -1,0 +1,117 @@
+{
+  "id": "low_pressure_diagnostic",
+  "title": "Low-Pressure Fault Diagnostic",
+  "version": "1.0.0",
+  "vault": "refrigeration",
+  "description": "Diagnose a low suction-pressure fault or low-pressure cutout (e.g. Carrier T02, Trane A101, Daikin E4, Lennox E200) on a split or packaged system.",
+  "safety_notes": [
+    "Confirm proper PPE (refrigerant gloves, eye protection) before opening any panel.",
+    "Apply LOTO to all electrical sources before touching wiring or electrical components.",
+    "If the refrigerant circuit must be opened, recover refrigerant first per EPA 608."
+  ],
+  "entry_step": "verify_cooling_call",
+  "steps": [
+    {
+      "id": "verify_cooling_call",
+      "title": "Verify the unit is calling for cooling",
+      "instruction": "Look at the thermostat or controller. Tell me the setpoint and the current space temperature, and whether the unit is actually calling for cooling.",
+      "expected_input": "setpoint, current temperature, and whether cooling is being called",
+      "citations": ["manufacturers.md"],
+      "branches": [
+        { "id": "calling", "condition": "Unit IS calling for cooling (setpoint is below current space temp)", "next": "measure_suction_pressure" },
+        { "id": "not_calling", "condition": "Unit is NOT calling for cooling (satisfied or fan-only)", "next": "resolve_no_demand" }
+      ],
+      "default_next": "measure_suction_pressure"
+    },
+    {
+      "id": "resolve_no_demand",
+      "title": "No active cooling demand",
+      "instruction": "The unit isn't calling for cooling, so a low suction reading is expected. Lower the setpoint below the space temperature, let it run 10 minutes to stabilize, then re-run this diagnostic.",
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "measure_suction_pressure",
+      "title": "Measure suction-side pressure",
+      "instruction": "With the unit running and stabilized for 10+ minutes, connect the manifold low-side hose to the suction service port. Read the suction pressure in PSIG and confirm the refrigerant type from the nameplate.",
+      "expected_input": "suction pressure in PSIG and the refrigerant type",
+      "safety_note": "Confirm PPE before connecting to the service port.",
+      "calc_ref": { "tool": "domain_calc", "op": "pt_lookup", "hint": "Convert the suction PSIG to a saturation temperature for the stated refrigerant to judge whether it is genuinely low." },
+      "citations": ["pt_charts.md"],
+      "branches": [
+        { "id": "low", "condition": "Suction pressure is clearly below the normal range for the refrigerant and ambient", "next": "check_evaporator_airflow" },
+        { "id": "normal", "condition": "Suction pressure is within the normal range (the low-pressure fault may be intermittent or sensor-related)", "next": "check_lp_sensor" }
+      ],
+      "default_next": "check_evaporator_airflow"
+    },
+    {
+      "id": "check_evaporator_airflow",
+      "title": "Check evaporator airflow",
+      "instruction": "Low suction pressure is very often an airflow problem. Check the air filter, evaporator coil cleanliness, and blower operation. Is airflow across the evaporator restricted?",
+      "expected_input": "state of filter, coil, and blower",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "restricted", "condition": "Airflow IS restricted (dirty filter/coil, blower not running correctly)", "next": "resolve_airflow" },
+        { "id": "airflow_ok", "condition": "Airflow is adequate (clean filter and coil, blower running normally)", "next": "measure_superheat" }
+      ],
+      "default_next": "measure_superheat"
+    },
+    {
+      "id": "resolve_airflow",
+      "title": "Restore evaporator airflow",
+      "instruction": "Restore airflow: replace the filter, clean the evaporator coil, and confirm the blower runs at the correct speed. Re-stabilize for 10 minutes and recheck suction pressure. If it returns to normal, the low-pressure fault is resolved.",
+      "citations": ["error_codes.md"],
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "measure_superheat",
+      "title": "Measure superheat",
+      "instruction": "Clamp a calibrated thermometer on the suction line 6 inches from the compressor. Read the suction line temperature, then use the suction pressure to get superheat. Tell me the superheat value.",
+      "expected_input": "suction line temperature (and resulting superheat)",
+      "calc_ref": { "tool": "domain_calc", "op": "superheat", "hint": "superheat = suction line temp − saturation temp at suction pressure." },
+      "citations": ["superheat_subcool.md", "pt_charts.md"],
+      "branches": [
+        { "id": "high_superheat", "condition": "Superheat is high (>20°F)", "next": "suspect_undercharge" },
+        { "id": "normal_superheat", "condition": "Superheat is in the normal range (roughly 8–15°F)", "next": "inconclusive_escalate" }
+      ],
+      "default_next": "inconclusive_escalate"
+    },
+    {
+      "id": "suspect_undercharge",
+      "title": "Probable undercharge / refrigerant loss",
+      "instruction": "Low suction pressure with high superheat points to undercharge or restricted suction. The most likely cause is a refrigerant leak. Recommend running the leak-check procedure before adding refrigerant. Do NOT just top off the charge without finding the leak.",
+      "citations": ["superheat_subcool.md"],
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "check_lp_sensor",
+      "title": "Check the low-pressure switch / sensor",
+      "instruction": "Pressure reads normal but a low-pressure fault was logged, so suspect the low-pressure switch, transducer, or its wiring. Apply LOTO, then inspect the switch and wiring and check the transducer reading against your gauge. Is the sensor or wiring faulty?",
+      "expected_input": "condition of the LP switch/transducer and wiring",
+      "safety_note": "Apply LOTO before inspecting any electrical component.",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "sensor_fault", "condition": "The LP switch/transducer or its wiring is faulty", "next": "resolve_sensor" },
+        { "id": "sensor_ok", "condition": "Sensor and wiring check out fine", "next": "inconclusive_escalate" }
+      ],
+      "default_next": "inconclusive_escalate"
+    },
+    {
+      "id": "resolve_sensor",
+      "title": "Replace the faulty LP sensor / repair wiring",
+      "instruction": "Replace the faulty low-pressure switch/transducer or repair the wiring, then clear the fault and verify normal operation. The low-pressure fault is resolved.",
+      "citations": ["error_codes.md"],
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "inconclusive_escalate",
+      "title": "Inconclusive — escalate",
+      "instruction": "Charge indicators and airflow look normal but the low-pressure fault persists. This is beyond a first-line diagnostic. Recommend escalating to a senior technician or the manufacturer's tech support, and capture your gauge readings before ending the session.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

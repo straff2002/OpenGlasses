@@ -255,13 +255,22 @@ class LLMService: ObservableObject {
             - home_assistant: Control Home Assistant smart home — toggle devices, check states, list entities, run automations, or use 'converse' action to send natural language commands directly to HA (e.g. action=converse, text="turn on the kitchen lights"). ALWAYS try this tool when asked about smart home control. Use entity IDs from the device list below when available; the tool also fuzzy-matches and falls back to HA's voice assistant.
             - scan_code: Scan QR codes or barcodes from the camera. Returns decoded content (URLs, text, product codes). Works offline.
             - capture_photo: Capture a photo from the glasses camera for visual analysis. Use when you need to see what the user is looking at, or proactively when visual context would help your response.
+            - reading_assist: Read text in front of the user via the glasses camera (on-device OCR). Modes: read (clean + read aloud), simplify (rewrite at a reading level 1-5), translate (into target_language), define (plain-language definition of a term). Use for 'read this to me', 'simplify this', 'translate this sign', 'what does this word mean'.
+            - health_vault: Query or update the user's Personal Health Vault (their own notes on biometrics, conditions, diet, labs, medications, wearables). action 'query' (with question) grounds a health question in their data — cite the source file; action 'log' (file + entry) records a new entry. Never fabricate health data.
+            - aircraft_overhead: Report aircraft flying near the user using live ADS-B data and their location. Use for "what's flying overhead?", "any planes nearby?". Param: radius_miles (1-200, default 25).
+            - live_coach: Real-time, one-sentence coaching feedback from the glasses camera. Use for "coach my squat form", "watch my knife technique", "help with my guitar". Actions: start (domain), stop, status. Domains: sports_tactics, cooking_form, posture, guitar, climbing, custom. Params: custom_prompt, interval_seconds, max_words, max_duration_minutes.
             - audio_recording: Start or stop audio-only recording (no camera — lighter on battery). Saves .m4a to Documents/Recordings with live transcription and a meeting assistant that sends lock screen summaries + suggested questions every 60 seconds. Saying 'take a picture' during recording adds a visual note to the transcript. Actions: start, stop, status. Use when the user says 'record this meeting', 'record audio', 'record this conversation', or 'start audio recording'.
             - video_recording: Start or stop video+audio recording from the glasses camera and microphone. Recordings save to Photos with no time limit — ideal for interviews, meetings, procedures. Includes live transcription by default (saved as .txt alongside video). Actions: start, stop, status. Params: transcribe (bool, default true). Use when the user says 'start recording', 'record this', 'film this', 'watch what I'm doing', or 'stop recording'.
             - medical_export: Export clinical transcripts to medical platforms or share manually. Actions: export_fhir (upload to FHIR server), export_file (create file), share (open share sheet), status (check config). Params: format (text/pdf/fhir_json/hl7), transcript (optional, uses latest recording). Use when the user says 'export the transcript', 'send to the EMR', 'share the notes', or 'upload to the health record'.
             - qr_context: Scan a QR code and load its content as context (museum exhibits, venue info, procedures). Use at museums, venues, or workplaces. Can also load context from a URL directly.
             - golf_mode: Golf caddy assistant — track shots with GPS, get club recommendations, log scores, view round summary, and get course strategy. Actions: start_round, track_shot, club_recommendation, log_score, round_summary, strategy.
             - live_translate: Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: start, stop, status, set_language.
-            - field_session: Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support (refrigeration, IT, electrical, automotive). Sessions load a domain knowledge vault and emit an audit log. Use 'start' when the technician begins work, 'end' when they finish. Actions: start, pause, resume, end, status, list, escalate. Params: vault (e.g. 'refrigeration'), asset_id, mode ('ai_only' default), outcome, reason.
+            - field_session: Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support (refrigeration, IT, electrical, automotive). Sessions load a domain knowledge vault and emit an audit log. Use 'start' when the technician begins work, 'end' when they finish, 'export' to generate a work-order PDF + audit JSON. Actions: start, pause, resume, end, status, list, escalate, export. Params: vault (e.g. 'refrigeration'), asset_id, mode ('ai_only' default), outcome, reason, format ('pdf'/'json'/'both').
+            - procedure_runner: Run a guided, step-by-step Field Assist procedure (diagnostics, checklists) inside an active session. Actions: list, start, next, previous, repeat, status, complete. When the active step offers choices, pass 'choice' with the branch id to 'next'. The current step and its choice ids are injected into this prompt under "ACTIVE PROCEDURE" — use those. Params: procedure_id, choice, outcome.
+            - domain_calc: Refrigeration math grounded in the vault PT charts. Operations: pt_lookup (saturation temp at a pressure), superheat (suction line temp − sat temp at suction pressure), subcool (sat temp at liquid pressure − liquid line temp). Temps °F, pressures PSIG. Params: operation, refrigerant ('R-410A','R-32','R-454B','R-22'), pressure_psig, suction_pressure_psig, suction_line_temp_f, liquid_pressure_psig, liquid_line_temp_f.
+            - equipment_lookup: Look up an error code, fault, or model number in the active session's vault. The technician can read it aloud (query), or point the glasses at the nameplate/error display and omit query (or set use_camera) to read it via on-device OCR. Returns the matching reference section with its source. Params: query (optional), use_camera (optional bool), file (optional).
+            - photo_log: Capture a photo from the glasses camera and attach it to the active session's audit log with a caption (e.g. a gauge reading), and return the image for analysis. Use to document readings and evidence during a session. Params: caption.
+            - escalate_to_expert: Escalate the active Field Assist session to a human expert when you cannot safely resolve the issue or the technician asks for a person. Actions: request (with reason), status, resolve, cancel. Live expert video is not available yet — escalation is logged and the expert pool is notified.
             """
 
                 // Inject user-defined custom tool descriptions
@@ -726,6 +735,105 @@ class LLMService: ObservableObject {
             }
         } catch {
             NSLog("[LLM] Summarization request failed: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// Stateless one-shot vision analysis: sends `systemPrompt` + `userText` + a JPEG frame to the
+    /// active provider with no tools and a small token budget, and does NOT mutate conversation
+    /// history. Used by the Assistive Modes (A3) ambient loop, which must not pollute the chat.
+    /// Returns the raw model text, or nil on failure / unsupported provider (local, appleOnDevice).
+    func analyzeFrame(systemPrompt: String, userText: String, imageData: Data, maxTokens: Int = 200) async -> String? {
+        guard let modelConfig = Config.activeModel else { return nil }
+        let base64 = imageData.base64EncodedString()
+        let provider = modelConfig.llmProvider
+
+        do {
+            switch provider {
+            case .anthropic:
+                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue(modelConfig.apiKey, forHTTPHeaderField: "x-api-key")
+                request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+                request.timeoutInterval = 20
+                let body: [String: Any] = [
+                    "model": modelConfig.model,
+                    "max_tokens": maxTokens,
+                    "system": systemPrompt,
+                    "messages": [["role": "user", "content": [
+                        ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
+                        ["type": "text", "text": userText]
+                    ]]]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let content = json["content"] as? [[String: Any]],
+                      let text = content.first?["text"] as? String else { return nil }
+                return text
+
+            case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
+                var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !baseURL.hasSuffix("/chat/completions") {
+                    baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
+                }
+                guard let url = URL(string: baseURL) else { return nil }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
+                request.timeoutInterval = 20
+                let body: [String: Any] = [
+                    "model": modelConfig.model,
+                    "max_tokens": maxTokens,
+                    "messages": [
+                        ["role": "system", "content": systemPrompt],
+                        ["role": "user", "content": [
+                            ["type": "text", "text": userText],
+                            ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]]
+                        ]]
+                    ]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let choices = json["choices"] as? [[String: Any]],
+                      let message = choices.first?["message"] as? [String: Any],
+                      let text = message["content"] as? String else { return nil }
+                return text
+
+            case .gemini:
+                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 20
+                let body: [String: Any] = [
+                    "system_instruction": ["parts": [["text": systemPrompt]]],
+                    "contents": [["role": "user", "parts": [
+                        ["text": userText],
+                        ["inlineData": ["mimeType": "image/jpeg", "data": base64]]
+                    ]]],
+                    "generationConfig": ["maxOutputTokens": maxTokens]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let candidates = json["candidates"] as? [[String: Any]],
+                      let content = candidates.first?["content"] as? [String: Any],
+                      let parts = content["parts"] as? [[String: Any]],
+                      let text = parts.first?["text"] as? String else { return nil }
+                return text
+
+            case .local, .appleOnDevice:
+                return nil
+            }
+        } catch {
+            NSLog("[LLM] analyzeFrame request failed: %@", error.localizedDescription)
             return nil
         }
     }

@@ -19,8 +19,8 @@ final class ProactiveAlertService: ObservableObject {
     private var alertedEventIds: Set<String> = []
     private let eventStore = EKEventStore()
 
-    /// Callback to speak an alert through TTS
-    var onAlert: ((String) -> Void)?
+    /// Callback to speak an alert through TTS, with an urgency for rate/prefix.
+    var onAlert: ((String, TextToSpeechService.SpeechUrgency) -> Void)?
 
     /// Callback to auto-create a playbook from a calendar event's agenda/notes
     var onMeetingPlaybook: ((String, String, [String]) -> Void)?
@@ -107,7 +107,7 @@ final class ProactiveAlertService: ObservableObject {
                     alert += " at \(location)"
                 }
                 alert += "."
-                deliverAlert(alert)
+                deliverAlert(alert, urgency: .high)
 
                 // Auto-create playbook from calendar event notes/agenda
                 if let notes = event.notes, !notes.isEmpty {
@@ -129,7 +129,7 @@ final class ProactiveAlertService: ObservableObject {
                         alert += " at \(location)"
                     }
                     alert += "."
-                    deliverAlert(alert)
+                    deliverAlert(alert, urgency: .medium)
                 }
             }
         }
@@ -140,12 +140,12 @@ final class ProactiveAlertService: ObservableObject {
         }
     }
 
-    private func deliverAlert(_ message: String) {
+    private func deliverAlert(_ message: String, urgency: TextToSpeechService.SpeechUrgency = .medium) {
         lastAlert = message
         NSLog("[ProactiveAlerts] %@", message)
 
         // Speak through TTS if callback is set
-        onAlert?(message)
+        onAlert?(message, urgency)
 
         // Also send a local notification in case the app is backgrounded
         let content = UNMutableNotificationContent()

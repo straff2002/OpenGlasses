@@ -2218,6 +2218,26 @@ struct Config {
 
     // MARK: - Field Assist (B2B)
 
+    /// Developer-only: run the local MCP glasses HTTP server (Plan E). Only effective when
+    /// `agentModeEnabled` is also on.
+    static var mcpServerEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "mcpServerEnabled")
+    }
+
+    static func setMCPServerEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "mcpServerEnabled")
+    }
+
+    /// Master toggle for the Accessibility Tier (A1 Reading Accessibility). When off, the
+    /// ReadingAccessibilityTool is not registered.
+    static var accessibilityModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "accessibilityModeEnabled")
+    }
+
+    static func setAccessibilityModeEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "accessibilityModeEnabled")
+    }
+
     /// Master toggle for the Field Assist feature. When off, no vaults are loaded
     /// and the FieldSessionTool is not registered.
     static var fieldAssistEnabled: Bool {

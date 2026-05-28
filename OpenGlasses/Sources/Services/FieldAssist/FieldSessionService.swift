@@ -26,6 +26,14 @@ final class FieldSessionService: ObservableObject {
     private var logger: SessionLogger?
     private var lastResumeAt: Date?
 
+    /// Procedures available in the active session's vault.
+    private var library: ProcedureLibrary?
+    /// The currently running procedure, if any.
+    private var runner: ProcedureRunner?
+
+    /// Id of the procedure currently running (nil when none). Published for UI.
+    @Published private(set) var activeProcedureId: String?
+
     private let sessionsRoot: URL
 
     init(sessionsRoot: URL? = nil) {
@@ -76,9 +84,11 @@ final class FieldSessionService: ObservableObject {
 
         activeSession = session
         activeVault = store
+        library = ProcedureLibrary(store: store)
         let newLogger = SessionLogger(session: session, root: sessionsRoot.appendingPathComponent(session.id, isDirectory: true))
         logger = newLogger
         newLogger.appendLifecycle(.sessionStarted, note: "vault=\(vaultId), mode=\(mode.rawValue), asset=\(assetId ?? "-")")
+        EscalationCoordinator.shared.reset()
         lastResumeAt = Date()
         history.insert(session, at: 0)
         return session
@@ -137,6 +147,9 @@ final class FieldSessionService: ObservableObject {
         activeVault = nil
         self.logger = nil
         lastResumeAt = nil
+        runner = nil
+        library = nil
+        activeProcedureId = nil
         return session
     }
 
@@ -150,13 +163,31 @@ final class FieldSessionService: ObservableObject {
         logger.append(.init(timestamp: Date(), kind: .escalationRequested, text: reason, payload: nil))
     }
 
+    /// Mark the most recent unresolved escalation as resolved and log it.
+    func resolveLastEscalation(note: String? = nil) {
+        guard var session = activeSession, let logger else { return }
+        guard let idx = session.escalations.lastIndex(where: { $0.resolvedAt == nil }) else { return }
+        session.escalations[idx].resolvedAt = Date()
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger.updateSession { $0 = session }
+        logger.append(.init(timestamp: Date(), kind: .escalationResolved, text: note, payload: nil))
+    }
+
     // MARK: - Prompt context
 
     /// System-prompt addendum for the active session, or nil when no session is active.
     /// Hooked into `LLMService.buildSystemPrompt`.
     func promptContext() -> String? {
         guard let store = activeVault else { return nil }
-        return VaultPromptBuilder.promptContext(for: store)
+        var context = VaultPromptBuilder.promptContext(for: store)
+        if let runner {
+            let procedureContext = runner.promptContext()
+            if !procedureContext.isEmpty {
+                context = (context.map { $0 + "\n\n" } ?? "") + procedureContext
+            }
+        }
+        return context
     }
 
     /// Whether a session is currently active and accepting input.
@@ -174,6 +205,75 @@ final class FieldSessionService: ObservableObject {
 
     func attachPhoto(_ data: Data, caption: String? = nil) -> URL? {
         logger?.attachPhoto(data, caption: caption)
+    }
+
+    // MARK: - Procedures
+
+    /// "id — title" summaries of procedures available in the active session's vault.
+    func availableProcedures() -> [String] {
+        library?.summaries() ?? []
+    }
+
+    /// The step the active procedure is currently on, if a procedure is running.
+    var activeProcedureStep: Procedure.Step? { runner?.currentStep }
+
+    /// Title of the active procedure, if any.
+    var activeProcedureTitle: String? { runner?.procedure.title }
+
+    /// Begin a procedure by id. Requires an active session and no procedure already running.
+    @discardableResult
+    func startProcedure(id: String) throws -> Procedure.Step {
+        guard activeSession != nil, let logger else { throw FieldSessionError.noActiveSession }
+        guard runner == nil else { throw FieldSessionError.procedureAlreadyRunning }
+        guard let procedure = library?.procedure(id: id) else { throw FieldSessionError.unknownProcedure(id) }
+        let newRunner = try ProcedureRunner(starting: procedure, logger: logger)
+        runner = newRunner
+        activeProcedureId = procedure.id
+        guard let entry = newRunner.currentStep else { throw FieldSessionError.unknownProcedure(id) }
+        return entry
+    }
+
+    @discardableResult
+    func advanceProcedure(choice: String?) throws -> ProcedureRunner.Transition {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        let transition = try runner.advance(choice: choice)
+        if case .completed = transition { clearRunner() }
+        return transition
+    }
+
+    @discardableResult
+    func procedureBack() throws -> Procedure.Step {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        return try runner.goBack()
+    }
+
+    @discardableResult
+    func procedureRepeat() throws -> Procedure.Step {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        return try runner.repeatStep()
+    }
+
+    func completeProcedure(outcome: String) throws {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        _ = runner.complete(outcome: outcome)
+        clearRunner()
+    }
+
+    private func clearRunner() {
+        runner = nil
+        activeProcedureId = nil
+    }
+
+    // MARK: - Export
+
+    /// Export a session's compliance artifacts (consolidated JSON audit and/or PDF work order).
+    /// Defaults to the active session, falling back to the most recent. Returns the written file URLs.
+    func exportSession(id: String? = nil, formats: Set<SessionExporter.Format> = [.json, .pdf]) throws -> [URL] {
+        guard let sessionId = id ?? activeSession?.id ?? history.first?.id else {
+            throw FieldSessionError.noActiveSession
+        }
+        let dir = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
+        return try SessionExporter.export(sessionDir: dir, formats: formats)
     }
 
     // MARK: - History
@@ -202,13 +302,43 @@ final class FieldSessionService: ObservableObject {
         let store = VaultRegistry.shared.store(for: manifest)
         activeSession = inProgress
         activeVault = store
-        logger = SessionLogger(session: inProgress, root: sessionsRoot.appendingPathComponent(inProgress.id, isDirectory: true))
+        library = ProcedureLibrary(store: store)
+        let restoredLogger = SessionLogger(session: inProgress, root: sessionsRoot.appendingPathComponent(inProgress.id, isDirectory: true))
+        logger = restoredLogger
+        reconstructRunner(from: restoredLogger.readEvents(), logger: restoredLogger)
         // On crash recovery, treat the session as paused so the user must explicitly resume.
         if inProgress.pausedAt == nil {
             try? pauseSession()
         } else {
             lastResumeAt = nil
         }
+    }
+
+    /// Rebuild the active `ProcedureRunner` from the audit log, if a procedure was in progress
+    /// when the app was interrupted. Replays procedure events, using the visited-stack snapshot
+    /// carried in the last `procedureStep` event to restore position.
+    private func reconstructRunner(from events: [SessionLogger.Event], logger: SessionLogger) {
+        var activeProcId: String?
+        var stack: [String] = []
+        for event in events {
+            switch event.kind {
+            case .procedureStarted:
+                activeProcId = event.payload?["procedure_id"]?.value as? String
+                stack = (event.payload?["entry_step"]?.value as? String).map { [$0] } ?? []
+            case .procedureStep:
+                if let snapshot = event.payload?["stack"]?.value as? [Any] {
+                    stack = snapshot.compactMap { $0 as? String }
+                }
+            case .procedureCompleted:
+                activeProcId = nil
+                stack = []
+            default:
+                break
+            }
+        }
+        guard let procId = activeProcId, let procedure = library?.procedure(id: procId) else { return }
+        runner = ProcedureRunner(restoring: procedure, visited: stack, logger: logger)
+        activeProcedureId = procId
     }
 
     /// Accumulate billable seconds since the last resume.
@@ -227,6 +357,9 @@ enum FieldSessionError: LocalizedError {
     case noActiveSession
     case unknownVault(String)
     case vaultLocked(String)
+    case procedureAlreadyRunning
+    case noProcedureRunning
+    case unknownProcedure(String)
 
     var errorDescription: String? {
         switch self {
@@ -234,6 +367,9 @@ enum FieldSessionError: LocalizedError {
         case .noActiveSession: return "No active Field Assist session."
         case .unknownVault(let id): return "Unknown vault: \(id)"
         case .vaultLocked(let id): return "The '\(id)' vault is locked. Unlock the corresponding pack to use it."
+        case .procedureAlreadyRunning: return "A procedure is already running. Complete it before starting another."
+        case .noProcedureRunning: return "No procedure is currently running. Start one first."
+        case .unknownProcedure(let id): return "Unknown procedure: \(id)"
         }
     }
 }

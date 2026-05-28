@@ -1,0 +1,97 @@
+{
+  "id": "system_startup",
+  "title": "System Startup Checklist",
+  "version": "1.0.0",
+  "vault": "refrigeration",
+  "description": "Commission or restart a system after service and verify it is operating within charge spec using subcooling on a TXV/EEV unit.",
+  "safety_notes": [
+    "Confirm proper PPE before opening any panel.",
+    "Apply LOTO until you are ready to energize, and verify no one is working on the unit before power-on.",
+    "Verify the refrigerant in any charging cylinder matches the unit nameplate."
+  ],
+  "entry_step": "pre_start_inspection",
+  "steps": [
+    {
+      "id": "pre_start_inspection",
+      "title": "Pre-start inspection",
+      "instruction": "Before energizing: confirm all panels and electrical connections are secure, service valves are back-seated/open, the filter is clean, and the condenser and evaporator coils are clear. Confirm everything is ready and no one is working on the unit.",
+      "expected_input": "confirmation that the pre-start checks pass",
+      "safety_note": "Verify no one is working on the unit before removing LOTO.",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "ready", "condition": "All pre-start checks pass", "next": "energize_and_call_cooling" },
+        { "id": "not_ready", "condition": "A pre-start check failed (open panel, closed valve, dirty coil/filter)", "next": "correct_pre_start" }
+      ],
+      "default_next": "energize_and_call_cooling"
+    },
+    {
+      "id": "correct_pre_start",
+      "title": "Correct the pre-start issue",
+      "instruction": "Correct the failed item — secure the panel, open the service valve, or clean the filter/coil — then return to the pre-start inspection.",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "corrected", "condition": "The issue is corrected", "next": "pre_start_inspection" }
+      ],
+      "default_next": "pre_start_inspection"
+    },
+    {
+      "id": "energize_and_call_cooling",
+      "title": "Energize and call for cooling",
+      "instruction": "Remove LOTO, energize the unit, and set the thermostat to call for cooling. Confirm the compressor and condenser fan start and the blower runs. Let the system run and stabilize for at least 10 minutes.",
+      "expected_input": "confirmation the unit started and is stabilizing",
+      "citations": ["superheat_subcool.md"],
+      "default_next": "measure_pressures"
+    },
+    {
+      "id": "measure_pressures",
+      "title": "Measure operating pressures",
+      "instruction": "With the system stabilized, connect the manifold and read both suction and liquid (discharge) pressures. Confirm the refrigerant type from the nameplate and tell me the readings.",
+      "expected_input": "suction pressure, liquid pressure, and refrigerant type",
+      "calc_ref": { "tool": "domain_calc", "op": "pt_lookup", "hint": "Convert each pressure to a saturation temperature for the stated refrigerant." },
+      "citations": ["pt_charts.md"],
+      "default_next": "measure_subcool"
+    },
+    {
+      "id": "measure_subcool",
+      "title": "Measure subcooling",
+      "instruction": "Clamp a calibrated thermometer on the liquid line within 6 inches of the condenser exit. Use the liquid pressure to get subcooling. Tell me the subcool value, and the target subcool from the nameplate if listed.",
+      "expected_input": "liquid line temperature and resulting subcool (plus nameplate target if shown)",
+      "calc_ref": { "tool": "domain_calc", "op": "subcool", "hint": "subcool = saturation temp at liquid pressure − liquid line temp. Target is typically 8–12°F unless the nameplate specifies otherwise." },
+      "citations": ["superheat_subcool.md", "pt_charts.md"],
+      "branches": [
+        { "id": "subcool_in_spec", "condition": "Subcool is within the target range (typically 8–12°F or the nameplate value)", "next": "final_verification" },
+        { "id": "subcool_out_of_spec", "condition": "Subcool is outside the target range (low = undercharge, high = overcharge)", "next": "charge_out_of_spec" }
+      ],
+      "default_next": "final_verification"
+    },
+    {
+      "id": "charge_out_of_spec",
+      "title": "Charge out of spec",
+      "instruction": "Subcool is off target. Low subcool with high superheat indicates undercharge; high subcool indicates overcharge or a condenser airflow restriction. Adjust charge only with the cylinder matching the nameplate, in small increments, re-stabilizing 10 minutes between checks. If you can't bring it into spec, run the low-pressure diagnostic or escalate.",
+      "expected_input": "result after adjusting charge",
+      "safety_note": "Verify cylinder refrigerant matches the nameplate before opening the circuit; recover per EPA 608 if the circuit must be opened.",
+      "citations": ["superheat_subcool.md", "epa_608.md"],
+      "branches": [
+        { "id": "now_in_spec", "condition": "Charge is now within target subcool", "next": "final_verification" },
+        { "id": "cannot_correct", "condition": "Can't bring charge into spec", "next": "startup_escalate" }
+      ],
+      "default_next": "final_verification"
+    },
+    {
+      "id": "final_verification",
+      "title": "Final verification",
+      "instruction": "Confirm steady operation: pressures and subcool in range, no abnormal noise or vibration, condensate draining, and the space temperature trending toward setpoint. Record final readings, then complete the startup.",
+      "expected_input": "confirmation of steady, in-spec operation",
+      "citations": ["superheat_subcool.md"],
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "startup_escalate",
+      "title": "Startup incomplete — escalate",
+      "instruction": "The system won't reach spec during startup. Document all readings and the adjustments tried, and escalate to a senior technician or the manufacturer before leaving the unit running unattended.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

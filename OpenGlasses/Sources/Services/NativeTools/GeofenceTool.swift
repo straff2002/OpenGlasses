@@ -49,8 +49,8 @@ final class GeofenceTool: NativeTool, @unchecked Sendable {
     private let locationManager: CLLocationManager
     private let locationService: LocationService
 
-    /// Callback to speak alerts via TTS
-    var onAlert: ((String) -> Void)?
+    /// Callback to speak alerts via TTS, with an urgency for rate/prefix.
+    var onAlert: ((String, TextToSpeechService.SpeechUrgency) -> Void)?
 
     /// Stored geofences
     private static let storageKey = "geofence_reminders"
@@ -251,7 +251,7 @@ final class GeofenceTool: NativeTool, @unchecked Sendable {
         let message = reminder.message.isEmpty ? "You've \(action) \(reminder.name)." : reminder.message
 
         print("📍 Geofence triggered: \(message)")
-        onAlert?(message)
+        onAlert?(message, .medium)
 
         // Send local notification as backup
         let content = UNMutableNotificationContent()

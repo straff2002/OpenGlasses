@@ -124,7 +124,30 @@ final class NativeToolRegistry {
         // Tool checks Config.fieldAssistEnabled at execute time too, so users see a clear message.
         if Config.fieldAssistEnabled {
             register(FieldSessionTool())
+            register(ProcedureRunnerTool())
+            register(DomainCalcTool())
+            register(EscalateToExpertTool())
+            // equipment_lookup gains an on-device OCR path when a camera is present.
+            register(EquipmentLookupTool(cameraService: cameraService))
+            if let camera = cameraService {
+                register(PhotoLogTool(cameraService: camera))
+            }
         }
+
+        // Accessibility Tier (A1) — Reading Accessibility. Needs the camera for OCR.
+        if Config.accessibilityModeEnabled, let camera = cameraService {
+            register(ReadingAccessibilityTool(cameraService: camera))
+        }
+
+        // Personal Health Vault (Plan B) — always registered; the tool checks the Medical
+        // Compliance unlock at execution time.
+        register(HealthVaultTool())
+
+        // Utilities (Plan D)
+        register(AircraftOverheadTool(locationService: locationService))
+
+        // Live Coach (Plan C) — service deps are configured by AppState; tool just starts/stops.
+        register(LiveCoachTool())
         // Always registered — tool checks agentModeEnabled at execution time
         register(YieldToHumanTool())
         var discoveryTool = DiscoverCapabilitiesTool()

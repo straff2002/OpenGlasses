@@ -260,10 +260,50 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    HealthVaultEditorView()
+                } label: {
+                    HStack {
+                        Label("Health Vault", systemImage: "heart.text.square")
+                        Spacer()
+                        if VaultRegistry.shared.isUnlocked("health") {
+                            Text("Unlocked").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                NavigationLink {
+                    AccessibilitySettingsView()
+                        .environmentObject(appState)
+                } label: {
+                    HStack {
+                        Label("Accessibility", systemImage: "accessibility")
+                        Spacer()
+                        if Config.accessibilityModeEnabled {
+                            Text("On").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                NavigationLink {
                     CustomToolsView()
                         .environmentObject(appState)
                 } label: {
                     Label("Custom Tools", systemImage: "hammer")
+                }
+
+                if Config.agentModeEnabled {
+                    NavigationLink {
+                        MCPServerSettingsView()
+                            .environmentObject(appState)
+                    } label: {
+                        HStack {
+                            Label("MCP Server", systemImage: "macbook.and.iphone")
+                            Spacer()
+                            if MCPGlassesServer.shared.isRunning {
+                                Text("Running").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 NavigationLink {
