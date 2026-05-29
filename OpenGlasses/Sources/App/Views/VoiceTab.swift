@@ -301,15 +301,6 @@ struct ChatInputBar: View {
                     .padding(.vertical, 8)
                     .glassEffect(in: .rect(cornerRadius: 20))
                     .onSubmit { sendMessage() }
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("Done") {
-                                isTextFieldFocused = false
-                                showChatInput = false
-                            }
-                        }
-                    }
 
                 // Send button
                 Button {
