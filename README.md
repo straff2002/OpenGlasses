@@ -2,7 +2,7 @@
 
 [中文文档 (Chinese)](README.zh-CN.md)
 
-An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 50+ built-in tools, multi-LLM support (cloud + on-device), personas with simultaneous wake words, live translation, MCP tool servers, and more — all controlled hands-free by voice.
+An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ built-in tools, multi-LLM support (cloud + on-device) with automatic model routing, personas with simultaneous wake words, live translation, hands-free field-service guidance, real-time vision coaching, MCP tool servers, and CarPlay + Apple Watch companions — all controlled hands-free by voice.
 
 > **Note**: The Meta Wearables SDK is currently in **developer preview**. App Store distribution is not yet supported — each user must build the app from source with their own Meta developer credentials.
 
@@ -43,14 +43,15 @@ Run AI models entirely on your iPhone — no internet, no cloud, no API keys.
 
 | Model | Size | Best For |
 |-------|------|----------|
-| Qwen 2.5 3B | 1.8 GB | Conversation + tool calling |
-| Gemma 2 2B | 1.5 GB | General purpose |
-| SmolVLM2 2.2B | 1.5 GB | Vision (can see photos) |
+| **Gemma 4 E2B** (default agent) | 3.6 GB | Best on-device agent — vision, tool calling, 140+ languages (needs 8 GB RAM) |
+| SmolVLM2 2.2B | 1.5 GB | Vision — sees photos + video |
+| Qwen 2.5 3B | 1.8 GB | Strong text reasoning + tool use |
+| Gemma 2 2B | 1.5 GB | Lightweight general purpose |
 | Qwen 2.5 0.5B | 0.4 GB | Ultra-light, basic |
 
-Models are stored persistently and work fully offline after download. Toggle **Offline Mode** in Settings → Tools to disable internet-dependent tools.
+**Gemma 4 E2B** is the default on-device agent — it runs automatically when no cloud model is configured. Models are stored persistently and work fully offline after download. Toggle **Offline Mode** in Settings → Tools to disable internet-dependent tools.
 
-### 50+ Native Tools
+### 85+ Native Tools
 
 All voice-activated. Say what you need naturally — the AI picks the right tool.
 
@@ -62,13 +63,33 @@ All voice-activated. Say what you need naturally — the AI picks the right tool
 | **Navigation** | Directions (Apple/Google Maps), Nearby Places, Save Locations, Geofencing Alerts |
 | **Media** | Music Control (play/pause/skip + search by song/artist), Shazam Song ID, Open Apps |
 | **Smart Home** | HomeKit (lights, switches, fans, thermostats, locks, scenes), Home Assistant (REST API), Siri Shortcuts |
-| **Vision** | QR/Barcode Scanner, Face Recognition |
+| **Vision** | QR/Barcode Scanner, Face Recognition, Smart Capture (business cards/receipts/flyers → action), Money/Medication/Color ID (accessibility), Privacy Filter |
 | **Memory** | Object Memory ("where are my keys?"), Social Context (per-person facts), User Memory, Voice-Taught Skills |
-| **AI Features** | Live Translation, Memory Rewind (ambient audio recall), Ambient Captions, Meeting Summaries, Conversation Summaries |
+| **AI Features** | Live Translation, Live Coach (real-time vision coaching), Memory Rewind (ambient audio recall), Ambient Captions, Meeting Summaries, Conversation Summaries |
 | **Fitness** | Workout Tracking, Exercise Logging, HealthKit, Pose Analysis, Step Goals |
 | **Device** | Flashlight, Brightness, Device Info, Step Count |
 | **Safety** | Emergency Info (local numbers + GPS), Daily Briefing, Navigation Assistance (accessibility preset) |
 | **Integration** | OpenClaw Gateway (50+ skills), MCP Servers (universal tool protocol), Custom Tools |
+
+### Live Coach — Real-Time Vision Coaching
+
+The glasses watch what you're doing and give short, spoken corrections on a loop — one tight sentence at a time, no repetition. Built-in domains: posture, cooking technique, guitar, climbing, sports tactics — or define your own.
+
+| Say | What Happens |
+|-----|-------------|
+| "Coach my posture" | Periodic spoken feedback on your alignment |
+| "Watch my knife technique" | Live cooking-form coaching |
+| "Stop coaching" | Ends the session |
+
+### Smart Capture
+
+Point at a business card, receipt, or event flyer — OpenGlasses reads it on-device and offers to act.
+
+| Say | What Happens |
+|-----|-------------|
+| "Save this card" | Extracts name/company/phone/email → save to Contacts |
+| "Log this receipt" | Extracts merchant/total/date → log the expense |
+| "Add this event" | Extracts title/date/location → create a calendar event |
 
 ### Voice-Taught Skills
 
@@ -169,7 +190,7 @@ See exactly what data the AI receives and what network calls are made.
 
 | Setting | What It Shows |
 |---------|--------------|
-| **Tools** | All 50+ tools with enable/disable toggles |
+| **Tools** | All 85+ tools with enable/disable toggles |
 | **Prompt Inspector** | Full system prompt, injected context, token estimate |
 | **Network Activity** | All HTTP requests categorized by Meta/AI/App/Other |
 | **Offline Mode** | One toggle disables all internet-requiring tools |
@@ -200,12 +221,52 @@ See exactly what data the AI receives and what network calls are made.
 | **Gemini Live** | Real-time audio/video streaming with Google Gemini |
 | **OpenAI Realtime** | Real-time audio/video streaming with OpenAI |
 
+### Smart Model Routing
+
+Assign models to **Fast**, **Balanced**, and **Best** tiers, then let OpenGlasses pick per request — a quick local model for live coaching, your best cloud model for hard diagnostics. Or turn routing off and pin everything to one model.
+
+**Configure:** Settings → AI Models → Model Routing.
+
+### CarPlay & Apple Watch
+
+- **CarPlay** — hands-free voice assistant on your car's display.
+- **Apple Watch** — companion app and widget for quick control and glanceable status.
+
+---
+
+## Enterprise
+
+Commercial features for teams and regulated industries. These are licensed separately from the open-source core — see [License](#license) or contact Skunkworks NZ.
+
+### Field Assist — Guided Field Service
+
+Hands-free, step-by-step guidance for technicians and other hands-busy work. Procedures branch on what you report or what the camera sees, surface safety reminders before each step, cite their source material, and write an audited session log you can export. Stuck? Escalate to a live remote expert with glasses video. Domain knowledge lives in **vaults** (e.g. refrigeration, HVAC, electrical) you author and extend yourself.
+
+| Say | What Happens |
+|-----|-------------|
+| "Start a refrigeration session" | Loads the vault and begins the procedure |
+| "The gauge reads 38 psi" | AI evaluates the reading and branches to the right next step |
+| "Next step" / "Go back" / "Repeat that" | Navigate the procedure hands-free |
+| "Call an expert" | Bridges to a remote human with live glasses video |
+
+### Medical Compliance
+
+Professional-grade safeguards for clinical recordings, available as an in-app subscription.
+
+- **Encryption at rest** — recordings and transcripts protected with `NSFileProtectionComplete`
+- **Biometric app lock** — Face ID / Touch ID required on every launch
+- **Audit logging** — every data-access event timestamped and exportable
+- **Medical export** — FHIR R4, HL7, and PDF export to Epic, Cerner, and more
+- **Data retention** — configurable auto-purge with secure deletion
+- **Leakage prevention** — cloud tools disabled, excluded from iCloud backup
+- **International frameworks** — HIPAA, GDPR, AU Privacy Act, NZ HIPC, PIPEDA, UK DPA
+
 ---
 
 ## Requirements
 
-- **iOS 17+** (built targeting iOS 26)
-- **Xcode 15+**
+- **iOS 26+**
+- **Xcode 26+**
 - **Physical iPhone** (Bluetooth, camera, microphone required)
 - **Ray-Ban Meta smart glasses** (paired via Meta AI app)
 - At least one LLM: API key (Anthropic, OpenAI, Gemini, etc.) OR a downloaded local model
@@ -310,7 +371,7 @@ All settings are in-app — no source code editing needed.
 | No audio through glasses | Verify Bluetooth connection in iOS Settings |
 | Glasses not connecting | Tap "Connect to Glasses"; enable Developer Mode in Meta AI app |
 | HomeKit not finding devices | HomeKit initializes on first tool call — say "list smart home devices" and wait 10s |
-| Local model crashes | Use a smaller model (0.5B or 2B); the 3B model may OOM on 6GB devices |
+| Local model crashes | Gemma 4 E2B needs ~8 GB RAM; on 6 GB devices use a smaller model (0.5B–2B) |
 | Model download stuck | Keep app in foreground; downloads continue if briefly backgrounded |
 | "Untrusted Developer" | Settings → General → VPN & Device Management → Verify (requires internet) |
 
@@ -323,6 +384,8 @@ All settings are in-app — no source code editing needed.
 | [meta-wearables-dat-ios](https://github.com/facebook/meta-wearables-dat-ios) | Glasses connection + camera |
 | [HaishinKit](https://github.com/shogo4405/HaishinKit.swift) | RTMP broadcasting |
 | [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | On-device LLM inference |
+| [WebRTC](https://github.com/stasel/WebRTC) | Peer-to-peer browser streaming + expert video |
+| [SystemNotification](https://github.com/danielsaidi/SystemNotification) | In-app notification banners |
 
 ---
 
