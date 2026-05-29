@@ -38,6 +38,9 @@ packages:
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm.git
     branch: main
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.2.1
 
 settings:
   base:
@@ -96,6 +99,8 @@ targets:
         product: MLXLMCommon
       - package: mlx-swift-lm
         product: MLXVLM
+      - package: swift-transformers
+        product: Hub
       - package: SystemNotification
         product: SystemNotification
       - package: WebRTC
