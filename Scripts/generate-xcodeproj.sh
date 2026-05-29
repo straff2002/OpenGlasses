@@ -24,8 +24,9 @@ spec_file=.xcodegen-spec.yml
   if [[ "${OPENGLASSES_SKIP_TESTS:-}" != "1" ]]; then
     echo "  - project.tests.yml"
   fi
-  echo "  - path: project.local.yml"
-  echo "    optional: true"
+  if [[ -f project.local.yml ]]; then
+    echo "  - project.local.yml"
+  fi
 } >"$spec_file"
 
 xcodegen generate --spec "$spec_file"

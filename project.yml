@@ -1,4 +1,2 @@
 include:
   - project.base.yml
-  - path: project.local.yml
-    optional: true

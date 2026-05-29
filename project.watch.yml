@@ -1,28 +1,8 @@
 targets:
   OpenGlasses:
     dependencies:
-      - target: GlassesActivityWidget
-        embed: true
       - target: OpenGlassesWatch
         embed: true
-      - package: meta-wearables-dat-ios
-        product: MWDATCore
-      - package: meta-wearables-dat-ios
-        product: MWDATCamera
-      - package: HaishinKit
-        product: HaishinKit
-      - package: HaishinKit
-        product: RTMPHaishinKit
-      - package: mlx-swift-lm
-        product: MLXLLM
-      - package: mlx-swift-lm
-        product: MLXLMCommon
-      - package: mlx-swift-lm
-        product: MLXVLM
-      - package: SystemNotification
-        product: SystemNotification
-      - package: WebRTC
-        product: WebRTC
 
   OpenGlassesWatch:
     type: application
