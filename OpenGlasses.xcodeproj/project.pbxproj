@@ -112,6 +112,7 @@
 		55911677E2A9DB9541C71B40 /* AppleRemindersTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4691CC4CEA5C75C810866ECA /* AppleRemindersTool.swift */; };
 		55A9BCF6BE9E2102069BC534 /* VaultManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBA883362F05C2FAAA380ED /* VaultManifest.swift */; };
 		55B1EEDF2C214A5879E3CA87 /* RadialLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A48B38555905532425A7161 /* RadialLayout.swift */; };
+		5747CC75966436161AAC970D /* ExpertCallAudioCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D89E52339863E7A8DB5EB2E /* ExpertCallAudioCoordinatorTests.swift */; };
 		577C0C62A00CC49E41539CEB /* IntentClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A33541532C58D5979777C4 /* IntentClassifier.swift */; };
 		57FD83AF949C276034D1BCBA /* ExpertBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F117BBF2F6E3210B17007147 /* ExpertBridge.swift */; };
 		58053047D3135FE0A80B25D0 /* NavigationAssistService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B822401D1482CF37141C476 /* NavigationAssistService.swift */; };
@@ -272,6 +273,7 @@
 		C99D8089762A62C4BC8F67B3 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD5C2C61B8933FF987689E4 /* CarPlaySceneDelegate.swift */; };
 		CAB0DFBA379D75DF275D5B95 /* cs.json in Resources */ = {isa = PBXBuildFile; fileRef = 0B65D4A1E015DD3FD6831692 /* cs.json */; };
 		CBB1D8F7179E8A5F82D2B518 /* SendMessageTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929C1AA71FF503821C599B06 /* SendMessageTool.swift */; };
+		CC390DA0E500F38F38343CDC /* ExpertCallAudioCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F8F3197068A2F8CDA8C56E /* ExpertCallAudioCoordinator.swift */; };
 		CCBAC3D609FD8A1ED44B6925 /* VideoRecordingTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7986FC5627EBA548A9DFB84D /* VideoRecordingTool.swift */; };
 		CCFC45F1C3DFB7454211DFDD /* AgentScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */; };
 		CD3F08406EC0866BA6A61371 /* MemoryRewindTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952E0414BECBCA231798AAD8 /* MemoryRewindTool.swift */; };
@@ -554,6 +556,7 @@
 		7D2AF320F2B6C96D2328E321 /* GlassesActivityWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GlassesActivityWidget.entitlements; sourceTree = "<group>"; };
 		7D3BB9DBEA597B8122E5A7B7 /* HealthVaultEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthVaultEditorView.swift; sourceTree = "<group>"; };
 		7D837E875636164435130EEA /* OpenClawBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawBridgeTests.swift; sourceTree = "<group>"; };
+		7D89E52339863E7A8DB5EB2E /* ExpertCallAudioCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpertCallAudioCoordinatorTests.swift; sourceTree = "<group>"; };
 		7DEFCF2454D28A1562987740 /* NetworkMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorView.swift; sourceTree = "<group>"; };
 		7EDF8333F8A26F4578A0B3FB /* ReadingAccessibilityTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingAccessibilityTool.swift; sourceTree = "<group>"; };
 		7F09C3BCA53B15A184C4CDC0 /* HIPAASettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HIPAASettingsView.swift; sourceTree = "<group>"; };
@@ -665,6 +668,7 @@
 		D3951EA5CAF381F4F3192D54 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		D415887C46D5DB5C67BDA6E0 /* WebRTCStreamingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCStreamingService.swift; sourceTree = "<group>"; };
 		D4C2552ADCA1965B3E6BEE29 /* PersonaPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaPickerSheet.swift; sourceTree = "<group>"; };
+		D4F8F3197068A2F8CDA8C56E /* ExpertCallAudioCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpertCallAudioCoordinator.swift; sourceTree = "<group>"; };
 		D56AC77FDD0C1EBA73F47979 /* DirectionsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectionsTool.swift; sourceTree = "<group>"; };
 		D5D64E5005110FB5C5EDD61E /* PlaybookStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookStore.swift; sourceTree = "<group>"; };
 		D661BE81B0399220730C63AD /* nl.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = nl.json; sourceTree = "<group>"; };
@@ -1160,6 +1164,7 @@
 				53DDA12E26D78E6D68773BA6 /* ConversationClassifierTests.swift */,
 				15CD42023411CDDFDD512C8D /* DomainCalcToolTests.swift */,
 				5D4F63C3DA4C50D5F85E03AF /* EscalationCoordinatorTests.swift */,
+				7D89E52339863E7A8DB5EB2E /* ExpertCallAudioCoordinatorTests.swift */,
 				C76B183038F38624F51DDD26 /* ExpertStreamTransportTests.swift */,
 				704968F4EF80B32D0DB4E5A9 /* FieldSessionServiceTests.swift */,
 				5D81CA615A89B802C27795CD /* FrameThrottlerTests.swift */,
@@ -1201,6 +1206,7 @@
 			children = (
 				5FFFF491CA4CD37883809C52 /* EscalationCoordinator.swift */,
 				F117BBF2F6E3210B17007147 /* ExpertBridge.swift */,
+				D4F8F3197068A2F8CDA8C56E /* ExpertCallAudioCoordinator.swift */,
 				837F4F8A5B2BC3630346AA9D /* ExpertStreamTransport.swift */,
 				B354BF250311DED7B0247776 /* FieldSession.swift */,
 				C8B36BEFCBBE1AA0DC4CE1B6 /* FieldSessionService.swift */,
@@ -1516,6 +1522,7 @@
 				8353D04D4F0F3D462DD10AAF /* ConversationClassifierTests.swift in Sources */,
 				3A0107A8699EC778CB7453E0 /* DomainCalcToolTests.swift in Sources */,
 				02A2A7A51BDE7D72B7FBC25C /* EscalationCoordinatorTests.swift in Sources */,
+				5747CC75966436161AAC970D /* ExpertCallAudioCoordinatorTests.swift in Sources */,
 				6051A6ADE5F504C705F1642A /* ExpertStreamTransportTests.swift in Sources */,
 				72367B5038C040A73A73E7C1 /* FieldSessionServiceTests.swift in Sources */,
 				7469D8709E98A4D05217F539 /* FrameThrottlerTests.swift in Sources */,
@@ -1628,6 +1635,7 @@
 				839C415A910D8996AB46A3F7 /* EscalateToExpertTool.swift in Sources */,
 				E06C9FB9F4F3B1CE8656A44C /* EscalationCoordinator.swift in Sources */,
 				57FD83AF949C276034D1BCBA /* ExpertBridge.swift in Sources */,
+				CC390DA0E500F38F38343CDC /* ExpertCallAudioCoordinator.swift in Sources */,
 				20FA23BC51A33CA29D34380B /* ExpertStreamTransport.swift in Sources */,
 				F01F931154E2BB1C8B7520A3 /* FaceRecognitionService.swift in Sources */,
 				BB771B3C6F65DCE90E624A1B /* FaceRecognitionTool.swift in Sources */,

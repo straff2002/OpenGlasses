@@ -726,6 +726,10 @@ class AppState: ObservableObject, AppStateProtocol {
         EscalationCoordinator.shared.bridge = ExpertStreamBridge(
             streamer: webRTCStreaming, framePublisher: cameraService.framePublisher)
 
+        // Plan M3: hand the audio session to a live expert call (pause TTS + wake word).
+        ExpertCallAudioCoordinator.shared.control = AppExpertCallAudioControl(
+            wakeWord: wakeWordService, tts: speechService)
+
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
         MCPGlassesServer.shared.startIfEnabled()

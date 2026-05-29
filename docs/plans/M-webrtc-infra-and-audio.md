@@ -61,6 +61,14 @@ This is in-app Swift and the one part of M that's unit-/integration-testable on 
 transitions). Keep the transition logic in a small, testable coordinator rather than inline in
 `start`/`stop`.
 
+> **M3 status: implemented (app-side).** `ExpertCallAudioCoordinator` is an idempotent begin/end
+> state machine; the real side-effects (stop TTS + pause wake word on begin, resume on end) live
+> behind `ExpertCallAudioControlling` (`AppExpertCallAudioControl`). `WebRTCPeerTransport` calls
+> `beginCall()`/`endCall()` on start/stop, and AppState injects the adapter. Transition logic is
+> unit-tested. **Not yet done:** precedence vs. an active Gemini/OpenAI realtime session (which owns
+> the mic), explicit `RTCAudioSession` category/echo-cancellation config, and on-device echo/
+> session-wedge testing — all of which need real hardware.
+
 ---
 
 ## Build order

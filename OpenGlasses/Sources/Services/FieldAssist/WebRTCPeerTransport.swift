@@ -170,6 +170,9 @@ final class WebRTCPeerTransport: ExpertStreamTransport {
         try await pc.setLocalDescription(offer)
         signaling.send(SignalingMessage(type: .offer, room: room, sdp: offer.sdp))
 
+        // Hand the audio session to the call (pause TTS + wake word) — Plan M3.
+        ExpertCallAudioCoordinator.shared.beginCall()
+
         isStreaming = true
         // Join URL the expert opens (the web client joins the same room on the signaling server).
         return "\(signalingURL)?room=\(room)"
@@ -182,6 +185,8 @@ final class WebRTCPeerTransport: ExpertStreamTransport {
         peerConnection?.close(); peerConnection = nil
         capturer = nil; videoSource = nil; coordinator = nil; factory = nil
         isStreaming = false
+        // Return the audio session to the normal voice loop.
+        ExpertCallAudioCoordinator.shared.endCall()
     }
 
     private func handleSignaling(_ message: SignalingMessage) {
