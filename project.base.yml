@@ -68,12 +68,17 @@ targets:
         includes:
           - AccentColors.swift
           - SharedAppState.swift
-    resources:
       - path: OpenGlasses/Sources/Resources/Assets.xcassets
+        buildPhase: resources
       - path: OpenGlasses/Sources/Resources/Localizable.xcstrings
+        buildPhase: resources
       - path: OpenGlasses/Sources/Resources/Translations
+        buildPhase: resources
+      - path: OpenGlasses/Sources/Resources/intro.mp4
+        buildPhase: resources
       - path: OpenGlasses/Sources/Resources/Vaults
         type: folder
+        buildPhase: resources
     dependencies:
       - target: GlassesActivityWidget
         embed: true
