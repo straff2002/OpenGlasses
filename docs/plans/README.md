@@ -1,6 +1,30 @@
 # OpenGlasses Feature Plans
 
-Six plans drafted from a survey of ~19 community Meta Ray-Ban / smart-glasses projects on GitHub, plus a B2B field-service direction informed by IT and refrigeration commercial opportunities.
+Six plans drafted from a survey of ~19 community Meta Ray-Ban / smart-glasses projects on GitHub, plus a B2B field-service direction informed by IT and refrigeration commercial opportunities. Extended in later rounds (G–M) with features unlocked by the shipped engines.
+
+## Status (as of latest)
+
+All plans A–M are **built and merged to `main`** to the extent verifiable without device hardware or external infrastructure. **148 feature tests passing.**
+
+| Plan | Status |
+|---|---|
+| A1/A2/A3 Accessibility | ✅ Shipped (OCR reading tool, urgency TTS, scene/social assistive modes + HUD toggle) |
+| B Personal Health Vault | ✅ Shipped (templates, tool, editor) |
+| C Live Coach | ✅ Shipped (per-domain loop, dedup) |
+| D Utilities | ✅ Shipped (OneEuroFilter, aircraft_overhead) |
+| E MCP Server | ✅ Shipped (dev-only HTTP server) |
+| F Field Assist | ✅ Phases 1–3 shipped (vault, procedures, domain calc, audit/PDF export, escalation) |
+| G IT/Network pack | ✅ Shipped (vault, 5 procedures, subnet calc) |
+| H Custom vault import | ✅ Shipped (validator, importer, manager UI) |
+| I Medication Identifier | ✅ Shipped (OCR × Health Vault) |
+| J Navigation Assist | ✅ Shipped (hazard loop, frame-quality gate) |
+| K Integration & polish | ✅ K1 HUD + transcription, K2 expert bridge + real notifier; K3 (CarPlay heading) is a documented no-op (no heading consumer) |
+| L WebRTC transport | ✅ App-side shipped (real RTCPeerConnection, MJPEG/WebRTC selectable). Needs external signaling + TURN to connect. |
+| M WebRTC infra + audio | ✅ M3 audio coordinator shipped; M1 signaling server + M2 expert client shipped as reference impls (`docs/webrtc/`). Remaining: deploy infra + on-device echo/precedence testing. |
+
+**Genuinely outstanding (cannot be done/tested without hardware or hosting):** deploy the signaling relay + TURN server, host the expert web client, and run on-device WebRTC echo/precedence + audio-session testing. Everything else is implemented and tested here.
+
+---
 
 | Plan | Title | Effort | Strategic fit |
 |---|---|---|---|
