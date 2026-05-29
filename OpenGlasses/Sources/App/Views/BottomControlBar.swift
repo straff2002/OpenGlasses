@@ -13,6 +13,7 @@ struct BottomControlBar: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
+    @ObservedObject private var assistive = AssistiveModeService.shared
     @Environment(\.appAccent) private var accent
 
     @Binding var showSettings: Bool
@@ -74,6 +75,17 @@ struct BottomControlBar: View {
                 if let chatBinding = showChatInput {
                     BarButton(icon: "keyboard", label: "Type") {
                         chatBinding.wrappedValue = true
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                if Config.accessibilityModeEnabled {
+                    BarButton(
+                        icon: assistive.isActive ? "eye.fill" : "eye",
+                        label: assistive.isActive ? "Assistive On" : "Assistive",
+                        isActive: assistive.isActive
+                    ) {
+                        appState.toggleAssistiveMode()
                     }
                     .frame(maxWidth: .infinity)
                 }

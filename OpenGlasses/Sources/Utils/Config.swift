@@ -2267,6 +2267,16 @@ struct Config {
         UserDefaults.standard.set(id, forKey: "fieldAssistDefaultVaultId")
     }
 
+    /// Optional webhook (Slack-compatible) paged when a technician escalates to a human expert.
+    /// Empty = local notification only.
+    static var expertWebhookURL: String {
+        UserDefaults.standard.string(forKey: "expertWebhookURL") ?? ""
+    }
+
+    static func setExpertWebhookURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "expertWebhookURL")
+    }
+
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
     static var fieldAssistDefaultMode: String {

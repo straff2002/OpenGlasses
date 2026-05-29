@@ -23,8 +23,11 @@ final class EscalationCoordinator: ObservableObject {
 
     @Published private(set) var state: State = .idle
 
-    /// Pluggable so Phase 5 (and tests) can inject real implementations.
-    var notifier: ExpertNotifier = StubExpertNotifier()
+    /// Pluggable so Phase 5 (and tests) can inject real implementations. Defaults to a local
+    /// notification plus an optional configured webhook.
+    var notifier: ExpertNotifier = CompositeExpertNotifier(notifiers: [
+        LocalNotificationExpertNotifier(), WebhookExpertNotifier()
+    ])
     var bridge: ExpertBridge = PendingExpertBridge()
     /// The session service the coordinator logs against. Injectable for tests; defaults to shared.
     var sessionService: FieldSessionService = .shared
@@ -48,8 +51,13 @@ final class EscalationCoordinator: ObservableObject {
         service.recordEscalation(reason: reason)
         let sessionId = service.activeSession?.id ?? "no-session"
         let assetId = service.activeSession?.assetId
+
+        // Bring up the live stream first (best-effort) so the expert can be handed a join URL.
+        try? await bridge.connect(sessionId: sessionId, expertId: nil)
+        let roomURL = bridge.roomURL
+
         do {
-            let notified = try await notifier.notifyExpertPool(reason: reason, assetId: assetId, sessionId: sessionId)
+            let notified = try await notifier.notifyExpertPool(reason: reason, assetId: assetId, sessionId: sessionId, roomURL: roomURL)
             state = notified ? .awaitingExpert(reason: reason) : .failed("Could not reach any expert.")
         } catch {
             state = .failed(error.localizedDescription)

@@ -67,6 +67,21 @@ struct FieldAssistSettingsView: View {
                     Text("AI-Only uses the vault to ground responses. Human-Assisted brings a remote expert into the session — coming in v2.")
                 }
 
+                // ──────────────── Expert escalation
+                Section {
+                    TextField("https://hooks.slack.com/…", text: Binding(
+                        get: { Config.expertWebhookURL },
+                        set: { Config.setExpertWebhookURL($0) }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                } header: {
+                    Text("Expert Escalation Webhook")
+                } footer: {
+                    Text("Optional. When a technician escalates, the expert pool is paged with the live join URL via this Slack-compatible webhook (in addition to an on-device notification).")
+                }
+
                 // ──────────────── Active session
                 Section("Active Session") {
                     if let session = sessionService.activeSession {
