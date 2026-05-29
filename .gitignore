@@ -41,7 +41,15 @@ CLAUDE.md
 AGENTS.md
 impeccable-style-universal/
 
-# Note: Info.plist and xcodeproj are tracked for Xcode Cloud CI
+# XcodeGen — regenerate locally: ./Scripts/generate-xcodeproj.sh
+OpenGlasses.xcodeproj/
+xcschemes-backup/
+project.local.yml
+.openglasses-generate.env
+Config/Entitlements/Personal/*.entitlements
+!Config/Entitlements/Personal/*.entitlements.example
+Config/Info/Info.personal.plist
+!Config/Info/Info.personal.plist.example
 
 # Xcode user data (don't track)
 xcuserdata/

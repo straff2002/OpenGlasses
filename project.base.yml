@@ -1,0 +1,168 @@
+name: OpenGlasses
+
+options:
+  bundleIdPrefix: com.openglasses
+  deploymentTarget:
+    iOS: "26.0"
+    watchOS: "26.0"
+  developmentLanguage: en
+  knownRegions:
+    - Base
+    - de
+    - en
+    - es
+    - es-MX
+    - fr
+    - ja
+    - pl
+    - uk
+    - zh-Hans
+    - zh-Hant
+  createIntermediateGroups: true
+  groupSortPosition: top
+  lastUpgradeCheck: 2600
+
+packages:
+  HaishinKit:
+    url: https://github.com/shogo4405/HaishinKit.swift.git
+    from: 2.2.5
+  SystemNotification:
+    url: https://github.com/danielsaidi/SystemNotification.git
+    from: 1.0.0
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: 120.0.0
+  meta-wearables-dat-ios:
+    url: https://github.com/facebook/meta-wearables-dat-ios.git
+    from: 0.7.0
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm.git
+    branch: main
+
+settings:
+  base:
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      ENABLE_TESTABILITY: YES
+      GCC_PREPROCESSOR_DEFINITIONS:
+        - "$(inherited)"
+        - "DEBUG=1"
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      ENABLE_NS_ASSERTIONS: NO
+
+targets:
+  OpenGlasses:
+    type: application
+    platform: iOS
+    sources:
+      - path: OpenGlasses/Sources
+        excludes:
+          - Resources
+      - path: GlassesActivityWidget
+        includes:
+          - AccentColors.swift
+          - SharedAppState.swift
+    resources:
+      - path: OpenGlasses/Sources/Resources/Assets.xcassets
+      - path: OpenGlasses/Sources/Resources/Localizable.xcstrings
+      - path: OpenGlasses/Sources/Resources/Translations
+      - path: OpenGlasses/Sources/Resources/Vaults
+        type: folder
+    dependencies:
+      - target: GlassesActivityWidget
+        embed: true
+      - package: meta-wearables-dat-ios
+        product: MWDATCore
+      - package: meta-wearables-dat-ios
+        product: MWDATCamera
+      - package: HaishinKit
+        product: HaishinKit
+      - package: HaishinKit
+        product: RTMPHaishinKit
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXVLM
+      - package: SystemNotification
+        product: SystemNotification
+      - package: WebRTC
+        product: WebRTC
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
+        CODE_SIGN_ENTITLEMENTS: OpenGlasses/OpenGlasses.entitlements
+        CODE_SIGN_IDENTITY: iPhone Developer
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 11
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: OpenGlasses/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: OpenGlasses
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        MARKETING_VERSION: 2.2.0
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  GlassesActivityWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: GlassesActivityWidget
+      - path: OpenGlasses/Sources/Models
+        includes:
+          - GlassesActivityAttributes.swift
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: GlassesActivityWidget/GlassesActivityWidget.entitlements
+        CURRENT_PROJECT_VERSION: 11
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: GlassesActivityWidget/Info.plist
+        MARKETING_VERSION: 2.2.0
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
+        SKIP_INSTALL: YES
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+schemes:
+  OpenGlasses:
+    build:
+      targets:
+        OpenGlasses: all
+        GlassesActivityWidget: all
+    run:
+      config: Debug
+      executable: OpenGlasses
+    profile:
+      config: Release
+      executable: OpenGlasses
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  GlassesActivityWidget:
+    build:
+      targets:
+        GlassesActivityWidget: all
+        OpenGlasses: all
+    run:
+      config: Debug
+      debugEnabled: false
+      environmentVariables:
+        _XCWidgetKind: OpenGlassesHomeWidget
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+

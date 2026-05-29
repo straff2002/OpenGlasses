@@ -1,0 +1,85 @@
+targets:
+  OpenGlasses:
+    dependencies:
+      - target: GlassesActivityWidget
+        embed: true
+      - target: OpenGlassesWatch
+        embed: true
+      - package: meta-wearables-dat-ios
+        product: MWDATCore
+      - package: meta-wearables-dat-ios
+        product: MWDATCamera
+      - package: HaishinKit
+        product: HaishinKit
+      - package: HaishinKit
+        product: RTMPHaishinKit
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXVLM
+      - package: SystemNotification
+        product: SystemNotification
+      - package: WebRTC
+        product: WebRTC
+
+  OpenGlassesWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: OpenGlassesWatch
+      - path: GlassesActivityWidget
+        includes:
+          - AccentColors.swift
+    dependencies:
+      - target: OpenGlassesWatchWidget
+        embed: true
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: OpenGlassesWatch/OpenGlassesWatch.entitlements
+        CURRENT_PROJECT_VERSION: 11
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: OpenGlassesWatch/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: OpenGlasses
+        MARKETING_VERSION: 2.2.0
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
+        SKIP_INSTALL: YES
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: 4
+
+  OpenGlassesWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - OpenGlassesWatchWidget
+      - path: GlassesActivityWidget
+        includes:
+          - AccentColors.swift
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements
+        CURRENT_PROJECT_VERSION: 11
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: OpenGlassesWatchWidget/Info.plist
+        MARKETING_VERSION: 2.2.0
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
+        SKIP_INSTALL: YES
+        SWIFT_VERSION: 5.9
+        TARGETED_DEVICE_FAMILY: 4
+
+schemes:
+  OpenGlassesWatch:
+    build:
+      targets:
+        OpenGlassesWatch: all
+        OpenGlassesWatchWidget: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
