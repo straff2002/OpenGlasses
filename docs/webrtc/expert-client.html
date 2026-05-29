@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenGlasses — Expert Console</title>
+<style>
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #111; color: #eee; }
+  header { padding: 12px 16px; background: #1c1c1e; font-weight: 600; }
+  #video { width: 100%; max-height: 80vh; background: #000; }
+  #status { padding: 8px 16px; font-size: 14px; color: #aaa; }
+  .config { padding: 12px 16px; display: grid; gap: 6px; max-width: 520px; }
+  input { padding: 8px; border-radius: 8px; border: 1px solid #333; background: #1c1c1e; color: #eee; }
+  button { padding: 10px; border-radius: 8px; border: 0; background: #F08A4B; color: #000; font-weight: 600; }
+</style>
+</head>
+<body>
+  <header>OpenGlasses — Expert Console</header>
+  <div id="status">Idle.</div>
+  <video id="video" autoplay playsinline></video>
+
+  <!-- Edit ICE servers to match the technician app's STUN/TURN, then Connect. -->
+  <div class="config">
+    <input id="signaling" placeholder="wss://signal.example/ws" />
+    <input id="room" placeholder="room (from the join URL ?room=...)" />
+    <input id="stun" value="stun:stun.l.google.com:19302" />
+    <input id="turn" placeholder="turn:host:3478 (optional)" />
+    <input id="turnUser" placeholder="TURN username (optional)" />
+    <input id="turnCred" placeholder="TURN credential (optional)" />
+    <button id="connect">Connect</button>
+  </div>
+
+<script>
+// Expert side of the OpenGlasses WebRTC call (Plan M2). The glasses app is the offerer; this page
+// answers, shows the glasses video, and sends the expert's mic back. Protocol matches
+// SignalingMessage in WebRTCPeerTransport.swift.
+const qs = new URLSearchParams(location.search);
+const statusEl = document.getElementById("status");
+const videoEl = document.getElementById("video");
+const $ = (id) => document.getElementById(id);
+$("room").value = qs.get("room") || "";
+$("signaling").value = qs.get("signaling") || location.origin.replace(/^http/, "ws");
+
+function setStatus(s) { statusEl.textContent = s; }
+
+function iceServers() {
+  const servers = [{ urls: $("stun").value }];
+  if ($("turn").value) {
+    servers.push({ urls: $("turn").value, username: $("turnUser").value, credential: $("turnCred").value });
+  }
+  return servers;
+}
+
+$("connect").onclick = async () => {
+  const room = $("room").value.trim();
+  const ws = new WebSocket($("signaling").value.trim());
+  let pc;
+
+  const send = (m) => ws.send(JSON.stringify({ ...m, room }));
+
+  ws.onopen = () => { setStatus("Signaling connected. Joining room…"); send({ type: "join" }); };
+  ws.onerror = () => setStatus("Signaling error.");
+  ws.onclose = () => setStatus("Signaling closed.");
+
+  ws.onmessage = async (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.type === "offer") {
+      pc = new RTCPeerConnection({ iceServers: iceServers() });
+      pc.ontrack = (e) => { if (e.track.kind === "video") videoEl.srcObject = e.streams[0]; };
+      pc.onicecandidate = (e) => {
+        if (e.candidate) send({ type: "candidate", candidate: e.candidate.candidate,
+                                sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex });
+      };
+      pc.onconnectionstatechange = () => setStatus("Connection: " + pc.connectionState);
+
+      // Send the expert's mic back to the technician.
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+      } catch (e) { setStatus("Mic unavailable: " + e.message); }
+
+      await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      send({ type: "answer", sdp: answer.sdp });
+      setStatus("Answered. Negotiating…");
+    } else if (msg.type === "candidate" && pc) {
+      try {
+        await pc.addIceCandidate({ candidate: msg.candidate, sdpMid: msg.sdpMid, sdpMLineIndex: msg.sdpMLineIndex });
+      } catch (e) { console.warn("addIceCandidate", e); }
+    } else if (msg.type === "bye" && pc) {
+      pc.close(); setStatus("Technician ended the call.");
+    }
+  };
+};
+</script>
+</body>
+</html>
