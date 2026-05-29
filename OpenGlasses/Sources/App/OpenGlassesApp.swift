@@ -721,8 +721,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
 
-        // Field Assist Phase 5 (Plan K2): live WebRTC expert bridge for escalations.
-        EscalationCoordinator.shared.bridge = WebRTCExpertBridge(
+        // Field Assist Phase 5 (Plan K2): expert stream bridge for escalations. Transport
+        // (MJPEG / WebRTC) is selected in Settings; MJPEG is the working default.
+        EscalationCoordinator.shared.bridge = ExpertStreamBridge(
             streamer: webRTCStreaming, framePublisher: cameraService.framePublisher)
 
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.

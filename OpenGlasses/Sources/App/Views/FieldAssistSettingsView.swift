@@ -69,6 +69,21 @@ struct FieldAssistSettingsView: View {
 
                 // ──────────────── Expert escalation
                 Section {
+                    Picker("Stream transport", selection: Binding(
+                        get: { Config.expertStreamTransport },
+                        set: { Config.setExpertStreamTransport($0) }
+                    )) {
+                        ForEach(ExpertStreamKind.allCases, id: \.self) { kind in
+                            Text(kind == .webrtc ? "\(kind.label) — not available" : kind.label).tag(kind)
+                        }
+                    }
+                } header: {
+                    Text("Expert Stream Transport")
+                } footer: {
+                    Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer (works today). WebRTC (peer-to-peer, two-way) is a drop-in seam — not bundled until a WebRTC package + signaling/TURN are added.")
+                }
+
+                Section {
                     TextField("https://hooks.slack.com/…", text: Binding(
                         get: { Config.expertWebhookURL },
                         set: { Config.setExpertWebhookURL($0) }

@@ -2277,6 +2277,16 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "expertWebhookURL")
     }
 
+    /// Transport used to stream the glasses view to a remote expert on escalation.
+    /// Defaults to MJPEG (the shipped, working browser-viewer stream).
+    static var expertStreamTransport: ExpertStreamKind {
+        ExpertStreamKind(rawValue: UserDefaults.standard.string(forKey: "expertStreamTransport") ?? "mjpeg") ?? .mjpeg
+    }
+
+    static func setExpertStreamTransport(_ kind: ExpertStreamKind) {
+        UserDefaults.standard.set(kind.rawValue, forKey: "expertStreamTransport")
+    }
+
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
     static var fieldAssistDefaultMode: String {
