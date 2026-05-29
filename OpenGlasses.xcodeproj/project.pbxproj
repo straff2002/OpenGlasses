@@ -128,6 +128,7 @@
 		5B454FC25C0E782163090648 /* LocationSearchTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCB35DE7417BF6EF8327417 /* LocationSearchTool.swift */; };
 		5EB08DD438471A3C244E0E1F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2AA5FCA9D214D035594C61E8 /* Assets.xcassets */; };
 		5FBAA84F70E3CEE036ABF23A /* NewsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7843AFB7602ACD3B49CE0 /* NewsTool.swift */; };
+		600D0334FF967F171578CE83 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 1633BD0EB502F17EDE95B1FA /* WebRTC */; };
 		6051A6ADE5F504C705F1642A /* ExpertStreamTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C76B183038F38624F51DDD26 /* ExpertStreamTransportTests.swift */; };
 		60995A66CE446DAAC5E2519E /* ProcedureRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D5096E8BCC94E7B9384D9D /* ProcedureRunnerTests.swift */; };
 		615540387C9B261987C25901 /* ConnectionIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C6A67FDCAB70292FEA20F3 /* ConnectionIntents.swift */; };
@@ -161,7 +162,7 @@
 		75038F89648B9762169CE88E /* AmbientCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5F97E38F16EA7F7EE6746A /* AmbientCaptionService.swift */; };
 		75168319D884F3233D29B610 /* WatchMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B159D4D9A13DEA0D6C548E82 /* WatchMainView.swift */; };
 		75CB3F368BACFF287C71249B /* QuickActionsOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A99BC98A3556887F1577B1 /* QuickActionsOverlay.swift */; };
-		79F5F4BB2655B88320D908CD /* SystemNotification in Frameworks */ = {isa = PBXBuildFile; productRef = C25288610CDE69E8AAC09000 /* SystemNotification */; };
+		79F5F4BB2655B88320D908CD /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 03581B41749718C62E3DADDD /* MLXHuggingFace */; };
 		7B1B2E29B04E64697CC217AD /* UserMemoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3695713BE8A2496C27B8E4D /* UserMemoryStoreTests.swift */; };
 		7B295E88B3273E4CEBF6413B /* ListeningToggleIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AED920D2F0F9413FC07E624A /* ListeningToggleIntent.swift */; };
 		7BC13F05FF68681657F4A06F /* BackgroundVoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC7865DDB5AD97BD3FDD7546 /* BackgroundVoiceService.swift */; };
@@ -309,6 +310,7 @@
 		DC2844D28DEAE6D2209615C5 /* OpenAIRealtimeSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC9FE98120C05E30664ECA0 /* OpenAIRealtimeSessionManager.swift */; };
 		DD016D5355603E5789EF5546 /* MeetingLinkTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B34C58C5BFD3DAF2E7FBC4FF /* MeetingLinkTransport.swift */; };
 		DD9CB205BB424A72BF6CFD48 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965542FBCBFA014EEC77EABC /* ShareSheet.swift */; };
+		DE177E0EE5D91D6BE3E5F029 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 81705AAF237FD5AC04B8033E /* Tokenizers */; };
 		DF657ADBC3EF4C6E23C8531B /* OneEuroFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A63E4DE627FA12FCEA38089 /* OneEuroFilter.swift */; };
 		E04059C15DE008E3D2BEAB25 /* SessionExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C88D2942D45B47CE8F6F7B /* SessionExporter.swift */; };
 		E06C9FB9F4F3B1CE8656A44C /* EscalationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFFF491CA4CD37883809C52 /* EscalationCoordinator.swift */; };
@@ -324,6 +326,7 @@
 		E86961037365F1B3B5B9DBF1 /* MoneyIdentifierTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF6B87A6F2A4E89EB6954AD /* MoneyIdentifierTool.swift */; };
 		E89CB6BB8456474494C5DD37 /* AgentScheduleTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E7694407E6C49108269783 /* AgentScheduleTool.swift */; };
 		E94716B16382DDCBD4204168 /* ReadingAccessibilityTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDF8333F8A26F4578A0B3FB /* ReadingAccessibilityTool.swift */; };
+		EA632A2863B68A736F027196 /* SystemNotification in Frameworks */ = {isa = PBXBuildFile; productRef = C25288610CDE69E8AAC09000 /* SystemNotification */; };
 		EA955AA5903F039A2FBA9B42 /* ro.json in Resources */ = {isa = PBXBuildFile; fileRef = FB807E38C7627E62D55EF689 /* ro.json */; };
 		EAF3190C9E4045C4E662A81F /* MCPDeclarationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD13B6BBBA48B0B4177F38E /* MCPDeclarationsTests.swift */; };
 		EB02F1793B407EF52D3EB8AA /* MeetingLinkTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFF978EB9C411013227E99A /* MeetingLinkTransportTests.swift */; };
@@ -343,7 +346,7 @@
 		F654387BA42A828A8D519A89 /* hu.json in Resources */ = {isa = PBXBuildFile; fileRef = 1B3597BD404768005F3FC242 /* hu.json */; };
 		F757FB8CC9839D01EB3D2D29 /* ListeningControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922414961C19E5554C493C5E /* ListeningControlWidget.swift */; };
 		F8FA2AE1E059DFD11C6E997E /* PhotoLogTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CFF188ECE811AE051696ED5 /* PhotoLogTool.swift */; };
-		FA2191BC1DBB93D29B96E332 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 1633BD0EB502F17EDE95B1FA /* WebRTC */; };
+		FA2191BC1DBB93D29B96E332 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = D1A3FB905C1EED253DF50683 /* HuggingFace */; };
 		FA5050A9D00A9AFC6F42E2F9 /* Gemma4Text.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406CF33E2425CF1E98F91A11 /* Gemma4Text.swift */; };
 		FCCEAD2B063A3A16C28EFE16 /* hr.json in Resources */ = {isa = PBXBuildFile; fileRef = ABDC887AC5CD2A3BAB0A656F /* hr.json */; };
 		FDC14476398048B298A7E2A5 /* AudioRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9109D547984B8AB11EF84906 /* AudioRecordingService.swift */; };
@@ -767,8 +770,11 @@
 				146DEA478FEFE477060104FD /* MLXLLM in Frameworks */,
 				32EAE84A6AFFE69E81EC21C6 /* MLXLMCommon in Frameworks */,
 				C2D47B33B3205CBF525A927B /* MLXVLM in Frameworks */,
-				79F5F4BB2655B88320D908CD /* SystemNotification in Frameworks */,
-				FA2191BC1DBB93D29B96E332 /* WebRTC in Frameworks */,
+				79F5F4BB2655B88320D908CD /* MLXHuggingFace in Frameworks */,
+				FA2191BC1DBB93D29B96E332 /* HuggingFace in Frameworks */,
+				DE177E0EE5D91D6BE3E5F029 /* Tokenizers in Frameworks */,
+				EA632A2863B68A736F027196 /* SystemNotification in Frameworks */,
+				600D0334FF967F171578CE83 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1315,6 +1321,9 @@
 				FCD51D7391B9F5544D39ACA0 /* MLXLLM */,
 				9DBFBEF2763A02A1421213ED /* MLXLMCommon */,
 				AA89B0E395FED1A1497F7B0A /* MLXVLM */,
+				03581B41749718C62E3DADDD /* MLXHuggingFace */,
+				D1A3FB905C1EED253DF50683 /* HuggingFace */,
+				81705AAF237FD5AC04B8033E /* Tokenizers */,
 				C25288610CDE69E8AAC09000 /* SystemNotification */,
 				1633BD0EB502F17EDE95B1FA /* WebRTC */,
 			);
@@ -1451,6 +1460,8 @@
 				EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
 				68CD19E5A36E44D2151E629D /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				45F41A3268C02F679F828309 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				EE793A531B9C1C985EF3FF67 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2FF5D8C273F7690D085621F8 /* Products */;
@@ -2317,12 +2328,20 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		45F41A3268C02F679F828309 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
 		68CD19E5A36E44D2151E629D /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = exactVersion;
+				version = 3.31.3;
 			};
 		};
 		690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
@@ -2331,6 +2350,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.7.0;
+			};
+		};
+		EE793A531B9C1C985EF3FF67 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
 			};
 		};
 		EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
@@ -2344,6 +2371,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		03581B41749718C62E3DADDD /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 68CD19E5A36E44D2151E629D /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
 		0DDAEE3CC12AA3800AA67849 /* HaishinKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 077ED21BE5031CDAD7703935 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
@@ -2358,6 +2390,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */;
 			productName = WebRTC;
+		};
+		81705AAF237FD5AC04B8033E /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EE793A531B9C1C985EF3FF67 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
 		};
 		9AB2B081EA62FA6DE3DCF3BA /* MWDATCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -2378,6 +2415,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 38B4BC62AC9E08A4652244EE /* XCRemoteSwiftPackageReference "SystemNotification" */;
 			productName = SystemNotification;
+		};
+		D1A3FB905C1EED253DF50683 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 45F41A3268C02F679F828309 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
 		};
 		D8AD4E224036184FB764A25D /* MWDATCamera */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -61,7 +61,13 @@ packages:
     from: "2.2.5"
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm.git
-    branch: main
+    version: "3.31.3"
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface.git
+    from: "0.1.0"
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers.git
+    from: "1.0.0"
   SystemNotification:
     url: https://github.com/danielsaidi/SystemNotification.git
     from: "1.0.0"
@@ -120,6 +126,12 @@ targets:
         product: MLXLMCommon
       - package: mlx-swift-lm
         product: MLXVLM
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers
       - package: SystemNotification
         product: SystemNotification
       - package: WebRTC
