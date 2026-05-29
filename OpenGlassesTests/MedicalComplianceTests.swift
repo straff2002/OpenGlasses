@@ -26,6 +26,8 @@ final class MedicalComplianceTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: key)
         }
         hipaaService = HIPAAComplianceService()
+        // The audit log persists across instances (and runs), so clear it for test isolation.
+        hipaaService.clearAuditLog()
 
         // Create a temp directory for file-based tests
         tempDir = FileManager.default.temporaryDirectory
@@ -34,6 +36,7 @@ final class MedicalComplianceTests: XCTestCase {
     }
 
     override func tearDown() {
+        hipaaService?.clearAuditLog()
         for key in testKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
@@ -150,8 +153,8 @@ final class MedicalComplianceTests: XCTestCase {
         Config.hipaaMode = true
         let registry = NativeToolRegistry(locationService: LocationService())
 
-        // These tools should NOT be blocked by HIPAA
-        let safeTools = ["weather", "calculator", "timer", "save_note", "device_info"]
+        // These tools should NOT be blocked by HIPAA (use the tools' actual registered names).
+        let safeTools = ["get_weather", "calculate", "set_timer", "save_note", "device_info"]
         for toolName in safeTools {
             XCTAssertNotNil(registry.tool(named: toolName),
                             "Tool '\(toolName)' should still work in HIPAA mode")
@@ -265,11 +268,14 @@ final class MedicalComplianceTests: XCTestCase {
         XCTAssertEqual(values?.isExcludedFromBackup, true,
                        "Protected file should be excluded from iCloud backup")
 
-        // Check file protection (NSFileProtectionComplete)
+        // Check file protection (NSFileProtectionComplete). Data protection isn't enforced on the
+        // simulator, so the attribute isn't readable there — verify it only on device.
+        #if !targetEnvironment(simulator)
         let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
         let protection = attrs?[.protectionKey] as? FileProtectionType
         XCTAssertEqual(protection, .complete,
                        "Protected file should use NSFileProtectionComplete")
+        #endif
     }
 
     func testProtectDirectoryProtectsAllFiles() {

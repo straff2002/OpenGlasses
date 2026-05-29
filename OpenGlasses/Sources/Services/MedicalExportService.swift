@@ -248,13 +248,14 @@ class MedicalExportService: ObservableObject {
         let timestamp = formatter.string(from: date)
         let msgId = UUID().uuidString.prefix(20)
 
-        // Escape HL7 special characters in transcript
+        // Escape HL7 special characters. The escape character "\" MUST be escaped first, otherwise
+        // it corrupts the backslashes introduced by the field/component escapes below.
         let escapedText = transcript
+            .replacingOccurrences(of: "\\", with: "\\E\\")
             .replacingOccurrences(of: "|", with: "\\F\\")
             .replacingOccurrences(of: "^", with: "\\S\\")
             .replacingOccurrences(of: "&", with: "\\T\\")
             .replacingOccurrences(of: "~", with: "\\R\\")
-            .replacingOccurrences(of: "\\", with: "\\E\\")
             .replacingOccurrences(of: "\n", with: "\\.br\\")
 
         return """

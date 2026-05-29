@@ -1845,8 +1845,10 @@ struct Config {
     /// 0 = no auto-purge (manual deletion only). Default 90 days.
     static var hipaaRetentionDays: Int {
         get {
-            let val = UserDefaults.standard.integer(forKey: "hipaaRetentionDays")
-            return val > 0 ? val : 90
+            // Unset → default 90. An explicit 0 is preserved and means "no auto-purge"
+            // (enforceRetentionPolicy guards on > 0).
+            guard UserDefaults.standard.object(forKey: "hipaaRetentionDays") != nil else { return 90 }
+            return max(0, UserDefaults.standard.integer(forKey: "hipaaRetentionDays"))
         }
         set { UserDefaults.standard.set(newValue, forKey: "hipaaRetentionDays") }
     }

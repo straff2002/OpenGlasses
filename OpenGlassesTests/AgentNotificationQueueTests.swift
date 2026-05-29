@@ -107,18 +107,19 @@ final class AgentNotificationQueueTests: XCTestCase {
 
     // MARK: - Staleness Boundary
 
-    func testStalenessExactlyAtBoundary() {
-        // At exactly 30 minutes, low should NOT be stale (> not >=)
+    func testStalenessJustInsideBoundary() {
+        // isStale reads the wall clock (age > 1800), so a value at exactly -1800 races just over the
+        // threshold by the time it's evaluated. Use a value safely inside the 30-minute window to
+        // deterministically verify a recent low-priority notification is NOT stale.
         let notification = AgentNotificationQueue.QueuedNotification(
             id: "boundary",
             message: "Test",
             source: "test",
             personaId: nil,
             personaName: nil,
-            createdAt: Date().addingTimeInterval(-1800), // exactly 30 min
+            createdAt: Date().addingTimeInterval(-1799), // just under 30 min
             priority: .low
         )
-        // 1800 seconds is not > 1800, so should not be stale
         XCTAssertFalse(notification.isStale)
     }
 }

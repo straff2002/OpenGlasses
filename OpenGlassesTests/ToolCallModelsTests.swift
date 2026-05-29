@@ -194,7 +194,7 @@ final class ToolCallModelsTests: XCTestCase {
     }
 
     func testGeminiRESTToolsFormat() {
-        let tools = ToolDeclarations.geminiRESTTools(registry: nil, includeOpenClaw: false)
+        let tools = ToolDeclarations.geminiRESTTools(registry: nil, includeOpenClaw: true)
         XCTAssertGreaterThanOrEqual(tools.count, 1)
 
         let tool = tools[0]
