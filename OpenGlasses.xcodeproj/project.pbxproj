@@ -104,6 +104,7 @@
 		4F1DB052E771E31525C2F8A0 /* AssistiveModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C795CA588B550912F72BDAC /* AssistiveModeTests.swift */; };
 		4F4BC327A4DEC69CE4222578 /* PlaybookStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1E988D96A757CED67E7F6C /* PlaybookStoreTests.swift */; };
 		4F95F8529B0A876FDD4983F5 /* HealthVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA01321A5266DE93BAE62EAC /* HealthVaultTests.swift */; };
+		4FEA6969069D65577EF0E463 /* MedicationIdentifierTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B035CFF213F325E341B257 /* MedicationIdentifierTool.swift */; };
 		53CA82E8C91553F4DA68A94C /* ContactsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0C5659A007A2FE3733DE35 /* ContactsTool.swift */; };
 		540EE43620F48A03B26DFF43 /* AgenticFeaturesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D5C7A2ECA659FF7042C5D2 /* AgenticFeaturesView.swift */; };
 		546CCC67E8CFCA1675E14F23 /* pt-PT.json in Resources */ = {isa = PBXBuildFile; fileRef = A74099B874FBF3DA04DFA4C7 /* pt-PT.json */; };
@@ -193,6 +194,7 @@
 		91DD13D2BC6D1247C9751196 /* DirectionsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = D56AC77FDD0C1EBA73F47979 /* DirectionsTool.swift */; };
 		91E6A0674A56555145D71A4F /* ModelFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8553DE8D43F2A817805A92D3 /* ModelFormView.swift */; };
 		9294FB532E2327DD6FC7E2EE /* HealthVaultTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070F84673EC7D3DCDB32348A /* HealthVaultTool.swift */; };
+		93635304ACB1C3C289C21859 /* MedicationIdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F615B451B8F9BA2AD9DB4CA1 /* MedicationIdentifierTests.swift */; };
 		9399D3C964C351B231AD409F /* DocumentScanTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919682F7C66341CE55173B1B /* DocumentScanTool.swift */; };
 		9649CC4B7DBACDADB3C6D4A1 /* PromptPresetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B0FBEDCBFF86613153B4F1 /* PromptPresetsView.swift */; };
 		9807600685AD4110F005D0CE /* ModelEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59DC9379EBF3C847016C0C3 /* ModelEditorView.swift */; };
@@ -684,6 +686,7 @@
 		EB086ED552982492B188C851 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		ECD2184B6F8873443B3DEE1E /* WhereAmITool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereAmITool.swift; sourceTree = "<group>"; };
 		EFC9FE98120C05E30664ECA0 /* OpenAIRealtimeSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeSessionManager.swift; sourceTree = "<group>"; };
+		F0B035CFF213F325E341B257 /* MedicationIdentifierTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationIdentifierTool.swift; sourceTree = "<group>"; };
 		F117BBF2F6E3210B17007147 /* ExpertBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpertBridge.swift; sourceTree = "<group>"; };
 		F18F3CBA78C24423C29D96CB /* LaunchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchScreen.swift; sourceTree = "<group>"; };
 		F3021DA0A037B84E19352C73 /* ShazamTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamTool.swift; sourceTree = "<group>"; };
@@ -691,6 +694,7 @@
 		F4DD6028522D2C2B1D52DD7C /* GeminiLiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiLiveService.swift; sourceTree = "<group>"; };
 		F52179755B968C4BF4ED5D76 /* fi.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = fi.json; sourceTree = "<group>"; };
 		F5250DFAD64AE8334BE6B2BA /* StoreKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitService.swift; sourceTree = "<group>"; };
+		F615B451B8F9BA2AD9DB4CA1 /* MedicationIdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationIdentifierTests.swift; sourceTree = "<group>"; };
 		F686B9E1583DF3A9A4122BCC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F6A43E50AB9257B0004A4C2B /* HIPAAComplianceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HIPAAComplianceService.swift; sourceTree = "<group>"; };
 		F6CB790735C612D9723B4387 /* ToolCallRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallRouterTests.swift; sourceTree = "<group>"; };
@@ -973,6 +977,7 @@
 				21C6147CE5F69027F56B754E /* LiveTranslationTool.swift */,
 				1BCB35DE7417BF6EF8327417 /* LocationSearchTool.swift */,
 				37C553F5FEFD0F645A612F75 /* MedicalExportTool.swift */,
+				F0B035CFF213F325E341B257 /* MedicationIdentifierTool.swift */,
 				187F7D4D257473BA5144A577 /* MeetingSummaryTool.swift */,
 				952E0414BECBCA231798AAD8 /* MemoryRewindTool.swift */,
 				992F3EDD40F04F6BC49F5218 /* MemorySearchTool.swift */,
@@ -1147,6 +1152,7 @@
 				334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */,
 				B79F6B678ADD9092CE76FC66 /* LiveCoachTests.swift */,
 				6EDB80A80F1A4B7314A44582 /* MedicalComplianceTests.swift */,
+				F615B451B8F9BA2AD9DB4CA1 /* MedicationIdentifierTests.swift */,
 				E2732556265D65C8C9AA7821 /* OCRServiceTests.swift */,
 				7D837E875636164435130EEA /* OpenClawBridgeTests.swift */,
 				8E1E988D96A757CED67E7F6C /* PlaybookStoreTests.swift */,
@@ -1495,6 +1501,7 @@
 				06702A897C57F7E1CD876FDA /* IdleSleepTests.swift in Sources */,
 				23E5B21687BC1C82018FC101 /* LiveCoachTests.swift in Sources */,
 				29925581D38BC50907D4EC8D /* MedicalComplianceTests.swift in Sources */,
+				93635304ACB1C3C289C21859 /* MedicationIdentifierTests.swift in Sources */,
 				9964EC142F42452AE3956949 /* OCRServiceTests.swift in Sources */,
 				B7397C5505A73989CA78076B /* OpenClawBridgeTests.swift in Sources */,
 				4F4BC327A4DEC69CE4222578 /* PlaybookStoreTests.swift in Sources */,
@@ -1652,6 +1659,7 @@
 				909CDAED06440A8D95F16E24 /* MedicalExportService.swift in Sources */,
 				7E5EEC40245ED1C2A148166E /* MedicalExportSettingsView.swift in Sources */,
 				1D414F58D7B868A95A4D9C52 /* MedicalExportTool.swift in Sources */,
+				4FEA6969069D65577EF0E463 /* MedicationIdentifierTool.swift in Sources */,
 				CF544CB66399C1306D11BB59 /* MeetingAssistantService.swift in Sources */,
 				0C838423C97FA7697C3656B6 /* MeetingSummaryTool.swift in Sources */,
 				D03B8AD56FD40C35FD759867 /* MemoryRewindService.swift in Sources */,
