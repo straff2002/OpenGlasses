@@ -1,7 +1,5 @@
 # Plan D — Small Utilities Bundle
 
-**Source repo:** [SkyRadar](https://github.com/Trickdog/SkyRadar) (D1, D2) + [shopping list](https://github.com/kendy92/Meta-Rayban-Glass-Shopping-List) (D3, deferred)
-
 **Strategic fit:** Three small, independently-useful additions. Low risk, fast to ship. Good warmup PR.
 
 **Effort:** D1 + D2 in ~1 day total. D3 deferred.
@@ -23,7 +21,7 @@ struct OneEuroFilter {
 }
 ```
 
-**Algorithm (from SkyRadar):**
+**Algorithm:**
 - Adaptive low-pass filter: `cutoff = mincutoff + beta * |velocity|`
 - Reduces jitter when signal is stable, stays responsive when changing fast
 - `filterAngle` handles 359°→1° wrap correctly via modular difference
@@ -75,11 +73,9 @@ aircraft_overhead:
 
 ## D3. `DPadNavigable` SwiftUI modifier — DEFERRED
 
-**Source:** [shopping list useDpadNavigation.js](https://github.com/kendy92/Meta-Rayban-Glass-Shopping-List/blob/main/src/hooks/useDpadNavigation.js)
-
 **Reason for deferral:** Only useful when targeting the Meta Display glasses 600×600 surface. Not relevant until Display-glasses hardware support is in scope.
 
-**Bookmark:** When ready, port their hook to a SwiftUI `.dpadNavigable()` ViewModifier:
+**Bookmark:** When ready, build a SwiftUI `.dpadNavigable()` ViewModifier:
 - Arrow keys cycle through `data-focusable="true"` equivalents (probably `.focusable()` + `.focused()`)
 - Modulo wrap-around at list boundaries
 - Enter/Space activates

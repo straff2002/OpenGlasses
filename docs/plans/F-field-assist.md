@@ -1,6 +1,6 @@
 # Plan F — Field Assist (B2B / Enterprise)
 
-**Source pattern:** TeamViewer Frontline, Dynamics 365 Remote Assist, Vuzix Remote Assist, Librestream Onsight, Augmentir. Mature enterprise smart-glasses category.
+**Source pattern:** The mature enterprise remote-assist / field-service smart-glasses category.
 
 **Strategic fit:** Likely the highest-revenue feature in OpenGlasses. Hands-free, AI-grounded field service for technicians (refrigeration, IT, electrical, automotive). B2B subscription model. Establishes OpenGlasses in the enterprise market alongside consumer use cases.
 
