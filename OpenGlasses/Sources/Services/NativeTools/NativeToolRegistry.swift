@@ -13,7 +13,8 @@ final class NativeToolRegistry {
          videoRecorder: VideoRecordingService? = nil,
          audioRecorder: AudioRecordingService? = nil,
          medicalExportService: MedicalExportService? = nil,
-         semanticMemory: SemanticMemoryStore? = nil) {
+         semanticMemory: SemanticMemoryStore? = nil,
+         documentStore: DocumentStore? = nil) {
         let weatherTool = WeatherTool(locationService: locationService)
         let newsTool = NewsTool()
         let dateTimeTool = DateTimeTool()
@@ -177,6 +178,14 @@ final class NativeToolRegistry {
             var diaryTool = AgentDiaryTool()
             diaryTool.memoryStore = memory
             register(diaryTool)
+        }
+
+        // Document RAG — on-device knowledge base ([[DocumentRAGTool]])
+        if let docStore = documentStore {
+            var ragTool = DocumentRAGTool()
+            ragTool.documentStore = docStore
+            ragTool.cameraService = cameraService
+            register(ragTool)
         }
 
         // LiveTranslationTool is registered separately after the service is created
