@@ -129,7 +129,7 @@ struct VideoRecordingTool: NativeTool {
                         }
                     } else {
                         // Create file for sharing in the default format
-                        let fileURL = await exportService.createExportFile(
+                        let fileURL = exportService.createExportFile(
                             transcript: transcript,
                             duration: duration,
                             date: Date(),

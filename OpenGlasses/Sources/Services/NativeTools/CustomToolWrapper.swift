@@ -74,7 +74,7 @@ struct CustomToolWrapper: NativeTool {
         }
 
         // Store a pending callback so the URL handler can resolve it
-        await ShortcutCallbackManager.shared.setPending(toolName: name)
+        ShortcutCallbackManager.shared.setPending(toolName: name)
 
         await MainActor.run {
             UIApplication.shared.open(url)

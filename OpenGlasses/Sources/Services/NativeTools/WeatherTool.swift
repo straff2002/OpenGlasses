@@ -32,7 +32,7 @@ final class WeatherTool: NativeTool, @unchecked Sendable {
     }
 
     func execute(args: [String: Any]) async throws -> String {
-        let (lat, lon) = await resolveCoordinates(args: args)
+        let (lat, lon) = resolveCoordinates(args: args)
 
         guard let lat, let lon else {
             return "I can't get the weather right now because your location isn't available. Please make sure location services are enabled."

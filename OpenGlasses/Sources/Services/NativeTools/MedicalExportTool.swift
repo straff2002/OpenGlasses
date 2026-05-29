@@ -97,7 +97,7 @@ struct MedicalExportTool: NativeTool {
             default: format = .plainText
             }
 
-            let url = await service.createExportFile(
+            let url = service.createExportFile(
                 transcript: transcript, duration: duration, date: now, format: format
             )
 
@@ -117,7 +117,7 @@ struct MedicalExportTool: NativeTool {
             default: format = .plainText
             }
 
-            let url = await service.createExportFile(
+            let url = service.createExportFile(
                 transcript: transcript, duration: duration, date: now, format: format
             )
 

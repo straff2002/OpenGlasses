@@ -1,8 +1,10 @@
 import Foundation
-import Hub
+import HuggingFace
+import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
 import MLXVLM
+import Tokenizers
 import UIKit
 
 /// Manages on-device LLM inference via Apple's MLX framework.
@@ -19,12 +21,12 @@ final class LocalLLMService: ObservableObject {
     private var modelContainer: ModelContainer?
     private var activeDownloadTask: Task<Void, Error>?
 
-    /// HubApi configured to store models in Application Support (persistent, not purgeable).
-    private let hub: HubApi = {
+    /// HubClient configured to store models in Application Support (persistent, not purgeable).
+    private let hub: HubClient = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let modelsDir = appSupport.appendingPathComponent("LocalModels", isDirectory: true)
         try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
-        return HubApi(downloadBase: modelsDir)
+        return HubClient(cache: HubCache(cacheDirectory: modelsDir))
     }()
 
     // MARK: - Recommended Models
@@ -112,11 +114,11 @@ final class LocalLLMService: ObservableObject {
             activeDownloadTask = nil
         }
 
-        let repo = Hub.Repo(id: modelId)
-        _ = try await hub.snapshot(from: repo) { progress in
-            Task { @MainActor in
-                self.downloadProgress = progress.fractionCompleted
-            }
+        guard let repoID = Repo.ID(rawValue: modelId) else {
+            throw LocalLLMError.generationFailed("Invalid model id: \(modelId)")
+        }
+        _ = try await hub.downloadSnapshot(of: repoID) { @MainActor progress in
+            self.downloadProgress = progress.fractionCompleted
         }
 
         downloadProgress = 1.0
@@ -147,7 +149,9 @@ final class LocalLLMService: ObservableObject {
             : LLMModelFactory.shared
 
         modelContainer = try await factory.loadContainer(
-            hub: hub, configuration: config
+            from: #hubDownloader(hub),
+            using: #huggingFaceTokenizerLoader(),
+            configuration: config
         ) { progress in
             Task { @MainActor in
                 self.downloadProgress = progress.fractionCompleted
@@ -193,9 +197,10 @@ final class LocalLLMService: ObservableObject {
 
         // Tokenize using chat template — some models don't support system role,
         // so fall back to prepending system prompt to the first user message.
+        let tokenizer = await container.tokenizer
         let tokens: [Int]
         do {
-            tokens = try await container.applyChatTemplate(messages: messages)
+            tokens = try tokenizer.applyChatTemplate(messages: messages)
         } catch {
             print("⚠️ Chat template failed with system role, retrying without: \(error.localizedDescription)")
             // Merge system prompt into first user message
@@ -205,7 +210,7 @@ final class LocalLLMService: ObservableObject {
             }
             let combinedUserMessage = systemPrompt + "\n\nUser: " + userMessage
             fallbackMessages.append(["role": "user", "content": combinedUserMessage])
-            tokens = try await container.applyChatTemplate(messages: fallbackMessages)
+            tokens = try tokenizer.applyChatTemplate(messages: fallbackMessages)
         }
         let input = LMInput(text: .init(tokens: .init(tokens)))
 
@@ -238,14 +243,11 @@ final class LocalLLMService: ObservableObject {
         return appSupport.appendingPathComponent("LocalModels", isDirectory: true)
     }
 
-    /// The models subdirectory where Hub stores model repos.
-    private var modelsSubdir: URL {
-        modelDirectory.appendingPathComponent("models", isDirectory: true)
-    }
-
-    /// Get the on-disk path for a model (matches Hub's storage: downloadBase/models/{org}/{name}).
+    /// Get the on-disk path for a model. swift-huggingface uses a Python-compatible
+    /// cache layout: <cacheDir>/models--{org}--{name}/
     private func modelPath(_ modelId: String) -> URL {
-        modelsSubdir.appendingPathComponent(modelId, isDirectory: true)
+        let repoName = modelId.replacingOccurrences(of: "/", with: "--")
+        return modelDirectory.appendingPathComponent("models--\(repoName)", isDirectory: true)
     }
 
     /// Check if a model is downloaded.
@@ -270,27 +272,21 @@ final class LocalLLMService: ObservableObject {
         }
     }
 
-    /// List all downloaded model IDs by scanning the models directory.
+    /// List all downloaded model IDs by scanning the cache directory.
     func downloadedModelIds() -> [String] {
-        // Hub stores as: downloadBase/models/{org}/{modelName}
-        guard let orgs = try? FileManager.default.contentsOfDirectory(
-            at: modelsSubdir, includingPropertiesForKeys: [.isDirectoryKey]
+        // swift-huggingface stores as: <cacheDir>/models--{org}--{modelName}
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: modelDirectory, includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
         var ids: [String] = []
-        for orgDir in orgs {
-            guard orgDir.hasDirectoryPath || (try? orgDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-            let org = orgDir.lastPathComponent
-            if org.hasPrefix(".") { continue }
-            if let models = try? FileManager.default.contentsOfDirectory(
-                at: orgDir, includingPropertiesForKeys: nil
-            ) {
-                for modelDir in models {
-                    let modelName = modelDir.lastPathComponent
-                    if modelName.hasPrefix(".") { continue }
-                    ids.append("\(org)/\(modelName)")
-                }
-            }
+        for entry in entries {
+            let name = entry.lastPathComponent
+            guard name.hasPrefix("models--") else { continue }
+            // models--{org}--{modelName} → {org}/{modelName}
+            let repo = String(name.dropFirst("models--".count))
+            let id = repo.replacingOccurrences(of: "--", with: "/")
+            ids.append(id)
         }
         return ids.sorted()
     }
