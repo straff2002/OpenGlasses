@@ -718,6 +718,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Configure Live Coach (Plan C) with this AppState's services so the live_coach tool can run.
         LiveCoachService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
 
+        // Configure Navigation Assist (Plan J) similarly.
+        NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
+
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
         MCPGlassesServer.shared.startIfEnabled()

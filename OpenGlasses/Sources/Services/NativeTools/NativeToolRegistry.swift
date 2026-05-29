@@ -138,6 +138,8 @@ final class NativeToolRegistry {
         // Accessibility Tier (A1) — Reading Accessibility. Needs the camera for OCR.
         if Config.accessibilityModeEnabled, let camera = cameraService {
             register(ReadingAccessibilityTool(cameraService: camera))
+            // Low-Vision Navigation Assist (Plan J) — deps configured by AppState.
+            register(NavigationAssistTool())
         }
 
         // Personal Health Vault (Plan B) — always registered; the tool checks the Medical
