@@ -24,6 +24,7 @@
 		06702A897C57F7E1CD876FDA /* IdleSleepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E45A52AE2334BBF5848988 /* IdleSleepTests.swift */; };
 		067BF84ACE5DE5A03C059189 /* intro.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 45E3B3049C0DE740FA37ABE1 /* intro.mp4 */; };
 		068B42805D432EB7723BB058 /* it.json in Resources */ = {isa = PBXBuildFile; fileRef = FC0A25478839E4B438FD6556 /* it.json */; };
+		06E5EAFF6F71A1BB65F0870D /* NetworkCalcTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89A03BE0BCA1A65A379CB13 /* NetworkCalcTool.swift */; };
 		0A6B80EA3C3404A825B9C64D /* ShortcutCallbackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD85B93668F3556CA85DA8D3 /* ShortcutCallbackManager.swift */; };
 		0C838423C97FA7697C3656B6 /* MeetingSummaryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 187F7D4D257473BA5144A577 /* MeetingSummaryTool.swift */; };
 		0F094F2911C7FA24CD2539A8 /* GatewaySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FA172D5698DC28C47676FC7 /* GatewaySettingsView.swift */; };
@@ -91,6 +92,7 @@
 		469C58BC201F2C2F9A9486B4 /* LocalModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6E899836112BC616D55DFB /* LocalModelManagerView.swift */; };
 		49D492801728A93FE8F2A25A /* fi.json in Resources */ = {isa = PBXBuildFile; fileRef = F52179755B968C4BF4ED5D76 /* fi.json */; };
 		4B218F08B37EFD2AB9B1A7E8 /* AlarmTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52BFC30C1CD9580378CA279 /* AlarmTool.swift */; };
+		4BBDB83E00F868AC30BAB464 /* ITNetworkPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */; };
 		4C0747C3D70826C4899E7E00 /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = D8AD4E224036184FB764A25D /* MWDATCamera */; };
 		4C2DE8DC2191ED1886DACDC7 /* ClawHubBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C2664A9E1FD4BC2C648997 /* ClawHubBrowserView.swift */; };
 		4D84879D2F459EADC92122D9 /* ToolCallModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B1E20FD0CA9B9AAD3EC698B /* ToolCallModelsTests.swift */; };
@@ -446,6 +448,7 @@
 		2DF4A8B9C2961DE7DCEA4287 /* OpenGlassesWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenGlassesWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2E78CF208DDFD831CAC7F324 /* PedometerTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PedometerTool.swift; sourceTree = "<group>"; };
 		31C88D2942D45B47CE8F6F7B /* SessionExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionExporter.swift; sourceTree = "<group>"; };
+		334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITNetworkPackTests.swift; sourceTree = "<group>"; };
 		35D21CFB73A908ADC22C5558 /* WebSearchTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchTool.swift; sourceTree = "<group>"; };
 		36A7F34BB9CDB6C943DB5354 /* FlashlightTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashlightTool.swift; sourceTree = "<group>"; };
 		36D5096E8BCC94E7B9384D9D /* ProcedureRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcedureRunnerTests.swift; sourceTree = "<group>"; };
@@ -605,6 +608,7 @@
 		B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScheduler.swift; sourceTree = "<group>"; };
 		B79F6B678ADD9092CE76FC66 /* LiveCoachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachTests.swift; sourceTree = "<group>"; };
 		B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameThrottler.swift; sourceTree = "<group>"; };
+		B89A03BE0BCA1A65A379CB13 /* NetworkCalcTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkCalcTool.swift; sourceTree = "<group>"; };
 		B92D00845E2B41DA1370735E /* LiveAIModeIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAIModeIntents.swift; sourceTree = "<group>"; };
 		B99A4BBFB7F9645BC326C15B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
 		BA3DD895BCB3AE5247937B77 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -965,6 +969,7 @@
 				48E11C4D1110C9E033ABE5A4 /* NativeTool.swift */,
 				DD46FAD57F6EB5F10DAF421A /* NativeToolRegistry.swift */,
 				7F114AF9F2F3510ED455CA65 /* NativeToolRouter.swift */,
+				B89A03BE0BCA1A65A379CB13 /* NetworkCalcTool.swift */,
 				57E7843AFB7602ACD3B49CE0 /* NewsTool.swift */,
 				67AF67A864EBB51281BE64BD /* ObjectMemoryTool.swift */,
 				0AE2A555201772AF1A324F94 /* OpenAppTool.swift */,
@@ -1128,6 +1133,7 @@
 				5D81CA615A89B802C27795CD /* FrameThrottlerTests.swift */,
 				EA01321A5266DE93BAE62EAC /* HealthVaultTests.swift */,
 				69E45A52AE2334BBF5848988 /* IdleSleepTests.swift */,
+				334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */,
 				B79F6B678ADD9092CE76FC66 /* LiveCoachTests.swift */,
 				6EDB80A80F1A4B7314A44582 /* MedicalComplianceTests.swift */,
 				E2732556265D65C8C9AA7821 /* OCRServiceTests.swift */,
@@ -1473,6 +1479,7 @@
 				72367B5038C040A73A73E7C1 /* FieldSessionServiceTests.swift in Sources */,
 				7469D8709E98A4D05217F539 /* FrameThrottlerTests.swift in Sources */,
 				4F95F8529B0A876FDD4983F5 /* HealthVaultTests.swift in Sources */,
+				4BBDB83E00F868AC30BAB464 /* ITNetworkPackTests.swift in Sources */,
 				06702A897C57F7E1CD876FDA /* IdleSleepTests.swift in Sources */,
 				23E5B21687BC1C82018FC101 /* LiveCoachTests.swift in Sources */,
 				29925581D38BC50907D4EC8D /* MedicalComplianceTests.swift in Sources */,
@@ -1645,6 +1652,7 @@
 				9CA0B5EBC805C50E38982F83 /* NativeTool.swift in Sources */,
 				729B87DAF3B1570AD87EE392 /* NativeToolRegistry.swift in Sources */,
 				9DA053E2D9E8701AA5DA2B41 /* NativeToolRouter.swift in Sources */,
+				06E5EAFF6F71A1BB65F0870D /* NetworkCalcTool.swift in Sources */,
 				03310BD62E4B96589B55C3C6 /* NetworkMonitorService.swift in Sources */,
 				C7EB8DA29EC515B214899F89 /* NetworkMonitorView.swift in Sources */,
 				5FBAA84F70E3CEE036ABF23A /* NewsTool.swift in Sources */,

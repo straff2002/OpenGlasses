@@ -1,0 +1,87 @@
+{
+  "id": "server_cold_swap",
+  "title": "Server Cold Swap / Component Replacement",
+  "version": "1.0.0",
+  "vault": "it_network",
+  "description": "Power-down replacement of a failed server or non-hot-swap component.",
+  "safety_notes": [
+    "Confirm an approved maintenance window and that the workload is drained/failed over.",
+    "Servers have dual PSUs — remove BOTH feeds to de-energize; LOTO as required.",
+    "Wear an ESD strap when handling DIMMs, cards, or drives."
+  ],
+  "entry_step": "confirm_window",
+  "steps": [
+    {
+      "id": "confirm_window",
+      "title": "Confirm window and failover",
+      "instruction": "Confirm the maintenance window is approved and the workload has been failed over or drained. Is it safe to power down this server?",
+      "expected_input": "approved and drained yes/no",
+      "safety_note": "Do not proceed without an approved window.",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "ready", "condition": "Window approved and workload drained", "next": "identify_unit" },
+        { "id": "not_ready", "condition": "Not approved or still serving load", "next": "stop_not_ready" }
+      ],
+      "default_next": "identify_unit"
+    },
+    {
+      "id": "stop_not_ready",
+      "title": "Stop — not safe",
+      "instruction": "Do not power down. Coordinate failover/drain and an approved window first, then restart this procedure.",
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "identify_unit",
+      "title": "Positively identify the unit",
+      "instruction": "Use iDRAC/iLO identify-LED and the service tag/serial to confirm you have the correct chassis. Photograph the service tag. Confirmed?",
+      "expected_input": "unit confirmed",
+      "citations": ["inventory_schema.md"],
+      "default_next": "power_down"
+    },
+    {
+      "id": "power_down",
+      "title": "Graceful power down and de-energize",
+      "instruction": "Gracefully shut down the OS, then power off. Remove BOTH power feeds and confirm the chassis is de-energized.",
+      "expected_input": "powered off and both feeds removed",
+      "safety_note": "Both PSU feeds must be removed — one PSU does not de-energize the chassis.",
+      "citations": ["safety.md"],
+      "default_next": "replace_component"
+    },
+    {
+      "id": "replace_component",
+      "title": "Replace the component",
+      "instruction": "With an ESD strap, replace the failed component (label cables/drive bays first). Photograph before/after for the record.",
+      "expected_input": "replacement done",
+      "safety_note": "ESD strap on for DIMMs/cards/drives.",
+      "citations": ["safety.md"],
+      "default_next": "power_up_verify"
+    },
+    {
+      "id": "power_up_verify",
+      "title": "Power up and verify",
+      "instruction": "Reconnect both feeds, power on, and watch POST + iDRAC/iLO health. Is system health green and the workload restored?",
+      "expected_input": "health green and workload back",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "healthy", "condition": "Health green, workload restored", "next": "complete_ok" },
+        { "id": "fault", "condition": "POST/health fault remains", "next": "escalate_fault" }
+      ],
+      "default_next": "complete_ok"
+    },
+    {
+      "id": "complete_ok",
+      "title": "Complete",
+      "instruction": "Server back in service and healthy. Update inventory with the replaced part and serials.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "escalate_fault",
+      "title": "Escalate — post-swap fault",
+      "instruction": "Health fault persists after the swap. Capture iDRAC/iLO logs and escalate to senior support before returning to production.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

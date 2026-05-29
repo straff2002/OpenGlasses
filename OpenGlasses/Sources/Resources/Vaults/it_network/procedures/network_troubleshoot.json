@@ -1,0 +1,110 @@
+{
+  "id": "network_troubleshoot",
+  "title": "Network Connectivity Troubleshooting",
+  "version": "1.0.0",
+  "vault": "it_network",
+  "description": "Triage an access-layer connectivity complaint: link down, packet loss, or slow throughput.",
+  "safety_notes": [
+    "Confirm an approved change window before any disruptive action (port reset, reload).",
+    "Do not remove cables on a live trunk without confirming impact."
+  ],
+  "entry_step": "classify_symptom",
+  "steps": [
+    {
+      "id": "classify_symptom",
+      "title": "Classify the symptom",
+      "instruction": "Ask the user what they're seeing. Is the link completely down (no connectivity), intermittently dropping, or up but slow?",
+      "expected_input": "down | intermittent | slow",
+      "citations": ["runbooks.md"],
+      "branches": [
+        { "id": "down", "condition": "No connectivity at all — link is down", "next": "check_physical" },
+        { "id": "intermittent", "condition": "Connectivity drops intermittently / packet loss", "next": "check_error_counters" },
+        { "id": "slow", "condition": "Connected but slow throughput", "next": "check_speed_duplex" }
+      ],
+      "default_next": "check_physical"
+    },
+    {
+      "id": "check_physical",
+      "title": "Check physical layer",
+      "instruction": "Check the port LED and interface status (admin vs operational). Reseat the cable and transceiver at both ends and try a known-good cable. Is the port now up?",
+      "expected_input": "port up or still down",
+      "citations": ["error_codes.md", "runbooks.md"],
+      "branches": [
+        { "id": "up", "condition": "Port came up after physical check", "next": "resolved_physical" },
+        { "id": "still_down", "condition": "Still down after cable/SFP swap", "next": "check_port_config" }
+      ],
+      "default_next": "check_port_config"
+    },
+    {
+      "id": "check_port_config",
+      "title": "Check port configuration",
+      "instruction": "Verify the port's admin state, speed/duplex, and VLAN/trunk config against the far end. Move the device to a known-good port to isolate port vs device. Did isolation point to the switch port?",
+      "expected_input": "port fault vs device fault",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "port_fault", "condition": "A bad/misconfigured switch port", "next": "escalate_change" },
+        { "id": "device_fault", "condition": "The end device is at fault", "next": "resolved_device" }
+      ],
+      "default_next": "escalate_change"
+    },
+    {
+      "id": "check_error_counters",
+      "title": "Inspect interface error counters",
+      "instruction": "Baseline the interface counters. Are CRC/input errors rising (cabling/optic/EMI) or output drops rising (congestion)?",
+      "expected_input": "CRC/input errors vs output drops",
+      "citations": ["runbooks.md"],
+      "branches": [
+        { "id": "crc", "condition": "CRC / input errors rising", "next": "resolved_cabling" },
+        { "id": "drops", "condition": "Output drops rising (congestion)", "next": "escalate_change" }
+      ],
+      "default_next": "check_speed_duplex"
+    },
+    {
+      "id": "check_speed_duplex",
+      "title": "Check speed/duplex and utilization",
+      "instruction": "Confirm negotiated speed/duplex matches both ends (duplex mismatch causes slowness + CRCs). Check interface utilization. Is there a duplex mismatch?",
+      "expected_input": "duplex mismatch yes/no",
+      "citations": ["runbooks.md"],
+      "branches": [
+        { "id": "mismatch", "condition": "Duplex/speed mismatch found", "next": "resolved_duplex" },
+        { "id": "no_mismatch", "condition": "Negotiation is correct; likely congestion or host-side", "next": "escalate_change" }
+      ],
+      "default_next": "escalate_change"
+    },
+    {
+      "id": "resolved_physical",
+      "title": "Resolved — physical layer",
+      "instruction": "Link restored by reseating/replacing the cable or transceiver. Document the faulty component.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "resolved_device",
+      "title": "Resolved — end device",
+      "instruction": "Fault isolated to the end device; hand back to the endpoint owner. Document the isolation steps.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "resolved_cabling",
+      "title": "Resolved — cabling",
+      "instruction": "CRC/input errors indicate a cabling or optic problem. Replace the run/optic and re-baseline counters.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "resolved_duplex",
+      "title": "Resolved — duplex",
+      "instruction": "Set both ends to matching speed/duplex (or auto/auto) and re-test. Document the change.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "escalate_change",
+      "title": "Escalate / change-controlled fix",
+      "instruction": "The fix needs config change, congestion remediation, or is beyond first-line. Capture findings and escalate to network engineering within the change window.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

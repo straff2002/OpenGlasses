@@ -1,0 +1,85 @@
+{
+  "id": "firmware_update",
+  "title": "Firmware / OS Update",
+  "version": "1.0.0",
+  "vault": "it_network",
+  "description": "Apply a firmware or network OS update safely with rollback readiness.",
+  "safety_notes": [
+    "Disruptive — requires an approved maintenance window.",
+    "Confirm console / out-of-band access before changing anything that affects reachability.",
+    "Have the current image and a rollback plan staged before starting."
+  ],
+  "entry_step": "preflight",
+  "steps": [
+    {
+      "id": "preflight",
+      "title": "Pre-flight checks",
+      "instruction": "Confirm: approved window, target version validated for this model, current config backed up, console/OOB access available, and rollback image staged. All set?",
+      "expected_input": "all preflight checks pass",
+      "safety_note": "Do not proceed without OOB access and a rollback image.",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "ready", "condition": "All pre-flight checks pass", "next": "stage_image" },
+        { "id": "not_ready", "condition": "A pre-flight check failed", "next": "stop_preflight" }
+      ],
+      "default_next": "stage_image"
+    },
+    {
+      "id": "stop_preflight",
+      "title": "Stop — preflight failed",
+      "instruction": "Resolve the missing item (window, backup, OOB, or rollback image) before continuing. Restart when ready.",
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "stage_image",
+      "title": "Stage and verify the image",
+      "instruction": "Transfer the firmware image and verify its checksum against the vendor value. Checksum match?",
+      "expected_input": "checksum verified",
+      "branches": [
+        { "id": "ok", "condition": "Checksum matches", "next": "apply_update" },
+        { "id": "bad", "condition": "Checksum mismatch / corrupt transfer", "next": "stop_preflight" }
+      ],
+      "default_next": "apply_update"
+    },
+    {
+      "id": "apply_update",
+      "title": "Apply and reload",
+      "instruction": "Set the boot image / apply the update and reload during the window. Watch the boot on console. Did it boot the new version cleanly?",
+      "expected_input": "booted new version",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "booted", "condition": "Booted cleanly on the new version", "next": "post_verify" },
+        { "id": "failed", "condition": "Boot failed / stuck", "next": "rollback" }
+      ],
+      "default_next": "post_verify"
+    },
+    {
+      "id": "rollback",
+      "title": "Roll back",
+      "instruction": "Boot the previous image via console/OOB to restore service, then escalate the failed update for analysis.",
+      "citations": ["safety.md"],
+      "terminal": true,
+      "outcome": "escalated"
+    },
+    {
+      "id": "post_verify",
+      "title": "Post-update verification",
+      "instruction": "Confirm version, config integrity, interfaces/neighbors up, and the service is healthy. All good?",
+      "expected_input": "version + service verified",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "good", "condition": "Verified healthy on new version", "next": "complete_ok" },
+        { "id": "issue", "condition": "Post-update issue found", "next": "rollback" }
+      ],
+      "default_next": "complete_ok"
+    },
+    {
+      "id": "complete_ok",
+      "title": "Complete",
+      "instruction": "Update successful and verified. Record the new version in inventory and close the change.",
+      "terminal": true,
+      "outcome": "resolved"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "id": "cable_trace",
+  "title": "Cable Trace & Label",
+  "version": "1.0.0",
+  "vault": "it_network",
+  "description": "Identify both ends of an unlabeled cable run and document it.",
+  "safety_notes": [
+    "Never unplug a live trunk/uplink to trace it without confirming impact.",
+    "Use a toner/probe or port-blink; avoid disruptive methods on production links."
+  ],
+  "entry_step": "locate_known_end",
+  "steps": [
+    {
+      "id": "locate_known_end",
+      "title": "Start from the known end",
+      "instruction": "Identify the end you know (e.g. the switch port). Note the device, port, and any existing label. Photograph it. Ready to trace?",
+      "expected_input": "known end recorded",
+      "citations": ["inventory_schema.md"],
+      "default_next": "choose_method"
+    },
+    {
+      "id": "choose_method",
+      "title": "Choose a non-disruptive trace method",
+      "instruction": "Is the link live/production? If yes, use port-blink (identify LED) or a toner on an idle pair — avoid unplugging. If the run is dead/idle, a toner/probe is fine.",
+      "expected_input": "live or idle",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "live", "condition": "Live production link", "next": "trace_live" },
+        { "id": "idle", "condition": "Idle / dead run", "next": "trace_toner" }
+      ],
+      "default_next": "trace_toner"
+    },
+    {
+      "id": "trace_live",
+      "title": "Trace live with port-blink",
+      "instruction": "Use the switch's port identify/blink LED (or interface flap only if approved) and follow to the patch panel/far end. Found the far end?",
+      "expected_input": "far end found",
+      "branches": [
+        { "id": "found", "condition": "Far end located", "next": "label_both" },
+        { "id": "lost", "condition": "Couldn't follow it", "next": "escalate_trace" }
+      ],
+      "default_next": "label_both"
+    },
+    {
+      "id": "trace_toner",
+      "title": "Trace with toner/probe",
+      "instruction": "Apply the toner at the known end and probe candidate ports/panels until you find the strongest tone. Found the far end?",
+      "expected_input": "far end found",
+      "branches": [
+        { "id": "found", "condition": "Far end located", "next": "label_both" },
+        { "id": "lost", "condition": "No clear tone found", "next": "escalate_trace" }
+      ],
+      "default_next": "label_both"
+    },
+    {
+      "id": "label_both",
+      "title": "Label and document both ends",
+      "instruction": "Apply matching labels at both ends per the site convention, photograph them, and record A-end/B-end in the inventory.",
+      "expected_input": "labeled and recorded",
+      "citations": ["topology.md", "inventory_schema.md"],
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "escalate_trace",
+      "title": "Escalate — trace inconclusive",
+      "instruction": "Could not positively identify the far end without risk. Document what was checked and escalate rather than guess the mapping.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}

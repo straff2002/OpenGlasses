@@ -40,6 +40,30 @@ final class VaultRegistry {
             sourceAttributionRequired: true
         ),
         VaultManifest(
+            id: "it_network",
+            name: "IT / Network Service",
+            version: "1.0.0",
+            files: [
+                "error_codes.md",
+                "topology.md",
+                "runbooks.md",
+                "inventory_schema.md",
+                "safety.md"
+            ],
+            proceduresDir: "procedures",
+            gating: .init(iap: "field_assist_it"),
+            promptRules: [
+                "Never fabricate error codes, device specifications, or procedures.",
+                "Use only the vault contents and the technician's stated observations.",
+                "Cite source files on every factual claim.",
+                "If unsure, recommend escalating to a senior engineer rather than guess.",
+                "Confirm change-control / maintenance-window approval before any disruptive action (reboot, failover, firmware).",
+                "Apply electrical and ESD safety in racks and IDFs; LOTO PDUs before service."
+            ],
+            sourceAttributionFormat: "Source: {files}",
+            sourceAttributionRequired: true
+        ),
+        VaultManifest(
             id: "health",
             name: "Personal Health Vault",
             version: "1.0.0",
@@ -84,9 +108,9 @@ final class VaultRegistry {
         switch iap {
         case "medical_compliance":
             return StoreKitService.shared.isMedicalComplianceActive
-        case "field_assist_refrigeration":
+        case "field_assist_refrigeration", "field_assist_it":
             // MVP: gate on agentModeEnabled until a dedicated IAP ships.
-            // Once a `field_assist_refrigeration` product is live, switch to StoreKit.
+            // Once the per-pack products are live, switch to StoreKit.
             return Config.agentModeEnabled || Config.fieldAssistDeveloperUnlocked
         default:
             return false

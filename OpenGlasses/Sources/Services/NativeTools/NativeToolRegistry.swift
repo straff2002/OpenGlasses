@@ -127,6 +127,7 @@ final class NativeToolRegistry {
             register(ProcedureRunnerTool())
             register(DomainCalcTool())
             register(EscalateToExpertTool())
+            register(NetworkCalcTool())
             // equipment_lookup gains an on-device OCR path when a camera is present.
             register(EquipmentLookupTool(cameraService: cameraService))
             if let camera = cameraService {

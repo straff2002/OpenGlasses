@@ -490,6 +490,7 @@ class GeminiLiveSessionManager: ObservableObject {
             - health_vault: Query/update the user's Personal Health Vault (biometrics, conditions, diet, labs, medications, wearables). 'query' grounds a health question in their own notes (cite the file); 'log' records a new entry. Never fabricate health data.
             - aircraft_overhead: Report aircraft flying near the user using live ADS-B data + their location. Use for "what's flying overhead?". Param: radius_miles (default 25).
             - live_coach: Real-time one-sentence coaching from the glasses camera. Actions: start (domain: sports_tactics/cooking_form/posture/guitar/climbing/custom), stop, status. Use for "coach my form", "watch my technique".
+            - network_calc: IP subnet/CIDR math (IPv4/IPv6) — operation 'subnet' with a 'cidr' returns network, broadcast, netmask, usable range/count.
             - photo_log: Capture a glasses-camera photo, attach it to the session audit log with a caption, and return it for analysis. Use to document gauge readings and evidence.
             - escalate_to_expert: Escalate the active session to a human expert when you can't safely resolve it or the technician asks for a person. Actions: request (reason), status, resolve, cancel. Live video is Phase 5 — for now it's logged and the expert pool is notified.
             """

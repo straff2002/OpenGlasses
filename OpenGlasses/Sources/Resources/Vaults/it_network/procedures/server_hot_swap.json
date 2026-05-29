@@ -1,0 +1,77 @@
+{
+  "id": "server_hot_swap",
+  "title": "Hot-Swap Component Replacement",
+  "version": "1.0.0",
+  "vault": "it_network",
+  "description": "Replace a hot-swappable component (drive, PSU, fan) without powering down the server.",
+  "safety_notes": [
+    "Only hot-swap components rated for it (most drives, redundant PSUs, fans).",
+    "Maintain redundancy — replace one unit at a time and confirm health before the next.",
+    "Wear an ESD strap for drives/cards."
+  ],
+  "entry_step": "confirm_hotswap",
+  "steps": [
+    {
+      "id": "confirm_hotswap",
+      "title": "Confirm the part is hot-swappable and redundant",
+      "instruction": "Confirm the failed part is hot-swap rated and its redundancy is intact (e.g. RAID redundant, second PSU feeding). Is it safe to pull live?",
+      "expected_input": "hot-swap safe yes/no",
+      "safety_note": "If redundancy is already lost, treat as a cold swap with a window.",
+      "citations": ["safety.md"],
+      "branches": [
+        { "id": "safe", "condition": "Hot-swap rated and redundancy intact", "next": "identify_part" },
+        { "id": "unsafe", "condition": "Not hot-swappable or redundancy already lost", "next": "defer_to_cold" }
+      ],
+      "default_next": "identify_part"
+    },
+    {
+      "id": "defer_to_cold",
+      "title": "Use the cold-swap procedure",
+      "instruction": "This replacement isn't safe to do live. Switch to the server cold-swap procedure with an approved window.",
+      "terminal": true,
+      "outcome": "deferred"
+    },
+    {
+      "id": "identify_part",
+      "title": "Identify the faulted part",
+      "instruction": "Use the amber fault LED + iDRAC/iLO to identify the exact bay/slot. Confirm the serial if applicable. Identified?",
+      "expected_input": "part/bay identified",
+      "citations": ["error_codes.md", "inventory_schema.md"],
+      "default_next": "swap_part"
+    },
+    {
+      "id": "swap_part",
+      "title": "Swap the part",
+      "instruction": "Release and remove the faulted unit, insert the replacement until seated/latched. For a drive, let the RAID rebuild begin. ESD strap on for drives/cards.",
+      "expected_input": "replacement seated",
+      "citations": ["safety.md"],
+      "default_next": "verify_health"
+    },
+    {
+      "id": "verify_health",
+      "title": "Verify health / rebuild",
+      "instruction": "Confirm the new unit is recognized and healthy (PSU redundancy restored, fan nominal, or RAID rebuilding). Is health green?",
+      "expected_input": "health green / rebuild started",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "ok", "condition": "Recognized and healthy / rebuild underway", "next": "complete_ok" },
+        { "id": "not_ok", "condition": "Not recognized or still faulted", "next": "escalate_fault" }
+      ],
+      "default_next": "complete_ok"
+    },
+    {
+      "id": "complete_ok",
+      "title": "Complete",
+      "instruction": "Redundancy restored. For a drive, note the rebuild will continue in the background. Update inventory.",
+      "terminal": true,
+      "outcome": "resolved"
+    },
+    {
+      "id": "escalate_fault",
+      "title": "Escalate",
+      "instruction": "Replacement not recognized or still faulted. Capture logs and escalate; do not pull additional units.",
+      "terminal": true,
+      "outcome": "escalated"
+    }
+  ]
+}
