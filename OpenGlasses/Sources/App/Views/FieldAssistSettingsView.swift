@@ -85,7 +85,7 @@ struct FieldAssistSettingsView: View {
 
                 if Config.expertStreamTransport == .meetingLink {
                     Section {
-                        webrtcField("Meeting URL", "https://zoom.us/j/… or Teams/Meet/Whereby", { Config.expertMeetingURL }, Config.setExpertMeetingURL)
+                        webrtcField("Meeting URL", "https://zoom.us/j/… or Teams/Meet/Whereby", { Config.expertMeetingURL }, { Config.setExpertMeetingURL($0) })
                     } header: {
                         Text("Meeting Link")
                     } footer: {
@@ -95,11 +95,11 @@ struct FieldAssistSettingsView: View {
 
                 if Config.expertStreamTransport == .webrtc {
                     Section {
-                        webrtcField("Signaling URL", "wss://signal.example/ws", { Config.expertSignalingURL }, Config.setExpertSignalingURL)
-                        webrtcField("STUN", "stun:…", { Config.expertStunURL }, Config.setExpertStunURL)
-                        webrtcField("TURN", "turn:… (optional)", { Config.expertTurnURL }, Config.setExpertTurnURL)
-                        webrtcField("TURN user", "username", { Config.expertTurnUsername }, Config.setExpertTurnUsername)
-                        webrtcField("TURN secret", "credential", { Config.expertTurnCredential }, Config.setExpertTurnCredential)
+                        webrtcField("Signaling URL", "wss://signal.example/ws", { Config.expertSignalingURL }, { Config.setExpertSignalingURL($0) })
+                        webrtcField("STUN", "stun:…", { Config.expertStunURL }, { Config.setExpertStunURL($0) })
+                        webrtcField("TURN", "turn:… (optional)", { Config.expertTurnURL }, { Config.setExpertTurnURL($0) })
+                        webrtcField("TURN user", "username", { Config.expertTurnUsername }, { Config.setExpertTurnUsername($0) })
+                        webrtcField("TURN secret", "credential", { Config.expertTurnCredential }, { Config.setExpertTurnCredential($0) })
                     } header: {
                         Text("WebRTC Connection")
                     } footer: {
@@ -141,9 +141,9 @@ struct FieldAssistSettingsView: View {
                         HStack {
                             Button(session.pausedAt == nil ? "Pause" : "Resume") {
                                 if session.pausedAt == nil {
-                                    try? sessionService.pauseSession()
+                                    _ = try? sessionService.pauseSession()
                                 } else {
-                                    try? sessionService.resumeSession()
+                                    _ = try? sessionService.resumeSession()
                                 }
                             }
                             .buttonStyle(.bordered)
@@ -151,7 +151,7 @@ struct FieldAssistSettingsView: View {
                             Spacer()
 
                             Button("End Session", role: .destructive) {
-                                try? sessionService.endSession(outcome: .resolved)
+                                _ = try? sessionService.endSession(outcome: .resolved)
                             }
                             .buttonStyle(.bordered)
                         }
@@ -166,7 +166,7 @@ struct FieldAssistSettingsView: View {
                     Section("Start Session") {
                         Button("Start Default Session") {
                             let mode = FieldSession.Mode(rawValue: defaultMode) ?? .aiOnly
-                            try? sessionService.startSession(vaultId: defaultVaultId, assetId: nil, mode: mode)
+                            _ = try? sessionService.startSession(vaultId: defaultVaultId, assetId: nil, mode: mode)
                         }
                         .disabled(!VaultRegistry.shared.isUnlocked(defaultVaultId))
                     }
@@ -205,7 +205,7 @@ struct FieldAssistSettingsView: View {
     /// A labeled text field bound to a Config getter/setter (used for WebRTC connection fields).
     @ViewBuilder
     private func webrtcField(_ title: String, _ placeholder: String,
-                             _ get: @escaping () -> String, _ set: @escaping (String) -> Void) -> some View {
+                             _ get: @escaping @Sendable () -> String, _ set: @escaping @Sendable (String) -> Void) -> some View {
         TextField(placeholder, text: Binding(get: get, set: set))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()

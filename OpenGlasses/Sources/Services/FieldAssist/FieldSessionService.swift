@@ -308,7 +308,7 @@ final class FieldSessionService: ObservableObject {
         reconstructRunner(from: restoredLogger.readEvents(), logger: restoredLogger)
         // On crash recovery, treat the session as paused so the user must explicitly resume.
         if inProgress.pausedAt == nil {
-            try? pauseSession()
+            _ = try? pauseSession()
         } else {
             lastResumeAt = nil
         }

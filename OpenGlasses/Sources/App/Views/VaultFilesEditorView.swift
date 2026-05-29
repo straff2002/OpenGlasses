@@ -47,7 +47,7 @@ private struct VaultSingleFileEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { try? store.write(filename, contents: text); dismiss() }
+                    Button("Save") { _ = try? store.write(filename, contents: text); dismiss() }
                 }
             }
             .onAppear { text = store.read(filename) ?? "" }

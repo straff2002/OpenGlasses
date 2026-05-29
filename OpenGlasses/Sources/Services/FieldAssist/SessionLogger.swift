@@ -70,10 +70,10 @@ final class SessionLogger {
             guard let bytes = line.data(using: .utf8) else { return }
             if let handle = try? FileHandle(forWritingTo: logURL) {
                 defer { try? handle.close() }
-                try? handle.seekToEnd()
-                try? handle.write(contentsOf: bytes)
+                _ = try? handle.seekToEnd()
+                _ = try? handle.write(contentsOf: bytes)
             } else {
-                try? bytes.write(to: logURL, options: .atomic)
+                _ = try? bytes.write(to: logURL, options: .atomic)
             }
         }
     }
@@ -115,6 +115,7 @@ final class SessionLogger {
     // MARK: - Session metadata
 
     /// Write the current session metadata snapshot. Call after lifecycle changes.
+    @discardableResult
     func updateSession(_ updater: (inout FieldSession) -> Void) -> FieldSession {
         var copy = session
         updater(&copy)

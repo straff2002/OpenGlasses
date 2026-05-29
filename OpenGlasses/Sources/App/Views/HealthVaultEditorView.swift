@@ -72,7 +72,7 @@ private struct HealthVaultFileEditor: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    try? store.write(filename, contents: text)
+                    _ = try? store.write(filename, contents: text)
                     saved = true
                     dismiss()
                 }

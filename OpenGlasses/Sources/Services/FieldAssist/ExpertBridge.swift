@@ -15,6 +15,7 @@ import UserNotifications
 /// 3. `ExpertBridge.connect` establishes: outbound = glasses camera + mic; inbound = expert audio.
 /// 4. AI stays in the loop, continuing to log the transcript and answer vault lookups on demand.
 /// 5. On resolution either side calls `disconnect`; the session audit records the expert id + span.
+@MainActor
 protocol ExpertBridge {
     /// Whether a live expert media session is currently connected.
     var isConnected: Bool { get }
