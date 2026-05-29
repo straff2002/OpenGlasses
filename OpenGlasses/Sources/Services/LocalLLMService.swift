@@ -197,9 +197,10 @@ final class LocalLLMService: ObservableObject {
 
         // Tokenize using chat template — some models don't support system role,
         // so fall back to prepending system prompt to the first user message.
+        let tokenizer = await container.tokenizer
         let tokens: [Int]
         do {
-            tokens = try await container.applyChatTemplate(messages: messages)
+            tokens = try tokenizer.applyChatTemplate(messages: messages)
         } catch {
             print("⚠️ Chat template failed with system role, retrying without: \(error.localizedDescription)")
             // Merge system prompt into first user message
@@ -209,7 +210,7 @@ final class LocalLLMService: ObservableObject {
             }
             let combinedUserMessage = systemPrompt + "\n\nUser: " + userMessage
             fallbackMessages.append(["role": "user", "content": combinedUserMessage])
-            tokens = try await container.applyChatTemplate(messages: fallbackMessages)
+            tokens = try tokenizer.applyChatTemplate(messages: fallbackMessages)
         }
         let input = LMInput(text: .init(tokens: .init(tokens)))
 
