@@ -97,6 +97,7 @@ final class NativeToolRegistry {
             register(DocumentScanTool(cameraService: camera))
             register(CapturePhotoTool(cameraService: camera))
             register(QRContextTool(cameraService: camera))
+            register(SmartCaptureTool(cameraService: camera))
             if let recorder = videoRecorder {
                 register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,
                                             medicalExportService: medicalExportService))
