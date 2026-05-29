@@ -913,7 +913,7 @@ class LLMService: ObservableObject {
             if includeTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
                 let toolsData: Data = await MainActor.run {
-                    let tools = ToolDeclarations.anthropicTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    let tools = ToolDeclarations.anthropicTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: nativeToolRouter?.mcpClient)
                     return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
                 }
                 let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
@@ -1131,7 +1131,7 @@ class LLMService: ObservableObject {
             if includeTools && providerSupportsTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
                 let toolsData: Data = await MainActor.run {
-                    let tools = ToolDeclarations.openAITools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    let tools = ToolDeclarations.openAITools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: nativeToolRouter?.mcpClient)
                     return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
                 }
                 let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
@@ -1331,7 +1331,7 @@ class LLMService: ObservableObject {
             if includeTools {
                 let includeOpenClaw = Config.isOpenClawConfigured && openClawBridge != nil
                 let toolsData: Data = await MainActor.run {
-                    let tools = ToolDeclarations.geminiRESTTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                    let tools = ToolDeclarations.geminiRESTTools(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: nativeToolRouter?.mcpClient)
                     return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
                 }
                 let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []

@@ -139,10 +139,28 @@ enum ToolDeclarations {
         }
     }
 
+    /// Declarations for tools discovered on connected MCP servers, so the model can call them
+    /// directly (the NativeToolRouter routes the call to the owning server). Returns the generic
+    /// {name, description, parameters} shape used by the per-provider mappers.
+    @MainActor
+    static func mcpToolDeclarations(mcpClient: MCPClient?) -> [[String: Any]] {
+        guard let mcpClient else { return [] }
+        return mcpClient.discoveredTools.map { tool in
+            let schema = tool.inputSchema.isEmpty
+                ? ["type": "object", "properties": [:] as [String: Any]] as [String: Any]
+                : tool.inputSchema
+            return [
+                "name": tool.name,
+                "description": "[\(tool.serverLabel)] \(tool.description)",
+                "parameters": schema,
+            ] as [String: Any]
+        }
+    }
+
     /// Anthropic tool format for the Messages API
     @MainActor
-    static func anthropicTools(registry: NativeToolRegistry?, includeOpenClaw: Bool) -> [[String: Any]] {
-        var tools: [[String: Any]] = nativeToolDeclarations(registry: registry).map { decl in
+    static func anthropicTools(registry: NativeToolRegistry?, includeOpenClaw: Bool, mcpClient: MCPClient? = nil) -> [[String: Any]] {
+        var tools: [[String: Any]] = (nativeToolDeclarations(registry: registry) + mcpToolDeclarations(mcpClient: mcpClient)).map { decl in
             [
                 "name": decl["name"] as! String,
                 "description": decl["description"] as! String,
@@ -165,8 +183,8 @@ enum ToolDeclarations {
 
     /// OpenAI / Groq / Custom tool format
     @MainActor
-    static func openAITools(registry: NativeToolRegistry?, includeOpenClaw: Bool) -> [[String: Any]] {
-        var tools: [[String: Any]] = nativeToolDeclarations(registry: registry).map { decl in
+    static func openAITools(registry: NativeToolRegistry?, includeOpenClaw: Bool, mcpClient: MCPClient? = nil) -> [[String: Any]] {
+        var tools: [[String: Any]] = (nativeToolDeclarations(registry: registry) + mcpToolDeclarations(mcpClient: mcpClient)).map { decl in
             [
                 "type": "function",
                 "function": [
@@ -195,8 +213,8 @@ enum ToolDeclarations {
 
     /// Gemini REST API tool format
     @MainActor
-    static func geminiRESTTools(registry: NativeToolRegistry?, includeOpenClaw: Bool) -> [[String: Any]] {
-        var declarations = nativeToolDeclarations(registry: registry)
+    static func geminiRESTTools(registry: NativeToolRegistry?, includeOpenClaw: Bool, mcpClient: MCPClient? = nil) -> [[String: Any]] {
+        var declarations = nativeToolDeclarations(registry: registry) + mcpToolDeclarations(mcpClient: mcpClient)
         if includeOpenClaw {
             declarations.append(execute)
         }

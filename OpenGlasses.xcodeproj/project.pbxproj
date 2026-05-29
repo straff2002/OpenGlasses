@@ -325,6 +325,7 @@
 		E89CB6BB8456474494C5DD37 /* AgentScheduleTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E7694407E6C49108269783 /* AgentScheduleTool.swift */; };
 		E94716B16382DDCBD4204168 /* ReadingAccessibilityTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDF8333F8A26F4578A0B3FB /* ReadingAccessibilityTool.swift */; };
 		EA955AA5903F039A2FBA9B42 /* ro.json in Resources */ = {isa = PBXBuildFile; fileRef = FB807E38C7627E62D55EF689 /* ro.json */; };
+		EAF3190C9E4045C4E662A81F /* MCPDeclarationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD13B6BBBA48B0B4177F38E /* MCPDeclarationsTests.swift */; };
 		EB02F1793B407EF52D3EB8AA /* MeetingLinkTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFF978EB9C411013227E99A /* MeetingLinkTransportTests.swift */; };
 		EB1A0F110624FEDE6B32ABDF /* AgentNotificationQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EFE988C890E5A02FFF8CB3 /* AgentNotificationQueueTests.swift */; };
 		EB289A3C17A25E6DED22FA2B /* TextToSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0EFD4CE4C3499FDF5444E0 /* TextToSpeechService.swift */; };
@@ -619,6 +620,7 @@
 		996E0AE050E01032F3B362D7 /* FieldAssistSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldAssistSettingsView.swift; sourceTree = "<group>"; };
 		9A48B38555905532425A7161 /* RadialLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialLayout.swift; sourceTree = "<group>"; };
 		9AB11FE3A86CAA4923B0C622 /* SessionSearchTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchTool.swift; sourceTree = "<group>"; };
+		9AD13B6BBBA48B0B4177F38E /* MCPDeclarationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPDeclarationsTests.swift; sourceTree = "<group>"; };
 		9E4F5BE41AE23DCC8A6ACBF0 /* ContextualNoteTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextualNoteTool.swift; sourceTree = "<group>"; };
 		9F9681F3CF3D50D4DF29A44E /* ClipboardTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardTool.swift; sourceTree = "<group>"; };
 		A26F0DCC13B004B97B1D85FB /* ProcedureLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcedureLibrary.swift; sourceTree = "<group>"; };
@@ -1203,6 +1205,7 @@
 				69E45A52AE2334BBF5848988 /* IdleSleepTests.swift */,
 				334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */,
 				B79F6B678ADD9092CE76FC66 /* LiveCoachTests.swift */,
+				9AD13B6BBBA48B0B4177F38E /* MCPDeclarationsTests.swift */,
 				6EDB80A80F1A4B7314A44582 /* MedicalComplianceTests.swift */,
 				F615B451B8F9BA2AD9DB4CA1 /* MedicationIdentifierTests.swift */,
 				7AFF978EB9C411013227E99A /* MeetingLinkTransportTests.swift */,
@@ -1568,6 +1571,7 @@
 				4BBDB83E00F868AC30BAB464 /* ITNetworkPackTests.swift in Sources */,
 				06702A897C57F7E1CD876FDA /* IdleSleepTests.swift in Sources */,
 				23E5B21687BC1C82018FC101 /* LiveCoachTests.swift in Sources */,
+				EAF3190C9E4045C4E662A81F /* MCPDeclarationsTests.swift in Sources */,
 				29925581D38BC50907D4EC8D /* MedicalComplianceTests.swift in Sources */,
 				93635304ACB1C3C289C21859 /* MedicationIdentifierTests.swift in Sources */,
 				EB02F1793B407EF52D3EB8AA /* MeetingLinkTransportTests.swift in Sources */,
