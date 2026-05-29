@@ -266,6 +266,12 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    VaultFilesEditorView(vaultId: "notes", title: "Personal Notes")
+                } label: {
+                    Label("Personal Notes", systemImage: "note.text")
+                }
+
+                NavigationLink {
                     HealthVaultEditorView()
                 } label: {
                     HStack {

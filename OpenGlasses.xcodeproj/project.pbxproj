@@ -18,6 +18,7 @@
 		03310BD62E4B96589B55C3C6 /* NetworkMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F579A510ACEF35A1CAB845 /* NetworkMonitorService.swift */; };
 		0363C6FC51A3AC710130538D /* WatchComplicationIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD4388AF1234EF5D1D2BEDA /* WatchComplicationIntents.swift */; };
 		03A37BD1BE400ECF09D8D504 /* FlashlightTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A7F34BB9CDB6C943DB5354 /* FlashlightTool.swift */; };
+		0429A8919F9296933420804E /* NotesVaultTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3728CFA98DAE6D20BAECD6C8 /* NotesVaultTool.swift */; };
 		04EC3AAD8E678FCDF1FC9C5D /* OpenClawSkillsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0F8D58645BC6DDBF5EBE6D /* OpenClawSkillsTool.swift */; };
 		060C86841896CC8A6EB2817A /* OnboardingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA04A8BC26B0183543D82347 /* OnboardingOverlay.swift */; };
 		061F2082F2ED7B2594188FDC /* DeviceInfoTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220AC9B94458D011A6DC7E37 /* DeviceInfoTool.swift */; };
@@ -39,6 +40,7 @@
 		1820F9F309C7C18D198DEDB4 /* MCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDA256C21B8796266EEA3394 /* MCPClient.swift */; };
 		186334FFF0CE29D095BC158D /* vi.json in Resources */ = {isa = PBXBuildFile; fileRef = 43C46A304E5F17D4EA9AD404 /* vi.json */; };
 		19A08EF7FC97ADEFE9F01886 /* ProcedureLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 238FF1A774627C38407302C5 /* ProcedureLibraryTests.swift */; };
+		1BE57A01C0A03F919A32EFF8 /* NotesVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B883D2F4F8CCB4F6F9DCD700 /* NotesVaultTests.swift */; };
 		1C39DF928AF5BE964D53576E /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B112890F9557304A363B26 /* WatchConnectivityManager.swift */; };
 		1D414F58D7B868A95A4D9C52 /* MedicalExportTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C553F5FEFD0F645A612F75 /* MedicalExportTool.swift */; };
 		1D5C3A43DC99B1BB88F1E7B9 /* QRContextTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE52642DFF99CC5296674B4A /* QRContextTool.swift */; };
@@ -241,6 +243,7 @@
 		AF2DCF7557745FF3B091A0C2 /* sv.json in Resources */ = {isa = PBXBuildFile; fileRef = A64FD83F47750B6A47852344 /* sv.json */; };
 		AF656B6C2962656473AA256C /* CapturePhotoTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0955D9E45CE0FAB2AD5CBCF8 /* CapturePhotoTool.swift */; };
 		AF66FCEA3063C1EB3C036686 /* th.json in Resources */ = {isa = PBXBuildFile; fileRef = 8FE3F7E62EDFF684B65DB935 /* th.json */; };
+		AFC92C007CFED735ECEFDEE9 /* VaultFilesEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33FE37DF3D305CDED4BD2AD2 /* VaultFilesEditorView.swift */; };
 		B02FDC7E1541E94D4B96437A /* ShazamTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3021DA0A037B84E19352C73 /* ShazamTool.swift */; };
 		B05A555F43E279650778C5E2 /* WebSearchTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D21CFB73A908ADC22C5558 /* WebSearchTool.swift */; };
 		B26CD1DD9250EC1665B8BF7B /* AgentDataExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FCCEB9216D26D99EBFFA0B1 /* AgentDataExporter.swift */; };
@@ -471,9 +474,11 @@
 		2E78CF208DDFD831CAC7F324 /* PedometerTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PedometerTool.swift; sourceTree = "<group>"; };
 		31C88D2942D45B47CE8F6F7B /* SessionExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionExporter.swift; sourceTree = "<group>"; };
 		334C625A39DC6D0D677423DF /* ITNetworkPackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITNetworkPackTests.swift; sourceTree = "<group>"; };
+		33FE37DF3D305CDED4BD2AD2 /* VaultFilesEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFilesEditorView.swift; sourceTree = "<group>"; };
 		35D21CFB73A908ADC22C5558 /* WebSearchTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchTool.swift; sourceTree = "<group>"; };
 		36A7F34BB9CDB6C943DB5354 /* FlashlightTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashlightTool.swift; sourceTree = "<group>"; };
 		36D5096E8BCC94E7B9384D9D /* ProcedureRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcedureRunnerTests.swift; sourceTree = "<group>"; };
+		3728CFA98DAE6D20BAECD6C8 /* NotesVaultTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesVaultTool.swift; sourceTree = "<group>"; };
 		377F92EB5BBCF9661C7C6F1C /* FitnessCoachingTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessCoachingTool.swift; sourceTree = "<group>"; };
 		37C553F5FEFD0F645A612F75 /* MedicalExportTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicalExportTool.swift; sourceTree = "<group>"; };
 		39B2199FE3163CD253168A2D /* ProcedureRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcedureRunner.swift; sourceTree = "<group>"; };
@@ -642,6 +647,7 @@
 		B62397D529B09BFF2E7FF235 /* AgentScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentScheduler.swift; sourceTree = "<group>"; };
 		B79F6B678ADD9092CE76FC66 /* LiveCoachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCoachTests.swift; sourceTree = "<group>"; };
 		B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameThrottler.swift; sourceTree = "<group>"; };
+		B883D2F4F8CCB4F6F9DCD700 /* NotesVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesVaultTests.swift; sourceTree = "<group>"; };
 		B89A03BE0BCA1A65A379CB13 /* NetworkCalcTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkCalcTool.swift; sourceTree = "<group>"; };
 		B92D00845E2B41DA1370735E /* LiveAIModeIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAIModeIntents.swift; sourceTree = "<group>"; };
 		B99A4BBFB7F9645BC326C15B /* LocalLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMService.swift; sourceTree = "<group>"; };
@@ -901,6 +907,7 @@
 				8BAB04141EE25C5FE20E591C /* StatusIndicator.swift */,
 				29082A436A56096C7F4500C5 /* ToolsSettingsView.swift */,
 				6E1A21659693E4ECCA07AC67 /* TranscriptOverlay.swift */,
+				33FE37DF3D305CDED4BD2AD2 /* VaultFilesEditorView.swift */,
 				7024E51953662865F5DE841D /* VaultManagerView.swift */,
 				6E87BE0085A356B6ECEDFDD9 /* VoiceTab.swift */,
 			);
@@ -1020,6 +1027,7 @@
 				8C121BB8CA33489617701956 /* NavigationAssistTool.swift */,
 				B89A03BE0BCA1A65A379CB13 /* NetworkCalcTool.swift */,
 				57E7843AFB7602ACD3B49CE0 /* NewsTool.swift */,
+				3728CFA98DAE6D20BAECD6C8 /* NotesVaultTool.swift */,
 				67AF67A864EBB51281BE64BD /* ObjectMemoryTool.swift */,
 				0AE2A555201772AF1A324F94 /* OpenAppTool.swift */,
 				3C0F8D58645BC6DDBF5EBE6D /* OpenClawSkillsTool.swift */,
@@ -1191,6 +1199,7 @@
 				F615B451B8F9BA2AD9DB4CA1 /* MedicationIdentifierTests.swift */,
 				7AFF978EB9C411013227E99A /* MeetingLinkTransportTests.swift */,
 				464281A5D5A3FA58ECA9D677 /* NavigationAssistTests.swift */,
+				B883D2F4F8CCB4F6F9DCD700 /* NotesVaultTests.swift */,
 				E2732556265D65C8C9AA7821 /* OCRServiceTests.swift */,
 				7D837E875636164435130EEA /* OpenClawBridgeTests.swift */,
 				8E1E988D96A757CED67E7F6C /* PlaybookStoreTests.swift */,
@@ -1553,6 +1562,7 @@
 				93635304ACB1C3C289C21859 /* MedicationIdentifierTests.swift in Sources */,
 				EB02F1793B407EF52D3EB8AA /* MeetingLinkTransportTests.swift in Sources */,
 				C809DFF036C70C8204CB0615 /* NavigationAssistTests.swift in Sources */,
+				1BE57A01C0A03F919A32EFF8 /* NotesVaultTests.swift in Sources */,
 				9964EC142F42452AE3956949 /* OCRServiceTests.swift in Sources */,
 				B7397C5505A73989CA78076B /* OpenClawBridgeTests.swift in Sources */,
 				4F4BC327A4DEC69CE4222578 /* PlaybookStoreTests.swift in Sources */,
@@ -1736,6 +1746,7 @@
 				03310BD62E4B96589B55C3C6 /* NetworkMonitorService.swift in Sources */,
 				C7EB8DA29EC515B214899F89 /* NetworkMonitorView.swift in Sources */,
 				5FBAA84F70E3CEE036ABF23A /* NewsTool.swift in Sources */,
+				0429A8919F9296933420804E /* NotesVaultTool.swift in Sources */,
 				0F9246E3F1F7FCCEA6431B44 /* OCRService.swift in Sources */,
 				A6DA8BB00EDAD0CDFDC955C3 /* ObjectMemoryTool.swift in Sources */,
 				060C86841896CC8A6EB2817A /* OnboardingOverlay.swift in Sources */,
@@ -1809,6 +1820,7 @@
 				596A9C7E0378E05521826946 /* TranslationTool.swift in Sources */,
 				7E07FDC7DE65F9C7098EB095 /* UnitConversionTool.swift in Sources */,
 				24CED85E83525A144B4BB407 /* UserMemoryStore.swift in Sources */,
+				AFC92C007CFED735ECEFDEE9 /* VaultFilesEditorView.swift in Sources */,
 				013E022B9135CB04DE7E4088 /* VaultImporter.swift in Sources */,
 				06E2F3BECC2AD5314B6A16F9 /* VaultManagerView.swift in Sources */,
 				55A9BCF6BE9E2102069BC534 /* VaultManifest.swift in Sources */,

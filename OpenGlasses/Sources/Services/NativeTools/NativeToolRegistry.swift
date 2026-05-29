@@ -148,6 +148,8 @@ final class NativeToolRegistry {
         // Personal Health Vault (Plan B) — always registered; the tool checks the Medical
         // Compliance unlock at execution time.
         register(HealthVaultTool())
+        // Personal Notes Vault — free second-brain over VaultStore.
+        register(NotesVaultTool())
         // Medication Identifier (Plan I) — OCR a label, cross-check the Health Vault. Needs camera.
         if let camera = cameraService {
             register(MedicationIdentifierTool(cameraService: camera))

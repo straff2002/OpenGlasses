@@ -86,6 +86,27 @@ final class VaultRegistry {
             ],
             sourceAttributionFormat: "Source: {files}",
             sourceAttributionRequired: true
+        ),
+        VaultManifest(
+            id: "notes",
+            name: "Personal Notes",
+            version: "1.0.0",
+            files: [
+                "general.md",
+                "people.md",
+                "ideas.md",
+                "todos.md"
+            ],
+            proceduresDir: nil,
+            gating: .init(iap: nil),   // free — always unlocked
+            promptRules: [
+                "Never fabricate the user's notes.",
+                "Answer only from the notes vault and the user's message; if it isn't recorded, say so.",
+                "Cite the source file for facts drawn from the notes.",
+                "Be concise."
+            ],
+            sourceAttributionFormat: "Source: {files}",
+            sourceAttributionRequired: false
         )
     ]
 
