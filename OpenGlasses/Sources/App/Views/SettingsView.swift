@@ -260,6 +260,12 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    VaultManagerView()
+                } label: {
+                    Label("Custom Vaults", systemImage: "tray.full")
+                }
+
+                NavigationLink {
                     HealthVaultEditorView()
                 } label: {
                     HStack {

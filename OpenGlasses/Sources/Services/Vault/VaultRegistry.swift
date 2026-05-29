@@ -89,8 +89,18 @@ final class VaultRegistry {
         )
     ]
 
-    /// All manifests known to the registry, regardless of unlock state.
-    var allManifests: [VaultManifest] { Self.builtInManifests }
+    /// User-installed (Plan H) manifests, loaded from the import registry. Cached; call
+    /// `reloadUserManifests()` after an import/uninstall.
+    private var userManifests: [VaultManifest] = VaultImporter.installedManifests()
+
+    /// All manifests known to the registry, regardless of unlock state (built-in + user-installed).
+    var allManifests: [VaultManifest] { Self.builtInManifests + userManifests }
+
+    /// Re-read user-installed manifests after an import or uninstall.
+    func reloadUserManifests() {
+        userManifests = VaultImporter.installedManifests()
+        storeCache.removeAll()
+    }
 
     private var storeCache: [String: VaultStore] = [:]
 
@@ -111,6 +121,9 @@ final class VaultRegistry {
         case "field_assist_refrigeration", "field_assist_it":
             // MVP: gate on agentModeEnabled until a dedicated IAP ships.
             // Once the per-pack products are live, switch to StoreKit.
+            return Config.agentModeEnabled || Config.fieldAssistDeveloperUnlocked
+        case "enterprise":
+            // Customer-imported vaults (Plan H). Dev-unlock until an enterprise entitlement ships.
             return Config.agentModeEnabled || Config.fieldAssistDeveloperUnlocked
         default:
             return false
