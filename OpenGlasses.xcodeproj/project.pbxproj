@@ -285,6 +285,7 @@
 		D476884067774F4102608A82 /* FrameThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E25E4491B13CEDF14D4364 /* FrameThrottler.swift */; };
 		D593C32F97ADB2CA26DDE8BF /* HIPAAComplianceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A43E50AB9257B0004A4C2B /* HIPAAComplianceService.swift */; };
 		D6628A75E930933614DBD9F4 /* FitnessCoachingTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377F92EB5BBCF9661C7C6F1C /* FitnessCoachingTool.swift */; };
+		D672D1A3C7A63420F07CEAC2 /* WebRTCExpertBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10D6F7FDA3DFF0E1F00C9F0 /* WebRTCExpertBridge.swift */; };
 		D70B07E023BB6032FE283DC0 /* ReadingMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADD7D90C40A21B4EB310498 /* ReadingMode.swift */; };
 		D7531B56699F43A405E75B52 /* ConversationSummaryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF09406CF770FA333D952DD6 /* ConversationSummaryTool.swift */; };
 		D895774C7A8BF90EB8A819FD /* PhoneCallTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82277471510270A53A0045C /* PhoneCallTool.swift */; };
@@ -634,6 +635,7 @@
 		BD0332B74D9CC9B7E9EF185E /* VaultImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultImporter.swift; sourceTree = "<group>"; };
 		BD85B93668F3556CA85DA8D3 /* ShortcutCallbackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCallbackManager.swift; sourceTree = "<group>"; };
 		BF09406CF770FA333D952DD6 /* ConversationSummaryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSummaryTool.swift; sourceTree = "<group>"; };
+		C10D6F7FDA3DFF0E1F00C9F0 /* WebRTCExpertBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCExpertBridge.swift; sourceTree = "<group>"; };
 		C1898778BB04461BD2E268DC /* SessionLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogger.swift; sourceTree = "<group>"; };
 		C313FE7B77E00AD7BA8FFE82 /* tr.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = tr.json; sourceTree = "<group>"; };
 		C357FC916DA887AA36C9AF14 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -1200,6 +1202,7 @@
 				2708A5CCECD0850DFF62A11C /* SessionExport.swift */,
 				31C88D2942D45B47CE8F6F7B /* SessionExporter.swift */,
 				C1898778BB04461BD2E268DC /* SessionLogger.swift */,
+				C10D6F7FDA3DFF0E1F00C9F0 /* WebRTCExpertBridge.swift */,
 			);
 			path = FieldAssist;
 			sourceTree = "<group>";
@@ -1778,6 +1781,7 @@
 				8A9F7CE62FE4D6297A5D6F3F /* WakeWordService.swift in Sources */,
 				1C39DF928AF5BE964D53576E /* WatchConnectivityManager.swift in Sources */,
 				A81C7BA702B7E3B595834D27 /* WeatherTool.swift in Sources */,
+				D672D1A3C7A63420F07CEAC2 /* WebRTCExpertBridge.swift in Sources */,
 				88950FDF34C274D96346CB5F /* WebRTCStreamingService.swift in Sources */,
 				B05A555F43E279650778C5E2 /* WebSearchTool.swift in Sources */,
 				9BB26153E0CF3C6202FD39E7 /* WhereAmITool.swift in Sources */,

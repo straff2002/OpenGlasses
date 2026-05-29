@@ -721,6 +721,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
 
+        // Field Assist Phase 5 (Plan K2): live WebRTC expert bridge for escalations.
+        EscalationCoordinator.shared.bridge = WebRTCExpertBridge(
+            streamer: webRTCStreaming, framePublisher: cameraService.framePublisher)
+
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
         MCPGlassesServer.shared.startIfEnabled()
@@ -937,6 +941,12 @@ class AppState: ObservableObject, AppStateProtocol {
         transcriptionService.onTranscriptionComplete = { [weak self] text in
             Task { @MainActor in
                 guard let self = self else { return }
+                // While Assistive Mode (A3) is active it owns the loop — feed the transcript to bias
+                // Scene vs Social routing instead of starting a normal turn.
+                if AssistiveModeService.shared.isActive {
+                    AssistiveModeService.shared.noteTranscription(text)
+                    return
+                }
                 // Prevent processing if already handling a response
                 guard !self.isProcessing else {
                     print("⚠️ Transcription ignored - already processing")
