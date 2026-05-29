@@ -2287,6 +2287,37 @@ struct Config {
         UserDefaults.standard.set(kind.rawValue, forKey: "expertStreamTransport")
     }
 
+    // MARK: WebRTC transport config (Plan L)
+
+    /// WebSocket signaling endpoint that relays SDP/ICE between the glasses app and the expert.
+    /// Required for the WebRTC transport to connect.
+    static var expertSignalingURL: String {
+        UserDefaults.standard.string(forKey: "expertSignalingURL") ?? ""
+    }
+    static func setExpertSignalingURL(_ url: String) { UserDefaults.standard.set(url, forKey: "expertSignalingURL") }
+
+    /// STUN server (host discovery). Defaults to a public Google STUN server.
+    static var expertStunURL: String {
+        UserDefaults.standard.string(forKey: "expertStunURL") ?? "stun:stun.l.google.com:19302"
+    }
+    static func setExpertStunURL(_ url: String) { UserDefaults.standard.set(url, forKey: "expertStunURL") }
+
+    /// TURN relay (needed across NAT/cellular). Empty = STUN only.
+    static var expertTurnURL: String {
+        UserDefaults.standard.string(forKey: "expertTurnURL") ?? ""
+    }
+    static func setExpertTurnURL(_ url: String) { UserDefaults.standard.set(url, forKey: "expertTurnURL") }
+
+    static var expertTurnUsername: String {
+        UserDefaults.standard.string(forKey: "expertTurnUsername") ?? ""
+    }
+    static func setExpertTurnUsername(_ v: String) { UserDefaults.standard.set(v, forKey: "expertTurnUsername") }
+
+    static var expertTurnCredential: String {
+        UserDefaults.standard.string(forKey: "expertTurnCredential") ?? ""
+    }
+    static func setExpertTurnCredential(_ v: String) { UserDefaults.standard.set(v, forKey: "expertTurnCredential") }
+
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
     static var fieldAssistDefaultMode: String {

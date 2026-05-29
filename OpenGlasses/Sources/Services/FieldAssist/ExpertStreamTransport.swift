@@ -58,20 +58,7 @@ final class MJPEGExpertTransport: ExpertStreamTransport {
     func stop() async { streamer.stopStreaming() }
 }
 
-/// Drop-in seam for a real WebRTC peer connection. Reports unavailable until a WebRTC package +
-/// signaling/TURN are added; replace the body of `start` (and flip `isAvailable`) at that point.
-@MainActor
-final class WebRTCPeerTransport: ExpertStreamTransport {
-    var displayName: String { ExpertStreamKind.webrtc.label }
-    var isAvailable: Bool { false }
-    var isStreaming: Bool { false }
-
-    func start(framePublisher: PassthroughSubject<UIImage, Never>) async throws -> String? {
-        throw ExpertStreamError.transportUnavailable(
-            "WebRTC transport isn't bundled in this build. Switch the Expert Stream transport to MJPEG, or add a WebRTC package + signaling/TURN to enable peer-to-peer.")
-    }
-    func stop() async {}
-}
+// `WebRTCPeerTransport` is implemented in WebRTCPeerTransport.swift (real peer connection).
 
 /// `ExpertBridge` that streams via the transport selected in `Config.expertStreamTransport`.
 /// Used by `EscalationCoordinator` (Field Assist Phase 5).

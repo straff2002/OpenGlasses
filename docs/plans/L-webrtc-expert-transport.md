@@ -1,5 +1,13 @@
 # Plan L — Real WebRTC Expert Transport
 
+> **Status: app-side implemented.** The `stasel/WebRTC` dependency is added, `WebRTCPeerTransport`
+> creates a real `RTCPeerConnection` (outbound glasses video via a custom capturer + mic audio,
+> inbound expert audio, SDP/ICE over a WebSocket `ExpertSignalingClient`), `isAvailable` is true, and
+> Settings expose signaling/STUN/TURN config. The user picks MJPEG or WebRTC in Field Assist settings.
+> **Still external (not in-app):** a signaling relay server, a TURN server, and the expert-side web
+> client. The live connection path is not unit-tested (needs two peers + servers); compile-correct
+> and wired. Remaining items below are the server/infra + audio-session hardening.
+
 **Builds on:** the transport seam shipped in Plan K. `ExpertStreamTransport` already abstracts the stream, `WebRTCPeerTransport` is a conformer with `isAvailable = false`, `ExpertStreamBridge` selects by `Config.expertStreamTransport`, and the Settings picker exists. This plan fills in `WebRTCPeerTransport` for a true peer-to-peer connection — **two-way A/V, low latency** — replacing the one-way MJPEG-to-browser path for the "Human+AI" Field Assist Pro tier.
 
 **Strategic fit:** Unlocks genuine remote-expert collaboration (expert talks back, sub-second latency) — the headline of enterprise remote-assist products (TeamViewer Frontline, Dynamics Remote Assist). Required to make Field Assist Phase 5 real.

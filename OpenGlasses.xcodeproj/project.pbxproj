@@ -173,6 +173,7 @@
 		8353D04D4F0F3D462DD10AAF /* ConversationClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DDA12E26D78E6D68773BA6 /* ConversationClassifierTests.swift */; };
 		839C415A910D8996AB46A3F7 /* EscalateToExpertTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19C48B83E52D3AC07D7F721 /* EscalateToExpertTool.swift */; };
 		839F695A73832BBDF0B45367 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 12638430CE56EF1BF0AACC34 /* RTMPHaishinKit */; };
+		844FD059825ECD291D5B0DB9 /* WebRTCPeerTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560A233BACC1A4F7F3A65043 /* WebRTCPeerTransport.swift */; };
 		846DD6C3F36CDBA6EB9E9801 /* AgentDiaryTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CDB57B222C515D8DB68458 /* AgentDiaryTool.swift */; };
 		84C3B6172CA75EA7C71ED7F8 /* AccentColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A415E7939E3B32D6F9554658 /* AccentColors.swift */; };
 		8546B232FFF60AA335F53942 /* FieldSessionTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3F3766B29CF14FB60C9DBE /* FieldSessionTool.swift */; };
@@ -327,6 +328,7 @@
 		F654387BA42A828A8D519A89 /* hu.json in Resources */ = {isa = PBXBuildFile; fileRef = 1B3597BD404768005F3FC242 /* hu.json */; };
 		F757FB8CC9839D01EB3D2D29 /* ListeningControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922414961C19E5554C493C5E /* ListeningControlWidget.swift */; };
 		F8FA2AE1E059DFD11C6E997E /* PhotoLogTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CFF188ECE811AE051696ED5 /* PhotoLogTool.swift */; };
+		FA2191BC1DBB93D29B96E332 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 1633BD0EB502F17EDE95B1FA /* WebRTC */; };
 		FA5050A9D00A9AFC6F42E2F9 /* Gemma4Text.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406CF33E2425CF1E98F91A11 /* Gemma4Text.swift */; };
 		FCCEAD2B063A3A16C28EFE16 /* hr.json in Resources */ = {isa = PBXBuildFile; fileRef = ABDC887AC5CD2A3BAB0A656F /* hr.json */; };
 		FDC14476398048B298A7E2A5 /* AudioRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9109D547984B8AB11EF84906 /* AudioRecordingService.swift */; };
@@ -504,6 +506,7 @@
 		541EC20D0D9F29F7D263F544 /* AddModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelView.swift; sourceTree = "<group>"; };
 		54F579A510ACEF35A1CAB845 /* NetworkMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitorService.swift; sourceTree = "<group>"; };
 		55EFE988C890E5A02FFF8CB3 /* AgentNotificationQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationQueueTests.swift; sourceTree = "<group>"; };
+		560A233BACC1A4F7F3A65043 /* WebRTCPeerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCPeerTransport.swift; sourceTree = "<group>"; };
 		563A9A9EAE77827796BFD9ED /* OpenGlassesWatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenGlassesWatchWidget.entitlements; sourceTree = "<group>"; };
 		57E7843AFB7602ACD3B49CE0 /* NewsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsTool.swift; sourceTree = "<group>"; };
 		580869D78D114130EFE27457 /* MCPGlassesServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPGlassesServer.swift; sourceTree = "<group>"; };
@@ -735,6 +738,7 @@
 				32EAE84A6AFFE69E81EC21C6 /* MLXLMCommon in Frameworks */,
 				C2D47B33B3205CBF525A927B /* MLXVLM in Frameworks */,
 				79F5F4BB2655B88320D908CD /* SystemNotification in Frameworks */,
+				FA2191BC1DBB93D29B96E332 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1206,6 +1210,7 @@
 				2708A5CCECD0850DFF62A11C /* SessionExport.swift */,
 				31C88D2942D45B47CE8F6F7B /* SessionExporter.swift */,
 				C1898778BB04461BD2E268DC /* SessionLogger.swift */,
+				560A233BACC1A4F7F3A65043 /* WebRTCPeerTransport.swift */,
 			);
 			path = FieldAssist;
 			sourceTree = "<group>";
@@ -1266,6 +1271,7 @@
 				9DBFBEF2763A02A1421213ED /* MLXLMCommon */,
 				AA89B0E395FED1A1497F7B0A /* MLXVLM */,
 				C25288610CDE69E8AAC09000 /* SystemNotification */,
+				1633BD0EB502F17EDE95B1FA /* WebRTC */,
 			);
 			productName = OpenGlasses;
 			productReference = A795DD7E5DB69A5A400298C3 /* OpenGlasses.app */;
@@ -1397,6 +1403,7 @@
 			packageReferences = (
 				077ED21BE5031CDAD7703935 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */,
 				38B4BC62AC9E08A4652244EE /* XCRemoteSwiftPackageReference "SystemNotification" */,
+				EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				690D46B49137A735781C2EAC /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
 				68CD19E5A36E44D2151E629D /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 			);
@@ -1786,6 +1793,7 @@
 				8A9F7CE62FE4D6297A5D6F3F /* WakeWordService.swift in Sources */,
 				1C39DF928AF5BE964D53576E /* WatchConnectivityManager.swift in Sources */,
 				A81C7BA702B7E3B595834D27 /* WeatherTool.swift in Sources */,
+				844FD059825ECD291D5B0DB9 /* WebRTCPeerTransport.swift in Sources */,
 				88950FDF34C274D96346CB5F /* WebRTCStreamingService.swift in Sources */,
 				B05A555F43E279650778C5E2 /* WebSearchTool.swift in Sources */,
 				9BB26153E0CF3C6202FD39E7 /* WhereAmITool.swift in Sources */,
@@ -2265,6 +2273,14 @@
 				minimumVersion = 0.7.0;
 			};
 		};
+		EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 120.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -2277,6 +2293,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 077ED21BE5031CDAD7703935 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = RTMPHaishinKit;
+		};
+		1633BD0EB502F17EDE95B1FA /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EEB42878EAC3D4497D01A557 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 		9AB2B081EA62FA6DE3DCF3BA /* MWDATCore */ = {
 			isa = XCSwiftPackageProductDependency;

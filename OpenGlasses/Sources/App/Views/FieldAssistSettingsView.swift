@@ -74,13 +74,27 @@ struct FieldAssistSettingsView: View {
                         set: { Config.setExpertStreamTransport($0) }
                     )) {
                         ForEach(ExpertStreamKind.allCases, id: \.self) { kind in
-                            Text(kind == .webrtc ? "\(kind.label) — not available" : kind.label).tag(kind)
+                            Text(kind.label).tag(kind)
                         }
                     }
                 } header: {
                     Text("Expert Stream Transport")
                 } footer: {
-                    Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer (works today). WebRTC (peer-to-peer, two-way) is a drop-in seam — not bundled until a WebRTC package + signaling/TURN are added.")
+                    Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
+                }
+
+                if Config.expertStreamTransport == .webrtc {
+                    Section {
+                        webrtcField("Signaling URL", "wss://signal.example/ws", { Config.expertSignalingURL }, Config.setExpertSignalingURL)
+                        webrtcField("STUN", "stun:…", { Config.expertStunURL }, Config.setExpertStunURL)
+                        webrtcField("TURN", "turn:… (optional)", { Config.expertTurnURL }, Config.setExpertTurnURL)
+                        webrtcField("TURN user", "username", { Config.expertTurnUsername }, Config.setExpertTurnUsername)
+                        webrtcField("TURN secret", "credential", { Config.expertTurnCredential }, Config.setExpertTurnCredential)
+                    } header: {
+                        Text("WebRTC Connection")
+                    } footer: {
+                        Text("Required for WebRTC. The signaling server relays SDP/ICE between the glasses and the expert's browser. TURN is needed when peers are on different networks (e.g. cellular).")
+                    }
                 }
 
                 Section {
@@ -176,6 +190,16 @@ struct FieldAssistSettingsView: View {
         }
         .navigationTitle("Field Assist")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// A labeled text field bound to a Config getter/setter (used for WebRTC connection fields).
+    @ViewBuilder
+    private func webrtcField(_ title: String, _ placeholder: String,
+                             _ get: @escaping () -> String, _ set: @escaping (String) -> Void) -> some View {
+        TextField(placeholder, text: Binding(get: get, set: set))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
     }
 }
 

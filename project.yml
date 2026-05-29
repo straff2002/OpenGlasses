@@ -65,6 +65,9 @@ packages:
   SystemNotification:
     url: https://github.com/danielsaidi/SystemNotification.git
     from: "1.0.0"
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: "120.0.0"
 
 targets:
   OpenGlasses:
@@ -119,6 +122,8 @@ targets:
         product: MLXVLM
       - package: SystemNotification
         product: SystemNotification
+      - package: WebRTC
+        product: WebRTC
       - target: GlassesActivityWidget
       - target: OpenGlassesWatch
 

@@ -82,7 +82,26 @@ final class ExpertStreamTransportTests: XCTestCase {
         XCTAssertFalse(b.isConnected)
     }
 
-    func testShippedTransportAvailability() {
-        XCTAssertFalse(WebRTCPeerTransport().isAvailable)
+    func testWebRTCAvailableButRequiresSignalingConfig() async {
+        UserDefaults.standard.removeObject(forKey: "expertSignalingURL")
+        let transport = WebRTCPeerTransport()
+        XCTAssertTrue(transport.isAvailable, "WebRTC library is bundled, so the transport is available")
+        do {
+            _ = try await transport.start(framePublisher: PassthroughSubject<UIImage, Never>())
+            XCTFail("Expected transportUnavailable without a signaling URL")
+        } catch ExpertStreamError.transportUnavailable {
+            // expected
+        } catch {
+            XCTFail("Wrong error: \(error)")
+        }
+    }
+
+    func testSignalingMessageRoundTrips() throws {
+        let msg = SignalingMessage(type: .candidate, room: "r1", sdp: nil,
+                                   candidate: "candidate:1 1 udp ...", sdpMid: "0", sdpMLineIndex: 0)
+        let data = try JSONEncoder().encode(msg)
+        let decoded = try JSONDecoder().decode(SignalingMessage.self, from: data)
+        XCTAssertEqual(decoded, msg)
+        XCTAssertEqual(decoded.type, .candidate)
     }
 }
