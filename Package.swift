@@ -13,6 +13,8 @@ let package = Package(
         .package(url: "https://github.com/shogo4405/HaishinKit.swift.git", from: "2.2.5"),
         // MLX Swift LM — on-device LLM inference
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
+        // WebRTC — real peer-to-peer expert transport (Plan L)
+        .package(url: "https://github.com/stasel/WebRTC.git", from: "120.0.0"),
     ],
     targets: [
         .target(
@@ -25,6 +27,7 @@ let package = Package(
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXVLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "WebRTC", package: "WebRTC"),
             ],
             path: "OpenGlasses/Sources",
             resources: [
