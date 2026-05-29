@@ -140,6 +140,9 @@ final class NativeToolRegistry {
             register(ReadingAccessibilityTool(cameraService: camera))
             // Low-Vision Navigation Assist (Plan J) — deps configured by AppState.
             register(NavigationAssistTool())
+            // Sight tools: name colors / identify banknotes.
+            register(ColorIdentifierTool(cameraService: camera))
+            register(MoneyIdentifierTool(cameraService: camera))
         }
 
         // Personal Health Vault (Plan B) — always registered; the tool checks the Medical
