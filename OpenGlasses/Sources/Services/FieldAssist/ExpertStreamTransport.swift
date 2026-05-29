@@ -24,11 +24,13 @@ protocol ExpertStreamTransport {
 enum ExpertStreamKind: String, CaseIterable {
     case mjpeg
     case webrtc
+    case meetingLink = "meeting_link"
 
     var label: String {
         switch self {
         case .mjpeg: return "MJPEG (browser viewer)"
         case .webrtc: return "WebRTC (peer-to-peer)"
+        case .meetingLink: return "Meeting link (Zoom/Teams/Meet)"
         }
     }
 }
@@ -79,7 +81,8 @@ final class ExpertStreamBridge: ExpertBridge {
     /// Convenience: MJPEG backed by the app's streamer + the WebRTC seam.
     convenience init(streamer: WebRTCStreamingService, framePublisher: PassthroughSubject<UIImage, Never>) {
         self.init(transports: [.mjpeg: MJPEGExpertTransport(streamer: streamer),
-                               .webrtc: WebRTCPeerTransport()],
+                               .webrtc: WebRTCPeerTransport(),
+                               .meetingLink: MeetingLinkTransport()],
                   framePublisher: framePublisher)
     }
 

@@ -83,6 +83,16 @@ struct FieldAssistSettingsView: View {
                     Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
                 }
 
+                if Config.expertStreamTransport == .meetingLink {
+                    Section {
+                        webrtcField("Meeting URL", "https://zoom.us/j/… or Teams/Meet/Whereby", { Config.expertMeetingURL }, Config.setExpertMeetingURL)
+                    } header: {
+                        Text("Meeting Link")
+                    } footer: {
+                        Text("Zero-infrastructure: on escalation the technician's device opens this meeting and the expert is paged the same link. Your meeting tool (Zoom/Teams/Meet/Whereby) hosts the call — nothing for you to run.")
+                    }
+                }
+
                 if Config.expertStreamTransport == .webrtc {
                     Section {
                         webrtcField("Signaling URL", "wss://signal.example/ws", { Config.expertSignalingURL }, Config.setExpertSignalingURL)

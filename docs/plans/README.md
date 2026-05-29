@@ -21,8 +21,11 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | K Integration & polish | ✅ K1 HUD + transcription, K2 expert bridge + real notifier; K3 (CarPlay heading) is a documented no-op (no heading consumer) |
 | L WebRTC transport | ✅ App-side shipped (real RTCPeerConnection, MJPEG/WebRTC selectable). Needs external signaling + TURN to connect. |
 | M WebRTC infra + audio | ✅ M3 audio coordinator shipped; M1 signaling server + M2 expert client shipped as reference impls (`docs/webrtc/`). Remaining: deploy infra + on-device echo/precedence testing. |
+| Meeting-link connector | ✅ Shipped — zero-infra `meeting_link` transport opens/pages an external Zoom/Teams/Meet/Whereby URL; nothing to self-host. Recommended remote path. |
 
-**Genuinely outstanding (cannot be done/tested without hardware or hosting):** deploy the signaling relay + TURN server, host the expert web client, and run on-device WebRTC echo/precedence + audio-session testing. Everything else is implemented and tested here.
+Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
+
+**Genuinely outstanding (cannot be done/tested without hardware or hosting):** for the self-hosted WebRTC path only — deploy the signaling relay + TURN server, host the expert web client, and run on-device echo/precedence + audio-session testing. The Meeting-link transport needs none of this.
 
 ---
 

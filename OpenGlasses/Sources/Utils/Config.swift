@@ -2287,6 +2287,12 @@ struct Config {
         UserDefaults.standard.set(kind.rawValue, forKey: "expertStreamTransport")
     }
 
+    /// External meeting URL (Zoom/Teams/Meet/Whereby) for the zero-infra "Meeting link" transport.
+    static var expertMeetingURL: String {
+        UserDefaults.standard.string(forKey: "expertMeetingURL") ?? ""
+    }
+    static func setExpertMeetingURL(_ url: String) { UserDefaults.standard.set(url, forKey: "expertMeetingURL") }
+
     // MARK: WebRTC transport config (Plan L)
 
     /// WebSocket signaling endpoint that relays SDP/ICE between the glasses app and the expert.
