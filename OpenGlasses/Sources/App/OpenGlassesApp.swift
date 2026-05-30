@@ -468,6 +468,7 @@ class AppState: ObservableObject, AppStateProtocol {
     // Tier 1 services
     let conversationStore = ConversationStore()
     let userMemory = SemanticMemoryStore()
+    let documentStore = DocumentStore()
     let intentClassifier = IntentClassifier()
     let conversationClassifier = ConversationClassifier()
 
@@ -518,7 +519,8 @@ class AppState: ObservableObject, AppStateProtocol {
             videoRecorder: videoRecorder,
             audioRecorder: audioRecorder,
             medicalExportService: medicalExportService,
-            semanticMemory: userMemory
+            semanticMemory: userMemory,
+            documentStore: documentStore
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 

@@ -1,6 +1,6 @@
 # Plan L — Real WebRTC Expert Transport
 
-> **Status: app-side implemented.** The `stasel/WebRTC` dependency is added, `WebRTCPeerTransport`
+> **Status: app-side implemented.** The `WebRTC` SwiftPM dependency is added, `WebRTCPeerTransport`
 > creates a real `RTCPeerConnection` (outbound glasses video via a custom capturer + mic audio,
 > inbound expert audio, SDP/ICE over a WebSocket `ExpertSignalingClient`), `isAvailable` is true, and
 > Settings expose signaling/STUN/TURN config. The user picks MJPEG or WebRTC in Field Assist settings.
@@ -10,7 +10,7 @@
 
 **Builds on:** the transport seam shipped in Plan K. `ExpertStreamTransport` already abstracts the stream, `WebRTCPeerTransport` is a conformer with `isAvailable = false`, `ExpertStreamBridge` selects by `Config.expertStreamTransport`, and the Settings picker exists. This plan fills in `WebRTCPeerTransport` for a true peer-to-peer connection — **two-way A/V, low latency** — replacing the one-way MJPEG-to-browser path for the "Human+AI" Field Assist Pro tier.
 
-**Strategic fit:** Unlocks genuine remote-expert collaboration (expert talks back, sub-second latency) — the headline of enterprise remote-assist products (TeamViewer Frontline, Dynamics Remote Assist). Required to make Field Assist Phase 5 real.
+**Strategic fit:** Unlocks genuine remote-expert collaboration (expert talks back, sub-second latency) — the headline capability of enterprise remote-assist products. Required to make Field Assist Phase 5 real.
 
 **Effort:** ~1.5–2 weeks (library + signaling + TURN + audio + device testing). The bulk is infra/testing, not app glue — the seam is done.
 
@@ -20,10 +20,7 @@
 
 A WebRTC peer connection needs three things the app doesn't have:
 
-1. **A WebRTC implementation.** No pure-Swift option is production-grade; use a prebuilt binary:
-   - [`stasel/WebRTC`](https://github.com/stasel/WebRTC) — SwiftPM, Apple-platform `WebRTC.xcframework` (~tens of MB). Recommended.
-   - GoogleWebRTC (CocoaPods, unmaintained) — avoid.
-   This adds a large binary dependency and app-size; gate it behind the `webrtc` transport so MJPEG builds stay lean.
+1. **A WebRTC implementation.** No pure-Swift option is production-grade; use a prebuilt binary. The `WebRTC` SwiftPM package (Apple-platform `WebRTC.xcframework`, ~tens of MB) is already declared in `Package.swift` — prefer the maintained SwiftPM xcframework over the unmaintained CocoaPods `GoogleWebRTC`. This is a large binary dependency; gate it behind the `webrtc` transport so MJPEG builds stay lean.
 
 2. **A signaling server.** WebRTC needs an out-of-band channel to exchange SDP offer/answer + ICE candidates. The existing `WebRTCStreamingService` already runs a WebSocket to a signaling/relay endpoint (`connectWebSocket`) — extend that server (or stand up a small one) to relay SDP/ICE between glasses-app and expert browser, not just MJPEG frames.
 
@@ -51,7 +48,7 @@ OpenGlasses already juggles the `AVAudioSession` across wake word, transcription
 
 ## Build order
 
-1. Add `stasel/WebRTC` SPM dep behind the `webrtc` transport; confirm a no-op peer connection constructs on-device.
+1. Add the `WebRTC` SPM dep behind the `webrtc` transport; confirm a no-op peer connection constructs on-device.
 2. Stand up signaling relay (extend the existing WebSocket server) + a TURN server with test credentials.
 3. Outbound video capturer (UIImage → RTCVideoFrame) — expert sees the glasses feed.
 4. Two-way audio + audio-session coordination with wake word/TTS.

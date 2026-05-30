@@ -1,14 +1,12 @@
 # Plan A — Accessibility Tier (new IAP)
 
-**Source repos:** [brain](https://github.com/christineortiz1125-cell/brain), [neurobridge](https://github.com/AspectParadox-dev/neurobridge)
-
 **Strategic fit:** A coherent paid track parallel to Medical Compliance. Audience: dyslexia, ADHD, low-vision, language learners, neurodivergent users. Three composable features.
 
 **Effort:** ~3-5 days total
 
 ---
 
-## A1. Reading Accessibility Tool (from brain)
+## A1. Reading Accessibility Tool
 
 **Files:**
 - New: `Sources/Services/NativeTools/ReadingAccessibilityTool.swift`
@@ -28,7 +26,7 @@
 }
 ```
 
-**Mode prompts (adapted from brain):**
+**Mode prompts:**
 - `read` — clean OCR noise, preserve meaning, remove artifacts, output for audio. No markdown.
 - `simplify` — rewrite at reading level N (1=child 6-10yo, 2=youth 11-14, 3=adult, 4=expert, 5=professional). Preserve meaning, vary vocabulary + sentence length.
 - `translate` — convert to `target_language`. Preserve tone. Output target text only.
@@ -42,12 +40,12 @@
 
 ---
 
-## A2. Urgency-graded TTS (from neurobridge) — universal, not gated
+## A2. Urgency-graded TTS — universal, not gated
 
 **Files:**
 - Touch only: `Sources/Services/TextToSpeechService.swift` — add `SpeechUrgency` enum alongside existing `SpeechEmotion`
 
-**Urgency mapping (verbatim from neurobridge):**
+**Urgency mapping:**
 | Urgency | Rate multiplier | Prefix |
 |---|---|---|
 | `.low` | 1.0 | (none) |
@@ -61,7 +59,7 @@
 
 ---
 
-## A3. Scene/Social Assistive Modes (from neurobridge)
+## A3. Scene/Social Assistive Modes
 
 **Files:**
 - New: `Sources/Services/Accessibility/AssistiveModeService.swift` — pipeline orchestrator

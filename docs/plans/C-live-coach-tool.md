@@ -1,8 +1,6 @@
 # Plan C — Live Coach Tool
 
-**Source repo:** [sidelineiq](https://github.com/prasanthsasikumar/sidelineiq)
-
-**Strategic fit:** Generalizes sidelineiq's 2s frame-loop pattern into a multi-domain tool. Reuses existing `CameraService.framePublisher`. One-sentence tactical feedback for any visual domain.
+**Strategic fit:** Generalizes a 2s frame-loop pattern into a multi-domain tool. Reuses existing `CameraService.framePublisher`. One-sentence tactical feedback for any visual domain.
 
 **Effort:** ~1-2 days
 
@@ -26,7 +24,7 @@ live_coach:
     action: "start" | "stop" | "status"
     domain: "sports_tactics" | "cooking_form" | "posture" | "guitar" | "climbing" | "custom"
     custom_prompt?: string         // required when domain="custom"
-    interval_seconds?: 1-10        // default 2 (matches sidelineiq)
+    interval_seconds?: 1-10        // default 2
     max_words?: number             // default 20
     max_duration_minutes?: number  // default 30 (safety cap)
   returns: session id / current status
@@ -36,7 +34,7 @@ live_coach:
 
 ## Per-domain system prompts
 
-All share: one sentence, ≤max_words, no markdown, identify issue + suggest fix in same breath. Adapted from sidelineiq's "claude-opus-4-5, max 80 tokens" pattern.
+All share: one sentence, ≤max_words, no markdown, identify issue + suggest fix in same breath. Keep the model call tight (~80-token cap) for low-latency feedback.
 
 | Domain | Prompt focus |
 |---|---|
@@ -52,7 +50,7 @@ All share: one sentence, ≤max_words, no markdown, identify issue + suggest fix
 ## Service flow
 
 1. `LiveCoachService.start(domain, interval)` — kick off timer, subscribe to `CameraService.framePublisher`
-2. Every `interval` seconds, grab latest frame → JPEG quality 0.7 (matches sidelineiq compression)
+2. Every `interval` seconds, grab latest frame → JPEG quality 0.7
 3. Send to LLMService with domain prompt
 4. **Dedup check:** Skip TTS if new advice cosine-similar to last advice within X seconds (avoid repetitive "fix your grip / fix your grip / fix your grip")
 5. Emit to TextToSpeechService

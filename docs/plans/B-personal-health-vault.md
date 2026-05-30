@@ -1,7 +1,5 @@
 # Plan B — Personal Health Vault
 
-**Source repo:** [soma-hud](https://github.com/CarlKho-Minerva/soma-hud)
-
 **Strategic fit:** Extends the existing Medical Compliance IAP with editable markdown grounding + source attribution. **First applied instance of the generic `VaultStore`** introduced in [Plan F](F-field-assist.md). The Health Vault is one of several domain vaults (refrigeration, IT, electrical, automotive) that ride on the same foundation.
 
 **Depends on:** Generic `VaultStore` from [Plan F Phase 1](F-field-assist.md#phase-1-foundation-1-week). Build Plan F Phase 1 first, then layer this on as a vault definition + thin tool wrapper.
@@ -64,7 +62,7 @@ This plan is much smaller once VaultStore is shared infrastructure.
 
 ## Vault file contents
 
-Stored in Documents directory (or iCloud if enabled). Six default files mirroring soma-hud:
+Stored in Documents directory (or iCloud if enabled). Six default files:
 
 | File | Contents |
 |---|---|

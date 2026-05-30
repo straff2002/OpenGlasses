@@ -1,6 +1,6 @@
 # OpenGlasses Feature Plans
 
-Six plans drafted from a survey of ~19 community Meta Ray-Ban / smart-glasses projects on GitHub, plus a B2B field-service direction informed by IT and refrigeration commercial opportunities. Extended in later rounds (G–M) with features unlocked by the shipped engines.
+Six plans drafted from a survey of the community smart-glasses landscape, plus a B2B field-service direction informed by IT and refrigeration commercial opportunities. Extended in later rounds (G–M) with features unlocked by the shipped engines.
 
 ## Status (as of latest)
 
@@ -51,6 +51,18 @@ A–F are built (A1–A3, B, C, D, E, and Field Assist Phases 1–3). These reus
 | [K](K-integration-polish.md) | Integration & Polish (A3 HUD, F Phase 5 expert, CarPlay smoothing) | ~half day–1 week | A3, ExpertBridge+WebRTC, OneEuroFilter | Finish/wire shipped capabilities |
 | [L](L-webrtc-expert-transport.md) | Real WebRTC Expert Transport (two-way A/V) | ~1.5–2 weeks | Plan K transport seam | Genuine remote-expert collaboration — Field Assist Pro |
 | [M](M-webrtc-infra-and-audio.md) | WebRTC signaling relay + expert web client + audio-session coordination | ~3–5 days | Plan L app side | Completes the live WebRTC call loop |
+
+## Round 3 — agent control
+
+| Plan | Title | Effort | Reuses | Strategic fit |
+|---|---|---|---|---|
+| [N](N-remote-agent-harness.md) | Remote Agent Harness (phone-only, harness-agnostic) | ~3–4 days core + ~1–2/adapter | OpenClawBridge + OpenClawEventClient, `agentModeEnabled`, LLMProvider pattern, MeetingSummaryTool | Glasses as a hands-free remote for any coding/agent backend (OpenClaw / Codex / Claude / custom). 📋 Planned |
+
+## Round 4 — on-device knowledge
+
+| Plan | Title | Effort | Reuses | Strategic fit |
+|---|---|---|---|---|
+| [O](O-document-rag.md) | Document RAG (chat with your files) | ~3–4 days | SemanticMemoryStore (sqlite + NLEmbedding + cosine), OCRService (A1) | Persistent, retrievable chunked document knowledge — load a manual/PDF and ask about it across sessions. 📋 Planned |
 
 ## Dependency graph
 
@@ -106,31 +118,3 @@ Generic `VaultStore` (built in Plan F Phase 1) is the shared foundation for all 
 | `electrical` | F v2 | Field Assist – Electrical IAP |
 | `automotive` | F v2 | Field Assist – Auto IAP |
 | `custom` | F v2 | Enterprise tier |
-
-## Source repos surveyed
-
-**High-value sources:**
-- [soma-hud](https://github.com/CarlKho-Minerva/soma-hud) → Plan B (health vault, source attribution) + Plan F (vault pattern)
-- [neurobridge](https://github.com/AspectParadox-dev/neurobridge) → Plan A2 + A3 (urgency TTS, scene/social modes)
-- [brain](https://github.com/christineortiz1125-cell/brain) → Plan A1 (reading accessibility modes)
-- [sidelineiq](https://github.com/prasanthsasikumar/sidelineiq) → Plan C (live coach pattern)
-- [SkyRadar](https://github.com/Trickdog/SkyRadar) → Plan D (OneEuroFilter, aircraft tracking)
-- [glasses-context](https://github.com/scottconnolly-byte/glasses-context) → Plan E (MCP server)
-
-**Plan F informed by enterprise patterns:**
-TeamViewer Frontline, Microsoft Dynamics 365 Remote Assist, Vuzix Remote Assist, Librestream Onsight, Augmentir.
-
-**Surveyed but not adopted:**
-- glassbridge, MetaOakleyVerse, Grock-Glasses — duplicate existing functionality
-- hand-wave — sign language ML, too heavy to integrate now
-- nano-sight — Quest 3 only
-- ar-glasses-master-sdk — reference catalog
-- shopping list — D-pad UI deferred until Display glasses
-- vanguard-glasses, vison-claw — empty repos
-
-**Flagged as ethically problematic:**
-- [JARVIS](https://github.com/affaan-m/JARVIS) — stranger-OSINT via PimEyes, no consent model. Avoid this pattern.
-- SignalSight — body-language analysis of others without consent. Skip.
-
-**Notable peer project:**
-- [VisionClaw](https://github.com/Intent-Lab/VisionClaw) — academic research project (Liu, Lee, Gonzalez, Gonzalez-Franco, Suzuki). Same stack as OpenGlasses (DAT SDK + Gemini Live + OpenClaw). Validates architecture choice. Worth finding the associated paper.
