@@ -1736,11 +1736,14 @@ class AppState: ObservableObject, AppStateProtocol {
         print("🎤 \(manual ? "Tap-to-talk" : "Wake word") detected! Starting conversation...")
         manuallyTriggered = manual
         inConversation = true
-        isListening = true
 
-        // Ensure audio session + engine are alive (may be off in silent mode)
+        // Ensure audio session + engine are alive BEFORE marking ourselves as listening.
+        // Tap-to-talk calls stopListening() first (engine = nil), and startListening()
+        // bails on `guard !isListening`, so setting isListening early would leave the shared
+        // engine dead and force TranscriptionService onto a fragile fallback engine.
         wakeWordService.configureAudioSession()
         try? await wakeWordService.ensureAudioEngineRunning()
+        isListening = true
 
         // Snapshot what's playing before pausing it
         nowPlayingAtStart = NowPlayingSnapshot.current()
