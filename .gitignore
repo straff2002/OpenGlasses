@@ -46,6 +46,10 @@ OpenGlasses.xcodeproj/
 xcschemes-backup/
 project.local.yml
 .openglasses-generate.env
+
+# Local secrets — private keys, never commit (the .example is the template)
+secrets/*
+!secrets/*.example
 Config/Entitlements/Personal/*.entitlements
 !Config/Entitlements/Personal/*.entitlements.example
 Config/Info/Info.personal.plist

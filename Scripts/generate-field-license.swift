@@ -4,11 +4,13 @@ import CryptoKit
 
 // Mints a signed Field Assist license code.
 //
-//   ./Scripts/generate-field-license.swift <privateKeyBase64> "<Licensee Name>" [expiresISO8601]
+//   ./Scripts/generate-field-license.swift "<Licensee Name>" [expiresISO8601]
 //
-// The private key is the vendor secret and must NEVER be committed or shipped in the app. The app
-// embeds only the matching public key (LicenseService.productionPublicKeyBase64). Generate a keypair
-// once with `print-keypair` below and keep the private key in a password manager / CI secret.
+// The signing PRIVATE key is the vendor secret and must NEVER be committed or shipped. The script
+// resolves it, in order, from:
+//   1. $FIELD_ASSIST_SIGNING_KEY (base64), else
+//   2. secrets/field-assist-signing-key.txt (gitignored — see secrets/*.example).
+// The app embeds only the matching PUBLIC key (LicenseService.productionPublicKeyBase64).
 //
 //   # one-off keypair generation:
 //   swift -e 'import CryptoKit; let k = Curve25519.Signing.PrivateKey(); print("private:", k.rawRepresentation.base64EncodedString()); print("public:", k.publicKey.rawRepresentation.base64EncodedString())'
@@ -23,21 +25,56 @@ struct LicensePayload: Codable {
     let expires: Date?
 }
 
-let args = CommandLine.arguments
-guard args.count >= 3, let keyData = Data(base64Encoded: args[1]) else {
-    FileHandle.standardError.write(Data("usage: generate-field-license.swift <privateKeyBase64> \"<Licensee>\" [expiresISO8601]\n".utf8))
+func fail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }
 
-let licensee = args[2]
+/// First non-comment, non-empty line of a key file.
+func keyFromFile(_ url: URL) -> String? {
+    guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+    return contents
+        .split(separator: "\n")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .first { !$0.isEmpty && !$0.hasPrefix("#") }
+}
+
+/// Resolve the private key from env, then the gitignored secrets file (looked up relative to the
+/// script's location and the current directory).
+func resolvePrivateKey() -> String {
+    if let env = ProcessInfo.processInfo.environment["FIELD_ASSIST_SIGNING_KEY"], !env.isEmpty {
+        return env
+    }
+    let scriptDir = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+    let candidates = [
+        scriptDir.deletingLastPathComponent().appendingPathComponent("secrets/field-assist-signing-key.txt"),
+        URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("secrets/field-assist-signing-key.txt"),
+    ]
+    for url in candidates {
+        if let key = keyFromFile(url) { return key }
+    }
+    fail("""
+    No signing key found. Provide it via $FIELD_ASSIST_SIGNING_KEY or create
+    secrets/field-assist-signing-key.txt (copy secrets/field-assist-signing-key.txt.example).
+    """)
+}
+
+let args = CommandLine.arguments
+guard args.count >= 2 else {
+    fail("usage: generate-field-license.swift \"<Licensee>\" [expiresISO8601]")
+}
+
+let licensee = args[1]
 var expires: Date?
-if args.count >= 4 {
-    let iso = ISO8601DateFormatter()
-    guard let parsed = iso.date(from: args[3]) else {
-        FileHandle.standardError.write(Data("Could not parse expiry '\(args[3])' (use ISO-8601, e.g. 2027-01-01T00:00:00Z)\n".utf8))
-        exit(1)
+if args.count >= 3 {
+    guard let parsed = ISO8601DateFormatter().date(from: args[2]) else {
+        fail("Could not parse expiry '\(args[2])' (use ISO-8601, e.g. 2027-01-01T00:00:00Z)")
     }
     expires = parsed
+}
+
+guard let keyData = Data(base64Encoded: resolvePrivateKey()) else {
+    fail("Signing key is not valid base64.")
 }
 
 do {
@@ -50,9 +87,7 @@ do {
     let payloadData = try encoder.encode(payload)
     let signature = try privateKey.signature(for: payloadData)
 
-    let code = "\(payloadData.base64EncodedString()).\(signature.base64EncodedString())"
-    print(code)
+    print("\(payloadData.base64EncodedString()).\(signature.base64EncodedString())")
 } catch {
-    FileHandle.standardError.write(Data("Failed to sign: \(error)\n".utf8))
-    exit(1)
+    fail("Failed to sign: \(error)")
 }
