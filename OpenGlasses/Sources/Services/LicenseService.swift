@@ -18,7 +18,7 @@ final class LicenseService: ObservableObject {
 
     /// Vendor's production public key (base64, Curve25519 raw representation). The private half is
     /// held only by the vendor and never ships in the app.
-    static let productionPublicKeyBase64 = "XTzsiaHmag2Qeq/Fln4zLsKkblNH1z9mCdAxrIxFn9k="
+    static let productionPublicKeyBase64 = "KJyr5gDejBhxO2zpXbaBgvOeSjs9b3I93PJgauHubhY="
 
     /// Feature identifier a license must name to unlock Field Assist.
     static let featureId = "field_assist"
