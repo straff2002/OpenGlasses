@@ -15,6 +15,8 @@ struct FieldAssistSettingsView: View {
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
     @State private var licenseMessageIsError = false
+    @State private var shareItem: ShareItem?
+    @State private var exportError: String?
 
     var body: some View {
         Form {
@@ -75,11 +77,21 @@ struct FieldAssistSettingsView: View {
                         } label: {
                             Label("\(manifest.name) — \(manifest.files.count) files", systemImage: "doc.text")
                         }
+                        .swipeActions(edge: .leading) {
+                            if VaultExporter.isExportable(manifest) {
+                                Button {
+                                    exportVault(manifest)
+                                } label: {
+                                    Label("Export", systemImage: "square.and.arrow.up")
+                                }
+                                .tint(AppAccent.color)
+                            }
+                        }
                     }
                 } header: {
                     Text("Reference Files")
                 } footer: {
-                    Text("Edit a vault's grounding references in-app. Your edits write to a private overlay and never touch the bundled baseline.")
+                    Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported.")
                 }
 
                 // ──────────────── Session mode
@@ -233,6 +245,23 @@ struct FieldAssistSettingsView: View {
             license.loadStored()
             // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.
             if enabled && !Config.fieldAssistUnlocked { enabled = false }
+        }
+        .sheet(item: $shareItem) { item in
+            ShareSheet(items: item.items)
+        }
+        .alert("Export failed", isPresented: .constant(exportError != nil)) {
+            Button("OK") { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    private func exportVault(_ manifest: VaultManifest) {
+        do {
+            let url = try VaultExporter.export(id: manifest.id)
+            shareItem = ShareItem(items: [url])
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 
