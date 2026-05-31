@@ -84,10 +84,19 @@ struct DocumentRAGTool: NativeTool {
         }
 
         let body = passages.enumerated().map { i, p in
-            "[\(i + 1)] From \"\(p.documentName)\" (chunk \(p.chunkIndex), score \(String(format: "%.2f", p.similarity))):\n\(p.text)"
+            "[\(i + 1)] From \"\(p.documentName)\" (\(locator(for: p)), score \(String(format: "%.2f", p.similarity))):\n\(p.text)"
         }.joined(separator: "\n\n")
 
-        return "Relevant passages for '\(query)' — answer using only these, and cite the document name:\n\n\(body)"
+        return "Relevant passages for '\(query)' — answer using only these, and cite the document name and (when shown) the page/section:\n\n\(body)"
+    }
+
+    /// A speakable source locator for a passage: prefers page + section, degrades to whichever is
+    /// present, and falls back to the chunk index when the document carried no page/heading markers.
+    private func locator(for p: DocumentStore.Passage) -> String {
+        var parts: [String] = []
+        if let page = p.page { parts.append("page \(page)") }
+        if let section = p.section, !section.isEmpty { parts.append(section) }
+        return parts.isEmpty ? "chunk \(p.chunkIndex)" : parts.joined(separator: ", ")
     }
 
     private func ingestText(_ args: [String: Any], store: DocumentStore) async -> String {
