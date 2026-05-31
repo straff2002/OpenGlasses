@@ -13,7 +13,9 @@ options:
   deploymentTarget:
     iOS: "26.0"
     watchOS: "26.0"
-  xcodeVersion: "26.0"
+  # Sets LastUpgradeCheck (26.5 -> 2650). Keep in step with the project's Xcode
+  # baseline so Xcode's "Update to recommended settings" validation stays quiet.
+  xcodeVersion: "26.5"
   generateEmptyDirectories: true
   developmentLanguage: en
   knownRegions:
