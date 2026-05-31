@@ -258,6 +258,23 @@ struct ChatInputBar: View {
 
             // Input row
             HStack(spacing: 10) {
+                // Keyboard dismiss — only while editing. Lives in the bar (not the keyboard
+                // toolbar, which overlays the Send button) and sits leading so it never
+                // collides with the trailing Send control.
+                if isTextFieldFocused {
+                    Button {
+                        isTextFieldFocused = false
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Color(.label))
+                            .frame(width: 36, height: 36)
+                            .glassEffect(in: .circle)
+                    }
+                    .accessibilityLabel("Dismiss keyboard")
+                    .transition(.opacity)
+                }
+
                 // Close button
                 Button {
                     showChatInput = false
