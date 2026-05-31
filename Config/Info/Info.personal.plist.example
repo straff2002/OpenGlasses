@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>MWDAT</key>
+	<dict>
+		<key>AppLinkURLScheme</key>
+		<string>https://YOUR-DOMAIN/YOUR-PATH</string>
+		<key>ClientToken</key>
+		<string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
+		<key>MetaAppID</key>
+		<string>YOUR_META_APP_ID</string>
+		<key>TeamID</key>
+		<string>$(DEVELOPMENT_TEAM)</string>
+	</dict>
+</dict>
+</plist>

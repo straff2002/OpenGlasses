@@ -1,0 +1,16 @@
+options:
+  developmentTeam: YOUR_APPLE_TEAM_ID
+
+targets:
+  OpenGlasses:
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Config/Entitlements/Personal/OpenGlasses.entitlements
+        DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
+        INFOPLIST_FILE: Config/Info/Info.personal.plist
+
+  GlassesActivityWidget:
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Config/Entitlements/Personal/GlassesActivityWidget.entitlements
+        DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
