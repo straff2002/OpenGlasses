@@ -162,6 +162,14 @@ struct FitnessCoachingTool: NativeTool {
     // MARK: - HealthKit
 
     private func getWorkoutHistory() async -> String {
+        // Apple Guideline 5.1.3: HealthKit data may only be disclosed to a third
+        // party (here, the LLM provider that receives this tool result) with the
+        // user's explicit consent. Gate the read behind an opt-in toggle that
+        // defaults off, rather than silently transmitting Health records.
+        guard Config.shareHealthDataWithAI else {
+            return "Sharing Apple Health data with the AI is turned off. The user can enable \"Share Health data with AI\" in Settings → Privacy to let me read and discuss their workout history."
+        }
+
         guard HKHealthStore.isHealthDataAvailable() else {
             return "HealthKit is not available on this device."
         }

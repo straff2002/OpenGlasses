@@ -1997,6 +1997,24 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "privacyFilterEnabled")
     }
 
+    // MARK: - Health Data Sharing with AI
+
+    /// Whether HealthKit-derived data (e.g. workout history) may be sent to the
+    /// configured LLM provider as tool-call context.
+    ///
+    /// Apple App Review Guideline 5.1.3 requires explicit user consent before
+    /// HealthKit data is disclosed to a third party — and an LLM API is a third
+    /// party. This MUST default to false (opt-in). On-device tracking, form
+    /// analysis, and saving workouts to Apple Health do not require it; only
+    /// transmitting Health-read data off-device does.
+    static var shareHealthDataWithAI: Bool {
+        UserDefaults.standard.bool(forKey: "shareHealthDataWithAI")
+    }
+
+    static func setShareHealthDataWithAI(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "shareHealthDataWithAI")
+    }
+
     // MARK: - Listening Toggle
 
     /// Master switch for wake word detection + Live Activity.

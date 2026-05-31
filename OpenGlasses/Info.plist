@@ -130,7 +130,7 @@
 	<key>NSContactsUsageDescription</key>
 	<string>OpenGlasses looks up contacts so you can make calls and send messages by name through your glasses.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>OpenGlasses reads your health data (steps, workouts) to report fitness activity through your glasses.</string>
+	<string>OpenGlasses reads your health data (steps, workouts) to report fitness activity through your glasses. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>OpenGlasses saves workout data from fitness coaching sessions to Apple Health.</string>
 	<key>NSHomeKitUsageDescription</key>
