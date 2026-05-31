@@ -20,11 +20,14 @@ class StoreKitService: ObservableObject {
     nonisolated static let medicalMonthlyId = "com.openglasses.medical_compliance_monthly"
     nonisolated static let medicalAnnualId = "com.openglasses.medical_compliance_annual"
 
-    /// All known product identifiers.
-    private static let allProductIds: Set<String> = [
-        medicalMonthlyId,
-        medicalAnnualId
-    ]
+    /// Field Assist (B2B) — a one-time non-consumable unlock. Complements the license-code path.
+    nonisolated static let fieldAssistId = "com.openglasses.field_assist"
+
+    /// Medical Compliance subscription products.
+    private static let medicalProductIds: Set<String> = [medicalMonthlyId, medicalAnnualId]
+
+    /// All known product identifiers (loaded from the App Store / .storekit).
+    private static let allProductIds: Set<String> = medicalProductIds.union([fieldAssistId])
 
     /// Subscription group name (must match App Store Connect).
     static let subscriptionGroupId = "medical_compliance"
@@ -36,6 +39,9 @@ class StoreKitService: ObservableObject {
 
     /// Whether the user has an active Medical Compliance subscription.
     @Published private(set) var isMedicalComplianceActive = false
+
+    /// Whether the user has purchased the Field Assist non-consumable unlock.
+    @Published private(set) var isFieldAssistPurchased = false
 
     /// The user's current subscription status (for UI display).
     @Published private(set) var subscriptionStatus: SubscriptionInfo?
@@ -104,7 +110,7 @@ class StoreKitService: ObservableObject {
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
                 await checkSubscriptionStatus()
-                NSLog("[StoreKit] Medical Compliance subscription activated: %@", product.id)
+                NSLog("[StoreKit] Purchase activated: %@", product.id)
 
             case .userCancelled:
                 NSLog("[StoreKit] Purchase cancelled by user")
@@ -126,17 +132,18 @@ class StoreKitService: ObservableObject {
 
     // MARK: - Subscription Status
 
-    /// Check current subscription entitlements.
+    /// Check current entitlements for both the Medical Compliance subscription and the Field Assist
+    /// non-consumable. Mirrors the Field Assist state into `Config` for the synchronous gates.
     func checkSubscriptionStatus() async {
-        var foundActive = false
+        var medicalActive = false
+        var fieldActive = false
 
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
-                let isMedical = Self.allProductIds.contains(transaction.productID)
-                guard isMedical else { continue }
+                guard transaction.revocationDate == nil else { continue }
 
-                if transaction.revocationDate == nil {
-                    foundActive = true
+                if Self.medicalProductIds.contains(transaction.productID) {
+                    medicalActive = true
 
                     // Get renewal info
                     var willRenew = true
@@ -155,14 +162,19 @@ class StoreKitService: ObservableObject {
                         isInGracePeriod: gracePeriod,
                         willAutoRenew: willRenew
                     )
+                } else if transaction.productID == Self.fieldAssistId {
+                    fieldActive = true
                 }
             }
         }
 
-        isMedicalComplianceActive = foundActive
-        if !foundActive {
+        isMedicalComplianceActive = medicalActive
+        if !medicalActive {
             subscriptionStatus = nil
         }
+
+        isFieldAssistPurchased = fieldActive
+        Config.setFieldAssistPurchased(fieldActive)
     }
 
     /// Restore purchases (triggers App Store sign-in if needed).
@@ -210,6 +222,11 @@ class StoreKitService: ObservableObject {
     /// The annual subscription product.
     var annualProduct: Product? {
         products.first { $0.id == Self.medicalAnnualId }
+    }
+
+    /// The Field Assist non-consumable unlock product.
+    var fieldAssistProduct: Product? {
+        products.first { $0.id == Self.fieldAssistId }
     }
 
     /// Whether the user can access Medical Compliance features.

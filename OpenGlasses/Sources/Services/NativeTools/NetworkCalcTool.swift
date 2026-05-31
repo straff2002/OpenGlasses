@@ -22,7 +22,7 @@ final class NetworkCalcTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
-        guard Config.fieldAssistEnabled else {
+        guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
         guard let cidr = (args["cidr"] as? String)?.trimmingCharacters(in: .whitespaces), !cidr.isEmpty else {

@@ -122,9 +122,10 @@ final class NativeToolRegistry {
         register(AgentDocumentTool())
         register(PlaybookTool())
 
-        // Field Assist (B2B) — only registered when the feature is enabled.
-        // Tool checks Config.fieldAssistEnabled at execute time too, so users see a clear message.
-        if Config.fieldAssistEnabled {
+        // Field Assist (B2B) — only registered when the feature is entitled AND enabled.
+        // Tools re-check Config.fieldAssistActive at execute time too, so a lapsed license/IAP
+        // disables them and users see a clear message.
+        if Config.fieldAssistActive {
             register(FieldSessionTool())
             register(ProcedureRunnerTool())
             register(DomainCalcTool())

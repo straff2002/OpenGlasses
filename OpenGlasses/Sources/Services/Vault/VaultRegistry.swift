@@ -140,12 +140,11 @@ final class VaultRegistry {
         case "medical_compliance":
             return StoreKitService.shared.isMedicalComplianceActive
         case "field_assist_refrigeration", "field_assist_it":
-            // MVP: gate on agentModeEnabled until a dedicated IAP ships.
-            // Once the per-pack products are live, switch to StoreKit.
-            return Config.agentModeEnabled || Config.fieldAssistDeveloperUnlocked
+            // Field Assist entitlement: license code (B2B) OR in-app purchase OR developer unlock.
+            return Config.fieldAssistUnlocked
         case "enterprise":
-            // Customer-imported vaults (Plan H). Dev-unlock until an enterprise entitlement ships.
-            return Config.agentModeEnabled || Config.fieldAssistDeveloperUnlocked
+            // Customer-imported vaults (Plan H) ride the same Field Assist entitlement.
+            return Config.fieldAssistUnlocked
         default:
             return false
         }

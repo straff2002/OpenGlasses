@@ -5,10 +5,18 @@ import SwiftUI
 @MainActor
 struct FieldAssistSettingsView: View {
     @StateObject private var sessionService = FieldSessionService.shared
+    @StateObject private var license = LicenseService.shared
+    @StateObject private var store = StoreKitService.shared
     @AppStorage("fieldAssistEnabled") private var enabled: Bool = false
     @AppStorage("fieldAssistDeveloperUnlocked") private var developerUnlocked: Bool = false
     @AppStorage("fieldAssistDefaultVaultId") private var defaultVaultId: String = "refrigeration"
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
+
+    @State private var licenseCode = ""
+    @State private var licenseMessage: String?
+    @State private var licenseMessageIsError = false
+    @State private var shareItem: ShareItem?
+    @State private var exportError: String?
 
     var body: some View {
         Form {
@@ -16,8 +24,16 @@ struct FieldAssistSettingsView: View {
             Section {
                 Toggle("Enable Field Assist", isOn: $enabled)
                     .tint(AppAccent.color)
+                    .disabled(!Config.fieldAssistUnlocked)
             } footer: {
                 Text("Field Assist provides hands-free, domain-grounded guidance for service technicians. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
+            }
+
+            // ──────────────── Entitlement (paywall when locked, status when unlocked)
+            if Config.fieldAssistUnlocked {
+                entitlementStatus
+            } else {
+                entitlementPaywall
             }
 
             // ──────────────── Vault selection
@@ -61,11 +77,21 @@ struct FieldAssistSettingsView: View {
                         } label: {
                             Label("\(manifest.name) — \(manifest.files.count) files", systemImage: "doc.text")
                         }
+                        .swipeActions(edge: .leading) {
+                            if VaultExporter.isExportable(manifest) {
+                                Button {
+                                    exportVault(manifest)
+                                } label: {
+                                    Label("Export", systemImage: "square.and.arrow.up")
+                                }
+                                .tint(AppAccent.color)
+                            }
+                        }
                     }
                 } header: {
                     Text("Reference Files")
                 } footer: {
-                    Text("Edit a vault's grounding references in-app. Your edits write to a private overlay and never touch the bundled baseline.")
+                    Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported.")
                 }
 
                 // ──────────────── Session mode
@@ -215,6 +241,151 @@ struct FieldAssistSettingsView: View {
         }
         .navigationTitle("Field Assist")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            license.loadStored()
+            // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.
+            if enabled && !Config.fieldAssistUnlocked { enabled = false }
+        }
+        .sheet(item: $shareItem) { item in
+            ShareSheet(items: item.items)
+        }
+        .alert("Export failed", isPresented: .constant(exportError != nil)) {
+            Button("OK") { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    private func exportVault(_ manifest: VaultManifest) {
+        do {
+            let url = try VaultExporter.export(id: manifest.id)
+            shareItem = ShareItem(items: [url])
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Entitlement UI
+
+    /// IAP identifiers a Field Assist entitlement unlocks (mirror of VaultRegistry's gating cases).
+    private static let fieldAssistIAPs: Set<String> = ["field_assist_refrigeration", "field_assist_it", "enterprise"]
+
+    /// Field-Assist-gated vaults, for the locked preview surface.
+    private var fieldAssistVaults: [VaultManifest] {
+        VaultRegistry.shared.allManifests.filter { manifest in
+            guard let iap = manifest.gating.iap else { return false }
+            return Self.fieldAssistIAPs.contains(iap)
+        }
+    }
+
+    @ViewBuilder
+    private var entitlementPaywall: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Field Assist is locked", systemImage: "lock.fill")
+                    .font(.headline)
+                Text("Unlock with a license code (teams) or a one-time in-app purchase.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if !fieldAssistVaults.isEmpty {
+            Section {
+                ForEach(fieldAssistVaults, id: \.id) { manifest in
+                    NavigationLink {
+                        VaultFilesEditorView(vaultId: manifest.id, title: manifest.name)
+                    } label: {
+                        Label("\(manifest.name) — \(manifest.files.count) files", systemImage: "eye")
+                    }
+                }
+            } header: {
+                Text("Preview Vaults")
+            } footer: {
+                Text("Browse the reference content read-only. Unlocking lets you edit it, run grounded sessions, and export.")
+            }
+        }
+
+        Section {
+            TextField("Paste license code", text: $licenseCode, axis: .vertical)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(.footnote, design: .monospaced))
+            Button("Activate License") { activateLicense() }
+                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if let licenseMessage {
+                Text(licenseMessage)
+                    .font(.caption)
+                    .foregroundStyle(licenseMessageIsError ? .red : .green)
+            }
+        } header: {
+            Text("License Code")
+        } footer: {
+            Text("Enterprise customers receive a code with their order. Codes are signed and validated on-device — no network required.")
+        }
+
+        Section {
+            if let product = store.fieldAssistProduct {
+                Button {
+                    Task { await store.purchase(product) }
+                } label: {
+                    HStack {
+                        Label("Buy Field Assist", systemImage: "cart")
+                        Spacer()
+                        Text(product.displayPrice).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(store.isPurchasing)
+            } else {
+                Text("Purchase is unavailable right now. Check your connection and App Store sign-in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Restore Purchases") { Task { await store.restorePurchases() } }
+            if let error = store.purchaseError {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+        } header: {
+            Text("In-App Purchase")
+        } footer: {
+            Text("A one-time purchase unlocks Field Assist on this Apple ID.")
+        }
+    }
+
+    @ViewBuilder
+    private var entitlementStatus: some View {
+        Section {
+            if let lic = license.activeLicense {
+                LabeledContent("Licensed to", value: lic.licensee)
+                LabeledContent("Expires", value: lic.expires?.formatted(date: .abbreviated, time: .omitted) ?? "Never")
+                Button("Remove License", role: .destructive) {
+                    license.clear()
+                    licenseCode = ""
+                    licenseMessage = nil
+                    if enabled && !Config.fieldAssistUnlocked { enabled = false }
+                }
+            } else if Config.fieldAssistPurchased {
+                Label("Unlocked via in-app purchase", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+            } else if Config.fieldAssistDeveloperUnlocked {
+                Label("Developer unlock active", systemImage: "hammer.fill")
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text("Entitlement")
+        }
+    }
+
+    private func activateLicense() {
+        do {
+            let payload = try license.activate(code: licenseCode)
+            licenseMessageIsError = false
+            licenseMessage = "Activated — licensed to \(payload.licensee)."
+            licenseCode = ""
+        } catch {
+            licenseMessageIsError = true
+            licenseMessage = error.localizedDescription
+        }
     }
 
     /// A labeled text field bound to a Config getter/setter (used for WebRTC connection fields).

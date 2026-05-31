@@ -2,16 +2,20 @@ import Foundation
 
 /// File-backed store for a single knowledge vault.
 ///
-/// A vault lives in one of two locations:
-///   1. **Bundled**: shipped as app resources at `Vaults/{id}/` (read-only baseline)
-///   2. **User-overlay**: in Documents/Vaults/{id}/ (user edits override bundle files)
+/// A vault merges two locations:
+///   1. **Baseline** (read-only): either app resources at `<Bundle>/Vaults/{id}/` (built-in vaults)
+///      or an admin-pushed import at `Documents/Vaults/_baselines/{id}/` (Plan H). Never mutated.
+///   2. **User-overlay**: `Documents/Vaults/{id}/` — technician edits that override baseline files.
 ///
-/// Reads transparently merge the two — user-edited files take precedence, falling back to bundle.
-/// Writes go to the Documents overlay only; bundle resources are never mutated.
+/// Reads transparently merge the two — overlay files take precedence, falling back to the baseline.
+/// Writes go to the overlay only; the baseline is never mutated, so an admin can re-push a new
+/// baseline version without clobbering overlay edits.
 final class VaultStore {
     let manifest: VaultManifest
 
-    /// Root in the app bundle (e.g. `<Bundle>/Vaults/refrigeration/`). Nil if no bundled content.
+    /// Read-only baseline root — the app bundle (`<Bundle>/Vaults/{id}/`) for built-in vaults, or
+    /// an imported baseline (`Documents/Vaults/_baselines/{id}/`) for admin-pushed vaults. Nil if
+    /// neither exists.
     let bundleRoot: URL?
     /// Root in the user Documents directory (e.g. `Documents/Vaults/refrigeration/`).
     let overlayRoot: URL
@@ -80,11 +84,17 @@ final class VaultStore {
         try? FileManager.default.createDirectory(at: overlayRoot, withIntermediateDirectories: true)
     }
 
-    /// Convenience: build a store rooted at app Bundle.main and the standard Documents/Vaults/{id}/ path.
+    /// Convenience: build a store with the read-only baseline (bundled resources, else an imported
+    /// baseline) and the standard `Documents/Vaults/{id}/` overlay.
     static func standard(manifest: VaultManifest, bundle: Bundle = .main) -> VaultStore {
-        let bundleRoot = bundle.url(forResource: "Vaults/\(manifest.id)", withExtension: nil)
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fm = FileManager.default
+        // Prefer bundled resources; fall back to an admin-pushed import baseline if present.
+        let bundleResource = bundle.url(forResource: "Vaults/\(manifest.id)", withExtension: nil)
+        let importedBaseline = VaultImporter.baselineDirectory(for: manifest.id)
+        let baselineRoot = bundleResource
+            ?? (fm.fileExists(atPath: importedBaseline.path) ? importedBaseline : nil)
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let overlay = docs.appendingPathComponent("Vaults/\(manifest.id)", isDirectory: true)
-        return VaultStore(manifest: manifest, bundleRoot: bundleRoot, overlayRoot: overlay)
+        return VaultStore(manifest: manifest, bundleRoot: baselineRoot, overlayRoot: overlay)
     }
 }
