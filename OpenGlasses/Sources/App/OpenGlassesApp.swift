@@ -138,6 +138,8 @@ struct OpenGlassesApp: App {
             configureWearables()
         }
         NetworkMonitorService.register()
+        // Re-validate any stored Field Assist license (catches expiry between launches).
+        LicenseService.shared.loadStored()
     }
 
     var body: some Scene {

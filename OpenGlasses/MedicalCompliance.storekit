@@ -4,7 +4,21 @@
 
   ],
   "products" : [
-
+    {
+      "displayPrice" : "149.99",
+      "familyShareable" : false,
+      "internalID" : "field_assist_001",
+      "localizations" : [
+        {
+          "description" : "Hands-free, domain-grounded guidance for service technicians: knowledge vaults, guided procedures, domain calculators, and expert escalation.",
+          "displayName" : "Field Assist",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.openglasses.field_assist",
+      "referenceName" : "Field Assist",
+      "type" : "NonConsumable"
+    }
   ],
   "settings" : {
     "_applicationInternalID" : "0",

@@ -79,7 +79,7 @@ final class FieldSessionTool: NativeTool {
     // MARK: - Actions
 
     private func startSession(args: [String: Any], service: FieldSessionService) async -> String {
-        guard Config.fieldAssistEnabled else {
+        guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist before starting a session."
         }
 

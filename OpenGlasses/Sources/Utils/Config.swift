@@ -2260,6 +2260,42 @@ struct Config {
         UserDefaults.standard.set(unlocked, forKey: "fieldAssistDeveloperUnlocked")
     }
 
+    // MARK: - Field Assist entitlement (license code OR IAP OR dev unlock)
+
+    /// Cached result of validating a stored Field Assist license code. Written by `LicenseService`
+    /// (the heavy CryptoKit signature check runs at activation/launch); read here synchronously so
+    /// the tool and vault gates stay non-async.
+    static var fieldAssistLicenseValid: Bool {
+        UserDefaults.standard.bool(forKey: "fieldAssistLicenseValid")
+    }
+
+    static func setFieldAssistLicenseValid(_ valid: Bool) {
+        UserDefaults.standard.set(valid, forKey: "fieldAssistLicenseValid")
+    }
+
+    /// Mirror of `StoreKitService.isFieldAssistPurchased` for synchronous gate reads. Written when
+    /// StoreKit entitlements are checked.
+    static var fieldAssistPurchased: Bool {
+        UserDefaults.standard.bool(forKey: "fieldAssistPurchased")
+    }
+
+    static func setFieldAssistPurchased(_ purchased: Bool) {
+        UserDefaults.standard.set(purchased, forKey: "fieldAssistPurchased")
+    }
+
+    /// Whether the user is entitled to Field Assist — via a valid license code (B2B), a completed
+    /// in-app purchase, or the developer override. This is the paywall; `fieldAssistEnabled` is the
+    /// user's on/off switch and is only meaningful when entitled.
+    static var fieldAssistUnlocked: Bool {
+        fieldAssistDeveloperUnlocked || fieldAssistLicenseValid || fieldAssistPurchased
+    }
+
+    /// True only when Field Assist is both entitled and switched on. Field tools and vaults gate on
+    /// this so a lapsed entitlement disables the feature even if the toggle was left on.
+    static var fieldAssistActive: Bool {
+        fieldAssistEnabled && fieldAssistUnlocked
+    }
+
     /// Preferred vault for new Field Assist sessions (defaults to refrigeration).
     static var fieldAssistDefaultVaultId: String {
         UserDefaults.standard.string(forKey: "fieldAssistDefaultVaultId") ?? "refrigeration"

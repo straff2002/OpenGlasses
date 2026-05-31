@@ -35,7 +35,7 @@ final class EscalateToExpertTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
-        guard Config.fieldAssistEnabled else {
+        guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
         guard let action = (args["action"] as? String)?.lowercased() else {

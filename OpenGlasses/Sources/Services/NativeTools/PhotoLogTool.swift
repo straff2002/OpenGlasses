@@ -33,7 +33,7 @@ final class PhotoLogTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
-        guard Config.fieldAssistEnabled else {
+        guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
         let service = FieldSessionService.shared

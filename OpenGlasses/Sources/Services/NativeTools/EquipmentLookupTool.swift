@@ -50,7 +50,7 @@ final class EquipmentLookupTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
-        guard Config.fieldAssistEnabled else {
+        guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
         guard let store = FieldSessionService.shared.activeVault else {
