@@ -974,10 +974,18 @@ struct HardwarePrivacyView: View {
                     isOn: $privacyFilterEnabled,
                     info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur to bystanders. Protects the privacy of people around you during streaming or recording. Processing happens entirely on-device."
                 )
+                InfoToggle(
+                    title: "Share Health Data with AI",
+                    isOn: Binding(
+                        get: { Config.shareHealthDataWithAI },
+                        set: { Config.setShareHealthDataWithAI($0) }
+                    ),
+                    info: "Off by default. When on, the fitness coach may read your Apple Health workout history and send it to your configured AI provider (Anthropic, OpenAI, Google, etc.) so it can discuss your progress. Your Health data leaves the device only while this is enabled. On-device workout tracking, form analysis, and saving workouts to Apple Health work either way."
+                )
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device — no images leave your phone.")
+                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on.")
             }
 
             Section {

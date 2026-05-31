@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest for the OpenGlassesWatchWidget extension (watchOS complication +
+  App Intents).
+
+  This extension transmits NOTHING off the device: it only reads shared state from
+  the app-group UserDefaults suite ("group.com.openglasses.app") to render the
+  complication. No network, health, location, contacts, or camera. Hence
+  NSPrivacyCollectedDataTypes is empty and tracking is false.
+
+  The only required-reason API is app-group UserDefaults access
+  (OpenGlassesWatchWidget.swift), covered by CA92.1 (data accessible only to
+  first-party App Group members).
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
