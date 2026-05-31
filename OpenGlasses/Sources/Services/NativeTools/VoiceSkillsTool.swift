@@ -128,4 +128,27 @@ class VoiceSkillStore {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
+
+    // MARK: - Library export / import (Plan Q)
+
+    /// Encode all voice skills to a versioned JSON envelope — "move my setup to a new phone". Local
+    /// only, so no gateway gate.
+    func exportLibraryData() throws -> Data {
+        let envelope = SkillsLibraryEnvelope(items: all())
+        return try SkillsLibraryIO.encoder().encode(envelope)
+    }
+
+    /// Merge an exported envelope by `trigger` (replacing matching triggers). Returns the count merged.
+    @discardableResult
+    func importLibrary(_ data: Data) throws -> Int {
+        let envelope = try SkillsLibraryIO.decoder().decode(SkillsLibraryEnvelope<VoiceSkill>.self, from: data)
+        guard !envelope.items.isEmpty else { return 0 }
+        var skills = all()
+        for item in envelope.items {
+            skills.removeAll { $0.trigger == item.trigger }
+            skills.append(item)
+        }
+        persist(skills)
+        return envelope.items.count
+    }
 }

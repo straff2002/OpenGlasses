@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Browse, search, and install skills from ClawHub.ai — the public skill registry.
 struct ClawHubBrowserView: View {
@@ -12,6 +13,13 @@ struct ClawHubBrowserView: View {
     @State private var installingSlug: String?
     @State private var selectedSort: SkillSort = .trending
     @State private var canLoadMore = true
+
+    // Library export / import (Plan Q — gated behind agent mode).
+    @State private var shareItem: ShareItem?
+    @State private var importingLibrary = false
+    @State private var pendingImportData: Data?
+    @State private var pendingImportCount = 0
+    @State private var libraryMessage: String?
 
     enum SkillSort: String, CaseIterable, Identifiable {
         case trending = "trending"
@@ -210,12 +218,102 @@ struct ClawHubBrowserView: View {
             }
         }
         .task { await loadSkills() }
+        .toolbar {
+            if Config.agentModeEnabled {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            exportLibrary()
+                        } label: {
+                            Label("Export Library", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(skillStore.installedSkills.isEmpty)
+
+                        Button {
+                            importingLibrary = true
+                        } label: {
+                            Label("Import Library", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
         .sheet(item: $selectedSkill) { skill in
             SkillDetailSheet(
                 skill: skill,
                 skillStore: skillStore,
                 installingSlug: $installingSlug
             )
+        }
+        .sheet(item: $shareItem) { item in
+            ShareSheet(items: item.items)
+        }
+        .fileImporter(isPresented: $importingLibrary, allowedContentTypes: [.json]) { result in
+            stageImport(result)
+        }
+        .alert("Import skills?", isPresented: Binding(
+            get: { pendingImportData != nil },
+            set: { if !$0 { pendingImportData = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingImportData = nil }
+            Button("Import") { commitImport() }
+        } message: {
+            Text("\(pendingImportCount) skill\(pendingImportCount == 1 ? "" : "s") will be added **disabled**. Each injects its prompt into the AI's context, so review and enable them individually before use.")
+        }
+        .alert("Skill Library", isPresented: Binding(
+            get: { libraryMessage != nil },
+            set: { if !$0 { libraryMessage = nil } }
+        )) {
+            Button("OK") { libraryMessage = nil }
+        } message: {
+            Text(libraryMessage ?? "")
+        }
+    }
+
+    // MARK: - Library export / import (Plan Q)
+
+    private func exportLibrary() {
+        do {
+            let data = try skillStore.exportLibraryData()
+            let url = try SkillsLibraryIO.writeTempFile(data, named: "clawhub-skills.json")
+            shareItem = ShareItem(items: [url])
+        } catch {
+            libraryMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func stageImport(_ result: Swift.Result<URL, Error>) {
+        switch result {
+        case .failure(let error):
+            libraryMessage = "Import failed: \(error.localizedDescription)"
+        case .success(let url):
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let data = try Data(contentsOf: url)
+                let preview = try skillStore.previewImport(data)
+                guard !preview.isEmpty else {
+                    libraryMessage = "That file contains no skills."
+                    return
+                }
+                pendingImportCount = preview.count
+                pendingImportData = data   // triggers the confirm alert
+            } catch {
+                libraryMessage = "Couldn't read that file: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func commitImport() {
+        guard let data = pendingImportData else { return }
+        pendingImportData = nil
+        do {
+            let count = try skillStore.importLibrary(data)
+            libraryMessage = "Imported \(count) skill\(count == 1 ? "" : "s"), disabled. Enable the ones you want from “Installed Skills”."
+        } catch {
+            libraryMessage = "Import failed: \(error.localizedDescription)"
         }
     }
 

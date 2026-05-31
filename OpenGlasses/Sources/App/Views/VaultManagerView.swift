@@ -9,6 +9,7 @@ struct VaultManagerView: View {
     @State private var importing = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         Form {
@@ -23,15 +24,27 @@ struct VaultManagerView: View {
             }
 
             if !installed.isEmpty {
-                Section("Installed Vaults") {
+                Section {
                     ForEach(installed, id: \.id) { manifest in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(manifest.name)
                             Text("\(manifest.id) · v\(manifest.version) · \(manifest.files.count) files")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                exportVault(manifest)
+                            } label: {
+                                Label("Export", systemImage: "square.and.arrow.up")
+                            }
+                            .tint(AppAccent.color)
+                        }
                     }
                     .onDelete(perform: remove)
+                } header: {
+                    Text("Installed Vaults")
+                } footer: {
+                    Text("Swipe a vault to export it as a folder (manifest.json + markdown + procedures/). Exports include your in-app edits and re-import directly via “Import Vault Folder…”.")
                 }
             }
 
@@ -44,10 +57,23 @@ struct VaultManagerView: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
             handleImport(result)
         }
-        .alert("Import failed", isPresented: .constant(errorMessage != nil)) {
+        .alert("Failed", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .sheet(item: $shareItem) { item in
+            ShareSheet(items: item.items)
+        }
+    }
+
+    private func exportVault(_ manifest: VaultManifest) {
+        successMessage = nil
+        do {
+            let url = try VaultExporter.export(id: manifest.id)
+            shareItem = ShareItem(items: [url])
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
