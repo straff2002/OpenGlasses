@@ -41,6 +41,10 @@ class WakeWordService: NSObject, ObservableObject {
     private var silenceReported: Bool = false
 
     private var audioEngine: AVAudioEngine?
+    /// Set before an *intentional* recognition cancel (e.g. pausing the wake-word task so
+    /// only the buffer forwarder feeds TranscriptionService). Tells `handleRecognitionResult`
+    /// to ignore the resulting cancellation error instead of auto-restarting a competing recognizer.
+    private var suppressAutoRestart = false
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -363,7 +367,10 @@ class WakeWordService: NSObject, ObservableObject {
         // Engine is nil or stopped — restart it (without starting recognition)
         print("🎤 Audio engine not running — restarting for shared use")
         try await startListening()
-        // Pause recognition so only the buffer forwarder is active
+        // Pause recognition so only the buffer forwarder is active. Mark the cancel as
+        // intentional so its error callback doesn't auto-restart a competing recognizer
+        // (which would fight TranscriptionService and make tap-to-talk stop immediately).
+        suppressAutoRestart = true
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
@@ -529,6 +536,14 @@ class WakeWordService: NSObject, ObservableObject {
     }
 
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
+        // An intentional cancel (ensureAudioEngineRunning pausing the wake-word task so
+        // the buffer forwarder can feed TranscriptionService) surfaces here as an error.
+        // Consume it once and don't auto-restart — otherwise a second recognizer spins up
+        // and fights the transcription task, making tap-to-talk stop the instant it starts.
+        if suppressAutoRestart {
+            suppressAutoRestart = false
+            return
+        }
         if let error = error {
             let nsError = error as NSError
             // Code 1110 = "No speech detected" — just restart
