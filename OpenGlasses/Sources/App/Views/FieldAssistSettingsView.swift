@@ -267,6 +267,17 @@ struct FieldAssistSettingsView: View {
 
     // MARK: - Entitlement UI
 
+    /// IAP identifiers a Field Assist entitlement unlocks (mirror of VaultRegistry's gating cases).
+    private static let fieldAssistIAPs: Set<String> = ["field_assist_refrigeration", "field_assist_it", "enterprise"]
+
+    /// Field-Assist-gated vaults, for the locked preview surface.
+    private var fieldAssistVaults: [VaultManifest] {
+        VaultRegistry.shared.allManifests.filter { manifest in
+            guard let iap = manifest.gating.iap else { return false }
+            return Self.fieldAssistIAPs.contains(iap)
+        }
+    }
+
     @ViewBuilder
     private var entitlementPaywall: some View {
         Section {
@@ -276,6 +287,22 @@ struct FieldAssistSettingsView: View {
                 Text("Unlock with a license code (teams) or a one-time in-app purchase.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+
+        if !fieldAssistVaults.isEmpty {
+            Section {
+                ForEach(fieldAssistVaults, id: \.id) { manifest in
+                    NavigationLink {
+                        VaultFilesEditorView(vaultId: manifest.id, title: manifest.name)
+                    } label: {
+                        Label("\(manifest.name) — \(manifest.files.count) files", systemImage: "eye")
+                    }
+                }
+            } header: {
+                Text("Preview Vaults")
+            } footer: {
+                Text("Browse the reference content read-only. Unlocking lets you edit it, run grounded sessions, and export.")
             }
         }
 
