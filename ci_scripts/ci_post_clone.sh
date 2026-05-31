@@ -11,10 +11,14 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 ./Scripts/generate-xcodeproj.sh
 
-# The .xcodeproj is generated (and gitignored), so no Package.resolved is committed
-# at its path. Xcode Cloud runs the build/archive action with automatic package
-# resolution disabled and fails unless a resolved file already exists there. Resolve
-# explicitly here (post-clone has network) so the file is in place before the build.
-xcodebuild -resolvePackageDependencies \
-  -project OpenGlasses.xcodeproj \
-  -scheme OpenGlasses
+# Xcode Cloud requires a committed Package.resolved and will NOT resolve packages
+# itself — automatic resolution is disabled in its environment, and even
+# `xcodebuild -resolvePackageDependencies` fails there (exit 74). Because the
+# .xcodeproj is generated (and gitignored), no resolved file is committed at its
+# path, so copy our tracked copy into place before the build/archive action runs.
+#
+# Keep ci_scripts/Package.resolved in sync after adding/updating an SPM dependency:
+#   ./Scripts/update-package-resolved.sh
+RESOLVED_DST="OpenGlasses.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+mkdir -p "$RESOLVED_DST"
+cp ci_scripts/Package.resolved "$RESOLVED_DST/Package.resolved"
