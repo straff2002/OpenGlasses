@@ -277,13 +277,8 @@ Professional-grade safeguards for clinical recordings, available as an in-app su
 
 ## Requirements
 
-<<<<<<< XcodeGen_migration
-- **iOS 17+** (built targeting iOS 26)
-- **Xcode 15+** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
-=======
 - **iOS 26+**
-- **Xcode 26+**
->>>>>>> main
+- **Xcode 26+** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
 - **Physical iPhone** (Bluetooth, camera, microphone required)
 - **Ray-Ban Meta smart glasses** (paired via Meta AI app)
 - At least one LLM: API key (Anthropic, OpenAI, Gemini, etc.) OR a downloaded local model
