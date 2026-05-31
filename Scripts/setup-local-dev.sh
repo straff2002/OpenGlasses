@@ -2,7 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEFAULT_COMMIT=e5bbe7946af05411c3081785b9893a9eac4a7381
+# Last commit that still tracked OpenGlasses.xcodeproj (with DEVELOPMENT_TEAM + entitlements),
+# i.e. the merge right before the XcodeGen migration. `--from-commit` recovers personal
+# signing config from here. Stays valid permanently (git history is immutable).
+DEFAULT_COMMIT=4a7011f70ab74c2ad5924aadb39b1cae357243be
 
 development_team_from_commit() {
   local commit="$1"
