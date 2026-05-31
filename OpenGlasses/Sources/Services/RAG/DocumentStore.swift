@@ -28,6 +28,8 @@ final class DocumentStore: ObservableObject {
         let chunkIndex: Int
         let text: String
         let similarity: Float
+        let page: Int?
+        let section: String?
     }
 
     // MARK: - Published
@@ -83,7 +85,7 @@ final class DocumentStore: ObservableObject {
         for chunk in chunks {
             let embedding = embedder.embed(chunk.text)
             insertChunk(documentId: docId, index: chunk.index, text: chunk.text,
-                        embedding: embedding.map(vecToData), createdAt: now)
+                        embedding: embedding.map(vecToData), page: chunk.page, section: chunk.section, createdAt: now)
             progress?(chunk.index + 1, chunks.count)
             await Task.yield()
         }
@@ -105,7 +107,8 @@ final class DocumentStore: ObservableObject {
             let sim = Embedder.cosineSimilarity(qv, emb)
             guard sim > minSimilarity else { return nil }
             return Passage(documentId: row.documentId, documentName: row.documentName,
-                           chunkIndex: row.chunkIndex, text: row.text, similarity: sim)
+                           chunkIndex: row.chunkIndex, text: row.text, similarity: sim,
+                           page: row.page, section: row.section)
         }
         return Array(scored.sorted { $0.similarity > $1.similarity }.prefix(limit))
     }
@@ -155,9 +158,15 @@ final class DocumentStore: ObservableObject {
             chunk_index INTEGER NOT NULL,
             text TEXT NOT NULL,
             embedding BLOB,
+            page INTEGER,
+            section TEXT,
             created_at REAL NOT NULL
         )
         """)
+        // Bring pre-existing databases (created before page/section citations) up to schema.
+        // ALTER fails harmlessly if the column already exists; exec swallows the error.
+        exec("ALTER TABLE doc_chunks ADD COLUMN page INTEGER")
+        exec("ALTER TABLE doc_chunks ADD COLUMN section TEXT")
         exec("CREATE INDEX IF NOT EXISTS idx_chunk_doc ON doc_chunks(document_id)")
         exec("CREATE INDEX IF NOT EXISTS idx_doc_ns ON documents(namespace)")
     }
@@ -180,8 +189,9 @@ final class DocumentStore: ObservableObject {
         _ = sqlite3_step(stmt)
     }
 
-    private func insertChunk(documentId: String, index: Int, text: String, embedding: Data?, createdAt: Double) {
-        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    private func insertChunk(documentId: String, index: Int, text: String, embedding: Data?,
+                             page: Int?, section: String?, createdAt: Double) {
+        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, page, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -194,7 +204,9 @@ final class DocumentStore: ObservableObject {
         } else {
             sqlite3_bind_null(stmt, 5)
         }
-        sqlite3_bind_double(stmt, 6, createdAt)
+        if let page { sqlite3_bind_int(stmt, 6, Int32(page)) } else { sqlite3_bind_null(stmt, 6) }
+        if let section { sqlite3_bind_text(stmt, 7, section, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(stmt, 7) }
+        sqlite3_bind_double(stmt, 8, createdAt)
         _ = sqlite3_step(stmt)
     }
 
@@ -206,11 +218,13 @@ final class DocumentStore: ObservableObject {
         let chunkIndex: Int
         let text: String
         let embedding: [Float]?
+        let page: Int?
+        let section: String?
     }
 
     private func fetchChunks(namespace: String?, documentIds: [String]?) -> [ChunkRow] {
         var sql = """
-        SELECT c.document_id, d.name, c.chunk_index, c.text, c.embedding
+        SELECT c.document_id, d.name, c.chunk_index, c.text, c.embedding, c.page, c.section
         FROM doc_chunks c JOIN documents d ON c.document_id = d.id
         """
         var clauses: [String] = []
@@ -235,7 +249,10 @@ final class DocumentStore: ObservableObject {
                 let len = sqlite3_column_bytes(stmt, 4)
                 emb = dataToVec(Data(bytes: ptr, count: Int(len)))
             }
-            rows.append(ChunkRow(documentId: docId, documentName: name, chunkIndex: idx, text: text, embedding: emb))
+            let page = sqlite3_column_type(stmt, 5) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 5)) : nil
+            let section = sqlite3_column_type(stmt, 6) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 6)) : nil
+            rows.append(ChunkRow(documentId: docId, documentName: name, chunkIndex: idx, text: text,
+                                 embedding: emb, page: page, section: section))
         }
         return rows
     }
