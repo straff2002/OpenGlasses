@@ -1,0 +1,69 @@
+targets:
+  OpenGlasses:
+    dependencies:
+      - target: OpenGlassesWatch
+
+  OpenGlassesWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: OpenGlassesWatch
+      # Shared with iOS app — defines LogoIcon + AccentColors
+      - path: GlassesActivityWidget/AccentColors.swift
+    entitlements:
+      path: OpenGlassesWatch/OpenGlassesWatch.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "11"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: OpenGlassesWatch/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SKIP_INSTALL: "YES"
+    dependencies:
+      - target: OpenGlassesWatchWidget
+
+  OpenGlassesWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: OpenGlassesWatchWidget
+      # Shared with iOS app — defines LogoIcon + AccentColors
+      - path: GlassesActivityWidget/AccentColors.swift
+    entitlements:
+      path: OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements
+    info:
+      path: OpenGlassesWatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: OpenGlasses
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "11"
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: "YES"
+
+schemes:
+  OpenGlassesWatch:
+    build:
+      targets:
+        OpenGlassesWatch: all
+        OpenGlassesWatchWidget: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

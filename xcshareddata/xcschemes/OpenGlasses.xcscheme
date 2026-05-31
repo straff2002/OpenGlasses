@@ -5,7 +5,7 @@
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
-      runPostActionsOnFailure = "NO">
+      buildArchitectures = "Automatic">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -15,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "94EC1873360F5CB2258398DD"
-               BuildableName = "OpenGlassesWatch.app"
-               BlueprintName = "OpenGlassesWatch"
+               BlueprintIdentifier = "OpenGlasses"
+               BuildableName = "OpenGlasses.app"
+               BlueprintName = "OpenGlasses"
                ReferencedContainer = "container:OpenGlasses.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -29,9 +29,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "9E437D6AE25357D1F72ED244"
-               BuildableName = "OpenGlassesWatchWidget.appex"
-               BlueprintName = "OpenGlassesWatchWidget"
+               BlueprintIdentifier = "GlassesActivityWidget"
+               BuildableName = "GlassesActivityWidget.appex"
+               BlueprintName = "GlassesActivityWidget"
                ReferencedContainer = "container:OpenGlasses.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -42,18 +42,7 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
-      onlyGenerateCoverageForSpecifiedTargets = "NO">
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "94EC1873360F5CB2258398DD"
-            BuildableName = "OpenGlassesWatch.app"
-            BlueprintName = "OpenGlassesWatch"
-            ReferencedContainer = "container:OpenGlasses.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
-      <Testables>
-      </Testables>
+      shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -69,14 +58,12 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "94EC1873360F5CB2258398DD"
-            BuildableName = "OpenGlassesWatch.app"
-            BlueprintName = "OpenGlassesWatch"
+            BlueprintIdentifier = "OpenGlasses"
+            BuildableName = "OpenGlasses.app"
+            BlueprintName = "OpenGlasses"
             ReferencedContainer = "container:OpenGlasses.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -88,9 +75,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "94EC1873360F5CB2258398DD"
-            BuildableName = "OpenGlassesWatch.app"
-            BlueprintName = "OpenGlassesWatch"
+            BlueprintIdentifier = "OpenGlasses"
+            BuildableName = "OpenGlasses.app"
+            BlueprintName = "OpenGlasses"
             ReferencedContainer = "container:OpenGlasses.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

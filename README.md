@@ -10,10 +10,22 @@ An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ bu
 
 ## Quick Start
 
-1. Build and install on your iPhone (see [Building from Source](#building-from-source))
-2. Add an AI model in **Settings → AI Models** (Anthropic, OpenAI, Gemini, or a local model)
-3. Pair your Ray-Ban Meta glasses via the Meta AI app
-4. Say **"Hey OpenGlasses"** and ask anything
+1. **Clone and generate the Xcode project** — `OpenGlasses.xcodeproj` is not in git; each developer creates it locally with [XcodeGen](https://github.com/yonaskolb/XcodeGen) (avoids `project.pbxproj` merge conflicts):
+
+   ```bash
+   git clone https://github.com/straff2002/OpenGlasses.git
+   cd OpenGlasses
+   brew install xcodegen
+   ./Scripts/generate-xcodeproj.sh
+   open OpenGlasses.xcodeproj
+   ```
+
+   After `git pull`, run `./Scripts/generate-xcodeproj.sh` again if `project.base.yml` changed. Meta credentials, team ID, and signing: [Building from Source](#building-from-source) (optional `./Scripts/setup-local-dev.sh` for a personal overlay).
+
+2. **Build on your iPhone** from Xcode (⌘R) — set signing team if prompted
+3. Add an AI model in **Settings → AI Models** (Anthropic, OpenAI, Gemini, or a local model)
+4. Pair your Ray-Ban Meta glasses via the Meta AI app
+5. Say **"Hey OpenGlasses"** and ask anything
 
 ---
 
@@ -265,8 +277,13 @@ Professional-grade safeguards for clinical recordings, available as an in-app su
 
 ## Requirements
 
+<<<<<<< XcodeGen_migration
+- **iOS 17+** (built targeting iOS 26)
+- **Xcode 15+** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
+=======
 - **iOS 26+**
 - **Xcode 26+**
+>>>>>>> main
 - **Physical iPhone** (Bluetooth, camera, microphone required)
 - **Ray-Ban Meta smart glasses** (paired via Meta AI app)
 - At least one LLM: API key (Anthropic, OpenAI, Gemini, etc.) OR a downloaded local model
@@ -289,9 +306,12 @@ cd OpenGlasses
 3. Note your **Meta App ID** and **Client Token**
 4. In Meta dashboard → iOS settings, enter your Apple Team ID, Bundle ID, and Universal Link URL
 
-### 3. Configure Info.plist
+### 3. Configure Meta keys (Info.plist)
 
-Update `OpenGlasses/Info.plist`:
+Put your Meta **App ID**, **Client Token**, and universal-link URL in the `MWDAT` section. Either:
+
+- **Recommended:** run `./Scripts/setup-local-dev.sh`, edit `Config/Info/Info.personal.plist` (gitignored), then `./Scripts/generate-xcodeproj.sh` again; or
+- Edit the shared template `OpenGlasses/Info.plist` if you are not using a personal overlay.
 
 ```xml
 <key>MWDAT</key>
@@ -328,11 +348,46 @@ On iPhone: Meta AI app → Settings → About → tap version number **5 times**
 
 ### 6. Build & Run
 
+Same as [Quick Start](#quick-start) step 1. The repo ships [`project.base.yml`](project.base.yml) plus optional [`project.local.yml`](project.local.yml.example); XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.
+
 ```bash
+brew install xcodegen
+./Scripts/generate-xcodeproj.sh
 open OpenGlasses.xcodeproj
 ```
 
-Select your iPhone, set your Team in Signing, and run (⌘R).
+[Xcode Cloud](https://developer.apple.com/documentation/xcode/xcode-cloud) runs `./Scripts/generate-xcodeproj.sh` in `ci_scripts/ci_post_clone.sh` (full app + watch + tests).
+
+Default generate includes **watch** and **unit tests**. To build a slimmer project locally (iPhone + widget only):
+
+```bash
+cp .openglasses-generate.env.example .openglasses-generate.env   # gitignored
+./Scripts/generate-xcodeproj.sh
+```
+
+Or one-off: `OPENGLASSES_SKIP_WATCH=1 OPENGLASSES_SKIP_TESTS=1 ./Scripts/generate-xcodeproj.sh`
+
+#### Optional: personal signing & Meta config
+
+Team ID, entitlements, and Meta keys differ per developer. Those settings live in **gitignored** files (never committed), merged on top of the shared spec via `project.local.yml`:
+
+| File (gitignored) | Purpose |
+|-------------------|---------|
+| `project.local.yml` | Team ID + `DEVELOPMENT_TEAM`; personal entitlements / Info.plist paths (see `project.local.yml.example`) |
+| `Config/Entitlements/Personal/*.entitlements` | Capabilities your provisioning profile supports |
+| `Config/Info/Info.personal.plist` | Full app `Info.plist` when you need your own Meta `ClientToken` / URL schemes |
+
+First-time setup from the templates:
+
+```bash
+./Scripts/setup-local-dev.sh
+```
+
+Edit `project.local.yml` (`developmentTeam`) and the files under `Config/` as needed, then run `./Scripts/generate-xcodeproj.sh` again.
+
+If you only need Xcode’s automatic signing with the shared entitlements, skip the local overlay and set your team in Xcode after opening the generated project.
+
+Select your iPhone, fix signing if prompted, and run (⌘R).
 
 ---
 
