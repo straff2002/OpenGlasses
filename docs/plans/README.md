@@ -22,6 +22,9 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | L WebRTC transport | ✅ App-side shipped (real RTCPeerConnection, MJPEG/WebRTC selectable). Needs external signaling + TURN to connect. |
 | M WebRTC infra + audio | ✅ M3 audio coordinator shipped; M1 signaling server + M2 expert client shipped as reference impls (`docs/webrtc/`). Remaining: deploy infra + on-device echo/precedence testing. |
 | Meeting-link connector | ✅ Shipped — zero-infra `meeting_link` transport opens/pages an external Zoom/Teams/Meet/Whereby URL; nothing to self-host. Recommended remote path. |
+| O Document RAG | ✅ Shipped (on-device chunking, embedding, retrieval — chat with your files) |
+| P Page & section citations | ✅ Shipped (per-page/section citations for Document RAG) |
+| Q Vault & skills-library management | ✅ Shipped (in-app reference editing, vault export round-trip, ClawHub/voice skills export-import) |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -62,7 +65,9 @@ A–F are built (A1–A3, B, C, D, E, and Field Assist Phases 1–3). These reus
 
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
-| [O](O-document-rag.md) | Document RAG (chat with your files) | ~3–4 days | SemanticMemoryStore (sqlite + NLEmbedding + cosine), OCRService (A1) | Persistent, retrievable chunked document knowledge — load a manual/PDF and ask about it across sessions. 📋 Planned |
+| [O](O-document-rag.md) | Document RAG (chat with your files) | ~3–4 days | SemanticMemoryStore (sqlite + NLEmbedding + cosine), OCRService (A1) | Persistent, retrievable chunked document knowledge — load a manual/PDF and ask about it across sessions. ✅ Shipped |
+| [P](P-chunk-citations.md) | Page & section citations for Document RAG | ~0.5 day | Document RAG (O), chunk metadata | Cite the exact page/section behind a RAG answer, not just the file. ✅ Shipped |
+| [Q](Q-vault-and-skills-library-management.md) | Vault & skills-library management (edit, export, import) | ~1–1.5 days | VaultStore/VaultImporter, InstalledSkillStore, VoiceSkillStore | Edit vault references in-app; export/import vaults and both skills libraries between devices. ✅ Shipped |
 
 ## Dependency graph
 

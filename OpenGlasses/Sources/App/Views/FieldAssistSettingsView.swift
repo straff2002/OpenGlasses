@@ -53,6 +53,21 @@ struct FieldAssistSettingsView: View {
                     }
                 }
 
+                // ──────────────── Reference file editing
+                Section {
+                    ForEach(VaultRegistry.shared.allManifests.filter { VaultRegistry.shared.isUnlocked($0) }, id: \.id) { manifest in
+                        NavigationLink {
+                            VaultFilesEditorView(vaultId: manifest.id, title: manifest.name)
+                        } label: {
+                            Label("\(manifest.name) — \(manifest.files.count) files", systemImage: "doc.text")
+                        }
+                    }
+                } header: {
+                    Text("Reference Files")
+                } footer: {
+                    Text("Edit a vault's grounding references in-app. Your edits write to a private overlay and never touch the bundled baseline.")
+                }
+
                 // ──────────────── Session mode
                 Section {
                     Picker("Mode", selection: $defaultMode) {

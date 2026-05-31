@@ -552,6 +552,58 @@ class InstalledSkillStore: ObservableObject {
         installedSkills.contains { $0.slug == slug }
     }
 
+    // MARK: - Library export / import (Plan Q)
+
+    /// Encode the full installed library to a versioned JSON envelope for sharing to another device.
+    func exportLibraryData() throws -> Data {
+        let envelope = SkillsLibraryEnvelope(items: installedSkills)
+        return try SkillsLibraryIO.encoder().encode(envelope)
+    }
+
+    /// Decode an exported envelope without committing, so the caller can present a review/confirm step.
+    /// Returns the skills as stored in the file (their on-file `enabled`/`compatibility` are ignored on
+    /// commit — see `importLibrary`).
+    func previewImport(_ data: Data) throws -> [InstalledSkill] {
+        let envelope = try SkillsLibraryIO.decoder().decode(SkillsLibraryEnvelope<InstalledSkill>.self, from: data)
+        return envelope.items
+    }
+
+    /// Merge an exported library by `slug`. Imported skills are **disabled by default** (never silently
+    /// enabled — their `content` is injected straight into the system prompt) and their compatibility is
+    /// **recomputed** against this device's tool set rather than trusted from the file. Returns the count
+    /// merged.
+    @discardableResult
+    func importLibrary(_ data: Data) throws -> Int {
+        let items = try previewImport(data)
+        guard !items.isEmpty else { return 0 }
+
+        let checker = SkillCompatibilityChecker(nativeToolNames: Set(installedSkills.map(\.slug)))
+        for item in items {
+            var probe = ClawHubSkill(
+                slug: item.slug, name: item.name, description: item.description,
+                version: item.version, downloads: nil, stars: nil, owner: nil, updatedAt: nil, score: nil
+            )
+            probe.metadata = ClawHubService.shared.parseMetadata(from: item.content)
+            let compatibility = checker.check(skill: probe, content: item.content)
+
+            let imported = InstalledSkill(
+                slug: item.slug,
+                name: item.name,
+                description: item.description,
+                version: item.version,
+                content: item.content,
+                compatibility: compatibility,
+                installedAt: Date(),
+                enabled: false   // review-and-enable; never auto-enable an imported prompt
+            )
+            installedSkills.removeAll { $0.slug == imported.slug }
+            installedSkills.append(imported)
+        }
+        save()
+        NSLog("[ClawHub] Imported %d skill(s) (disabled pending review)", items.count)
+        return items.count
+    }
+
     /// Generate prompt context from all enabled installed skills.
     func promptContext() -> String? {
         let enabled = installedSkills.filter(\.enabled)

@@ -337,6 +337,12 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                NavigationLink {
+                    VoiceSkillsManagerView()
+                } label: {
+                    Label("Voice Skills", systemImage: "waveform")
+                }
             } header: {
                 Text("Tools the AI Can Use")
             } footer: {
