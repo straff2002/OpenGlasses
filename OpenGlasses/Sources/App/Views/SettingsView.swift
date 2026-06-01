@@ -58,7 +58,7 @@ struct SettingsView: View {
                 }
 
                 InfoToggle(
-                    title: "Silent Mode",
+                    title: "Push-to-Talk Mode",
                     isOn: Binding(
                         get: { Config.silentMode },
                         set: { newValue in
@@ -71,12 +71,12 @@ struct SettingsView: View {
                             }
                         }
                     ),
-                    info: "Turns off the always-listening wake word detector. The assistant is still fully functional via the Apple Watch, home screen widget, Action Button, and manual mic tap. Useful in meetings or quiet environments."
+                    info: "Turns off the always-on wake-word listener so the mic isn't held in the background — fixes conflicts with music/podcasts playing at the same time. Start a conversation on demand instead: the iPhone Action Button (\"Ask OpenGlasses\"), Siri, the home screen widget, the Apple Watch, or a manual mic tap."
                 )
             } header: {
                 Text("Voice")
             } footer: {
-                Text("The phrase that starts a conversation. Silent Mode keeps the assistant fully available via widget, watch, and Action Button — just without the always-listening mic.")
+                Text("The phrase that starts a conversation. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch.")
             }
 
             // MARK: AI Models
