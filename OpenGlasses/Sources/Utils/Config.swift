@@ -88,6 +88,18 @@ struct QuickAction: Codable, Identifiable {
         ),
     ]
 
+    /// Built-in Field Assist quick action. Injected at the front of `Config.quickActions`
+    /// whenever Field Assist is active (see `withFieldAssistAction`) — it is never persisted,
+    /// so it appears/disappears with the entitlement. A `.prompt` action so it routes through
+    /// the existing pipeline and the AI starts the session via the `field_session` tool.
+    static let fieldAssist = QuickAction(
+        id: "field-assist",
+        label: "Field Assist",
+        icon: "wrench.and.screwdriver.fill",
+        type: .prompt,
+        promptText: "Start a Field Assist session on my default vault. Briefly confirm you're ready and what you can help me troubleshoot."
+    )
+
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
                     promptText: "Describe what you see in this image in detail."),
@@ -1578,6 +1590,7 @@ struct Config {
     // MARK: - Quick Actions
 
     static var quickActions: [QuickAction] {
+        let base: [QuickAction]
         if let data = UserDefaults.standard.data(forKey: "quickActions"),
            let actions = try? JSONDecoder().decode([QuickAction].self, from: data),
            !actions.isEmpty {
@@ -1585,9 +1598,19 @@ struct Config {
             if merged.count != actions.count {
                 setQuickActions(merged)
             }
-            return merged
+            base = merged
+        } else {
+            base = QuickAction.defaults
         }
-        return QuickAction.defaults
+        return withFieldAssistAction(base)
+    }
+
+    /// Surface the built-in Field Assist quick action (first) when the feature is active.
+    /// Recomputed each read so it tracks the entitlement/toggle: any stale/persisted copy is
+    /// stripped, then re-added only when active — so it never lingers after a lapsed license.
+    private static func withFieldAssistAction(_ actions: [QuickAction]) -> [QuickAction] {
+        let base = actions.filter { $0.id != QuickAction.fieldAssist.id }
+        return fieldAssistActive ? [QuickAction.fieldAssist] + base : base
     }
 
     static func setQuickActions(_ actions: [QuickAction]) {
