@@ -283,6 +283,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
     }
 
+    /// Ascending "glasses connected" cue (counterpart to playDisconnectTone).
+    func playConnectTone() {
+        playTone(frequency: 660, duration: 0.10)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.playTone(frequency: 990, duration: 0.14)
+        }
+    }
+
     private func playTone(frequency: Double, duration: Double) {
         do {
             let toneData = try Self.generateToneData(frequency: frequency, duration: duration, sampleRate: 44100)

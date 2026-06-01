@@ -388,6 +388,23 @@ class AppState: ObservableObject, AppStateProtocol {
                 speechService.stopSpeaking()
 
                 NSLog("[Privacy] Glasses disconnected — stopped mic, sessions, camera. Agent continues.")
+            } else if isConnected && !oldValue {
+                // Smart connect: glasses just came on (e.g. mid text-only session). Hand
+                // audio + wake word off to them — the mirror of the teardown above. iOS
+                // routes audio output to the Bluetooth device automatically, but the
+                // wake-word listener has to be (re)started on the glasses mic explicitly.
+                speechService.playConnectTone()
+                NSLog("[SmartConnect] Glasses connected — switching audio + wake word to glasses")
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    // Let the Bluetooth audio link settle before grabbing the mic.
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    guard self.isConnected else { return }  // bail if it dropped again
+                    self.wakeWordService.reconfigureAudioSessionIfNeeded()
+                    if self.listeningEnabled && !self.isListening {
+                        try? await self.wakeWordService.startListening()
+                    }
+                }
             }
         }
     }
