@@ -137,14 +137,10 @@ struct GlassesActivityWidget: Widget {
             // glasses are disconnected (most actions just open the app via deep link).
             actionButtons(for: context.state, compact: false)
             if !context.state.isConnected {
-                Link(destination: URL(string: "openglasses://connect")!) {
-                    Label("Connect Glasses", systemImage: "antenna.radiowaves.left.and.right")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .background(.white.opacity(0.10), in: Capsule())
-                }
+                chunkyLink(label: "Connect Glasses",
+                           icon: "antenna.radiowaves.left.and.right",
+                           url: URL(string: "openglasses://connect")!,
+                           tint: .green, strong: true)
             }
         }
         .padding(16)
@@ -226,12 +222,18 @@ struct GlassesActivityWidget: Widget {
 
     @ViewBuilder
     private func chunkyButton(_ item: ActionItem) -> some View {
-        let tint: Color = item.accent ? AccentColors.aiCoral : .white
-        Link(destination: item.url) {
+        chunkyLink(label: item.label, icon: item.icon, url: item.url,
+                   tint: item.accent ? AccentColors.aiCoral : .white, strong: item.accent)
+    }
+
+    /// Shared full-width, ~44pt-tall capsule button (used by quick actions and Connect).
+    @ViewBuilder
+    private func chunkyLink(label: String, icon: String, url: URL, tint: Color, strong: Bool) -> some View {
+        Link(destination: url) {
             HStack(spacing: 7) {
-                Image(systemName: item.icon)
+                Image(systemName: icon)
                     .font(.callout.weight(.semibold))
-                Text(item.label)
+                Text(label)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -240,8 +242,8 @@ struct GlassesActivityWidget: Widget {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .padding(.horizontal, 10)
-            .background(tint.opacity(item.accent ? 0.30 : 0.16), in: Capsule())
-            .overlay(Capsule().strokeBorder(tint.opacity(item.accent ? 0.55 : 0.18), lineWidth: 1))
+            .background(tint.opacity(strong ? 0.30 : 0.16), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(strong ? 0.55 : 0.18), lineWidth: 1))
         }
     }
 
