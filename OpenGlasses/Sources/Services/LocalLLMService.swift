@@ -143,7 +143,16 @@ final class LocalLLMService: ObservableObject {
     /// Uses LLMModelFactory for text models, VLMModelFactory for vision models.
     func loadModel(_ modelId: String) async throws {
         if loadedModelId == modelId && isModelLoaded {
-            return  // Already loaded
+            return  // Already loaded — no GPU work needed, safe even in background
+        }
+
+        // Loading materializes model weights on the GPU via Metal (same restriction
+        // as generate()), which iOS forbids in the background. The model is unloaded
+        // when the app backgrounds, so a backgrounded scheduled task would otherwise
+        // try to reload here and crash. Refuse early with a catchable error so callers
+        // can defer.
+        guard UIApplication.shared.applicationState != .background else {
+            throw LocalLLMError.backgrounded
         }
 
         unloadModel()
