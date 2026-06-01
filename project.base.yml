@@ -178,6 +178,11 @@ schemes:
       config: Debug
       debugEnabled: true
       askForAppToLaunch: false
-      launchAutomaticallySubstyle: 2
+      # Launch the app, not the widget. Without an explicit executable, XcodeGen
+      # made the first buildable target the runnable — GlassesActivityWidget sorts
+      # before OpenGlasses — and launchAutomaticallySubstyle: 2 turned the run
+      # action into a WidgetKit "show widget" launch via SpringBoard, which fails
+      # on a locked device ("Failed to show Widget … device was not unlocked").
+      executable: OpenGlasses
     archive:
       config: Release
