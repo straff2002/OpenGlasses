@@ -133,21 +133,17 @@ struct GlassesActivityWidget: Widget {
                 }
             }
 
-            // Quick-launch buttons or Connect button
-            if context.state.isConnected {
-                actionButtons(for: context.state, compact: false)
-            } else {
+            // Quick actions — always shown so the Lock Screen stays useful even when the
+            // glasses are disconnected (most actions just open the app via deep link).
+            actionButtons(for: context.state, compact: false)
+            if !context.state.isConnected {
                 Link(destination: URL(string: "openglasses://connect")!) {
-                    Label {
-                        Text("Connect & Talk")
-                    } icon: {
-                        LogoIcon(size: 16)
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(.green.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                    Label("Connect Glasses", systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(.white.opacity(0.10), in: Capsule())
                 }
             }
         }
@@ -157,55 +153,95 @@ struct GlassesActivityWidget: Widget {
 
     // MARK: - Action Buttons
 
-    /// Shows persona buttons if available, otherwise quick action buttons.
+    /// A resolved button for the Live Activity (quick action, persona, or fallback).
+    private struct ActionItem: Identifiable {
+        let id: String
+        let label: String
+        let icon: String
+        let url: URL
+        let accent: Bool   // coral-tinted (AI/Field Assist) vs neutral
+    }
+
+    /// Quick actions take priority (incl. the built-in Field Assist action), then personas,
+    /// then a generic Ask/Photo fallback. Capped at 4 for the chunky grid.
+    private func actionItems(for state: GlassesActivityAttributes.ContentState) -> [ActionItem] {
+        if !state.quickActionButtons.isEmpty {
+            return state.quickActionButtons.prefix(4).map {
+                ActionItem(id: $0.id, label: $0.label, icon: $0.icon,
+                           url: URL(string: "openglasses://quickaction/\($0.id)")!,
+                           accent: $0.id == "field-assist")
+            }
+        } else if !state.personaButtons.isEmpty {
+            return state.personaButtons.prefix(4).map {
+                ActionItem(id: $0.id, label: $0.name, icon: "person.fill",
+                           url: URL(string: "openglasses://persona/\($0.id)")!, accent: false)
+            }
+        } else {
+            return [
+                ActionItem(id: "ask", label: "Ask", icon: "mic.fill",
+                           url: URL(string: "openglasses://action/ask")!, accent: true),
+                ActionItem(id: "photo", label: "Photo", icon: "camera.fill",
+                           url: URL(string: "openglasses://action/photo")!, accent: false),
+            ]
+        }
+    }
+
     @ViewBuilder
     private func actionButtons(for state: GlassesActivityAttributes.ContentState, compact: Bool) -> some View {
-        let fontSize: Font = compact ? .caption2.weight(.medium) : .caption.weight(.medium)
-        let vPadding: CGFloat = compact ? 4 : 6
-        let cornerRadius: CGFloat = compact ? 6 : 8
-
-        HStack(spacing: compact ? 6 : 8) {
-            if !state.personaButtons.isEmpty {
-                ForEach(state.personaButtons, id: \.id) { persona in
-                    Link(destination: URL(string: "openglasses://persona/\(persona.id)")!) {
-                        Text(persona.name)
-                            .font(fontSize)
+        let items = actionItems(for: state)
+        if compact {
+            // Dynamic Island: slim single row (space-constrained).
+            HStack(spacing: 6) {
+                ForEach(items.prefix(3)) { item in
+                    Link(destination: item.url) {
+                        Label(item.label, systemImage: item.icon)
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, vPadding)
-                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
+                            .padding(.vertical, 5)
+                            .background((item.accent ? AccentColors.aiCoral : .white).opacity(0.22), in: Capsule())
                     }
-                }
-            } else if !state.quickActionButtons.isEmpty {
-                ForEach(state.quickActionButtons, id: \.id) { action in
-                    Link(destination: URL(string: "openglasses://quickaction/\(action.id)")!) {
-                        Label(action.label, systemImage: action.icon)
-                            .font(fontSize)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, vPadding)
-                            .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
-                    }
-                }
-            } else {
-                // Fallback: generic actions
-                Link(destination: URL(string: "openglasses://action/ask")!) {
-                    Label("Ask", systemImage: "mic.fill")
-                        .font(fontSize)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, vPadding)
-                        .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
-                }
-                Link(destination: URL(string: "openglasses://action/photo")!) {
-                    Label("Photo", systemImage: "camera.fill")
-                        .font(fontSize)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, vPadding)
-                        .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: cornerRadius))
                 }
             }
+        } else {
+            // Lock Screen: chunky capsule buttons, two per row.
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    if items.indices.contains(0) { chunkyButton(items[0]) }
+                    if items.indices.contains(1) { chunkyButton(items[1]) }
+                }
+                if items.count > 2 {
+                    HStack(spacing: 8) {
+                        chunkyButton(items[2])
+                        if items.indices.contains(3) {
+                            chunkyButton(items[3])
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func chunkyButton(_ item: ActionItem) -> some View {
+        let tint: Color = item.accent ? AccentColors.aiCoral : .white
+        Link(destination: item.url) {
+            HStack(spacing: 7) {
+                Image(systemName: item.icon)
+                    .font(.callout.weight(.semibold))
+                Text(item.label)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 10)
+            .background(tint.opacity(item.accent ? 0.30 : 0.16), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(item.accent ? 0.55 : 0.18), lineWidth: 1))
         }
     }
 
