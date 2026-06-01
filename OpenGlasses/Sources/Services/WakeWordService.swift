@@ -140,7 +140,10 @@ class WakeWordService: NSObject, ObservableObject {
         let options: AVAudioSession.CategoryOptions = useGlassesMic
             ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
             : [.mixWithOthers, .defaultToSpeaker]
-        try? session.setCategory(.playAndRecord, mode: .measurement, options: options)
+        // .default (not .measurement) so concurrent music/podcasts keep playing cleanly
+        // while the wake-word listener runs — .measurement disables system audio
+        // processing and fights other audio even with .mixWithOthers.
+        try? session.setCategory(.playAndRecord, mode: .default, options: options)
         // notifyOthersOnDeactivation tells paused apps (Music, Podcasts) they can resume.
         try? session.setActive(true, options: .notifyOthersOnDeactivation)
         print("🎤 Restored audio mix — other apps can resume")
@@ -172,7 +175,9 @@ class WakeWordService: NSObject, ObservableObject {
                 let options: AVAudioSession.CategoryOptions = useGlassesMic
                     ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
                     : [.mixWithOthers, .defaultToSpeaker]
-                try audioSession.setCategory(.playAndRecord, mode: .measurement, options: options)
+                // .default (not .measurement) so other audio coexists cleanly with the
+                // always-on listener — see resumeOtherAudio for the same rationale.
+                try audioSession.setCategory(.playAndRecord, mode: .default, options: options)
                 try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
                 audioSessionConfigured = true
                 print("🎤 Mic source: \(useGlassesMic ? "glasses (Bluetooth)" : "phone (built-in)")")
@@ -293,6 +298,15 @@ class WakeWordService: NSObject, ObservableObject {
 
     func startListening() async throws {
         guard !isListening else { return }
+        // Push-to-Talk (Silent Mode): never run the always-on wake-word listener.
+        // This is the single chokepoint — every auto-start path (launch, foreground,
+        // glasses connect, returnToWakeWord, autoStart) funnels through here, so the
+        // mic is never held for constant listening. On-demand triggers (Action Button →
+        // startDirectTranscription) bypass this and still work.
+        if Config.silentMode {
+            print("🎤 Push-to-Talk mode — skipping always-on wake-word listener")
+            return
+        }
         stopFired = false
         wakeWordFired = false
         silentBufferCount = 0
