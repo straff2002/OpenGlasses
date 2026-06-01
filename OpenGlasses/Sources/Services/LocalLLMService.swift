@@ -21,6 +21,11 @@ final class LocalLLMService: ObservableObject {
     private var modelContainer: ModelContainer?
     private var activeDownloadTask: Task<Void, Error>?
 
+    /// Set when the app enters the background during a generation so the token loop
+    /// can stop before submitting the next Metal command buffer (forbidden in the
+    /// background — see `generate`).
+    private var enteredBackgroundDuringGeneration = false
+
     /// HubClient configured to store models in Application Support (persistent, not purgeable).
     private let hub: HubClient = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -222,12 +227,36 @@ final class LocalLLMService: ObservableObject {
         }
         let input = LMInput(text: .init(tokens: .init(tokens)))
 
+        // Watch for backgrounding *during* generation. The pre-check above covers
+        // the already-backgrounded case; this covers the app being sent to the
+        // background mid-stream, where the next per-token Metal eval would crash.
+        enteredBackgroundDuringGeneration = false
+        let bgObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Delivered on the main thread; this type is @MainActor.
+            MainActor.assumeIsolated { self?.enteredBackgroundDuringGeneration = true }
+        }
+        defer { NotificationCenter.default.removeObserver(bgObserver) }
+
         // Generate
         let parameters = GenerateParameters(maxTokens: 512, temperature: 0.7, topP: 0.9)
         let stream = try await container.generate(input: input, parameters: parameters)
 
         var output = ""
-        for try await generation in stream {
+        // Drive the stream manually so we can bail out *before* requesting the next
+        // token — i.e. before MLX submits the next Metal command buffer. Stopping
+        // here avoids the uncatchable background-GPU crash; whatever tokens we have
+        // so far are returned (or .backgrounded is thrown if nothing was produced).
+        var iterator = stream.makeAsyncIterator()
+        while true {
+            if enteredBackgroundDuringGeneration || UIApplication.shared.applicationState == .background {
+                if output.isEmpty { throw LocalLLMError.backgrounded }
+                break
+            }
+            guard let generation = await iterator.next() else { break }
             switch generation {
             case .chunk(let text):
                 output += text
