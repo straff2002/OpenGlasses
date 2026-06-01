@@ -179,6 +179,14 @@ final class LocalLLMService: ObservableObject {
         systemPrompt: String,
         history: [(role: String, content: String)] = []
     ) async throws -> String {
+        // On-device inference runs on the GPU via Metal, which iOS forbids in the
+        // background: submitting a command buffer there raises
+        // kIOGPUCommandBufferCallbackErrorBackgroundExecutionNotPermitted, which MLX
+        // surfaces as an *uncatchable* C++ exception that terminates the process.
+        // Refuse early with a catchable Swift error so callers can defer instead.
+        guard UIApplication.shared.applicationState != .background else {
+            throw LocalLLMError.backgrounded
+        }
         guard let container = modelContainer else {
             throw LocalLLMError.modelNotLoaded
         }
@@ -313,6 +321,7 @@ final class LocalLLMService: ObservableObject {
 enum LocalLLMError: LocalizedError {
     case modelNotLoaded
     case generationFailed(String)
+    case backgrounded
 
     var errorDescription: String? {
         switch self {
@@ -320,6 +329,8 @@ enum LocalLLMError: LocalizedError {
             return "No local model is loaded. Download one in Settings → AI Models."
         case .generationFailed(let reason):
             return "Local model generation failed: \(reason)"
+        case .backgrounded:
+            return "On-device models can't run while the app is in the background. Switch to a cloud model for background tasks."
         }
     }
 }

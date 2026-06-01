@@ -169,8 +169,14 @@ class AgentScheduler: ObservableObject {
         }
 
         NSLog("[AgentScheduler] Running morning briefing")
+        let outcome = await executeAgentPrompt(briefing.prompt, speakResult: briefing.speakResult)
+        guard outcome == .completed else {
+            // Deferred (on-device model, backgrounded) — leave morningBriefingDone false
+            // so the next foreground check re-runs it today.
+            NSLog("[AgentScheduler] Morning briefing deferred — will retry when foregrounded")
+            return
+        }
         morningBriefingDone = true
-        await executeAgentPrompt(briefing.prompt, speakResult: briefing.speakResult)
         markTaskRun("morning-briefing")
     }
 
@@ -190,7 +196,12 @@ class AgentScheduler: ObservableObject {
             }
 
             NSLog("[AgentScheduler] Running task: %@ (model: %@)", task.name, task.modelId ?? "default")
-            await executeTask(task)
+            let outcome = await executeTask(task)
+            if outcome == .deferred {
+                // On-device model can't run while backgrounded — don't mark it run;
+                // try the next eligible task (a cloud-backed one can still run).
+                continue
+            }
             markTaskRun(task.id)
 
             // Only run one task per cycle to avoid overwhelming
@@ -200,9 +211,15 @@ class AgentScheduler: ObservableObject {
 
     // MARK: - Execution
 
+    /// Outcome of a scheduled run. `.deferred` means it didn't run and should be
+    /// retried later (e.g. an on-device model can't run while backgrounded) — the
+    /// caller must NOT mark it as run.
+    private enum TaskRunOutcome { case completed, deferred }
+
     /// Execute a scheduled task, switching to its designated model/persona if specified.
-    private func executeTask(_ task: ScheduledTask) async {
-        guard let appState else { return }
+    @discardableResult
+    private func executeTask(_ task: ScheduledTask) async -> TaskRunOutcome {
+        guard let appState else { return .completed }
 
         // Save current model so we can restore after
         let previousModelId = Config.activeModelId
@@ -223,7 +240,7 @@ class AgentScheduler: ObservableObject {
         }
 
         // Run the task
-        await executeAgentPrompt(task.prompt, speakResult: task.speakResult, personaId: task.personaId, personaName: personaName)
+        let outcome = await executeAgentPrompt(task.prompt, speakResult: task.speakResult, personaId: task.personaId, personaName: personaName)
 
         // Restore previous model
         if task.personaId != nil || task.modelId != nil {
@@ -231,10 +248,13 @@ class AgentScheduler: ObservableObject {
             appState.llmService.refreshActiveModel()
             NSLog("[AgentScheduler] Restored model: %@", previousModelId)
         }
+
+        return outcome
     }
 
-    private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async {
-        guard let appState else { return }
+    @discardableResult
+    private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async -> TaskRunOutcome {
+        guard let appState else { return .completed }
 
         isRunning = true
         defer { isRunning = false }
@@ -264,7 +284,7 @@ class AgentScheduler: ObservableObject {
             let trimmed = processed.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed == "[NOTHING]" || trimmed.lowercased().contains("[nothing]") {
                 NSLog("[AgentScheduler] Task complete — nothing to report")
-                return
+                return .completed
             }
 
             appState.lastResponse = processed
@@ -280,8 +300,14 @@ class AgentScheduler: ObservableObject {
             }
 
             NSLog("[AgentScheduler] Task complete: %@", String(processed.prefix(100)))
+            return .completed
+        } catch LocalLLMError.backgrounded {
+            // On-device model can't run while backgrounded — defer, don't consume the run.
+            NSLog("[AgentScheduler] Deferred — on-device model can't run in the background; will retry when foregrounded")
+            return .deferred
         } catch {
             NSLog("[AgentScheduler] Task failed: %@", error.localizedDescription)
+            return .completed
         }
     }
 

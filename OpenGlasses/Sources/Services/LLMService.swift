@@ -1557,6 +1557,12 @@ class LLMService: ObservableObject {
                 systemPrompt: fullPrompt,
                 history: history
             )
+        } catch let error as LocalLLMError {
+            // Propagate .backgrounded unwrapped so callers (e.g. AgentScheduler) can
+            // tell "can't run on-device in background" apart from a real failure and
+            // defer rather than consuming the scheduled run.
+            print("❌ Local model generation failed: \(error)")
+            throw error
         } catch {
             print("❌ Local model generation failed: \(error)")
             throw LLMError.invalidResponse("Local model error: \(error.localizedDescription)")
