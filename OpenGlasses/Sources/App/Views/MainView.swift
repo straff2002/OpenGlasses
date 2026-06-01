@@ -61,5 +61,12 @@ struct MainView: View {
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
         .preferredColorScheme(colorScheme)
+        .sheet(item: $appState.phoneCameraRequest) { request in
+            PhoneCameraView(
+                prompt: request.prompt,
+                onCapture: { appState.handlePhoneCapture($0) },
+                onCancel: { appState.phoneCameraRequest = nil }
+            )
+        }
     }
 }

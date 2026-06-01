@@ -1387,10 +1387,55 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { await returnToWakeWord() }
     }
 
+    // MARK: - Phone-camera fallback (photo actions when glasses are off)
+
+    /// Non-nil while the phone-camera fallback sheet should be presented.
+    @Published var phoneCameraRequest: PhoneCameraRequest?
+
+    private func presentPhoneCamera(prompt: String, userLog: String) {
+        phoneCameraRequest = PhoneCameraRequest(prompt: prompt, userLog: userLog)
+    }
+
+    /// Called by the phone-camera sheet once a still is captured: save it, then run the
+    /// same image+prompt → LLM → speak flow the glasses photo path uses.
+    func handlePhoneCapture(_ data: Data) {
+        guard let req = phoneCameraRequest else { return }
+        phoneCameraRequest = nil
+        cameraService.saveToPhotoLibrary(data)
+        Task { await sendPhotoToLLM(imageData: data, prompt: req.prompt, userLog: req.userLog) }
+    }
+
+    private func sendPhotoToLLM(imageData: Data, prompt: String, userLog: String) async {
+        isProcessing = true
+        speechService.startThinkingSound()
+        do {
+            let rawResponse = try await llmService.sendMessage(
+                prompt,
+                locationContext: locationService.locationContext,
+                imageData: imageData,
+                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil
+            )
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+            lastResponse = response
+            if Config.conversationPersistenceEnabled {
+                conversationStore.appendMessage(role: "user", content: userLog)
+                conversationStore.appendMessage(role: "assistant", content: response)
+            }
+            isProcessing = false
+            speechService.stopThinkingSound()
+            await speechService.speak(response)
+        } catch {
+            isProcessing = false
+            speechService.stopThinkingSound()
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Capture a photo and send it to the LLM with a custom prompt.
     func capturePhotoAndSend(prompt: String) async {
         guard isConnected else {
-            errorMessage = "Connect glasses first"
+            // No glasses — fall back to the phone camera (live preview to aim + frame).
+            presentPhoneCamera(prompt: prompt, userLog: "[Phone photo] \(prompt)")
             return
         }
         isProcessing = true
@@ -1504,7 +1549,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
     func captureAndAnalyzePhoto() async {
         guard isConnected else {
-            errorMessage = "Connect glasses first"
+            // No glasses — fall back to the phone camera.
+            presentPhoneCamera(prompt: "Describe what you see in this image.", userLog: "[Phone photo]")
             return
         }
         isProcessing = true
