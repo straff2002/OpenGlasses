@@ -874,6 +874,28 @@ class AppState: ObservableObject, AppStateProtocol {
         HomeKitTool.prepareShared()
     }
 
+    /// The active model id before a Field Assist session swapped in the vault's model.
+    private var modelBeforeFieldSession: String?
+
+    /// Apply a vault's linked model for the lifetime of a Field Assist session, then
+    /// restore. `session == nil` means the session ended.
+    private func applyFieldSessionModel(for session: FieldSession?) {
+        if let session {
+            guard let modelId = Config.fieldAssistVaultModelId(for: session.vaultId),
+                  Config.savedModels.contains(where: { $0.id == modelId }),
+                  modelId != Config.activeModelId else { return }
+            if modelBeforeFieldSession == nil { modelBeforeFieldSession = Config.activeModelId }
+            Config.setActiveModelId(modelId)
+            llmService.refreshActiveModel()
+            NSLog("[FieldAssist] Session started — using vault model %@", modelId)
+        } else if let prev = modelBeforeFieldSession {
+            Config.setActiveModelId(prev)
+            llmService.refreshActiveModel()
+            NSLog("[FieldAssist] Session ended — restored model %@", prev)
+            modelBeforeFieldSession = nil
+        }
+    }
+
     private func setupServiceCallbacks() {
         // Wire camera debug events to the on-screen debug log
         cameraService.onDebugEvent = { [weak self] message in
@@ -881,6 +903,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 self?.addDebugEvent(message)
             }
         }
+
+        // Field Assist: a vault's linked model is applied only for the session's
+        // duration — switch to it when a session starts, restore the prior model when it
+        // ends. Observing activeSession covers both UI- and voice-started sessions.
+        let fieldSessionToken = FieldSessionService.shared.$activeSession
+            .removeDuplicates { $0?.id == $1?.id }
+            .sink { [weak self] session in
+                self?.applyFieldSessionModel(for: session)
+            }
+        cancellables.append(fieldSessionToken)
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
