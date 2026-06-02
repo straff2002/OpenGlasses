@@ -119,10 +119,19 @@ struct AgenticFeaturesView: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
+
+                    InfoToggle(
+                        title: "Run On-Device Model (experimental)",
+                        isOn: Binding(
+                            get: { Config.localAgentEnabled },
+                            set: { Config.setLocalAgentEnabled($0) }
+                        ),
+                        info: "Off by default. The bundled on-device (MLX) model is experimental and can crash during inference on some queries. When off, fast queries route to a cloud model instead even if an on-device model is selected. Turn on to use the on-device model for fast, offline tool calls — at the risk of instability."
+                    )
                 } header: {
                     Text("Agent Model")
                 } footer: {
-                    Text("Pick a downloaded local model (runs offline) or any configured cloud provider. Local handles fast tool calls; cloud handles complex reasoning.")
+                    Text("Pick a downloaded local model (runs offline) or any configured cloud provider. Cloud handles all tiers reliably; the on-device model is experimental (see the toggle).")
                 }
 
                 // Chattiness
