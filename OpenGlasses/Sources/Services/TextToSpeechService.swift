@@ -30,6 +30,46 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// further ElevenLabs calls and go straight to iOS TTS for the session.
     private var elevenLabsQuotaExhausted = false
 
+    /// A voice available on the user's ElevenLabs account (from GET /v1/voices).
+    struct ElevenLabsVoice: Identifiable, Hashable, Codable {
+        let voiceId: String
+        let name: String
+        let category: String?
+
+        var id: String { voiceId }
+
+        enum CodingKeys: String, CodingKey {
+            case voiceId = "voice_id"
+            case name
+            case category
+        }
+    }
+
+    private struct ElevenLabsVoicesResponse: Codable {
+        let voices: [ElevenLabsVoice]
+    }
+
+    /// Fetch the voices the given API key can actually use. Public-library voices are
+    /// often rejected on free accounts, so the picker loads the account's own voices.
+    static func fetchElevenLabsVoices(apiKey: String) async throws -> [ElevenLabsVoice] {
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/voices") else {
+            throw TTSError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if let body = String(data: data, encoding: .utf8) {
+                print("🔊 ElevenLabs voices error \(code): \(body)")
+            }
+            throw TTSError.apiError(statusCode: code)
+        }
+        return try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data).voices
+    }
+
     override init() {
         super.init()
         synthesizer.delegate = self
