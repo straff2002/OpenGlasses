@@ -1791,8 +1791,18 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             // Configure audio (uses glasses mic if connected, phone mic otherwise)
             wakeWordService.configureAudioSession()
-            await handleWakeWordDetected()
+            // manual: true — this is an explicit user trigger (Action Button / Siri / tap),
+            // so the reply speaks through the phone speaker even with no glasses connected.
+            await handleWakeWordDetected(manual: true)
         }
+    }
+
+    /// End the current voice session immediately — backs the in-app "Tap to stop"
+    /// button and any explicit Push-to-Talk end. Stops the recorder (which otherwise
+    /// only ends on silence) and resets conversation state.
+    func endListeningSession() {
+        transcriptionService.stopRecording()
+        Task { await returnToWakeWord() }
     }
 
     /// Whether the current conversation was started by an explicit user tap (not wake word).

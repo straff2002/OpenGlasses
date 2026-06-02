@@ -141,8 +141,20 @@ struct BottomControlBar: View {
             ) {
                 appState.cancelCurrentResponse()
             }
-        } else if !appState.isConnected {
-            // Disconnected — one tap to reconnect + start listening
+        } else if appState.isListening {
+            // Active voice session — explicit End button. Shown regardless of glasses
+            // connection so Push-to-Talk / phone-only sessions can always be stopped.
+            ActionCapsule(
+                icon: "stop.circle.fill",
+                label: "Tap to stop",
+                isActive: true,
+                color: .orange,
+                showMuteBadge: appState.micMuted
+            ) {
+                appState.endListeningSession()
+            }
+        } else if !appState.isConnected && !Config.silentMode {
+            // Disconnected and not in Push-to-Talk — one tap to reconnect + start listening
             ActionCapsule(
                 icon: "OpenGlassesLogo",
                 label: "Connect & Talk",
@@ -153,21 +165,17 @@ struct BottomControlBar: View {
                 }
             }
         } else {
+            // Idle — tap to talk. Works phone-only (Push-to-Talk) or through the glasses.
             ActionCapsule(
-                icon: appState.isListening ? "waveform.circle.fill" : "mic.fill",
-                label: appState.isListening ? "Listening..." : "Tap to talk",
-                isActive: appState.isListening,
+                icon: "mic.fill",
+                label: "Tap to talk",
                 color: accent,
                 showMuteBadge: appState.micMuted
             ) {
                 Task {
-                    if appState.isListening {
-                        await appState.returnToWakeWord()
-                    } else {
-                        appState.wakeWordService.stopListening()
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                        await appState.handleWakeWordDetected(manual: true)
-                    }
+                    appState.wakeWordService.stopListening()
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    await appState.handleWakeWordDetected(manual: true)
                 }
             }
         }
