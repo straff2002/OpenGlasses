@@ -187,8 +187,32 @@ nonisolated class Gemma4ProportionalRoPE: Module, OffsetLayer {
         super.init()
     }
 
+    nonisolated(unsafe) private static var didLogShapes = false
+
     func callAsFunction(_ x: MLXArray, offset: Int) -> MLXArray {
         guard rotatedDims > 0 else { return x }
+
+        if !Self.didLogShapes {
+            Self.didLogShapes = true
+            print("🔬 Gemma4 RoPE: x.shape=\(x.shape) dims=\(dims) rotatedDims=\(rotatedDims) half=\(dims / 2) offset=\(offset)")
+        }
+
+        // Full rotary (rotatedDims == dims): the split/concat path below produces
+        // zero-length slices — left[(rotatedDims/2)...] etc. — and concatenating empty
+        // arrays crashes mlx-c with "SmallVector out of range". Apply RoPE to the whole
+        // rotated span directly; this is mathematically identical to the split/concat
+        // when rotatedDims == dims, just without the empty slices.
+        if rotatedDims >= dims {
+            let head = x[.ellipsis, 0 ..< dims]
+            let rotated = MLXFast.RoPE(
+                head, dimensions: rotatedDims, traditional: traditional,
+                base: nil, scale: 1.0, offset: offset, freqs: _freqs
+            )
+            if x.shape.last! > dims {
+                return concatenated([rotated, x[.ellipsis, dims...]], axis: -1)
+            }
+            return rotated
+        }
 
         let head = x[.ellipsis, 0 ..< dims]
         let half = dims / 2
@@ -304,6 +328,8 @@ nonisolated class Gemma4Attention: Module {
         super.init()
     }
 
+    nonisolated(unsafe) private static var didLogAttn = false
+
     func callAsFunction(
         _ x: MLXArray,
         mask: MLXFast.ScaledDotProductAttentionMaskMode? = nil,
@@ -343,7 +369,15 @@ nonisolated class Gemma4Attention: Module {
         var adjustedMask = mask
         if case .array(let maskArray) = mask {
             let keysSeqLen = keys.dim(2)
-            if maskArray.shape.last! != keysSeqLen {
+            let maskLen = maskArray.shape.last ?? keysSeqLen
+            if !Self.didLogAttn {
+                Self.didLogAttn = true
+                print("🔬 Gemma4 attn: B=\(B) L=\(L) keys.shape=\(keys.shape) queries.shape=\(queries.shape) maskLen=\(maskLen) keysSeqLen=\(keysSeqLen)")
+            }
+            // Only trim when the mask is LONGER than the key sequence — slicing
+            // 0..<keysSeqLen when keysSeqLen exceeds the mask's last dim would itself
+            // be out of range. If it's shorter/equal, pass it through unchanged.
+            if maskLen > keysSeqLen {
                 adjustedMask = .array(maskArray[.ellipsis, 0 ..< keysSeqLen].asType(queries.dtype))
             } else {
                 adjustedMask = .array(maskArray.asType(queries.dtype))
