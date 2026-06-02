@@ -256,6 +256,17 @@ class AgentScheduler: ObservableObject {
     private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async -> TaskRunOutcome {
         guard let appState else { return .completed }
 
+        // Don't let a scheduled task auto-load the on-device model. Loading the (multi-GB)
+        // MLX model is slow and, on launch, makes startup drag (and has crashed). If the
+        // active model is on-device and not already in memory, defer — the user loads it
+        // on demand via the home-screen "Load" control, after which scheduled tasks run.
+        if let local = appState.llmService.localLLMService,
+           let active = Config.activeModel, active.llmProvider == .local,
+           !(local.isModelLoaded && local.loadedModelId == active.model) {
+            NSLog("[AgentScheduler] On-device model not loaded — deferring scheduled task (won't auto-load on launch)")
+            return .deferred
+        }
+
         isRunning = true
         defer { isRunning = false }
 
