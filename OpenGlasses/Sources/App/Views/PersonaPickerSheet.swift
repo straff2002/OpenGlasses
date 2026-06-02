@@ -292,6 +292,7 @@ struct PersonaPickerTab: View {
                 ForEach(unlockedVaults, id: \.id) { manifest in
                     Button {
                         faVaultId = manifest.id
+                        applyVaultModel(manifest.id)
                     } label: {
                         if faVaultId == manifest.id {
                             Label(manifest.name, systemImage: "checkmark")
@@ -322,6 +323,23 @@ struct PersonaPickerTab: View {
             }
             .accessibilityLabel("Active vault: \(current?.name ?? "none"). Tap to switch.")
 
+            // Per-vault model — this vault remembers its model; switching vaults applies it.
+            Picker("Model for this vault", selection: Binding(
+                get: { Config.fieldAssistVaultModelId(for: faVaultId) ?? "" },
+                set: { newId in
+                    Config.setFieldAssistVaultModelId(newId.isEmpty ? nil : newId, for: faVaultId)
+                    if !newId.isEmpty {
+                        Config.setActiveModelId(newId)
+                        appState.llmService.refreshActiveModel()
+                    }
+                }
+            )) {
+                Text("Use current model").tag("")
+                ForEach(Config.savedModels) { model in
+                    Text(model.name).tag(model.id)
+                }
+            }
+
             NavigationLink {
                 FieldAssistSettingsView()
             } label: {
@@ -330,7 +348,7 @@ struct PersonaPickerTab: View {
         } header: {
             Text("Field Assist")
         } footer: {
-            Text("Switch the active knowledge vault. Tap Manage for license, vault editing, and sessions.")
+            Text("Switch the active knowledge vault — each vault remembers its own model and applies it when selected. Tap Manage for license, vault editing, and sessions.")
         }
 
         if let current {
@@ -365,6 +383,14 @@ struct PersonaPickerTab: View {
                 Text("Guided, step-by-step procedures in this vault. Start one hands-free during a session: \u{201C}start the \u{2039}name\u{203A} procedure.\u{201D}")
             }
         }
+    }
+
+    /// Apply a vault's linked model (if any) to the active model.
+    private func applyVaultModel(_ vaultId: String) {
+        guard let modelId = Config.fieldAssistVaultModelId(for: vaultId),
+              Config.savedModels.contains(where: { $0.id == modelId }) else { return }
+        Config.setActiveModelId(modelId)
+        appState.llmService.refreshActiveModel()
     }
 
     private func activatePersona(_ persona: Persona) {
