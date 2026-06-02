@@ -54,6 +54,14 @@ struct VoiceTab: View {
                 TranscriptOverlay(session: session, openAISession: openAISession)
                     .padding(.bottom, 8)
 
+                // Load the on-device model on demand — only shown when the active
+                // model is local, so it's not lazy-loaded (slowly) on first query.
+                if let local = appState.llmService.localLLMService {
+                    LocalModelBar(service: local)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
+
                 // Quick actions (above hero capsule)
                 if !showChatInput {
                     QuickActionsGrid()
@@ -104,6 +112,73 @@ struct VoiceTab: View {
         .padding(.vertical, 5)
         .background(Capsule().fill(.red.opacity(0.3)))
         .accessibilityLabel("Recording: \(appState.videoRecorder.formattedDuration)")
+    }
+}
+
+// MARK: - Local Model Bar (home-screen load/unload)
+
+/// Home-screen control to load/unload the on-device model on demand. Shown only when
+/// the active model is a local (MLX) model, so the user isn't waiting on a lazy load
+/// at first query — and can free memory when done.
+private struct LocalModelBar: View {
+    @ObservedObject var service: LocalLLMService
+    @Environment(\.appAccent) private var accent
+
+    var body: some View {
+        if let active = Config.activeModel, active.llmProvider == .local {
+            content(active)
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ active: ModelConfig) -> some View {
+        let modelId = active.model
+        let isLoaded = service.isModelLoaded && service.loadedModelId == modelId
+
+        if service.isLoadingModel {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Loading \(active.name)…")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                if service.downloadProgress > 0, service.downloadProgress < 1 {
+                    Text("\(Int(service.downloadProgress * 100))%")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(.quaternary.opacity(0.4), in: Capsule())
+        } else if isLoaded {
+            Button { service.unloadModel() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("\(active.name) loaded")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color(.label))
+                    Text("· Unload").font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(.green.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(active.name) loaded. Tap to unload.")
+        } else {
+            Button { Task { try? await service.loadModel(modelId) } } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "cpu")
+                    Text("Load \(active.name)")
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Load on-device model \(active.name)")
+        }
     }
 }
 
