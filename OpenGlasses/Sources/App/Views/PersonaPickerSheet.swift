@@ -132,6 +132,8 @@ struct PersonaPickerTab: View {
     @ObservedObject var appState: AppState
 
     @State private var editingPersona: Persona? = nil
+    @AppStorage("fieldAssistEnabled") private var faEnabled: Bool = false
+    @AppStorage("fieldAssistDefaultVaultId") private var faVaultId: String = "refrigeration"
 
     var body: some View {
         List {
@@ -228,48 +230,167 @@ struct PersonaPickerTab: View {
     /// Field Assist screen (license/paywall, master toggle, vault picker, sessions).
     @ViewBuilder
     private var fieldAssistSection: some View {
+        if !Config.fieldAssistUnlocked {
+            Section {
+                fieldAssistLink(subtitle: "Unlock for grounded field-engineer guidance", locked: true)
+            } header: {
+                Text("Field Assist")
+            } footer: {
+                Text("Hands-free, domain-grounded guidance for field engineers — load a knowledge vault and run grounded, audited sessions.")
+            }
+        } else if !faEnabled {
+            Section {
+                fieldAssistLink(subtitle: "Tap to enable", locked: false)
+            } header: {
+                Text("Field Assist")
+            }
+        } else {
+            fieldAssistActivePanel
+        }
+    }
+
+    /// Header row that opens the full Field Assist screen.
+    @ViewBuilder
+    private func fieldAssistLink(subtitle: String, locked: Bool) -> some View {
+        NavigationLink {
+            FieldAssistSettingsView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.title3)
+                    .foregroundStyle(AccentColors.aiCoral)
+                    .frame(width: 32)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Field Assist")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(Color(.label))
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .accessibilityLabel("Field Assist. \(subtitle)")
+    }
+
+    /// Active panel: quick vault switcher + the selected vault's scenarios (procedures).
+    @ViewBuilder
+    private var fieldAssistActivePanel: some View {
+        let unlockedVaults = VaultRegistry.shared.allManifests.filter { VaultRegistry.shared.isUnlocked($0) }
+        let current = VaultRegistry.shared.manifest(id: faVaultId)
+
         Section {
-            NavigationLink {
-                FieldAssistSettingsView()
+            // Quick vault switcher
+            Menu {
+                ForEach(unlockedVaults, id: \.id) { manifest in
+                    Button {
+                        faVaultId = manifest.id
+                        applyVaultModel(manifest.id)
+                    } label: {
+                        if faVaultId == manifest.id {
+                            Label(manifest.name, systemImage: "checkmark")
+                        } else {
+                            Text(manifest.name)
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "wrench.and.screwdriver.fill")
                         .font(.title3)
                         .foregroundStyle(AccentColors.aiCoral)
                         .frame(width: 32)
-                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Field Assist")
                             .font(.body.weight(.medium))
                             .foregroundStyle(Color(.label))
-                        Text(fieldAssistSubtitle)
+                        Text(current?.name ?? "Choose a vault")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if Config.fieldAssistActive {
-                        Text("On")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
-                    } else if !Config.fieldAssistUnlocked {
-                        Image(systemName: "lock.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .accessibilityLabel("Field Assist. \(fieldAssistSubtitle)")
+            .accessibilityLabel("Active vault: \(current?.name ?? "none"). Tap to switch.")
+
+            // Per-vault model — this vault remembers its model; switching vaults applies it.
+            Picker("Model for this vault", selection: Binding(
+                get: { Config.fieldAssistVaultModelId(for: faVaultId) ?? "" },
+                set: { newId in
+                    Config.setFieldAssistVaultModelId(newId.isEmpty ? nil : newId, for: faVaultId)
+                    if !newId.isEmpty {
+                        Config.setActiveModelId(newId)
+                        appState.llmService.refreshActiveModel()
+                    }
+                }
+            )) {
+                Text("Use current model").tag("")
+                ForEach(Config.savedModels) { model in
+                    Text(model.name).tag(model.id)
+                }
+            }
+
+            NavigationLink {
+                FieldAssistSettingsView()
+            } label: {
+                Label("Manage Field Assist", systemImage: "gearshape")
+            }
         } header: {
             Text("Field Assist")
         } footer: {
-            Text("Hands-free, domain-grounded guidance for field engineers — load a knowledge vault and run grounded, audited sessions.")
+            Text("Switch the active knowledge vault — each vault remembers its own model and applies it when selected. Tap Manage for license, vault editing, and sessions.")
+        }
+
+        if let current {
+            let procedures = ProcedureLibrary(store: VaultRegistry.shared.store(for: current)).all
+            Section {
+                if procedures.isEmpty {
+                    Text("No guided scenarios in this vault — the assistant still answers grounded questions from its reference files.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(procedures) { proc in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(proc.title)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(Color(.label))
+                            if let desc = proc.description, !desc.isEmpty {
+                                Text(desc)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Text("\(proc.steps.count) step\(proc.steps.count == 1 ? "" : "s")")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            } header: {
+                Text("Scenarios — \(current.name)")
+            } footer: {
+                Text("Guided, step-by-step procedures in this vault. Start one hands-free during a session: \u{201C}start the \u{2039}name\u{203A} procedure.\u{201D}")
+            }
         }
     }
 
-    private var fieldAssistSubtitle: String {
-        if !Config.fieldAssistUnlocked { return "Unlock for grounded field-engineer guidance" }
-        if Config.fieldAssistActive { return "On — manage vaults & sessions" }
-        return "Tap to enable"
+    /// Apply a vault's linked model (if any) to the active model.
+    private func applyVaultModel(_ vaultId: String) {
+        guard let modelId = Config.fieldAssistVaultModelId(for: vaultId),
+              Config.savedModels.contains(where: { $0.id == modelId }) else { return }
+        Config.setActiveModelId(modelId)
+        appState.llmService.refreshActiveModel()
     }
 
     private func activatePersona(_ persona: Persona) {

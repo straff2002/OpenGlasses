@@ -2346,6 +2346,26 @@ struct Config {
         UserDefaults.standard.set(id, forKey: "fieldAssistDefaultVaultId")
     }
 
+    // MARK: - Per-vault model linking
+
+    /// The model a given Field Assist vault is linked to (a savedModel id). nil = use
+    /// whatever the current active model is. Lets each vault carry its own model so
+    /// switching vaults switches the model.
+    static func fieldAssistVaultModelId(for vaultId: String) -> String? {
+        let map = UserDefaults.standard.dictionary(forKey: "fieldAssistVaultModels") as? [String: String] ?? [:]
+        return map[vaultId]
+    }
+
+    static func setFieldAssistVaultModelId(_ modelId: String?, for vaultId: String) {
+        var map = UserDefaults.standard.dictionary(forKey: "fieldAssistVaultModels") as? [String: String] ?? [:]
+        if let modelId, !modelId.isEmpty {
+            map[vaultId] = modelId
+        } else {
+            map.removeValue(forKey: vaultId)
+        }
+        UserDefaults.standard.set(map, forKey: "fieldAssistVaultModels")
+    }
+
     /// Optional webhook (Slack-compatible) paged when a technician escalates to a human expert.
     /// Empty = local notification only.
     static var expertWebhookURL: String {
