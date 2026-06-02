@@ -16,6 +16,7 @@ final class LocalLLMService: ObservableObject {
     @Published var downloadProgress: Double = 0
     @Published var isDownloading = false
     @Published var isGenerating = false
+    @Published var isLoadingModel = false   // a model is being loaded into memory right now
     @Published var loadedModelId: String?
     @Published var downloadingModelId: String?
 
@@ -156,6 +157,8 @@ final class LocalLLMService: ObservableObject {
             throw LocalLLMError.backgrounded
         }
 
+        isLoadingModel = true
+        defer { isLoadingModel = false }
         unloadModel()
 
         let config = ModelConfiguration(id: modelId)

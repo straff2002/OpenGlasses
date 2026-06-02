@@ -10,6 +10,9 @@ struct LocalModelManagerView: View {
     @State private var customModelId = ""
     @State private var downloadingModelId: String?
     @State private var downloadError: String?
+    @State private var loadingModelId: String?
+    @State private var loadedLocalModelId: String?   // mirrors the in-memory loaded model for the UI
+    @State private var loadError: String?
 
     private var localService: LocalLLMService? {
         appState.llmService.localLLMService
@@ -40,24 +43,31 @@ struct LocalModelManagerView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(downloadedIds, id: \.self) { modelId in
-                        Button {
-                            selectModel(modelId)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(modelDisplayName(modelId))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            Button {
+                                selectModel(modelId)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(modelDisplayName(modelId))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(formatBytes(localService?.modelSizeOnDisk(modelId) ?? 0))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if selectedModelId == modelId {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(Color(.label))
+                                    }
                                 }
-                                Spacer()
-                                if selectedModelId == modelId {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color(.label))
-                                }
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+
+                            Spacer(minLength: 0)
+
+                            loadControl(for: modelId)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -68,10 +78,15 @@ struct LocalModelManagerView: View {
                         }
                     }
                 }
+                if let loadError {
+                    Label(loadError, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             } header: {
                 Text("Downloaded Models")
             } footer: {
-                Text("Tap to select. Swipe left to delete. Models are stored persistently and won't be purged by iOS.")
+                Text("Tap a model to select it. Tap Load to bring it into memory now (so the first reply is instant) — or Unload to free memory. Swipe left to delete.")
             }
 
             // MARK: Recommended Models
@@ -203,6 +218,58 @@ struct LocalModelManagerView: View {
 
     private func refreshDownloaded() {
         downloadedIds = localService?.downloadedModelIds() ?? []
+        loadedLocalModelId = (localService?.isModelLoaded == true) ? localService?.loadedModelId : nil
+    }
+
+    // MARK: - Manual load / unload
+
+    /// Load/Unload control for a downloaded model — lets the user choose when the
+    /// (heavy) model is brought into memory, instead of it loading lazily on first use.
+    @ViewBuilder
+    private func loadControl(for modelId: String) -> some View {
+        if loadingModelId == modelId {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Loading…").font(.caption).foregroundStyle(.secondary)
+            }
+        } else if loadedLocalModelId == modelId {
+            Button { unloadLocalModel() } label: {
+                Label("Loaded", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Model loaded — tap to unload")
+        } else {
+            Button { loadLocalModel(modelId) } label: {
+                Text("Load")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.tint.opacity(0.15), in: Capsule())
+            }
+            .buttonStyle(.borderless)
+            .disabled(loadingModelId != nil)
+        }
+    }
+
+    private func loadLocalModel(_ modelId: String) {
+        loadingModelId = modelId
+        loadError = nil
+        Task {
+            do {
+                try await localService?.loadModel(modelId)
+                loadedLocalModelId = modelId
+            } catch {
+                loadError = error.localizedDescription
+            }
+            loadingModelId = nil
+        }
+    }
+
+    private func unloadLocalModel() {
+        localService?.unloadModel()
+        loadedLocalModelId = nil
     }
 
     private func modelDisplayName(_ modelId: String) -> String {
