@@ -1,5 +1,6 @@
 import Foundation
 import HuggingFace
+import MLX
 import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
@@ -234,7 +235,12 @@ final class LocalLLMService: ObservableObject {
             fallbackMessages.append(["role": "user", "content": combinedUserMessage])
             tokens = try tokenizer.applyChatTemplate(messages: fallbackMessages)
         }
-        let input = LMInput(text: .init(tokens: .init(tokens)))
+        // Build a 2D (1, L) batch, not a 1D (L,) array. The Gemma 4 / 3n forward pass
+        // indexes x.dim(2) and fatally crashes ("SmallVector out of range") on 1D input —
+        // its prepare() path doesn't expand 1D internally (ml-explore/mlx-swift-lm#240).
+        // Other models accept (1, L) fine, so this is safe across the board.
+        let tokenIDs = MLXArray(tokens).expandedDimensions(axis: 0)
+        let input = LMInput(text: .init(tokens: tokenIDs))
 
         // Watch for backgrounding *during* generation. The pre-check above covers
         // the already-backgrounded case; this covers the app being sent to the
