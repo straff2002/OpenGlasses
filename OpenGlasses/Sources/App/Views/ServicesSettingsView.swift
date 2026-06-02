@@ -33,6 +33,11 @@ struct ServicesSettingsView: View {
     @State private var iosVoiceId: String = Config.iosTTSVoiceId
     private var iosVoices: [AVSpeechSynthesisVoice] { TextToSpeechService.availableVoices() }
 
+    // ElevenLabs account voices (loaded from the user's key)
+    @State private var elevenLabsVoices: [TextToSpeechService.ElevenLabsVoice] = []
+    @State private var elevenLabsVoicesLoading = false
+    @State private var elevenLabsVoicesError: String?
+
     var body: some View {
         Form {
             // MARK: Text-to-Speech
@@ -53,33 +58,44 @@ struct ServicesSettingsView: View {
                     }
                 }
 
-                Picker("Voice", selection: $selectedVoice) {
-                    // Female voices
-                    Text("Rachel — calm, American").tag("21m00Tcm4TlvDq8ikWAM")
-                    Text("Sarah — soft, American").tag("EXAVITQu4vr4xnSDxMaL")
-                    Text("Matilda — warm, American").tag("XrExE9yKIg1WjnnlVkGX")
-                    Text("Emily — calm, American").tag("LcfcDJNUP1GQjkzn1xUU")
-                    Text("Charlotte — English-Swedish").tag("XB0fDUnXU5powFXDhCwa")
-                    Text("Alice — confident, British").tag("Xb7hH8MSUJpSbSDYk0k2")
-                    Text("Lily — raspy, British").tag("pFZP5JQG7iQjIQuC4Bku")
-                    Text("Dorothy — pleasant, British").tag("ThT5KcBeYPX3keUQqHPh")
-                    Text("Serena — pleasant, American").tag("pMsXgVXv3BLzUgSXRplE")
-                    Text("Nicole — whisper, American").tag("piTKgcLEGmPE4e6mEKli")
-                    // Male voices
-                    Text("Brian — deep, American").tag("nPczCjzI2devNBz1zQrb")
-                    Text("Adam — deep, American").tag("pNInz6obpgDQGcFmaJgB")
-                    Text("Daniel — deep, British").tag("onwK4e9ZLuTAKqWW03F9")
-                    Text("George — raspy, British").tag("JBFqnCBsd6RMkjVDRZzb")
-                    Text("Chris — casual, American").tag("iP95p4xoKVk53GoZ742B")
-                    Text("Charlie — casual, Australian").tag("IKne3meq5aSn9XLyUdCD")
-                    Text("James — calm, Australian").tag("ZQe5CZNOzWyzPSCn5a3c")
-                    Text("Dave — conversational, British").tag("CYw3kZ02Hs0563khs1Fj")
-                    Text("Drew — well-rounded, American").tag("29vD33N1CtxCmqQRPOHJ")
-                    Text("Callum — hoarse, American").tag("N2lVS1w4EtoT3dr4eOWO")
-                    Text("Bill — strong, American").tag("pqHfZKP75CvOlQylNhV4")
-                    Text("Fin — Irish").tag("D38z5RcWu1voky8WS1ja")
-                    Text("Liam — American").tag("TX3LPaxmHKxFdv7VOQHJ")
-                    Text("Thomas — calm, American").tag("GBv7mTt0atIp3Br8iCZE")
+                if !elevenLabsKeyInput.isEmpty {
+                    // Voices the user's key can actually use (public-library voices are
+                    // often rejected on free accounts, so we load the account's voices).
+                    if elevenLabsVoices.isEmpty {
+                        Button {
+                            loadElevenLabsVoices()
+                        } label: {
+                            Label(elevenLabsVoicesLoading ? "Loading Voices…" : "Load My ElevenLabs Voices",
+                                  systemImage: "person.wave.2")
+                        }
+                        .disabled(elevenLabsVoicesLoading)
+                    } else {
+                        Picker("Voice", selection: $selectedVoice) {
+                            ForEach(elevenLabsVoices) { voice in
+                                Text(elevenLabsVoiceLabel(voice)).tag(voice.voiceId)
+                            }
+                        }
+                        .onChange(of: selectedVoice) { _, newValue in
+                            Config.setElevenLabsVoiceId(newValue)
+                            appState.speechService.resetElevenLabsQuota()
+                        }
+                    }
+
+                    // Paste any Voice ID (custom/cloned voices not in the list).
+                    TextField("Voice ID", text: $selectedVoice)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .font(.system(.body, design: .monospaced))
+                        .onChange(of: selectedVoice) { _, newValue in
+                            Config.setElevenLabsVoiceId(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
+                            appState.speechService.resetElevenLabsQuota()
+                        }
+
+                    if let elevenLabsVoicesError {
+                        Text(elevenLabsVoicesError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 InfoToggle(
@@ -92,6 +108,13 @@ struct ServicesSettingsView: View {
             } footer: {
                 if elevenLabsKeyInput.isEmpty {
                     Text("Add an ElevenLabs API key for natural-sounding voices. Without one, the built-in iOS voice is used.")
+                } else {
+                    Text("Free ElevenLabs accounts may reject public-library voices — load voices from your account, or paste a Voice ID your key can use. The iOS voice is still used as a fallback.")
+                }
+            }
+            .onAppear {
+                if !elevenLabsKeyInput.isEmpty, elevenLabsVoices.isEmpty {
+                    loadElevenLabsVoices()
                 }
             }
 
@@ -275,5 +298,41 @@ struct ServicesSettingsView: View {
         case .enhanced: return "Enhanced"
         default:        return "Default"
         }
+    }
+
+    private func loadElevenLabsVoices() {
+        let apiKey = elevenLabsKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty, !elevenLabsVoicesLoading else { return }
+        elevenLabsVoicesLoading = true
+        elevenLabsVoicesError = nil
+        Task {
+            do {
+                let voices = try await TextToSpeechService.fetchElevenLabsVoices(apiKey: apiKey)
+                await MainActor.run {
+                    elevenLabsVoices = voices
+                    elevenLabsVoicesLoading = false
+                    elevenLabsVoicesError = voices.isEmpty ? "No voices returned for this API key." : nil
+                    // If the saved voice isn't in the account list, default to the first.
+                    if !voices.isEmpty, !voices.contains(where: { $0.voiceId == selectedVoice }),
+                       let first = voices.first {
+                        selectedVoice = first.voiceId
+                        Config.setElevenLabsVoiceId(first.voiceId)
+                        appState.speechService.resetElevenLabsQuota()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    elevenLabsVoicesLoading = false
+                    elevenLabsVoicesError = "Could not load voices: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func elevenLabsVoiceLabel(_ voice: TextToSpeechService.ElevenLabsVoice) -> String {
+        if let category = voice.category, !category.isEmpty {
+            return "\(voice.name) — \(category)"
+        }
+        return voice.name
     }
 }
