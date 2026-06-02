@@ -134,6 +134,8 @@ struct PersonaPickerTab: View {
     @State private var editingPersona: Persona? = nil
     @AppStorage("fieldAssistEnabled") private var faEnabled: Bool = false
     @AppStorage("fieldAssistDefaultVaultId") private var faVaultId: String = "refrigeration"
+    @State private var pendingProcedure: Procedure?   // scenario tapped, awaiting confirm
+    @State private var sessionError: String?
 
     var body: some View {
         List {
@@ -292,7 +294,6 @@ struct PersonaPickerTab: View {
                 ForEach(unlockedVaults, id: \.id) { manifest in
                     Button {
                         faVaultId = manifest.id
-                        applyVaultModel(manifest.id)
                     } label: {
                         if faVaultId == manifest.id {
                             Label(manifest.name, systemImage: "checkmark")
@@ -327,11 +328,9 @@ struct PersonaPickerTab: View {
             Picker("Model for this vault", selection: Binding(
                 get: { Config.fieldAssistVaultModelId(for: faVaultId) ?? "" },
                 set: { newId in
+                    // Just link the model to the vault — it's applied only while a
+                    // session is running (see AppState.applyFieldSessionModel).
                     Config.setFieldAssistVaultModelId(newId.isEmpty ? nil : newId, for: faVaultId)
-                    if !newId.isEmpty {
-                        Config.setActiveModelId(newId)
-                        appState.llmService.refreshActiveModel()
-                    }
                 }
             )) {
                 Text("Use current model").tag("")
@@ -348,7 +347,7 @@ struct PersonaPickerTab: View {
         } header: {
             Text("Field Assist")
         } footer: {
-            Text("Switch the active knowledge vault — each vault remembers its own model and applies it when selected. Tap Manage for license, vault editing, and sessions.")
+            Text("Switch the active knowledge vault. Each vault can link its own model, used only while a session is running. Tap Manage for license, vault editing, and sessions.")
         }
 
         if let current {
@@ -360,37 +359,75 @@ struct PersonaPickerTab: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(procedures) { proc in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(proc.title)
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(Color(.label))
-                            if let desc = proc.description, !desc.isEmpty {
-                                Text(desc)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
+                        Button {
+                            pendingProcedure = proc
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(proc.title)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(Color(.label))
+                                    if let desc = proc.description, !desc.isEmpty {
+                                        Text(desc)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    Text("\(proc.steps.count) step\(proc.steps.count == 1 ? "" : "s")")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "play.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(AccentColors.aiCoral)
                             }
-                            Text("\(proc.steps.count) step\(proc.steps.count == 1 ? "" : "s")")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                            .contentShape(Rectangle())
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        .buttonStyle(.plain)
                     }
                 }
             } header: {
                 Text("Scenarios — \(current.name)")
             } footer: {
-                Text("Guided, step-by-step procedures in this vault. Start one hands-free during a session: \u{201C}start the \u{2039}name\u{203A} procedure.\u{201D}")
+                Text("Tap a scenario to start a Field Assist session running that guided procedure.")
+            }
+            .confirmationDialog(
+                "Start session?",
+                isPresented: Binding(get: { pendingProcedure != nil }, set: { if !$0 { pendingProcedure = nil } }),
+                presenting: pendingProcedure
+            ) { proc in
+                Button("Start \(proc.title)") { startFieldSession(procedure: proc, vaultName: current.name) }
+                Button("Cancel", role: .cancel) { pendingProcedure = nil }
+            } message: { proc in
+                Text("Start a Field Assist session on \(current.name) and run \u{201C}\(proc.title)\u{201D}.")
+            }
+            .alert(
+                "Couldn't start session",
+                isPresented: Binding(get: { sessionError != nil }, set: { if !$0 { sessionError = nil } })
+            ) {
+                Button("OK", role: .cancel) { sessionError = nil }
+            } message: {
+                Text(sessionError ?? "")
             }
         }
     }
 
-    /// Apply a vault's linked model (if any) to the active model.
-    private func applyVaultModel(_ vaultId: String) {
-        guard let modelId = Config.fieldAssistVaultModelId(for: vaultId),
-              Config.savedModels.contains(where: { $0.id == modelId }) else { return }
-        Config.setActiveModelId(modelId)
-        appState.llmService.refreshActiveModel()
+    /// Start a Field Assist session on the active vault and launch the chosen procedure.
+    private func startFieldSession(procedure: Procedure, vaultName: String) {
+        let svc = FieldSessionService.shared
+        do {
+            if svc.isSessionActive {
+                _ = try? svc.endSession()
+            }
+            _ = try svc.startSession(vaultId: faVaultId, assetId: nil)
+            _ = try svc.startProcedure(id: procedure.id)
+            NSLog("[FieldAssist] Started session on %@ + procedure %@", faVaultId, procedure.id)
+        } catch {
+            sessionError = error.localizedDescription
+        }
+        pendingProcedure = nil
     }
 
     private func activatePersona(_ persona: Persona) {
