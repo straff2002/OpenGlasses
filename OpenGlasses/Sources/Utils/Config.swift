@@ -2596,6 +2596,18 @@ struct Config {
     static func setAgentModelDownloaded(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: "agentModelDownloaded")
     }
+
+    /// Whether fast-tier queries may run on the *on-device* MLX agent model.
+    /// Default off: the bundled gemma-4 MLX path can fatally crash during inference
+    /// ("SmallVector out of range"), and that crash is uncatchable, so we don't route
+    /// to it unless the user explicitly opts in. Cloud agent models are unaffected.
+    static var localAgentEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "localAgentEnabled")
+    }
+
+    static func setLocalAgentEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "localAgentEnabled")
+    }
 }
 
 // MARK: - App Mode Enum
