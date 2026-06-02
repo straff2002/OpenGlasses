@@ -135,6 +135,9 @@ struct PersonaPickerTab: View {
 
     var body: some View {
         List {
+            // Field Assist sits above the personas — its own mode for field engineers.
+            fieldAssistSection
+
             let personas = Config.enabledPersonas
 
             if personas.isEmpty {
@@ -217,6 +220,56 @@ struct PersonaPickerTab: View {
         .sheet(item: $editingPersona) { persona in
             PersonaDetailView(persona: persona, appState: appState)
         }
+    }
+
+    // MARK: - Field Assist mode
+
+    /// Field Assist as a first-class mode, shown above the personas. Links to the
+    /// Field Assist screen (license/paywall, master toggle, vault picker, sessions).
+    @ViewBuilder
+    private var fieldAssistSection: some View {
+        Section {
+            NavigationLink {
+                FieldAssistSettingsView()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "wrench.and.screwdriver.fill")
+                        .font(.title3)
+                        .foregroundStyle(AccentColors.aiCoral)
+                        .frame(width: 32)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Field Assist")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(Color(.label))
+                        Text(fieldAssistSubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if Config.fieldAssistActive {
+                        Text("On")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    } else if !Config.fieldAssistUnlocked {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .accessibilityLabel("Field Assist. \(fieldAssistSubtitle)")
+        } header: {
+            Text("Field Assist")
+        } footer: {
+            Text("Hands-free, domain-grounded guidance for field engineers — load a knowledge vault and run grounded, audited sessions.")
+        }
+    }
+
+    private var fieldAssistSubtitle: String {
+        if !Config.fieldAssistUnlocked { return "Unlock for grounded field-engineer guidance" }
+        if Config.fieldAssistActive { return "On — manage vaults & sessions" }
+        return "Tap to enable"
     }
 
     private func activatePersona(_ persona: Persona) {
