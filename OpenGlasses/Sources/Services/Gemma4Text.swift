@@ -194,7 +194,7 @@ nonisolated class Gemma4ProportionalRoPE: Module, OffsetLayer {
 
         if !Self.didLogShapes {
             Self.didLogShapes = true
-            print("🔬 Gemma4 RoPE: x.shape=\(x.shape) dims=\(dims) rotatedDims=\(rotatedDims) half=\(dims / 2) offset=\(offset)")
+            NSLog("🔬 Gemma4 RoPE x.shape=%@ dims=%d rotatedDims=%d offset=%d", "\(x.shape)", dims, rotatedDims, offset)
         }
 
         // Full rotary (rotatedDims == dims): the split/concat path below produces
@@ -372,7 +372,7 @@ nonisolated class Gemma4Attention: Module {
             let maskLen = maskArray.shape.last ?? keysSeqLen
             if !Self.didLogAttn {
                 Self.didLogAttn = true
-                print("🔬 Gemma4 attn: B=\(B) L=\(L) keys.shape=\(keys.shape) queries.shape=\(queries.shape) maskLen=\(maskLen) keysSeqLen=\(keysSeqLen)")
+                NSLog("🔬 Gemma4 attn B=%d L=%d keys.shape=%@ queries.shape=%@ maskLen=%d keysSeqLen=%d", B, L, "\(keys.shape)", "\(queries.shape)", maskLen, keysSeqLen)
             }
             // Only trim when the mask is LONGER than the key sequence — slicing
             // 0..<keysSeqLen when keysSeqLen exceeds the mask's last dim would itself

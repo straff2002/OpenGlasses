@@ -240,6 +240,9 @@ final class LocalLLMService: ObservableObject {
         // its prepare() path doesn't expand 1D internally (ml-explore/mlx-swift-lm#240).
         // Other models accept (1, L) fine, so this is safe across the board.
         let tokenIDs = MLXArray(tokens).expandedDimensions(axis: 0)
+        // NSLog (not print) so it survives the fatal MLX crash in the unified log,
+        // confirming the 2D fix is live and what shape reaches the model.
+        NSLog("🔬 LocalLLM.generate model=%@ tokenIDs.shape=%@ count=%d", loadedModelId ?? "?", "\(tokenIDs.shape)", tokens.count)
         let input = LMInput(text: .init(tokens: tokenIDs))
 
         // Watch for backgrounding *during* generation. The pre-check above covers
