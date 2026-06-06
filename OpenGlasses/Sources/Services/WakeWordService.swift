@@ -120,9 +120,19 @@ class WakeWordService: NSObject, ObservableObject {
         let options: AVAudioSession.CategoryOptions = useGlassesMic
             ? [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
             : [.defaultToSpeaker]
-        try? session.setCategory(.playAndRecord, mode: .measurement, options: options)
+        // .default (NOT .measurement): .measurement disables system audio processing/gain,
+        // which makes TTS playback extremely quiet on the iPhone speaker. The wake-word /
+        // command capture works fine in .default (see resumeOtherAudio, which already does this).
+        try? session.setCategory(.playAndRecord, mode: .default, options: options)
         try? session.setActive(true)
-        print("🎤 Pausing other audio for active listening")
+        // Belt-and-suspenders: when not on a Bluetooth (glasses) route, force the main
+        // speaker so playback never ends up stuck on the receiver/earpiece.
+        let onBluetooth = session.currentRoute.outputs.contains {
+            [.bluetoothHFP, .bluetoothA2DP, .bluetoothLE].contains($0.portType)
+        }
+        if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
+        let outRoute = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+        print("🎤 Pausing other audio for active listening — output route: \(outRoute)")
     }
 
     /// Restore other audio (podcasts, music) after active listening ends.
