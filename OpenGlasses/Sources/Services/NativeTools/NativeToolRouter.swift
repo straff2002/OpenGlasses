@@ -11,6 +11,11 @@ final class NativeToolRouter {
     /// Set by AppState to speak progress updates via TTS.
     var onLongRunningUpdate: ((String) -> Void)?
 
+    /// Human-in-the-loop gate for high-impact / irreversible tool calls. Set by AppState.
+    /// When agent mode is on, destructive actions are confirmed by the user before running —
+    /// the backstop against a prompt-injected instruction driving the model to act unprompted.
+    var confirmationCoordinator: ToolConfirmationCoordinator?
+
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
@@ -21,6 +26,21 @@ final class NativeToolRouter {
 
     /// Handle a tool call by name. Routing order: native → MCP → OpenClaw → error.
     func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
+        // 0. Prompt-injection backstop: gate high-impact / irreversible actions behind an
+        // explicit user confirmation when agent mode is on. Even if untrusted content talked
+        // the model into calling a destructive tool, nothing runs without the user approving.
+        if Config.agentModeEnabled,
+           PromptInjectionPolicy.isHighImpact(toolName: name),
+           let coordinator = confirmationCoordinator {
+            let summary = PromptInjectionPolicy.actionSummary(toolName: name, args: args)
+            NSLog("[NativeToolRouter] Requesting user confirmation for high-impact tool: %@", name)
+            let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
+            guard approved else {
+                NSLog("[NativeToolRouter] User declined high-impact tool: %@", name)
+                return .failure("The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again.")
+            }
+        }
+
         // 1. Check native tools first
         if let tool = registry.tool(named: name) {
             NSLog("[NativeToolRouter] Executing native tool: %@", name)

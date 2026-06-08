@@ -406,7 +406,21 @@ class LLMService: ObservableObject {
         if shouldInclude(.openClaw), let skillContext = InstalledSkillStore.shared.promptContext() {
             prompt += "\n\n\(skillContext)"
         }
+        // Always append the prompt-injection / untrusted-content policy. This is a security
+        // baseline — it is never stripped by the classifier and applies in every mode.
+        prompt += PromptInjectionPolicy.systemPromptPolicy
         return prompt
+    }
+
+    /// Frame a tool result before feeding it back to the model. Output from tools that return
+    /// untrusted external content (web, OCR, captions, gateway, MCP, …) is wrapped in a labelled
+    /// envelope so injected instructions inside it are visibly framed as data, not commands.
+    private func wrapToolResultForModel(toolName: String, content: String) -> String {
+        let isKnownNative = nativeToolRouter?.registry.tool(named: toolName) != nil
+        guard PromptInjectionPolicy.isUntrustedOutput(toolName: toolName, isKnownNativeTool: isKnownNative) else {
+            return content
+        }
+        return PromptInjectionPolicy.wrap(toolName: toolName, content: content)
     }
 
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
@@ -987,6 +1001,8 @@ class LLMService: ObservableObject {
                     case .success(let text): resultContent = text
                     case .failure(let error): resultContent = "Error: \(error)"
                     }
+                    // Frame untrusted external content as data, not instructions.
+                    let framedContent = wrapToolResultForModel(toolName: toolName, content: resultContent)
 
                     conversationHistory.append([
                         "role": "user",
@@ -994,7 +1010,7 @@ class LLMService: ObservableObject {
                             [
                                 "type": "tool_result",
                                 "tool_use_id": toolId,
-                                "content": resultContent
+                                "content": framedContent
                             ]
                         ]
                     ] as [String: Any])
@@ -1209,11 +1225,13 @@ class LLMService: ObservableObject {
                     case .success(let text): resultContent = text
                     case .failure(let error): resultContent = "Error: \(error)"
                     }
+                    // Frame untrusted external content as data, not instructions.
+                    let framedContent = wrapToolResultForModel(toolName: functionName, content: resultContent)
 
                     conversationHistory.append([
                         "role": "tool",
                         "tool_call_id": callId,
-                        "content": resultContent
+                        "content": framedContent
                     ])
 
                     // Yield-to-human: break out of the tool loop so the user can act
@@ -1393,10 +1411,13 @@ class LLMService: ObservableObject {
                     }
                     toolCallStatus = result.isSuccess ? .completed(name) : .failed(name, "Failed")
 
+                    // Frame untrusted external content as data, not instructions.
                     let resultContent: [String: Any]
                     switch result {
-                    case .success(let text): resultContent = ["result": text]
-                    case .failure(let error): resultContent = ["error": error]
+                    case .success(let text):
+                        resultContent = ["result": wrapToolResultForModel(toolName: name, content: text)]
+                    case .failure(let error):
+                        resultContent = ["error": error]
                     }
 
                     functionResponseParts.append([

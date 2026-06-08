@@ -542,6 +542,9 @@ class GeminiLiveSessionManager: ObservableObject {
             prompt += "\n\n\(vaultContext)"
         }
 
+        // Security baseline: untrusted-content / prompt-injection policy (mirrors Direct Mode).
+        prompt += PromptInjectionPolicy.systemPromptPolicy
+
         return prompt
     }
 
