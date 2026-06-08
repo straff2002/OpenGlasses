@@ -59,6 +59,9 @@ class CameraService: ObservableObject {
     /// Number of consecutive stall recoveries (for diagnostics).
     private var stallRecoveryCount = 0
 
+    /// iPhone back-camera fallback, used when the glasses camera is unavailable.
+    private let phoneSource = PhoneCameraSource()
+
     /// Name of the Photos album where glasses photos are saved.
     private nonisolated static let albumName = "Glasses"
 
@@ -287,6 +290,24 @@ class CameraService: ObservableObject {
     /// Capture a photo from the glasses camera. Returns JPEG data.
     /// Reuses the persistent session — starts it if needed, does NOT stop it after capture.
     func capturePhoto() async throws -> Data {
+        // Glasses are usable for the camera only once fully registered (state 3). When
+        // they're offline / not connected / not registered, capture from the iPhone back
+        // camera instead so the vision tools keep working without glasses.
+        if Wearables.shared.registrationState.rawValue < 3 {
+            NSLog("[Camera] Glasses not registered (state < 3) — capturing from iPhone back camera")
+            return try await phoneSource.capturePhoto()
+        }
+        do {
+            return try await captureFromGlasses()
+        } catch {
+            NSLog("[Camera] Glasses capture failed (%@) — falling back to iPhone back camera",
+                  error.localizedDescription)
+            return try await phoneSource.capturePhoto()
+        }
+    }
+
+    /// Capture a photo from the glasses camera. Returns JPEG data.
+    private func captureFromGlasses() async throws -> Data {
         isCaptureInProgress = true
         defer { isCaptureInProgress = false }
 
