@@ -118,6 +118,8 @@ targets:
         product: MWDATCore
       - package: meta-wearables-dat-ios
         product: MWDATCamera
+      - package: meta-wearables-dat-ios
+        product: MWDATDisplay
       - package: HaishinKit
         product: HaishinKit
       - package: HaishinKit
