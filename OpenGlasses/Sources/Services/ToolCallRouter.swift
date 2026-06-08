@@ -86,13 +86,26 @@ class ToolCallRouter {
         name: String,
         result: ToolResult
     ) -> [String: Any] {
+        // Frame untrusted external content (web, OCR, captions, gateway, MCP, …) as data so
+        // injected instructions inside it are visibly bounded, not treated as commands.
+        let responseValue: [String: Any]
+        switch result {
+        case .success(let text):
+            let isKnownNative = nativeToolRouter?.registry.tool(named: name) != nil
+            let framed = PromptInjectionPolicy.isUntrustedOutput(toolName: name, isKnownNativeTool: isKnownNative)
+                ? PromptInjectionPolicy.wrap(toolName: name, content: text)
+                : text
+            responseValue = ["result": framed]
+        case .failure(let error):
+            responseValue = ["error": error]
+        }
         return [
             "toolResponse": [
                 "functionResponses": [
                     [
                         "id": callId,
                         "name": name,
-                        "response": result.responseValue
+                        "response": responseValue
                     ]
                 ]
             ]

@@ -484,6 +484,9 @@ class AppState: ObservableObject, AppStateProtocol {
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
 
+    /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
+    let toolConfirmationCoordinator = ToolConfirmationCoordinator()
+
     // Tier 1 services
     let conversationStore = ConversationStore()
     let userMemory = SemanticMemoryStore()
@@ -548,6 +551,16 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return }
             Task { @MainActor in
                 await self.speechService.speak(message)
+            }
+        }
+
+        // Wire the high-impact action confirmation gate (prompt-injection backstop) and have it
+        // speak the prompt aloud so the user hears what they're approving while wearing the glasses.
+        nativeToolRouter.confirmationCoordinator = toolConfirmationCoordinator
+        toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.speechService.speak(prompt)
             }
         }
 
