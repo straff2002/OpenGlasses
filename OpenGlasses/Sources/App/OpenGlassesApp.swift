@@ -620,8 +620,16 @@ class AppState: ObservableObject, AppStateProtocol {
         medicalExportService.hipaaService = hipaaService
         faceRecognition.onRecognition = { [weak self] name in
             Task { @MainActor in
+                guard let self else { return }
+                // Log the encounter (who/where/when) in the brain's encounter log.
+                BrainStore.shared.logEncounter(
+                    person: name,
+                    locationName: self.locationService.locationContext,
+                    latitude: self.locationService.currentLocation?.coordinate.latitude,
+                    longitude: self.locationService.currentLocation?.coordinate.longitude
+                )
                 // Whisper the name quietly via TTS
-                await self?.speechService.speak("That's \(name).")
+                await self.speechService.speak("That's \(name).")
             }
         }
 

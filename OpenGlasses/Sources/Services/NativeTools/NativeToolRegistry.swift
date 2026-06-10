@@ -171,6 +171,14 @@ final class NativeToolRegistry {
         register(ChineseAppsTool())
         register(AsianMessagingTool())
 
+        // Unified brain — knowledge graph + cross-store retrieval ([[BrainTool]]).
+        // Registered unconditionally: the graph and encounter log work even with
+        // semantic memory disabled; the tool degrades gracefully per missing store.
+        var brainTool = BrainTool()
+        brainTool.memoryStore = semanticMemory
+        brainTool.documentStore = documentStore
+        register(brainTool)
+
         // Semantic memory tools — only available when memory is enabled
         if let memory = semanticMemory {
             var searchTool = MemorySearchTool()
