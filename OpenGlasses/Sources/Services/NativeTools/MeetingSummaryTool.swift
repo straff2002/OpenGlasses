@@ -255,5 +255,9 @@ struct MeetingSummaryTool: NativeTool {
         // Keep max 50 notes
         if notes.count > 50 { notes = Array(notes.suffix(50)) }
         UserDefaults.standard.set(notes, forKey: key)
+
+        // Feed the knowledge graph: typed edges from the summary, plus mentioned_in
+        // edges linking known people to this meeting.
+        BrainStore.shared.ingest(text: content, sourceRef: title, sourceKind: "meeting")
     }
 }

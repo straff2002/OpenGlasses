@@ -33,6 +33,10 @@ struct SocialContextTool: NativeTool {
                 return "What should I remember about \(name)?"
             }
             SocialContextStore.shared.addFact(person: name, fact: fact)
+            // Feed the knowledge graph: the person becomes an entity (so meetings can
+            // link to them) and "works at Stripe" becomes a typed edge.
+            BrainStore.shared.upsertEntity(kind: "person", name: name)
+            BrainStore.shared.ingest(text: fact, subject: name)
             let count = SocialContextStore.shared.facts(for: name).count
             return "Noted about \(name): \(fact). I now have \(count) fact\(count == 1 ? "" : "s") about them."
 
