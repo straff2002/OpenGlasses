@@ -137,7 +137,7 @@ voice in parallel: "switch to Scout" → HUDVoiceCommandRouter matches modePerso
 - **List length in the field.** Power users may have many quick actions/playbooks. *Recommendation: paginate at 6 with `More…`; later add a "Favorites" subset pinned to the root for the field.*
 - **Mode switch safety.** Switching to Gemini/OpenAI Realtime from the lens starts a live session (mic/network). *Recommendation: require a second confirm item for mode switches that open a realtime session; persona swaps (same mode) are one-tap.*
 - **Notification interruptions mid-menu.** A geofence/proactive alert arriving while a menu is open. *Recommendation: brief flash badge, never steal focus from an open launcher screen (reuse the [Plan X](X-interactive-hud-now-next-tasks.md) flash-and-restore).*
-- **Agent-mode gating.** Anything that can *act* autonomously stays behind [agentModeEnabled](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/feedback_agentic_toggle.md); the launcher itself is user-initiated, so it isn't gated, but agentic quick actions inside it inherit that gate.
+- **Agent-mode gating.** Anything that can *act* autonomously stays behind agentModeEnabled; the launcher itself is user-initiated, so it isn't gated, but agentic quick actions inside it inherit that gate.
 
 ---
 

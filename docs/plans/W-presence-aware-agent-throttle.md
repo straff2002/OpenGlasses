@@ -18,7 +18,7 @@ qaeros throttles server-side agent cycles by operator tab-focus. We don't have a
 | Voice activity | existing wake-word / transcription pipeline | recent spoken interaction |
 | Time since last command | app state | how long since the user engaged |
 | Glasses connectivity | DAT session state | are the glasses even on the face |
-| Foreground | app lifecycle (+ [Local Model Background memory](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/project_local_model_background.md): MLX can't run backgrounded) | local inference only runs foreground |
+| Foreground | app lifecycle (+ Local Model Background memory: MLX can't run backgrounded) | local inference only runs foreground |
 
 These fuse into `engagement ∈ [0,1]`: ~1.0 actively talking/looking, ~0.3 connected-but-idle, ~0.0 disconnected/backgrounded.
 
@@ -115,7 +115,7 @@ held recommendations are spoken: "While you were idle: 2 suggestions."
 - Wake-word / transcription pipeline (existing) — the voice-activity signal source.
 - DAT `DeviceSession` state (existing) — connectivity signal.
 - **[Plan S](S-plan-then-execute-and-safety-supervisor.md)** — the autonomy-ceiling consumer; W is most valuable once S's agent loop exists, but the loop-throttle half ships value immediately on `LiveCoachService`.
-- Note the [Local Model Background memory](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/project_local_model_background.md): MLX inference is foreground-only, so `away`/backgrounded ⇒ paused is also a correctness constraint, not just an optimization.
+- Note the Local Model Background memory: MLX inference is foreground-only, so `away`/backgrounded ⇒ paused is also a correctness constraint, not just an optimization.
 
 ---
 

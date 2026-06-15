@@ -1,6 +1,6 @@
 # Plan E — Claude Code MCP Server Mode
 
-**Strategic fit:** Developer-only feature. Lets a Claude Code session on a Mac "see through" OpenGlasses by exposing camera frames + display broadcast as MCP tools. Gated behind existing `agentModeEnabled` toggle (per [Agentic Toggle memory](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/feedback_agentic_toggle.md) pattern).
+**Strategic fit:** Developer-only feature. Lets a Claude Code session on a Mac "see through" OpenGlasses by exposing camera frames + display broadcast as MCP tools. Gated behind existing `agentModeEnabled` toggle (per Agentic Toggle memory pattern).
 
 **Effort:** ~2 days
 
