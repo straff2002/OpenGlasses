@@ -100,10 +100,31 @@ final class GlassesDisplayService: ObservableObject {
     private var currentScreen: HUDScreen?
     private var screenSelectionHandler: ((String) -> Void)?
 
+    // MARK: - Testing seam
+    //
+    // No Ray-Ban *Display* hardware is available in CI/sim, so the interactive logic
+    // (capability gate, ambient suppression, render-key dedup, flash-then-restore) is
+    // validated headlessly. `testCapabilityOverride` bypasses the hardware capability
+    // check; `testRenderSink`, when set, captures the frame the queue *would* send
+    // instead of hitting the SDK. Both are nil in production — the real SDK path is
+    // untouched. The Neural Band itself is simulated in tests by invoking the
+    // `onClick` of the buttons produced by `makeScreenView(_:)`.
+    var testCapabilityOverride: Bool?
+    var testRenderSink: ((HUDFrame) -> Void)?
+
+    /// A frame the render queue resolved to — the test observation point.
+    enum HUDFrame: Equatable {
+        case content(body: String, title: String?, icon: HUDIcon)
+        case screen(renderKey: String)
+        case clear
+    }
+
     /// Max characters for the body line — kept short for in-lens legibility.
-    private static let maxLength = 120
+    /// `nonisolated` so `condense`'s default argument can reference it without a
+    /// Swift 6 main-actor-isolation warning (it's an immutable Sendable constant).
+    private nonisolated static let maxLength = 120
     /// Max characters for a heading.
-    private static let maxTitleLength = 40
+    private nonisolated static let maxTitleLength = 40
 
     // MARK: - Capability
 
@@ -111,6 +132,10 @@ final class GlassesDisplayService: ObservableObject {
     /// safe to call frequently. Updates `hasDisplayCapability` as a side effect.
     @discardableResult
     func deviceSupportsDisplay() -> Bool {
+        if let testCapabilityOverride {
+            if hasDisplayCapability != testCapabilityOverride { hasDisplayCapability = testCapabilityOverride }
+            return testCapabilityOverride
+        }
         let supported: Bool = {
             guard let id = deviceSelector.activeDevice,
                   let device = Wearables.shared.deviceForIdentifier(id) else {
@@ -209,9 +234,9 @@ final class GlassesDisplayService: ObservableObject {
             // Only act if this frame is still what's on screen.
             guard self.lastRendered == op else { return }
             if self.isInteractive, let screen = self.currentScreen {
-                self.enqueue(.screen(screen))   // restore the held screen after the flash
+                self.enqueue(.screen(screen))     // restore the held screen after the flash
             } else {
-                self.clear()
+                self.enqueue(.op(.clear))         // auto-clear the just-shown transient frame
             }
         }
     }
@@ -230,15 +255,23 @@ final class GlassesDisplayService: ObservableObject {
                     switch frame {
                     case .op(let op):
                         if op == self.lastRendered { continue } // skip redundant identical sends
-                        switch op {
-                        case .show(let content): try await self.renderContent(content)
-                        case .clear: try await self.renderClear()
+                        if let sink = self.testRenderSink {
+                            sink(Self.descriptor(for: op))
+                        } else {
+                            switch op {
+                            case .show(let content): try await self.renderContent(content)
+                            case .clear: try await self.renderClear()
+                            }
                         }
                         self.lastRendered = op
                         self.lastScreenKey = nil
                     case .screen(let screen):
                         if screen.renderKey == self.lastScreenKey { continue }
-                        try await self.renderScreen(screen)
+                        if let sink = self.testRenderSink {
+                            sink(.screen(renderKey: screen.renderKey))
+                        } else {
+                            try await self.renderScreen(screen)
+                        }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
                     }
@@ -297,39 +330,70 @@ final class GlassesDisplayService: ObservableObject {
 
     private func renderScreen(_ screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
-        let view = FlexBox(
+        try await display.send(makeScreenView(screen))
+    }
+
+    private static func descriptor(for op: RenderOp) -> HUDFrame {
+        switch op {
+        case .show(let content): return .content(body: content.body, title: content.title, icon: content.icon)
+        case .clear: return .clear
+        }
+    }
+
+    /// Build the interactive `FlexBox` for `screen`. Internal and free of SDK session
+    /// state so tests can inspect the component tree and invoke each Button's `onClick`
+    /// to simulate a Neural-Band selection.
+    func makeScreenView(_ screen: HUDScreen) -> FlexBox {
+        // Pre-shape all text and presentation here (MainActor context) so the
+        // result-builder closure below never references the MainActor-isolated
+        // `condense`/`maxLength`. Each button model carries only Sendable values —
+        // never the HUDItem, whose `action` closure isn't Sendable; selection routes
+        // back by id.
+        let headingText = screen.title.flatMap { $0.isEmpty ? nil : Self.condense($0, max: Self.maxTitleLength) }
+        let lineModels = screen.lines.map { line in
+            (text: Self.condense(line.text), iconName: line.icon.iconName,
+             style: line.emphasis.textStyle, color: line.emphasis.textColor)
+        }
+        let buttonModels = screen.items.map { item in
+            (id: item.id, label: Self.condense(item.label, max: Self.maxTitleLength),
+             style: item.style.buttonStyle, iconName: item.icon.iconName)
+        }
+
+        return FlexBox(
             direction: .column,
             spacing: 6,
             alignment: .start,
             padding: EdgeInsets(all: 12)
         ) {
-            if let title = screen.title, !title.isEmpty {
-                Text(Self.condense(title, max: Self.maxTitleLength), style: .heading, color: .primary)
+            if let headingText {
+                Text(headingText, style: .heading, color: .primary)
             }
-            for line in screen.lines {
-                let text = Self.condense(line.text)
-                if let iconName = line.icon.iconName {
+            for line in lineModels {
+                if let iconName = line.iconName {
                     FlexBox(direction: .row, spacing: 6, alignment: .center) {
                         Icon(name: iconName)
-                        Text(text, style: line.emphasis.textStyle, color: line.emphasis.textColor)
+                        Text(line.text, style: line.style, color: line.color)
                     }
                 } else {
-                    Text(text, style: line.emphasis.textStyle, color: line.emphasis.textColor)
+                    Text(line.text, style: line.style, color: line.color)
                 }
             }
-            for item in screen.items {
-                // Capture only Sendable values (id + presentation) — never the HUDItem,
-                // whose `action` closure isn't Sendable. Selection routes back by id.
-                let id = item.id
-                let label = Self.condense(item.label, max: Self.maxTitleLength)
-                let style = item.style.buttonStyle
-                let iconName = item.icon.iconName
-                Button(label: label, style: style, iconName: iconName, onClick: { [weak self] in
+            for button in buttonModels {
+                let id = button.id
+                Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
                     Task { @MainActor in self?.screenSelectionHandler?(id) }
                 })
             }
         }
-        try await display.send(view)
+    }
+
+    /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
+    /// rendered tree, in order, so a test can simulate Neural-Band selections without
+    /// importing the SDK. Each fires exactly the routing the real button would.
+    func testInteractiveButtonActions(for screen: HUDScreen) -> [() -> Void] {
+        makeScreenView(screen).children
+            .compactMap { ($0 as? Button)?.onClick }
+            .map { onClick in { onClick() } }
     }
 
     // MARK: - Session lifecycle

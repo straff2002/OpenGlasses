@@ -113,6 +113,58 @@ final class HUDInteractionTests: XCTestCase {
         XCTAssertEqual(source.backCount, 1)
     }
 
+    // MARK: - Router lifecycle (with the real GlassesDisplayService via its test seam)
+
+    private func makeDisplay() -> (GlassesDisplayService, () -> [GlassesDisplayService.HUDFrame]) {
+        let svc = GlassesDisplayService()
+        svc.testCapabilityOverride = true
+        var frames: [GlassesDisplayService.HUDFrame] = []
+        svc.testRenderSink = { frames.append($0) }
+        return (svc, { frames })
+    }
+
+    func testRouterPresentsCardOnStart() async {
+        let saved = Config.glassesDisplayEnabled
+        Config.setGlassesDisplayEnabled(true)
+        defer { Config.setGlassesDisplayEnabled(saved) }
+
+        let (display, frames) = makeDisplay()
+        let router = HUDRouter(display: display)
+        let source = FakeTaskSource()
+        source.current = HUDStep(index: 0, total: 2, title: "First")
+        source.next = HUDStep(index: 1, total: 2, title: "Second")
+
+        router.startTask(source)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(router.isPresentingTask)
+        XCTAssertEqual(frames().count, 1)
+        guard case .screen? = frames().first else { return XCTFail("expected a screen frame") }
+    }
+
+    func testRouterFlashesCompleteAndStopsWhenSourceFinishes() async {
+        let saved = Config.glassesDisplayEnabled
+        Config.setGlassesDisplayEnabled(true)
+        defer { Config.setGlassesDisplayEnabled(saved) }
+
+        let (display, frames) = makeDisplay()
+        let router = HUDRouter(display: display)
+        let source = FakeTaskSource()
+        source.current = HUDStep(index: 0, total: 1, title: "Only")
+        router.startTask(source)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        source.current = nil          // workflow done
+        source.emitChange()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertFalse(router.isPresentingTask)
+        XCTAssertTrue(frames().contains {
+            if case .content(let body, _, _) = $0 { return body.contains("complete") }
+            return false
+        })
+    }
+
     // MARK: - Render-key dedup
 
     func testRenderKeyStableForIdenticalContent() {
@@ -146,4 +198,6 @@ private final class FakeTaskSource: HUDTaskSource {
     func complete() async { completeCount += 1 }
     func skip() async { skipCount += 1 }
     func back() async { backCount += 1 }
+
+    func emitChange() { subject.send(()) }
 }

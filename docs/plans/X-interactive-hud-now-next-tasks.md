@@ -18,7 +18,7 @@
 
 So an interactive screen is just *a `FlexBox` of `Button`s with closures*. Selecting one runs the closure; we then `send` the next screen. We manage the nav stack app-side; the band drives focus + select on whatever we last sent.
 
-> ⚠️ **One on-device unknown:** whether the Neural Band can *free-navigate* an arbitrary list of our `Button`s (multi-item focus traversal), or only activate a single primary action. Not visible in the SDK. **Validate first** (see Build order step 0) — the whole interaction model rests on it. Greig has hardware; this can't be checked in the simulator.
+> ⚠️ **One unverifiable assumption:** whether the Neural Band can *free-navigate* an arbitrary list of our `Button`s (multi-item focus traversal) versus only activating a single primary action. Not visible in the SDK, and **no Ray-Ban Display hardware is available to confirm it** — so this is a documented risk, not a checked fact. The interaction logic is instead validated entirely by **headless tests** that simulate the band by invoking each rendered button's `onClick` (`GlassesDisplayService.testInteractiveButtonActions(for:)`). If a device ever becomes available, run the spike below; if the band turns out to be single-action only, the fallback is a **paged** card (one primary action, band cycles which action is armed) — the rest of the design is unaffected.
 
 ---
 
@@ -129,7 +129,7 @@ source.current == nil  → render "✓ Workflow complete" flash → exit interac
 
 ## Build order
 
-0. **Spike (½ day, on-device):** send a `FlexBox` with 3–4 `Button`s and log which `onClick`s the band can reach. Confirms free-navigation vs single-action. If single-action only, fall back to a **paged** card (one primary action + band-cycles-the-action) — note it and proceed; the rest of the plan is unaffected.
+0. **(Deferred — no hardware.)** The on-device band-navigation spike can't run without a Display device. Until one exists, the band is simulated in tests (fire each rendered button's `onClick`) and free-navigation is a documented assumption (see *SDK reality*). Every other step proceeds test-first.
 1. `HUDScreen` + render-to-`FlexBox`, and the `HUDRouter` interactive-mode gate in `GlassesDisplayService` (ambient suppressed while a screen is held). Unit-test the render mapping (screen → component tree) headlessly.
 2. `HUDTaskSource` + `PlaybookHUDTaskSource` (linear is simplest). Auto-present the card on Playbook start; wire `Done/Skip/Back`.
 3. Voice bridge: "next/done/skip/back" → active source.
