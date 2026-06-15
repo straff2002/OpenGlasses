@@ -2,7 +2,7 @@
 
 [中文文档 (Chinese)](README.zh-CN.md)
 
-An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ built-in tools, multi-LLM support (cloud + on-device) with automatic model routing, personas with simultaneous wake words, live translation, hands-free field-service guidance, real-time vision coaching, MCP tool servers, and CarPlay + Apple Watch companions — all controlled hands-free by voice.
+An open-source voice-powered AI assistant for Ray-Ban and Oakley Meta smart glasses. 85+ built-in tools, multi-LLM support (cloud + on-device) with automatic model routing, personas with simultaneous wake words, an in-lens HUD with hands-free task control on Ray-Ban Display glasses, an on-device knowledge graph, live translation, hands-free field-service guidance, real-time vision coaching, MCP tool servers, and CarPlay + Apple Watch companions — all controlled hands-free by voice.
 
 > **Note**: The Meta Wearables SDK is currently in **developer preview**. App Store distribution is not yet supported — each user must build the app from source with their own Meta developer credentials.
 
@@ -24,7 +24,7 @@ An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ bu
 
 2. **Build on your iPhone** from Xcode (⌘R) — set signing team if prompted
 3. Add an AI model in **Settings → AI Models** (Anthropic, OpenAI, Gemini, or a local model)
-4. Pair your Ray-Ban Meta glasses via the Meta AI app
+4. Pair your Ray-Ban or Oakley Meta glasses via the Meta AI app
 5. Say **"Hey OpenGlasses"** and ask anything
 
 ---
@@ -147,6 +147,17 @@ Build dossiers about people you meet.
 
 Works alongside face recognition — when the AI recognizes someone, it can recall your notes about them.
 
+### On-Device Knowledge Brain
+
+A private, on-device knowledge graph that quietly connects what you tell it — people, places, things, and how they relate — with zero cloud calls. Notes, social context, face encounters, and meeting summaries all feed it, and the AI can query the whole graph in one step.
+
+| Say | What Happens |
+|-----|-------------|
+| "Who did I meet at the conference?" | Recalls people and where/when you encountered them |
+| "How do I know Sarah?" | Traces the facts and relationships linking you |
+
+Native-first — it works without any external gateway, and everything stays on the phone.
+
 ### Barge-In
 
 Interrupt the AI mid-sentence by saying any wake word. It stops immediately and starts listening to your new question.
@@ -207,6 +218,8 @@ See exactly what data the AI receives and what network calls are made.
 | **Network Activity** | All HTTP requests categorized by Meta/AI/App/Other |
 | **Offline Mode** | One toggle disables all internet-requiring tools |
 
+The agentic path is hardened against **prompt injection** — untrusted content (web pages, scanned text, tool output) can't hijack the assistant into running sensitive tools. High-impact actions stay behind explicit confirmation and the agent-mode gate.
+
 ### Camera & Streaming
 
 - **Voice-Activated Photo Capture** — "take a picture" or "what's this?"
@@ -216,6 +229,16 @@ See exactly what data the AI receives and what network calls are made.
 - **RTMP Broadcasting** — live stream to YouTube, Twitch, Kick
 - **WebRTC Browser Streaming** — shareable URL for peer-to-peer viewing
 - **Privacy Filter** — auto-blurs bystander faces
+
+### Ray-Ban Display HUD
+
+On **Ray-Ban Display** glasses (the Meta frames with an in-lens display + Neural Band), OpenGlasses mirrors content into the heads-up display and lets you act on it hands-free. Additive and off by default (Settings → Hardware → Glasses Display). It's gated on the device's display capability — not the brand — so camera/audio frames like Ray-Ban Meta and Oakley Meta are simply unaffected.
+
+- **AI responses & live captions** — spoken answers and the ambient-caption line appear in-lens as they happen.
+- **Notification & navigation cards** — calendar and geofence reminders, plus turn-by-turn Navigation Assist guidance, rendered with icons and a safety treatment.
+- **Interactive task cards** — run a workflow or a Field Assist procedure as a **Now / Next** card and complete steps with the Neural Band (Done / Skip / Back, or branch choices) or by voice ("next", "done", "skip", "back").
+
+Built on Meta's on-device display design system, so contrast, colour, and legibility are tuned for the waveguide automatically.
 
 ### Text-to-Speech
 
@@ -280,7 +303,7 @@ Professional-grade safeguards for clinical recordings, available as an in-app su
 - **iOS 26+**
 - **Xcode 26+** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
 - **Physical iPhone** (Bluetooth, camera, microphone required)
-- **Ray-Ban Meta smart glasses** (paired via Meta AI app)
+- **Ray-Ban or Oakley Meta smart glasses** (paired via Meta AI app) — the in-lens HUD requires **Ray-Ban Display**
 - At least one LLM: API key (Anthropic, OpenAI, Gemini, etc.) OR a downloaded local model
 
 ---
