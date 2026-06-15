@@ -2035,6 +2035,20 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.playEndListeningTone()
         print("📝 Transcription: \(text)")
 
+        // HUD task control (Display Phase 3 / Plan X): while a Now/Next card is on the
+        // glasses, "next/done/skip/back" drive the task instead of going to the LLM.
+        // Checked before intent classification so these short commands aren't filtered.
+        if await hudRouter.handleVoiceCommand(text) {
+            print("🎯 HUD task command handled: \(text)")
+            if inConversation {
+                isListening = true
+                transcriptionService.startRecording()
+            } else {
+                await returnToWakeWord()
+            }
+            return
+        }
+
         // Will be updated below if persona detected in text
         var query = text
 

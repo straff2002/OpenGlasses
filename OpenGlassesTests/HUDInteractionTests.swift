@@ -165,6 +165,59 @@ final class HUDInteractionTests: XCTestCase {
         })
     }
 
+    // MARK: - Voice bridge
+
+    func testVoiceParserMatchesStrictly() {
+        XCTAssertEqual(HUDVoiceCommand.parse("done"), .complete)
+        XCTAssertEqual(HUDVoiceCommand.parse("Done."), .complete)
+        XCTAssertEqual(HUDVoiceCommand.parse("next"), .complete)
+        XCTAssertEqual(HUDVoiceCommand.parse("okay next"), .complete)
+        XCTAssertEqual(HUDVoiceCommand.parse("next step"), .complete)
+        XCTAssertEqual(HUDVoiceCommand.parse("skip"), .skip)
+        XCTAssertEqual(HUDVoiceCommand.parse("skip this step"), .skip)
+        XCTAssertEqual(HUDVoiceCommand.parse("back"), .back)
+        XCTAssertEqual(HUDVoiceCommand.parse("go back"), .back)
+        XCTAssertEqual(HUDVoiceCommand.parse("previous"), .back)
+    }
+
+    func testVoiceParserRejectsNonCommands() {
+        XCTAssertNil(HUDVoiceCommand.parse("what's the weather"))
+        XCTAssertNil(HUDVoiceCommand.parse("next time we meet"))
+        XCTAssertNil(HUDVoiceCommand.parse("back to the office"))
+        XCTAssertNil(HUDVoiceCommand.parse("I'm done with the weather"))
+        XCTAssertNil(HUDVoiceCommand.parse(""))
+    }
+
+    func testRouterHandlesVoiceOnlyWhenTaskActive() async {
+        let saved = Config.glassesDisplayEnabled
+        Config.setGlassesDisplayEnabled(true)
+        defer { Config.setGlassesDisplayEnabled(saved) }
+
+        let (display, _) = makeDisplay()
+        let router = HUDRouter(display: display)
+        let source = FakeTaskSource()
+        source.current = HUDStep(index: 0, total: 2, title: "First")
+
+        // No active task → not consumed, source untouched.
+        var consumed = await router.handleVoiceCommand("done")
+        XCTAssertFalse(consumed)
+        XCTAssertEqual(source.completeCount, 0)
+
+        router.startTask(source)
+        try? await Task.sleep(nanoseconds: 40_000_000)
+
+        consumed = await router.handleVoiceCommand("next")
+        XCTAssertTrue(consumed); XCTAssertEqual(source.completeCount, 1)
+        consumed = await router.handleVoiceCommand("skip")
+        XCTAssertTrue(consumed); XCTAssertEqual(source.skipCount, 1)
+        consumed = await router.handleVoiceCommand("go back")
+        XCTAssertTrue(consumed); XCTAssertEqual(source.backCount, 1)
+
+        // Non-command while active → not consumed (falls through to the LLM).
+        consumed = await router.handleVoiceCommand("tell me a joke")
+        XCTAssertFalse(consumed)
+    }
+
     // MARK: - Render-key dedup
 
     func testRenderKeyStableForIdenticalContent() {

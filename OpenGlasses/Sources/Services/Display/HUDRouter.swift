@@ -63,6 +63,21 @@ final class HUDRouter: ObservableObject {
         item.action()
     }
 
+    /// Voice leg of the band+voice+phone input model: while a task card is active,
+    /// "next/done/skip/back" drive the source. Returns `true` if it consumed the
+    /// utterance (so the caller doesn't also send it to the LLM). No-op otherwise.
+    @discardableResult
+    func handleVoiceCommand(_ text: String) async -> Bool {
+        guard isPresentingTask, let source = taskSource,
+              let command = HUDVoiceCommand.parse(text) else { return false }
+        switch command {
+        case .complete: await source.complete()
+        case .skip: await source.skip()
+        case .back: await source.back()
+        }
+        return true
+    }
+
     // MARK: - Card layout
 
     /// Build the Now/Next card. `static` and pure so it's unit-testable without a device.
