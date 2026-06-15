@@ -2,7 +2,7 @@
 
 [中文文档 (Chinese)](README.zh-CN.md)
 
-An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ built-in tools, multi-LLM support (cloud + on-device) with automatic model routing, personas with simultaneous wake words, an in-lens HUD with hands-free task control on Ray-Ban Display glasses, an on-device knowledge graph, live translation, hands-free field-service guidance, real-time vision coaching, MCP tool servers, and CarPlay + Apple Watch companions — all controlled hands-free by voice.
+An open-source voice-powered AI assistant for Ray-Ban and Oakley Meta smart glasses. 85+ built-in tools, multi-LLM support (cloud + on-device) with automatic model routing, personas with simultaneous wake words, an in-lens HUD with hands-free task control on Ray-Ban Display glasses, an on-device knowledge graph, live translation, hands-free field-service guidance, real-time vision coaching, MCP tool servers, and CarPlay + Apple Watch companions — all controlled hands-free by voice.
 
 > **Note**: The Meta Wearables SDK is currently in **developer preview**. App Store distribution is not yet supported — each user must build the app from source with their own Meta developer credentials.
 
@@ -24,7 +24,7 @@ An open-source voice-powered AI assistant for Ray-Ban Meta smart glasses. 85+ bu
 
 2. **Build on your iPhone** from Xcode (⌘R) — set signing team if prompted
 3. Add an AI model in **Settings → AI Models** (Anthropic, OpenAI, Gemini, or a local model)
-4. Pair your Ray-Ban Meta glasses via the Meta AI app
+4. Pair your Ray-Ban or Oakley Meta glasses via the Meta AI app
 5. Say **"Hey OpenGlasses"** and ask anything
 
 ---
@@ -232,7 +232,7 @@ The agentic path is hardened against **prompt injection** — untrusted content 
 
 ### Ray-Ban Display HUD
 
-On Ray-Ban **Display** glasses, OpenGlasses mirrors content into the in-lens heads-up display — and lets you act on it hands-free with the **Neural Band**. Additive and off by default (Settings → Hardware → Glasses Display); a safe no-op on glasses without a display.
+On **Ray-Ban Display** glasses (the Meta frames with an in-lens display + Neural Band), OpenGlasses mirrors content into the heads-up display and lets you act on it hands-free. Additive and off by default (Settings → Hardware → Glasses Display). It's gated on the device's display capability — not the brand — so camera/audio frames like Ray-Ban Meta and Oakley Meta are simply unaffected.
 
 - **AI responses & live captions** — spoken answers and the ambient-caption line appear in-lens as they happen.
 - **Notification & navigation cards** — calendar and geofence reminders, plus turn-by-turn Navigation Assist guidance, rendered with icons and a safety treatment.
@@ -303,7 +303,7 @@ Professional-grade safeguards for clinical recordings, available as an in-app su
 - **iOS 26+**
 - **Xcode 26+** and **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** (`brew install xcodegen`)
 - **Physical iPhone** (Bluetooth, camera, microphone required)
-- **Ray-Ban Meta smart glasses** (paired via Meta AI app)
+- **Ray-Ban or Oakley Meta smart glasses** (paired via Meta AI app) — the in-lens HUD requires **Ray-Ban Display**
 - At least one LLM: API key (Anthropic, OpenAI, Gemini, etc.) OR a downloaded local model
 
 ---

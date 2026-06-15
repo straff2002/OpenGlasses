@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-一款开源的语音 AI 助手应用，专为 Ray-Ban Meta 智能眼镜打造。内置 85+ 原生工具，支持多 LLM（云端 + 本地设备）并自动路由模型，多角色同时唤醒，在 Ray-Ban Display 眼镜上提供镜内 HUD 与免提任务操作，本地设备知识图谱，实时翻译，免提现场作业指导，实时视觉教练，MCP 工具服务器，以及 CarPlay + Apple Watch 配套应用——全部通过语音免提控制。
+一款开源的语音 AI 助手应用，专为 Ray-Ban 与 Oakley Meta 智能眼镜打造。内置 85+ 原生工具，支持多 LLM（云端 + 本地设备）并自动路由模型，多角色同时唤醒，在 Ray-Ban Display 眼镜上提供镜内 HUD 与免提任务操作，本地设备知识图谱，实时翻译，免提现场作业指导，实时视觉教练，MCP 工具服务器，以及 CarPlay + Apple Watch 配套应用——全部通过语音免提控制。
 
 > **注意**：Meta Wearables SDK 目前处于**开发者预览**阶段。尚不支持 App Store 分发——每位用户需使用自己的 Meta 开发者凭据从源码构建应用。
 
@@ -12,7 +12,7 @@
 
 1. 构建并安装到你的 iPhone 上（参见[从源码构建](#从源码构建)）
 2. 在 **设置 → AI 模型** 中添加 AI 模型（Anthropic、OpenAI、Gemini 或本地模型）
-3. 通过 Meta AI 应用配对你的 Ray-Ban Meta 眼镜
+3. 通过 Meta AI 应用配对你的 Ray-Ban 或 Oakley Meta 眼镜
 4. 说 **"Hey OpenGlasses"** 然后提问
 
 ---
@@ -220,7 +220,7 @@
 
 ### Ray-Ban Display HUD（镜内显示）
 
-在 Ray-Ban **Display** 眼镜上，OpenGlasses 会将内容镜像到镜内抬头显示（HUD）——并让你通过 **Neural Band（神经腕带）**免提操作。该功能为增量式，默认关闭（设置 → 硬件 → 眼镜显示）；在没有显示屏的眼镜上为安全空操作。
+在 **Ray-Ban Display** 眼镜（带镜内显示屏与 Neural Band 神经腕带的 Meta 款式）上，OpenGlasses 会将内容镜像到抬头显示（HUD），并让你免提操作。该功能为增量式，默认关闭（设置 → 硬件 → 眼镜显示）。它依据设备的显示能力而非品牌进行判断——因此 Ray-Ban Meta、Oakley Meta 等相机/音频款式不受影响。
 
 - **AI 回复与实时字幕** — 语音回答和环境字幕会实时显示在镜内。
 - **通知与导航卡片** — 日历与地理围栏提醒，以及逐步导航辅助指引，配有图标和安全提示样式。
@@ -291,7 +291,7 @@
 - **iOS 26+**
 - **Xcode 26+**
 - **实体 iPhone**（需要 Bluetooth、相机、麦克风）
-- **Ray-Ban Meta 智能眼镜**（通过 Meta AI 应用配对）
+- **Ray-Ban 或 Oakley Meta 智能眼镜**（通过 Meta AI 应用配对）——镜内 HUD 需要 **Ray-Ban Display**
 - 至少一个 LLM：API 密钥（Anthropic、OpenAI、Gemini 等）或已下载的本地模型
 
 ---
