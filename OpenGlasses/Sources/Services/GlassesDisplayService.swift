@@ -352,6 +352,14 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
+    /// Build the SDK view tree for `screen` for the on-phone preview/mirror
+    /// (`HUDPreviewView`). Session-free; the returned tree's button taps route nowhere.
+    /// Shares `makeScreenView` with the on-glasses path so the phone mirror is a single
+    /// source of truth.
+    static func previewFlexBox(for screen: HUDScreen) -> FlexBox {
+        GlassesDisplayService().makeScreenView(screen)
+    }
+
     /// Build the interactive `FlexBox` for `screen`. Internal and free of SDK session
     /// state so tests can inspect the component tree and invoke each Button's `onClick`
     /// to simulate a Neural-Band selection.
