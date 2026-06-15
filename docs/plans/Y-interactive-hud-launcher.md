@@ -10,6 +10,8 @@
 
 **Effort:** ~4–6 days (on top of X).
 
+**Status (branch `display/hud-phase4`):** 🚧 In progress. Shipped: the navigation **stack** in `HUDRouter` (open/push/pop/dismiss), `HUDMenuBuilder` + `HUDLauncher` with the **Quick Actions** and **Mode/Persona** branches, a voice "menu" open trigger, and — filling the gap the plan calls `HUDPhoneMirrorView` — a native **on-phone HUD renderer** (`HUDPreviewView`/`HUDDSLView`) that walks the same `FlexBox` tree `makeScreenView` builds, brand-styled (coral accent, capsule buttons), with SwiftUI previews and a snapshot test. 38 HUD tests pass. Follow-ups: Workflows + SOPs branches (hand off to the Plan X card), voice navigation *within* a menu, pagination, and a live in-app mirror of the current screen.
+
 ---
 
 ## What we enable (the four launcher branches)

@@ -476,6 +476,8 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var hudRouter = HUDRouter(display: glassesDisplay)
     lazy var playbookHUDSource = PlaybookHUDTaskSource(store: playbookStore)
     lazy var procedureHUDSource = ProcedureHUDTaskSource()
+    /// Band-navigable launcher on the lens (Display Phase 4 / Plan Y).
+    lazy var hudLauncher = HUDLauncher(router: hudRouter)
     let hipaaService = HIPAAComplianceService()
     let medicalExportService = MedicalExportService()
 
@@ -977,6 +979,18 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.hudRouter.startTask(self.procedureHUDSource)
             }
         cancellables.append(procedureHUDToken)
+
+        // Wire the HUD launcher's leaf actions (Display Phase 4 / Plan Y).
+        hudLauncher.runQuickAction = { [weak self] action in
+            Task { @MainActor in await self?.executeQuickAction(action) }
+        }
+        hudLauncher.switchPersona = { [weak self] persona in
+            guard let self else { return }
+            self.activePersona = persona
+            Config.setActiveModelId(persona.modelId)
+            Config.setActivePresetId(persona.presetId)
+        }
+        hudLauncher.activePersonaId = { [weak self] in self?.activePersona?.id }
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
@@ -2054,6 +2068,19 @@ class AppState: ObservableObject, AppStateProtocol {
         // Checked before intent classification so these short commands aren't filtered.
         if await hudRouter.handleVoiceCommand(text) {
             print("🎯 HUD task command handled: \(text)")
+            if inConversation {
+                isListening = true
+                transcriptionService.startRecording()
+            } else {
+                await returnToWakeWord()
+            }
+            return
+        }
+
+        // HUD launcher (Display Phase 4 / Plan Y): "menu" opens the band-navigable launcher.
+        if HUDLauncher.isOpenCommand(text), hudLauncher.hasContent {
+            print("🎛 HUD launcher opened")
+            hudLauncher.open()
             if inConversation {
                 isListening = true
                 transcriptionService.startRecording()

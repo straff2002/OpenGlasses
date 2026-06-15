@@ -78,6 +78,50 @@ final class HUDRouter: ObservableObject {
         return true
     }
 
+    // MARK: - Launcher screen stack (Display Phase 4 / Plan Y)
+
+    private var screenStack: [HUDScreen] = []
+
+    /// Whether a launcher menu is currently on the HUD.
+    @Published private(set) var isPresentingMenu = false
+
+    /// Present `root` as the base of a fresh navigation stack.
+    func openLauncher(_ root: HUDScreen) {
+        screenStack = [root]
+        isPresentingMenu = true
+        renderTop()
+    }
+
+    /// Push a child screen onto the stack (a category submenu).
+    func push(_ screen: HUDScreen) {
+        screenStack.append(screen)
+        renderTop()
+    }
+
+    /// Pop the top screen; dismiss the launcher when the stack empties.
+    func pop() {
+        guard !screenStack.isEmpty else { return }
+        screenStack.removeLast()
+        if screenStack.isEmpty { dismiss() } else { renderTop() }
+    }
+
+    /// Close the launcher entirely and return the HUD to its ambient producers.
+    func dismiss() {
+        screenStack = []
+        currentScreen = nil
+        isPresentingMenu = false
+        display.endInteractive()
+    }
+
+    /// Depth of the live menu stack (0 when closed). Exposed for tests.
+    var menuDepth: Int { screenStack.count }
+
+    private func renderTop() {
+        guard let top = screenStack.last else { return }
+        currentScreen = top
+        display.present(screen: top) { [weak self] id in self?.handleSelection(id) }
+    }
+
     // MARK: - Card layout
 
     /// Build the Now/Next card. `static` and pure so it's unit-testable without a device.
