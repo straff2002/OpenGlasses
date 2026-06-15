@@ -468,6 +468,11 @@ class AppState: ObservableObject, AppStateProtocol {
     let agentScheduler = AgentScheduler()
     let agentNotificationQueue = AgentNotificationQueue()
     let playbookStore = PlaybookStore()
+    /// Interactive HUD (Display Phase 3 / Plan X): drives a Now/Next task card on the
+    /// glasses from the active Playbook, navigable with the Neural Band.
+    lazy var hudRouter = HUDRouter(display: glassesDisplay)
+    lazy var playbookHUDSource = PlaybookHUDTaskSource(store: playbookStore)
+    lazy var procedureHUDSource = ProcedureHUDTaskSource()
     let hipaaService = HIPAAComplianceService()
     let medicalExportService = MedicalExportService()
 
@@ -948,6 +953,27 @@ class AppState: ObservableObject, AppStateProtocol {
                 self?.applyFieldSessionModel(for: session)
             }
         cancellables.append(fieldSessionToken)
+
+        // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
+        // Playbook session starts; the router self-dismisses when the workflow ends.
+        let playbookHUDToken = playbookStore.$activeSession
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] active in
+                guard let self, active else { return }
+                self.hudRouter.startTask(self.playbookHUDSource)
+            }
+        cancellables.append(playbookHUDToken)
+
+        // Auto-present the interactive HUD task card when a Field Assist procedure starts.
+        let procedureHUDToken = FieldSessionService.shared.$activeProcedureId
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] active in
+                guard let self, active else { return }
+                self.hudRouter.startTask(self.procedureHUDSource)
+            }
+        cancellables.append(procedureHUDToken)
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
@@ -2019,6 +2045,20 @@ class AppState: ObservableObject, AppStateProtocol {
         errorMessage = nil
         speechService.playEndListeningTone()
         print("📝 Transcription: \(text)")
+
+        // HUD task control (Display Phase 3 / Plan X): while a Now/Next card is on the
+        // glasses, "next/done/skip/back" drive the task instead of going to the LLM.
+        // Checked before intent classification so these short commands aren't filtered.
+        if await hudRouter.handleVoiceCommand(text) {
+            print("🎯 HUD task command handled: \(text)")
+            if inConversation {
+                isListening = true
+                transcriptionService.startRecording()
+            } else {
+                await returnToWakeWord()
+            }
+            return
+        }
 
         // Will be updated below if persona detected in text
         var query = text

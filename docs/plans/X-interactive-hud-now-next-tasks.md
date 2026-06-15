@@ -6,6 +6,8 @@
 
 **Effort:** ~3–4 days.
 
+**Status (branch `display/hud-phase3`):** ✅ Build-order steps 1–4 shipped and tested — interactive foundation, `PlaybookHUDTaskSource` (linear) and `ProcedureHUDTaskSource` (branching SOPs with choice buttons), and the voice bridge ("next/done/skip/back"). 30 headless tests pass; Debug + Release green. Remaining: step 5 (agent replies currently *suppressed* while a card is held — heard via TTS, card stays authoritative; flash-during-task is an optional refinement) and step 6 (Settings copy).
+
 ---
 
 ## SDK reality — what input we actually get
@@ -18,9 +20,20 @@
 
 So an interactive screen is just *a `FlexBox` of `Button`s with closures*. Selecting one runs the closure; we then `send` the next screen. We manage the nav stack app-side; the band drives focus + select on whatever we last sent.
 
-> ⚠️ **One on-device unknown:** whether the Neural Band can *free-navigate* an arbitrary list of our `Button`s (multi-item focus traversal), or only activate a single primary action. Not visible in the SDK. **Validate first** (see Build order step 0) — the whole interaction model rests on it. Greig has hardware; this can't be checked in the simulator.
+> ⚠️ **One unverifiable assumption:** whether the Neural Band can *free-navigate* an arbitrary list of our `Button`s (multi-item focus traversal) versus only activating a single primary action. Not visible in the SDK, and **no Ray-Ban Display hardware is available to confirm it** — so this is a documented risk, not a checked fact. The interaction logic is instead validated entirely by **headless tests** that simulate the band by invoking each rendered button's `onClick` (`GlassesDisplayService.testInteractiveButtonActions(for:)`). If a device ever becomes available, run the spike below; if the band turns out to be single-action only, the fallback is a **paged** card (one primary action, band cycles which action is armed) — the rest of the design is unaffected.
 
 ---
+
+## Visibility, colour & brand
+
+`MWDATDisplay` exposes **no raw colour API** (verified against 0.7.0 — no RGB / hex / tint / opacity / brightness). Styling is *semantic tokens only*: `TextColor.primary/.secondary`, `TextStyle.heading/.body/.meta`, `ButtonStyle.primary/.secondary/.outline`, `Background.none/.card`, `IconStyle.filled/.outline`. Meta's on-device design system maps those to the actual colour/contrast/anti-aliasing tuned for the waveguide — so **on-glass legibility and brand consistency are owned by the device, not us**, and we can't ship a low-contrast or off-brand frame even by accident.
+
+Implications:
+- The app's coral brand accent (`#F08A4B`; never cyan/violet) stays on the **phone UI** — the lens inherits Meta's palette. Our identity on the HUD is **icon choice, copy tone, and restraint**, not colour.
+- The visibility levers we *do* control: **hierarchy** (heading/primary for the step title, body for the instruction, meta/secondary for "Step x of y" / "Next: …"), **`Background.card`** to lift high-attention frames, **icons** (hazard for safety, compass for nav, …), **brevity** (`condense` → ≤120 body / ≤40 title, whitespace-collapsed), and the **latest-wins render queue** (one frame in flight, identical frames deduped — no clutter or flicker).
+- **Subtlety:** default to `.secondary`/`.meta` + `Background.none` for ambient mirrors; escalate to `.primary` + `card` + icon only for safety notes and the active task. Ambient AI replies/captions are suppressed while a card is held so the task stays authoritative.
+
+**Device-less validation** (no Display hardware): the test seam asserts the semantic-token choice per frame; the **phone mirror preview** ([Plan Y](Y-interactive-hud-launcher.md) `HUDPhoneMirrorView`) renders the same `HUDScreen` with a Meta-like green-on-dark treatment to eyeball hierarchy/density/brand on the phone; and any hard content limits from Meta's HMI guidance get baked into `condense`.
 
 ## Concept
 
@@ -129,7 +142,7 @@ source.current == nil  → render "✓ Workflow complete" flash → exit interac
 
 ## Build order
 
-0. **Spike (½ day, on-device):** send a `FlexBox` with 3–4 `Button`s and log which `onClick`s the band can reach. Confirms free-navigation vs single-action. If single-action only, fall back to a **paged** card (one primary action + band-cycles-the-action) — note it and proceed; the rest of the plan is unaffected.
+0. **(Deferred — no hardware.)** The on-device band-navigation spike can't run without a Display device. Until one exists, the band is simulated in tests (fire each rendered button's `onClick`) and free-navigation is a documented assumption (see *SDK reality*). Every other step proceeds test-first.
 1. `HUDScreen` + render-to-`FlexBox`, and the `HUDRouter` interactive-mode gate in `GlassesDisplayService` (ambient suppressed while a screen is held). Unit-test the render mapping (screen → component tree) headlessly.
 2. `HUDTaskSource` + `PlaybookHUDTaskSource` (linear is simplest). Auto-present the card on Playbook start; wire `Done/Skip/Back`.
 3. Voice bridge: "next/done/skip/back" → active source.

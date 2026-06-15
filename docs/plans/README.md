@@ -31,7 +31,7 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
 | V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
 | W Presence-Aware Agent Throttle | 📋 Planned (Round 5 — agentic/battery) |
-| X Interactive HUD — Now/Next Tasks | 📋 Planned (Round 6 — Display Phase 3). Display Phase 1 ✅ merged (#42), Phase 2 on `display/hud-phase2`. |
+| X Interactive HUD — Now/Next Tasks | 🚧 In progress on `display/hud-phase3` — foundation + band card + voice bridge + Playbook/Procedure sources shipped; 30 headless tests, Debug+Release green. Display Phases 1–2 ✅ merged (#42, #45). |
 | Y Interactive HUD Launcher | 📋 Planned (Round 6 — Display Phase 4) |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).

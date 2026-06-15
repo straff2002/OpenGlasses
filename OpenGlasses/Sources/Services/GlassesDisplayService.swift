@@ -65,6 +65,14 @@ final class GlassesDisplayService: ObservableObject {
         case clear
     }
 
+    /// A unit of work for the render queue: an ambient content/clear op, or a full
+    /// interactive screen (Plan X). Screens carry closures, so they're deduped by
+    /// `renderKey` rather than `Equatable`.
+    private enum Frame {
+        case op(RenderOp)
+        case screen(HUDScreen)
+    }
+
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var deviceSession: DeviceSession?
@@ -72,19 +80,51 @@ final class GlassesDisplayService: ObservableObject {
 
     /// Latest-wins render queue. Rapid updates collapse to the most recent frame so we
     /// never flood the BLE link — only one `send` is ever in flight.
-    private var pending: RenderOp?
+    private var pending: Frame?
     private var isRendering = false
-    /// The op last pushed to the HUD; identical follow-ups are skipped.
+    /// The ambient op last pushed to the HUD; identical follow-ups are skipped.
     private var lastRendered: RenderOp?
+    /// The interactive screen last pushed (by `renderKey`); identical screens are skipped.
+    private var lastScreenKey: String?
 
     /// Generation guard for transient auto-clear, so a newer frame cancels an older
     /// frame's pending clear.
     private var autoClearGeneration = 0
 
+    // MARK: - Interactive (Plan X)
+
+    /// True while an interactive screen (task card / menu) is held on the HUD. Ambient
+    /// *persistent* producers (AI replies, captions, navigation) are suppressed while
+    /// set; transient notifications flash over the screen and then restore it.
+    @Published private(set) var isInteractive = false
+    private var currentScreen: HUDScreen?
+    private var screenSelectionHandler: ((String) -> Void)?
+
+    // MARK: - Testing seam
+    //
+    // No Ray-Ban *Display* hardware is available in CI/sim, so the interactive logic
+    // (capability gate, ambient suppression, render-key dedup, flash-then-restore) is
+    // validated headlessly. `testCapabilityOverride` bypasses the hardware capability
+    // check; `testRenderSink`, when set, captures the frame the queue *would* send
+    // instead of hitting the SDK. Both are nil in production — the real SDK path is
+    // untouched. The Neural Band itself is simulated in tests by invoking the
+    // `onClick` of the buttons produced by `makeScreenView(_:)`.
+    var testCapabilityOverride: Bool?
+    var testRenderSink: ((HUDFrame) -> Void)?
+
+    /// A frame the render queue resolved to — the test observation point.
+    enum HUDFrame: Equatable {
+        case content(body: String, title: String?, icon: HUDIcon)
+        case screen(renderKey: String)
+        case clear
+    }
+
     /// Max characters for the body line — kept short for in-lens legibility.
-    private static let maxLength = 120
+    /// `nonisolated` so `condense`'s default argument can reference it without a
+    /// Swift 6 main-actor-isolation warning (it's an immutable Sendable constant).
+    private nonisolated static let maxLength = 120
     /// Max characters for a heading.
-    private static let maxTitleLength = 40
+    private nonisolated static let maxTitleLength = 40
 
     // MARK: - Capability
 
@@ -92,6 +132,10 @@ final class GlassesDisplayService: ObservableObject {
     /// safe to call frequently. Updates `hasDisplayCapability` as a side effect.
     @discardableResult
     func deviceSupportsDisplay() -> Bool {
+        if let testCapabilityOverride {
+            if hasDisplayCapability != testCapabilityOverride { hasDisplayCapability = testCapabilityOverride }
+            return testCapabilityOverride
+        }
         let supported: Bool = {
             guard let id = deviceSelector.activeDevice,
                   let device = Wearables.shared.deviceForIdentifier(id) else {
@@ -133,7 +177,26 @@ final class GlassesDisplayService: ObservableObject {
     func clear() {
         guard isEnabled else { return }
         guard isDisplayActive || display != nil else { return }
-        enqueue(.clear)
+        enqueue(.op(.clear))
+    }
+
+    /// Present an interactive screen (task card / menu). Drives the HUD into interactive
+    /// mode; band selections route back via `onSelect(itemID)`. No-op when the feature is
+    /// off or the glasses have no display.
+    func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
+        guard isEnabled, deviceSupportsDisplay() else { return }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        isInteractive = true
+        enqueue(.screen(screen))
+    }
+
+    /// Leave interactive mode and clear the HUD so ambient producers resume.
+    func endInteractive() {
+        isInteractive = false
+        currentScreen = nil
+        screenSelectionHandler = nil
+        enqueue(.op(.clear))
     }
 
     /// Fully tear down the display session. Call on feature disable / mode switch /
@@ -147,6 +210,9 @@ final class GlassesDisplayService: ObservableObject {
 
     private func present(_ content: HUDContent, transient: Bool, duration: TimeInterval) {
         guard isEnabled, deviceSupportsDisplay() else { return }
+        // While an interactive screen is held, suppress persistent ambient frames;
+        // transient notifications still flash (and restore the screen on auto-clear).
+        if isInteractive && !transient { return }
         var shaped = content
         shaped.body = Self.condense(content.body)
         shaped.title = content.title.map { Self.condense($0, max: Self.maxTitleLength) }
@@ -155,7 +221,7 @@ final class GlassesDisplayService: ObservableObject {
         guard hasBody || hasTitle else { return }
 
         let op = RenderOp.show(shaped)
-        enqueue(op)
+        enqueue(.op(op))
         if transient { scheduleAutoClear(for: op, after: duration) }
     }
 
@@ -165,28 +231,50 @@ final class GlassesDisplayService: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
             guard let self, generation == self.autoClearGeneration else { return }
-            // Only clear if this frame is still what's on screen.
-            if self.lastRendered == op { self.clear() }
+            // Only act if this frame is still what's on screen.
+            guard self.lastRendered == op else { return }
+            if self.isInteractive, let screen = self.currentScreen {
+                self.enqueue(.screen(screen))     // restore the held screen after the flash
+            } else {
+                self.enqueue(.op(.clear))         // auto-clear the just-shown transient frame
+            }
         }
     }
 
     // MARK: - Render queue
 
-    private func enqueue(_ op: RenderOp) {
-        pending = op
+    private func enqueue(_ frame: Frame) {
+        pending = frame
         guard !isRendering else { return }
         isRendering = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            while let op = self.pending {
+            while let frame = self.pending {
                 self.pending = nil
-                if op == self.lastRendered { continue } // skip redundant identical sends
                 do {
-                    switch op {
-                    case .show(let content): try await self.renderContent(content)
-                    case .clear: try await self.renderClear()
+                    switch frame {
+                    case .op(let op):
+                        if op == self.lastRendered { continue } // skip redundant identical sends
+                        if let sink = self.testRenderSink {
+                            sink(Self.descriptor(for: op))
+                        } else {
+                            switch op {
+                            case .show(let content): try await self.renderContent(content)
+                            case .clear: try await self.renderClear()
+                            }
+                        }
+                        self.lastRendered = op
+                        self.lastScreenKey = nil
+                    case .screen(let screen):
+                        if screen.renderKey == self.lastScreenKey { continue }
+                        if let sink = self.testRenderSink {
+                            sink(.screen(renderKey: screen.renderKey))
+                        } else {
+                            try await self.renderScreen(screen)
+                        }
+                        self.lastScreenKey = screen.renderKey
+                        self.lastRendered = nil
                     }
-                    self.lastRendered = op
                 } catch {
                     self.handleRenderError(error)
                     break
@@ -238,6 +326,74 @@ final class GlassesDisplayService: ObservableObject {
         guard let display else { return }
         let empty = FlexBox(direction: .column) {}
         try await display.send(empty)
+    }
+
+    private func renderScreen(_ screen: HUDScreen) async throws {
+        let display = try await ensureDisplay()
+        try await display.send(makeScreenView(screen))
+    }
+
+    private static func descriptor(for op: RenderOp) -> HUDFrame {
+        switch op {
+        case .show(let content): return .content(body: content.body, title: content.title, icon: content.icon)
+        case .clear: return .clear
+        }
+    }
+
+    /// Build the interactive `FlexBox` for `screen`. Internal and free of SDK session
+    /// state so tests can inspect the component tree and invoke each Button's `onClick`
+    /// to simulate a Neural-Band selection.
+    func makeScreenView(_ screen: HUDScreen) -> FlexBox {
+        // Pre-shape all text and presentation here (MainActor context) so the
+        // result-builder closure below never references the MainActor-isolated
+        // `condense`/`maxLength`. Each button model carries only Sendable values —
+        // never the HUDItem, whose `action` closure isn't Sendable; selection routes
+        // back by id.
+        let headingText = screen.title.flatMap { $0.isEmpty ? nil : Self.condense($0, max: Self.maxTitleLength) }
+        let lineModels = screen.lines.map { line in
+            (text: Self.condense(line.text), iconName: line.icon.iconName,
+             style: line.emphasis.textStyle, color: line.emphasis.textColor)
+        }
+        let buttonModels = screen.items.map { item in
+            (id: item.id, label: Self.condense(item.label, max: Self.maxTitleLength),
+             style: item.style.buttonStyle, iconName: item.icon.iconName)
+        }
+
+        return FlexBox(
+            direction: .column,
+            spacing: 6,
+            alignment: .start,
+            padding: EdgeInsets(all: 12)
+        ) {
+            if let headingText {
+                Text(headingText, style: .heading, color: .primary)
+            }
+            for line in lineModels {
+                if let iconName = line.iconName {
+                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
+                        Icon(name: iconName)
+                        Text(line.text, style: line.style, color: line.color)
+                    }
+                } else {
+                    Text(line.text, style: line.style, color: line.color)
+                }
+            }
+            for button in buttonModels {
+                let id = button.id
+                Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
+                    Task { @MainActor in self?.screenSelectionHandler?(id) }
+                })
+            }
+        }
+    }
+
+    /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
+    /// rendered tree, in order, so a test can simulate Neural-Band selections without
+    /// importing the SDK. Each fires exactly the routing the real button would.
+    func testInteractiveButtonActions(for screen: HUDScreen) -> [() -> Void] {
+        makeScreenView(screen).children
+            .compactMap { ($0 as? Button)?.onClick }
+            .map { onClick in { onClick() } }
     }
 
     // MARK: - Session lifecycle
@@ -300,6 +456,7 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession = nil
         isDisplayActive = false
         lastRendered = nil
+        lastScreenKey = nil
     }
 
     private func handleRenderError(_ error: Error) {
@@ -313,6 +470,7 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession = nil
         isDisplayActive = false
         lastRendered = nil
+        lastScreenKey = nil
     }
 
     // MARK: - Text shaping
@@ -342,6 +500,33 @@ enum GlassesDisplayError: LocalizedError {
         switch self {
         case .noDisplay: return "Connected glasses have no in-lens display"
         case .sessionUnavailable: return "Display session unavailable"
+        }
+    }
+}
+
+// MARK: - HUD model → SDK mapping (Plan X)
+
+fileprivate extension HUDEmphasis {
+    var textStyle: TextStyle {
+        switch self {
+        case .primary, .secondary: return .body
+        case .meta: return .meta
+        }
+    }
+    var textColor: TextColor {
+        switch self {
+        case .primary: return .primary
+        case .secondary, .meta: return .secondary
+        }
+    }
+}
+
+fileprivate extension HUDButtonStyle {
+    var buttonStyle: ButtonStyle {
+        switch self {
+        case .primary: return .primary
+        case .secondary: return .secondary
+        case .outline: return .outline
         }
     }
 }
