@@ -65,6 +65,14 @@ final class GlassesDisplayService: ObservableObject {
         case clear
     }
 
+    /// A unit of work for the render queue: an ambient content/clear op, or a full
+    /// interactive screen (Plan X). Screens carry closures, so they're deduped by
+    /// `renderKey` rather than `Equatable`.
+    private enum Frame {
+        case op(RenderOp)
+        case screen(HUDScreen)
+    }
+
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var deviceSession: DeviceSession?
@@ -72,14 +80,25 @@ final class GlassesDisplayService: ObservableObject {
 
     /// Latest-wins render queue. Rapid updates collapse to the most recent frame so we
     /// never flood the BLE link — only one `send` is ever in flight.
-    private var pending: RenderOp?
+    private var pending: Frame?
     private var isRendering = false
-    /// The op last pushed to the HUD; identical follow-ups are skipped.
+    /// The ambient op last pushed to the HUD; identical follow-ups are skipped.
     private var lastRendered: RenderOp?
+    /// The interactive screen last pushed (by `renderKey`); identical screens are skipped.
+    private var lastScreenKey: String?
 
     /// Generation guard for transient auto-clear, so a newer frame cancels an older
     /// frame's pending clear.
     private var autoClearGeneration = 0
+
+    // MARK: - Interactive (Plan X)
+
+    /// True while an interactive screen (task card / menu) is held on the HUD. Ambient
+    /// *persistent* producers (AI replies, captions, navigation) are suppressed while
+    /// set; transient notifications flash over the screen and then restore it.
+    @Published private(set) var isInteractive = false
+    private var currentScreen: HUDScreen?
+    private var screenSelectionHandler: ((String) -> Void)?
 
     /// Max characters for the body line — kept short for in-lens legibility.
     private static let maxLength = 120
@@ -133,7 +152,26 @@ final class GlassesDisplayService: ObservableObject {
     func clear() {
         guard isEnabled else { return }
         guard isDisplayActive || display != nil else { return }
-        enqueue(.clear)
+        enqueue(.op(.clear))
+    }
+
+    /// Present an interactive screen (task card / menu). Drives the HUD into interactive
+    /// mode; band selections route back via `onSelect(itemID)`. No-op when the feature is
+    /// off or the glasses have no display.
+    func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
+        guard isEnabled, deviceSupportsDisplay() else { return }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        isInteractive = true
+        enqueue(.screen(screen))
+    }
+
+    /// Leave interactive mode and clear the HUD so ambient producers resume.
+    func endInteractive() {
+        isInteractive = false
+        currentScreen = nil
+        screenSelectionHandler = nil
+        enqueue(.op(.clear))
     }
 
     /// Fully tear down the display session. Call on feature disable / mode switch /
@@ -147,6 +185,9 @@ final class GlassesDisplayService: ObservableObject {
 
     private func present(_ content: HUDContent, transient: Bool, duration: TimeInterval) {
         guard isEnabled, deviceSupportsDisplay() else { return }
+        // While an interactive screen is held, suppress persistent ambient frames;
+        // transient notifications still flash (and restore the screen on auto-clear).
+        if isInteractive && !transient { return }
         var shaped = content
         shaped.body = Self.condense(content.body)
         shaped.title = content.title.map { Self.condense($0, max: Self.maxTitleLength) }
@@ -155,7 +196,7 @@ final class GlassesDisplayService: ObservableObject {
         guard hasBody || hasTitle else { return }
 
         let op = RenderOp.show(shaped)
-        enqueue(op)
+        enqueue(.op(op))
         if transient { scheduleAutoClear(for: op, after: duration) }
     }
 
@@ -165,28 +206,42 @@ final class GlassesDisplayService: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
             guard let self, generation == self.autoClearGeneration else { return }
-            // Only clear if this frame is still what's on screen.
-            if self.lastRendered == op { self.clear() }
+            // Only act if this frame is still what's on screen.
+            guard self.lastRendered == op else { return }
+            if self.isInteractive, let screen = self.currentScreen {
+                self.enqueue(.screen(screen))   // restore the held screen after the flash
+            } else {
+                self.clear()
+            }
         }
     }
 
     // MARK: - Render queue
 
-    private func enqueue(_ op: RenderOp) {
-        pending = op
+    private func enqueue(_ frame: Frame) {
+        pending = frame
         guard !isRendering else { return }
         isRendering = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            while let op = self.pending {
+            while let frame = self.pending {
                 self.pending = nil
-                if op == self.lastRendered { continue } // skip redundant identical sends
                 do {
-                    switch op {
-                    case .show(let content): try await self.renderContent(content)
-                    case .clear: try await self.renderClear()
+                    switch frame {
+                    case .op(let op):
+                        if op == self.lastRendered { continue } // skip redundant identical sends
+                        switch op {
+                        case .show(let content): try await self.renderContent(content)
+                        case .clear: try await self.renderClear()
+                        }
+                        self.lastRendered = op
+                        self.lastScreenKey = nil
+                    case .screen(let screen):
+                        if screen.renderKey == self.lastScreenKey { continue }
+                        try await self.renderScreen(screen)
+                        self.lastScreenKey = screen.renderKey
+                        self.lastRendered = nil
                     }
-                    self.lastRendered = op
                 } catch {
                     self.handleRenderError(error)
                     break
@@ -238,6 +293,43 @@ final class GlassesDisplayService: ObservableObject {
         guard let display else { return }
         let empty = FlexBox(direction: .column) {}
         try await display.send(empty)
+    }
+
+    private func renderScreen(_ screen: HUDScreen) async throws {
+        let display = try await ensureDisplay()
+        let view = FlexBox(
+            direction: .column,
+            spacing: 6,
+            alignment: .start,
+            padding: EdgeInsets(all: 12)
+        ) {
+            if let title = screen.title, !title.isEmpty {
+                Text(Self.condense(title, max: Self.maxTitleLength), style: .heading, color: .primary)
+            }
+            for line in screen.lines {
+                let text = Self.condense(line.text)
+                if let iconName = line.icon.iconName {
+                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
+                        Icon(name: iconName)
+                        Text(text, style: line.emphasis.textStyle, color: line.emphasis.textColor)
+                    }
+                } else {
+                    Text(text, style: line.emphasis.textStyle, color: line.emphasis.textColor)
+                }
+            }
+            for item in screen.items {
+                // Capture only Sendable values (id + presentation) — never the HUDItem,
+                // whose `action` closure isn't Sendable. Selection routes back by id.
+                let id = item.id
+                let label = Self.condense(item.label, max: Self.maxTitleLength)
+                let style = item.style.buttonStyle
+                let iconName = item.icon.iconName
+                Button(label: label, style: style, iconName: iconName, onClick: { [weak self] in
+                    Task { @MainActor in self?.screenSelectionHandler?(id) }
+                })
+            }
+        }
+        try await display.send(view)
     }
 
     // MARK: - Session lifecycle
@@ -300,6 +392,7 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession = nil
         isDisplayActive = false
         lastRendered = nil
+        lastScreenKey = nil
     }
 
     private func handleRenderError(_ error: Error) {
@@ -313,6 +406,7 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession = nil
         isDisplayActive = false
         lastRendered = nil
+        lastScreenKey = nil
     }
 
     // MARK: - Text shaping
@@ -342,6 +436,33 @@ enum GlassesDisplayError: LocalizedError {
         switch self {
         case .noDisplay: return "Connected glasses have no in-lens display"
         case .sessionUnavailable: return "Display session unavailable"
+        }
+    }
+}
+
+// MARK: - HUD model → SDK mapping (Plan X)
+
+fileprivate extension HUDEmphasis {
+    var textStyle: TextStyle {
+        switch self {
+        case .primary, .secondary: return .body
+        case .meta: return .meta
+        }
+    }
+    var textColor: TextColor {
+        switch self {
+        case .primary: return .primary
+        case .secondary, .meta: return .secondary
+        }
+    }
+}
+
+fileprivate extension HUDButtonStyle {
+    var buttonStyle: ButtonStyle {
+        switch self {
+        case .primary: return .primary
+        case .secondary: return .secondary
+        case .outline: return .outline
         }
     }
 }

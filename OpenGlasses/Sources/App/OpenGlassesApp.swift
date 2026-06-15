@@ -468,6 +468,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let agentScheduler = AgentScheduler()
     let agentNotificationQueue = AgentNotificationQueue()
     let playbookStore = PlaybookStore()
+    /// Interactive HUD (Display Phase 3 / Plan X): drives a Now/Next task card on the
+    /// glasses from the active Playbook, navigable with the Neural Band.
+    lazy var hudRouter = HUDRouter(display: glassesDisplay)
+    lazy var playbookHUDSource = PlaybookHUDTaskSource(store: playbookStore)
     let hipaaService = HIPAAComplianceService()
     let medicalExportService = MedicalExportService()
 
@@ -948,6 +952,17 @@ class AppState: ObservableObject, AppStateProtocol {
                 self?.applyFieldSessionModel(for: session)
             }
         cancellables.append(fieldSessionToken)
+
+        // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
+        // Playbook session starts; the router self-dismisses when the workflow ends.
+        let playbookHUDToken = playbookStore.$activeSession
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] active in
+                guard let self, active else { return }
+                self.hudRouter.startTask(self.playbookHUDSource)
+            }
+        cancellables.append(playbookHUDToken)
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
