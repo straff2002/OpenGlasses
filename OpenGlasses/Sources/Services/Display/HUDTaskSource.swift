@@ -27,21 +27,37 @@ struct HUDStep: Equatable {
     }
 }
 
+/// A branch choice at a decision step (Field Assist procedures). Linear sources
+/// (Playbooks) expose none.
+struct HUDChoice: Equatable, Identifiable {
+    let id: String
+    let label: String
+}
+
 /// Adapter a step-based engine implements so `HUDRouter` can render and drive it from
-/// the Neural Band. Conformers: `PlaybookHUDTaskSource` (Plan X) and, later, a
-/// Field Assist `ProcedureRunner` adapter.
+/// the Neural Band. Conformers: `PlaybookHUDTaskSource` (linear) and
+/// `ProcedureHUDTaskSource` (branching Field Assist SOPs).
 @MainActor
 protocol HUDTaskSource: AnyObject {
     /// Workflow / procedure name (rendered as the card heading).
     var title: String { get }
     /// The NOW step, or nil when the workflow has finished.
     var current: HUDStep? { get }
-    /// The NEXT step (preview), or nil when on the last step.
+    /// The NEXT step (preview), or nil when on the last/branching step.
     var next: HUDStep? { get }
-    /// Emits whenever `current`/`next` may have changed, so the card re-renders.
+    /// Branch options at a decision step. Empty ⇒ a linear Done/Skip/Back card;
+    /// non-empty ⇒ the card renders one button per choice (+ Back).
+    var choices: [HUDChoice] { get }
+    /// Emits whenever `current`/`next`/`choices` may have changed, so the card re-renders.
     var changes: AnyPublisher<Void, Never> { get }
 
-    func complete() async   // mark current done → advance
-    func skip() async       // skip current → advance
-    func back() async       // previous step
+    func complete() async        // mark current done → advance
+    func skip() async            // skip current → advance
+    func back() async            // previous step
+    func choose(_ id: String) async   // take a specific branch
+}
+
+extension HUDTaskSource {
+    var choices: [HUDChoice] { [] }
+    func choose(_ id: String) async {}
 }

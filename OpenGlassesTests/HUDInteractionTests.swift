@@ -165,6 +165,72 @@ final class HUDInteractionTests: XCTestCase {
         })
     }
 
+    // MARK: - Branching procedures (choices)
+
+    func testBranchStepRendersChoiceButtonsNotDoneSkip() {
+        let source = FakeTaskSource()
+        source.stubChoices = [HUDChoice(id: "low", label: "Pressure is low"),
+                              HUDChoice(id: "ok", label: "Pressure is normal")]
+        let screen = HUDRouter.taskCard(
+            source: source,
+            current: HUDStep(index: 0, total: nil, title: "Check pressure"),
+            next: nil
+        )
+        XCTAssertEqual(screen.items.map(\.id), ["choice:low", "choice:ok", "back"])
+        XCTAssertFalse(screen.items.contains { $0.id == "done" || $0.id == "skip" })
+    }
+
+    func testChoiceButtonInvokesChoose() async {
+        let source = FakeTaskSource()
+        source.stubChoices = [HUDChoice(id: "low", label: "Low")]
+        let screen = HUDRouter.taskCard(source: source,
+                                        current: HUDStep(index: 0, total: nil, title: "X"),
+                                        next: nil)
+        screen.items.first { $0.id == "choice:low" }?.action()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(source.chooseCount, 1)
+        XCTAssertEqual(source.lastChoice, "low")
+    }
+
+    // MARK: - ProcedureHUDTaskSource (Field Assist adapter)
+
+    func testProcedureSourceMapsStepAndBranches() {
+        let host = FakeProcedureHost()
+        host.activeProcedureTitle = "Diagnose No Cooling"
+        host.activeProcedureStep = Procedure.Step(
+            id: "s1", title: "Check suction pressure",
+            instruction: "Read the gauge", safetyNote: "Wear gloves",
+            branches: [Procedure.Branch(id: "low", condition: "Below 20 psi", next: "s2"),
+                       Procedure.Branch(id: "ok", condition: "20 psi or above", next: "s3")]
+        )
+        let source = ProcedureHUDTaskSource(host: host)
+        XCTAssertEqual(source.title, "Diagnose No Cooling")
+        XCTAssertEqual(source.current?.title, "Check suction pressure")
+        XCTAssertEqual(source.current?.instruction, "Read the gauge")
+        XCTAssertEqual(source.current?.safetyNote, "Wear gloves")
+        XCTAssertNil(source.next)
+        XCTAssertEqual(source.choices.map(\.id), ["low", "ok"])
+        XCTAssertEqual(source.choices.map(\.label), ["Below 20 psi", "20 psi or above"])
+    }
+
+    func testProcedureSourceDelegatesActions() async {
+        let host = FakeProcedureHost()
+        host.activeProcedureStep = Procedure.Step(id: "s1", title: "S", instruction: "i")
+        let source = ProcedureHUDTaskSource(host: host)
+        await source.choose("low")
+        await source.complete()
+        await source.back()
+        XCTAssertEqual(host.advanceChoices, ["low", nil])   // choose(low), then complete(nil)
+        XCTAssertEqual(host.backCount, 1)
+    }
+
+    func testProcedureSourceNilWhenNoStep() {
+        let source = ProcedureHUDTaskSource(host: FakeProcedureHost())
+        XCTAssertNil(source.current)
+        XCTAssertEqual(source.title, "Procedure")
+        XCTAssertTrue(source.choices.isEmpty)
+    }
+
     // MARK: - Voice bridge
 
     func testVoiceParserMatchesStrictly() {
@@ -247,10 +313,33 @@ private final class FakeTaskSource: HUDTaskSource {
     var completeCount = 0
     var skipCount = 0
     var backCount = 0
+    var chooseCount = 0
+    var lastChoice: String?
+    var stubChoices: [HUDChoice] = []
+    var choices: [HUDChoice] { stubChoices }
 
     func complete() async { completeCount += 1 }
     func skip() async { skipCount += 1 }
     func back() async { backCount += 1 }
+    func choose(_ id: String) async { chooseCount += 1; lastChoice = id }
 
     func emitChange() { subject.send(()) }
+}
+
+/// In-memory `ProcedureHosting` double for `ProcedureHUDTaskSource` tests.
+@MainActor
+private final class FakeProcedureHost: ObservableObject, ProcedureHosting {
+    var activeProcedureStep: Procedure.Step?
+    var activeProcedureTitle: String?
+    var advanceChoices: [String?] = []
+    var backCount = 0
+
+    func advanceProcedure(choice: String?) throws -> ProcedureRunner.Transition {
+        advanceChoices.append(choice)
+        return .moved(activeProcedureStep ?? Procedure.Step(id: "x", title: "x", instruction: ""))
+    }
+    func procedureBack() throws -> Procedure.Step {
+        backCount += 1
+        return activeProcedureStep ?? Procedure.Step(id: "x", title: "x", instruction: "")
+    }
 }

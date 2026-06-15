@@ -97,17 +97,29 @@ final class HUDRouter: ObservableObject {
             lines.append(HUDLine("Next: \(next.title)", emphasis: .meta))
         }
 
-        let items: [HUDItem] = [
-            HUDItem(id: "done", label: "Done", icon: .success, style: .primary) {
-                Task { await source.complete() }
-            },
-            HUDItem(id: "skip", label: "Skip", style: .secondary) {
-                Task { await source.skip() }
-            },
-            HUDItem(id: "back", label: "Back", style: .outline) {
-                Task { await source.back() }
-            },
-        ]
+        // A decision step renders one button per branch (+ Back); a linear step
+        // renders Done / Skip / Back.
+        let choices = source.choices
+        var items: [HUDItem]
+        if choices.isEmpty {
+            items = [
+                HUDItem(id: "done", label: "Done", icon: .success, style: .primary) {
+                    Task { await source.complete() }
+                },
+                HUDItem(id: "skip", label: "Skip", style: .secondary) {
+                    Task { await source.skip() }
+                },
+            ]
+        } else {
+            items = choices.map { choice in
+                HUDItem(id: "choice:\(choice.id)", label: choice.label, style: .primary) {
+                    Task { await source.choose(choice.id) }
+                }
+            }
+        }
+        items.append(HUDItem(id: "back", label: "Back", style: .outline) {
+            Task { await source.back() }
+        })
 
         return HUDScreen(title: current.title, lines: lines, items: items)
     }

@@ -472,6 +472,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// glasses from the active Playbook, navigable with the Neural Band.
     lazy var hudRouter = HUDRouter(display: glassesDisplay)
     lazy var playbookHUDSource = PlaybookHUDTaskSource(store: playbookStore)
+    lazy var procedureHUDSource = ProcedureHUDTaskSource()
     let hipaaService = HIPAAComplianceService()
     let medicalExportService = MedicalExportService()
 
@@ -963,6 +964,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.hudRouter.startTask(self.playbookHUDSource)
             }
         cancellables.append(playbookHUDToken)
+
+        // Auto-present the interactive HUD task card when a Field Assist procedure starts.
+        let procedureHUDToken = FieldSessionService.shared.$activeProcedureId
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] active in
+                guard let self, active else { return }
+                self.hudRouter.startTask(self.procedureHUDSource)
+            }
+        cancellables.append(procedureHUDToken)
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
