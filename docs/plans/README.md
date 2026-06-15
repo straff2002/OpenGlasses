@@ -31,6 +31,8 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
 | V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
 | W Presence-Aware Agent Throttle | 📋 Planned (Round 5 — agentic/battery) |
+| X Interactive HUD — Now/Next Tasks | 📋 Planned (Round 6 — Display Phase 3). Display Phase 1 ✅ merged (#42), Phase 2 on `display/hud-phase2`. |
+| Y Interactive HUD Launcher | 📋 Planned (Round 6 — Display Phase 4) |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -91,6 +93,17 @@ Drafted from a survey of our own idea-source repo `~/Code/qaeros` (its `plans/` 
 **Source-mapping (qaeros → OpenGlasses):** R ← `213`/`200`; S ← `214`/`357`/`192`; T ← `369`; U ← `327`/`366`/`552` (+`547` geofenced preconditions); V ← `575` (concept only); W ← `510`. A work-order/dispatch model (`547`/`421`/`354`) is deliberately **deferred** until T/U land.
 
 **Suggested sequence:** R (safety first) → S (agentic spine) → T (offline) → U (capture schema) → V + W (catalogue + throttle polish).
+
+## Round 6 — interactive display (Ray-Ban Display + Neural Band)
+
+Extends the in-lens HUD line from **read-only** (Display Phase 1 ✅ merged in [#42](https://github.com/straff2002/OpenGlasses/pull/42) — AI responses + ambient captions; Phase 2 on branch `display/hud-phase2` — notifications + Navigation Assist) to **interactive**, driven by the Neural Band. Grounded in the actual `MWDATDisplay` 0.7.0 surface: one-way `Display.send(view)` + `Button`/`onClick`/`onTap` callbacks (no raw gesture stream — firmware owns focus/select). Both plans are mostly a HUD interaction layer over task/launcher models the app already ships.
+
+| Plan | Title | Effort | Reuses | Strategic fit |
+|---|---|---|---|---|
+| [X](X-interactive-hud-now-next-tasks.md) | Interactive HUD — Now/Next Tasks (Display Phase 3) | ~3–4 days | GlassesDisplayService, PlaybookStore, FieldAssist ProcedureRunner, wake-word pipeline | First time the user *acts through* the lens: render the active Playbook/Procedure step as a Now/Next card; band buttons (Done/Skip/Back) drive the existing engine transitions. 📋 Planned |
+| [Y](Y-interactive-hud-launcher.md) | Interactive HUD Launcher (Display Phase 4) | ~4–6 days | Plan X HUDRouter, Config.quickActions, PlaybookStore, ProcedureLibrary, AppMode/Persona | Band-navigable home on the lens — Quick Actions · Workflows · SOPs · Mode/Persona, all in one release. Input: band + voice + phone. 📋 Planned |
+
+**Sequence (agreed):** X first (ships hands-free workflow execution and validates band navigation on one card), then Y (the full launcher reuses X's router).
 
 ## Dependency graph
 
