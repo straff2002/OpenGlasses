@@ -91,6 +91,7 @@ final class NativeToolRegistry {
         register(SocialContextTool())
         // Always register — tool checks config at execution time
         register(HomeAssistantTool())
+        register(VehicleTool())
 
         // Tier 5: Barcode scanning, live translation, food analysis, capture photo, QR context
         if let camera = cameraService {
