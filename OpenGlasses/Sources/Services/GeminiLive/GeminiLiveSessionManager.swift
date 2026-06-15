@@ -474,6 +474,7 @@ class GeminiLiveSessionManager: ObservableObject {
             - brightness: Adjust screen brightness.
             - smart_home: Control HomeKit devices — lights, switches, thermostats, locks, scenes.
             - run_shortcut: Run Apple Shortcuts by name.
+            - vehicle_status: Vehicle / EV charge %, range, charging state, plug status (via Home Assistant).
             - summarize_conversation: Summarize current conversation or extract action items.
             - face_recognition: Remember/forget/list known faces. Auto-recognizes people when camera is active.
             - memory_rewind: Recall what was said recently — transcribes last few minutes of audio.
