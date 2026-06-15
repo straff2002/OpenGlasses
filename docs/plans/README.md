@@ -25,6 +25,12 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | O Document RAG | ✅ Shipped (on-device chunking, embedding, retrieval — chat with your files) |
 | P Page & section citations | ✅ Shipped (per-page/section citations for Document RAG) |
 | Q Vault & skills-library management | ✅ Shipped (in-app reference editing, vault export round-trip, ClawHub/voice skills export-import) |
+| R MCP Egress & Tool-Poisoning Screen | 📋 Planned (Round 5 — MCP safety) |
+| S Plan-then-Execute & Safety Supervisor | 📋 Planned (Round 5 — agentic spine) |
+| T Offline Field Queue & Sync | 📋 Planned (Round 5 — field) |
+| U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
+| V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
+| W Presence-Aware Agent Throttle | 📋 Planned (Round 5 — agentic/battery) |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -68,6 +74,23 @@ A–F are built (A1–A3, B, C, D, E, and Field Assist Phases 1–3). These reus
 | [O](O-document-rag.md) | Document RAG (chat with your files) | ~3–4 days | SemanticMemoryStore (sqlite + NLEmbedding + cosine), OCRService (A1) | Persistent, retrievable chunked document knowledge — load a manual/PDF and ask about it across sessions. ✅ Shipped |
 | [P](P-chunk-citations.md) | Page & section citations for Document RAG | ~0.5 day | Document RAG (O), chunk metadata | Cite the exact page/section behind a RAG answer, not just the file. ✅ Shipped |
 | [Q](Q-vault-and-skills-library-management.md) | Vault & skills-library management (edit, export, import) | ~1–1.5 days | VaultStore/VaultImporter, InstalledSkillStore, VoiceSkillStore | Edit vault references in-app; export/import vaults and both skills libraries between devices. ✅ Shipped |
+
+## Round 5 — agentic hardening, MCP safety & field workflows
+
+Drafted from a survey of our own idea-source repo `~/Code/qaeros` (its `plans/` folder), mapped onto the gaps in OpenGlasses' existing MCP client/server, the on-device agent loop, and Field Assist. **qaeros is an idea-source only — `docs/plans/` here is the canonical home for all OpenGlasses plans.** All six are 📋 Planned.
+
+| Plan | Title | Effort | Reuses | Strategic fit |
+|---|---|---|---|---|
+| [R](R-mcp-egress-and-tool-poisoning-screen.md) | MCP Egress & Tool-Poisoning Screen | ~3–4 days | PromptInjectionPolicy, MCPClient, NativeToolRouter | Outbound + discovery-time mirror of the shipped inbound injection defense; the safety prereq for connecting arbitrary MCP servers to an always-on device. 📋 Planned |
+| [S](S-plan-then-execute-and-safety-supervisor.md) | Plan-then-Execute Agent Mode & Runtime Safety Supervisor | ~1.5–2 wks | NativeToolRouter, ToolConfirmationCoordinator, PromptInjectionPolicy, GlassesDisplayService | The agentic spine: deliberate multi-step execution + a deterministic veto + per-turn constraint re-injection. Also the structural answer to prompt injection. 📋 Planned |
+| [T](T-offline-field-queue-and-sync.md) | Offline Field Queue & Store-and-Forward Sync | ~4–5 days | FieldSessionService, SessionLogger, PhotoLogTool, SemanticMemoryStore sqlite | Field work without signal; durable local queue + reconnect flush. Unblocks real Field Assist deployment. 📋 Planned |
+| [U](U-structured-capture-flows.md) | Structured Capture-Flow / Action-Form Schema | ~1–1.5 wks | ProcedureRunner, scan_code/CapturePhotoTool/EquipmentLookupTool, GeofenceTool | Typed, validated, audit-ready field records (voice/enum/barcode/photo bindings) from one cross-pack template. Turns Field Assist into a product. 📋 Planned |
+| [V](V-mcp-catalogue-and-transport-breadth.md) | Curated MCP Catalogue & Transport Breadth | ~3–4 days | MCPClient, MCPServersView/MCPServerEditorView, Keychain | One-tap install of vetted servers + SSE + OAuth, so hosted MCP servers actually connect. Sequenced after R so convenience never outruns safety. 📋 Planned |
+| [W](W-presence-aware-agent-throttle.md) | Presence-Aware Agent Throttle | ~2–3 days | LiveCoachService, ProactiveAlertService, wake-word pipeline, Plan S supervisor | Fuse motion/voice/connectivity into an engagement factor; throttle continuous loops and downgrade autonomy when idle. Battery + contextual-safety win. 📋 Planned |
+
+**Source-mapping (qaeros → OpenGlasses):** R ← `213`/`200`; S ← `214`/`357`/`192`; T ← `369`; U ← `327`/`366`/`552` (+`547` geofenced preconditions); V ← `575` (concept only); W ← `510`. A work-order/dispatch model (`547`/`421`/`354`) is deliberately **deferred** until T/U land.
+
+**Suggested sequence:** R (safety first) → S (agentic spine) → T (offline) → U (capture schema) → V + W (catalogue + throttle polish).
 
 ## Dependency graph
 
