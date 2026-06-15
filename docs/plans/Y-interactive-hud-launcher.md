@@ -10,7 +10,7 @@
 
 **Effort:** ~4–6 days (on top of X).
 
-**Status (branch `display/hud-phase4`):** 🚧 In progress. Shipped: the navigation **stack** in `HUDRouter` (open/push/pop/dismiss), `HUDMenuBuilder` + `HUDLauncher` with the **Quick Actions** and **Mode/Persona** branches, a voice "menu" open trigger, and — filling the gap the plan calls `HUDPhoneMirrorView` — a native **on-phone HUD renderer** (`HUDPreviewView`/`HUDDSLView`) that walks the same `FlexBox` tree `makeScreenView` builds, brand-styled (coral accent, capsule buttons), with SwiftUI previews and a snapshot test. 38 HUD tests pass. Follow-ups: Workflows + SOPs branches (hand off to the Plan X card), voice navigation *within* a menu, pagination, and a live in-app mirror of the current screen.
+**Status:** ✅ Feature-complete (headless-validated; no Display hardware yet). Shipped: the navigation **stack** in `HUDRouter` (open/push/pop/dismiss + `resumeTask`), `HUDMenuBuilder` + `HUDLauncher` with **all four branches** — Quick Actions · **Workflows** · **SOPs (Field Assist)** · Mode/Persona — plus a dynamic **Resume task** root item; Workflows and SOPs hand off to the Plan X Now/Next card (`startTask` supersedes the open menu and re-presents it on resume/close). Also shipped: **in-menu voice navigation** (`HUDLauncher.handleVoiceSelection` — say an item's label, or "back"/"close"), **pagination** (>6 items → a `More…` pager, shared `listScreen` helper), a voice "menu" open trigger, and the live on-phone mirror (`HUDPreviewView`/`HUDMirrorView`) walking the same `FlexBox` tree `makeScreenView` builds. 38 HUD tests pass; Debug + Release verified. Remaining (optional): Settings to choose branch visibility/order; a band "home" open-gesture if the device exposes one.
 
 ---
 

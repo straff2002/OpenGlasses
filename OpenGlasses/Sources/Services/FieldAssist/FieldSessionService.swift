@@ -214,6 +214,12 @@ final class FieldSessionService: ObservableObject {
         library?.summaries() ?? []
     }
 
+    /// Structured procedure definitions available in the active session's vault (empty when
+    /// no session is active). Backs the HUD launcher's SOPs branch (Display Phase 4 / Plan Y).
+    func availableProcedureDefinitions() -> [Procedure] {
+        library?.all ?? []
+    }
+
     /// The step the active procedure is currently on, if a procedure is running.
     var activeProcedureStep: Procedure.Step? { runner?.currentStep }
 
