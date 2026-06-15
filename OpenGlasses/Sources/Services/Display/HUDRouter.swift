@@ -10,7 +10,9 @@ final class HUDRouter: ObservableObject {
     private let display: GlassesDisplayService
 
     private var taskSource: HUDTaskSource?
-    private var currentScreen: HUDScreen?
+    /// The interactive screen the router is currently driving (task card or menu), or
+    /// nil when none. Published so the on-phone live mirror (`HUDMirrorView`) tracks it.
+    @Published private(set) var currentScreen: HUDScreen?
     private var cancellable: AnyCancellable?
 
     /// Whether a task card is currently being driven on the HUD.

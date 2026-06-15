@@ -97,6 +97,25 @@ final class HUDLauncherTests: XCTestCase {
         XCTAssertEqual(frames.last, .clear)
     }
 
+    func testRouterPublishesCurrentScreenForMirror() async {
+        let saved = Config.glassesDisplayEnabled
+        Config.setGlassesDisplayEnabled(true)
+        defer { Config.setGlassesDisplayEnabled(saved) }
+
+        let display = GlassesDisplayService()
+        display.testCapabilityOverride = true
+        display.testRenderSink = { _ in }
+        let router = HUDRouter(display: display)
+
+        XCTAssertNil(router.currentScreen)
+        router.openLauncher(HUDScreen(title: "Root"))
+        await settle()
+        XCTAssertEqual(router.currentScreen?.title, "Root")   // the live mirror binds to this
+        router.dismiss()
+        await settle()
+        XCTAssertNil(router.currentScreen)
+    }
+
     func testPopFromRootDismisses() async {
         let saved = Config.glassesDisplayEnabled
         Config.setGlassesDisplayEnabled(true)

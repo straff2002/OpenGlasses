@@ -16,20 +16,29 @@ final class ConfigTests: XCTestCase {
         "geminiLiveModel",
     ]
 
+    // Secrets now live in the Keychain (see KeychainService), so they must be
+    // cleared there too — clearing UserDefaults alone would leave them set.
+    private let keychainTestKeys = [
+        "openClawGatewayToken",
+    ]
+
     override func setUp() {
         super.setUp()
-        // Clear all test keys before each test
-        for key in testKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        clearTestState()
     }
 
     override func tearDown() {
-        // Clean up after each test
+        clearTestState()
+        super.tearDown()
+    }
+
+    private func clearTestState() {
         for key in testKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
-        super.tearDown()
+        for key in keychainTestKeys {
+            KeychainService.delete(key)
+        }
     }
 
     // MARK: - AppMode

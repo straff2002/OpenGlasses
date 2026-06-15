@@ -361,9 +361,9 @@ struct CustomToolDefinition: Codable, Identifiable, Equatable {
 
 /// App configuration and API keys
 struct Config {
-    /// Anthropic API key for Claude
+    /// Anthropic API key for Claude. Stored in the Keychain (see `KeychainService`).
     static var anthropicAPIKey: String {
-        if let key = UserDefaults.standard.string(forKey: "anthropicAPIKey"), !key.isEmpty {
+        if let key = KeychainService.string(for: "anthropicAPIKey"), !key.isEmpty {
             return key
         }
         // No API key configured - set one via Settings
@@ -371,7 +371,81 @@ struct Config {
     }
 
     static func setAnthropicAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "anthropicAPIKey")
+        KeychainService.setString(key, for: "anthropicAPIKey")
+    }
+
+    // MARK: - Secret Storage Migration
+
+    /// UserDefaults flag recording that the one-time secret migration has run.
+    private static let secretsMigratedKey = "secretsMigratedToKeychain_v1"
+
+    /// Plain-string secrets that historically lived in UserDefaults and now live in the Keychain.
+    /// The UserDefaults key name is reused verbatim as the Keychain account.
+    private static let migratableStringSecretKeys = [
+        "anthropicAPIKey",
+        "openAIAPIKey",
+        "elevenLabsAPIKey",
+        "perplexityAPIKey",
+        "openClawGatewayToken",
+        "homeAssistantToken",
+        "broadcastStreamKey",
+        "expertTurnCredential",
+    ]
+
+    /// JSON `Data` blobs that embed secrets (provider API keys, gateway tokens, MCP
+    /// auth headers) and so must also move out of plaintext UserDefaults.
+    private static let migratableDataSecretKeys = [
+        modelsKey,        // "savedModelConfigs" — ModelConfig.apiKey
+        "savedGateways",  // GatewayConfig.token
+        "mcpServers",     // MCPServerConfig.headers (Authorization)
+    ]
+
+    /// One-time migration of plaintext secrets from UserDefaults into the Keychain.
+    ///
+    /// Copies any existing values into the Keychain, then removes the plaintext copy
+    /// from UserDefaults so it no longer lands in unencrypted device backups. Only
+    /// secrets move — non-secret prefs (toggles, onboarding flags, URLs, model names)
+    /// stay in UserDefaults. Idempotent: the body runs at most once, and a value is
+    /// removed from UserDefaults only after its Keychain write succeeds, so an
+    /// interrupted/failed write is retried on the next launch rather than losing data.
+    ///
+    /// Call this once, early in app launch (before any secret is read).
+    static func migrateSecretsToKeychainIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: secretsMigratedKey) else { return }
+
+        var allMigrated = true
+
+        for key in migratableStringSecretKeys {
+            guard let value = defaults.string(forKey: key), !value.isEmpty else {
+                defaults.removeObject(forKey: key)  // nothing/empty to migrate — clean up
+                continue
+            }
+            if KeychainService.setString(value, for: key) {
+                defaults.removeObject(forKey: key)
+            } else {
+                allMigrated = false  // keep plaintext until a later launch succeeds
+            }
+        }
+
+        for key in migratableDataSecretKeys {
+            guard let data = defaults.data(forKey: key), !data.isEmpty else {
+                defaults.removeObject(forKey: key)
+                continue
+            }
+            if KeychainService.setData(data, for: key) {
+                defaults.removeObject(forKey: key)
+            } else {
+                allMigrated = false
+            }
+        }
+
+        if allMigrated {
+            defaults.set(true, forKey: secretsMigratedKey)
+            NSLog("[Config] Migrated provider secrets from UserDefaults to Keychain")
+        } else {
+            NSLog("[Config] Secret migration incomplete — will retry on next launch")
+        }
     }
 
     // MARK: - Onboarding
@@ -458,16 +532,16 @@ struct Config {
 
     // MARK: - OpenAI-compatible
 
-    /// OpenAI-compatible API key
+    /// OpenAI-compatible API key. Stored in the Keychain (see `KeychainService`).
     static var openAIAPIKey: String {
-        if let key = UserDefaults.standard.string(forKey: "openAIAPIKey"), !key.isEmpty {
+        if let key = KeychainService.string(for: "openAIAPIKey"), !key.isEmpty {
             return key
         }
         return ""
     }
 
     static func setOpenAIAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "openAIAPIKey")
+        KeychainService.setString(key, for: "openAIAPIKey")
     }
 
     /// OpenAI-compatible base URL (supports OpenAI, Groq, Together, Ollama, etc.)
@@ -594,9 +668,10 @@ struct Config {
     private static let modelsKey = "savedModelConfigs"
     private static let activeModelKey = "activeModelId"
 
-    /// All saved model configurations
+    /// All saved model configurations. Persisted in the Keychain because each
+    /// `ModelConfig` embeds a provider `apiKey` (see `KeychainService`).
     static var savedModels: [ModelConfig] {
-        guard let data = UserDefaults.standard.data(forKey: modelsKey),
+        guard let data = KeychainService.data(for: modelsKey),
               var models = try? JSONDecoder().decode([ModelConfig].self, from: data),
               !models.isEmpty else {
             // Migrate from legacy single-provider config
@@ -631,7 +706,7 @@ struct Config {
 
     static func setSavedModels(_ models: [ModelConfig]) {
         if let data = try? JSONEncoder().encode(models) {
-            UserDefaults.standard.set(data, forKey: modelsKey)
+            KeychainService.setData(data, for: modelsKey)
         }
     }
 
@@ -1507,16 +1582,16 @@ struct Config {
 
     // MARK: - ElevenLabs TTS
 
-    /// ElevenLabs API key for natural TTS voices
+    /// ElevenLabs API key for natural TTS voices. Stored in the Keychain (see `KeychainService`).
     static var elevenLabsAPIKey: String {
-        if let key = UserDefaults.standard.string(forKey: "elevenLabsAPIKey"), !key.isEmpty {
+        if let key = KeychainService.string(for: "elevenLabsAPIKey"), !key.isEmpty {
             return key
         }
         return ""
     }
 
     static func setElevenLabsAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "elevenLabsAPIKey")
+        KeychainService.setString(key, for: "elevenLabsAPIKey")
     }
 
     /// ElevenLabs voice ID - default is "Rachel" (warm, conversational female voice)
@@ -1687,15 +1762,16 @@ struct Config {
         UserDefaults.standard.set(host, forKey: "openClawTunnelHost")
     }
 
+    /// OpenClaw gateway auth token. Stored in the Keychain (see `KeychainService`).
     static var openClawGatewayToken: String {
-        if let token = UserDefaults.standard.string(forKey: "openClawGatewayToken"), !token.isEmpty {
+        if let token = KeychainService.string(for: "openClawGatewayToken"), !token.isEmpty {
             return token
         }
         return ""
     }
 
     static func setOpenClawGatewayToken(_ token: String) {
-        UserDefaults.standard.set(token, forKey: "openClawGatewayToken")
+        KeychainService.setString(token, for: "openClawGatewayToken")
     }
 
     static var isOpenClawConfigured: Bool {
@@ -1705,9 +1781,10 @@ struct Config {
 
     // MARK: - Multi-Gateway Configuration
 
-    /// All configured gateways, sorted by priority (lower = first).
+    /// All configured gateways, sorted by priority (lower = first). Persisted in the
+    /// Keychain because each `GatewayConfig` embeds an auth `token` (see `KeychainService`).
     static var savedGateways: [GatewayConfig] {
-        guard let data = UserDefaults.standard.data(forKey: "savedGateways"),
+        guard let data = KeychainService.data(for: "savedGateways"),
               let gateways = try? JSONDecoder().decode([GatewayConfig].self, from: data) else {
             // Auto-migrate legacy single-gateway config on first access
             if openClawEnabled && !openClawGatewayToken.isEmpty {
@@ -1735,7 +1812,7 @@ struct Config {
 
     static func setSavedGateways(_ gateways: [GatewayConfig]) {
         guard let data = try? JSONEncoder().encode(gateways) else { return }
-        UserDefaults.standard.set(data, forKey: "savedGateways")
+        KeychainService.setData(data, for: "savedGateways")
     }
 
     /// Enabled gateways only, in priority order.
@@ -1910,8 +1987,10 @@ struct Config {
 
     // MARK: - MCP Servers
 
+    /// Persisted in the Keychain because each `MCPServerConfig` embeds auth `headers`
+    /// (e.g. `Authorization: Bearer …`) — see `KeychainService`.
     static var mcpServers: [MCPServerConfig] {
-        guard let data = UserDefaults.standard.data(forKey: "mcpServers"),
+        guard let data = KeychainService.data(for: "mcpServers"),
               let servers = try? JSONDecoder().decode([MCPServerConfig].self, from: data) else {
             return []
         }
@@ -1920,7 +1999,7 @@ struct Config {
 
     static func setMCPServers(_ servers: [MCPServerConfig]) {
         if let data = try? JSONEncoder().encode(servers) {
-            UserDefaults.standard.set(data, forKey: "mcpServers")
+            KeychainService.setData(data, for: "mcpServers")
         }
     }
 
@@ -1934,12 +2013,13 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "homeAssistantURL")
     }
 
+    /// Home Assistant long-lived access token. Stored in the Keychain (see `KeychainService`).
     static var homeAssistantToken: String {
-        UserDefaults.standard.string(forKey: "homeAssistantToken") ?? ""
+        KeychainService.string(for: "homeAssistantToken") ?? ""
     }
 
     static func setHomeAssistantToken(_ token: String) {
-        UserDefaults.standard.set(token, forKey: "homeAssistantToken")
+        KeychainService.setString(token, for: "homeAssistantToken")
     }
 
     // MARK: - Live Broadcast
@@ -1960,12 +2040,13 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "broadcastRTMPURL")
     }
 
+    /// RTMP broadcast stream key (a publishing credential). Stored in the Keychain (see `KeychainService`).
     static var broadcastStreamKey: String {
-        UserDefaults.standard.string(forKey: "broadcastStreamKey") ?? ""
+        KeychainService.string(for: "broadcastStreamKey") ?? ""
     }
 
     static func setBroadcastStreamKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "broadcastStreamKey")
+        KeychainService.setString(key, for: "broadcastStreamKey")
     }
 
     static var isBroadcastConfigured: Bool {
@@ -1995,15 +2076,16 @@ struct Config {
 
     // MARK: - Perplexity Search
 
+    /// Perplexity API key. Stored in the Keychain (see `KeychainService`).
     static var perplexityAPIKey: String {
-        if let key = UserDefaults.standard.string(forKey: "perplexityAPIKey"), !key.isEmpty {
+        if let key = KeychainService.string(for: "perplexityAPIKey"), !key.isEmpty {
             return key
         }
         return ""
     }
 
     static func setPerplexityAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "perplexityAPIKey")
+        KeychainService.setString(key, for: "perplexityAPIKey")
     }
 
     static var isPerplexityConfigured: Bool {
@@ -2430,10 +2512,11 @@ struct Config {
     }
     static func setExpertTurnUsername(_ v: String) { UserDefaults.standard.set(v, forKey: "expertTurnUsername") }
 
+    /// TURN server credential (a password). Stored in the Keychain (see `KeychainService`).
     static var expertTurnCredential: String {
-        UserDefaults.standard.string(forKey: "expertTurnCredential") ?? ""
+        KeychainService.string(for: "expertTurnCredential") ?? ""
     }
-    static func setExpertTurnCredential(_ v: String) { UserDefaults.standard.set(v, forKey: "expertTurnCredential") }
+    static func setExpertTurnCredential(_ v: String) { KeychainService.setString(v, for: "expertTurnCredential") }
 
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.

@@ -133,6 +133,9 @@ struct OpenGlassesApp: App {
     @State private var isHipaaLocked = Config.hipaaMode
 
     init() {
+        // Move any plaintext provider secrets out of UserDefaults and into the
+        // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
+        Config.migrateSecretsToKeychainIfNeeded()
         // Defer Wearables SDK (Bluetooth permission) until after onboarding
         if Config.hasCompletedOnboarding {
             configureWearables()
