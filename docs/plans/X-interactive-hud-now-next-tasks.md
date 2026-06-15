@@ -6,7 +6,7 @@
 
 **Effort:** ~3–4 days.
 
-**Status (branch `display/hud-phase3`):** ✅ Build-order steps 1–4 shipped and tested — interactive foundation, `PlaybookHUDTaskSource` (linear) and `ProcedureHUDTaskSource` (branching SOPs with choice buttons), and the voice bridge ("next/done/skip/back"). 30 headless tests pass; Debug + Release green. Remaining: step 5 (agent replies currently *suppressed* while a card is held — heard via TTS, card stays authoritative; flash-during-task is an optional refinement) and step 6 (Settings copy).
+**Status:** ✅ **Complete.** Steps 1–4 shipped in #46 (interactive foundation, `PlaybookHUDTaskSource` linear + `ProcedureHUDTaskSource` branching SOPs, voice bridge). Step 5 (AI replies now *flash* over the card and restore it, while ambient captions stay suppressed) and step 6 (Settings copy + interactive debug events) followed on `feat/hud-polish`. 31 headless tests; Debug + Release green.
 
 ---
 

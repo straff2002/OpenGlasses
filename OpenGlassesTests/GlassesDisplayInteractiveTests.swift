@@ -71,6 +71,17 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         XCTAssertEqual(frames, [])
     }
 
+    func testAIReplyFlashesOverCardWhileCaptionSuppressed() async {
+        svc.present(screen: card("Card")) { _ in }
+        await settle()
+        frames.removeAll()
+        // A caption (default showText) stays suppressed; an AI reply flashes over the card.
+        svc.showText("a caption line")                          // suppressed
+        svc.showText("the AI answer", flashWhileInteractive: true)  // flashes
+        await settle()
+        XCTAssertEqual(frames, [.content(body: "the AI answer", title: nil, icon: .none)])
+    }
+
     func testNotificationFlashesThenRestoresScreenWhileInteractive() async {
         let screen = card("Card")
         svc.present(screen: screen) { _ in }

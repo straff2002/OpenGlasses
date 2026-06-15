@@ -153,8 +153,17 @@ final class GlassesDisplayService: ObservableObject {
 
     /// Show a concise line of body text. No-op when the feature is off or the glasses
     /// have no display. Used by the Phase 1 producers (AI replies, ambient captions).
-    func showText(_ text: String) {
-        present(HUDContent(title: nil, body: text, icon: .none), transient: false, duration: 0)
+    ///
+    /// `flashWhileInteractive`: when a task card is held, AI replies pass `true` so the
+    /// reply briefly flashes over the card and the card is then restored — rather than
+    /// being suppressed. Ambient captions leave it `false` (suppressed while a card is
+    /// up, to avoid spamming the task).
+    func showText(_ text: String, flashWhileInteractive: Bool = false) {
+        if flashWhileInteractive && isInteractive {
+            present(HUDContent(title: nil, body: text, icon: .none), transient: true, duration: 5)
+        } else {
+            present(HUDContent(title: nil, body: text, icon: .none), transient: false, duration: 0)
+        }
     }
 
     /// Show body text, then auto-clear after `duration` seconds.
@@ -188,14 +197,17 @@ final class GlassesDisplayService: ObservableObject {
         screenSelectionHandler = onSelect
         currentScreen = screen
         isInteractive = true
+        onDebugEvent?("HUD task card: \(screen.title ?? "menu")")
         enqueue(.screen(screen))
     }
 
     /// Leave interactive mode and clear the HUD so ambient producers resume.
     func endInteractive() {
+        guard isInteractive else { return }
         isInteractive = false
         currentScreen = nil
         screenSelectionHandler = nil
+        onDebugEvent?("HUD interactive ended")
         enqueue(.op(.clear))
     }
 

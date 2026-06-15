@@ -144,7 +144,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         // Mirror spoken text to the in-lens HUD (additive; no-op without a display).
         // Callers that render a richer HUD treatment themselves pass mirrorToHUD: false.
-        if mirrorToHUD { glassesDisplay?.showText(text) }
+        if mirrorToHUD { glassesDisplay?.showText(text, flashWhileInteractive: true) }
 
         // Silence if glasses-only mode is on and glasses aren't connected
         if Config.glassesOnlyAudio && !glassesConnected {

@@ -950,7 +950,7 @@ struct HardwarePrivacyView: View {
                             }
                         }
                     ),
-                    info: "Mirrors AI responses and live captions to the in-lens display on Ray-Ban Display glasses. Has no effect on glasses without a built-in display."
+                    info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). Ray-Ban Display glasses only — no effect on glasses without a built-in display."
                 )
                 InfoToggle(
                     title: "Use Phone Mic for Translation",
