@@ -24,6 +24,17 @@ So an interactive screen is just *a `FlexBox` of `Button`s with closures*. Selec
 
 ---
 
+## Visibility, colour & brand
+
+`MWDATDisplay` exposes **no raw colour API** (verified against 0.7.0 — no RGB / hex / tint / opacity / brightness). Styling is *semantic tokens only*: `TextColor.primary/.secondary`, `TextStyle.heading/.body/.meta`, `ButtonStyle.primary/.secondary/.outline`, `Background.none/.card`, `IconStyle.filled/.outline`. Meta's on-device design system maps those to the actual colour/contrast/anti-aliasing tuned for the waveguide — so **on-glass legibility and brand consistency are owned by the device, not us**, and we can't ship a low-contrast or off-brand frame even by accident.
+
+Implications:
+- The app's coral brand accent (`#F08A4B`; never cyan/violet) stays on the **phone UI** — the lens inherits Meta's palette. Our identity on the HUD is **icon choice, copy tone, and restraint**, not colour.
+- The visibility levers we *do* control: **hierarchy** (heading/primary for the step title, body for the instruction, meta/secondary for "Step x of y" / "Next: …"), **`Background.card`** to lift high-attention frames, **icons** (hazard for safety, compass for nav, …), **brevity** (`condense` → ≤120 body / ≤40 title, whitespace-collapsed), and the **latest-wins render queue** (one frame in flight, identical frames deduped — no clutter or flicker).
+- **Subtlety:** default to `.secondary`/`.meta` + `Background.none` for ambient mirrors; escalate to `.primary` + `card` + icon only for safety notes and the active task. Ambient AI replies/captions are suppressed while a card is held so the task stays authoritative.
+
+**Device-less validation** (no Display hardware): the test seam asserts the semantic-token choice per frame; the **phone mirror preview** ([Plan Y](Y-interactive-hud-launcher.md) `HUDPhoneMirrorView`) renders the same `HUDScreen` with a Meta-like green-on-dark treatment to eyeball hierarchy/density/brand on the phone; and any hard content limits from Meta's HMI guidance get baked into `condense`.
+
 ## Concept
 
 When a Playbook or Procedure is running, the HUD shows a compact card:
