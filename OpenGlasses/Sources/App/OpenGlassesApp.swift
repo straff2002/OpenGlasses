@@ -458,6 +458,7 @@ class AppState: ObservableObject, AppStateProtocol {
     let locationService = LocationService()
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
+    let glassesDisplay = GlassesDisplayService()
     let faceRecognition = FaceRecognitionService()
     let memoryRewind = MemoryRewindService()
     let privacyFilter = PrivacyFilterService()
@@ -599,8 +600,16 @@ class AppState: ObservableObject, AppStateProtocol {
         // same reference-counted hold that the active-listening flow uses.
         speechService.wakeWordService = wakeWordService
 
+        // Mirror spoken AI responses + ambient captions to the in-lens HUD (no-op on
+        // glasses without a display, and gated behind Config.glassesDisplayEnabled).
+        speechService.glassesDisplay = glassesDisplay
+        glassesDisplay.onDebugEvent = { [weak self] message in
+            Task { @MainActor in self?.addDebugEvent(message) }
+        }
+
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService
+        ambientCaptions.glassesDisplay = glassesDisplay
         memoryRewind.wakeWordService = wakeWordService
         videoRecorder.wakeWordService = wakeWordService
         videoRecorder.ambientCaptionService = ambientCaptions

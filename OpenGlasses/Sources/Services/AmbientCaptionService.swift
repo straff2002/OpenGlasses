@@ -24,6 +24,10 @@ class AmbientCaptionService: ObservableObject {
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
+    /// Set by AppState — the live caption line is mirrored to the in-lens HUD when the
+    /// Glasses Display feature is on. No-ops on glasses without a display.
+    weak var glassesDisplay: GlassesDisplayService?
+
     /// Previous buffer forwarder (if transcription was using it)
     private var previousForwarder: ((AVAudioPCMBuffer) -> Void)?
 
@@ -60,6 +64,7 @@ class AmbientCaptionService: ObservableObject {
         isActive = false
         stopRecognitionSession()
         currentCaption = ""
+        glassesDisplay?.clear()
         print("🎙️ Ambient captions stopped")
     }
 
@@ -91,6 +96,7 @@ class AmbientCaptionService: ObservableObject {
                 if let result = result {
                     let text = result.bestTranscription.formattedString
                     self.currentCaption = text
+                    self.glassesDisplay?.showText(text)
                     self.resetSilenceTimer()
 
                     if result.isFinal {

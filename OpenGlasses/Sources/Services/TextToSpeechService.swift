@@ -88,6 +88,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     weak var wakeWordService: WakeWordService?
     private var didHoldPause = false
 
+    /// Set by AppState — spoken text is mirrored to the in-lens HUD when the Glasses
+    /// Display feature is on. The service no-ops on glasses without a display.
+    weak var glassesDisplay: GlassesDisplayService?
+
     private func beginPause() {
         guard !didHoldPause else { return }
         wakeWordService?.pauseOtherAudio()
@@ -137,6 +141,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard !text.isEmpty else { return }
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
+
+        // Mirror spoken text to the in-lens HUD (additive; no-op without a display).
+        glassesDisplay?.showText(text)
 
         // Silence if glasses-only mode is on and glasses aren't connected
         if Config.glassesOnlyAudio && !glassesConnected {

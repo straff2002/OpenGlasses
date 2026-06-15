@@ -940,6 +940,19 @@ struct HardwarePrivacyView: View {
                     info: "Disables camera video streaming from the glasses. Voice commands still work but vision features (photo capture, live video analysis) are unavailable. Significantly extends glasses battery life."
                 )
                 InfoToggle(
+                    title: "Glasses Display (HUD)",
+                    isOn: Binding(
+                        get: { Config.glassesDisplayEnabled },
+                        set: { newValue in
+                            Config.setGlassesDisplayEnabled(newValue)
+                            if !newValue {
+                                Task { await appState.glassesDisplay.shutdown() }
+                            }
+                        }
+                    ),
+                    info: "Mirrors AI responses and live captions to the in-lens display on Ray-Ban Display glasses. Has no effect on glasses without a built-in display."
+                )
+                InfoToggle(
                     title: "Use Phone Mic for Translation",
                     isOn: Binding(
                         get: { Config.usePhoneMicForTranslation },

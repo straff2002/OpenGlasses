@@ -2131,6 +2131,18 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "audioOnlyMode")
     }
 
+    // MARK: - Glasses Display (in-lens HUD)
+
+    /// When enabled, AI responses and ambient captions are mirrored to the
+    /// Ray-Ban Display in-lens HUD. No-ops on glasses without a display.
+    static var glassesDisplayEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "glassesDisplayEnabled")
+    }
+
+    static func setGlassesDisplayEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "glassesDisplayEnabled")
+    }
+
     // MARK: - WebRTC Streaming
 
     static var webRTCSignalingURL: String {
