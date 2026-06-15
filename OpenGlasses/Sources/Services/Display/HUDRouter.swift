@@ -25,7 +25,10 @@ final class HUDRouter: ObservableObject {
     // MARK: - Task presentation
 
     /// Begin driving `source` as a Now/Next card. Re-renders on every source change.
+    /// Starting a task supersedes any open launcher menu (Plan Y) — the card takes the HUD.
     func startTask(_ source: HUDTaskSource) {
+        screenStack = []
+        isPresentingMenu = false
         taskSource = source
         cancellable = source.changes.sink { [weak self] _ in
             // Defer to the next main-actor tick so the source reflects the new step.
@@ -37,22 +40,36 @@ final class HUDRouter: ObservableObject {
 
     /// Stop driving the current task and return the HUD to its ambient producers.
     func stopTask() {
+        clearTaskState()
+        currentScreen = nil
+        display.endInteractive()
+    }
+
+    /// Drop the active task's source/subscription without touching the HUD. Used both by
+    /// `stopTask` and by `refresh` when a workflow finishes underneath an open menu.
+    private func clearTaskState() {
         cancellable = nil
         taskSource = nil
-        currentScreen = nil
         isPresentingTask = false
-        display.endInteractive()
     }
 
     private func refresh() {
         guard let source = taskSource else { return }
         guard let current = source.current else {
-            // Workflow finished → confirmation flash, then back to ambient.
+            // Workflow finished.
             let title = source.title
-            stopTask()
-            display.flash("✓ \(title) complete")
+            if isPresentingMenu {
+                // A launcher menu is overlaying the card — leave it up; just drop the now
+                // stale task so "Resume task" stops offering a finished card.
+                clearTaskState()
+            } else {
+                stopTask()
+                display.flash("✓ \(title) complete")
+            }
             return
         }
+        // Don't render the card over an open launcher menu; it re-renders on resume/close.
+        guard !isPresentingMenu else { return }
         let screen = Self.taskCard(source: source, current: current, next: source.next)
         currentScreen = screen
         display.present(screen: screen) { [weak self] id in
@@ -107,12 +124,26 @@ final class HUDRouter: ObservableObject {
         if screenStack.isEmpty { dismiss() } else { renderTop() }
     }
 
-    /// Close the launcher entirely and return the HUD to its ambient producers.
+    /// Close the launcher menu. If a task card was running underneath (the menu was opened
+    /// over it), return to that card; otherwise return the HUD to its ambient producers.
     func dismiss() {
         screenStack = []
-        currentScreen = nil
         isPresentingMenu = false
-        display.endInteractive()
+        if isPresentingTask {
+            refresh()   // re-present the task card the menu was overlaying
+        } else {
+            currentScreen = nil
+            display.endInteractive()
+        }
+    }
+
+    /// Re-present the active task card, closing any open launcher menu. Backs the "Resume
+    /// task" root item (Plan Y). No-op when no task is running.
+    func resumeTask() {
+        guard isPresentingTask else { return }
+        screenStack = []
+        isPresentingMenu = false
+        refresh()
     }
 
     /// Depth of the live menu stack (0 when closed). Exposed for tests.

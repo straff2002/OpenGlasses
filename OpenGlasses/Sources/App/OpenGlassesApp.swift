@@ -995,6 +995,33 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudLauncher.activePersonaId = { [weak self] in self?.activePersona?.id }
 
+        // Workflows branch: list the saved playbooks; selecting one starts it and hands off
+        // to the Plan X Now/Next card (startTask supersedes the open menu).
+        hudLauncher.availablePlaybooks = { [weak self] in self?.playbookStore.playbooks ?? [] }
+        hudLauncher.startPlaybook = { [weak self] id in
+            guard let self else { return }
+            _ = self.playbookStore.startPlaybook(id)
+            self.hudRouter.startTask(self.playbookHUDSource)
+        }
+
+        // SOPs branch: gated on the Field Assist entitlement; procedures are vault-scoped so
+        // they list during an active session. Selecting one ensures a session, starts the
+        // procedure, and hands off to the Plan X card.
+        hudLauncher.fieldAssistActive = { Config.fieldAssistActive }
+        hudLauncher.availableProcedures = { FieldSessionService.shared.availableProcedureDefinitions() }
+        hudLauncher.startProcedure = { [weak self] id in
+            guard let self else { return }
+            do {
+                if FieldSessionService.shared.activeSession == nil {
+                    try FieldSessionService.shared.startSession(vaultId: Config.fieldAssistDefaultVaultId, assetId: nil)
+                }
+                _ = try FieldSessionService.shared.startProcedure(id: id)
+                self.hudRouter.startTask(self.procedureHUDSource)
+            } catch {
+                self.glassesDisplay.flash("⚠️ \(error.localizedDescription)")
+            }
+        }
+
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -2071,6 +2098,20 @@ class AppState: ObservableObject, AppStateProtocol {
         // Checked before intent classification so these short commands aren't filtered.
         if await hudRouter.handleVoiceCommand(text) {
             print("🎯 HUD task command handled: \(text)")
+            if inConversation {
+                isListening = true
+                transcriptionService.startRecording()
+            } else {
+                await returnToWakeWord()
+            }
+            return
+        }
+
+        // HUD launcher voice nav (Display Phase 4 / Plan Y): while a menu is open, a spoken
+        // item label (or "back"/"close") selects it. Checked before the open command so
+        // saying a leaf name inside the menu navigates instead of re-opening the root.
+        if hudLauncher.handleVoiceSelection(text) {
+            print("🎛 HUD launcher voice selection: \(text)")
             if inConversation {
                 isListening = true
                 transcriptionService.startRecording()
