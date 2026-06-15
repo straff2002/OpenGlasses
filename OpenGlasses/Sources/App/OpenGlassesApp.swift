@@ -746,11 +746,13 @@ class AppState: ObservableObject, AppStateProtocol {
             startPermissionRequiringServices()
         }
 
-        // Start proactive calendar alerts — speaks through TTS when events are imminent
+        // Start proactive calendar alerts — speaks through TTS when events are imminent,
+        // and mirrors a richer notification card to the in-lens HUD.
         proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
+            self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
             Task {
-                await self.speechService.speak(message, urgency: urgency)
+                await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
             }
         }
         proactiveAlerts.onMeetingPlaybook = { [weak self] title, notes, steps in
@@ -771,6 +773,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
+        NavigationAssistService.shared.glassesDisplay = glassesDisplay
 
         // Field Assist Phase 5 (Plan K2): expert stream bridge for escalations. Transport
         // (MJPEG / WebRTC) is selected in Settings; MJPEG is the working default.
@@ -788,12 +791,14 @@ class AppState: ObservableObject, AppStateProtocol {
         // Pre-fetch Home Assistant entity cache for fuzzy matching
         Task { await HomeAssistantEntityCache.shared.refreshIfNeeded() }
 
-        // Wire geofence alerts — speak via TTS when entering/leaving a region
+        // Wire geofence alerts — speak via TTS when entering/leaving a region, and
+        // mirror a location notification card to the in-lens HUD.
         if let geofenceTool = nativeToolRegistry.tool(named: "geofence") as? GeofenceTool {
             geofenceTool.onAlert = { [weak self] message, urgency in
                 guard let self else { return }
+                self.glassesDisplay.showNotification(title: "Location", body: message, icon: .location)
                 Task {
-                    await self.speechService.speak(message, urgency: urgency)
+                    await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
                 }
             }
             geofenceTool.restoreGeofences()

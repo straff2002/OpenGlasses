@@ -137,13 +137,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Multiplier applied to the iOS speech rate for the current utterance (driven by urgency).
     private var activeRateMultiplier: Float = 1.0
 
-    func speak(_ text: String, urgency: SpeechUrgency = .low) async {
+    func speak(_ text: String, urgency: SpeechUrgency = .low, mirrorToHUD: Bool = true) async {
         guard !text.isEmpty else { return }
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
 
         // Mirror spoken text to the in-lens HUD (additive; no-op without a display).
-        glassesDisplay?.showText(text)
+        // Callers that render a richer HUD treatment themselves pass mirrorToHUD: false.
+        if mirrorToHUD { glassesDisplay?.showText(text) }
 
         // Silence if glasses-only mode is on and glasses aren't connected
         if Config.glassesOnlyAudio && !glassesConnected {

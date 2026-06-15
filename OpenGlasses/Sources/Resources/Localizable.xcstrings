@@ -1,152 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Share Health Data with AI" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesundheitsdaten mit KI teilen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compartir datos de salud con la IA"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Partager les données de santé avec l'IA"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "健康データをAIと共有"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Udostępniaj dane zdrowotne AI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "与 AI 共享健康数据"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "與 AI 共享健康資料"
-          }
-        }
-      }
-    },
-    "Off by default. When on, the fitness coach may read your Apple Health workout history and send it to your configured AI provider (Anthropic, OpenAI, Google, etc.) so it can discuss your progress. Your Health data leaves the device only while this is enabled. On-device workout tracking, form analysis, and saving workouts to Apple Health work either way." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Standardmäßig deaktiviert. Wenn aktiviert, darf der Fitness-Coach deinen Apple-Health-Trainingsverlauf lesen und an deinen konfigurierten KI-Anbieter (Anthropic, OpenAI, Google usw.) senden, um deine Fortschritte zu besprechen. Deine Gesundheitsdaten verlassen das Gerät nur, solange dies aktiviert ist. Trainingsaufzeichnung, Haltungsanalyse und das Speichern von Trainings in Apple Health auf dem Gerät funktionieren in jedem Fall."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desactivado por defecto. Cuando está activado, el entrenador de fitness puede leer tu historial de entrenamientos de Apple Salud y enviarlo a tu proveedor de IA configurado (Anthropic, OpenAI, Google, etc.) para comentar tu progreso. Tus datos de salud salen del dispositivo solo mientras esto esté activado. El seguimiento de entrenamientos, el análisis de la técnica y el guardado de entrenamientos en Apple Salud en el dispositivo funcionan igualmente."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Désactivé par défaut. Lorsqu'il est activé, le coach sportif peut lire votre historique d'entraînements Apple Santé et l'envoyer à votre fournisseur d'IA configuré (Anthropic, OpenAI, Google, etc.) afin de discuter de vos progrès. Vos données de santé ne quittent l'appareil que lorsque cette option est activée. Le suivi des entraînements, l'analyse de la posture et l'enregistrement des entraînements dans Apple Santé sur l'appareil fonctionnent dans tous les cas."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デフォルトではオフです。オンにすると、フィットネスコーチがApple ヘルスケアのワークアウト履歴を読み取り、設定したAIプロバイダ（Anthropic、OpenAI、Googleなど）に送信して進捗について話せるようになります。健康データがデバイスの外に出るのは、この設定がオンの間だけです。デバイス上でのワークアウト記録、フォーム分析、Apple ヘルスケアへのワークアウト保存は、どちらの場合でも機能します。"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Domyślnie wyłączone. Po włączeniu trener fitness może odczytać historię treningów z Apple Health i wysłać ją do skonfigurowanego dostawcy AI (Anthropic, OpenAI, Google itp.), aby omówić Twoje postępy. Dane zdrowotne opuszczają urządzenie tylko wtedy, gdy ta opcja jest włączona. Śledzenie treningów, analiza formy i zapisywanie treningów w Apple Health na urządzeniu działają niezależnie od tego."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "默认关闭。开启后，健身教练可以读取你的“Apple 健康”锻炼记录，并发送给你配置的 AI 提供商（Anthropic、OpenAI、Google 等）以讨论你的进展。只有在启用此选项时，你的健康数据才会离开设备。设备上的锻炼跟踪、姿势分析以及将锻炼保存到“Apple 健康”在任何情况下都可使用。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "預設關閉。開啟後，健身教練可讀取你的「Apple 健康」鍛鍊記錄，並傳送給你設定的 AI 供應商（Anthropic、OpenAI、Google 等）以討論你的進度。只有在啟用此選項時，你的健康資料才會離開裝置。裝置上的鍛鍊追蹤、姿勢分析以及將鍛鍊儲存到「Apple 健康」在任何情況下都可使用。"
-          }
-        }
-      }
-    },
-    "Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Unschärfe für Passantengesichter läuft vollständig auf dem Gerät – es verlassen keine Bilder dein Telefon. „Gesundheitsdaten mit KI teilen“ ist standardmäßig deaktiviert: Apple-Health-Daten werden nur an deinen KI-Anbieter gesendet, wenn du es aktivierst."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El desenfoque de rostros de transeúntes se ejecuta completamente en el dispositivo: ninguna imagen sale de tu teléfono. «Compartir datos de salud con la IA» está desactivado por defecto: los datos de Apple Salud se envían a tu proveedor de IA solo cuando lo activas."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le floutage des visages des passants s'exécute entièrement sur l'appareil — aucune image ne quitte votre téléphone. « Partager les données de santé avec l'IA » est désactivé par défaut : les données Apple Santé ne sont envoyées à votre fournisseur d'IA que lorsque vous l'activez."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "傍観者の顔のぼかしは完全にデバイス上で実行され、画像が端末の外に出ることはありません。「健康データをAIと共有」はデフォルトでオフです。Apple ヘルスケアのデータは、オンにした場合にのみAIプロバイダに送信されます。"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmycie twarzy przechodniów działa w całości na urządzeniu — żadne zdjęcia nie opuszczają telefonu. „Udostępniaj dane zdrowotne AI“ jest domyślnie wyłączone: dane Apple Health są wysyłane do dostawcy AI tylko po włączeniu tej opcji."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旁观者面部模糊完全在设备上运行——不会有图像离开你的手机。“与 AI 共享健康数据”默认关闭：只有在你开启时，“Apple 健康”数据才会发送给你的 AI 提供商。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "旁觀者面部模糊完全在裝置上執行——不會有圖像離開你的手機。「與 AI 共享健康資料」預設關閉：只有在你開啟時，「Apple 健康」資料才會傳送給你的 AI 供應商。"
-          }
-        }
-      }
-    },
     "" : {
 
     },
     "·" : {
       "comment" : "A period used to separate different pieces of text.",
+      "isCommentAutoGenerated" : true
+    },
+    "· Unload" : {
+      "comment" : "A separator between the main text and the secondary text.",
       "isCommentAutoGenerated" : true
     },
     "\"%@\"" : {
@@ -365,6 +228,13 @@
           }
         }
       }
+    },
+    "%@ loaded" : {
+      "comment" : "A label that indicates a model is loaded. The argument is the name of the model.",
+      "isCommentAutoGenerated" : true
+    },
+    "%@ loaded. Tap to unload." : {
+
     },
     "%@ mode: %@" : {
       "comment" : "A label that describes the active mode, optionally prefixed with \"Active\" if the mode is active.",
@@ -667,6 +537,18 @@
       "comment" : "A label displaying the number of skills from ClawHub.ai that match the current search. The",
       "isCommentAutoGenerated" : true
     },
+    "%lld step%@" : {
+      "comment" : "A label that shows the number of steps in a scenario. The argument is the number of steps.",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld step%2$@"
+          }
+        }
+      }
+    },
     "%lld steps" : {
 
     },
@@ -707,6 +589,10 @@
           }
         }
       }
+    },
+    "%lld%%" : {
+      "comment" : "A progress bar showing the percentage of a download. The argument is the percentage of the download.",
+      "isCommentAutoGenerated" : true
     },
     "+ %lld more tools" : {
 
@@ -968,8 +854,9 @@
     "Active Session" : {
 
     },
-    "Adam — deep, American" : {
-
+    "Active vault: %@. Tap to switch." : {
+      "comment" : "A label that describes the active vault.",
+      "isCommentAutoGenerated" : true
     },
     "Add" : {
       "extractionState" : "manual",
@@ -1307,9 +1194,6 @@
     "AirDrop, email, Files, or any installed app" : {
 
     },
-    "Alice — confident, British" : {
-
-    },
     "All %lld tools available" : {
 
     },
@@ -1418,6 +1302,9 @@
     "Appearance" : {
       "comment" : "A section header in the Quick Action Editor that describes the appearance settings.",
       "isCommentAutoGenerated" : true
+    },
+    "Approve" : {
+
     },
     "Ask" : {
       "extractionState" : "manual",
@@ -1724,9 +1611,6 @@
       "comment" : "A label for a badge that indicates the product is the best value.",
       "isCommentAutoGenerated" : true
     },
-    "Bill — strong, American" : {
-
-    },
     "Binaries" : {
 
     },
@@ -1790,9 +1674,6 @@
     "Branches" : {
       "comment" : "A section for the branches of a step.",
       "isCommentAutoGenerated" : true
-    },
-    "Brian — deep, American" : {
-
     },
     "Brightness" : {
 
@@ -1951,13 +1832,57 @@
         }
       }
     },
+    "Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Unschärfe für Passantengesichter läuft vollständig auf dem Gerät – es verlassen keine Bilder dein Telefon. „Gesundheitsdaten mit KI teilen“ ist standardmäßig deaktiviert: Apple-Health-Daten werden nur an deinen KI-Anbieter gesendet, wenn du es aktivierst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El desenfoque de rostros de transeúntes se ejecuta completamente en el dispositivo: ninguna imagen sale de tu teléfono. «Compartir datos de salud con la IA» está desactivado por defecto: los datos de Apple Salud se envían a tu proveedor de IA solo cuando lo activas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le floutage des visages des passants s'exécute entièrement sur l'appareil — aucune image ne quitte votre téléphone. « Partager les données de santé avec l'IA » est désactivé par défaut : les données Apple Santé ne sont envoyées à votre fournisseur d'IA que lorsque vous l'activez."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で実行され、画像が端末の外に出ることはありません。「健康データをAIと共有」はデフォルトでオフです。Apple ヘルスケアのデータは、オンにした場合にのみAIプロバイダに送信されます。"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmycie twarzy przechodniów działa w całości na urządzeniu — żadne zdjęcia nie opuszczają telefonu. „Udostępniaj dane zdrowotne AI“ jest domyślnie wyłączone: dane Apple Health są wysyłane do dostawcy AI tylko po włączeniu tej opcji."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁观者面部模糊完全在设备上运行——不会有图像离开你的手机。“与 AI 共享健康数据”默认关闭：只有在你开启时，“Apple 健康”数据才会发送给你的 AI 提供商。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁觀者面部模糊完全在裝置上執行——不會有圖像離開你的手機。「與 AI 共享健康資料」預設關閉：只有在你開啟時，「Apple 健康」資料才會傳送給你的 AI 供應商。"
+          }
+        }
+      }
+    },
     "Callback source: %@" : {
 
     },
     "Callback URL: %@" : {
-
-    },
-    "Callum — hoarse, American" : {
 
     },
     "CAM" : {
@@ -2236,12 +2161,6 @@
     "Changes take effect next time the camera session starts. Higher settings use more battery." : {
 
     },
-    "Charlie — casual, Australian" : {
-
-    },
-    "Charlotte — English-Swedish" : {
-
-    },
     "Chattiness" : {
 
     },
@@ -2312,9 +2231,6 @@
     "Choose your AI" : {
       "comment" : "A title for the onboarding page where users can choose an AI provider.",
       "isCommentAutoGenerated" : true
-    },
-    "Chris — casual, American" : {
-
     },
     "Clear" : {
       "extractionState" : "manual",
@@ -2442,6 +2358,10 @@
     },
     "Configured" : {
 
+    },
+    "Confirm action" : {
+      "comment" : "A title for a confirmation dialog.",
+      "isCommentAutoGenerated" : true
     },
     "Connect Glasses" : {
       "extractionState" : "manual",
@@ -2988,6 +2908,10 @@
     "Could not load skills from ClawHub. Check your connection and try again." : {
 
     },
+    "Couldn't start session" : {
+      "comment" : "A title for an alert that can't start a Field Assist session.",
+      "isCommentAutoGenerated" : true
+    },
     "Covered by this app" : {
 
     },
@@ -3115,9 +3039,6 @@
       "comment" : "A text field within the \"Wake Word\" section, allowing users to input a custom wake phrase. The text field is pre-populated with the value of the \"wakePhrase\" state variable.",
       "isCommentAutoGenerated" : true
     },
-    "Daniel — deep, British" : {
-
-    },
     "Dark" : {
 
     },
@@ -3135,9 +3056,6 @@
 
     },
     "Data Sent by Category" : {
-
-    },
-    "Dave — conversational, British" : {
 
     },
     "Debug" : {
@@ -3812,9 +3730,6 @@
         }
       }
     },
-    "Dorothy — pleasant, British" : {
-
-    },
     "Double-tap to edit" : {
       "comment" : "A hint that appears when tapping on a persona to edit it.",
       "isCommentAutoGenerated" : true
@@ -3953,9 +3868,6 @@
     "Drag to reorder priority. The app tries gateways top-to-bottom until one responds." : {
       "comment" : "A description of how to reorder gateways.",
       "isCommentAutoGenerated" : true
-    },
-    "Drew — well-rounded, American" : {
-
     },
     "e.g. Check train delays" : {
 
@@ -4162,9 +4074,6 @@
 
     },
     "elevenlabs.io" : {
-
-    },
-    "Emily — calm, American" : {
 
     },
     "Enable" : {
@@ -4980,13 +4889,14 @@
     "Field Assist provides hands-free, domain-grounded guidance for service technicians. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context." : {
 
     },
+    "Field Assist. %@" : {
+      "comment" : "A row in the persona picker that opens the Field Assist settings. The argument is the string “Unlock for grounded field-engineer guidance” or the string “Tap to enable”.",
+      "isCommentAutoGenerated" : true
+    },
     "Files App" : {
 
     },
     "Filter" : {
-
-    },
-    "Fin — Irish" : {
 
     },
     "For now, use FHIR R4 or Manual Share to export transcripts." : {
@@ -4996,6 +4906,9 @@
 
     },
     "Framework Coverage" : {
+
+    },
+    "Free ElevenLabs accounts may reject public-library voices — load voices from your account, or paste a Voice ID your key can use. The iOS voice is still used as a fallback." : {
 
     },
     "from: %@" : {
@@ -5022,9 +4935,6 @@
     "General" : {
       "comment" : "A section of the gateway edit form.",
       "isCommentAutoGenerated" : true
-    },
-    "George — raspy, British" : {
-
     },
     "Get API Key" : {
       "comment" : "A label that reads \"Get API Key\".",
@@ -5151,6 +5061,10 @@
     },
     "HA URL (e.g. http://192.168.1.100:8123)" : {
 
+    },
+    "Hands-free, domain-grounded guidance for field engineers — load a knowledge vault and run grounded, audited sessions." : {
+      "comment" : "A description of Field Assist.",
+      "isCommentAutoGenerated" : true
     },
     "Hardware" : {
       "comment" : "A section title for the hardware settings.",
@@ -5818,9 +5732,6 @@
         }
       }
     },
-    "James — calm, Australian" : {
-
-    },
     "JSON body. Use {{variable}} to insert values from previous steps." : {
       "comment" : "A description of how to use variables in a JSON body.",
       "isCommentAutoGenerated" : true
@@ -5871,9 +5782,6 @@
     "Later steps can reference this result with {{%@}}." : {
       "comment" : "A message that appears under a step's output variable when it's not empty. The variable is replaced with the step's output variable.",
       "isCommentAutoGenerated" : true
-    },
-    "Liam — American" : {
-
     },
     "License Code" : {
       "comment" : "A label displayed above a text field for entering a license code.",
@@ -5972,9 +5880,6 @@
       }
     },
     "Light" : {
-
-    },
-    "Lily — raspy, British" : {
 
     },
     "Limited RAM — use models under 1 GB" : {
@@ -6249,11 +6154,34 @@
     "LiveAI Mode" : {
 
     },
+    "Load" : {
+      "comment" : "A button to load a model.",
+      "isCommentAutoGenerated" : true
+    },
+    "Load %@" : {
+      "comment" : "A button to load a local machine learning model.",
+      "isCommentAutoGenerated" : true
+    },
     "Load Entities" : {
 
     },
     "Load More" : {
 
+    },
+    "Load My ElevenLabs Voices" : {
+
+    },
+    "Load on-device model %@" : {
+      "comment" : "A button that loads a local machine learning model. The argument is the name of the model.",
+      "isCommentAutoGenerated" : true
+    },
+    "Loaded" : {
+      "comment" : "A label that indicates a model is loaded.",
+      "isCommentAutoGenerated" : true
+    },
+    "Loading %@…" : {
+      "comment" : "A label at the top of the checkout view providing medication instructions. The argument is the instructions for taking the primary medication in the cart.",
+      "isCommentAutoGenerated" : true
     },
     "Loading entities…" : {
       "comment" : "A placeholder text displayed while loading Home Assistant entities.",
@@ -6270,6 +6198,9 @@
     "Loading shortcuts…" : {
       "comment" : "Text displayed while loading a list of Siri Shortcuts.",
       "isCommentAutoGenerated" : true
+    },
+    "Loading Voices…" : {
+
     },
     "Loading…" : {
 
@@ -6341,6 +6272,10 @@
     "Look & Feel" : {
 
     },
+    "Manage Field Assist" : {
+      "comment" : "A label for the settings button in the Field Assist tab.",
+      "isCommentAutoGenerated" : true
+    },
     "Manage Subscription" : {
 
     },
@@ -6348,9 +6283,6 @@
 
     },
     "Manual Sharing Options" : {
-
-    },
-    "Matilda — warm, American" : {
 
     },
     "MCP Server" : {
@@ -6505,8 +6437,16 @@
       "comment" : "A description of what an MCP server is and how it can be used with the app.",
       "isCommentAutoGenerated" : true
     },
+    "Model for this vault" : {
+      "comment" : "A label for the field assist vault model picker.",
+      "isCommentAutoGenerated" : true
+    },
     "Model ID" : {
 
+    },
+    "Model loaded — tap to unload" : {
+      "comment" : "A label for a button that unloads a loaded local LLM model.",
+      "isCommentAutoGenerated" : true
     },
     "Model: %@" : {
 
@@ -6718,9 +6658,6 @@
       "comment" : "A button that selects the next step in a step editor.",
       "isCommentAutoGenerated" : true
     },
-    "Nicole — whisper, American" : {
-
-    },
     "No active Medical Compliance subscription was found for this Apple ID." : {
       "comment" : "A message displayed when the user has not yet purchased the Medical Compliance subscription.",
       "isCommentAutoGenerated" : true
@@ -6807,6 +6744,10 @@
           }
         }
       }
+    },
+    "No guided scenarios in this vault — the assistant still answers grounded questions from its reference files." : {
+      "comment" : "A description of the Field Assist experience when a vault has no scenarios.",
+      "isCommentAutoGenerated" : true
     },
     "No MCP servers configured. Add one to connect external tools." : {
       "comment" : "A message displayed when no MCP servers are configured, encouraging the user to add one.",
@@ -7059,6 +7000,53 @@
     },
     "Off by default. Turn this on if you want the AI to act on its own — running background tasks, scheduling actions, looping through multi-step plans. Tap %@ above for the full list of what it unlocks." : {
 
+    },
+    "Off by default. When on, the fitness coach may read your Apple Health workout history and send it to your configured AI provider (Anthropic, OpenAI, Google, etc.) so it can discuss your progress. Your Health data leaves the device only while this is enabled. On-device workout tracking, form analysis, and saving workouts to Apple Health work either way." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardmäßig deaktiviert. Wenn aktiviert, darf der Fitness-Coach deinen Apple-Health-Trainingsverlauf lesen und an deinen konfigurierten KI-Anbieter (Anthropic, OpenAI, Google usw.) senden, um deine Fortschritte zu besprechen. Deine Gesundheitsdaten verlassen das Gerät nur, solange dies aktiviert ist. Trainingsaufzeichnung, Haltungsanalyse und das Speichern von Trainings in Apple Health auf dem Gerät funktionieren in jedem Fall."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado por defecto. Cuando está activado, el entrenador de fitness puede leer tu historial de entrenamientos de Apple Salud y enviarlo a tu proveedor de IA configurado (Anthropic, OpenAI, Google, etc.) para comentar tu progreso. Tus datos de salud salen del dispositivo solo mientras esto esté activado. El seguimiento de entrenamientos, el análisis de la técnica y el guardado de entrenamientos en Apple Salud en el dispositivo funcionan igualmente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivé par défaut. Lorsqu'il est activé, le coach sportif peut lire votre historique d'entraînements Apple Santé et l'envoyer à votre fournisseur d'IA configuré (Anthropic, OpenAI, Google, etc.) afin de discuter de vos progrès. Vos données de santé ne quittent l'appareil que lorsque cette option est activée. Le suivi des entraînements, l'analyse de la posture et l'enregistrement des entraînements dans Apple Santé sur l'appareil fonctionnent dans tous les cas."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デフォルトではオフです。オンにすると、フィットネスコーチがApple ヘルスケアのワークアウト履歴を読み取り、設定したAIプロバイダ（Anthropic、OpenAI、Googleなど）に送信して進捗について話せるようになります。健康データがデバイスの外に出るのは、この設定がオンの間だけです。デバイス上でのワークアウト記録、フォーム分析、Apple ヘルスケアへのワークアウト保存は、どちらの場合でも機能します。"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domyślnie wyłączone. Po włączeniu trener fitness może odczytać historię treningów z Apple Health i wysłać ją do skonfigurowanego dostawcy AI (Anthropic, OpenAI, Google itp.), aby omówić Twoje postępy. Dane zdrowotne opuszczają urządzenie tylko wtedy, gdy ta opcja jest włączona. Śledzenie treningów, analiza formy i zapisywanie treningów w Apple Health na urządzeniu działają niezależnie od tego."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认关闭。开启后，健身教练可以读取你的“Apple 健康”锻炼记录，并发送给你配置的 AI 提供商（Anthropic、OpenAI、Google 等）以讨论你的进展。只有在启用此选项时，你的健康数据才会离开设备。设备上的锻炼跟踪、姿势分析以及将锻炼保存到“Apple 健康”在任何情况下都可使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設關閉。開啟後，健身教練可讀取你的「Apple 健康」鍛鍊記錄，並傳送給你設定的 AI 供應商（Anthropic、OpenAI、Google 等）以討論你的進度。只有在啟用此選項時，你的健康資料才會離開裝置。裝置上的鍛鍊追蹤、姿勢分析以及將鍛鍊儲存到「Apple 健康」在任何情況下都可使用。"
+          }
+        }
+      }
     },
     "Offline Mode" : {
       "extractionState" : "manual",
@@ -7756,7 +7744,7 @@
         }
       }
     },
-    "Pick a downloaded local model (runs offline) or any configured cloud provider. Local handles fast tool calls; cloud handles complex reasoning." : {
+    "Pick a downloaded local model (runs offline) or any configured cloud provider. Cloud handles all tiers reliably; the on-device model is experimental (see the toggle)." : {
 
     },
     "Pick a provider. You can add more later in Settings." : {
@@ -8212,9 +8200,6 @@
     "Quick Vision" : {
 
     },
-    "Rachel — calm, American" : {
-
-    },
     "Read Text" : {
 
     },
@@ -8649,9 +8634,6 @@
       "comment" : "The title of a view that displays details of each safeguard.",
       "isCommentAutoGenerated" : true
     },
-    "Sarah — soft, American" : {
-
-    },
     "Save" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8736,6 +8718,10 @@
     },
     "Say this phrase to activate this persona. Add alternatives for common misrecognitions." : {
       "comment" : "A footer for the \"Wake Word\" section in the PersonaEditorView, explaining the purpose of the \"Alternative spellings\" text field.",
+      "isCommentAutoGenerated" : true
+    },
+    "Scenarios — %@" : {
+      "comment" : "A heading for a section of the persona picker that lists scenarios (procedures) in a vault. The argument is the name of the vault.",
       "isCommentAutoGenerated" : true
     },
     "Schedule" : {
@@ -8839,9 +8825,6 @@
       "isCommentAutoGenerated" : true
     },
     "Sends a metadata request to verify the FHIR server is reachable and responds to capability queries." : {
-
-    },
-    "Serena — pleasant, American" : {
 
     },
     "Server" : {
@@ -9014,6 +8997,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定"
+          }
+        }
+      }
+    },
+    "Share Health Data with AI" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesundheitsdaten mit KI teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir datos de salud con la IA"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager les données de santé avec l'IA"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "健康データをAIと共有"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępniaj dane zdrowotne AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 AI 共享健康数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 AI 共享健康資料"
           }
         }
       }
@@ -9307,6 +9337,22 @@
     "Standard" : {
 
     },
+    "Start %@" : {
+      "comment" : "A button that starts a Field Assist session. The argument is the procedure.",
+      "isCommentAutoGenerated" : true
+    },
+    "Start a Field Assist session on %@ and run “%@”." : {
+      "comment" : "A confirmation dialog message that asks the user to start a Field Assist session on a vault and run a specific procedure. The first argument is the name of the vault. The second argument is the title of the",
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Start a Field Assist session on %1$@ and run “%2$@”."
+          }
+        }
+      }
+    },
     "Start a Gemini Live session in a specific mode" : {
 
     },
@@ -9533,6 +9579,10 @@
     },
     "Start Session" : {
       "comment" : "A button that starts a Gemini Live session.",
+      "isCommentAutoGenerated" : true
+    },
+    "Start session?" : {
+      "comment" : "A confirmation dialog asking the user to start a session.",
       "isCommentAutoGenerated" : true
     },
     "Start wake word detection and Live Activity" : {
@@ -9972,6 +10022,10 @@
         }
       }
     },
+    "Switch the active knowledge vault. Each vault can link its own model, used only while a session is running. Tap Manage for license, vault editing, and sessions." : {
+      "comment" : "A footer for the Field Assist section of the persona picker.",
+      "isCommentAutoGenerated" : true
+    },
     "Switch to Gemini Live" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10189,6 +10243,13 @@
       "comment" : "A description of the action to add a new persona.",
       "isCommentAutoGenerated" : true
     },
+    "Tap a model to select it. Tap Load to bring it into memory now (so the first reply is instant) — or Unload to free memory. Swipe left to delete." : {
+
+    },
+    "Tap a scenario to start a Field Assist session running that guided procedure." : {
+      "comment" : "A description of the action to start a Field Assist session.",
+      "isCommentAutoGenerated" : true
+    },
     "Tap a step to configure its type, prompts, conditions, or HTTP requests. Drag to reorder." : {
       "comment" : "A description of the steps of a playbook.",
       "isCommentAutoGenerated" : true
@@ -10357,10 +10418,6 @@
     },
     "Tap to see full response" : {
 
-    },
-    "Tap to select. Swipe left to delete. Models are stored persistently and won't be purged by iOS." : {
-      "comment" : "A footer in the Local Model Manager View, explaining how to interact with the list of models.",
-      "isCommentAutoGenerated" : true
     },
     "Tap to stop" : {
       "extractionState" : "manual",
@@ -10660,7 +10717,7 @@
       "comment" : "A description of the Health Vault.",
       "isCommentAutoGenerated" : true
     },
-    "The phrase that starts a conversation. Silent Mode keeps the assistant fully available via widget, watch, and Action Button — just without the always-listening mic." : {
+    "The phrase that starts a conversation. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch." : {
 
     },
     "The reading level used when you ask to simplify text without specifying one." : {
@@ -10786,9 +10843,6 @@
       "isCommentAutoGenerated" : true
     },
     "This will:\n• Require biometric authentication to open the app\n• Encrypt all recordings and transcripts at rest\n• Disable web search and external messaging\n• Exclude clinical data from iCloud backup\n• Enable audit logging of all data access" : {
-
-    },
-    "Thomas — calm, American" : {
 
     },
     "Tier Assignments" : {
@@ -11145,6 +11199,10 @@
       "comment" : "A description for the URL template field in the Custom Tool Editor.",
       "isCommentAutoGenerated" : true
     },
+    "Use current model" : {
+      "comment" : "A label for a picker that lets the user choose a model.",
+      "isCommentAutoGenerated" : true
+    },
     "Used when ElevenLabs is unavailable or quota is exhausted. Download more voices in iOS Settings → Accessibility → Spoken Content → Voices." : {
 
     },
@@ -11383,6 +11441,9 @@
       }
     },
     "Voice Command" : {
+
+    },
+    "Voice ID" : {
 
     },
     "Voice Isolation Mode" : {

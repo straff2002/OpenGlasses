@@ -21,6 +21,9 @@ final class NavigationAssistService: ObservableObject {
     private weak var llm: LLMService?
     private weak var tts: TextToSpeechService?
 
+    /// Set by AppState — mirrors guidance to the in-lens HUD (no-op without a display).
+    weak var glassesDisplay: GlassesDisplayService?
+
     private var timer: Timer?
     private var analyzing = false
 
@@ -65,6 +68,7 @@ final class NavigationAssistService: ObservableObject {
         isActive = false
         timer?.invalidate()
         timer = nil
+        glassesDisplay?.clear()
         NSLog("[NavAssist] Stopped")
     }
 
@@ -93,7 +97,11 @@ final class NavigationAssistService: ObservableObject {
         if let last = lastAdvice, Self.isSimilar(advice.advice, last.advice) { return }
 
         lastAdvice = advice
-        await tts.speak(advice.advice, urgency: advice.urgency.speechUrgency)
+        // Mirror to the HUD with an urgency-appropriate icon; suppress the plain TTS
+        // mirror so this richer rendering is what stays on screen.
+        let hudIcon: GlassesDisplayService.HUDIcon = advice.urgency == .high ? .hazard : .navigation
+        glassesDisplay?.showNavigation(advice.advice, icon: hudIcon)
+        await tts.speak(advice.advice, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
     }
 
     // MARK: - Frame quality (pure, testable)

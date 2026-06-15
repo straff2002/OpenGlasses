@@ -2,19 +2,22 @@ import Foundation
 import MWDATCore
 import MWDATDisplay
 
-/// Mirrors short text to the Ray-Ban *Display* in-lens HUD (DAT SDK `MWDATDisplay`).
+/// Mirrors short content to the Ray-Ban *Display* in-lens HUD (DAT SDK `MWDATDisplay`).
 ///
-/// Phase 1: surfaces AI responses and the live ambient-caption line. Everything is
-/// additive — the on-phone overlay and TTS are untouched. On glasses without a
-/// display (`Device.supportsDisplay() == false`) every call is a safe no-op and no
-/// `DeviceSession` is ever created, so non-Display Ray-Ban hardware is unaffected.
+/// Producers wired so far:
+/// - Phase 1: AI responses (`TextToSpeechService`) and the live ambient-caption line.
+/// - Phase 2: notifications (proactive/calendar + geofence alerts) and Navigation
+///   Assist guidance, rendered with an icon + heading + body.
+///
+/// Everything is additive — the on-phone overlay and TTS are untouched. On glasses
+/// without a display (`Device.supportsDisplay() == false`) every call is a safe no-op
+/// and no `DeviceSession` is ever created, so non-Display Ray-Ban hardware is unaffected.
 ///
 /// Session ownership: this service manages its own `DeviceSession` (via
 /// `AutoDeviceSelector`), separate from `CameraService`. The SDK allows a single
 /// session per device, so while the HUD session is held the camera falls back to its
 /// existing iPhone-camera path. Unifying the two into one shared `DeviceSession`
-/// (camera + display capabilities on one session) is a tracked follow-up; it is out of
-/// scope for Phase 1 and only affects Display-model hardware with the flag on.
+/// (camera + display capabilities on one session) is a tracked follow-up.
 @MainActor
 final class GlassesDisplayService: ObservableObject {
     /// True once the display capability is started and content is being shown.
@@ -25,20 +28,63 @@ final class GlassesDisplayService: ObservableObject {
     /// Debug event callback (wired to `AppState.addDebugEvent`).
     var onDebugEvent: ((String) -> Void)?
 
+    /// Semantic icon for HUD content. Mapped internally to a `MWDATDisplay.IconName`
+    /// so producers don't need to import the SDK.
+    enum HUDIcon: Equatable {
+        case none
+        case info, success, warning, error
+        case navigation, hazard
+        case calendar, location, reminder, message
+
+        fileprivate var iconName: IconName? {
+            switch self {
+            case .none: return nil
+            case .info: return .iCircle
+            case .success: return .checkmarkCircle
+            case .warning: return .exclamationTriangle
+            case .error: return .exclamationCircle
+            case .navigation: return .compassNorthUpRed
+            case .hazard: return .exclamationTriangle
+            case .calendar: return .calendar
+            case .location: return .house
+            case .reminder: return .bell
+            case .message: return .speechBubble
+            }
+        }
+    }
+
+    /// A single HUD frame: optional heading + body, with an optional leading icon.
+    private struct HUDContent: Equatable {
+        var title: String?
+        var body: String
+        var icon: HUDIcon
+    }
+
+    private enum RenderOp: Equatable {
+        case show(HUDContent)
+        case clear
+    }
+
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var deviceSession: DeviceSession?
     private var display: Display?
 
-    /// Latest-wins render queue. Rapid caption updates collapse to the most recent
-    /// frame so we never flood the BLE link — only one `send` is ever in flight.
-    private var pendingText: String?
+    /// Latest-wins render queue. Rapid updates collapse to the most recent frame so we
+    /// never flood the BLE link — only one `send` is ever in flight.
+    private var pending: RenderOp?
     private var isRendering = false
-    /// Last text actually pushed to the HUD; identical updates are skipped.
-    private var lastSentText: String?
+    /// The op last pushed to the HUD; identical follow-ups are skipped.
+    private var lastRendered: RenderOp?
 
-    /// Max characters to show on the HUD — kept short for legibility in-lens.
+    /// Generation guard for transient auto-clear, so a newer frame cancels an older
+    /// frame's pending clear.
+    private var autoClearGeneration = 0
+
+    /// Max characters for the body line — kept short for in-lens legibility.
     private static let maxLength = 120
+    /// Max characters for a heading.
+    private static let maxTitleLength = 40
 
     // MARK: - Capability
 
@@ -61,61 +107,86 @@ final class GlassesDisplayService: ObservableObject {
 
     // MARK: - Public API
 
-    /// Show a concise line of text on the HUD. No-op when the feature is off or the
-    /// glasses have no display. Text is trimmed and truncated for legibility.
+    /// Show a concise line of body text. No-op when the feature is off or the glasses
+    /// have no display. Used by the Phase 1 producers (AI replies, ambient captions).
     func showText(_ text: String) {
-        guard isEnabled, deviceSupportsDisplay() else { return }
-        let trimmed = Self.condense(text)
-        guard !trimmed.isEmpty else { return }
-        scheduleRender(trimmed)
+        present(HUDContent(title: nil, body: text, icon: .none), transient: false, duration: 0)
     }
 
-    /// Briefly show text, then clear it after `duration` seconds (if nothing newer
-    /// has been shown in the meantime).
-    func flash(_ text: String, duration: TimeInterval = 4.0) {
-        guard isEnabled, deviceSupportsDisplay() else { return }
-        let trimmed = Self.condense(text)
-        guard !trimmed.isEmpty else { return }
-        scheduleRender(trimmed)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-            guard let self else { return }
-            // Only clear if this flash is still the thing on screen.
-            if self.lastSentText == trimmed { self.clear() }
-        }
+    /// Show body text, then auto-clear after `duration` seconds.
+    func flash(_ text: String, duration: TimeInterval = 4) {
+        present(HUDContent(title: nil, body: text, icon: .none), transient: true, duration: duration)
+    }
+
+    /// Show a transient notification (icon + optional heading + body) that auto-clears.
+    func showNotification(title: String?, body: String, icon: HUDIcon = .info, duration: TimeInterval = 5) {
+        present(HUDContent(title: title, body: body, icon: icon), transient: true, duration: duration)
+    }
+
+    /// Show persistent navigation guidance (icon + body). Cleared explicitly via
+    /// `clear()` when guidance stops.
+    func showNavigation(_ text: String, icon: HUDIcon = .navigation) {
+        present(HUDContent(title: nil, body: text, icon: icon), transient: false, duration: 0)
     }
 
     /// Clear the HUD (keeps the session alive for fast subsequent updates).
     func clear() {
         guard isEnabled else { return }
         guard isDisplayActive || display != nil else { return }
-        scheduleRender("")
+        enqueue(.clear)
     }
 
     /// Fully tear down the display session. Call on feature disable / mode switch /
     /// app teardown.
     func shutdown() async {
-        pendingText = nil
+        pending = nil
         await teardownDisplay()
+    }
+
+    // MARK: - Presentation
+
+    private func present(_ content: HUDContent, transient: Bool, duration: TimeInterval) {
+        guard isEnabled, deviceSupportsDisplay() else { return }
+        var shaped = content
+        shaped.body = Self.condense(content.body)
+        shaped.title = content.title.map { Self.condense($0, max: Self.maxTitleLength) }
+        let hasBody = !shaped.body.isEmpty
+        let hasTitle = !(shaped.title?.isEmpty ?? true)
+        guard hasBody || hasTitle else { return }
+
+        let op = RenderOp.show(shaped)
+        enqueue(op)
+        if transient { scheduleAutoClear(for: op, after: duration) }
+    }
+
+    private func scheduleAutoClear(for op: RenderOp, after duration: TimeInterval) {
+        autoClearGeneration += 1
+        let generation = autoClearGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
+            guard let self, generation == self.autoClearGeneration else { return }
+            // Only clear if this frame is still what's on screen.
+            if self.lastRendered == op { self.clear() }
+        }
     }
 
     // MARK: - Render queue
 
-    private func scheduleRender(_ text: String) {
-        pendingText = text
+    private func enqueue(_ op: RenderOp) {
+        pending = op
         guard !isRendering else { return }
         isRendering = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            while let next = self.pendingText {
-                self.pendingText = nil
+            while let op = self.pending {
+                self.pending = nil
+                if op == self.lastRendered { continue } // skip redundant identical sends
                 do {
-                    if next.isEmpty {
-                        try await self.renderClear()
-                    } else {
-                        try await self.renderText(next)
+                    switch op {
+                    case .show(let content): try await self.renderContent(content)
+                    case .clear: try await self.renderClear()
                     }
-                    self.lastSentText = next.isEmpty ? nil : next
+                    self.lastRendered = op
                 } catch {
                     self.handleRenderError(error)
                     break
@@ -125,15 +196,39 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
-    private func renderText(_ text: String) async throws {
+    private func renderContent(_ content: HUDContent) async throws {
         let display = try await ensureDisplay()
+        let iconName = content.icon.iconName
+        let hasTitle = !(content.title?.isEmpty ?? true)
+
         let view = FlexBox(
             direction: .column,
-            spacing: 4,
+            spacing: 6,
             alignment: .start,
             padding: EdgeInsets(all: 12)
         ) {
-            Text(text, style: .body, color: .primary)
+            if hasTitle, let title = content.title {
+                // Heading row (icon + title), then body underneath.
+                if let iconName {
+                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
+                        Icon(name: iconName)
+                        Text(title, style: .heading, color: .primary)
+                    }
+                } else {
+                    Text(title, style: .heading, color: .primary)
+                }
+                Text(content.body, style: .body, color: .secondary)
+            } else {
+                // Body only — inline with the icon when present.
+                if let iconName {
+                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
+                        Icon(name: iconName)
+                        Text(content.body, style: .body, color: .primary)
+                    }
+                } else {
+                    Text(content.body, style: .body, color: .primary)
+                }
+            }
         }
         try await display.send(view)
     }
@@ -204,7 +299,7 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession?.stop()
         deviceSession = nil
         isDisplayActive = false
-        lastSentText = nil
+        lastRendered = nil
     }
 
     private func handleRenderError(_ error: Error) {
@@ -217,21 +312,22 @@ final class GlassesDisplayService: ObservableObject {
         deviceSession?.stop()
         deviceSession = nil
         isDisplayActive = false
+        lastRendered = nil
     }
 
     // MARK: - Text shaping
 
     /// Collapse whitespace and truncate to a HUD-legible length.
-    private static func condense(_ text: String) -> String {
+    private static func condense(_ text: String, max: Int = maxLength) -> String {
         let collapsed = text
             .replacingOccurrences(of: "\n", with: " ")
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        guard collapsed.count > maxLength else { return collapsed }
-        let cut = collapsed.prefix(maxLength)
+        guard collapsed.count > max else { return collapsed }
+        let cut = collapsed.prefix(max)
         // Prefer to break on the last space so we don't slice a word in half.
-        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.index(cut.startIndex, offsetBy: maxLength / 2) {
+        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.index(cut.startIndex, offsetBy: max / 2) {
             return String(cut[..<lastSpace]) + "…"
         }
         return String(cut) + "…"
