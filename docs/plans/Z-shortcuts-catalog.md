@@ -4,6 +4,8 @@
 
 **Effort:** ~half a day.
 
+**Status:** ✅ Shipped on `feat/shortcuts-catalog` — `ShortcutsCatalog` service (cached, refreshed on app foreground) injects a compact block into both prompt builders (`LLMService` + `GeminiLiveSessionManager`); 6 headless tests. Follow-up: surface the block in the Prompt Inspector (it doesn't reconstruct via `buildSystemPrompt`, so it isn't auto-shown there yet).
+
 ---
 
 ## Concept

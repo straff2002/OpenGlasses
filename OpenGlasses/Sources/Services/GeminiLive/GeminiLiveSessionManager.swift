@@ -507,6 +507,11 @@ class GeminiLiveSessionManager: ObservableObject {
                 for ct in customTools {
                     toolSection += "\n            - \(ct.name): \(ct.description)"
                 }
+
+                // Inject the user's Siri Shortcuts so run_shortcut targets real names (Plan Z)
+                if let shortcuts = ShortcutsCatalog.shared.promptBlock() {
+                    toolSection += "\n\n            \(shortcuts.replacingOccurrences(of: "\n", with: "\n            "))"
+                }
             }
 
             if hasOpenClaw {

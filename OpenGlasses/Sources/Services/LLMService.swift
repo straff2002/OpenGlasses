@@ -164,7 +164,7 @@ class LLMService: ObservableObject {
     /// Build the full system prompt, optionally including location, tools, memory, and vision context.
     /// When `promptSections` is provided (from the ConversationClassifier), irrelevant sections are
     /// stripped to reduce token count. When nil, all sections are included (backward compatible).
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async -> String {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -286,6 +286,11 @@ class LLMService: ObservableObject {
                 let customTools = Config.customTools.filter { Config.isToolEnabled($0.name) }
                 for ct in customTools {
                     toolSection += "\n            - \(ct.name): \(ct.description)"
+                }
+
+                // Inject the user's Siri Shortcuts so run_shortcut targets real names (Plan Z)
+                if let shortcuts = shortcutsContext {
+                    toolSection += "\n\n            \(shortcuts.replacingOccurrences(of: "\n", with: "\n            "))"
                 }
 
                 // Inject Home Assistant device list so LLM uses real entity IDs (skip if classifier says not needed)
@@ -424,7 +429,7 @@ class LLMService: ObservableObject {
         return PromptInjectionPolicy.wrap(toolName: toolName, content: content)
     }
 
-    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
+    func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil) async throws -> String {
         isProcessing = true
         defer { isProcessing = false }
 
@@ -446,7 +451,7 @@ class LLMService: ObservableObject {
         let includeTools = hasNativeTools || includeOpenClaw
         let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
         let gatewayToolNames = openClawBridge?.availableToolNames ?? []
-        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, promptSections: promptSections)
+        let fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections)
 
         var toolsLabel = ""
         if hasNativeTools { toolsLabel += " [NativeTools]" }
