@@ -106,6 +106,16 @@ Extends the in-lens HUD line from **read-only** (Display Phase 1 ✅ merged in [
 
 **Sequence (agreed):** X first (ships hands-free workflow execution and validates band navigation on one card), then Y (the full launcher reuses X's router).
 
+## Round 7 — community fork harvest
+
+Drafted from a survey of seven community forks of the upstream `Intent-Lab/VisionClaw` sample (the Meta-wearables `CameraAccess` app our DAT/OpenClaw lineage shares). Extracts only what's net-new and a genuine fit; records what to skip. The single highest-value item (a phone-side renderer of the `MWDATDisplay` DSL) was **already harvested** as `HUDPreviewView` on `display/hud-phase4`.
+
+| Plan | Title | Effort | Reuses | Strategic fit |
+|---|---|---|---|---|
+| [Community Fork Harvest](community-fork-harvest.md) | VisionClaw-family features worth lifting | ~0.5–4 days each | TextToSpeechService, Config/Keychain, GlassesDisplayService + CameraService, BrainStore, WakeWordService | Kokoro on-device TTS (offline + backgroundable), API keys → Keychain, shared camera+display `DeviceSession`, BrainStore `needs`. Conditional: alternative hands-free triggers (accessibility), multi-user profiles + PIN. Deferred: declarative HUD widget board. 📋 Planned |
+
+**Suggested sequence:** HUDPreviewView snapshot tests → API keys → Keychain → Kokoro TTS → shared `DeviceSession` → BrainStore `needs` → (if accessibility) alternative triggers → (if shared-device) profiles+PIN → (deferred) widget board.
+
 ## Dependency graph
 
 ```
