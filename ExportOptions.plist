@@ -14,6 +14,6 @@
     <key>signingStyle</key>
     <string>automatic</string>
     <key>teamID</key>
-    <string>B9L8ANZQZX</string>
+    <string>YOUR_APPLE_TEAM_ID</string>
 </dict>
 </plist>

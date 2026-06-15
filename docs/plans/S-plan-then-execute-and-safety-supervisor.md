@@ -12,7 +12,7 @@
 
 - Single-shot today: the LLM loop in [LLMService.swift](../../OpenGlasses/Sources/Services/LLMService.swift) (and the realtime path in `GeminiLiveSessionManager.swift`) feeds tool results straight back to the model — fine for "what's the weather", weak for "find the open work order, photo the gauge, log it, and message my lead".
 - The veto seam already exists: `ToolConfirmationCoordinator.requestConfirmation` ([:33](../../OpenGlasses/Sources/Services/ToolConfirmationCoordinator.swift)) + `onSpeakPrompt` ([:28](../../OpenGlasses/Sources/Services/ToolConfirmationCoordinator.swift)) already suspend a call for spoken approval. The supervisor reuses this for veto → confirm.
-- Gated behind `Config.agentModeEnabled`, per the [Agentic Toggle memory](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/feedback_agentic_toggle.md). When agent mode is off, behavior is exactly as today (single-shot).
+- Gated behind `Config.agentModeEnabled`, per the Agentic Toggle memory. When agent mode is off, behavior is exactly as today (single-shot).
 
 ---
 

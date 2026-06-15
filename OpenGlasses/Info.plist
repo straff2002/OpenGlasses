@@ -25,7 +25,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>mwdat-688603774243722</string>
+				<string>mwdat-YOUR_META_APP_ID</string>
 				<string>openglasses</string>
 			</array>
 		</dict>
@@ -94,9 +94,9 @@
 		<key>AppLinkURLScheme</key>
 		<string>openglasses://</string>
 		<key>ClientToken</key>
-		<string>AR|688603774243722|906db0d1b28450fdb718401ca16b9d60</string>
+		<string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
 		<key>MetaAppID</key>
-		<string>688603774243722</string>
+		<string>YOUR_META_APP_ID</string>
 		<key>TeamID</key>
 		<string>$(DEVELOPMENT_TEAM)</string>
 	</dict>

@@ -112,7 +112,7 @@ Reachability.isOnline ──rising edge──▶ SyncEngine.flush()
 ---
 
 ## Open questions / decisions needed
-- **Offline LLM grounding:** queue the *question* for an online answer, or attempt on-device MLX immediately (no connectivity needed)? *Recommendation: try MLX first when present (instant, offline), queue for a stronger cloud answer only if the tech opts in — and note per the [Local Model Background memory](../../.claude/projects/-Users-greig-Code-OpenGlasses/memory/project_local_model_background.md) MLX can't run backgrounded, so foreground-only.*
+- **Offline LLM grounding:** queue the *question* for an online answer, or attempt on-device MLX immediately (no connectivity needed)? *Recommendation: try MLX first when present (instant, offline), queue for a stronger cloud answer only if the tech opts in — and note per the Local Model Background memory MLX can't run backgrounded, so foreground-only.*
 - **Photo durability vs storage:** keep all captured photos until synced (disk pressure) or cap? *Recommendation: keep until `done`, then move to a capped cache; warn at a disk threshold.*
 - **Sync target:** flush to the OpenClaw gateway, a customer endpoint, or just local export until a backend exists? *Recommendation: pluggable sink — local export is the v1 sink, gateway/customer endpoint slot in behind the same interface.*
 - **Multi-device:** one technician, one phone in v1 — defer true multi-writer reconciliation. *Recommendation: single-writer assumption; document it.*
