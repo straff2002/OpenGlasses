@@ -31,9 +31,9 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
 | V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
 | W Presence-Aware Agent Throttle | 📋 Planned (Round 5 — agentic/battery) |
-| X Interactive HUD — Now/Next Tasks | 🚧 In progress on `display/hud-phase3` — foundation + band card + voice bridge + Playbook/Procedure sources shipped; 30 headless tests, Debug+Release green. Display Phases 1–2 ✅ merged (#42, #45). |
+| X Interactive HUD — Now/Next Tasks | ✅ Shipped (#46) — foundation + band card + voice bridge + Playbook/Procedure sources; 30 headless tests. Display Phases 1–3 merged (#42, #45, #46). |
 | Y Interactive HUD Launcher | 📋 Planned (Round 6 — Display Phase 4) |
-| Z Shortcuts Catalog | 📋 Planned (auto-surface Siri Shortcuts to the agent) |
+| Z Shortcuts Catalog | ✅ Shipped on `feat/shortcuts-catalog` — Siri-added shortcuts injected into the agent prompt; 6 tests. |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 

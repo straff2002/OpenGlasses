@@ -275,6 +275,9 @@ struct OpenGlassesApp: App {
             case .active:
                 print("📱 App became active")
                 appState.restoreFromBackground()
+                // Refresh the Siri Shortcuts catalog — the user may have added shortcuts
+                // while away — so the agent's run_shortcut menu stays current (Plan Z).
+                Task { await ShortcutsCatalog.shared.refresh() }
                 if appState.conversationStore.isLocked {
                     Task { await appState.conversationStore.unlock() }
                 }
@@ -2307,6 +2310,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
                     playbookContext: classification.relevantSections.contains(.playbook) ? playbookStore.playbookContext() : nil,
                     nowPlayingContext: nowPlayingAtStart?.promptContext,
+                    shortcutsContext: ShortcutsCatalog.shared.promptBlock(),
                     promptSections: classification.relevantSections
                 )
             }
@@ -2399,7 +2403,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 locationContext: locationService.locationContext,
                 imageData: image,
                 memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext() : nil,
-                playbookContext: playbookStore.playbookContext()
+                playbookContext: playbookStore.playbookContext(),
+                shortcutsContext: ShortcutsCatalog.shared.promptBlock()
             )
 
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
