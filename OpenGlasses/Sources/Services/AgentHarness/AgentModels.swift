@@ -36,6 +36,20 @@ enum AgentRunStatus: String, Codable, Equatable {
         case .queued, .running, .awaitingInput: return false
         }
     }
+
+    /// Map a gateway/endpoint status string to a case, tolerant of common spellings. Shared by every
+    /// adapter (OpenClaw, Custom, …) so status parsing lives in one place.
+    static func parse(_ raw: String?) -> AgentRunStatus? {
+        switch raw?.lowercased() {
+        case "queued", "pending":            return .queued
+        case "running", "in_progress":       return .running
+        case "awaiting_input", "waiting":    return .awaitingInput
+        case "completed", "done", "success": return .completed
+        case "failed", "error":              return .failed
+        case "cancelled", "canceled":        return .cancelled
+        default:                             return nil
+        }
+    }
 }
 
 /// One dispatched remote agent task.

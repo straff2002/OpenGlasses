@@ -19,8 +19,12 @@ final class AgentSessionService: ObservableObject {
     /// Everything spoken this session, in order — for the debug panel and tests.
     @Published private(set) var spokenLog: [String] = []
 
-    /// The active harness. Set by `configure`/`setHarness`; tests inject a mock.
+    /// A directly-set harness (tests/back-compat). When a `registry` is present it takes precedence,
+    /// so a default-harness change in Settings applies without re-dispatching.
     private(set) var harness: AgentHarness?
+
+    /// The harness registry (Phase 2). When set, `dispatch` uses its `active` harness.
+    private(set) var registry: AgentHarnessRegistry?
 
     /// Injected speaker. AppState wires `TextToSpeechService`; tests capture the lines.
     var speak: (String) -> Void = { _ in }
@@ -36,13 +40,26 @@ final class AgentSessionService: ObservableObject {
         self.speak = speak
     }
 
+    /// Configure with a registry (Phase 2): the active harness is resolved per dispatch from the
+    /// user's default, so adding/removing a Custom endpoint or switching the default takes effect live.
+    func configure(registry: AgentHarnessRegistry, speak: @escaping (String) -> Void) {
+        self.registry = registry
+        self.speak = speak
+    }
+
     func setHarness(_ harness: AgentHarness) { self.harness = harness }
+
+    /// Swap the registry (e.g. after the user edits the Custom endpoint in Settings).
+    func setRegistry(_ registry: AgentHarnessRegistry) { self.registry = registry }
+
+    /// The harness a dispatch would use right now (registry default wins).
+    var activeHarness: AgentHarness? { registry?.active ?? harness }
 
     // MARK: - Dispatch
 
     @discardableResult
     func dispatch(prompt: String, project: String?) async -> Result<AgentRun, AgentHarnessError> {
-        guard let harness else { return .failure(.notConfigured(.openclaw)) }
+        guard let harness = activeHarness else { return .failure(.notConfigured(Config.defaultAgentHarness)) }
         guard harness.isConfigured else { return .failure(.notConfigured(harness.kind)) }
 
         do {
@@ -110,7 +127,7 @@ final class AgentSessionService: ObservableObject {
     // MARK: - Controls
 
     func cancel() async {
-        guard let harness, let run = activeRun else { return }
+        guard let harness = activeHarness, let run = activeRun else { return }
         try? await harness.cancel(run)
         activeRun?.status = .cancelled
         let summary = AgentSummarizer.summarize(result, status: .cancelled)
@@ -122,7 +139,7 @@ final class AgentSessionService: ObservableObject {
 
     /// Answer an `awaitingInput` confirmation. Declining cancels the run (safety default).
     func respondToConfirmation(approved: Bool) async {
-        guard let harness, let run = activeRun, run.status == .awaitingInput else { return }
+        guard let harness = activeHarness, let run = activeRun, run.status == .awaitingInput else { return }
         try? await harness.respondToInput(run, approved: approved)
         awaitingInputPrompt = nil
         if approved {

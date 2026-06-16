@@ -128,17 +128,10 @@ struct OpenClawAgentHarness: AgentHarness {
         return result
     }
 
-    /// Map a gateway status string to `AgentRunStatus` (tolerant of a few spellings).
+    /// Map a gateway status string to `AgentRunStatus`. Delegates to the shared `AgentRunStatus.parse`
+    /// (kept as a named entry point for the adapter's call sites/tests).
     static func parseStatus(_ raw: String?) -> AgentRunStatus? {
-        switch raw?.lowercased() {
-        case "queued", "pending":            return .queued
-        case "running", "in_progress":       return .running
-        case "awaiting_input", "waiting":    return .awaitingInput
-        case "completed", "done", "success": return .completed
-        case "failed", "error":              return .failed
-        case "cancelled", "canceled":        return .cancelled
-        default:                             return nil
-        }
+        AgentRunStatus.parse(raw)
     }
 
     /// Pull a run id out of a gateway response under any of the common keys.

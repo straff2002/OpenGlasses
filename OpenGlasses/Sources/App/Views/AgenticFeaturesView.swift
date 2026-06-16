@@ -60,6 +60,17 @@ struct AgenticFeaturesView: View {
                     Text("Deterministic rules that confirm or block risky actions before they run — voice approval, quiet hours, and an away-from-home geofence.")
                 }
 
+                // Remote Agent Harness (Plan N) — voice-drive a remote coding agent.
+                Section {
+                    NavigationLink {
+                        AgentHarnessSettingsView()
+                    } label: {
+                        Label("Remote Agents", systemImage: "terminal")
+                    }
+                } footer: {
+                    Text("Voice-control a remote coding agent (“have the agent fix the failing test”). Dispatches to OpenClaw or a custom endpoint; progress and a summary are spoken.")
+                }
+
                 // Agent Model
                 Section {
                     // Picker: local downloaded + configured cloud models
