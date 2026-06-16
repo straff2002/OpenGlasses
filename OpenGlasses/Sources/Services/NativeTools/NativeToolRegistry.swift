@@ -129,6 +129,7 @@ final class NativeToolRegistry {
         if Config.fieldAssistActive {
             register(FieldSessionTool())
             register(ProcedureRunnerTool())
+            register(CaptureFlowTool())
             register(DomainCalcTool())
             register(EscalateToExpertTool())
             register(NetworkCalcTool())

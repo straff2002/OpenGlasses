@@ -695,6 +695,13 @@ class AppState: ObservableObject, AppStateProtocol {
             self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
         }
 
+        // Structured capture flows (Plan U): persist finished records to the offline queue (Plan T)
+        // and stamp each captured value with the current GPS for provenance.
+        CaptureFlowService.shared.offlineQueue = offlineQueue
+        CaptureFlowService.shared.location = { [weak self] in
+            self?.locationService.currentLocation.map { (lat: $0.coordinate.latitude, lon: $0.coordinate.longitude) }
+        }
+
         // Offline field queue (Plan T): feed captured photos into the durable queue, surface the
         // offline/reconnect state hands-free, and flush on the rising edge of connectivity.
         FieldSessionService.shared.offlineQueue = offlineQueue
