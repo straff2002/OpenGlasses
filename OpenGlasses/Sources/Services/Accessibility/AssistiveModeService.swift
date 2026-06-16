@@ -26,6 +26,12 @@ final class AssistiveModeService: ObservableObject {
     /// Latest user transcription, used once to bias routing (scene vs social), then consumed.
     private var pendingTranscription: String?
 
+    /// Presence-aware throttle (Plan W). Injected by AppState; nil ⇒ full cadence. As an
+    /// accessibility loop a user is relying on, it floors at `.present` — trimmed to 2× when idle,
+    /// but never paused or quartered by mere disengagement.
+    weak var presence: PresenceMonitor?
+    private var throttle = LoopThrottle()
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -36,6 +42,7 @@ final class AssistiveModeService: ObservableObject {
         self.llm = llm
         self.tts = tts
         isActive = true
+        throttle.reset()   // first analysis runs immediately
         NSLog("[AssistiveMode] Started (interval %.0fs)", interval)
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -67,6 +74,12 @@ final class AssistiveModeService: ObservableObject {
         guard isActive, !analyzing, let camera, let llm, let tts else { return }
         // Don't talk over ongoing speech.
         if tts.isSpeaking { return }
+
+        // Presence throttle (Plan W), floored at `.present`: trim the analysis cadence while idle
+        // (2× base) but never pause or quarter an accessibility loop the user depends on.
+        if let presence, !throttle.shouldRun(now: Date(), base: interval, decision: presence.decision(minMode: .present)) {
+            return
+        }
 
         analyzing = true
         defer { analyzing = false }

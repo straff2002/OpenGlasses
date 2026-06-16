@@ -474,6 +474,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
     /// re-engagement.
     let heldRecommendations = HeldRecommendationStore()
+    /// CoreMotion activity signal (Plan W v2) — feeds presence so a moving-but-quiet user reads as
+    /// present, not idle. Inert on Simulator / without permission.
+    let motionProvider = MotionActivityProvider()
     /// Last explicit user interaction (wake word / transcription) — the presence `lastInteraction`
     /// signal. `isForegroundActive` is the `foreground` signal (MLX is foreground-only, so
     /// background ⇒ `away` ⇒ paused). `presenceTimer` drives periodic re-evaluation.
@@ -2016,6 +2019,9 @@ class AppState: ObservableObject, AppStateProtocol {
         presenceMonitor.foreground = { [weak self] in self?.isForegroundActive ?? true }
         presenceMonitor.voiceActive = { [weak self] in self?.wakeWordService.isListening ?? false }
         presenceMonitor.lastInteraction = { [weak self] in self?.lastInteractionAt ?? Date() }
+        // CoreMotion activity (Plan W v2): a moving-but-quiet user reads as present, not idle.
+        presenceMonitor.motionActive = { [weak self] in self?.motionProvider.isActive ?? false }
+        motionProvider.start()
 
         // Surface anything the supervisor held while the user was away, on re-engagement (TTS + HUD).
         presenceMonitor.onReEngage = { [weak self] in
@@ -2024,9 +2030,24 @@ class AppState: ObservableObject, AppStateProtocol {
             self.glassesDisplay.showNotification(title: "Held while away", body: line, icon: .info)
         }
 
-        // The continuous loops that read the throttle decision each tick.
+        // The periodic loops that read the throttle decision each tick. Assistive Mode (A3) is an
+        // accessibility loop, so it floors at `.present` inside its own tick (never paused by idle).
         LiveCoachService.shared.presence = presenceMonitor
         proactiveAlerts.presence = presenceMonitor
+        AssistiveModeService.shared.presence = presenceMonitor
+
+        // Continuous ambient captions can't take a tick multiplier (Plan W v2): a user reading them
+        // silently is still engaged, so suspend ONLY when fully away (disconnected/backgrounded) and
+        // auto-resume on return. Driven by mode transitions, not the periodic tick.
+        let captionToken = presenceMonitor.$mode.sink { [weak self] mode in
+            guard let self else { return }
+            if CaptionPresenceGate.shouldSuspend(mode: mode) {
+                self.ambientCaptions.suspendForPresence()
+            } else {
+                self.ambientCaptions.resumeForPresence()
+            }
+        }
+        cancellables.append(captionToken)
 
         // Periodic re-evaluation; also nudged immediately on interaction / scene-phase change.
         presenceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in

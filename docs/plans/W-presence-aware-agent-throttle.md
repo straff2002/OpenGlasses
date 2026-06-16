@@ -18,7 +18,13 @@
 - **Construction + signals** — `AppState` builds `PresenceMonitor`, wires `connected` (DAT session), `foreground` (scene phase — MLX is foreground-only), `voiceActive` (wake-word listening), and `lastInteraction` (wake-word / transcription callbacks), and drives a 5 s re-evaluation timer (nudged immediately on interaction / scene-phase change).
 - **Tests:** +15 headless (`PresenceLiveIntegrationTests`) for the ceiling, `LoopThrottle`, `HeldRecommendationStore`, and the re-engagement hook. Full suite 667 green, Debug + Release.
 
-**Still deferred:** the optional CoreMotion activity-type signal (plan ships v1 without it — voice/connectivity/foreground are enough; add only if idle detection proves noisy), and applying the throttle to the continuous ambient/assistive caption transcription (a user-started continuous stream doesn't map to a tick multiplier — it's governed by the existing background suspend; a presence pause there needs the user-intent nuance and is left for a follow-up).
+**v2 shipped** (`feat/presence-v2-motion-captions`, follow-up PR) — the two remaining items are now landed:
+- **CoreMotion activity signal** — `PresenceSignals.motionActive` fused into `PresenceEvaluator` (pure, tested): active motion (walking/running/cycling/driving) floors the quiet bands at `.present`, so a moving-but-quiet user (a walk, a workout) is read as engaged rather than falsely `.idle`. `MotionActivityProvider` wraps `CMMotionActivityManager` (device-only; inert on Simulator / without permission — presence falls back to voice/connectivity, no behaviour change); `AppState` wires it into `presenceMonitor.motionActive`. The `NSMotionUsageDescription` key was already present.
+- **Assistive Mode (A3) throttled** — the periodic `AssistiveModeService` analysis loop now reads a `.present`-floored `LoopThrottle` decision (accessibility loop: trimmed to 2× when idle, never paused or quartered).
+- **Continuous captions** — `AmbientCaptionService` gains `suspendForPresence()` / `resumeForPresence()` driven by `CaptionPresenceGate.shouldSuspend(mode:)` (pure, tested): a user-started caption stream suspends **only** when fully `.away` (disconnected/backgrounded), never on mere idle (a user silently *reading* captions is still engaged), and auto-resumes on return. `AppState` drives it off `PresenceMonitor.$mode` transitions, not a tick multiplier.
+- **Tests:** +7 headless (`PresenceMotionCaptionTests`) — motion fusion bands, `MotionActivityProvider.isMoving`, and the caption gate. Full suite 674 green, Debug + Release.
+
+Plan W is **complete** — nothing outstanding.
 
 ---
 
