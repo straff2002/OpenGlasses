@@ -203,8 +203,19 @@ final class FieldSessionService: ObservableObject {
         logger?.appendAssistantMessage(text, citations: citations)
     }
 
+    /// Offline store-and-forward queue (Plan T). Set by AppState. Photo captures are written to
+    /// disk durably by the logger; we additionally enqueue an upload op so the evidence syncs to a
+    /// backend when one exists — best-effort, never blocking the capture.
+    var offlineQueue: OfflineQueue?
+
     func attachPhoto(_ data: Data, caption: String? = nil) -> URL? {
-        logger?.attachPhoto(data, caption: caption)
+        let url = logger?.attachPhoto(data, caption: caption)
+        if let url, let sessionId = activeSession?.id {
+            offlineQueue?.enqueue(QueuedOp.make(
+                kind: .photoUpload, sessionId: sessionId,
+                json: ["path": url.path, "caption": caption ?? ""]))
+        }
+        return url
     }
 
     // MARK: - Procedures

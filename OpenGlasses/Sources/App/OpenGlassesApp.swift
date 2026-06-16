@@ -484,6 +484,12 @@ class AppState: ObservableObject, AppStateProtocol {
     let hipaaService = HIPAAComplianceService()
     let medicalExportService = MedicalExportService()
 
+    /// Offline field queue + store-and-forward sync (Plan T): work done without signal is saved
+    /// locally and flushed on reconnect.
+    let offlineQueue = OfflineQueue()
+    let reachability = Reachability()
+    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: LocalSyncSink())
+
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
 
@@ -687,6 +693,26 @@ class AppState: ObservableObject, AppStateProtocol {
         llmService.onAgentStep = { [weak self] index, total, step in
             let body = step.rationale.isEmpty ? step.tool : step.rationale
             self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
+        }
+
+        // Offline field queue (Plan T): feed captured photos into the durable queue, surface the
+        // offline/reconnect state hands-free, and flush on the rising edge of connectivity.
+        FieldSessionService.shared.offlineQueue = offlineQueue
+        reachability.onChange = { [weak self] online in
+            guard let self else { return }
+            if online {
+                let n = self.offlineQueue.pendingCount
+                guard n > 0 else { return }
+                self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
+                Task { await self.speechService.speak("Back online. Syncing \(n) item\(n == 1 ? "" : "s").") }
+            } else {
+                self.glassesDisplay.showNavigation("Offline — your work is saved and will sync when you reconnect", icon: .info)
+                Task { await self.speechService.speak("You're offline. Your work is being saved and will sync when you're back online.") }
+            }
+        }
+        syncEngine.bind(to: reachability)        // chains the affordance above, then flushes on reconnect
+        syncEngine.onConflict = { [weak self] _, reason in
+            Task { @MainActor in await self?.speechService.speak("Heads up — \(reason).") }
         }
 
         // Register live translation tool with its service reference
