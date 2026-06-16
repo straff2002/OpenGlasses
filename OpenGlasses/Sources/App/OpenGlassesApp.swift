@@ -679,6 +679,15 @@ class AppState: ObservableObject, AppStateProtocol {
         mcpClient.nativeToolNames = { [weak nativeToolRegistry] in
             Set(nativeToolRegistry?.allTools.map(\.name) ?? [])
         }
+        // Plan-then-execute HUD trace (Plan S): show the plan header + per-step progress on the lens
+        // while a multi-step agent task runs. The final summary is spoken via the normal TTS path.
+        llmService.onAgentNarrate = { [weak self] line in
+            self?.glassesDisplay.showNotification(title: "Agent", body: line, icon: .info, duration: 4)
+        }
+        llmService.onAgentStep = { [weak self] index, total, step in
+            let body = step.rationale.isEmpty ? step.tool : step.rationale
+            self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
+        }
 
         // Register live translation tool with its service reference
         var translationTool = LiveTranslationTool()

@@ -35,6 +35,8 @@ final class PlanExecutor {
 
     /// One-line narration per step (the step's rationale), for TTS / the HUD plan-trace.
     var onNarrate: ((String) -> Void)?
+    /// Per-step progress hook with (1-based index, total, step), for a "step i of N" HUD trace.
+    var onStep: ((Int, Int, AgentStep) -> Void)?
     /// Compact constraint block re-injected into the model context after each executed step.
     var onReinject: ((String) -> Void)?
 
@@ -47,6 +49,7 @@ final class PlanExecutor {
         var completed = 0
 
         for (index, step) in plan.steps.enumerated() {
+            onStep?(index + 1, plan.steps.count, step)
             if !step.rationale.isEmpty { onNarrate?(step.rationale) }
 
             let result = await router.handleToolCall(name: step.tool, args: step.args)
