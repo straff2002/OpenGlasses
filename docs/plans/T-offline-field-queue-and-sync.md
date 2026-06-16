@@ -6,6 +6,18 @@
 
 **Effort:** ~4–5 days.
 
+**Status:** 🚧 Core shipped (headless-validated). Landed the durable subsystem: `QueuedOp` + **`OfflineQueue`**
+(SQLite, append-only, FIFO by `created_at`, restart-survival, tombstones), **`Reachability`** (NWPathMonitor +
+a `setOnline` test seam), **`SyncEngine`** (rising-edge flush over a pluggable `SyncSink`; transient → retain +
+attempt cap → `failed`; conflict surfaced not overwritten; idempotent), v1 **`LocalSyncSink`**, and a pure
+**`ConflictResolver`** (single-writer version counter). Wired into AppState (rising-edge flush + hands-free
+offline/reconnect HUD + TTS), fed by `FieldSessionService.attachPhoto` (durable-first `photoUpload` op), with a
+phone **`SyncStatusView`** (connection, queue depth, per-op state, conflicts) linked from Field Assist settings.
+13 tests (queue FIFO/restart/tombstone, reachability edge, engine flush/transient-cap/conflict/idempotent/
+rising-edge, resolver). Full suite 583 green; Debug + Release verified.
+**Deferred:** a real networked sink + `ConflictResolver` live use; routing `SessionLogger` entries / `auditExport`
+/ `llmGrounding` through the queue (add a `synced` column); disk-pressure photo cache cap.
+
 ---
 
 ## The gap (verified)

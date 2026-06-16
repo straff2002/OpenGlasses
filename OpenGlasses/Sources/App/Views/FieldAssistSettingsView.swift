@@ -4,6 +4,7 @@ import SwiftUI
 /// default session mode, and a manual session start/end for debugging.
 @MainActor
 struct FieldAssistSettingsView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var sessionService = FieldSessionService.shared
     @StateObject private var license = LicenseService.shared
     @StateObject private var store = StoreKitService.shared
@@ -92,6 +93,17 @@ struct FieldAssistSettingsView: View {
                     Text("Reference Files")
                 } footer: {
                     Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported.")
+                }
+
+                // ──────────────── Offline sync (Plan T)
+                Section {
+                    NavigationLink {
+                        SyncStatusView(engine: appState.syncEngine, reachability: appState.reachability)
+                    } label: {
+                        Label("Field Sync", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                } footer: {
+                    Text("Work done without signal is saved on the device and syncs automatically when you're back online. Tap to see what's queued.")
                 }
 
                 // ──────────────── Session mode
@@ -402,5 +414,6 @@ struct FieldAssistSettingsView: View {
 #Preview {
     NavigationStack {
         FieldAssistSettingsView()
+            .environmentObject(AppState())
     }
 }
