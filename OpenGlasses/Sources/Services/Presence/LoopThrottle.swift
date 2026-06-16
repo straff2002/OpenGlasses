@@ -33,3 +33,13 @@ struct LoopThrottle {
     /// Forget the last-run time so the next `shouldRun` fires immediately — call on loop (re)start.
     mutating func reset() { lastRun = nil }
 }
+
+/// Presence rule for a *continuous, user-started* stream — ambient captions (Plan W v2). A tick
+/// multiplier doesn't fit a continuous transcription, and a user who explicitly turned captions on
+/// may be silently *reading* them (idle by voice, but engaged), so presence must not pause on mere
+/// idle. The only presence state that justifies suspending is `.away` (disconnected / backgrounded —
+/// there's no usable audio source then); it auto-resumes when the user returns. Pure + testable.
+enum CaptionPresenceGate {
+    /// Whether a running, user-started caption stream should be suspended for `mode`.
+    static func shouldSuspend(mode: EngagementMode) -> Bool { mode == .away }
+}

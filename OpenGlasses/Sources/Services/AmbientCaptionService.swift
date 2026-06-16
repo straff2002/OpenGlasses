@@ -21,6 +21,11 @@ class AmbientCaptionService: ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
+    /// Presence-suspended (Plan W v2): captions stay user-`isActive` but the recognition session is
+    /// torn down while the user is *away* (disconnected/backgrounded), auto-resuming on return. Never
+    /// triggered by mere idle — a user reading captions silently is still engaged.
+    private(set) var presenceSuspended = false
+
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
@@ -62,10 +67,31 @@ class AmbientCaptionService: ObservableObject {
 
     func stop() {
         isActive = false
+        presenceSuspended = false
         stopRecognitionSession()
         currentCaption = ""
         glassesDisplay?.clear()
         print("🎙️ Ambient captions stopped")
+    }
+
+    /// Presence-aware suspend (Plan W v2): a user-started caption stream pauses only when the user is
+    /// fully *away* (disconnected/backgrounded) — never on mere idle, since they may be silently
+    /// reading. Keeps `isActive` true so it knows to resume. No-op unless captions are active.
+    func suspendForPresence() {
+        guard isActive, !presenceSuspended else { return }
+        presenceSuspended = true
+        stopRecognitionSession()
+        currentCaption = ""
+        glassesDisplay?.clear()
+        print("🎙️ Ambient captions suspended (presence away)")
+    }
+
+    /// Resume a presence-suspended caption stream when the user returns. No-op otherwise.
+    func resumeForPresence() {
+        guard isActive, presenceSuspended else { return }
+        presenceSuspended = false
+        startRecognitionSession()
+        print("🎙️ Ambient captions resumed (presence)")
     }
 
     func clearHistory() {
@@ -75,6 +101,9 @@ class AmbientCaptionService: ObservableObject {
     // MARK: - Recognition Session
 
     private func startRecognitionSession() {
+        // Plan W v2: never (re)start while presence-suspended — guards the continuous-recognition
+        // self-restart paths (final-result / no-speech / error) from reviving a suspended stream.
+        guard !presenceSuspended else { return }
         stopRecognitionSession()
 
         let request = SFSpeechAudioBufferRecognitionRequest()

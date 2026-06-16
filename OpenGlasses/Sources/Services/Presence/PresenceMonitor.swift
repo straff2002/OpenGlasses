@@ -28,6 +28,10 @@ struct PresenceSignals: Equatable {
     /// Is the app in the foreground? (MLX inference is foreground-only — backgrounded ⇒ paused is a
     /// correctness constraint, not just a battery optimisation. See the Local Model Background note.)
     var foreground: Bool
+    /// Active physical motion right now — walking/running/cycling/driving (Plan W v2, CoreMotion).
+    /// A moving-but-quiet user is *engaged*, so motion floors the quiet bands at `.present` and
+    /// prevents a false `.idle` during a walk or workout. Defaults `false` (no motion signal wired).
+    var motionActive: Bool = false
 }
 
 /// Pure fusion of `PresenceSignals` → `(engagement, mode)` given the thresholds (Plan W). The single
@@ -43,7 +47,11 @@ enum PresenceEvaluator {
         let age = now.timeIntervalSince(signals.lastInteraction)
         if signals.voiceActive || age < thresholds.activeWindow { return .active }
 
-        // Connected & foreground but quiet: present until the idle threshold, then idle.
+        // Active motion (walking/workout/driving) means the user is engaged even when silent, so
+        // floor the quiet bands at `.present` — never drop a moving user to `.idle` (Plan W v2).
+        if signals.motionActive { return .present }
+
+        // Connected & foreground, quiet, stationary: present until the idle threshold, then idle.
         return age < thresholds.idleThreshold ? .present : .idle
     }
 
@@ -106,6 +114,9 @@ final class PresenceMonitor: ObservableObject {
     var voiceActive: () -> Bool
     var connected: () -> Bool
     var foreground: () -> Bool
+    /// Active physical motion right now (Plan W v2). Defaults `false` so the monitor behaves exactly
+    /// as before until AppState wires a CoreMotion provider.
+    var motionActive: () -> Bool = { false }
 
     /// Fired when the user re-engages: the committed mode rises to `.active` from a disengaged mode
     /// (`.idle`/`.away`). AppState uses it to surface any held recommendations (TTS + HUD).
@@ -137,7 +148,8 @@ final class PresenceMonitor: ObservableObject {
             lastInteraction: lastInteraction(),
             voiceActive: voiceActive(),
             connected: connected(),
-            foreground: foreground()
+            foreground: foreground(),
+            motionActive: motionActive()
         )
         let raw = PresenceEvaluator.mode(for: signals, now: now, thresholds: thresholds)
         let previous = mode
