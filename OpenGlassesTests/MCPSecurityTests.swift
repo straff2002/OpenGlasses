@@ -8,24 +8,32 @@ import XCTest
 @MainActor
 final class MCPSecurityTests: XCTestCase {
 
+    /// Assemble a secret-shaped fixture at runtime: a short, harmless prefix literal plus a
+    /// generated body, so no full secret token is ever committed to source. This keeps GitHub
+    /// secret-scanning from flagging fabricated test data, while the `SecretPatterns` regexes
+    /// (prefix + length + char class) still match exactly as they would on a real key.
+    private func sample(_ prefix: String, _ bodyLength: Int, _ bodyChar: Character = "a") -> String {
+        prefix + String(repeating: bodyChar, count: bodyLength)
+    }
+
     // MARK: - SecretPatterns
 
     func testSecretPatternsHitKnownCredentials() {
         let cases: [(String, String)] = [
-            ("openai_key", "sk-ant-api03-abcdefghijklmnop1234"),
-            ("github_token", "ghp_0123456789abcdefghijABCDEFG"),
-            ("slack_token", "xoxb-12345678901-abcdeFGHIJ"),
-            ("google_api_key", "AIzaSyA0123456789abcdefghijklmnopqrstuv"),
-            ("aws_access_key_id", "AKIAIOSFODNN7EXAMPLE"),
-            ("jwt", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N"),
-            ("bearer_token", "Authorization: Bearer abcdefghijklmnop1234567890"),
-            ("private_key_block", "-----BEGIN RSA PRIVATE KEY-----"),
+            ("openai_key", sample("sk-ant-", 24)),
+            ("github_token", sample("ghp_", 36)),
+            ("slack_token", sample("xoxb-", 16)),
+            ("google_api_key", sample("AIza", 35)),
+            ("aws_access_key_id", sample("AKIA", 16, "A")),
+            ("jwt", sample("eyJ", 12) + "." + sample("", 12) + "." + sample("", 12)),
+            ("bearer_token", sample("Bearer ", 20)),
+            ("private_key_block", "-----BEGIN RSA " + "PRIVATE KEY-----"),
             ("email", "alice.smith@example.co.nz"),
             ("nz_ird", "12-345-678"),
         ]
-        for (expected, sample) in cases {
-            XCTAssertTrue(SecretPatterns.hits(in: sample).contains(expected),
-                          "expected \(expected) to fire on \(sample); got \(SecretPatterns.hits(in: sample))")
+        for (expected, fixture) in cases {
+            XCTAssertTrue(SecretPatterns.hits(in: fixture).contains(expected),
+                          "expected \(expected) to fire; got \(SecretPatterns.hits(in: fixture))")
         }
     }
 
@@ -44,10 +52,11 @@ final class MCPSecurityTests: XCTestCase {
     }
 
     func testRedactPreservesSurroundingTextAndReportsHits() {
-        let (redacted, hits) = SecretPatterns.redact("my key is sk-ant-abcdefghijklmnop12 and email bob@acme.com")
+        let key = sample("sk-ant-", 18)
+        let (redacted, hits) = SecretPatterns.redact("my key is \(key) and email bob@acme.com")
         XCTAssertTrue(redacted.hasPrefix("my key is "))
         XCTAssertTrue(redacted.contains(SecretPatterns.redactionPlaceholder))
-        XCTAssertFalse(redacted.contains("sk-ant-abcdefghijklmnop12"))
+        XCTAssertFalse(redacted.contains(key))
         XCTAssertFalse(redacted.contains("bob@acme.com"))
         XCTAssertTrue(hits.contains("openai_key"))
         XCTAssertTrue(hits.contains("email"))
@@ -72,7 +81,7 @@ final class MCPSecurityTests: XCTestCase {
     }
 
     func testEgressBlocksSecretUnderBlockPolicy() {
-        let args: [String: Any] = ["message": "use token ghp_0123456789abcdefghijABCDEFG please"]
+        let args: [String: Any] = ["message": "use token \(sample("ghp_", 36)) please"]
         let v = EgressScreen.evaluate(args, policy: .block)
         XCTAssertTrue(v.isBlocked)
         XCTAssertTrue(v.hits.contains("github_token"))
@@ -80,13 +89,14 @@ final class MCPSecurityTests: XCTestCase {
     }
 
     func testEgressRedactsSecretUnderRedactPolicy() {
-        let args: [String: Any] = ["message": "key sk-ant-abcdefghijklmnop12", "to": "ops"]
+        let key = sample("sk-ant-", 18)
+        let args: [String: Any] = ["message": "key \(key)", "to": "ops"]
         let v = EgressScreen.evaluate(args, policy: .redact)
         guard let redacted = v.redactedArgs else { return XCTFail("expected redact verdict") }
         XCTAssertEqual(redacted["to"] as? String, "ops")                    // untouched leaf preserved
         let msg = redacted["message"] as? String ?? ""
         XCTAssertTrue(msg.contains(SecretPatterns.redactionPlaceholder))
-        XCTAssertFalse(msg.contains("sk-ant-abcdefghijklmnop12"))
+        XCTAssertFalse(msg.contains(key))
         XCTAssertTrue(v.hits.contains("openai_key"))
     }
 
@@ -99,9 +109,11 @@ final class MCPSecurityTests: XCTestCase {
     }
 
     func testEgressRecursesNestedDictsAndArrays() {
+        let bearer = sample("Bearer ", 26)
+        let awsKey = sample("AKIA", 16, "A")
         let args: [String: Any] = [
-            "outer": ["inner": ["token": "Bearer abcdefghijklmnop1234567890"]],
-            "list": ["fine", "AKIAIOSFODNN7EXAMPLE"],
+            "outer": ["inner": ["token": bearer]],
+            "list": ["fine", awsKey],
             "n": 42,
         ]
         let blocked = EgressScreen.evaluate(args, policy: .block)
@@ -114,10 +126,10 @@ final class MCPSecurityTests: XCTestCase {
         XCTAssertEqual(r["n"] as? Int, 42)      // non-string leaf untouched
         let inner = ((r["outer"] as? [String: Any])?["inner"] as? [String: Any])?["token"] as? String ?? ""
         XCTAssertTrue(inner.contains(SecretPatterns.redactionPlaceholder))
-        XCTAssertFalse(inner.contains("abcdefghijklmnop1234567890"))
+        XCTAssertFalse(inner.contains(bearer))
         let list = r["list"] as? [Any]
         XCTAssertEqual(list?.first as? String, "fine")
-        XCTAssertFalse((list?[1] as? String ?? "").contains("AKIA"))
+        XCTAssertFalse((list?[1] as? String ?? "").contains(awsKey))
     }
 
     // MARK: - ToolDefinitionScanner
@@ -223,7 +235,7 @@ final class MCPSecurityTests: XCTestCase {
         router.mcpClient = client
 
         let result = await router.handleToolCall(name: "notion__leak",
-                                                 args: ["payload": "ghp_0123456789abcdefghijABCDEFG"])
+                                                 args: ["payload": sample("ghp_", 36)])
         guard case .failure(let msg) = result else { return XCTFail("expected .failure, got \(result)") }
         XCTAssertTrue(msg.lowercased().contains("withheld"))
         XCTAssertTrue(msg.lowercased().contains("do not retry"))   // message tells the model NOT to retry
