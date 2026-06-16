@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "home_assistant",
+      "label": "Home Assistant",
+      "transport": "sse",
+      "url_template": "http://{host}:8123/mcp_server/sse",
+      "auth": {
+        "kind": "bearer",
+        "hint": "Create a Long-Lived Access Token under your HA profile → Security."
+      },
+      "fields": [
+        { "key": "host", "label": "HA host / IP", "placeholder": "192.168.1.10" }
+      ],
+      "scopes": ["Control devices", "Read sensors", "Run scripts & scenes"],
+      "icon": "house.fill",
+      "notes": "Your local Home Assistant instance. Discovered tools are screened by the egress + tool-poisoning screen before the AI can use them."
+    },
+    {
+      "id": "slack",
+      "label": "Slack",
+      "transport": "http",
+      "url_template": "http://{host}:3000/mcp",
+      "auth": {
+        "kind": "bearer",
+        "hint": "Bearer token your self-hosted Slack MCP server expects (e.g. a bot token)."
+      },
+      "fields": [
+        { "key": "host", "label": "MCP server host / IP", "placeholder": "127.0.0.1" }
+      ],
+      "scopes": ["Read channels", "Post messages", "Search history"],
+      "icon": "number.square.fill",
+      "notes": "Point this at your own Slack MCP server. Outbound arguments are screened so tokens and PII don't leave the device."
+    },
+    {
+      "id": "notion",
+      "label": "Notion",
+      "transport": "http",
+      "url_template": "https://mcp.notion.com/mcp",
+      "auth": {
+        "kind": "oauth",
+        "hint": "Notion uses OAuth. Sign-in automation is coming; for now paste an access token in the editor."
+      },
+      "fields": [],
+      "scopes": ["Read pages", "Create pages", "Search workspace"],
+      "icon": "doc.text.fill",
+      "notes": "Notion's hosted MCP endpoint. OAuth device-code sign-in is deferred (Plan V follow-up)."
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "transport": "http",
+      "url_template": "https://api.githubcopilot.com/mcp/",
+      "auth": {
+        "kind": "oauth",
+        "hint": "GitHub uses OAuth. Sign-in automation is coming; for now paste a personal access token in the editor."
+      },
+      "fields": [],
+      "scopes": ["Read repos", "Issues & PRs", "Search code"],
+      "icon": "chevron.left.forwardslash.chevron.right",
+      "notes": "GitHub's hosted MCP endpoint. OAuth device-code sign-in is deferred (Plan V follow-up)."
+    },
+    {
+      "id": "linear",
+      "label": "Linear",
+      "transport": "sse",
+      "url_template": "https://mcp.linear.app/sse",
+      "auth": {
+        "kind": "oauth",
+        "hint": "Linear uses OAuth over SSE. Both the OAuth flow and the live SSE stream are deferred (Plan V follow-up)."
+      },
+      "fields": [],
+      "scopes": ["Read issues", "Create issues", "Search projects"],
+      "icon": "list.bullet.rectangle.fill",
+      "notes": "Linear's hosted MCP endpoint. Listed for completeness; live connection lands when SSE + OAuth ship."
+    }
+  ]
+}
