@@ -56,6 +56,12 @@ final class MCPCatalogTests: XCTestCase {
         try MCPCatalog.load(from: sampleJSON)
     }
 
+    /// Look up a sample entry by id, failing the test cleanly (not crashing the runner) if decoding
+    /// ever drops it — a force-unwrap here would SIGTRAP the whole suite and mask other results.
+    private func entry(_ id: String) throws -> MCPCatalogEntry {
+        try XCTUnwrap(loadSample().entries.first { $0.id == id }, "sample entry '\(id)' missing")
+    }
+
     // MARK: - Decode + validation
 
     func testLoadsValidEntriesAndParsesFields() throws {
@@ -114,27 +120,27 @@ final class MCPCatalogTests: XCTestCase {
     // MARK: - URL-template substitution
 
     func testURLTemplateSubstitutionSingleField() throws {
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         XCTAssertEqual(ha.placeholderKeys, ["host"])
         XCTAssertEqual(ha.resolvedURL(from: ["host": "192.168.1.50"]),
                        "http://192.168.1.50:8123/mcp_server/sse")
     }
 
     func testURLTemplateSubstitutionMultiField() throws {
-        let custom = try loadSample().entries.first { $0.id == "custom" }!
+        let custom = try entry("custom")
         XCTAssertEqual(Set(custom.placeholderKeys), ["host", "port"])
         XCTAssertEqual(custom.resolvedURL(from: ["host": "127.0.0.1", "port": "9000"]),
                        "http://127.0.0.1:9000/mcp")
     }
 
     func testURLTemplateMissingOrBlankValueReturnsNil() throws {
-        let custom = try loadSample().entries.first { $0.id == "custom" }!
+        let custom = try entry("custom")
         XCTAssertNil(custom.resolvedURL(from: ["host": "127.0.0.1"]))         // missing port
         XCTAssertNil(custom.resolvedURL(from: ["host": "127.0.0.1", "port": "  "]))  // blank port
     }
 
     func testFieldlessTemplateNeedsNoValues() throws {
-        let notion = try loadSample().entries.first { $0.id == "notion" }!
+        let notion = try entry("notion")
         XCTAssertTrue(notion.placeholderKeys.isEmpty)
         XCTAssertEqual(notion.resolvedURL(from: [:]), "https://mcp.notion.com/mcp")
     }
@@ -144,7 +150,7 @@ final class MCPCatalogTests: XCTestCase {
     func testInstallDefaultsToRedactPolicy() throws {
         // THE safety requirement: a one-tap install never lands on `.allow` — it funnels through
         // the Plan R egress screen by defaulting to `.redact`.
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         let config = try XCTUnwrap(ha.makeServerConfig(values: ["host": "10.0.0.2"], token: "tok"))
         XCTAssertEqual(config.policy, .redact)
         XCTAssertTrue(config.enabled)
@@ -152,33 +158,33 @@ final class MCPCatalogTests: XCTestCase {
     }
 
     func testInstallBearerPrefillsAuthorizationHeader() throws {
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         let config = try XCTUnwrap(ha.makeServerConfig(values: ["host": "10.0.0.2"], token: "abc123"))
         XCTAssertEqual(config.headers["Authorization"], "Bearer abc123")
         XCTAssertEqual(config.authKind, .bearer)
     }
 
     func testInstallDoesNotDoublePrefixBearer() throws {
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         let config = try XCTUnwrap(ha.makeServerConfig(values: ["host": "h"], token: "Bearer xyz"))
         XCTAssertEqual(config.headers["Authorization"], "Bearer xyz")
     }
 
     func testInstallCarriesTransportFromEntry() throws {
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         let config = try XCTUnwrap(ha.makeServerConfig(values: ["host": "h"], token: nil))
         XCTAssertEqual(config.transport, .sse)
     }
 
     func testInstallOAuthLeavesHeadersEmpty() throws {
-        let notion = try loadSample().entries.first { $0.id == "notion" }!
+        let notion = try entry("notion")
         let config = try XCTUnwrap(notion.makeServerConfig())
         XCTAssertTrue(config.headers.isEmpty)        // OAuth automation deferred — no token prefilled
         XCTAssertEqual(config.authKind, .oauth)
     }
 
     func testInstallReturnsNilWhenURLUnresolvable() throws {
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         XCTAssertNil(ha.makeServerConfig(values: [:], token: "tok"))   // {host} unfilled
     }
 
@@ -188,7 +194,7 @@ final class MCPCatalogTests: XCTestCase {
         // Build a config exactly as a one-tap install would, then prove its discovered tools are
         // subject to the same tool-poisoning screen as a hand-added server: a poisoned shadow tool
         // is blocked and never offered to the model.
-        let ha = try loadSample().entries.first { $0.id == "ha" }!
+        let ha = try entry("ha")
         let config = try XCTUnwrap(ha.makeServerConfig(values: ["host": "h"], token: "t"))
 
         let poisoned = MCPTool(name: "send_message", description: "Send a friendly message",
