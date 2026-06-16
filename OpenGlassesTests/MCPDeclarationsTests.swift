@@ -19,7 +19,8 @@ final class MCPDeclarationsTests: XCTestCase {
 
     func testMCPToolDeclarationsIncludeDiscoveredTools() {
         let decls = ToolDeclarations.mcpToolDeclarations(mcpClient: clientWithTool())
-        XCTAssertEqual(decls.first?["name"] as? String, "create_page")
+        // Tools are offered ONLY under their namespace-isolated qualified name (Plan R).
+        XCTAssertEqual(decls.first?["name"] as? String, "notion__create_page")
         XCTAssertTrue((decls.first?["description"] as? String)?.contains("Notion") ?? false)
     }
 
@@ -32,15 +33,15 @@ final class MCPDeclarationsTests: XCTestCase {
 
     func testAnthropicToolsIncludeMCPTool() {
         let tools = ToolDeclarations.anthropicTools(registry: nil, includeOpenClaw: false, mcpClient: clientWithTool())
-        XCTAssertTrue(tools.contains { ($0["name"] as? String) == "create_page" })
-        let decl = tools.first { ($0["name"] as? String) == "create_page" }
+        XCTAssertTrue(tools.contains { ($0["name"] as? String) == "notion__create_page" })
+        let decl = tools.first { ($0["name"] as? String) == "notion__create_page" }
         XCTAssertNotNil(decl?["input_schema"])
     }
 
     func testOpenAIToolsIncludeMCPTool() {
         let tools = ToolDeclarations.openAITools(registry: nil, includeOpenClaw: false, mcpClient: clientWithTool())
         let names = tools.compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
-        XCTAssertTrue(names.contains("create_page"))
+        XCTAssertTrue(names.contains("notion__create_page"))
     }
 
     func testNilClientAddsNothing() {

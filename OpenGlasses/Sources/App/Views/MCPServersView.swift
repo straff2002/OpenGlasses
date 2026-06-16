@@ -94,6 +94,19 @@ struct MCPServersView: View {
                 }
             }
 
+            // MARK: Safety & Trust (Plan R)
+            if !servers.isEmpty {
+                Section {
+                    NavigationLink {
+                        MCPServerTrustView(mcpClient: appState.mcpClient)
+                    } label: {
+                        Label("Safety & Trust", systemImage: "shield.lefthalf.filled")
+                    }
+                } footer: {
+                    Text("Per-server outbound data policy, tool trust badges, and recent egress decisions.")
+                }
+            }
+
             // MARK: Info
             Section {
                 VStack(alignment: .leading, spacing: 8) {

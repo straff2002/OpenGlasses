@@ -669,6 +669,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire native tool router to LLM service and Gemini Live
         llmService.nativeToolRouter = nativeToolRouter
         nativeToolRouter.mcpClient = mcpClient
+        // Live native-tool-name source so the MCP tool-poisoning scanner can flag collisions
+        // (Plan R). Read lazily so late-registered tools are included.
+        mcpClient.nativeToolNames = { [weak nativeToolRegistry] in
+            Set(nativeToolRegistry?.allTools.map(\.name) ?? [])
+        }
 
         // Register live translation tool with its service reference
         var translationTool = LiveTranslationTool()

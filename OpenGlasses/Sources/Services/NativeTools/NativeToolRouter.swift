@@ -49,11 +49,25 @@ final class NativeToolRouter {
             }
         }
 
-        // 2. Check MCP servers for the tool
-        if let mcp = mcpClient, mcp.discoveredTools.contains(where: { $0.name == name }) {
+        // 2. Check MCP servers for the tool (matched on its fully-qualified, namespace-isolated
+        //    name so a server can't shadow a native tool). Blocked (tool-poisoned) tools are
+        //    never matched here, so the model can't reach them.
+        if let mcp = mcpClient, let tool = mcp.offeredTool(matching: name), let server = mcp.server(id: tool.serverId) {
+            // Outbound egress screen (Plan R): secrets/PII never leave the device for a
+            // third-party server. A `.block` verdict is treated like a declined confirmation —
+            // no network call, and a failure the model is told not to retry.
+            let verdict = EgressScreen.evaluate(args, policy: server.policy)
+            if !verdict.hits.isEmpty {
+                mcp.recordEgress(serverLabel: server.label, toolName: tool.name, verdict: verdict)
+            }
+            if let reason = verdict.blockReason {
+                NSLog("[NativeToolRouter] Egress screen withheld MCP tool %@: %@", name, reason)
+                return .failure("The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
+            }
+            let outboundArgs = verdict.redactedArgs ?? args
             NSLog("[NativeToolRouter] Executing MCP tool: %@", name)
             return await executeWithTimeout(name: name) {
-                return await mcp.executeTool(name: name, arguments: args)
+                await mcp.performCall(tool: tool, server: server, arguments: outboundArgs)
             }
         }
 

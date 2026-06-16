@@ -6,6 +6,17 @@
 
 **Effort:** ~3–4 days.
 
+**Status:** ✅ Shipped (headless-validated). All three deterministic screens landed —
+`SecretPatterns` (shared regex set), `EgressScreen` (pure `(args, EgressPolicy) → allow/redact/block`,
+recursing nested args), and `ToolDefinitionScanner` (poisoned-description / native-shadow / typosquat /
+bad-schema → `trusted/quarantined/blocked`). Wired into `MCPClient.discoverTools` (scan + trust) and
+`NativeToolRouter` (egress screen at call time; `.block` → no network call + a no-retry `.failure`).
+MCP tools are now offered to the model **only** under their sanitised `qualifiedName`, and blocked tools
+are never offered. Added a per-server `EgressPolicy` (default `.redact`, backward-compatible decoder),
+the `MCPServerTrustView` (policy picker + tool trust badges + recent egress decisions), and a
+`systemPromptPolicy` note about untrusted external-tool definitions. 21 new headless tests; full suite
+541 green; Debug + Release verified.
+
 ---
 
 ## The gap (what's missing today, verified)
