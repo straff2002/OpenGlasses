@@ -6,6 +6,13 @@
 
 **Effort:** ~2–3 days.
 
+**Status:** 🚧 Core shipped (`feat/presence-aware-throttle`). Deterministic core complete and headless-tested:
+- **Model + policy** — `EngagementMode` (`active`/`present`/`idle`/`away`, ranked + `Comparable`), `Autonomy` (`autoAct`/`recommend`/`paused`), `ThrottleDecision`, and the pure `ThrottlePolicy.decide(mode:minMode:)` implementing the plan table (active 1.0 → present 2.0 → idle 4.0/recommend → away paused). `minMode` floor lets a safety-critical loop (hazard navigation) declare a minimum it can never be throttled below; `ThrottleDecision.interval(base:)` applies the multiplier (`.infinity` when paused).
+- **Presence fusion** — `PresenceSignals` snapshot + pure `PresenceEvaluator` (voice / last-interaction age / connectivity / foreground → mode, with `away` on disconnected-or-backgrounded honouring the MLX foreground-only constraint), `PresenceThresholds` (30 s active window, 5 min idle, 12 s debounce), and `ModeDebouncer` — **rises commit instantly** (prompt resume on re-engagement), **drops dwell** (no flap on a single missed tick). `PresenceMonitor` is an injectable `@MainActor ObservableObject` whose `update(now:)` is fully deterministic under test.
+- **Tests:** 21 headless (`PresenceThrottleTests`) covering the policy table + `minMode`, fusion bands, debounce flap-resistance, and the settle-to-idle → instant-resume monitor flow. Full suite 652 green, Debug + Release.
+
+**Deferred (risky integration, not in this PR):** applying `decision.intervalMultiplier` to the live loops (`LiveCoachService` timer, ambient/assistive caption loop, `ProactiveAlertService`); reading `mode == .idle → recommend` into a Plan S autonomy ceiling (the `SafetySupervisor` has no autonomy concept yet — that seam is added here as `Autonomy`); constructing `PresenceMonitor` in `OpenGlassesApp` and wiring the real signal sources (transcription pipeline, DAT session, scene phase, optional CoreMotion); and held-recommendation surfacing (TTS + HUD) on re-engagement. All are live-loop/app-lifecycle wiring that needs the running app (and ideally hardware) to validate — the tested core is what each consumer reads.
+
 ---
 
 ## Concept (reframed for a wearable)
