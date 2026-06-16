@@ -107,6 +107,10 @@ final class PresenceMonitor: ObservableObject {
     var connected: () -> Bool
     var foreground: () -> Bool
 
+    /// Fired when the user re-engages: the committed mode rises to `.active` from a disengaged mode
+    /// (`.idle`/`.away`). AppState uses it to surface any held recommendations (TTS + HUD).
+    var onReEngage: (() -> Void)?
+
     let thresholds: PresenceThresholds
     private var debouncer: ModeDebouncer
 
@@ -136,10 +140,16 @@ final class PresenceMonitor: ObservableObject {
             foreground: foreground()
         )
         let raw = PresenceEvaluator.mode(for: signals, now: now, thresholds: thresholds)
+        let previous = mode
         let committed = debouncer.step(raw: raw, now: now)
         mode = committed
         engagement = committed.engagement
         decision = ThrottlePolicy.decide(mode: committed)
+
+        // Re-engagement: rose to active from a disengaged mode → let AppState surface held recs.
+        if committed == .active, previous == .idle || previous == .away {
+            onReEngage?()
+        }
     }
 
     /// The throttle decision for a loop with a minimum-mode floor (e.g. hazard navigation passes

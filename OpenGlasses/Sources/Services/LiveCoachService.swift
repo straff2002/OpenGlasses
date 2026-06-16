@@ -74,6 +74,11 @@ final class LiveCoachService: ObservableObject {
     private var analyzing = false
     private var startedAt: Date?
     private var interval: TimeInterval = 2
+
+    /// Presence-aware throttle (Plan W). Injected by AppState; when nil the loop runs at full
+    /// cadence (unchanged pre-Plan-W behaviour).
+    weak var presence: PresenceMonitor?
+    private var throttle = LoopThrottle()
     private var maxWords = 20
     private var maxDuration: TimeInterval = 1800
     private var customPrompt: String?
@@ -102,6 +107,7 @@ final class LiveCoachService: ObservableObject {
         self.maxDuration = min(max(maxDurationMinutes, 1), 120) * 60
         self.lastAdvice = nil
         self.startedAt = Date()
+        throttle.reset()   // first tick of a new session runs immediately
         isActive = true
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -137,6 +143,15 @@ final class LiveCoachService: ObservableObject {
             return
         }
         if tts.isSpeaking { return }
+
+        // Presence throttle (Plan W): the timer keeps waking at the session's base interval, but the
+        // expensive frame-capture + LLM call only runs once `interval × the presence multiplier` has
+        // elapsed — every tick when the user is active, a quarter as often when idle, never when away
+        // (disconnected/backgrounded). No `minMode` floor: a quietly-watched session slowing to 4×
+        // is fine, and an away/disconnected session can't capture frames anyway.
+        if let presence, !throttle.shouldRun(now: Date(), base: interval, decision: presence.decision) {
+            return
+        }
 
         analyzing = true
         defer { analyzing = false }

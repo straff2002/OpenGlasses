@@ -10,16 +10,22 @@ struct SafetyContext {
     var enabledRules: Set<SafetyRuleKind>
     var quietHoursStart: Int
     var quietHoursEnd: Int
+    /// The presence-derived autonomy ceiling (Plan W). `.autoAct` is the default and matches the
+    /// pre-Plan-W behaviour; `.recommend`/`.paused` lower what an *acting* tool may do without the
+    /// user (see the ceiling in `evaluate`). Injected so the supervisor stays a pure function.
+    var autonomy: Autonomy = .autoAct
 
     /// Snapshot live settings + current location into a context (used by the router/AppState).
-    static func live(now: Date, location: CLLocationCoordinate2D?) -> SafetyContext {
+    /// `autonomy` defaults to `.autoAct` so callers that don't track presence are unaffected.
+    static func live(now: Date, location: CLLocationCoordinate2D?, autonomy: Autonomy = .autoAct) -> SafetyContext {
         SafetyContext(
             now: now,
             location: location,
             homeRegion: SafetySettings.homeRegion,
             enabledRules: SafetySettings.enabledRules,
             quietHoursStart: SafetySettings.quietHoursStart,
-            quietHoursEnd: SafetySettings.quietHoursEnd
+            quietHoursEnd: SafetySettings.quietHoursEnd,
+            autonomy: autonomy
         )
     }
 }
@@ -63,7 +69,28 @@ enum SafetySupervisor {
                 best = verdict
             }
         }
+        // Presence autonomy ceiling (Plan W). When the user has disengaged, an *acting* (high-impact)
+        // tool must not run autonomously: `.recommend` requires explicit human confirmation, `.paused`
+        // blocks it outright. Read-only tools are untouched (reading is fine while idle), and this
+        // only ever *raises* severity — it never overrides a stricter rule verdict.
+        if let ceiling = autonomyCeiling(tool: tool, autonomy: context.autonomy), ceiling.severity > best.severity {
+            best = ceiling
+        }
         return best
+    }
+
+    /// The verdict floor imposed by the autonomy ceiling for `tool`, or `nil` when it doesn't apply
+    /// (autonomy is full, or the tool takes no real-world action). Both lowered levels `.block`
+    /// rather than `.confirm`: a disengaged user can't answer a spoken prompt (and
+    /// `requestConfirmation` would suspend the agent loop indefinitely), so the action is held — not
+    /// run, not prompted — and surfaced on re-engagement via the held-recommendation store.
+    private static func autonomyCeiling(tool: String, autonomy: Autonomy) -> SafetyVerdict? {
+        guard PromptInjectionPolicy.isHighImpact(toolName: tool) else { return nil }
+        switch autonomy {
+        case .autoAct:   return nil
+        case .recommend: return .block(reason: "held — you've been idle, so ‘\(tool)’ wasn't run automatically")
+        case .paused:    return .block(reason: "‘\(tool)’ is paused while you're away from the glasses")
+        }
     }
 
     private static func apply(_ rule: SafetyRuleKind, tool: String, context: SafetyContext) -> SafetyVerdict? {

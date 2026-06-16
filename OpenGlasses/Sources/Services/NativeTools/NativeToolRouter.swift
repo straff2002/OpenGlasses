@@ -21,6 +21,11 @@ final class NativeToolRouter {
     /// to settings-only context (no location), so the rules still apply headlessly.
     var safetyContextProvider: (() -> SafetyContext)?
 
+    /// Called when an acting (high-impact) tool is held because presence lowered the autonomy
+    /// ceiling (Plan W) — AppState records it for surfacing when the user re-engages. The string is
+    /// a human-readable action summary.
+    var onActionHeld: ((String) -> Void)?
+
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
@@ -44,6 +49,15 @@ final class NativeToolRouter {
                 break
             case .block(let reason):
                 NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@: %@", name, reason)
+                // Plan W: when the block is the presence autonomy ceiling on an acting tool (the
+                // user is idle/away), hold it for re-engagement instead of reporting a hard safety
+                // block — the action was deferred, not forbidden.
+                if context.autonomy != .autoAct, PromptInjectionPolicy.isHighImpact(toolName: name) {
+                    let summary = PromptInjectionPolicy.actionSummary(toolName: name, args: args)
+                    onActionHeld?(summary)
+                    NSLog("[NativeToolRouter] Held %@ for re-engagement (autonomy=%@)", name, context.autonomy.rawValue)
+                    return .failure("'\(name)' wasn't run because you've been away from the glasses; I've held it to raise when you're back. Do not retry automatically.")
+                }
                 return .failure("'\(name)' was blocked by a safety rule (\(reason)). Do not retry; tell the user it was blocked for safety.")
             case .confirm(let reason):
                 if let coordinator = confirmationCoordinator {
