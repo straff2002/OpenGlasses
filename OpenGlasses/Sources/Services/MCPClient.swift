@@ -158,31 +158,20 @@ final class MCPClient: ObservableObject {
         }
     }
 
-    // MARK: - HTTP Transport
+    // MARK: - Transport
 
+    /// Single JSON-RPC round-trip seam. Selects the transport for `server.transport` and delegates;
+    /// `discoverTools`/`performCall` are transport-agnostic, so the Plan R egress screen and inbound
+    /// framing stay in exactly one place. HTTP behaviour is unchanged from before the extraction;
+    /// SSE selection is wired but its live streaming is deferred (Plan V) — it throws cleanly.
     private func mcpRequest(server: MCPServerConfig, payload: [String: Any]) async throws -> Data {
-        guard let url = URL(string: server.url) else {
-            throw URLError(.badURL)
+        let transport = MCPTransportFactory.transport(for: server.transport)
+        do {
+            return try await transport.request(payload, server: server)
+        } catch {
+            print("⚠️ MCP transport error from \(server.label) (\(server.transport.rawValue)): \(error.localizedDescription)")
+            throw error
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        // Add auth headers
-        for (key, value) in server.headers {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        request.timeoutInterval = 15
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            print("⚠️ MCP error \(httpResponse.statusCode) from \(server.label): \(body.prefix(200))")
-            throw URLError(.badServerResponse)
-        }
-        return data
     }
 }
 
@@ -196,6 +185,12 @@ struct MCPServerConfig: Codable, Identifiable, Equatable {
     var enabled: Bool
     /// Outbound egress policy for this server's tool calls (Plan R). Default `.redact`.
     var policy: EgressPolicy = .redact
+    /// Wire transport this server speaks (Plan V). Default `.http` — the only live path today, and
+    /// the behaviour every pre-Plan-V server had implicitly.
+    var transport: MCPTransportKind = .http
+    /// How this server authenticates (Plan V). Metadata for the catalogue/editor + future OAuth;
+    /// the actual credential still travels in `headers`. Default `.bearer`.
+    var authKind: MCPAuthKind = .bearer
 
     static func == (lhs: MCPServerConfig, rhs: MCPServerConfig) -> Bool {
         lhs.id == rhs.id
@@ -204,19 +199,22 @@ struct MCPServerConfig: Codable, Identifiable, Equatable {
 
 extension MCPServerConfig {
     private enum CodingKeys: String, CodingKey {
-        case id, label, url, headers, enabled, policy
+        case id, label, url, headers, enabled, policy, transport, authKind
     }
 
-    /// Backward-compatible decoder: servers persisted before Plan R have no `policy` key and
-    /// must keep decoding (a throw here would wipe the user's saved MCP servers). Default `.redact`.
+    /// Backward-compatible decoder: servers persisted before Plan R/V have no `policy`, `transport`,
+    /// or `authKind` key and must keep decoding (a throw here would wipe the user's saved MCP
+    /// servers). Defaults mirror the implicit behaviour those older configs already had.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id      = try c.decode(String.self, forKey: .id)
-        label   = try c.decode(String.self, forKey: .label)
-        url     = try c.decode(String.self, forKey: .url)
-        headers = try c.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
-        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        policy  = try c.decodeIfPresent(EgressPolicy.self, forKey: .policy) ?? .redact
+        id        = try c.decode(String.self, forKey: .id)
+        label     = try c.decode(String.self, forKey: .label)
+        url       = try c.decode(String.self, forKey: .url)
+        headers   = try c.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+        enabled   = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        policy    = try c.decodeIfPresent(EgressPolicy.self, forKey: .policy) ?? .redact
+        transport = try c.decodeIfPresent(MCPTransportKind.self, forKey: .transport) ?? .http
+        authKind  = try c.decodeIfPresent(MCPAuthKind.self, forKey: .authKind) ?? .bearer
     }
 }
 

@@ -6,6 +6,14 @@
 
 **Effort:** ~3–4 days.
 
+**Status:** 🚧 Core shipped (`feat/mcp-catalogue-transport`). Deterministic core complete and headless-tested:
+- **Catalogue** — `MCPCatalog` (versioned model + lossy per-entry decode so one bad row can't sink the list + semantic validation) and a bundled `Resources/mcp-catalog.json` (Home Assistant, Slack, Notion, GitHub, Linear — exercising both transports × both auth kinds). `url_template` field substitution with missing-value guards.
+- **One-tap install** — `MCPCatalogEntry.makeServerConfig` produces an ordinary `MCPServerConfig` that defaults to the **safe `.redact` egress policy** (never `.allow`) and flows through the *exact* discovery → Plan R `ToolDefinitionScanner` → router path a manual add uses. `MCPCatalogView` + install screen + prefilled `MCPServerEditorView` + a "Browse catalogue" entry in `MCPServersView`.
+- **Transport parsing/selection** — `MCPTransportKind`/`MCPAuthKind` added to `MCPServerConfig` (backward-compatible decode — old saved servers keep loading). `MCPTransport` protocol with `HTTPTransport` extracted byte-identical from `mcpRequest` and a factory; `MCPClient.mcpRequest` now selects per server. Pure `SSEEventParser` (wire framing + chunk reassembly + JSON-RPC `id` correlation) shipped as the foundation for the deferred live stream.
+- **Tests:** 37 headless (`MCPCatalogTests` 17, `MCPTransportTests` 9 incl. a `URLProtocol` request-shape stub, `SSEEventParserTests` 11). Full suite 631 green, Debug + Release.
+
+**Deferred (risky live-network bits, not in this PR):** the `SSETransport` streaming **initialize handshake** against a real server (the parser ships and is tested; selecting an SSE server currently throws `notYetSupported` cleanly rather than silently no-op'ing), and the `MCPOAuth` device-code/PKCE flow + Keychain token refresh (OAuth catalogue entries install today by pasting a token into the prefilled editor). Both are pure live-network work that needs a real server/IdP to exercise — to be picked up as the Plan V fast-follow.
+
 ---
 
 ## The gap (verified)
