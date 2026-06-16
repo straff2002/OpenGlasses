@@ -19,6 +19,10 @@ final class ProactiveAlertService: ObservableObject {
     private var alertedEventIds: Set<String> = []
     private let eventStore = EKEventStore()
 
+    /// Presence-aware throttle (Plan W). Injected by AppState; nil ⇒ full cadence (unchanged).
+    weak var presence: PresenceMonitor?
+    private var throttle = LoopThrottle()
+
     /// Callback to speak an alert through TTS, with an urgency for rate/prefix.
     var onAlert: ((String, TextToSpeechService.SpeechUrgency) -> Void)?
 
@@ -41,6 +45,7 @@ final class ProactiveAlertService: ObservableObject {
         isRunning = true
 
         // Check immediately, then on interval
+        throttle.reset()   // the immediate check below always runs
         checkForAlerts()
 
         checkTimer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { [weak self] _ in
@@ -82,6 +87,15 @@ final class ProactiveAlertService: ObservableObject {
     // MARK: - Alert Checking
 
     private func checkForAlerts() {
+        // Presence throttle (Plan W): calendar alerts are time-sensitive, so they floor at `.present`
+        // — never slower than 2× base and never paused merely because the user is idle (the existing
+        // background path still pauses them when truly away). This trims redundant calendar queries
+        // while you're engaged-but-idle without risking a missed "starting now" alert.
+        if let presence,
+           !throttle.shouldRun(now: Date(), base: checkInterval, decision: presence.decision(minMode: .present)) {
+            return
+        }
+
         // Check calendar access
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
 

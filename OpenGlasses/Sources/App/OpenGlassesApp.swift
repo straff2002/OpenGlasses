@@ -260,6 +260,8 @@ struct OpenGlassesApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
+            // Plan W: feed foreground state into the presence throttle (background ⇒ away ⇒ paused).
+            appState.notePresenceForeground(newPhase == .active)
             switch newPhase {
             case .background:
                 // Don't end Live Activity here — it should persist on the Lock Screen.
@@ -465,6 +467,19 @@ class AppState: ObservableObject, AppStateProtocol {
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
+
+    /// Presence-aware throttle (Plan W): fuses cheap on-device signals into an engagement mode that
+    /// scales the continuous loops' cadence and lowers the agent autonomy ceiling when disengaged.
+    let presenceMonitor = PresenceMonitor()
+    /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
+    /// re-engagement.
+    let heldRecommendations = HeldRecommendationStore()
+    /// Last explicit user interaction (wake word / transcription) — the presence `lastInteraction`
+    /// signal. `isForegroundActive` is the `foreground` signal (MLX is foreground-only, so
+    /// background ⇒ `away` ⇒ paused). `presenceTimer` drives periodic re-evaluation.
+    private var lastInteractionAt = Date()
+    private var isForegroundActive = true
+    private var presenceTimer: Timer?
     let faceRecognition = FaceRecognitionService()
     let memoryRewind = MemoryRewindService()
     let privacyFilter = PrivacyFilterService()
@@ -580,7 +595,17 @@ class AppState: ObservableObject, AppStateProtocol {
         // Deterministic safety supervisor context (Plan S): snapshot clock + current location +
         // persisted rules per tool call so geofence/quiet-hours rules reflect the real situation.
         nativeToolRouter.safetyContextProvider = { [weak self] in
-            SafetyContext.live(now: Date(), location: self?.locationService.currentLocation?.coordinate)
+            // Plan W: the presence mode lowers the autonomy ceiling — when the user is idle/away, an
+            // acting tool is held rather than run autonomously (see SafetySupervisor.autonomyCeiling).
+            let autonomy = ThrottlePolicy.decide(mode: self?.presenceMonitor.mode ?? .active).autonomy
+            return SafetyContext.live(now: Date(),
+                                      location: self?.locationService.currentLocation?.coordinate,
+                                      autonomy: autonomy)
+        }
+        // Plan W: record actions the supervisor holds under a lowered autonomy ceiling, to surface
+        // when the user re-engages.
+        nativeToolRouter.onActionHeld = { [weak self] summary in
+            self?.heldRecommendations.record(summary: summary, at: Date())
         }
         toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
             guard let self else { return }
@@ -836,6 +861,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Configure Live Coach (Plan C) with this AppState's services so the live_coach tool can run.
         LiveCoachService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
 
+        // Wire the presence-aware throttle (Plan W) into the loops + signal sources.
+        configurePresence()
+
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
         NavigationAssistService.shared.glassesDisplay = glassesDisplay
@@ -1077,6 +1105,7 @@ class AppState: ObservableObject, AppStateProtocol {
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.noteUserInteraction()   // Plan W: a wake word is an explicit engagement
                 guard !self.inConversation && !self.isProcessing else {
                     print("⚠️ Wake word ignored - already in conversation")
                     return
@@ -1159,6 +1188,7 @@ class AppState: ObservableObject, AppStateProtocol {
         transcriptionService.onTranscriptionComplete = { [weak self] text in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.noteUserInteraction()   // Plan W: a spoken command is an explicit engagement
                 // While Assistive Mode (A3) is active it owns the loop — feed the transcript to bias
                 // Scene vs Social routing instead of starting a normal turn.
                 if AssistiveModeService.shared.isActive {
@@ -1973,6 +2003,49 @@ class AppState: ObservableObject, AppStateProtocol {
         privacyFilter.resume()
 
         addDebugEvent("Background optimization: normal mode restored")
+    }
+
+    // MARK: - Presence-Aware Throttle (Plan W)
+
+    /// Wire the presence monitor's signal sources, the loops it throttles, and re-engagement
+    /// surfacing. Called once at launch after the services exist.
+    private func configurePresence() {
+        // Signal sources (cheap, on-device): DAT connectivity, scene-phase foreground (MLX is
+        // foreground-only), live voice activity, and the last explicit command timestamp.
+        presenceMonitor.connected = { [weak self] in self?.glassesService.isConnected ?? false }
+        presenceMonitor.foreground = { [weak self] in self?.isForegroundActive ?? true }
+        presenceMonitor.voiceActive = { [weak self] in self?.wakeWordService.isListening ?? false }
+        presenceMonitor.lastInteraction = { [weak self] in self?.lastInteractionAt ?? Date() }
+
+        // Surface anything the supervisor held while the user was away, on re-engagement (TTS + HUD).
+        presenceMonitor.onReEngage = { [weak self] in
+            guard let self, let line = self.heldRecommendations.drainSummary() else { return }
+            Task { @MainActor in await self.speechService.speak(line) }
+            self.glassesDisplay.showNotification(title: "Held while away", body: line, icon: .info)
+        }
+
+        // The continuous loops that read the throttle decision each tick.
+        LiveCoachService.shared.presence = presenceMonitor
+        proactiveAlerts.presence = presenceMonitor
+
+        // Periodic re-evaluation; also nudged immediately on interaction / scene-phase change.
+        presenceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.presenceMonitor.update() }
+        }
+        presenceMonitor.update()
+    }
+
+    /// Note an explicit user interaction (wake word / transcription) for the presence
+    /// `lastInteraction` signal, re-evaluating at once so throttled loops resume promptly.
+    func noteUserInteraction() {
+        lastInteractionAt = Date()
+        presenceMonitor.update()
+    }
+
+    /// Track foreground/background for the presence `foreground` signal (background ⇒ `away`).
+    func notePresenceForeground(_ active: Bool) {
+        isForegroundActive = active
+        presenceMonitor.update()
     }
 
     /// Start listening directly — no wake word needed.
