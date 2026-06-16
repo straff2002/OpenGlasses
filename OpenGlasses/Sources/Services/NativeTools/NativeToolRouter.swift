@@ -16,6 +16,11 @@ final class NativeToolRouter {
     /// the backstop against a prompt-injected instruction driving the model to act unprompted.
     var confirmationCoordinator: ToolConfirmationCoordinator?
 
+    /// Builds the live `SafetyContext` for the deterministic supervisor (Plan S). Injected by
+    /// AppState from current location + clock + persisted rules. When nil, the router falls back
+    /// to settings-only context (no location), so the rules still apply headlessly.
+    var safetyContextProvider: (() -> SafetyContext)?
+
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
@@ -26,18 +31,33 @@ final class NativeToolRouter {
 
     /// Handle a tool call by name. Routing order: native → MCP → OpenClaw → error.
     func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
-        // 0. Prompt-injection backstop: gate high-impact / irreversible actions behind an
-        // explicit user confirmation when agent mode is on. Even if untrusted content talked
-        // the model into calling a destructive tool, nothing runs without the user approving.
-        if Config.agentModeEnabled,
-           PromptInjectionPolicy.isHighImpact(toolName: name),
-           let coordinator = confirmationCoordinator {
-            let summary = PromptInjectionPolicy.actionSummary(toolName: name, args: args)
-            NSLog("[NativeToolRouter] Requesting user confirmation for high-impact tool: %@", name)
-            let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
-            guard approved else {
-                NSLog("[NativeToolRouter] User declined high-impact tool: %@", name)
-                return .failure("The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again.")
+        // 0. Deterministic safety supervisor (Plan S): the single pre-execution safety gate when
+        // agent mode is on. It subsumes the high-impact confirmation backstop — its
+        // `needsVoiceApproval` rule reproduces it — and adds deterministic block/confirm rules
+        // (geofence, quiet hours, irreversible floor). A `.block` veto short-circuits with no
+        // execution; a `.confirm` routes through the same human-in-the-loop gate. Even if
+        // untrusted content talked the model into a destructive tool, nothing runs without this.
+        if Config.agentModeEnabled {
+            let context = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
+            switch SafetySupervisor.evaluate(tool: name, args: args, context: context) {
+            case .allow:
+                break
+            case .block(let reason):
+                NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@: %@", name, reason)
+                return .failure("'\(name)' was blocked by a safety rule (\(reason)). Do not retry; tell the user it was blocked for safety.")
+            case .confirm(let reason):
+                if let coordinator = confirmationCoordinator {
+                    // High-impact tools get the richer action summary; other rules use their reason.
+                    let summary = PromptInjectionPolicy.isHighImpact(toolName: name)
+                        ? PromptInjectionPolicy.actionSummary(toolName: name, args: args)
+                        : reason
+                    NSLog("[NativeToolRouter] Safety supervisor requires confirmation for %@: %@", name, reason)
+                    let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
+                    guard approved else {
+                        NSLog("[NativeToolRouter] User declined %@", name)
+                        return .failure("The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again.")
+                    }
+                }
             }
         }
 

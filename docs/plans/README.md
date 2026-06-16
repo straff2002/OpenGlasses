@@ -26,7 +26,7 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | P Page & section citations | ✅ Shipped (per-page/section citations for Document RAG) |
 | Q Vault & skills-library management | ✅ Shipped (in-app reference editing, vault export round-trip, ClawHub/voice skills export-import) |
 | R MCP Egress & Tool-Poisoning Screen | ✅ Shipped (this PR) — `SecretPatterns` + `EgressScreen` + `ToolDefinitionScanner`; per-server egress policy, qualified-name routing, trust UI; 21 tests |
-| S Plan-then-Execute & Safety Supervisor | 📋 Planned (Round 5 — agentic spine) |
+| S Plan-then-Execute & Safety Supervisor | 🚧 Phase 1 spine shipped (this PR) — deterministic `SafetySupervisor` wired into the router (subsumes the high-impact gate) + `PlanValidator`/`PlanExecutor` + `SafetyRulesView`; 19 tests. Deferred: LLM planner + live-loop routing. |
 | T Offline Field Queue & Sync | 📋 Planned (Round 5 — field) |
 | U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
 | V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
@@ -85,7 +85,7 @@ Drafted from a survey of our own idea-source repo `~/Code/qaeros` (its `plans/` 
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
 | [R](R-mcp-egress-and-tool-poisoning-screen.md) | MCP Egress & Tool-Poisoning Screen | ~3–4 days | PromptInjectionPolicy, MCPClient, NativeToolRouter | Outbound + discovery-time mirror of the shipped inbound injection defense; the safety prereq for connecting arbitrary MCP servers to an always-on device. ✅ Shipped |
-| [S](S-plan-then-execute-and-safety-supervisor.md) | Plan-then-Execute Agent Mode & Runtime Safety Supervisor | ~1.5–2 wks | NativeToolRouter, ToolConfirmationCoordinator, PromptInjectionPolicy, GlassesDisplayService | The agentic spine: deliberate multi-step execution + a deterministic veto + per-turn constraint re-injection. Also the structural answer to prompt injection. 📋 Planned |
+| [S](S-plan-then-execute-and-safety-supervisor.md) | Plan-then-Execute Agent Mode & Runtime Safety Supervisor | ~1.5–2 wks | NativeToolRouter, ToolConfirmationCoordinator, PromptInjectionPolicy, GlassesDisplayService | The agentic spine: deliberate multi-step execution + a deterministic veto + per-turn constraint re-injection. Also the structural answer to prompt injection. 🚧 Phase 1 spine shipped (supervisor + validator + executor + rules UI); LLM planner + live-loop routing deferred. |
 | [T](T-offline-field-queue-and-sync.md) | Offline Field Queue & Store-and-Forward Sync | ~4–5 days | FieldSessionService, SessionLogger, PhotoLogTool, SemanticMemoryStore sqlite | Field work without signal; durable local queue + reconnect flush. Unblocks real Field Assist deployment. 📋 Planned |
 | [U](U-structured-capture-flows.md) | Structured Capture-Flow / Action-Form Schema | ~1–1.5 wks | ProcedureRunner, scan_code/CapturePhotoTool/EquipmentLookupTool, GeofenceTool | Typed, validated, audit-ready field records (voice/enum/barcode/photo bindings) from one cross-pack template. Turns Field Assist into a product. 📋 Planned |
 | [V](V-mcp-catalogue-and-transport-breadth.md) | Curated MCP Catalogue & Transport Breadth | ~3–4 days | MCPClient, MCPServersView/MCPServerEditorView, Keychain | One-tap install of vetted servers + SSE + OAuth, so hosted MCP servers actually connect. Sequenced after R so convenience never outruns safety. 📋 Planned |
