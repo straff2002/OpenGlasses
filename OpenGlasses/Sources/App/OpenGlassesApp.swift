@@ -571,6 +571,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire the high-impact action confirmation gate (prompt-injection backstop) and have it
         // speak the prompt aloud so the user hears what they're approving while wearing the glasses.
         nativeToolRouter.confirmationCoordinator = toolConfirmationCoordinator
+        // Deterministic safety supervisor context (Plan S): snapshot clock + current location +
+        // persisted rules per tool call so geofence/quiet-hours rules reflect the real situation.
+        nativeToolRouter.safetyContextProvider = { [weak self] in
+            SafetyContext.live(now: Date(), location: self?.locationService.currentLocation?.coordinate)
+        }
         toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
             guard let self else { return }
             Task { @MainActor in

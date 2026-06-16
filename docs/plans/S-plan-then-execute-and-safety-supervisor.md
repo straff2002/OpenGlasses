@@ -6,6 +6,16 @@
 
 **Effort:** ~1.5–2 weeks (Phase 1 MVP ~1 week).
 
+**Status:** 🚧 Phase 1 deterministic spine shipped (headless-validated). Landed: `AgentPlan`/`AgentStep`/`Reversibility`
++ `ToolReversibility` table; **`SafetySupervisor`** (pure, no-LLM veto — `needsVoiceApproval` / `irreversibleGuard`
+/ quiet-hours / geofence rules, most-severe-wins) wired into `NativeToolRouter` ahead of execution (it now
+**subsumes** the old high-impact confirmation gate); `PlanValidator` (unknown-tool / over-budget reject, irreversible →
+confirm) and `PlanExecutor` (sequential over the router, narration, abort-on-veto, constraint re-injection, tool output
+never re-enters planning); `SafetyRulesView` + persisted `SafetySettings`. 19 new tests (every rule, validator,
+executor incl. an injection-regression case, router block/confirm/decline); full suite 560 green; Debug + Release verified.
+**Deferred to Phase 1b/2:** the LLM-backed `AgentPlanner` and routing multi-step requests through the executor in the
+live `LLMService` loop (build-order item 6), the complexity classifier, and the HUD plan-trace.
+
 ---
 
 ## Why now / what it builds on

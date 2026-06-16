@@ -49,6 +49,17 @@ struct AgenticFeaturesView: View {
             }
 
             if enabled {
+                // Safety supervisor (Plan S) — deterministic veto rules before any agent action.
+                Section {
+                    NavigationLink {
+                        SafetyRulesView()
+                    } label: {
+                        Label("Agent Safety", systemImage: "shield.lefthalf.filled")
+                    }
+                } footer: {
+                    Text("Deterministic rules that confirm or block risky actions before they run — voice approval, quiet hours, and an away-from-home geofence.")
+                }
+
                 // Agent Model
                 Section {
                     // Picker: local downloaded + configured cloud models
