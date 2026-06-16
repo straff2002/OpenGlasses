@@ -436,6 +436,13 @@ class OpenClawBridge: ObservableObject {
     }
 
     /// Send a WebSocket request and wait for the matching response
+    /// Public entry point for the Remote Agent Harness (Plan N) to issue `agent.*` requests over the
+    /// same WebSocket transport. A thin pass-through to `sendRequest` so the harness adapter doesn't
+    /// reach into the bridge's internals.
+    func agentRequest(method: String, params: [String: Any]) async throws -> [String: Any] {
+        try await sendRequest(method: method, params: params)
+    }
+
     private func sendRequest(method: String, params: [String: Any]) async throws -> [String: Any] {
         try await ensureWebSocket()
         guard let task = webSocketTask else {

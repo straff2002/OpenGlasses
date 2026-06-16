@@ -68,7 +68,7 @@ A–F are built (A1–A3, B, C, D, E, and Field Assist Phases 1–3). These reus
 
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
-| [N](N-remote-agent-harness.md) | Remote Agent Harness (phone-only, harness-agnostic) | ~3–4 days core + ~1–2/adapter | OpenClawBridge + OpenClawEventClient, `agentModeEnabled`, LLMProvider pattern, MeetingSummaryTool | Glasses as a hands-free remote for any coding/agent backend (OpenClaw / Codex / Claude / custom). 📋 Planned |
+| [N](N-remote-agent-harness.md) | Remote Agent Harness (phone-only, harness-agnostic) | ~3–4 days core + ~1–2/adapter | OpenClawBridge + OpenClawEventClient, `agentModeEnabled`, LLMProvider pattern, MeetingSummaryTool | Glasses as a hands-free remote for any coding/agent backend (OpenClaw / Codex / Claude / custom). 🚧 Phase 1 core shipped — `AgentModels`/`AgentHarness`/`AgentSummarizer`/`AgentSessionService` + `OpenClawAgentHarness` (normalization tested) + `code_agent` tool (Agent-Mode-gated) + system-prompt/launch wiring; 31 tests. Deferred: gateway `agent.*` + live event stream, settings UI, Custom/Codex/Claude adapters, HUD confirm. |
 
 ## Round 4 — on-device knowledge
 
