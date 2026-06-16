@@ -867,16 +867,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire the presence-aware throttle (Plan W) into the loops + signal sources.
         configurePresence()
 
-        // Remote Agent Harness (Plan N): dispatch to the OpenClaw gateway by default, narrate via TTS.
-        // Gated at the tool layer by Config.agentModeEnabled.
-        AgentSessionService.shared.configure(
-            harness: OpenClawAgentHarness(send: { [weak self] method, params in
-                guard let self else { throw AgentHarnessError.transport("App unavailable.") }
-                return try await self.openClawBridge.agentRequest(method: method, params: params)
-            }),
-            speak: { [weak self] line in
-                Task { @MainActor in await self?.speechService.speak(line) }
-            })
+        // Remote Agent Harness (Plan N): build the harness registry (OpenClaw + Custom URL) and
+        // narrate via TTS. Gated at the tool layer by Config.agentModeEnabled.
+        AgentSessionService.shared.configure(registry: makeAgentRegistry(), speak: { [weak self] line in
+            Task { @MainActor in await self?.speechService.speak(line) }
+        })
 
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
@@ -2065,6 +2060,25 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in self?.presenceMonitor.update() }
         }
         presenceMonitor.update()
+    }
+
+    // MARK: - Remote Agent Harness (Plan N)
+
+    /// Build the agent harness registry from current config: the OpenClaw gateway adapter plus the
+    /// Custom URL adapter (configured from `Config.customAgentHarness`). Rebuilt on settings change.
+    private func makeAgentRegistry() -> AgentHarnessRegistry {
+        let openClaw = OpenClawAgentHarness(send: { [weak self] method, params in
+            guard let self else { throw AgentHarnessError.transport("App unavailable.") }
+            return try await self.openClawBridge.agentRequest(method: method, params: params)
+        })
+        let custom = CustomAgentHarness(config: Config.customAgentHarness ?? CustomHarnessConfig())
+        return AgentHarnessRegistry([openClaw, custom])
+    }
+
+    /// Re-read the Custom endpoint config into the session's registry — call after the user edits the
+    /// Remote Agents settings so a new/changed endpoint takes effect without relaunch.
+    func rebuildAgentHarnessRegistry() {
+        AgentSessionService.shared.setRegistry(makeAgentRegistry())
     }
 
     /// Note an explicit user interaction (wake word / transcription) for the presence
