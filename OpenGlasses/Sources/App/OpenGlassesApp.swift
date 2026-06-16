@@ -867,6 +867,17 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire the presence-aware throttle (Plan W) into the loops + signal sources.
         configurePresence()
 
+        // Remote Agent Harness (Plan N): dispatch to the OpenClaw gateway by default, narrate via TTS.
+        // Gated at the tool layer by Config.agentModeEnabled.
+        AgentSessionService.shared.configure(
+            harness: OpenClawAgentHarness(send: { [weak self] method, params in
+                guard let self else { throw AgentHarnessError.transport("App unavailable.") }
+                return try await self.openClawBridge.agentRequest(method: method, params: params)
+            }),
+            speak: { [weak self] line in
+                Task { @MainActor in await self?.speechService.speak(line) }
+            })
+
         // Configure Navigation Assist (Plan J) similarly.
         NavigationAssistService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
         NavigationAssistService.shared.glassesDisplay = glassesDisplay

@@ -6,6 +6,16 @@
 
 **Effort:** Core + OpenClaw adapter (Phase 1 MVP): ~3–4 days. Each additional adapter: ~1–2 days.
 
+**Status:** 🚧 Phase 1 core shipped (`feat/remote-agent-harness`). The deterministic, harness-agnostic core is complete and headless-tested:
+- **Models + protocol** — `AgentModels` (`AgentHarnessKind`, `AgentRunStatus`, `AgentRun`, normalized `AgentEvent`, `AgentRunResult` with a pure `apply`/`reduce` reducer) + the `AgentHarness` protocol (`start`/`events`/`status`/`cancel`/`respondToInput`) + `AgentHarnessError`.
+- **Summarizer** — pure `AgentSummarizer`: event/result → one spoken line ("The agent created two files, … and opened a pull request. Done."), with a `maxLength` cap, singular/plural counts, failed/cancelled variants, and per-event `narration(...)`. The highest-value tested unit — written once, every adapter benefits.
+- **Session service** — `@MainActor AgentSessionService`: dispatch via the active harness, aggregate the event stream into `AgentRunResult`, narrate key moments + the final summary via injected TTS, cancel, and the `awaitingInput` confirmation gate (decline → cancel, the safety default). The `handle(_:)` state machine is unit-tested directly.
+- **OpenClaw adapter** — `OpenClawAgentHarness` over a new public `OpenClawBridge.agentRequest(method:params:)`. Its gateway-JSON → `AgentEvent` `normalize(...)`, `parseStatus(...)`, `runID(...)`, and `start(...)` are pure-tested against a mock sender; a status-poll event stream drives terminal events today.
+- **Tool + wiring** — `AgentControlTool` (`code_agent`: start/status/cancel/confirm/deny), **gated on `Config.agentModeEnabled`**, registered in `NativeToolRegistry` and described in both the `LLMService` and `GeminiLive` system prompts. `AgentSessionService.shared.configure(...)` wired at launch to the OpenClaw harness + TTS.
+- **Tests:** 31 headless (`AgentSummarizerTests` 17, `AgentSessionTests` 14) covering the summarizer permutations, result aggregation, the session state machine (dispatch/complete/error/awaitingInput/cancel/confirm), and the adapter normalization + tool gate. Full suite 705 green, Debug + Release.
+
+**Deferred (per the build order):** the gateway-side `agent.*` methods + the rich live event stream (Phase 1's live half — needs a running gateway that exposes them; the adapter is ready and `normalize` maps the schema); `AgentHarnessSettingsView` (default-harness picker + custom endpoint UI); the **Custom URL adapter** (Phase 2); the **Codex-cloud / Claude-remote adapters** (Phase 3, pending the Phase 0 trigger verification); and live token-streaming + the HUD confirm view (Phase 4).
+
 ---
 
 ## Constraints (the design contract)

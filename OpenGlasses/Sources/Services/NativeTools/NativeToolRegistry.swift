@@ -122,6 +122,9 @@ final class NativeToolRegistry {
         register(AgentScheduleTool())
         register(AgentDocumentTool())
         register(PlaybookTool())
+        // Remote Agent Harness (Plan N): voice control of a remote coding agent. Always registered;
+        // the tool self-gates on Config.agentModeEnabled at execute time.
+        register(AgentControlTool())
 
         // Field Assist (B2B) — only registered when the feature is entitled AND enabled.
         // Tools re-check Config.fieldAssistActive at execute time too, so a lapsed license/IAP

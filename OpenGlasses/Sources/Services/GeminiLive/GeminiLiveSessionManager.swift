@@ -496,6 +496,7 @@ class GeminiLiveSessionManager: ObservableObject {
             - identify_medication: Read a medication label via camera OCR and cross-check the user's recorded medications. Reports label text + match status; no clinical claims. Needs Medical Compliance.
             - aircraft_overhead: Report aircraft flying near the user using live ADS-B data + their location. Use for "what's flying overhead?". Param: radius_miles (default 25).
             - live_coach: Real-time one-sentence coaching from the glasses camera. Actions: start (domain: sports_tactics/cooking_form/posture/guitar/climbing/custom), stop, status. Use for "coach my form", "watch my technique".
+            - code_agent: Hands-free control of a REMOTE coding agent (on the user's gateway, not the phone). Actions: start (prompt, optional project), status, cancel, confirm, deny. Requires Agent Mode. Use for "have the agent add a feature", "ask the agent to fix the test".
             - network_calc: IP subnet/CIDR math (IPv4/IPv6) — operation 'subnet' with a 'cidr' returns network, broadcast, netmask, usable range/count.
             - navigation_assist: Spoken walking guidance for low-vision users (hazards/landmarks, clock positions). Actions: start, stop, status. An aid, not a cane/guide-dog replacement.
             - identify_color: Name the dominant color of what the user sees (on-device). Use for "what color is this?".
