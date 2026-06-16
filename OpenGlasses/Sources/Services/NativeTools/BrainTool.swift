@@ -12,20 +12,23 @@ struct BrainTool: NativeTool {
     prefer it over individual memory tools when unsure where something lives. 'person' builds a \
     dossier (facts, relationships, encounters) — use before/after meeting someone. 'link' records \
     a relationship ('Alice works at Acme'). 'encounters' lists recent face-recognition sightings. \
-    'forget' erases an entity. 'status' reports brain size.
+    'forget' erases an entity. 'status' reports brain size. 'save_need' records a follow-up — what \
+    a person wants, is looking for, or you owe them ('Bob wants a copy of the deck') — and 'needs' \
+    lists open follow-ups (per person, or all); 'resolve_need' marks one done.
     """
 
     var parametersSchema: [String: Any] {
         [
             "type": "object",
             "properties": [
-                "action": ["type": "string", "description": "query, person, link, encounters, forget, or status",
-                           "enum": ["query", "person", "link", "encounters", "forget", "status"]],
+                "action": ["type": "string", "description": "query, person, link, encounters, save_need, needs, resolve_need, forget, or status",
+                           "enum": ["query", "person", "link", "encounters", "save_need", "needs", "resolve_need", "forget", "status"]],
                 "question": ["type": "string", "description": "On 'query': what to look up."],
-                "person": ["type": "string", "description": "On 'person'/'encounters'/'forget': the person or entity name."],
+                "person": ["type": "string", "description": "On 'person'/'encounters'/'save_need'/'needs'/'resolve_need'/'forget': the person or entity name."],
                 "source": ["type": "string", "description": "On 'link': subject entity (e.g. 'Alice')."],
                 "relation": ["type": "string", "description": "On 'link': works_at, lives_in, founded, leads, married_to, studied_at, invested_in, attended, or knows."],
                 "target": ["type": "string", "description": "On 'link': object entity (e.g. 'Acme')."],
+                "text": ["type": "string", "description": "On 'save_need': the follow-up (e.g. 'wants an intro to Dana'). On 'resolve_need': optional text to match the need to close."],
             ],
             "required": ["action"],
         ]
@@ -89,15 +92,50 @@ struct BrainTool: NativeTool {
             brain.forget(entityName: person)
             return "Erased \(person) from the brain (entity, relationships, and encounters)."
 
+        case "save_need", "need", "follow_up", "followup":
+            guard let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !person.isEmpty else {
+                return "Who is this follow-up about?"
+            }
+            guard let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else {
+                return "What's the follow-up for \(person)?"
+            }
+            brain.addNeed(person: person, text: text)
+            return "Noted — follow-up for \(person): \(text)."
+
+        case "needs", "follow_ups", "followups", "todos":
+            let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let open = brain.needs(for: person?.isEmpty == false ? person : nil, openOnly: true, limit: 12)
+            guard !open.isEmpty else {
+                return person.map { "No open follow-ups for \($0)." }
+                    ?? "No open follow-ups. Add one with 'save_need' (e.g. 'Bob wants the deck')."
+            }
+            let header = person.map { "Open follow-ups for \($0):" } ?? "Open follow-ups:"
+            return header + "\n" + open.map { "- \($0.person): \($0.text)" }.joined(separator: "\n")
+
+        case "resolve_need", "resolve", "done", "close_need":
+            guard let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !person.isEmpty else {
+                return "Whose follow-up did you resolve?"
+            }
+            let match = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let closed = brain.resolveNeeds(for: person, matching: match?.isEmpty == false ? match : nil)
+            guard closed > 0 else {
+                return "No matching open follow-up for \(person)."
+            }
+            return closed == 1 ? "Marked one follow-up for \(person) as done."
+                               : "Marked \(closed) follow-ups for \(person) as done."
+
         case "status", "stats":
             let stats = brain.stats
             let memoryCount = memoryStore != nil ? "available" : "disabled"
             let docCount = documentStore?.list().count ?? 0
-            return "Brain: \(stats.entities) entities, \(stats.edges) relationships, \(stats.encounters) encounters. " +
+            return "Brain: \(stats.entities) entities, \(stats.edges) relationships, \(stats.encounters) encounters, \(stats.openNeeds) open follow-ups. " +
                    "Semantic memory \(memoryCount); \(docCount) documents; \(SocialContextStore.shared.allPeople().count) people with notes."
 
         default:
-            return "Unknown action. Use: query, person, link, encounters, forget, or status."
+            return "Unknown action. Use: query, person, link, encounters, save_need, needs, resolve_need, forget, or status."
         }
     }
 
@@ -208,6 +246,11 @@ struct BrainTool: NativeTool {
         let encounters = brain.encounters(for: person, limit: 3)
         if !encounters.isEmpty {
             sections.append("RECENT ENCOUNTERS:\n" + encounters.map(describe).joined(separator: "\n"))
+        }
+
+        let openNeeds = brain.needs(for: person, openOnly: true, limit: 6)
+        if !openNeeds.isEmpty {
+            sections.append("OPEN FOLLOW-UPS:\n" + openNeeds.map { "- \($0.text)" }.joined(separator: "\n"))
         }
 
         let memoryHits = memoryStore?.semanticSearch(query: person, limit: 3) ?? []
