@@ -145,12 +145,15 @@ enum ToolDeclarations {
     @MainActor
     static func mcpToolDeclarations(mcpClient: MCPClient?) -> [[String: Any]] {
         guard let mcpClient else { return [] }
-        return mcpClient.discoveredTools.map { tool in
+        // Blocked (tool-poisoned) definitions are never offered to the model. Offered tools are
+        // exposed ONLY under their fully-qualified name, so a server can't shadow a native tool
+        // and the router routes the call back unambiguously (Plan R).
+        return mcpClient.discoveredTools.filter { $0.trust.isOffered }.map { tool in
             let schema = tool.inputSchema.isEmpty
                 ? ["type": "object", "properties": [:] as [String: Any]] as [String: Any]
                 : tool.inputSchema
             return [
-                "name": tool.name,
+                "name": tool.qualifiedName,
                 "description": "[\(tool.serverLabel)] \(tool.description)",
                 "parameters": schema,
             ] as [String: Any]

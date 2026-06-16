@@ -4,7 +4,7 @@ Six plans drafted from a survey of the community smart-glasses landscape, plus a
 
 ## Status (as of latest)
 
-All plans A–M are **built and merged to `main`** to the extent verifiable without device hardware or external infrastructure. **148 feature tests passing.**
+All plans A–M are **built and merged to `main`** to the extent verifiable without device hardware or external infrastructure. **541 feature tests passing.**
 
 | Plan | Status |
 |---|---|
@@ -25,14 +25,14 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | O Document RAG | ✅ Shipped (on-device chunking, embedding, retrieval — chat with your files) |
 | P Page & section citations | ✅ Shipped (per-page/section citations for Document RAG) |
 | Q Vault & skills-library management | ✅ Shipped (in-app reference editing, vault export round-trip, ClawHub/voice skills export-import) |
-| R MCP Egress & Tool-Poisoning Screen | 📋 Planned (Round 5 — MCP safety) |
+| R MCP Egress & Tool-Poisoning Screen | ✅ Shipped (this PR) — `SecretPatterns` + `EgressScreen` + `ToolDefinitionScanner`; per-server egress policy, qualified-name routing, trust UI; 21 tests |
 | S Plan-then-Execute & Safety Supervisor | 📋 Planned (Round 5 — agentic spine) |
 | T Offline Field Queue & Sync | 📋 Planned (Round 5 — field) |
 | U Structured Capture-Flow / Action-Form Schema | 📋 Planned (Round 5 — field) |
 | V Curated MCP Catalogue & Transport Breadth | 📋 Planned (Round 5 — MCP UX) |
 | W Presence-Aware Agent Throttle | 📋 Planned (Round 5 — agentic/battery) |
 | X Interactive HUD — Now/Next Tasks | ✅ Shipped (#46) — foundation + band card + voice bridge + Playbook/Procedure sources; 30 headless tests. Display Phases 1–3 merged (#42, #45, #46). |
-| Y Interactive HUD Launcher | 🚧 In progress on `display/hud-phase4` — nav stack + Quick Actions/Mode-Persona launcher + on-phone HUD preview (brand-styled renderer); 38 tests. |
+| Y Interactive HUD Launcher | ✅ Shipped (#54, #55) — full launcher: Quick Actions · Workflows · SOPs · Mode/Persona + Resume-task, hand-off to the Plan X card, in-menu voice nav, pagination, on-phone live mirror; 38 tests. |
 | Z Shortcuts Catalog | ✅ Shipped on `feat/shortcuts-catalog` — Siri-added shortcuts injected into the agent prompt; 6 tests. |
 
 Three selectable expert-stream transports: **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
@@ -84,7 +84,7 @@ Drafted from a survey of our own idea-source repo `~/Code/qaeros` (its `plans/` 
 
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
-| [R](R-mcp-egress-and-tool-poisoning-screen.md) | MCP Egress & Tool-Poisoning Screen | ~3–4 days | PromptInjectionPolicy, MCPClient, NativeToolRouter | Outbound + discovery-time mirror of the shipped inbound injection defense; the safety prereq for connecting arbitrary MCP servers to an always-on device. 📋 Planned |
+| [R](R-mcp-egress-and-tool-poisoning-screen.md) | MCP Egress & Tool-Poisoning Screen | ~3–4 days | PromptInjectionPolicy, MCPClient, NativeToolRouter | Outbound + discovery-time mirror of the shipped inbound injection defense; the safety prereq for connecting arbitrary MCP servers to an always-on device. ✅ Shipped |
 | [S](S-plan-then-execute-and-safety-supervisor.md) | Plan-then-Execute Agent Mode & Runtime Safety Supervisor | ~1.5–2 wks | NativeToolRouter, ToolConfirmationCoordinator, PromptInjectionPolicy, GlassesDisplayService | The agentic spine: deliberate multi-step execution + a deterministic veto + per-turn constraint re-injection. Also the structural answer to prompt injection. 📋 Planned |
 | [T](T-offline-field-queue-and-sync.md) | Offline Field Queue & Store-and-Forward Sync | ~4–5 days | FieldSessionService, SessionLogger, PhotoLogTool, SemanticMemoryStore sqlite | Field work without signal; durable local queue + reconnect flush. Unblocks real Field Assist deployment. 📋 Planned |
 | [U](U-structured-capture-flows.md) | Structured Capture-Flow / Action-Form Schema | ~1–1.5 wks | ProcedureRunner, scan_code/CapturePhotoTool/EquipmentLookupTool, GeofenceTool | Typed, validated, audit-ready field records (voice/enum/barcode/photo bindings) from one cross-pack template. Turns Field Assist into a product. 📋 Planned |
@@ -102,7 +102,7 @@ Extends the in-lens HUD line from **read-only** (Display Phase 1 ✅ merged in [
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
 | [X](X-interactive-hud-now-next-tasks.md) | Interactive HUD — Now/Next Tasks (Display Phase 3) | ~3–4 days | GlassesDisplayService, PlaybookStore, FieldAssist ProcedureRunner, wake-word pipeline | First time the user *acts through* the lens: render the active Playbook/Procedure step as a Now/Next card; band buttons (Done/Skip/Back) drive the existing engine transitions. 📋 Planned |
-| [Y](Y-interactive-hud-launcher.md) | Interactive HUD Launcher (Display Phase 4) | ~4–6 days | Plan X HUDRouter, Config.quickActions, PlaybookStore, ProcedureLibrary, AppMode/Persona | Band-navigable home on the lens — Quick Actions · Workflows · SOPs · Mode/Persona, all in one release. Input: band + voice + phone. 📋 Planned |
+| [Y](Y-interactive-hud-launcher.md) | Interactive HUD Launcher (Display Phase 4) | ~4–6 days | Plan X HUDRouter, Config.quickActions, PlaybookStore, ProcedureLibrary, AppMode/Persona | Band-navigable home on the lens — Quick Actions · Workflows · SOPs · Mode/Persona, all in one release. Input: band + voice + phone. ✅ Shipped |
 
 **Sequence (agreed):** X first (ships hands-free workflow execution and validates band navigation on one card), then Y (the full launcher reuses X's router).
 
