@@ -6,6 +6,20 @@
 
 **Effort:** ~1–1.5 weeks.
 
+**Status:** 🚧 Core shipped (headless-validated). Landed the typed capture schema end-to-end: `CaptureFlow` /
+`FlowStep` / `FieldBinding` / `Completion` / `FlowPrecondition` models + `CaptureFlowLibrary` (loads `vault/flows/*.json`,
+bundle+overlay merge); `CaptureValue` / `CaptureRecord` / `Provenance`; the deterministic **`CaptureFlowRunner`**
+(prompt → answer → validate → next, with `voice` / `voice_number` range-check / `enum` phrase-mapping / `barcode` /
+`photo` bindings, back / skip, required-field enforcement at finish, re-prompt on a bad answer, injected GPS provenance +
+`inside_region` precondition gate); **`FieldResolver`** (cross-pack `applies_to` + field-existence); **`CaptureFlowService`**
++ the **`capture_flow`** tool (`list`/`start`/`answer`/`skip`/`back`/`status`/`finish`/`cancel`), registered + described in
+both LLMService and GeminiLive. On finish the `CaptureRecord` is enqueued to the offline queue (Plan T). 11 tests; full
+suite 594 green; Debug + Release verified.
+**Deferred:** routing the camera bindings to their tools (`barcode_or_voice`→scan_code, `photo`→CapturePhotoTool,
+`ocr_text`→EquipmentLookupTool — the runner already accepts their resolved values); the named-region precondition
+source (currently `unknown`, never hard-blocks); the no-code `CaptureFlowAuthorView`; folding the record into
+`SessionExporter` audit JSON; 2 hero flows.
+
 ---
 
 ## The gap (verified)
