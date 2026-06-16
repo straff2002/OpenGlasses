@@ -136,6 +136,11 @@ class LLMService: ObservableObject {
     /// Native tool router — when set, enables built-in tools (weather, timer, etc.)
     var nativeToolRouter: NativeToolRouter?
 
+    /// Plan-then-execute narration hooks (Plan S), wired by AppState to the HUD/TTS. `onAgentNarrate`
+    /// gets the plan header; `onAgentStep` gets per-step (index, total, step) progress.
+    var onAgentNarrate: ((String) -> Void)?
+    var onAgentStep: ((Int, Int, AgentStep) -> Void)?
+
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
 
@@ -459,6 +464,21 @@ class LLMService: ObservableObject {
         if includeOpenClaw { toolsLabel += " [OpenClaw]" }
         print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(toolsLabel)")
 
+        // Plan-then-execute (Plan S): for a multi-step request in agent mode, plan deliberately and
+        // run each step through the supervisor-gated router, instead of the single-shot tool loop.
+        // The planner sees the request alone (not chat history), and tool output never re-enters
+        // planning — the structural prompt-injection defense. Falls back to single-shot when the
+        // request can't be planned/validated (still safe; every call is supervised either way).
+        if Config.agentModeEnabled, hasNativeTools, imageData == nil, AgentComplexity.isMultiStep(text) {
+            if let summary = await runAgentPlan(request: text, nativeToolNames: nativeToolNames) {
+                conversationHistory.append(["role": "user", "content": text])
+                conversationHistory.append(["role": "assistant", "content": summary])
+                trimHistory()
+                return summary
+            }
+            print("🧭 Agent plan loop yielded no plan — falling back to single-shot")
+        }
+
         let rawResponse: String
         switch provider {
         case .anthropic:
@@ -485,6 +505,56 @@ class LLMService: ObservableObject {
 
         lastReasoning = nil
         return rawResponse
+    }
+
+    // MARK: - Plan-then-execute (Plan S)
+
+    /// Plan a multi-step request, validate it, and run each step through the supervisor-gated
+    /// router. Returns the spoken summary, or nil to fall back to the single-shot tool loop.
+    private func runAgentPlan(request: String, nativeToolNames: [String]) async -> String? {
+        guard let router = nativeToolRouter else { return nil }
+        let mcpNames = router.mcpClient?.discoveredTools.filter { $0.trust.isOffered }.map(\.qualifiedName) ?? []
+        let available = nativeToolNames + mcpNames
+        guard !available.isEmpty else { return nil }
+
+        let planner = AgentPlanner()
+        planner.complete = { [weak self] req, sys in
+            guard let self else { return "" }
+            return try await self.completeStateless(req, system: sys)
+        }
+        let runner = AgentRunner(router: router, planner: planner)
+        runner.onNarrate = { [weak self] line in self?.onAgentNarrate?(line) }
+        runner.onStep = { [weak self] index, total, step in self?.onAgentStep?(index, total, step) }
+
+        guard let result = await runner.run(request: request, availableTools: available) else { return nil }
+        NSLog("[LLMService] Agent plan ran %d/%d steps (aborted=%@)",
+              result.completedSteps, result.totalSteps, result.aborted ? "yes" : "no")
+        return result.summary
+    }
+
+    /// A stateless, tools-off completion for the planner: it sees only the system prompt + the
+    /// request, never the live conversation history (planning must use trusted context only, and
+    /// must not pollute the chat). History is snapshotted and restored even on error.
+    private func completeStateless(_ text: String, system: String) async throws -> String {
+        guard let config = Config.activeModel else {
+            throw LLMError.missingAPIKey("No model configured")
+        }
+        let snapshot = conversationHistory
+        conversationHistory = []
+        defer { conversationHistory = snapshot }
+
+        switch config.llmProvider {
+        case .anthropic:
+            return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        case .gemini:
+            return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        case .local:
+            return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        case .appleOnDevice:
+            return try await sendAppleOnDevice(text, systemPrompt: system)
+        case .openai, .groq, .zai, .qwen, .minimax, .openrouter, .custom:
+            return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        }
     }
 
     /// Clear conversation history (e.g. when starting fresh or switching providers)

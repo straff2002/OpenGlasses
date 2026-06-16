@@ -6,15 +6,25 @@
 
 **Effort:** ~1.5–2 weeks (Phase 1 MVP ~1 week).
 
-**Status:** 🚧 Phase 1 deterministic spine shipped (headless-validated). Landed: `AgentPlan`/`AgentStep`/`Reversibility`
-+ `ToolReversibility` table; **`SafetySupervisor`** (pure, no-LLM veto — `needsVoiceApproval` / `irreversibleGuard`
-/ quiet-hours / geofence rules, most-severe-wins) wired into `NativeToolRouter` ahead of execution (it now
-**subsumes** the old high-impact confirmation gate); `PlanValidator` (unknown-tool / over-budget reject, irreversible →
-confirm) and `PlanExecutor` (sequential over the router, narration, abort-on-veto, constraint re-injection, tool output
-never re-enters planning); `SafetyRulesView` + persisted `SafetySettings`. 19 new tests (every rule, validator,
-executor incl. an injection-regression case, router block/confirm/decline); full suite 560 green; Debug + Release verified.
-**Deferred to Phase 1b/2:** the LLM-backed `AgentPlanner` and routing multi-step requests through the executor in the
-live `LLMService` loop (build-order item 6), the complexity classifier, and the HUD plan-trace.
+**Status:** ✅ Phase 1 complete (headless-validated). Two cuts:
+
+*Phase 1a — deterministic spine (#57):* `AgentPlan`/`AgentStep`/`Reversibility` + `ToolReversibility` table;
+**`SafetySupervisor`** (pure, no-LLM veto — `needsVoiceApproval` / `irreversibleGuard` / quiet-hours / geofence,
+most-severe-wins) wired into `NativeToolRouter` ahead of execution (it now **subsumes** the old high-impact
+confirmation gate); `PlanValidator` (unknown-tool / over-budget reject, irreversible → confirm); `PlanExecutor`
+(sequential, narration, abort-on-veto, constraint re-injection, tool output never re-enters planning);
+`SafetyRulesView` + persisted `SafetySettings`. 19 tests.
+
+*Phase 1b — the live loop (this PR):* **`AgentPlanner`** (tolerant JSON→plan decode + injected stateless model
+call — the planner sees the request alone, never chat history); **`AgentComplexity`** gate (conservative
+sequencer + ≥2-action-cue heuristic, biased to single-shot); **`AgentRunner`** (plan → validate → execute →
+deterministic spoken summary; returns nil to fall back to single-shot). Wired into `LLMService.sendMessage`:
+a multi-step agent-mode request routes through the runner via `completeStateless` (tools-off, history-snapshotted),
+appends only (user, summary) to history, and falls back to single-shot on any parse/validation miss. HUD plan-trace
+(`onAgentNarrate`/`onAgentStep` → `showNotification`). 10 tests. Full suite 570 green; Debug + Release verified.
+
+**Deferred to Phase 2 (optional polish):** an LLM complexity classifier (vs the keyword heuristic) and parallel-safe
+concurrent steps (build-order item 9).
 
 ---
 
