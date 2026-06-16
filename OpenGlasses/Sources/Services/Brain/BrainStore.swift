@@ -50,10 +50,23 @@ final class BrainStore: ObservableObject {
         let occurredAt: Date
     }
 
+    /// A follow-up: what a person wants / is looking for / you owe them. A lightweight CRM "need",
+    /// distinct from a fact (an edge) or a sighting (an encounter) — it has an open/resolved lifecycle.
+    struct Need: Identifiable, Equatable {
+        let id: String
+        let person: String
+        let text: String
+        let createdAt: Date
+        let resolvedAt: Date?
+
+        var isOpen: Bool { resolvedAt == nil }
+    }
+
     struct Stats {
         let entities: Int
         let edges: Int
         let encounters: Int
+        let openNeeds: Int
     }
 
     // MARK: - Private
@@ -118,7 +131,7 @@ final class BrainStore: ObservableObject {
         return names
     }
 
-    /// Remove an entity (by name, any kind) plus all its edges and encounters.
+    /// Remove an entity (by name, any kind) plus all its edges, encounters, and needs.
     func forget(entityName: String) {
         let norm = escapedSQL(entityName.lowercased())
         exec("""
@@ -126,6 +139,7 @@ final class BrainStore: ObservableObject {
             OR dst_id IN (SELECT id FROM entities WHERE normalized = '\(norm)')
         """)
         exec("DELETE FROM encounters WHERE lower(person) = '\(norm)'")
+        exec("DELETE FROM needs WHERE lower(person) = '\(norm)'")
         exec("DELETE FROM entities WHERE normalized = '\(norm)'")
     }
 
@@ -226,6 +240,77 @@ final class BrainStore: ObservableObject {
         return rows
     }
 
+    // MARK: - Needs / follow-ups
+
+    /// Record a follow-up for `person` (what they want / you owe them). Upserts the person entity so
+    /// the dossier links up. Returns the new need's id.
+    @discardableResult
+    func addNeed(person: String, text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = UUID().uuidString
+        guard !trimmed.isEmpty, !person.trimmingCharacters(in: .whitespaces).isEmpty else { return id }
+        upsertEntity(kind: "person", name: person)
+        let sql = "INSERT INTO needs (id, person, text, created_at, resolved_at) VALUES (?, ?, ?, ?, NULL)"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return id }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, person, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, trimmed, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 4, Date().timeIntervalSince1970)
+        _ = sqlite3_step(stmt)
+        return id
+    }
+
+    /// Needs, newest first. Pass a person to filter; `openOnly` hides resolved ones.
+    func needs(for person: String? = nil, openOnly: Bool = false, limit: Int = 20) -> [Need] {
+        var clauses: [String] = []
+        if let p = person { clauses.append("lower(person) = '\(escapedSQL(p.lowercased()))'") }
+        if openOnly { clauses.append("resolved_at IS NULL") }
+        var sql = "SELECT id, person, text, created_at, resolved_at FROM needs"
+        if !clauses.isEmpty { sql += " WHERE " + clauses.joined(separator: " AND ") }
+        sql += " ORDER BY created_at DESC LIMIT \(limit)"
+
+        var rows: [Need] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return rows }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            rows.append(Need(
+                id: String(cString: sqlite3_column_text(stmt, 0)),
+                person: String(cString: sqlite3_column_text(stmt, 1)),
+                text: String(cString: sqlite3_column_text(stmt, 2)),
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
+                resolvedAt: sqlite3_column_type(stmt, 4) != SQLITE_NULL
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)) : nil
+            ))
+        }
+        return rows
+    }
+
+    /// Mark a specific need resolved. No-op if already resolved or unknown.
+    func resolveNeed(id: String) {
+        let sql = "UPDATE needs SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_double(stmt, 1, Date().timeIntervalSince1970)
+        sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
+        _ = sqlite3_step(stmt)
+    }
+
+    /// Resolve open needs for a person, optionally only those whose text contains `matching`.
+    /// Returns how many were resolved.
+    @discardableResult
+    func resolveNeeds(for person: String, matching: String? = nil) -> Int {
+        let open = needs(for: person, openOnly: true, limit: 100)
+        let targets = matching.map { needle in
+            open.filter { $0.text.lowercased().contains(needle.lowercased()) }
+        } ?? open
+        for need in targets { resolveNeed(id: need.id) }
+        return targets.count
+    }
+
     // MARK: - Ingestion
 
     /// Extract typed edges from free text (zero LLM calls) and store them. If `subject` is given
@@ -252,7 +337,8 @@ final class BrainStore: ObservableObject {
     // MARK: - Stats
 
     var stats: Stats {
-        Stats(entities: count("entities"), edges: count("edges"), encounters: count("encounters"))
+        Stats(entities: count("entities"), edges: count("edges"), encounters: count("encounters"),
+              openNeeds: needs(openOnly: true, limit: 1000).count)
     }
 
     // MARK: - SQLite setup
@@ -298,10 +384,20 @@ final class BrainStore: ObservableObject {
             occurred_at REAL NOT NULL
         )
         """)
+        exec("""
+        CREATE TABLE IF NOT EXISTS needs (
+            id TEXT PRIMARY KEY,
+            person TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            resolved_at REAL
+        )
+        """)
         exec("CREATE INDEX IF NOT EXISTS idx_entities_norm ON entities(normalized)")
         exec("CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id)")
         exec("CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id)")
         exec("CREATE INDEX IF NOT EXISTS idx_encounters_person ON encounters(person)")
+        exec("CREATE INDEX IF NOT EXISTS idx_needs_person ON needs(person)")
     }
 
     // MARK: - Helpers
