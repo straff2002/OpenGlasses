@@ -22,7 +22,7 @@ struct AgentControlTool: NativeTool {
             "properties": [
                 "action": [
                     "type": "string",
-                    "enum": ["start", "status", "cancel", "confirm", "deny"],
+                    "enum": ["start", "status", "cancel", "confirm", "deny", "switch_harness"],
                     "description": "What to do. Defaults to start.",
                 ],
                 "prompt": [
@@ -32,6 +32,11 @@ struct AgentControlTool: NativeTool {
                 "project": [
                     "type": "string",
                     "description": "Optional project/repo the agent should act on.",
+                ],
+                "harness": [
+                    "type": "string",
+                    "enum": ["openclaw", "custom"],
+                    "description": "For action=switch_harness: which configured backend to make the default.",
                 ],
             ],
             "required": [] as [String],
@@ -74,6 +79,17 @@ struct AgentControlTool: NativeTool {
         case "deny", "decline", "no":
             await session.respondToConfirmation(approved: false)
             return "Okay, I won't proceed."
+
+        case "switch_harness", "switch":
+            guard let raw = (args["harness"] as? String)?.lowercased(),
+                  let kind = AgentHarnessKind(rawValue: raw) else {
+                return "Which agent backend? Try OpenClaw or Custom."
+            }
+            guard session.registry?.harness(for: kind)?.isConfigured == true else {
+                return "\(kind.displayName) isn't configured. Set it up in Settings first."
+            }
+            Config.setDefaultAgentHarness(kind)
+            return "Switched the agent backend to \(kind.displayName)."
 
         default:
             return "Unknown agent action '\(action)'. Try start, status, cancel, confirm, or deny."

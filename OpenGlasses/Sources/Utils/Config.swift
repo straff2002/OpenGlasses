@@ -398,6 +398,7 @@ struct Config {
         modelsKey,        // "savedModelConfigs" — ModelConfig.apiKey
         "savedGateways",  // GatewayConfig.token
         "mcpServers",     // MCPServerConfig.headers (Authorization)
+        "customAgentHarness", // CustomHarnessConfig.authValue (Plan N)
     ]
 
     /// One-time migration of plaintext secrets from UserDefaults into the Keychain.
@@ -2351,6 +2352,38 @@ struct Config {
 
     static func setAgentModeEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "agentModeEnabled")
+    }
+
+    // MARK: - Remote Agent Harness (Plan N)
+
+    /// Which harness the Remote Agent Harness dispatches to by default. Defaults to `.openclaw`.
+    static var defaultAgentHarness: AgentHarnessKind {
+        AgentHarnessKind(rawValue: UserDefaults.standard.string(forKey: "defaultAgentHarness") ?? "")
+            ?? .openclaw
+    }
+
+    static func setDefaultAgentHarness(_ kind: AgentHarnessKind) {
+        UserDefaults.standard.set(kind.rawValue, forKey: "defaultAgentHarness")
+    }
+
+    /// The Custom URL agent endpoint (Phase 2). Keychain-backed — it embeds an auth token. `nil`
+    /// until the user configures one.
+    static var customAgentHarness: CustomHarnessConfig? {
+        guard let data = KeychainService.data(for: "customAgentHarness"),
+              let config = try? JSONDecoder().decode(CustomHarnessConfig.self, from: data) else {
+            return nil
+        }
+        return config
+    }
+
+    static func setCustomAgentHarness(_ config: CustomHarnessConfig?) {
+        guard let config else {
+            _ = KeychainService.delete("customAgentHarness")
+            return
+        }
+        if let data = try? JSONEncoder().encode(config) {
+            KeychainService.setData(data, for: "customAgentHarness")
+        }
     }
 
     // MARK: - Field Assist (B2B)

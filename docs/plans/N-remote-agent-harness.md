@@ -14,7 +14,14 @@
 - **Tool + wiring** — `AgentControlTool` (`code_agent`: start/status/cancel/confirm/deny), **gated on `Config.agentModeEnabled`**, registered in `NativeToolRegistry` and described in both the `LLMService` and `GeminiLive` system prompts. `AgentSessionService.shared.configure(...)` wired at launch to the OpenClaw harness + TTS.
 - **Tests:** 31 headless (`AgentSummarizerTests` 17, `AgentSessionTests` 14) covering the summarizer permutations, result aggregation, the session state machine (dispatch/complete/error/awaitingInput/cancel/confirm), and the adapter normalization + tool gate. Full suite 705 green, Debug + Release.
 
-**Deferred (per the build order):** the gateway-side `agent.*` methods + the rich live event stream (Phase 1's live half — needs a running gateway that exposes them; the adapter is ready and `normalize` maps the schema); `AgentHarnessSettingsView` (default-harness picker + custom endpoint UI); the **Custom URL adapter** (Phase 2); the **Codex-cloud / Claude-remote adapters** (Phase 3, pending the Phase 0 trigger verification); and live token-streaming + the HUD confirm view (Phase 4).
+**Phase 2 shipped** (`feat/remote-agent-harness-phase2`) — the Custom URL adapter + multi-harness selection + settings UI:
+- **`CustomAgentHarness`** — a generic HTTP adapter for any endpoint the user already runs: POST to start, GET-poll status, optional POST cancel. Request building + response mapping are pure (`CustomHarnessConfig.startRequest/statusRequest/cancelRequest` + `JSONPath` dot-path extraction with number/bool coercion), tested through a `URLProtocol` stub; the adapter is the thin async layer (injectable `URLSession`).
+- **`AgentHarnessRegistry`** — lists the configured harnesses and resolves the *active* one: the user's configured default wins, else the first configured, else none. `AgentSessionService` now dispatches through `registry.active`, so a default switch or a new endpoint applies live. `code_agent` gains a **`switch_harness`** action.
+- **Config** — `Config.defaultAgentHarness` (UserDefaults) + Keychain-backed `Config.customAgentHarness` (registered in the sensitive-keys list; status parsing shared via `AgentRunStatus.parse`).
+- **`AgentHarnessSettingsView`** — default-backend picker + custom endpoint form (URLs, auth, field mapping), surfaced from Agentic Features (Agent-Mode-gated). `AppState.rebuildAgentHarnessRegistry()` re-reads it on save.
+- **Tests:** +17 headless (`AgentCustomHarnessTests`) — config round-trip, `JSONPath`, request building + `start`/`status` over the stub, registry resolution, registry-backed dispatch, and the `switch_harness` action. Full suite 722 green, Debug + Release.
+
+**Still deferred (per the build order):** the gateway-side `agent.*` methods + the rich live event stream (Phase 1's live half — needs a running gateway that exposes them; the adapter is ready and `normalize` maps the schema); the **Codex-cloud / Claude-remote adapters** (Phase 3, pending the Phase 0 trigger verification); and live token-streaming + the HUD confirm view (Phase 4).
 
 ---
 
