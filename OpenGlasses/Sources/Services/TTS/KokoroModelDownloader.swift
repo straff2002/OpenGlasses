@@ -2,16 +2,11 @@ import Foundation
 
 /// Failure modes of the Kokoro model download.
 enum KokoroDownloadError: LocalizedError, Equatable {
-    /// The live download+extraction adapter isn't wired yet (the default installer). The `.tar.bz2`
-    /// fetch + bzip2/tar extraction is the deferred, device-validated step — see `liveInstaller`.
-    case adapterNotImplemented
-    /// The download finished but the extracted bundle is missing required artefacts.
+    /// The download finished but the bundle is missing required artefacts.
     case incompleteDownload(missing: String)
 
     var errorDescription: String? {
         switch self {
-        case .adapterNotImplemented:
-            return "On-device voice download isn't available in this build yet"
         case .incompleteDownload(let missing):
             return "Downloaded model is incomplete (missing: \(missing))"
         }
@@ -19,15 +14,15 @@ enum KokoroDownloadError: LocalizedError, Equatable {
 }
 
 /// Orchestrates first-enable download of a `KokoroModelBundle` into Application Support (Additional
-/// Capabilities #1). This is the **deterministic core** of the download: the state machine, the
-/// download-to-staging → verify → atomic-install flow, and failure cleanup — all driven through an
+/// Capabilities #1). The **deterministic core** of the download — the state machine, the
+/// download-to-staging → verify → atomic-install flow, and failure cleanup — is driven through an
 /// **injected installer**, so the orchestration is fully unit-testable headlessly with a fake that
-/// just writes files. No network, no archive decoding here.
+/// just writes files.
 ///
-/// The *live* installer (fetch the `.tar.bz2` from HuggingFace/GitHub, then bunzip2 + untar into the
-/// staging dir) is deferred: it needs a bzip2/tar decoder dependency and its only meaningful
-/// validation is an on-device download, so it ships disabled (`adapterNotImplemented`) until the
-/// sherpa-onnx binary lands alongside it.
+/// The default installer is `HuggingFaceModelInstaller.live`, which fetches the bundle's unpacked
+/// files from HuggingFace (no archive decoding needed). It isn't user-triggerable yet: the Settings
+/// UI shows only model status, because the model is unusable until the sherpa-onnx binary is
+/// compiled in (`KOKORO_ENABLED`), so there's no point downloading ~185 MB that can't be played.
 @MainActor
 final class KokoroModelDownloader: ObservableObject {
 
@@ -50,7 +45,7 @@ final class KokoroModelDownloader: ObservableObject {
     init(bundle: KokoroModelBundle = .active,
          modelDirectory: URL = KokoroModelStore.defaultDirectory,
          fileManager: FileManager = .default,
-         installer: @escaping Installer = KokoroModelDownloader.liveInstaller) {
+         installer: @escaping Installer = HuggingFaceModelInstaller.live.makeInstaller()) {
         self.bundle = bundle
         self.modelDirectory = modelDirectory
         self.fileManager = fileManager
@@ -114,18 +109,5 @@ final class KokoroModelDownloader: ObservableObject {
     func deleteModel() {
         try? store.deleteModel()
         state = store.state
-    }
-
-    // MARK: - Live installer (deferred)
-
-    /// The default installer used in the shipped build. The live fetch + bzip2/tar extraction is
-    /// deferred (it needs an archive-decoder dependency and on-device validation), so it fails
-    /// cleanly until activated. The Settings UI gates the download button on availability, so this
-    /// isn't reachable from a normal build.
-    static let liveInstaller: Installer = { _, _, _ in
-        // DEFERRED: download `bundle.preferredArchiveURL` with a URLSession download task (forward
-        // `totalBytesWritten / totalBytesExpectedToWrite` to `progress`), then bunzip2 + untar the
-        // archive into `destination` (e.g. via SWCompression). Lands with the sherpa-onnx binary.
-        throw KokoroDownloadError.adapterNotImplemented
     }
 }

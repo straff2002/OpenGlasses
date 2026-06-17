@@ -56,10 +56,20 @@ final class KokoroModelStoreTests: XCTestCase {
         XCTAssertTrue(bundle.requiredDirectories.contains("dict"))
     }
 
-    func testPreferredArchiveURLPrefersHuggingFaceMirror() {
-        // The chosen hosting is HuggingFace; fall back to GitHub only when no mirror is set.
-        XCTAssertEqual(bundle.preferredArchiveURL, bundle.huggingFaceArchiveURL)
-        XCTAssertEqual(bundle.preferredArchiveURL.host, "huggingface.co")
+    func testHuggingFaceURLsAreWellFormed() {
+        // The chosen hosting is HuggingFace, with files stored unpacked (no tarball).
+        XCTAssertEqual(bundle.huggingFaceRepo, "csukuangfj/kokoro-int8-multi-lang-v1_1")
+        XCTAssertEqual(bundle.huggingFaceTreeAPIURL.host, "huggingface.co")
+        XCTAssertTrue(bundle.huggingFaceTreeAPIURL.absoluteString.contains("/tree/main"))
+
+        let modelURL = bundle.huggingFaceResolveURL(for: "model.int8.onnx")
+        XCTAssertEqual(modelURL.absoluteString,
+                       "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_1/resolve/main/model.int8.onnx")
+
+        // A nested path (a file inside espeak-ng-data/) keeps its slashes.
+        let nestedURL = bundle.huggingFaceResolveURL(for: "espeak-ng-data/phontab")
+        XCTAssertEqual(nestedURL.absoluteString,
+                       "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_1/resolve/main/espeak-ng-data/phontab")
     }
 
     // MARK: - Presence

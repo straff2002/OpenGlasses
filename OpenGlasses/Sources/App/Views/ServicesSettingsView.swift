@@ -169,7 +169,7 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("On-Device Voice (Kokoro)")
             } footer: {
-                Text("A free, offline neural voice that can speak even when the app is in the background. The model (\(KokoroModelBundle.active.displayName), about 90 MB) downloads on first use; until then, on-device speech falls back to the iOS voice.")
+                Text("A free, offline neural voice that can speak even when the app is in the background. The model (\(KokoroModelBundle.active.displayName), about 185 MB) downloads on first use; until then, on-device speech falls back to the iOS voice.")
             }
 
             // MARK: Web Search
