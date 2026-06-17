@@ -29,9 +29,15 @@ struct ServicesSettingsView: View {
     @State private var haURL: String = Config.homeAssistantURL
     @State private var haToken: String = Config.homeAssistantToken
 
+    // TTS engine preference (Additional Capabilities #1 — Kokoro on-device tier)
+    @State private var ttsEnginePreference: TTSEnginePreference = Config.ttsEnginePreference
+
     // iOS Voice
     @State private var iosVoiceId: String = Config.iosTTSVoiceId
     private var iosVoices: [AVSpeechSynthesisVoice] { TextToSpeechService.availableVoices() }
+
+    /// Whether the on-device Kokoro model bundle is installed.
+    private var kokoroModelInstalled: Bool { KokoroModelStore.shared.isModelPresent }
 
     // ElevenLabs account voices (loaded from the user's key)
     @State private var elevenLabsVoices: [TextToSpeechService.ElevenLabsVoice] = []
@@ -40,6 +46,22 @@ struct ServicesSettingsView: View {
 
     var body: some View {
         Form {
+            // MARK: Voice Engine
+            Section {
+                Picker("Voice Engine", selection: $ttsEnginePreference) {
+                    ForEach(TTSEnginePreference.allCases) { preference in
+                        Text(preference.displayName).tag(preference)
+                    }
+                }
+                .onChange(of: ttsEnginePreference) { _, newValue in
+                    Config.setTTSEnginePreference(newValue)
+                }
+            } header: {
+                Text("Voice Engine")
+            } footer: {
+                Text(ttsEnginePreference.detail)
+            }
+
             // MARK: Text-to-Speech
             Section {
                 SecureField("API Key", text: $elevenLabsKeyInput)
@@ -134,6 +156,20 @@ struct ServicesSettingsView: View {
                 Text("iOS Voice")
             } footer: {
                 Text("Used when ElevenLabs is unavailable or quota is exhausted. Download more voices in iOS Settings → Accessibility → Spoken Content → Voices.")
+            }
+
+            // MARK: On-Device Voice (Kokoro)
+            Section {
+                HStack {
+                    Label("On-Device Model", systemImage: "cpu")
+                    Spacer()
+                    Text(kokoroModelInstalled ? "Installed" : "Not downloaded")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("On-Device Voice (Kokoro)")
+            } footer: {
+                Text("A free, offline neural voice that can speak even when the app is in the background. The model (tens of MB) downloads on first use; until then, on-device speech falls back to the iOS voice.")
             }
 
             // MARK: Web Search

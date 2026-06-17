@@ -24,7 +24,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 
 | # | Feature | Effort | Verdict |
 |---|---|---|---|
-| 1 | **Kokoro on-device TTS tier** | ~3–4 days | ✅ Take — fills a real gap |
+| 1 | **Kokoro on-device TTS tier** | ~3–4 days | 🚧 Core shipped — selection + model store + wiring tested; binary/inference deferred |
 | 2 | **Provider API keys → Keychain** | ~0.5–1 day | ✅ **Shipped** — secrets now Keychain-backed |
 | 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | 🚧 Core shipped — coordinator tested; live adoption deferred |
 | 4 | **`needs` / follow-ups in BrainStore** | ~1 day | ✅ **Shipped** (this PR) |
@@ -67,6 +67,36 @@ WAV on background CPU threads, and plays via `AVAudioPlayer`. Gated behind a com
 
 **Risk:** binary-dependency size/signing, and the license of the Kokoro weights — confirm
 redistribution terms before bundling/hosting.
+
+**Status: 🚧 core shipped.** The tested deterministic core (no binary needed) is in
+[`Sources/Services/TTS/`](../../OpenGlasses/Sources/Services/TTS/):
+- [TTSEngineSelector.swift](../../OpenGlasses/Sources/Services/TTS/TTSEngineSelector.swift) — a **pure
+  policy**: given availability (ElevenLabs key + online, Kokoro model present), the user's
+  `TTSEnginePreference`, and urgency, it produces the ordered `ElevenLabs → Kokoro → AVSpeech` fallback
+  chain. `.system` is the guaranteed terminal; a high-urgency utterance promotes a *ready* on-device
+  Kokoro ahead of the network engine (don't wait on the network for a hazard alert) but never
+  downgrades to the robotic voice for speed. No SDK/audio types — fully unit-tested.
+- [KokoroModelStore.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelStore.swift) — model-bundle
+  **presence/selection** in Application Support (`model.int8.onnx` / `voices.bin` / `tokens.txt`),
+  non-empty-file aware; injectable directory so it's tested headlessly. The int8 weights download on
+  first enable (deferred), so Kokoro is a no-op until present — mirroring the SDK's no-Display no-op.
+- [KokoroTTSEngine.swift](../../OpenGlasses/Sources/Services/TTS/KokoroTTSEngine.swift) — gated behind
+  the `KOKORO_ENABLED` compile flag; `isReady = isCompiledIn && model present` (always false in the
+  shipped build, so the selector never routes to a non-functional engine), with a guarded/stub
+  `synthesize` so the selection + wiring compile and are exercised without the binary.
+- Wired into [TextToSpeechService.speak](../../OpenGlasses/Sources/Services/TextToSpeechService.swift)
+  via `speakThroughEngineChain` (the chain is walked, each engine tried in turn), a
+  `Config.ttsEnginePreference` + a **Voice Engine** picker and on-device-model status row in
+  [ServicesSettingsView.swift](../../OpenGlasses/Sources/App/Views/ServicesSettingsView.swift). Existing
+  sanitization/urgency/quota handling are unchanged; with Kokoro off the chain collapses to exactly
+  today's `ElevenLabs → AVSpeech`. 28 headless tests.
+
+**Deferred (needs a redistribution/license + binary decision):** vendoring the **sherpa-onnx**
+`.xcframework` + bridging header (`project.base.yml` → regenerate → refresh `ci_scripts/Package.resolved`),
+the real ONNX `OfflineTts` inference inside `KokoroTTSEngine` (behind `KOKORO_ENABLED`), and **model
+hosting** for the first-enable download — all blocked on confirming the Kokoro weights' redistribution
+terms, so the binary isn't vendored blind. Also deferred (device-only): on-glasses audio-session
+interplay while backgrounded.
 
 ---
 
@@ -229,7 +259,7 @@ JSON-decoding shape**. Defer until X/Y are fully shipped and there's a concrete 
 1. **HUDPreviewView snapshot tests** (~0.5 day) — finish the already-shipped renderer as a regression gate.
 2. ~~**API keys → Keychain**~~ — ✅ shipped.
 3. ~~**`needs` in BrainStore**~~ — ✅ shipped.
-4. **Kokoro on-device TTS tier** (~3–4 days) — the headline capability.
+4. ~~**Kokoro on-device TTS tier**~~ — 🚧 core shipped (selection policy + model store + wiring + Settings; 28 tests). Binary/inference/hosting deferred pending a license decision.
 5. **Shared `DeviceSession`** (~2–3 days) — closes the standing camera+display TODO.
 6. *(If Accessibility tier is in scope)* **Alternative triggers** (~2–4 days) — shake + acoustic first; volume opt-in.
 7. *(If shared-device committed)* **Profiles + PIN** (~4–6 days).

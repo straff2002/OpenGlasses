@@ -112,9 +112,9 @@ A set of self-contained capabilities that build on the shipped engines; each sco
 
 | Plan | Title | Effort | Reuses | Strategic fit |
 |---|---|---|---|---|
-| [Additional Capabilities](additional-capabilities.md) | Net-new features over the shipped engines | ~0.5–4 days each | TextToSpeechService, Config/Keychain, GlassesDisplayService + CameraService, BrainStore, WakeWordService | ✅ API keys → Keychain + BrainStore `needs`/follow-ups shipped. 🚧 Shared camera+display `DeviceSession` — coordinator core tested (`DeviceSessionOwnership`/`DeviceSessionCoordinator`), live adoption deferred (device-only). Remaining: Kokoro on-device TTS (offline + backgroundable). Conditional: alternative hands-free triggers (accessibility), multi-user profiles + PIN. Deferred: declarative HUD widget board. |
+| [Additional Capabilities](additional-capabilities.md) | Net-new features over the shipped engines | ~0.5–4 days each | TextToSpeechService, Config/Keychain, GlassesDisplayService + CameraService, BrainStore, WakeWordService | ✅ API keys → Keychain + BrainStore `needs`/follow-ups shipped. 🚧 Shared camera+display `DeviceSession` — coordinator core tested (`DeviceSessionOwnership`/`DeviceSessionCoordinator`), live adoption deferred (device-only). 🚧 Kokoro on-device TTS (offline + backgroundable) — selection policy (`TTSEngineSelector`) + model store + `TextToSpeechService` wiring + Settings shipped (28 tests); sherpa-onnx binary, ONNX inference + model hosting deferred pending a license decision. Conditional: alternative hands-free triggers (accessibility), multi-user profiles + PIN. Deferred: declarative HUD widget board. |
 
-**Suggested sequence:** HUDPreviewView snapshot tests → ~~API keys → Keychain~~ ✅ → ~~BrainStore `needs`~~ ✅ → Kokoro TTS → shared `DeviceSession` → (if accessibility) alternative triggers → (if shared-device) profiles+PIN → (deferred) widget board.
+**Suggested sequence:** HUDPreviewView snapshot tests → ~~API keys → Keychain~~ ✅ → ~~BrainStore `needs`~~ ✅ → ~~Kokoro TTS~~ 🚧 core → shared `DeviceSession` → (if accessibility) alternative triggers → (if shared-device) profiles+PIN → (deferred) widget board.
 
 ## Dependency graph
 
