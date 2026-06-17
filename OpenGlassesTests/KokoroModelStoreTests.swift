@@ -1,18 +1,21 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Tests for the Kokoro on-device TTS model store + engine readiness (Additional Capabilities #1).
-/// All file-presence logic is exercised headlessly against a temp directory — no network, no binary.
+/// Tests for the Kokoro on-device TTS model store + bundle descriptor + engine readiness (Additional
+/// Capabilities #1). All presence logic is exercised headlessly against a temp directory — no
+/// network, no binary. The store is descriptor-driven, so "installed" means every declared file
+/// **and** directory (e.g. `espeak-ng-data/`, `dict/`) is present.
 final class KokoroModelStoreTests: XCTestCase {
 
     private var tempDir: URL!
     private var store: KokoroModelStore!
+    private let bundle = KokoroModelBundle.active
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("KokoroModelStoreTests-\(UUID().uuidString)", isDirectory: true)
-        store = KokoroModelStore(directory: tempDir)
+        store = KokoroModelStore(bundle: bundle, directory: tempDir)
     }
 
     override func tearDownWithError() throws {
@@ -22,54 +25,105 @@ final class KokoroModelStoreTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Write `bytes` of placeholder content to one of the model's required files.
+    // MARK: - Helpers
+
     private func writeFile(_ name: String, bytes: Int = 8) throws {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let data = Data(repeating: 0x42, count: bytes)
-        try data.write(to: tempDir.appendingPathComponent(name))
+        try Data(repeating: 0x42, count: bytes).write(to: tempDir.appendingPathComponent(name))
     }
 
-    private func writeAllRequiredFiles() throws {
-        for name in KokoroModelStore.requiredFiles { try writeFile(name) }
+    /// Create a directory and drop a dummy file in it so it counts as non-empty.
+    private func writeDirectory(_ name: String) throws {
+        let dir = tempDir.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(repeating: 0x42, count: 4).write(to: dir.appendingPathComponent("entry.bin"))
+    }
+
+    /// Write every required file and directory so the bundle counts as fully installed.
+    private func installFullBundle() throws {
+        for name in bundle.requiredFiles { try writeFile(name) }
+        for name in bundle.requiredDirectories { try writeDirectory(name) }
+    }
+
+    // MARK: - Bundle descriptor
+
+    func testActiveBundleIsInt8MultiLang() {
+        XCTAssertEqual(bundle.id, "kokoro-int8-multi-lang-v1_1")
+        XCTAssertTrue(bundle.requiredFiles.contains("model.int8.onnx"))
+        XCTAssertTrue(bundle.requiredFiles.contains("voices.bin"))
+        XCTAssertTrue(bundle.requiredFiles.contains("tokens.txt"))
+        XCTAssertTrue(bundle.requiredDirectories.contains("espeak-ng-data"))
+        XCTAssertTrue(bundle.requiredDirectories.contains("dict"))
+    }
+
+    func testPreferredArchiveURLPrefersHuggingFaceMirror() {
+        // The chosen hosting is HuggingFace; fall back to GitHub only when no mirror is set.
+        XCTAssertEqual(bundle.preferredArchiveURL, bundle.huggingFaceArchiveURL)
+        XCTAssertEqual(bundle.preferredArchiveURL.host, "huggingface.co")
     }
 
     // MARK: - Presence
 
     func testFreshStoreHasNoModel() {
         XCTAssertFalse(store.isModelPresent)
-        XCTAssertEqual(store.missingFiles, KokoroModelStore.requiredFiles)
+        XCTAssertEqual(store.missingFiles, bundle.requiredFiles)
+        XCTAssertEqual(store.missingDirectories, bundle.requiredDirectories)
         XCTAssertEqual(store.state, .notDownloaded)
         XCTAssertEqual(store.totalBytesOnDisk(), 0)
     }
 
-    func testAllFilesPresentMakesModelPresent() throws {
-        try writeAllRequiredFiles()
+    func testFullInstallMakesModelPresent() throws {
+        try installFullBundle()
         XCTAssertTrue(store.isModelPresent)
         XCTAssertTrue(store.missingFiles.isEmpty)
+        XCTAssertTrue(store.missingDirectories.isEmpty)
         XCTAssertEqual(store.state, .ready)
         XCTAssertGreaterThan(store.totalBytesOnDisk(), 0)
     }
 
+    func testFilesPresentButDirectoriesMissingIsNotReady() throws {
+        // The key correctness fix over a files-only check: sherpa-onnx needs espeak-ng-data/ + dict/,
+        // so the model isn't "ready" with the flat files alone.
+        for name in bundle.requiredFiles { try writeFile(name) }
+        XCTAssertFalse(store.isModelPresent)
+        XCTAssertTrue(store.missingFiles.isEmpty)
+        XCTAssertEqual(store.missingDirectories, bundle.requiredDirectories)
+    }
+
+    func testEmptyDirectoryCountsAsMissing() throws {
+        try installFullBundle()
+        // Empty out one required directory — an empty espeak-ng-data is as useless as a missing one.
+        let dir = tempDir.appendingPathComponent("espeak-ng-data", isDirectory: true)
+        try FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        XCTAssertFalse(store.isModelPresent)
+        XCTAssertEqual(store.missingDirectories, ["espeak-ng-data"])
+    }
+
     func testPartialFilesAreReportedMissing() throws {
-        try writeFile("model.int8.onnx")
-        try writeFile("tokens.txt")
-        // voices.bin is absent
+        try installFullBundle()
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("voices.bin"))
         XCTAssertFalse(store.isModelPresent)
         XCTAssertEqual(store.missingFiles, ["voices.bin"])
     }
 
     func testEmptyFileCountsAsMissing() throws {
+        try installFullBundle()
         // A truncated/aborted download can leave a 0-byte stub — it must not pass as installed.
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("model.int8.onnx"))
         try writeFile("model.int8.onnx", bytes: 0)
-        try writeFile("voices.bin")
-        try writeFile("tokens.txt")
         XCTAssertFalse(store.isModelPresent)
         XCTAssertEqual(store.missingFiles, ["model.int8.onnx"])
     }
 
-    func testRequiredFileSetIsTheKokoroBundle() {
-        XCTAssertEqual(Set(KokoroModelStore.requiredFiles),
-                       ["model.int8.onnx", "voices.bin", "tokens.txt"])
+    func testDirectoryNamedLikeAFileDoesNotSatisfyAFileRequirement() throws {
+        try installFullBundle()
+        // Replace a required file with a directory of the same name — must not count as present.
+        let modelURL = tempDir.appendingPathComponent("model.int8.onnx")
+        try FileManager.default.removeItem(at: modelURL)
+        try FileManager.default.createDirectory(at: modelURL, withIntermediateDirectories: true)
+        XCTAssertFalse(store.isFilePresent("model.int8.onnx"))
+        XCTAssertFalse(store.isModelPresent)
     }
 
     // MARK: - File paths / lifecycle
@@ -87,7 +141,7 @@ final class KokoroModelStoreTests: XCTestCase {
     }
 
     func testDeleteModelRemovesEverything() throws {
-        try writeAllRequiredFiles()
+        try installFullBundle()
         XCTAssertTrue(store.isModelPresent)
         try store.deleteModel()
         XCTAssertFalse(store.isModelPresent)
@@ -95,7 +149,7 @@ final class KokoroModelStoreTests: XCTestCase {
     }
 
     func testDeleteModelOnAbsentDirectoryIsNoOp() throws {
-        XCTAssertNoThrow(try store.deleteModel())  // nothing to delete, must not throw
+        XCTAssertNoThrow(try store.deleteModel())
     }
 
     func testDefaultDirectoryIsUnderApplicationSupport() {
@@ -106,17 +160,15 @@ final class KokoroModelStoreTests: XCTestCase {
 
     @MainActor
     func testEngineNotReadyWithoutBinaryEvenWhenModelPresent() throws {
-        try writeAllRequiredFiles()
+        try installFullBundle()
         let engine = KokoroTTSEngine(modelStore: store)
-        // The model is on disk, but the sherpa-onnx binary isn't compiled into the test build,
-        // so the engine must report not-ready — Kokoro stays a clean no-op until the binary ships.
         XCTAssertFalse(KokoroTTSEngine.isCompiledIn)
-        XCTAssertFalse(engine.isReady)
+        XCTAssertFalse(engine.isReady)   // model on disk, but no binary → clean no-op
     }
 
     @MainActor
     func testEngineSynthesizeThrowsWithoutBinary() async throws {
-        try writeAllRequiredFiles()
+        try installFullBundle()
         let engine = KokoroTTSEngine(modelStore: store)
         do {
             _ = try await engine.synthesize("hello")
@@ -131,7 +183,6 @@ final class KokoroModelStoreTests: XCTestCase {
     func testConfigEnginePreferenceRoundTrips() {
         let original = Config.ttsEnginePreference
         defer { Config.setTTSEnginePreference(original) }
-
         Config.setTTSEnginePreference(.kokoro)
         XCTAssertEqual(Config.ttsEnginePreference, .kokoro)
         Config.setTTSEnginePreference(.system)
@@ -141,7 +192,6 @@ final class KokoroModelStoreTests: XCTestCase {
     func testConfigEnginePreferenceDefaultsToAuto() {
         let original = Config.ttsEnginePreference
         defer { Config.setTTSEnginePreference(original) }
-
         UserDefaults.standard.removeObject(forKey: "ttsEnginePreference")
         XCTAssertEqual(Config.ttsEnginePreference, .auto)
     }
