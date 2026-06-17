@@ -142,13 +142,4 @@ final class KokoroModelDownloaderTests: XCTestCase {
         XCTAssertEqual(downloader.state, .notDownloaded)
         XCTAssertFalse(KokoroModelStore(bundle: bundle, directory: modelDir).isModelPresent)
     }
-
-    func testLiveInstallerIsDeferred() async {
-        // The default (shipped) installer fails cleanly until the live adapter lands.
-        let downloader = KokoroModelDownloader(bundle: bundle, modelDirectory: modelDir)
-        await downloader.download()
-        guard case .failed = downloader.state else {
-            return XCTFail("default live installer should report .failed (deferred), got \(downloader.state)")
-        }
-    }
 }

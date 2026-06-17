@@ -78,18 +78,21 @@ redistribution terms before bundling/hosting.
   downgrades to the robotic voice for speed. No SDK/audio types — fully unit-tested.
 - [KokoroModelBundle.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelBundle.swift) +
   [KokoroModelStore.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelStore.swift) — a **bundle
-  descriptor** (the shipped choice is `kokoro-int8-multi-lang-v1_1`, ~90 MB int8, en+zh) and a
+  descriptor** (the shipped choice is `kokoro-int8-multi-lang-v1_1`, ~185 MB int8, en+zh, hosted as
+  unpacked files on the `csukuangfj/kokoro-int8-multi-lang-v1_1` HuggingFace repo) and a
   descriptor-driven **presence/selection** check in Application Support. "Installed" means every
   declared file (`model.int8.onnx`, `voices.bin`, `tokens.txt`, `lexicon-*.txt`, `*-zh.fst`) **and**
   directory (`espeak-ng-data/`, `dict/`) is present and non-empty — directories included, since
-  sherpa-onnx needs them. Injectable directory so it's tested headlessly. Kokoro is a no-op until
-  present — mirroring the SDK's no-Display no-op.
-- [KokoroModelDownloader.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelDownloader.swift) — the
-  **download orchestration core**: a state machine (`notDownloaded → downloading → verifying →
-  ready/failed`) that stages the download, verifies the extracted bundle against the descriptor, and
-  only then atomically swaps it into place (a partial/failed download never leaves a half-installed
-  model). Driven through an **injected installer**, so the flow is fully unit-tested with a fake; the
-  live `.tar.bz2` fetch + bzip2/tar extraction adapter is deferred (ships disabled).
+  sherpa-onnx needs them. File/dir set verified against the live HF repo tree. Tested headlessly.
+- [KokoroModelDownloader.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelDownloader.swift) +
+  [HuggingFaceModelInstaller.swift](../../OpenGlasses/Sources/Services/TTS/HuggingFaceModelInstaller.swift)
+  — the **download** layer: an orchestration state machine (`notDownloaded → downloading → verifying →
+  ready/failed`) that stages the download, verifies it against the descriptor, then **atomically**
+  swaps it into place (a partial/failed download never half-installs), plus a real
+  **HuggingFace installer** that lists the repo tree (HF API) and fetches each unpacked file —
+  **no `.tar.bz2`/bzip2 decoding needed**. Both network seams (list/download) are injected, so the
+  enumeration/sequencing/progress logic is fully unit-tested headlessly. Not user-triggerable yet —
+  the model is unusable until the binary is compiled in, so there's no point downloading ~185 MB.
 - [KokoroTTSEngine.swift](../../OpenGlasses/Sources/Services/TTS/KokoroTTSEngine.swift) — gated behind
   the `KOKORO_ENABLED` compile flag; `isReady = isCompiledIn && model present` (always false in the
   shipped build, so the selector never routes to a non-functional engine), with a guarded/stub
@@ -99,19 +102,19 @@ redistribution terms before bundling/hosting.
   `Config.ttsEnginePreference` + a **Voice Engine** picker and on-device-model status row in
   [ServicesSettingsView.swift](../../OpenGlasses/Sources/App/Views/ServicesSettingsView.swift). Existing
   sanitization/urgency/quota handling are unchanged; with Kokoro off the chain collapses to exactly
-  today's `ElevenLabs → AVSpeech`. 40 headless tests.
+  today's `ElevenLabs → AVSpeech`. 46 headless tests.
 
 **Decisions (2026-06-17):** redistribution is fine (Kokoro-82M weights + sherpa-onnx are **Apache-2.0**
-→ proceed); model hosted on **HuggingFace (k2-fsa)**; bundle is **`kokoro-int8-multi-lang-v1_1`** (~90 MB
-int8); binary integration is the **manual `.xcframework` vendor** route (no official SPM package).
+→ proceed); model hosted on **HuggingFace** (`csukuangfj/kokoro-int8-multi-lang-v1_1`, unpacked files);
+bundle is **`kokoro-int8-multi-lang-v1_1`** (~185 MB int8); binary integration is the **manual
+`.xcframework` vendor** route (no official sherpa-onnx SPM package — only the community wrapper ships
+prebuilt iOS xcframeworks).
 
-**Deferred (binary + device-validated):** vendor the **sherpa-onnx `.xcframework`** + `onnxruntime`
-xcframework + bridging header (local `binaryTarget` in `project.base.yml` → regenerate → refresh
-`ci_scripts/Package.resolved`); the live download+extraction adapter (URLSession download of the
-`.tar.bz2` + bzip2/tar decode, e.g. via SWCompression); the real ONNX `OfflineTts` inference inside
-`KokoroTTSEngine` (behind `KOKORO_ENABLED`). These can't be wired without the real binaries present
-(a phantom `binaryTarget` would break the green build) and the only meaningful validation — actual
-neural audio, on-glasses backgrounded audio-session interplay — is device-only.
+**Remaining deferred (binary + device-validated):** vendor the **sherpa-onnx + onnxruntime
+`.xcframework`s** + bridging header (a local `binaryTarget` — only with the real binaries present, since
+a phantom one breaks the green build); the real ONNX `OfflineTts` inference inside `KokoroTTSEngine`
+(behind `KOKORO_ENABLED`); enabling the now-implemented download from the Settings UI once the engine
+can use the model. Actual neural audio + backgrounded audio-session interplay are device-only.
 
 ---
 
@@ -274,7 +277,7 @@ JSON-decoding shape**. Defer until X/Y are fully shipped and there's a concrete 
 1. **HUDPreviewView snapshot tests** (~0.5 day) — finish the already-shipped renderer as a regression gate.
 2. ~~**API keys → Keychain**~~ — ✅ shipped.
 3. ~~**`needs` in BrainStore**~~ — ✅ shipped.
-4. ~~**Kokoro on-device TTS tier**~~ — 🚧 core shipped (selection policy + bundle descriptor + model store + download orchestration + wiring + Settings; 40 tests). Decisions made (Apache-2.0; HuggingFace; int8 multi-lang; manual xcframework). Binary vendor + live download adapter + ONNX inference deferred (device-validated).
+4. ~~**Kokoro on-device TTS tier**~~ — 🚧 core + download shipped (selection policy + bundle descriptor + model store + download orchestration + real HuggingFace installer + wiring + Settings; 46 tests). Decisions made (Apache-2.0; HuggingFace unpacked files; int8 multi-lang ~185 MB; manual xcframework). Binary vendor + ONNX inference deferred (device-validated).
 5. **Shared `DeviceSession`** (~2–3 days) — closes the standing camera+display TODO.
 6. *(If Accessibility tier is in scope)* **Alternative triggers** (~2–4 days) — shake + acoustic first; volume opt-in.
 7. *(If shared-device committed)* **Profiles + PIN** (~4–6 days).
