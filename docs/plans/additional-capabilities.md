@@ -24,7 +24,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 
 | # | Feature | Effort | Verdict |
 |---|---|---|---|
-| 1 | **Kokoro on-device TTS tier** | ~3–4 days | 🚧 Core shipped — selection + model store + wiring tested; binary/inference deferred |
+| 1 | **Kokoro on-device TTS tier** | ~3–4 days | ✅ Shipped — selection + download + vendored binary + inference; on-device audio pending |
 | 2 | **Provider API keys → Keychain** | ~0.5–1 day | ✅ **Shipped** — secrets now Keychain-backed |
 | 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | 🚧 Core shipped — coordinator tested; live adoption deferred |
 | 4 | **`needs` / follow-ups in BrainStore** | ~1 day | ✅ **Shipped** (this PR) |
@@ -68,7 +68,7 @@ WAV on background CPU threads, and plays via `AVAudioPlayer`. Gated behind a com
 **Risk:** binary-dependency size/signing, and the license of the Kokoro weights — confirm
 redistribution terms before bundling/hosting.
 
-**Status: 🚧 core shipped.** The tested deterministic core (no binary needed) is in
+**Status: ✅ shipped (audio device-pending).** The tested core is in
 [`Sources/Services/TTS/`](../../OpenGlasses/Sources/Services/TTS/):
 - [TTSEngineSelector.swift](../../OpenGlasses/Sources/Services/TTS/TTSEngineSelector.swift) — a **pure
   policy**: given availability (ElevenLabs key + online, Kokoro model present), the user's
@@ -110,11 +110,29 @@ bundle is **`kokoro-int8-multi-lang-v1_1`** (~185 MB int8); binary integration i
 `.xcframework` vendor** route (no official sherpa-onnx SPM package — only the community wrapper ships
 prebuilt iOS xcframeworks).
 
-**Remaining deferred (binary + device-validated):** vendor the **sherpa-onnx + onnxruntime
-`.xcframework`s** + bridging header (a local `binaryTarget` — only with the real binaries present, since
-a phantom one breaks the green build); the real ONNX `OfflineTts` inference inside `KokoroTTSEngine`
-(behind `KOKORO_ENABLED`); enabling the now-implemented download from the Settings UI once the engine
-can use the model. Actual neural audio + backgrounded audio-session interplay are device-only.
+**Binary + inference shipped.** The sherpa-onnx engine is now vendored and wired:
+- [Vendor/SherpaOnnx](../../Vendor/SherpaOnnx) — a local SPM package wrapping **sherpa-onnx 1.13.3**
+  (built from k2-fsa source, Apache-2.0) + **onnxruntime 1.26.0** (MIT) iOS static xcframeworks, committed
+  under `Frameworks/`. `SherpaOnnxWrapper` re-exports the `sherpa_onnx` C module + carries the link
+  settings (libc++, Accelerate). Registered in `project.base.yml`; the `KOKORO_ENABLED` flag
+  (`OTHER_SWIFT_FLAGS`) compiles the real path in.
+- [KokoroSynthesizer.swift](../../OpenGlasses/Sources/Services/TTS/KokoroSynthesizer.swift) — builds a
+  sherpa-onnx `OfflineTts` from the downloaded model (model/voices/tokens + espeak-ng-data + dict +
+  lexicons + `rule_fsts`), runs `Generate` on a serial queue, and packs the float samples into a
+  16-bit PCM WAV. `KokoroTTSEngine` loads it lazily and runs synthesis off the main actor;
+  `isCompiledIn` is now true so Kokoro is selectable once the model is present.
+- The Settings **On-Device Voice (Kokoro)** section now has a real **Download (~185 MB)** button +
+  progress/verify/installed states + remove, driven by `KokoroModelDownloader`.
+
+**Validated:** the full headless suite (47 TTS-tier tests) + Debug **and** Release builds are green with
+the binary linked and the inference compiled against the real sherpa-onnx C API. **Device-only
+remainder:** actual neural audio output + backgrounded audio-session interplay (no Ray-Ban / device on
+hand). The engine-selection fallback chain means a synthesis failure degrades to ElevenLabs/AVSpeech, so
+the feature is safe to ship ahead of that on-device check.
+
+**Note:** the vendored binaries add ~187 MB to the repo (largest single file 83.6 MB, under GitHub's
+100 MB limit). If that weight is unwanted, the alternative is committing the 46 MB zips + an unzip step,
+or hosting them as a release asset (remote `binaryTarget`) — a localized swap (same inference code).
 
 ---
 
@@ -277,7 +295,7 @@ JSON-decoding shape**. Defer until X/Y are fully shipped and there's a concrete 
 1. **HUDPreviewView snapshot tests** (~0.5 day) — finish the already-shipped renderer as a regression gate.
 2. ~~**API keys → Keychain**~~ — ✅ shipped.
 3. ~~**`needs` in BrainStore**~~ — ✅ shipped.
-4. ~~**Kokoro on-device TTS tier**~~ — 🚧 core + download shipped (selection policy + bundle descriptor + model store + download orchestration + real HuggingFace installer + wiring + Settings; 46 tests). Decisions made (Apache-2.0; HuggingFace unpacked files; int8 multi-lang ~185 MB; manual xcframework). Binary vendor + ONNX inference deferred (device-validated).
+4. ~~**Kokoro on-device TTS tier**~~ — ✅ shipped (selection policy + bundle descriptor + model store + download + real HuggingFace installer + **vendored sherpa-onnx 1.13.3 binary + real OfflineTts inference** + Settings download; 47 tests, Debug+Release green). Only actual on-device audio output remains to validate (no hardware).
 5. **Shared `DeviceSession`** (~2–3 days) — closes the standing camera+display TODO.
 6. *(If Accessibility tier is in scope)* **Alternative triggers** (~2–4 days) — shake + acoustic first; volume opt-in.
 7. *(If shared-device committed)* **Profiles + PIN** (~4–6 days).

@@ -36,8 +36,8 @@ struct ServicesSettingsView: View {
     @State private var iosVoiceId: String = Config.iosTTSVoiceId
     private var iosVoices: [AVSpeechSynthesisVoice] { TextToSpeechService.availableVoices() }
 
-    /// Whether the on-device Kokoro model bundle is installed.
-    private var kokoroModelInstalled: Bool { KokoroModelStore.shared.isModelPresent }
+    /// Drives the on-device Kokoro model download + status row.
+    @StateObject private var kokoroDownloader = KokoroModelDownloader()
 
     // ElevenLabs account voices (loaded from the user's key)
     @State private var elevenLabsVoices: [TextToSpeechService.ElevenLabsVoice] = []
@@ -160,17 +160,43 @@ struct ServicesSettingsView: View {
 
             // MARK: On-Device Voice (Kokoro)
             Section {
-                HStack {
-                    Label("On-Device Model", systemImage: "cpu")
-                    Spacer()
-                    Text(kokoroModelInstalled ? "Installed" : "Not downloaded")
-                        .foregroundStyle(.secondary)
+                switch kokoroDownloader.state {
+                case .ready:
+                    HStack {
+                        Label("On-Device Model", systemImage: "cpu")
+                        Spacer()
+                        Text("Installed").foregroundStyle(.secondary)
+                    }
+                    Button("Remove Download", role: .destructive) {
+                        kokoroDownloader.deleteModel()
+                    }
+                case .downloading(let progress):
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Downloading… \(Int(progress * 100))%")
+                        ProgressView(value: progress)
+                    }
+                case .verifying:
+                    HStack {
+                        Text("Verifying…")
+                        Spacer()
+                        ProgressView()
+                    }
+                case .failed(let reason):
+                    Text(reason).font(.caption).foregroundStyle(.red)
+                    Button("Download Model (~185 MB)") {
+                        Task { await kokoroDownloader.download() }
+                    }
+                case .notDownloaded:
+                    Button("Download Model (~185 MB)") {
+                        Task { await kokoroDownloader.download() }
+                    }
                 }
             } header: {
                 Text("On-Device Voice (Kokoro)")
             } footer: {
-                Text("A free, offline neural voice that can speak even when the app is in the background. The model (\(KokoroModelBundle.active.displayName), about 185 MB) downloads on first use; until then, on-device speech falls back to the iOS voice.")
+                Text("A free, offline neural voice that can speak even when the app is in the background. Downloads \(KokoroModelBundle.active.displayName) (~185 MB) over Wi-Fi; until it's installed, on-device speech falls back to the iOS voice.")
             }
+            .onAppear { kokoroDownloader.refreshState() }
 
             // MARK: Web Search
             Section {
