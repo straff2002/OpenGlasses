@@ -28,7 +28,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 | 2 | **Provider API keys → Keychain** | ~0.5–1 day | ✅ **Shipped** — secrets now Keychain-backed |
 | 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | 🚧 Core shipped — coordinator tested; live adoption deferred |
 | 4 | **`needs` / follow-ups in BrainStore** | ~1 day | ✅ **Shipped** (this PR) |
-| 5 | **Alternative hands-free triggers** | ~2–4 days | ◻︎ Conditional — Accessibility tier; App-Store caveat |
+| 5 | **Alternative hands-free triggers** | ~2–4 days | 🚧 Core shipped — gate + service + shake detector + Settings; acoustic/volume detectors deferred |
 | 6 | **Multi-user profiles + PIN gate** | ~4–6 days | ◻︎ Conditional — only if shared-device is a goal |
 | 7 | **Declarative HUD widget board** | ~3–5 days | ⏸ Defer — Display Phase 5 concept |
 
@@ -233,6 +233,26 @@ routing to the same entry point as the wake word; gate behind a Settings section
 [Plan X](X-interactive-hud-now-next-tasks.md): the glasses/Neural Band firmware owns gesture, focus and
 select; there is **no raw gesture/touchpad stream** to subscribe to. Triggers must therefore be
 phone-side (button/motion/audio), never from the glasses hardware.
+
+**Status: 🚧 core shipped.** The tested core is in
+[`Sources/Services/Triggers/`](../../OpenGlasses/Sources/Services/Triggers/):
+- [TriggerGate.swift](../../OpenGlasses/Sources/Services/Triggers/TriggerGate.swift) — the **pure gate**:
+  confidence threshold + debounce window + suppression (don't fire while a conversation/card is held),
+  clock passed in. The answer to the "false positives" caveat — fully unit-tested.
+- [AlternativeTriggerService.swift](../../OpenGlasses/Sources/Services/Triggers/AlternativeTriggerService.swift)
+  — `@MainActor` service that funnels every detected event through the per-trigger gate to one
+  `onTrigger` callback (injected clock + enabled-set make the routing headlessly testable). The
+  **CoreMotion shake detector** is wired live.
+- [AlternativeTrigger.swift](../../OpenGlasses/Sources/Services/Triggers/AlternativeTrigger.swift) +
+  `Config.alternativeTriggerEnabled` (all opt-in / off by default) + a **Hands-Free Triggers** Settings
+  section. Wired in `AppState`: `onTrigger → handleWakeWordDetected(manual:)`, suppressed under the same
+  guard as the wake word (`inConversation || isProcessing || AssistiveMode`). 16 headless tests.
+
+**Deferred (device-tuned):** the **acoustic** (`SoundAnalysis` cough/clap/whistle) and **volume-button**
+(`AVAudioSession.outputVolume` KVO) detectors — both need on-device threshold tuning and, for acoustic,
+mic/battery coordination with the wake-word pipeline + Presence-Aware Throttle (the gate/routing already
+accepts their events). The **AirPod stem** AppIntent (entitlement + device). On-device shake-threshold
+and false-positive tuning is also a device check. Volume stays off-by-default (App-Store risk).
 
 ---
 

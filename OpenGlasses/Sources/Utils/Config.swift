@@ -510,6 +510,25 @@ struct Config {
         }
     }
 
+    // MARK: - Alternative Hands-Free Triggers (Additional Capabilities #5)
+
+    /// Whether an alternative (non-voice) trigger is enabled. All are opt-in / off by default — the
+    /// volume-button trigger especially (App-Store risk).
+    static func alternativeTriggerEnabled(_ trigger: AlternativeTrigger) -> Bool {
+        let key = "altTrigger_\(trigger.rawValue)"
+        if UserDefaults.standard.object(forKey: key) == nil { return trigger.defaultEnabled }
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    static func setAlternativeTriggerEnabled(_ trigger: AlternativeTrigger, _ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "altTrigger_\(trigger.rawValue)")
+    }
+
+    /// Whether any alternative trigger is enabled (gates whether the detector service runs at all).
+    static var anyAlternativeTriggerEnabled: Bool {
+        AlternativeTrigger.allCases.contains { alternativeTriggerEnabled($0) }
+    }
+
     // MARK: - LLM Provider (legacy — kept for migration)
 
     /// Selected LLM provider

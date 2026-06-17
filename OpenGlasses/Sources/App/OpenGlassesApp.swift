@@ -508,6 +508,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let reachability = Reachability()
     lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: LocalSyncSink())
 
+    /// Alternative hands-free triggers (Additional Capabilities #5) — shake/acoustic/volume, all
+    /// opt-in, each routing to the same entry point as the wake word.
+    let alternativeTriggers = AlternativeTriggerService()
+
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
 
@@ -1140,6 +1144,21 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.handleWakeWordDetected()
             }
         }
+
+        // Alternative hands-free triggers (Additional Capabilities #5): a shake/cough/volume press
+        // routes to the same entry as the wake word, suppressed under the same conditions.
+        alternativeTriggers.isSuppressed = { [weak self] in
+            guard let self else { return true }
+            return self.inConversation || self.isProcessing || AssistiveModeService.shared.isActive
+        }
+        alternativeTriggers.onTrigger = { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.noteUserInteraction()
+                await self.handleWakeWordDetected(manual: true)
+            }
+        }
+        if Config.anyAlternativeTriggerEnabled { alternativeTriggers.start() }
 
         wakeWordService.onStopCommand = { [weak self] in
             Task { @MainActor in

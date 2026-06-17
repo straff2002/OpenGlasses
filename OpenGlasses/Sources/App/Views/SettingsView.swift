@@ -79,6 +79,27 @@ struct SettingsView: View {
                 Text("The phrase that starts a conversation. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch.")
             }
 
+            // MARK: Hands-Free Triggers
+            Section {
+                ForEach(AlternativeTrigger.allCases) { trigger in
+                    InfoToggle(
+                        title: trigger.displayName,
+                        isOn: Binding(
+                            get: { Config.alternativeTriggerEnabled(trigger) },
+                            set: { newValue in
+                                Config.setAlternativeTriggerEnabled(trigger, newValue)
+                                appState.alternativeTriggers.refresh()
+                            }
+                        ),
+                        info: trigger.detail
+                    )
+                }
+            } header: {
+                Text("Hands-Free Triggers")
+            } footer: {
+                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control.")
+            }
+
             // MARK: AI Models
             Section {
                 ForEach(modelConfigs) { model in
