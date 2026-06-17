@@ -26,7 +26,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 |---|---|---|---|
 | 1 | **Kokoro on-device TTS tier** | ~3–4 days | ✅ Take — fills a real gap |
 | 2 | **Provider API keys → Keychain** | ~0.5–1 day | ✅ **Shipped** — secrets now Keychain-backed |
-| 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | ✅ Take — closes a standing TODO |
+| 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | 🚧 Core shipped — coordinator tested; live adoption deferred |
 | 4 | **`needs` / follow-ups in BrainStore** | ~1 day | ✅ **Shipped** (this PR) |
 | 5 | **Alternative hands-free triggers** | ~2–4 days | ◻︎ Conditional — Accessibility tier; App-Store caveat |
 | 6 | **Multi-user profiles + PIN gate** | ~4–6 days | ◻︎ Conditional — only if shared-device is a goal |
@@ -95,6 +95,24 @@ its own; it only creates+owns a session when none is shared.
 one `DeviceSession` when both want the glasses, and the display gracefully owns-its-own when the
 camera isn't active. Validate by headless tests of the ownership state machine; on-glasses behaviour
 (camera + HUD simultaneously) is a device-only check to log as outstanding.
+
+**Status: 🚧 core shipped.** The tested coordinator core is in:
+- [DeviceSessionOwnership.swift](../../OpenGlasses/Sources/Services/Device/DeviceSessionOwnership.swift)
+  — a pure reference-counting state machine over the `camera`/`display` capabilities: `acquire`
+  reports the **first** holder (create the session), `release` reports the **last** (tear it down),
+  idempotent, with `isShared`/`isHeld`/`holds`. No SDK types — fully unit-tested.
+- [DeviceSessionCoordinator.swift](../../OpenGlasses/Sources/Services/Device/DeviceSessionCoordinator.swift)
+  — `@MainActor` owner of the single real `DeviceSession`, driven by the ownership machine; creates on
+  first acquire, stops + drops on last release, `invalidate()` for a died-underneath session. A
+  `DeviceSessionHandle` protocol (which `MWDATCore.DeviceSession` satisfies with no new code) + an
+  injected session factory make its create/teardown ref-counting testable via a fake session.
+- 11 headless tests (`DeviceSessionCoordinatorTests`).
+
+**Deferred (device-only):** wiring `CameraService` and `GlassesDisplayService` to source their session
+from the coordinator (replacing their separate `Wearables.shared.createSession` calls with
+`acquire`/`release`), and the on-glasses "camera + HUD on one session at once" validation. Rewiring
+two hardware-coupled session owners can't be validated without Display hardware, so it's the staged
+follow-up — the coordinator is the tested foundation it adopts.
 
 ---
 
