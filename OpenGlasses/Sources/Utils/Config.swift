@@ -1623,6 +1623,21 @@ struct Config {
         UserDefaults.standard.set(id, forKey: "iosTTSVoiceId")
     }
 
+    /// Which TTS engine to prefer (Additional Capabilities #1 — the Kokoro on-device tier).
+    /// Drives `TTSEngineSelector`; defaults to `.auto` (the historical ElevenLabs→iOS behaviour,
+    /// with on-device Kokoro inserted between them when it's available).
+    static var ttsEnginePreference: TTSEnginePreference {
+        guard let raw = UserDefaults.standard.string(forKey: "ttsEnginePreference"),
+              let preference = TTSEnginePreference(rawValue: raw) else {
+            return .auto
+        }
+        return preference
+    }
+
+    static func setTTSEnginePreference(_ preference: TTSEnginePreference) {
+        UserDefaults.standard.set(preference.rawValue, forKey: "ttsEnginePreference")
+    }
+
     // MARK: - App Mode
 
     static var appMode: AppMode {

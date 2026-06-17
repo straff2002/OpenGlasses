@@ -24,7 +24,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 
 | # | Feature | Effort | Verdict |
 |---|---|---|---|
-| 1 | **Kokoro on-device TTS tier** | ~3–4 days | ✅ Take — fills a real gap |
+| 1 | **Kokoro on-device TTS tier** | ~3–4 days | 🚧 Core shipped — selection + model store + wiring tested; binary/inference deferred |
 | 2 | **Provider API keys → Keychain** | ~0.5–1 day | ✅ **Shipped** — secrets now Keychain-backed |
 | 3 | **Shared `DeviceSession` (camera + display)** | ~2–3 days | 🚧 Core shipped — coordinator tested; live adoption deferred |
 | 4 | **`needs` / follow-ups in BrainStore** | ~1 day | ✅ **Shipped** (this PR) |
@@ -67,6 +67,51 @@ WAV on background CPU threads, and plays via `AVAudioPlayer`. Gated behind a com
 
 **Risk:** binary-dependency size/signing, and the license of the Kokoro weights — confirm
 redistribution terms before bundling/hosting.
+
+**Status: 🚧 core shipped.** The tested deterministic core (no binary needed) is in
+[`Sources/Services/TTS/`](../../OpenGlasses/Sources/Services/TTS/):
+- [TTSEngineSelector.swift](../../OpenGlasses/Sources/Services/TTS/TTSEngineSelector.swift) — a **pure
+  policy**: given availability (ElevenLabs key + online, Kokoro model present), the user's
+  `TTSEnginePreference`, and urgency, it produces the ordered `ElevenLabs → Kokoro → AVSpeech` fallback
+  chain. `.system` is the guaranteed terminal; a high-urgency utterance promotes a *ready* on-device
+  Kokoro ahead of the network engine (don't wait on the network for a hazard alert) but never
+  downgrades to the robotic voice for speed. No SDK/audio types — fully unit-tested.
+- [KokoroModelBundle.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelBundle.swift) +
+  [KokoroModelStore.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelStore.swift) — a **bundle
+  descriptor** (the shipped choice is `kokoro-int8-multi-lang-v1_1`, ~90 MB int8, en+zh) and a
+  descriptor-driven **presence/selection** check in Application Support. "Installed" means every
+  declared file (`model.int8.onnx`, `voices.bin`, `tokens.txt`, `lexicon-*.txt`, `*-zh.fst`) **and**
+  directory (`espeak-ng-data/`, `dict/`) is present and non-empty — directories included, since
+  sherpa-onnx needs them. Injectable directory so it's tested headlessly. Kokoro is a no-op until
+  present — mirroring the SDK's no-Display no-op.
+- [KokoroModelDownloader.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelDownloader.swift) — the
+  **download orchestration core**: a state machine (`notDownloaded → downloading → verifying →
+  ready/failed`) that stages the download, verifies the extracted bundle against the descriptor, and
+  only then atomically swaps it into place (a partial/failed download never leaves a half-installed
+  model). Driven through an **injected installer**, so the flow is fully unit-tested with a fake; the
+  live `.tar.bz2` fetch + bzip2/tar extraction adapter is deferred (ships disabled).
+- [KokoroTTSEngine.swift](../../OpenGlasses/Sources/Services/TTS/KokoroTTSEngine.swift) — gated behind
+  the `KOKORO_ENABLED` compile flag; `isReady = isCompiledIn && model present` (always false in the
+  shipped build, so the selector never routes to a non-functional engine), with a guarded/stub
+  `synthesize` so the selection + wiring compile and are exercised without the binary.
+- Wired into [TextToSpeechService.speak](../../OpenGlasses/Sources/Services/TextToSpeechService.swift)
+  via `speakThroughEngineChain` (the chain is walked, each engine tried in turn), a
+  `Config.ttsEnginePreference` + a **Voice Engine** picker and on-device-model status row in
+  [ServicesSettingsView.swift](../../OpenGlasses/Sources/App/Views/ServicesSettingsView.swift). Existing
+  sanitization/urgency/quota handling are unchanged; with Kokoro off the chain collapses to exactly
+  today's `ElevenLabs → AVSpeech`. 40 headless tests.
+
+**Decisions (2026-06-17):** redistribution is fine (Kokoro-82M weights + sherpa-onnx are **Apache-2.0**
+→ proceed); model hosted on **HuggingFace (k2-fsa)**; bundle is **`kokoro-int8-multi-lang-v1_1`** (~90 MB
+int8); binary integration is the **manual `.xcframework` vendor** route (no official SPM package).
+
+**Deferred (binary + device-validated):** vendor the **sherpa-onnx `.xcframework`** + `onnxruntime`
+xcframework + bridging header (local `binaryTarget` in `project.base.yml` → regenerate → refresh
+`ci_scripts/Package.resolved`); the live download+extraction adapter (URLSession download of the
+`.tar.bz2` + bzip2/tar decode, e.g. via SWCompression); the real ONNX `OfflineTts` inference inside
+`KokoroTTSEngine` (behind `KOKORO_ENABLED`). These can't be wired without the real binaries present
+(a phantom `binaryTarget` would break the green build) and the only meaningful validation — actual
+neural audio, on-glasses backgrounded audio-session interplay — is device-only.
 
 ---
 
@@ -229,7 +274,7 @@ JSON-decoding shape**. Defer until X/Y are fully shipped and there's a concrete 
 1. **HUDPreviewView snapshot tests** (~0.5 day) — finish the already-shipped renderer as a regression gate.
 2. ~~**API keys → Keychain**~~ — ✅ shipped.
 3. ~~**`needs` in BrainStore**~~ — ✅ shipped.
-4. **Kokoro on-device TTS tier** (~3–4 days) — the headline capability.
+4. ~~**Kokoro on-device TTS tier**~~ — 🚧 core shipped (selection policy + bundle descriptor + model store + download orchestration + wiring + Settings; 40 tests). Decisions made (Apache-2.0; HuggingFace; int8 multi-lang; manual xcframework). Binary vendor + live download adapter + ONNX inference deferred (device-validated).
 5. **Shared `DeviceSession`** (~2–3 days) — closes the standing camera+display TODO.
 6. *(If Accessibility tier is in scope)* **Alternative triggers** (~2–4 days) — shake + acoustic first; volume opt-in.
 7. *(If shared-device committed)* **Profiles + PIN** (~4–6 days).

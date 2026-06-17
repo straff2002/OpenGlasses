@@ -659,6 +659,10 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in self?.addDebugEvent(message) }
         }
 
+        // Let the TTS engine selector know whether we're online, so a configured ElevenLabs key
+        // isn't preferred while offline (it'd fail the network call and fall back anyway).
+        speechService.reachability = reachability
+
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService
         ambientCaptions.glassesDisplay = glassesDisplay

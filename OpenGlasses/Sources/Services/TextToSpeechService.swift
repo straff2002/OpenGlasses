@@ -92,6 +92,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Display feature is on. The service no-ops on glasses without a display.
     weak var glassesDisplay: GlassesDisplayService?
 
+    /// Set by AppState — lets the engine selector know whether we're online, so a configured
+    /// ElevenLabs key isn't preferred while offline. Nil (unwired) is treated as online, preserving
+    /// the historical "just try ElevenLabs and fall back on network error" behaviour.
+    weak var reachability: Reachability?
+
+    /// On-device neural voice (Additional Capabilities #1). A no-op until the model is downloaded
+    /// *and* the `KOKORO_ENABLED` binary is compiled in, so in the shipped build `isReady` is false
+    /// and the selector falls through to ElevenLabs/AVSpeech exactly as before.
+    let kokoroEngine = KokoroTTSEngine()
+
     private func beginPause() {
         guard !didHoldPause else { return }
         wakeWordService?.pauseOtherAudio()
@@ -196,28 +206,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 print("🔊 TTS: Task skipped — generation stale")
                 return
             }
-
-            let elevenLabsKey = Config.elevenLabsAPIKey
-            let useElevenLabs = !elevenLabsKey.isEmpty && !self.elevenLabsQuotaExhausted
-            print("🔊 TTS: Speaking \(text.prefix(60))... (ElevenLabs: \(useElevenLabs)\(self.elevenLabsQuotaExhausted ? ", quota exhausted" : ""))")
-            if useElevenLabs {
-                do {
-                    try Task.checkCancellation()
-                    try await self.speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
-                } catch is CancellationError {
-                    print("🔊 TTS: Cancelled")
-                } catch {
-                    // Only fall back if we weren't cancelled AND generation still matches
-                    guard !Task.isCancelled, gen == self.speechGeneration else {
-                        print("🔊 TTS: Cancelled during fallback")
-                        return
-                    }
-                    print("🔊 TTS: ElevenLabs failed (\(error)), falling back to iOS voice")
-                    await self.speakWithiOS(text: text)
-                }
-            } else {
-                await self.speakWithiOS(text: text)
-            }
+            await self.speakThroughEngineChain(text: text, urgency: urgency, generation: gen)
         }
         currentSpeechTask = task
 
@@ -230,6 +219,71 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             endPause()
             print("🔊 TTS: Finished speaking")
         }
+    }
+
+    // MARK: - Engine selection
+
+    /// Speak `text` by walking the `TTSEngineSelector` fallback chain (ElevenLabs → Kokoro →
+    /// AVSpeech): try each engine in turn, advancing to the next on failure. `.system` is the
+    /// guaranteed terminal — it never throws, so the chain always produces audio (or is cancelled).
+    private func speakThroughEngineChain(text: String, urgency: SpeechUrgency, generation gen: Int) async {
+        let elevenLabsKey = Config.elevenLabsAPIKey
+        // ElevenLabs is "ready" only with a key, online, and not quota-exhausted. Kokoro is "ready"
+        // only with the model present *and* the binary compiled in (always false in the shipped
+        // build → the chain collapses to ElevenLabs/AVSpeech exactly as before).
+        let availability = TTSEngineSelector.Availability(
+            elevenLabsReady: !elevenLabsKey.isEmpty
+                && !elevenLabsQuotaExhausted
+                && (reachability?.isOnline ?? true),
+            kokoroReady: kokoroEngine.isReady
+        )
+        let chain = TTSEngineSelector.chain(
+            preference: Config.ttsEnginePreference,
+            availability: availability,
+            urgency: urgency
+        )
+        print("🔊 TTS: Speaking \(text.prefix(60))... chain=\(chain.map(\.rawValue).joined(separator: "→"))\(elevenLabsQuotaExhausted ? " (ElevenLabs quota exhausted)" : "")")
+
+        for engine in chain {
+            guard !Task.isCancelled, gen == speechGeneration else {
+                print("🔊 TTS: Cancelled mid-chain")
+                return
+            }
+            do {
+                try Task.checkCancellation()
+                switch engine {
+                case .elevenLabs:
+                    try await speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
+                case .kokoro:
+                    try await speakWithKokoro(text: text)
+                case .system:
+                    await speakWithiOS(text: text)
+                }
+                return  // engine succeeded
+            } catch is CancellationError {
+                print("🔊 TTS: Cancelled")
+                return
+            } catch {
+                // Only advance to the next engine if we weren't cancelled AND this is still current.
+                guard !Task.isCancelled, gen == speechGeneration else {
+                    print("🔊 TTS: Cancelled during fallback")
+                    return
+                }
+                print("🔊 TTS: \(engine.rawValue) failed (\(error)), trying next engine")
+                continue
+            }
+        }
+    }
+
+    // MARK: - Kokoro on-device TTS
+
+    /// Speak via the on-device Kokoro engine: synthesize a WAV off the main actor, then play it
+    /// through the same path as ElevenLabs. Throws when the engine isn't ready (model absent or the
+    /// binary isn't compiled in) or synthesis fails, so the caller falls through to the next engine.
+    private func speakWithKokoro(text: String) async throws {
+        let data = try await kokoroEngine.synthesize(text)
+        try Task.checkCancellation()
+        try await playAudioData(data)
     }
 
     // MARK: - Streaming TTS
