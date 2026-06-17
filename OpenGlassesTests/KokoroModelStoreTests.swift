@@ -166,25 +166,36 @@ final class KokoroModelStoreTests: XCTestCase {
         XCTAssertEqual(KokoroModelStore.defaultDirectory.lastPathComponent, "KokoroTTS")
     }
 
-    // MARK: - Engine readiness (compile flag off → never selectable)
+    // MARK: - Engine readiness
+    //
+    // The vendored sherpa-onnx binary is compiled in (`KOKORO_ENABLED`), so `isCompiledIn` is true and
+    // readiness tracks model presence. (We don't call `synthesize` here — that loads the real model;
+    // on-device audio is validated separately.)
 
     @MainActor
-    func testEngineNotReadyWithoutBinaryEvenWhenModelPresent() throws {
+    func testEngineReadyWhenModelPresent() throws {
         try installFullBundle()
         let engine = KokoroTTSEngine(modelStore: store)
-        XCTAssertFalse(KokoroTTSEngine.isCompiledIn)
-        XCTAssertFalse(engine.isReady)   // model on disk, but no binary → clean no-op
+        XCTAssertTrue(KokoroTTSEngine.isCompiledIn)
+        XCTAssertTrue(engine.isReady)
     }
 
     @MainActor
-    func testEngineSynthesizeThrowsWithoutBinary() async throws {
-        try installFullBundle()
-        let engine = KokoroTTSEngine(modelStore: store)
+    func testEngineNotReadyWhenModelAbsent() {
+        let engine = KokoroTTSEngine(modelStore: store)   // fresh temp dir, no files
+        XCTAssertFalse(engine.isReady)
+    }
+
+    @MainActor
+    func testEngineSynthesizeThrowsWhenModelAbsent() async {
+        let engine = KokoroTTSEngine(modelStore: store)   // no model on disk
         do {
             _ = try await engine.synthesize("hello")
-            XCTFail("synthesize should throw without the compiled-in binary")
+            XCTFail("synthesize should throw when the model isn't downloaded")
         } catch let error as KokoroError {
-            XCTAssertEqual(error, .notCompiledIn)
+            XCTAssertEqual(error, .modelUnavailable)
+        } catch {
+            XCTFail("unexpected error: \(error)")
         }
     }
 

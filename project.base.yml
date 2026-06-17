@@ -77,6 +77,10 @@ packages:
   WebRTC:
     url: https://github.com/stasel/WebRTC.git
     from: "120.0.0"
+  # Vendored sherpa-onnx + onnxruntime iOS xcframeworks for the on-device Kokoro TTS
+  # tier (Additional Capabilities #1). Local package; binaries under Vendor/SherpaOnnx/Frameworks.
+  SherpaOnnx:
+    path: Vendor/SherpaOnnx
 
 targets:
   OpenGlasses:
@@ -112,6 +116,9 @@ targets:
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
+        # Compiles the real Kokoro on-device inference path (Additional Capabilities #1);
+        # the vendored sherpa-onnx binary provides the C API behind `#if KOKORO_ENABLED`.
+        OTHER_SWIFT_FLAGS: "$(inherited) -D KOKORO_ENABLED"
         SKIP_INSTALL: "NO"
     dependencies:
       - package: meta-wearables-dat-ios
@@ -140,6 +147,8 @@ targets:
         product: SystemNotification
       - package: WebRTC
         product: WebRTC
+      - package: SherpaOnnx
+        product: SherpaOnnxWrapper
       - target: GlassesActivityWidget
 
   GlassesActivityWidget:
