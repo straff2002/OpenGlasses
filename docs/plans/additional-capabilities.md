@@ -31,6 +31,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 | 5 | **Alternative hands-free triggers** | ~2–4 days | 🚧 Core shipped — gate + service + shake detector + Settings; acoustic/volume detectors deferred |
 | 6 | **Multi-user profiles + PIN gate** | ~4–6 days | ◻︎ Conditional — only if shared-device is a goal |
 | 7 | **Declarative HUD widget board** | ~3–5 days | ⏸ Defer — Display Phase 5 concept |
+| 8 | **On-device ASR (SenseVoice) tier** | ~2–4 days | ✅ Take — sherpa-onnx binary already vendored; closes the offline loop |
 
 ---
 
@@ -275,6 +276,63 @@ An LLM-driven declarative board: a `render_widgets` tool emits a list of widgets
 (text/image/table/music) that the app renders, a natural **Display Phase 5** direction beyond our
 single-frame + Now/Next task card (Plan X) and launcher (Plan Y). Take the **concept + the
 JSON-decoding shape**. Defer until X/Y are fully shipped and there's a concrete multi-widget use case.
+
+---
+
+### 8. On-device ASR (SenseVoice) tier  *(headline — closes the offline loop)*
+
+**Today:** every transcription path runs on Apple **`SFSpeechRecognizer`** —
+[WakeWordService](../../OpenGlasses/Sources/Services/WakeWordService.swift),
+[TranscriptionService](../../OpenGlasses/Sources/Services/TranscriptionService.swift),
+[AmbientCaptionService](../../OpenGlasses/Sources/Services/AmbientCaptionService.swift),
+[MemoryRewindService](../../OpenGlasses/Sources/Services/MemoryRewindService.swift),
+[LiveTranslationService](../../OpenGlasses/Sources/Services/LiveTranslationService.swift). Apple's
+recognizer can fall back to **server-side** recognition (a privacy + offline gap), is rate-limited,
+and gives no emotion / audio-event signal.
+
+**What to add:** an on-device **SenseVoice** recognizer running on the **sherpa-onnx runtime we already
+ship** (vendored for Kokoro TTS, #1). The binary's `c-api.h` already exports the full ASR surface
+(`SherpaOnnxCreateOfflineRecognizer`, `SherpaOnnxOfflineSenseVoiceModelConfig`,
+`SherpaOnnxDecodeOfflineStream`, …) — so this is **zero new dependency**, just a model bundle + the
+same engine pattern as Kokoro, an `OfflineRecognizer` instead of an `OfflineTts`. (Idea sourced from
+[VisionClaw #61](https://github.com/Intent-Lab/VisionClaw/issues/61).)
+
+**Why it fits us specifically:**
+- **Zero marginal binary cost.** sherpa-onnx + onnxruntime are already vendored ([Vendor/SherpaOnnx](../../Vendor/SherpaOnnx)); ASR reuses the exact wrapper, bridging, and `KOKORO_ENABLED`-style gating.
+- **Closes the fully-offline loop**: wake → on-device STT (SenseVoice) → local LLM (MLX) → on-device TTS (Kokoro). Private, no network, and — like Kokoro — **CPU/ONNX so it runs backgrounded**.
+- **Faster** — SenseVoice is non-autoregressive (~5× Whisper, constant-time decode), good for a wearable.
+- **Free signals we already consume**: it emits **emotion** tags (feed [emotion-aware TTS](../../OpenGlasses/Sources/Services/TextToSpeechService.swift)) and **audio-event** tags — music/traffic/crowd — (feed the Presence-Aware Throttle [Plan W](W-presence-aware-agent-throttle.md) / scene awareness).
+
+**Plan (mirror the Kokoro tier):**
+1. **Generalize the model layer.** Lift `KokoroModelStore`/`KokoroModelDownloader`/`HuggingFaceModelInstaller`
+   into a **shared sherpa-onnx model-management layer** (a generic `SherpaModelBundle` descriptor +
+   store + the HF installer, which is already model-agnostic) so ASR and TTS share one downloader.
+2. **`OnDeviceASREngine`** — wraps `SherpaOnnxCreateOfflineRecognizer` with a SenseVoice model config
+   (model/tokens, `use_itn`, language hint); decodes a PCM buffer → text (+ emotion/event tags) on a
+   background thread. Gated behind the same compiled-in sherpa flag.
+3. **`ASREngineSelector`** — a pure policy mirroring `TTSEngineSelector`: given (Apple-Speech available,
+   SenseVoice model present, user preference, **online**), pick `On-Device → Apple Speech` (or the
+   reverse by preference). On-device-first when offline; Apple-Speech-first stays the safe default until
+   the model is downloaded. Fully unit-testable.
+4. **Model delivery:** the SenseVoice int8 bundle (`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-*`, ~hundreds
+   of MB fp32 / ~tens int8) downloads on first enable through the shared HF installer — no-op until
+   present (same discipline as Kokoro).
+5. **Wire one consumer first** — the discrete one-shot path (`TranscriptionService`) — behind a
+   `Config.asrEnginePreference` + a Settings toggle, leaving the continuous wake-word path on Apple
+   Speech initially.
+
+**Deferred / risk:**
+- **Streaming.** SenseVoice is **offline / non-streaming** — the always-on wake-word + ambient-caption
+  paths need **VAD-chunked** feeding (sherpa-onnx ships a Silero VAD), so start with the discrete
+  one-shot transcription path and treat continuous/streaming as the staged follow-up.
+- **Accuracy + mic contention** are device-validated (no hardware here) — the deterministic core is the
+  selector + the shared model store/downloader; real recognition quality is the device gate.
+- Model size + first-download UX (reuse the Kokoro download UI).
+
+**Scope the deterministic core (this PR):** the shared `SherpaModelBundle`/store/downloader refactor +
+the SenseVoice descriptor, the `ASREngineSelector` pure policy, and `OnDeviceASREngine` behind the
+sherpa flag with a guarded decode path — all headlessly testable. Real transcription accuracy +
+streaming/VAD are deferred (device-validated), exactly as Kokoro's audio output was.
 
 ---
 
