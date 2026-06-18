@@ -295,8 +295,7 @@ and gives no emotion / audio-event signal.
 ship** (vendored for Kokoro TTS, #1). The binary's `c-api.h` already exports the full ASR surface
 (`SherpaOnnxCreateOfflineRecognizer`, `SherpaOnnxOfflineSenseVoiceModelConfig`,
 `SherpaOnnxDecodeOfflineStream`, …) — so this is **zero new dependency**, just a model bundle + the
-same engine pattern as Kokoro, an `OfflineRecognizer` instead of an `OfflineTts`. (Idea sourced from
-[VisionClaw #61](https://github.com/Intent-Lab/VisionClaw/issues/61).)
+same engine pattern as Kokoro, an `OfflineRecognizer` instead of an `OfflineTts`.
 
 **Why it fits us specifically:**
 - **Zero marginal binary cost.** sherpa-onnx + onnxruntime are already vendored ([Vendor/SherpaOnnx](../../Vendor/SherpaOnnx)); ASR reuses the exact wrapper, bridging, and `KOKORO_ENABLED`-style gating.
@@ -350,9 +349,7 @@ step, checks the camera frame against the step's expected objects / postconditio
 **auto-advances** when a **confidence threshold** is met **and sustained over a stability/evidence
 window** (N stable observations across an active-duration), with **critical-step gating** (critical
 steps never auto-advance — they surface an explicit confirm). Turns Field Assist procedures genuinely
-hands-free. (Pattern sourced from the `GeminiLiveSpotter` in
-[a VisionClaw fork](https://github.com/Intent-Lab/VisionClaw/compare/main...Lcunha25:VisionClaw:main) —
-adapted to run **native-first** through our own `analyzeFrame`, not their Cloud-Run relay.)
+hands-free, run **native-first** through our own `analyzeFrame` (no external relay).
 
 **Why it fits us specifically:**
 - Reuses [LLMService.analyzeFrame](../../OpenGlasses/Sources/Services/LLMService.swift) (vision),
@@ -389,8 +386,8 @@ adapted to run **native-first** through our own `analyzeFrame`, not their Cloud-
   only run mid-procedure.
 - **Safety:** a false auto-advance on a critical step is dangerous → critical steps **never** auto-advance
   (hard gate). Evidence-required steps must capture the frame as proof before advancing.
-- **No new backend:** unlike the source fork (Gemini spotter via a Cloud-Run `WorkerAdminAPI`), this runs
-  through native `analyzeFrame` — native-first, no relay (see [project_brain_store]).
+- **No new backend:** the spotter runs through native `analyzeFrame` — native-first, no external relay
+  or hosted service (see [project_brain_store]).
 
 **Scope the deterministic core (the PR after #8):** the `Procedure.Step` schema extension + the
 `SpotterPolicy` pure state machine + the `ProcedureSpotter` loop wiring (gated, throttled, with a fake

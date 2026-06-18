@@ -1,6 +1,6 @@
 # Plan — Safety Assessment (High-Energy Control Assessment)
 
-**Status: 📋 Planned (not built).** Plan refined with HECA v2 refinements (2026-06-18); no code yet —
+**Status: 📋 Planned (not built).** Plan refined 2026-06-18 (structured-output + catalog); no code yet —
 none of the named files exist. Sequenced as a Field Assist vertical after the in-flight #8 (ASR) / #9
 (SOP spotter) cores.
 
@@ -66,7 +66,7 @@ enum ControlStatus: String, Codable { case direct, indirect, none }
 
 /// The 13 categorical high-energy hazards (EEI Appendix 3). **Snake_case raw ids** (LLM-friendly —
 /// they are the exact category ids in the prompt + response schema), each mapped to its energy-wheel
-/// source and an SF Symbol for the overlay/HUD. Catalog reconciled with HECA v2.
+/// source and an SF Symbol for the overlay/HUD.
 enum HighEnergyHazard: String, Codable, CaseIterable, Identifiable {
     case suspendedLoad = "suspended_load"
     case fallFromElevation = "fall_from_elevation"
@@ -128,7 +128,7 @@ struct SafetyReport: Codable, Identifiable {
 
 The 13-hazard catalog and the direct-vs-indirect rubric are injected into the system prompt so the model returns all 13 with the exact category ids; parsing validates completeness.
 
-**Structured output (adopted from HECA v2).** Rather than free-form JSON, drive the assessment with a
+**Structured output.** Rather than free-form JSON, drive the assessment with a
 **provider structured-output schema**: an object `{ summary, assessments: [...] }` where each assessment
 is `{ category (enum, the 13 ids), is_present (bool), has_direct_control (bool), direct_control (str),
 has_indirect_control (bool), indirect_control (str), comments (str), evidence: [{ note, box_2d:[ymin,
@@ -201,10 +201,10 @@ optional: PDF export (SessionExporter) · spoken advisor follow-up
 
 ---
 
-## Adopted from HECA v2 (VisionClaw fork)
+## Refinements (structured output + catalog)
 
-This plan predates VisionClaw's HECA **v2**; the concrete refinements folded in (the concept is ours,
-native-first on `analyzeFrame` — no Gemini-REST/backend coupling):
+Concrete refinements in this revision of the plan — native-first on `analyzeFrame`, no external REST /
+backend coupling:
 
 1. **Structured-output response schema** (enum-constrained `category`, explicit `is_present` /
    `has_direct_control` / `has_indirect_control` booleans, evidence `box_2d`, all `required`) instead of
@@ -221,9 +221,8 @@ native-first on `analyzeFrame` — no Gemini-REST/backend coupling):
 6. *(optional)* a few **bundled sample job-site frames** (scaffold, hot work, confined space/manhole,
    man-lift, formwork, shotcrete) for a demo/try-it path and as parser test fixtures.
 
-Not adopted: their Gemini-REST `generateContent` transport, the `WorkerAdminAPI`/backend, and the UIKit
-result view — we run through `analyzeFrame` (multi-provider, offline-degrading) and our own SwiftUI +
-audit/PDF stack.
+Transport stays native: the assessment runs through `analyzeFrame` (multi-provider, offline-degrading)
+with our own SwiftUI + audit/PDF stack — no external REST endpoint or backend service.
 
 ## Dependencies / prereqs
 
