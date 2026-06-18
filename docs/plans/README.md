@@ -24,6 +24,7 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | Meeting-link connector | ✅ Shipped — zero-infra `meeting_link` transport opens/pages an external Zoom/Teams/Meet/Whereby URL; nothing to self-host. Recommended remote path. |
 | O Document RAG | ✅ Shipped (on-device chunking, embedding, retrieval — chat with your files) |
 | P Page & section citations | ✅ Shipped (per-page/section citations for Document RAG) |
+| [Study Mode (flashcards + quizzes)](study-mode.md) | 📋 Planned (not built) — active-recall study on Document RAG/OCR: structured LLM call → decks of flashcards + MCQ quizzes; pure QuizGrader + Leitner SpacedRepetition core; hands-free review (TTS reads, voice answers); offline via Apple on-device. |
 | Q Vault & skills-library management | ✅ Shipped (in-app reference editing, vault export round-trip, ClawHub/voice skills export-import) |
 | R MCP Egress & Tool-Poisoning Screen | ✅ Shipped (this PR) — `SecretPatterns` + `EgressScreen` + `ToolDefinitionScanner`; per-server egress policy, qualified-name routing, trust UI; 21 tests |
 | S Plan-then-Execute & Safety Supervisor | ✅ Phase 1 complete (#57 spine + this PR loop) — deterministic `SafetySupervisor` (subsumes the high-impact gate), `PlanValidator`/`PlanExecutor`, `SafetyRulesView`, plus the live loop: `AgentPlanner` + `AgentComplexity` gate + `AgentRunner` wired into `LLMService` (multi-step → plan/execute, else single-shot). 29 tests. Phase 2 polish (LLM classifier, parallel steps) optional. |
