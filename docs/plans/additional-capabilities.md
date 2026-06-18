@@ -32,6 +32,7 @@ extension of "no Display hardware → tests are the gate." (~0.5 day.)
 | 6 | **Multi-user profiles + PIN gate** | ~4–6 days | ◻︎ Conditional — only if shared-device is a goal |
 | 7 | **Declarative HUD widget board** | ~3–5 days | ⏸ Defer — Display Phase 5 concept |
 | 8 | **On-device ASR (SenseVoice) tier** | ~2–4 days | ✅ Take — sherpa-onnx binary already vendored; closes the offline loop |
+| 9 | **Vision-based procedure auto-advance (SOP spotter)** | ~3–4 days | ✅ Take after #8 — hands-free Field Assist; reuses analyzeFrame + ProcedureRunner |
 
 ---
 
@@ -333,6 +334,68 @@ same engine pattern as Kokoro, an `OfflineRecognizer` instead of an `OfflineTts`
 the SenseVoice descriptor, the `ASREngineSelector` pure policy, and `OnDeviceASREngine` behind the
 sherpa flag with a guarded decode path — all headlessly testable. Real transcription accuracy +
 streaming/VAD are deferred (device-validated), exactly as Kokoro's audio output was.
+
+---
+
+### 9. Vision-based procedure auto-advance (SOP spotter)  *(Field Assist × Plan X — sequence after #8)*
+
+**Today:** [ProcedureRunner](../../OpenGlasses/Sources/Services/FieldAssist/ProcedureRunner.swift) only
+moves forward on an **explicit `advance(choice:)`** — the technician (or the LLM tool) reports the
+observation and calls `procedure_runner` action `next`. The glasses don't *watch* and confirm; the
+[Plan X](X-interactive-hud-now-next-tasks.md) Now/Next HUD card shows the step but doesn't tick forward
+on its own. For a worker whose hands are busy, every step still needs a deliberate voice/band action.
+
+**What to add:** a **`ProcedureSpotter`** — a proactive, throttled vision loop that, for the *active*
+step, checks the camera frame against the step's expected objects / postconditions / validation, and
+**auto-advances** when a **confidence threshold** is met **and sustained over a stability/evidence
+window** (N stable observations across an active-duration), with **critical-step gating** (critical
+steps never auto-advance — they surface an explicit confirm). Turns Field Assist procedures genuinely
+hands-free. (Pattern sourced from the `GeminiLiveSpotter` in
+[a VisionClaw fork](https://github.com/Intent-Lab/VisionClaw/compare/main...Lcunha25:VisionClaw:main) —
+adapted to run **native-first** through our own `analyzeFrame`, not their Cloud-Run relay.)
+
+**Why it fits us specifically:**
+- Reuses [LLMService.analyzeFrame](../../OpenGlasses/Sources/Services/LLMService.swift) (vision),
+  `ProcedureRunner.advance`, the `LiveCoachService` proactive-loop pattern (per-domain loop, dedup,
+  throttle), `CaptureFlow`'s precondition/validation model (Plan U), and the Plan X HUD card (auto-tick).
+- Coordinates with the **Presence-Aware Throttle** ([Plan W](W-presence-aware-agent-throttle.md)) —
+  `LoopThrottle` already exists, so the spotter loop suspends when the user is away/idle, and with the
+  frame-quality gate (Plan J `FrameThrottler`) to keep battery sane.
+
+**Plan (deterministic core first):**
+1. **Schema:** extend `Procedure.Step` with optional spotting criteria — `expectedObjects: [String]`,
+   `postconditions: [String]`, `validationPrompt: String`, `confidenceThreshold`, a stability window
+   (observations + duration), `critical: Bool`, `evidenceRequired: Bool`. **Backward-compatible:** steps
+   without criteria stay manual-only (never auto-advance), so existing procedures are unchanged.
+2. **`SpotterPolicy` (pure)** — the real architectural value: given a stream of per-frame observations
+   (`matched` + `confidence` + timestamp), decide when to auto-advance — confidence ≥ threshold
+   **sustained** over the stability/evidence window (M-of-N stable observations within the active
+   duration), never for a critical step. A misfire-resistant state machine (the vision analogue of
+   `TriggerGate`), fully unit-testable with synthetic observation sequences + a clock.
+3. **`ProcedureSpotter` (`@MainActor`)** — drives the throttled `CameraService` frame loop per active
+   step, builds the vision prompt from the step's criteria, parses the model's match/confidence, feeds
+   `SpotterPolicy`, and calls `ProcedureRunner.advance` on a confirmed match. **Critical steps** →
+   surface a HUD/TTS "confirm step done?" instead of auto-advancing. Gated behind a Settings toggle +
+   `LoopThrottle`; only runs while a procedure is active.
+4. **HUD (Plan X):** the Now/Next card auto-ticks on a confirmed advance (brief "✓ detected" cue);
+   critical steps render a confirm affordance.
+5. **Settings:** a **Hands-free step advance** toggle (off by default — it's a proactive vision loop).
+
+**Deferred / risk:**
+- **Detection accuracy** (does `analyzeFrame` reliably confirm step completion?) is device/LLM-validated
+  — the deterministic core is `SpotterPolicy` + the schema + the loop wiring; real recognition quality +
+  prompt/threshold tuning are the gate.
+- **Battery:** continuous frame analysis — must ride the Plan W throttle + Plan J frame-quality gate and
+  only run mid-procedure.
+- **Safety:** a false auto-advance on a critical step is dangerous → critical steps **never** auto-advance
+  (hard gate). Evidence-required steps must capture the frame as proof before advancing.
+- **No new backend:** unlike the source fork (Gemini spotter via a Cloud-Run `WorkerAdminAPI`), this runs
+  through native `analyzeFrame` — native-first, no relay (see [project_brain_store]).
+
+**Scope the deterministic core (the PR after #8):** the `Procedure.Step` schema extension + the
+`SpotterPolicy` pure state machine + the `ProcedureSpotter` loop wiring (gated, throttled, with a fake
+frame source) + the Settings toggle — all headlessly testable. Real vision detection + tuning are
+deferred (device/LLM-validated), exactly as Kokoro audio and ASR accuracy were.
 
 ---
 
