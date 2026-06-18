@@ -1,5 +1,9 @@
 # Plan — Safety Assessment (High-Energy Control Assessment)
 
+**Status: 📋 Planned (not built).** Plan refined with HECA v2 refinements (2026-06-18); no code yet —
+none of the named files exist. Sequenced as a Field Assist vertical after the in-flight #8 (ASR) / #9
+(SOP spotter) cores.
+
 **Strategic fit:** A B2B safety capability that slots into the **Field Assist** line: a technician glances at a job site and gets a structured, audited assessment of the **high-energy hazards** present and whether each is safeguarded by a *direct* control. Grounded in the published EEI / Construction Safety Research Alliance (CSRA) energy-based "Serious Injury & Fatality (SIF) prevention" methodology — the same vault/procedure/audit shape we already ship, applied to safety. Utilities and construction are exactly the verticals Field Assist targets, and SIF-prevention is a budgeted, regulated spend.
 
 **Effort:** ~1 week (≈80% reuses existing engines; the score, overlay, and report view are the only genuinely new pieces).
@@ -38,7 +42,13 @@ Reuse (no new infrastructure):
 - **Audit + persistence** — [FieldSessionService](../../OpenGlasses/Sources/Services/FieldAssist/FieldSessionService.swift) + `SessionLogger`: a safety assessment is logged as a session event, so it inherits the append-only audit log and export.
 - **HUD** — [GlassesDisplayService](../../OpenGlasses/Sources/Services/GlassesDisplayService.swift): surface the top uncontrolled hazard as a `.hazard` card, and the score as a notification.
 - **Camera frame** — `CameraService` periodic capture (glasses POV) with the iPhone-camera fallback.
-- **Advisor follow-up** — the existing conversational `LLMService` ("does a spotter count as a direct control here?").
+- **Advisor follow-up** — the existing conversational `LLMService`, formalized (from v2) as an
+  **image-seeded safety-partner chat**: the assessed frame is kept in context so the worker can ask
+  "does a spotter count as a direct control here?" and get a specific answer. Dedicated system prompt —
+  a calm, collaborative safety partner *"like talking on the radio"*, who helps decide whether a control
+  is truly DIRECT and suggests specific direct controls, and **never claims a real-world action was
+  taken** (it only assesses + advises). The "never claims an action" guardrail dovetails with the
+  liability framing below.
 
 ---
 
@@ -54,30 +64,50 @@ enum EnergySource: String, Codable, CaseIterable {
 /// Whether a present high-energy hazard is safeguarded.
 enum ControlStatus: String, Codable { case direct, indirect, none }
 
-/// The 13 categorical high-energy hazards (EEI Appendix 3).
+/// The 13 categorical high-energy hazards (EEI Appendix 3). **Snake_case raw ids** (LLM-friendly —
+/// they are the exact category ids in the prompt + response schema), each mapped to its energy-wheel
+/// source and an SF Symbol for the overlay/HUD. Catalog reconciled with HECA v2.
 enum HighEnergyHazard: String, Codable, CaseIterable, Identifiable {
-    case suspendedLoad, fallFromElevation, mobileEquipment, motorVehicleSpeed,
-         mechanicalRotating, highTemperature, steam, fire, explosion,
-         electricalContact, arcFlash, trenchCollapse, highDoseToxic
+    case suspendedLoad = "suspended_load"
+    case fallFromElevation = "fall_from_elevation"
+    case mobileEquipment = "mobile_equipment"          // Mobile Equipment / Traffic
+    case motorVehicleSpeed = "motor_vehicle_speed"
+    case mechanicalRotating = "mechanical_rotating"    // Heavy Rotating Equipment
+    case highTemperature = "high_temperature"
+    case steam, fire, explosion
+    case excavation                                    // Trench / Excavation (was trenchCollapse)
+    case electricalContact = "electrical_contact"
+    case arcFlash = "arc_flash"
+    case toxicChemicalRadiation = "toxic_chemical_radiation"  // folds toxic + radiation (was highDoseToxic)
+
     var id: String { rawValue }
-    var displayName: String { /* … */ "" }
-    var energyThreshold: String { /* "> 500 ft-lbs" copy per hazard */ "" }
+    var displayName: String { /* per-case copy */ "" }
+    var energyThreshold: String { /* "almost always > ~500 ft-lbs / 1,500 J" copy per hazard */ "" }
+    /// Energy-wheel grouping (for the overlay legend + summary). e.g. excavation → .gravity,
+    /// explosion → .pressure, steam → .temperature, arcFlash → .electrical.
+    var energySource: EnergySource { /* per-case map */ .other }
+    /// SF Symbol for the finding row / HUD card (e.g. suspendedLoad → "shippingbox.fill").
+    var systemImage: String { /* per-case */ "exclamationmark.triangle.fill" }
 }
 
 struct EvidenceBox: Codable, Equatable {
     let note: String
-    let box: [Int]   // [ymin, xmin, ymax, xmax], normalized 0–1000
+    let box: [Int]   // box_2d = [ymin, xmin, ymax, xmax], normalized 0–1000
 }
 
 struct HazardFinding: Codable, Equatable {
     let hazard: HighEnergyHazard
     let isPresent: Bool
+    // Explicit booleans (the model decides has_*_control directly) + the named control. Both come
+    // from the structured schema, so control status doesn't hinge on a non-empty-string heuristic.
+    let hasDirectControl: Bool
     let directControl: String      // "" if none
+    let hasIndirectControl: Bool
     let indirectControl: String    // "" if none
     let comments: String
     let evidence: [EvidenceBox]
     var controlStatus: ControlStatus {
-        !directControl.isEmpty ? .direct : (!indirectControl.isEmpty ? .indirect : .none)
+        hasDirectControl ? .direct : (hasIndirectControl ? .indirect : .none)
     }
 }
 
@@ -97,6 +127,24 @@ struct SafetyReport: Codable, Identifiable {
 ```
 
 The 13-hazard catalog and the direct-vs-indirect rubric are injected into the system prompt so the model returns all 13 with the exact category ids; parsing validates completeness.
+
+**Structured output (adopted from HECA v2).** Rather than free-form JSON, drive the assessment with a
+**provider structured-output schema**: an object `{ summary, assessments: [...] }` where each assessment
+is `{ category (enum, the 13 ids), is_present (bool), has_direct_control (bool), direct_control (str),
+has_indirect_control (bool), indirect_control (str), comments (str), evidence: [{ note, box_2d:[ymin,
+xmin,ymax,xmax] }] }`, all `required`. `LLMService.analyzeFrame` already speaks to each provider, so it
+passes the schema where supported (Gemini `responseSchema`, OpenAI/Anthropic structured-output / forced
+tool-call) and falls back to schema-in-prompt + lenient parse elsewhere. This makes "all 13 present,
+ids valid, controls explicit" the contract instead of a hope.
+
+**Grid system prompt (tightened, from v2).** Frame the model as a *certified occupational-safety
+expert* running a HECA per the EEI/CSRA "Power to Prevent SIF" methodology, with the rigorous **3-part
+DIRECT-control test** — a safeguard that is (1) specifically *targeted* to that high-energy hazard,
+(2) drops the energy below the SIF threshold when installed/verified/used properly, and (3) stays
+effective **even if a worker makes an unintentional mistake** (fall arrest, fixed guarding,
+de-energization + LOTO, trench shields, arc-rated suits) — vs INDIRECT (training, signage, PPE,
+spotters, awareness). Guard: *if the image isn't a job-site scene, mark everything not-present and say
+so in the summary*; the summary is one–two sentences naming the scene + key SIF risks.
 
 ---
 
@@ -124,7 +172,7 @@ optional: PDF export (SessionExporter) · spoken advisor follow-up
 ## Build order
 
 1. `SafetyHazard` catalog (13 + energy sources + thresholds) + `SafetyReport`/`HazardFinding` models + **pure `score`** — with tests. No LLM.
-2. `SafetyAssessmentService` — build the structured prompt, call `analyzeFrame`, parse + validate (all 13 present, ids valid). Test the parser against fixture JSON.
+2. `SafetyAssessmentService` — build the structured prompt + **response schema**, call `analyzeFrame`, parse + validate (all 13 present, ids valid, control booleans consistent). Test the parser against fixture JSON.
 3. `safety_assessment` native tool (run on the current frame; return the summary + score) + registration + prompt descriptions (LLMService + GeminiLive).
 4. `SafetyAssessmentStore` (persist + history) + `SafetyAssessmentReportView`.
 5. `SafetyAssessmentOverlay` (normalized box → view-coord mapping; tested pure).
@@ -138,7 +186,8 @@ optional: PDF export (SessionExporter) · spoken advisor follow-up
 - **Score** (pure): present-with-direct / present; nil when none present; all-controlled → 1.0; none-controlled → 0.0.
 - **Report parsing**: fixture JSON → `SafetyReport`; rejects/repairs missing categories (must return all 13); unknown ids ignored.
 - **Catalog**: 13 hazards, stable raw ids, every case has displayName + threshold copy.
-- **Control status**: direct beats indirect beats none; empty strings → none.
+- **Control status**: `hasDirectControl` → direct; else `hasIndirectControl` → indirect; else none.
+- **Schema/parse**: required fields enforced; `category` outside the 13-id enum rejected; control-name string present whenever its boolean is true.
 - **Overlay mapping** (pure): normalized `[ymin,xmin,ymax,xmax]` 0–1000 → CGRect in a given image size (orientation-correct).
 
 ---
@@ -151,6 +200,30 @@ optional: PDF export (SessionExporter) · spoken advisor follow-up
 - **HUD noise.** Surfacing every hazard would spam. *Recommendation: HUD shows only the single highest-severity *uncontrolled* hazard + the score; full list on the phone.*
 
 ---
+
+## Adopted from HECA v2 (VisionClaw fork)
+
+This plan predates VisionClaw's HECA **v2**; the concrete refinements folded in (the concept is ours,
+native-first on `analyzeFrame` — no Gemini-REST/backend coupling):
+
+1. **Structured-output response schema** (enum-constrained `category`, explicit `is_present` /
+   `has_direct_control` / `has_indirect_control` booleans, evidence `box_2d`, all `required`) instead of
+   free-form JSON — reliability over a string heuristic.
+2. **Explicit control booleans** on `HazardFinding` (model decides `has_direct/indirect_control`, not
+   "did it fill the string").
+3. **Reconciled 13-hazard catalog**: exact **snake_case ids**, a per-hazard **energy-source** map, and
+   an **SF Symbol** per hazard; `excavation` (was `trenchCollapse`) and `toxic_chemical_radiation`
+   (folds toxic + radiation; was `highDoseToxic`).
+4. **Tighter grid prompt**: the rigorous 3-part DIRECT-control test + the non-job-site guard + the
+   one–two-sentence summary format.
+5. **Image-seeded advisor chat** with a defined radio-style safety-partner system prompt + the
+   "never claim a real-world action" guardrail.
+6. *(optional)* a few **bundled sample job-site frames** (scaffold, hot work, confined space/manhole,
+   man-lift, formwork, shotcrete) for a demo/try-it path and as parser test fixtures.
+
+Not adopted: their Gemini-REST `generateContent` transport, the `WorkerAdminAPI`/backend, and the UIKit
+result view — we run through `analyzeFrame` (multi-provider, offline-degrading) and our own SwiftUI +
+audit/PDF stack.
 
 ## Dependencies / prereqs
 
