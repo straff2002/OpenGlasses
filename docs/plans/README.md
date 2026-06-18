@@ -10,6 +10,8 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 |---|---|
 | A1/A2/A3 Accessibility | ✅ Shipped (OCR reading tool, urgency TTS, scene/social assistive modes + HUD toggle) |
 | B Personal Health Vault | ✅ Shipped (templates, tool, editor) |
+| [First-Aid / Emergency Assist](first-aid-assist.md) | 📋 Planned (not built) — hands-free bystander coach: CPR metronome (100–120 bpm, 30:2) + first-aid protocols + nearest-AED finder/routing; reuses ProcedureRunner/TTS/Navigation/ExpertBridge. Advisory, not a medical device. |
+| [Personal Health-Safety Advisor](health-safety-advisor.md) | 📋 Planned (not built) — active "is this safe for me?" over the Health Vault: drug-interaction/contraindication/dietary checks with a deterministic high-severity rubric backstopping the LLM. Medical Compliance IAP. |
 | C Live Coach | ✅ Shipped (per-domain loop, dedup) |
 | D Utilities | ✅ Shipped (OneEuroFilter, aircraft_overhead) |
 | E MCP Server | ✅ Shipped (dev-only HTTP server) |
