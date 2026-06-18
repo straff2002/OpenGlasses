@@ -14,6 +14,7 @@ All plans A–M are **built and merged to `main`** to the extent verifiable with
 | D Utilities | ✅ Shipped (OneEuroFilter, aircraft_overhead) |
 | E MCP Server | ✅ Shipped (dev-only HTTP server) |
 | F Field Assist | ✅ Phases 1–3 shipped (vault, procedures, domain calc, audit/PDF export, escalation) |
+| [Safety Assessment (HECA)](safety-assessment.md) | 📋 Planned (not built) — camera-assisted High-Energy Control Assessment (EEI/CSRA SIF); a Field Assist vertical reusing `analyzeFrame` + audit/PDF. Plan refined with HECA v2 (structured schema, energy-source catalog, 3-part direct-control test, image-seeded advisor). |
 | G IT/Network pack | ✅ Shipped (vault, 5 procedures, subnet calc) |
 | H Custom vault import | ✅ Shipped (validator, importer, manager UI) |
 | I Medication Identifier | ✅ Shipped (OCR × Health Vault) |
