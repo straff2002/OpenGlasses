@@ -499,7 +499,7 @@ class GeminiLiveSessionManager: ObservableObject {
             - code_agent: Hands-free control of a REMOTE coding agent (on the user's gateway, not the phone). Actions: start (prompt, optional project), status, cancel, confirm, deny. Requires Agent Mode. Use for "have the agent add a feature", "ask the agent to fix the test".
             - network_calc: IP subnet/CIDR math (IPv4/IPv6) — operation 'subnet' with a 'cidr' returns network, broadcast, netmask, usable range/count.
             - navigation_assist: Spoken walking guidance for low-vision users (hazards/landmarks, clock positions). Actions: start, stop, status. An aid, not a cane/guide-dog replacement.
-            - first_aid: Hands-free first-aid coaching — speaks steps and paces CPR. Actions: start (cpr/choking/bleeding/recovery/march), next, back, aed (nearest defibrillator), stop. Advisory only; always reminds to call emergency services.
+            - first_aid: Hands-free first-aid coaching — speaks steps and paces CPR. Actions: start (cpr/choking/bleeding/recovery/march), next, back, aed (nearest defibrillator), triage (assess a casualty from the camera), stop. Advisory only; always reminds to call emergency services.
             - identify_color: Name the dominant color of what the user sees (on-device). Use for "what color is this?".
             - identify_money: Identify a banknote's currency and denomination from the camera, for low-vision support. Use for "how much is this note?".
             - vision_assess: Structured visual assessment with a typed result card (kind selects the type). Use kind 'instrument_reading' to read a number off a gauge, thermometer, refractometer, scale, or meter. Optional note adds context.

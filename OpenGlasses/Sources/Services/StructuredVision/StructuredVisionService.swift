@@ -53,9 +53,10 @@ final class StructuredVisionService: ObservableObject {
         registerBuiltinSchemas()
     }
 
-    /// Register the built-in, domain-free schemas. Idempotent.
+    /// Register the built-in schemas. Idempotent.
     func registerBuiltinSchemas() {
         if !registry.contains("instrument_reading") { registry.register(InstrumentReadingSchema()) }
+        if !registry.contains("first_aid_triage") { registry.register(FirstAidTriageSchema()) }
     }
 
     /// Dismiss the currently presented card.

@@ -6,8 +6,11 @@ Shipped: the pure core (`AssessmentCard`/`AssessmentTier`/`AssessmentFinding`/`I
 + per-provider `StructuredVisionParser` (forced tool-use / function / JSON, text fallback);
 `StructuredVisionService` + `vision_assess` tool + `AssessmentCardView`/HUD; and the built-in
 **`instrument_reading`** ("read the instrument") consumer. **46 tests, Debug + Release green.**
-**Deferred to follow-up PRs:** first-aid triage consumer (now unblocked — #82 merged), Gemini
-`responseSchema` translation, CaptureFlow `voice_number` auto-fill.
+**Follow-up shipped (`feat/first-aid-triage`):** first-aid casualty-triage consumer —
+`FirstAidTriageSchema` + the `first_aid` `action=triage`, with a deterministic safety backstop
+(not-breathing / unresponsive / severe-bleeding → critical + "call emergency services", overriding the
+model). Advisory only — not a medical device; not behind the Medical Compliance IAP.
+**Still deferred:** Gemini `responseSchema` translation, CaptureFlow `voice_number` auto-fill.
 
 **Strategic fit:** Today every camera-reasoning feature funnels through
 [`LLMService.analyzeFrame`](../../OpenGlasses/Sources/Services/LLMService.swift) (line 848), which returns
