@@ -280,6 +280,12 @@ struct OpenGlassesApp: App {
             case .active:
                 print("📱 App became active")
                 appState.restoreFromBackground()
+                // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
+                // while we were away.
+                let imported = appState.teleprompterStore.importPendingShares()
+                if imported > 0 {
+                    appState.glassesDisplay.flash("Imported \(imported) teleprompter script\(imported == 1 ? "" : "s")")
+                }
                 // Refresh the Siri Shortcuts catalog — the user may have added shortcuts
                 // while away — so the agent's run_shortcut menu stays current (Plan Z).
                 Task { await ShortcutsCatalog.shared.refresh() }

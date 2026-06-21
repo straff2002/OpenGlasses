@@ -14,3 +14,11 @@ targets:
       base:
         CODE_SIGN_ENTITLEMENTS: Config/Entitlements/Personal/GlassesActivityWidget.entitlements
         DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
+
+  # Teleprompter Share Extension (PR B). Copy Config/Entitlements/Personal/GlassesActivityWidget.entitlements
+  # to OpenGlassesShareExtension.entitlements (same app group) for device builds.
+  OpenGlassesShareExtension:
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Config/Entitlements/Personal/OpenGlassesShareExtension.entitlements
+        DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID

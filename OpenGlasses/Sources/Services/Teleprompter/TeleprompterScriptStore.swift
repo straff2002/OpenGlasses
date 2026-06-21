@@ -45,6 +45,7 @@ final class TeleprompterScriptStore: ObservableObject {
             ?? FileManager.default.temporaryDirectory
         fileURL = dir.appendingPathComponent("teleprompter_scripts.json")
         load()
+        importPendingShares()
     }
 
     // MARK: - Mutations
@@ -77,6 +78,20 @@ final class TeleprompterScriptStore: ObservableObject {
     func delete(at offsets: IndexSet) {
         scripts.remove(atOffsets: offsets)
         save()
+    }
+
+    /// Drain any scripts shared in via the Share Extension (PR B) and save them (newest
+    /// first). Called on init and on app foreground. Returns the number imported.
+    @discardableResult
+    func importPendingShares() -> Int {
+        let pending = SharedTeleprompterInbox.drain()
+        guard !pending.isEmpty else { return 0 }
+        for item in pending {
+            let title = item.title.isEmpty ? SavedScript.deriveTitle(from: item.text) : item.title
+            scripts.insert(SavedScript(title: title, text: item.text), at: 0)
+        }
+        save()
+        return pending.count
     }
 
     // MARK: - Lookup

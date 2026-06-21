@@ -151,6 +151,7 @@ targets:
       - package: SherpaOnnx
         product: SherpaOnnxWrapper
       - target: GlassesActivityWidget
+      - target: OpenGlassesShareExtension
 
   GlassesActivityWidget:
     type: app-extension
@@ -180,12 +181,51 @@ targets:
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
 
+  # Share Extension (Teleprompter Phase 2 / PR B): accepts shared text, URLs, and text
+  # files from the iOS share sheet and hands them to the app via the app-group inbox
+  # (SharedTeleprompterInbox), which the main app drains into TeleprompterScriptStore.
+  OpenGlassesShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: OpenGlassesShareExtension
+      # Shared with the main app — the app-group hand-off inbox.
+      - path: OpenGlasses/Sources/Shared/SharedTeleprompterInbox.swift
+    entitlements:
+      path: OpenGlassesShareExtension/OpenGlassesShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openglasses.app
+    info:
+      path: OpenGlassesShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: "OpenGlasses Teleprompter"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsAttachmentsWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
+        MARKETING_VERSION: "2.2.0"
+        CURRENT_PROJECT_VERSION: "11"
+        SWIFT_VERSION: "5.9"
+        SKIP_INSTALL: "YES"
+        CODE_SIGN_STYLE: Automatic
+
 schemes:
   OpenGlasses:
     build:
       targets:
         OpenGlasses: all
         GlassesActivityWidget: all
+        OpenGlassesShareExtension: all
     run:
       config: Debug
       debugEnabled: true
