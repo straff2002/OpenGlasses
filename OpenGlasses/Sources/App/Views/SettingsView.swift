@@ -14,6 +14,7 @@ struct SettingsView: View {
     // Intelligence settings
     @State private var intentClassifierEnabled = Config.intentClassifierEnabled
     @State private var userMemoryEnabled = Config.userMemoryEnabled
+    @State private var memoryNudgesEnabled = Config.memoryNudgesEnabled
     @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
     @State private var autoModelRoutingEnabled = Config.autoModelRoutingEnabled
 
@@ -219,6 +220,11 @@ struct SettingsView: View {
                     title: "Conversation History",
                     isOn: $conversationPersistenceEnabled,
                     info: "Saves conversation transcripts so you can review them later in the History tab. Also provides context for follow-up questions within a session. When off, conversations are ephemeral and discarded after each session."
+                )
+                InfoToggle(
+                    title: "Memory Suggestions",
+                    isOn: $memoryNudgesEnabled,
+                    info: "After you state a durable fact (\"my daughter's name is Mia\") or repeat a multi-step request, the assistant offers a spoken nudge to remember it or save it as a skill — you confirm by voice. With Agentic Features on, these are saved automatically instead of nudged. Off by default."
                 )
 
                 NavigationLink {
@@ -666,6 +672,7 @@ struct SettingsView: View {
 
         Config.setIntentClassifierEnabled(intentClassifierEnabled)
         Config.setUserMemoryEnabled(userMemoryEnabled)
+        Config.setMemoryNudgesEnabled(memoryNudgesEnabled)
         Config.setConversationPersistenceEnabled(conversationPersistenceEnabled)
 
         Config.setBroadcastPlatform(broadcastPlatform)

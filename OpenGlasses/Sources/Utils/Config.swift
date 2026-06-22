@@ -2283,6 +2283,19 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "glassesDisplayEnabled")
     }
 
+    // MARK: - Memory loop (self-improving)
+
+    /// When on, the assistant offers a spoken nudge after you state a durable fact or repeat a
+    /// multi-step request ("say 'remember it'" / "save that as a skill"). Off by default. When
+    /// Agent Mode is also on, those are auto-saved silently instead of nudged.
+    static var memoryNudgesEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "memoryNudgesEnabled")
+    }
+
+    static func setMemoryNudgesEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "memoryNudgesEnabled")
+    }
+
     // MARK: - Teleprompter
 
     /// Default pacing mode for new teleprompter sessions.

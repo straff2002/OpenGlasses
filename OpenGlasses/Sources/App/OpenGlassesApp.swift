@@ -930,6 +930,12 @@ class AppState: ObservableObject, AppStateProtocol {
                 ?? RecallService.fallbackSummary(hits)
         }
 
+        // Memory & Recall Phase 3 — the self-improving loop: nudge (or, in Agent Mode, silently
+        // save) durable facts + repeated multi-step requests. Presence-aware; off by default.
+        MemoryLoopService.shared.configure(presence: presenceMonitor) { [weak self] message in
+            Task { @MainActor in await self?.speechService.speak(message) }
+        }
+
         // Field Assist Phase 5 (Plan K2): expert stream bridge for escalations. Transport
         // (MJPEG / WebRTC) is selected in Settings; MJPEG is the working default.
         EscalationCoordinator.shared.bridge = ExpertStreamBridge(
@@ -2741,6 +2747,11 @@ class AppState: ObservableObject, AppStateProtocol {
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "assistant", content: response)
             }
+
+            // Memory loop (Phase 3): spot a durable fact or a repeated multi-step request and
+            // offer to remember it (or silently save it in Agent Mode).
+            MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
+                                                 toolNames: nativeToolRouter.takeTurnToolNames())
 
             // Speak the response (user can still say "stop")
             if speakResponse {

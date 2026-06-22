@@ -29,6 +29,18 @@ final class NativeToolRouter {
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
+    /// Names of tools routed since the last `takeTurnToolNames()` — lets the memory loop
+    /// (Memory & Recall Phase 3) see which tools a turn used, to spot repeated multi-step
+    /// requests worth saving as a skill.
+    private(set) var turnToolNames: [String] = []
+
+    /// Return and clear the tools routed this turn.
+    func takeTurnToolNames() -> [String] {
+        let names = turnToolNames
+        turnToolNames = []
+        return names
+    }
+
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
         self.openClawBridge = openClawBridge
@@ -36,6 +48,8 @@ final class NativeToolRouter {
 
     /// Handle a tool call by name. Routing order: native → MCP → OpenClaw → error.
     func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
+        turnToolNames.append(name)   // Phase 3: track tools used this turn for skill detection
+
         // 0. Deterministic safety supervisor (Plan S): the single pre-execution safety gate when
         // agent mode is on. It subsumes the high-impact confirmation backstop — its
         // `needsVoiceApproval` rule reproduces it — and adds deterministic block/confirm rules
