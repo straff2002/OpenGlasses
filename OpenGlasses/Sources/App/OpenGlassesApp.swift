@@ -2353,6 +2353,93 @@ class AppState: ObservableObject, AppStateProtocol {
         ]
     }
 
+    /// Post-store voice-command handlers (Plan BG P2): stop / goodbye / take-a-picture. These run
+    /// after persona detection + the conversation-store append, since they act on the finalized
+    /// turn. `query` is the persona-stripped prompt used by the photo path.
+    private func postStoreHandlers(query: String) -> [VoiceCommandHandler] {
+        [
+            // "stop" — interrupt TTS, stay in conversation.
+            VoiceCommandHandler(label: "stop") { [weak self] text in
+                guard let self, self.isStopCommand(text) else { return false }
+                print("🛑 Voice command: stop")
+                self.speechService.stopSpeaking()
+                if self.inConversation { print("💬 Stopped — listening for next question...") }
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // "goodbye" — end conversation, back to wake word.
+            VoiceCommandHandler(label: "goodbye") { [weak self] text in
+                guard let self, self.isGoodbyeCommand(text) else { return false }
+                print("👋 Voice command: goodbye")
+                self.speechService.stopSpeaking()
+                self.inConversation = false
+                self.lastResponse = "Goodbye!"
+                await self.speechService.speak("Goodbye!")
+                await self.returnToWakeWord()
+                return true
+            },
+            // "take a picture" — capture from the glasses camera and describe it. Runs inside the
+            // cancellable `currentLLMTask` so barge-in / stop can abort it.
+            VoiceCommandHandler(label: "photo") { [weak self] text in
+                guard let self, self.isPhotoCommand(text) else { return false }
+                print("📸 Voice command: take a picture")
+                self.isProcessing = true
+                // Start capture immediately — play the shutter tone, no spoken "taking a picture"
+                self.speechService.playAcknowledgmentTone()
+                self.speechService.startThinkingSound()
+
+                self.currentLLMTask = Task {
+                    do {
+                        // Capture and send to LLM concurrently — no extra round-trip speech
+                        let photoData = try await self.cameraService.capturePhoto()
+                        try Task.checkCancellation()
+                        // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
+                        self.cameraService.restoreAudioForWakeWord()
+                        self.cameraService.saveToPhotoLibrary(photoData)
+                        print("📸 Photo captured, sending to LLM with prompt: \(query)")
+
+                        let rawResponse = try await self.llmService.sendMessage(
+                            query,
+                            locationContext: self.locationService.locationContext,
+                            imageData: photoData,
+                            memoryContext: Config.userMemoryEnabled ? self.userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? query : nil) : nil
+                        )
+                        try Task.checkCancellation()
+                        let response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+                        self.lastResponse = response
+                        if Config.conversationPersistenceEnabled {
+                            self.conversationStore.appendMessage(role: "assistant", content: response)
+                        }
+                        print("🤖 \(self.llmService.activeModelName) (vision): \(response)")
+
+                        // If an audio or video recording is active, inject the description
+                        // into the caption history so the meeting assistant has visual context.
+                        if self.audioRecorder.isRecording || self.videoRecorder.isRecording {
+                            self.ambientCaptions.insertVisualNote(response)
+                        }
+
+                        // Start wake word listener during TTS so user can say "stop"
+                        self.startStopListener()
+                        await self.speechService.speak(response)
+                        self.stopStopListener()
+
+                    } catch is CancellationError {
+                        print("🛑 Photo/LLM task cancelled")
+                    } catch {
+                        self.cameraService.restoreAudioForWakeWord()
+                        print("📸 Photo capture failed: \(error)")
+                        self.lastResponse = "Photo failed: \(error.localizedDescription)"
+                        await self.speechService.speak("Sorry, I couldn't take a photo or process the image. \(error.localizedDescription)")
+                    }
+                    self.isProcessing = false
+                    self.speechService.stopThinkingSound()
+                    await self.resumeListeningOrReturnToWakeWord(ensureEngine: true)
+                }
+                return true
+            },
+        ]
+    }
+
     /// Reuse an already-available live frame for vision-capable models without trying to
     /// start the camera. This avoids re-triggering fragile Meta camera permission flows.
     private func currentVisionFrameDataIfAvailable() -> Data? {
@@ -2487,81 +2574,9 @@ class AppState: ObservableObject, AppStateProtocol {
             conversationStore.appendMessage(role: "user", content: text)
         }
 
-        // Voice command: "stop" — interrupt TTS, stay in conversation
-        if isStopCommand(text) {
-            print("🛑 Voice command: stop")
-            speechService.stopSpeaking()
-            if inConversation { print("💬 Stopped — listening for next question...") }
-            await resumeListeningOrReturnToWakeWord()
-            return
-        }
-
-        // Voice command: "goodbye" — end conversation, back to wake word
-        if isGoodbyeCommand(text) {
-            print("👋 Voice command: goodbye")
-            speechService.stopSpeaking()
-            inConversation = false
-            lastResponse = "Goodbye!"
-            await speechService.speak("Goodbye!")
-            await returnToWakeWord()
-            return
-        }
-
-        // Voice command: "take a picture" — capture photo from glasses camera
-        if isPhotoCommand(text) {
-            print("📸 Voice command: take a picture")
-            isProcessing = true
-            // Start capture immediately — play the shutter tone, no spoken "taking a picture"
-            speechService.playAcknowledgmentTone()
-            speechService.startThinkingSound()
-
-            currentLLMTask = Task {
-                do {
-                    // Capture and send to LLM concurrently — no extra round-trip speech
-                    let photoData = try await cameraService.capturePhoto()
-                    try Task.checkCancellation()
-                    // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
-                    cameraService.restoreAudioForWakeWord()
-                    cameraService.saveToPhotoLibrary(photoData)
-                    print("📸 Photo captured, sending to LLM with prompt: \(query)")
-
-                    let rawResponse = try await llmService.sendMessage(
-                        query,
-                        locationContext: locationService.locationContext,
-                        imageData: photoData,
-                        memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? query : nil) : nil
-                    )
-                    try Task.checkCancellation()
-                    let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
-                    lastResponse = response
-                    if Config.conversationPersistenceEnabled {
-                        conversationStore.appendMessage(role: "assistant", content: response)
-                    }
-                    print("🤖 \(llmService.activeModelName) (vision): \(response)")
-
-                    // If an audio or video recording is active, inject the description
-                    // into the caption history so the meeting assistant has visual context.
-                    if audioRecorder.isRecording || videoRecorder.isRecording {
-                        ambientCaptions.insertVisualNote(response)
-                    }
-
-                    // Start wake word listener during TTS so user can say "stop"
-                    startStopListener()
-                    await speechService.speak(response)
-                    stopStopListener()
-
-                } catch is CancellationError {
-                    print("🛑 Photo/LLM task cancelled")
-                } catch {
-                    cameraService.restoreAudioForWakeWord()
-                    print("📸 Photo capture failed: \(error)")
-                    lastResponse = "Photo failed: \(error.localizedDescription)"
-                    await speechService.speak("Sorry, I couldn't take a photo or process the image. \(error.localizedDescription)")
-                }
-                isProcessing = false
-                speechService.stopThinkingSound()
-                await resumeListeningOrReturnToWakeWord(ensureEngine: true)
-            }
+        // Post-store voice-command chain (Plan BG P2): stop / goodbye / take-a-picture. Runs on the
+        // persona-stripped `query`; the first to consume the turn short-circuits before the LLM.
+        if await ConversationFlowEngine(handlers: postStoreHandlers(query: query)).route(text) != nil {
             return
         }
 
