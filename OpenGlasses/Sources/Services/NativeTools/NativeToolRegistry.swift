@@ -113,6 +113,12 @@ final class NativeToolRegistry {
             register(CapturePhotoTool(cameraService: camera))
             register(QRContextTool(cameraService: camera))
             register(SmartCaptureTool(cameraService: camera))
+            // Plan CB: sharp-frame injection for live sessions. The injector resolves through
+            // AppStateProvider at execution time — the session managers are per-session objects,
+            // and capturing one here would go stale on the first teardown (see LookCloselyTool).
+            register(LookCloselyTool(
+                captureSharpFrame: { try await camera.capturePhoto() },
+                injectorProvider: { AppStateProvider.shared?.activeLiveInjector }))
             register(VisionAssessTool())   // structured vision (read the instrument, etc.) via StructuredVisionService.shared
             if let recorder = videoRecorder {
                 register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,

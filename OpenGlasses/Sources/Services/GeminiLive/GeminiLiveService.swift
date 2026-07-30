@@ -304,6 +304,34 @@ class GeminiLiveService: ObservableObject {
         }
     }
 
+    // MARK: - Mid-session injection (Plan CB)
+
+    /// Put text in front of the model as a user turn. `completeTurn: true` makes the model respond
+    /// now; `false` only appends to context and generates NOTHING — a silent failure that presents
+    /// as a delivery bug, so pass `false` only for background notes (see `LiveInjectionEnvelope`).
+    func sendText(_ text: String, completeTurn: Bool) {
+        guard connectionState == .ready, let task = webSocketTask else {
+            NSLog("[Gemini] sendText skipped — state: %@", String(describing: connectionState))
+            return
+        }
+        let json = LiveInjectionEnvelope.geminiText(text, completeTurn: completeTurn)
+        sendQueue.async { Self.sendJSONDirect(json, via: task) }
+    }
+
+    /// Push a full-quality still into the model's view, bypassing the throttled stream path and its
+    /// resize/quality-0.5 encode. Pre-encoded JPEG so the sharp bytes go out exactly as captured.
+    func sendHighResImage(jpegData: Data) {
+        guard connectionState == .ready, let task = webSocketTask else {
+            NSLog("[Gemini] sendHighResImage skipped — state: %@", String(describing: connectionState))
+            return
+        }
+        sendQueue.async {
+            let json = LiveInjectionEnvelope.geminiImage(base64JPEG: jpegData.base64EncodedString())
+            NSLog("[Gemini] Injecting sharp frame (%d KB JPEG)", jpegData.count / 1024)
+            Self.sendJSONDirect(json, via: task)
+        }
+    }
+
     // MARK: - Private
 
     private func resolveConnect(success: Bool) {

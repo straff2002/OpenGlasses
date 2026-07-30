@@ -141,6 +141,19 @@ class AgentNotificationQueue: ObservableObject {
             return
         }
 
+        // During a live voice session, route through the session's own model instead of speaking
+        // over it with TTS in a different voice (Plan CB). completeTurn: true is load-bearing —
+        // without it the injection appends silently and the user hears nothing. The message is
+        // framed as the delivery of an earlier request, not fresh news, so the model presents it
+        // as the answer it is.
+        if let injector = appState.activeLiveInjector {
+            let framed = AsyncDeliveryPhrasing.resultInstruction(question: nil, answer: message)
+            injector.injectText(framed, completeTurn: true)
+            appState.lastResponse = message
+            NSLog("[AgentQueue] Delivered via live session injection")
+            return
+        }
+
         // Play soft notification chime
         appState.speechService.playAcknowledgmentTone()
         try? await Task.sleep(nanoseconds: 500_000_000)

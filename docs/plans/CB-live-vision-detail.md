@@ -1,6 +1,24 @@
 # Plan CB — Live-Session Vision Detail & Async Delivery
 
-**Status:** 📋 Planned (2026-07-30)
+**Status:** 🚧 P1–P3 shipped in one PR (2026-07-30) — `LiveInjectionEnvelope`/`LiveSessionInjecting` +
+`sendText`/`sendHighResImage` on both live services, `AsyncDeliveryPhrasing`, `LookCloselyPolicy` +
+`look_closely` tool (BV-gated, 6 s timeout, injector resolved per-call via `AppState.activeLiveInjector`),
+live-session suppression of the Direct-mode "still working" TTS, agent-result delivery via in-session
+injection, phone-sheet pinch zoom (`PhoneZoomPolicy`). Device smoke owed: sharp-frame quality on real
+glasses, injected-turn behaviour mid-conversation, zoom feel.
+
+**Findings vs. plan (recorded during implementation):**
+- `OpenAIRealtimeService.sendImage` was *not* dead — the Realtime frame throttler calls it, and its
+  append-only shape (no `response.create`) is **correct** for streamed frames. The fix became: leave
+  the frame path alone, add explicit `sendText(completeTurn:)`/`sendHighResImage` alongside, and put
+  the contract in `LiveInjectionEnvelope` docs.
+- Live tool calls already route `ToolCallRouter → NativeToolRouter`, so registering `look_closely`
+  in the registry is all the exposure work; and the live path already had a proper two-phase
+  SILENT/WHEN_IDLE ack — the real "Still working…" defect was that Direct-mode TTS *also* fired
+  during live sessions, over the top of that mechanism. Fixed by suppression, not injection.
+- `look_closely` on Gemini needs **no** `clientContent` at all: the sharp frame rides the realtime
+  video lane and the pending function response drives generation. `completeTurn` matters for the
+  *text* consumers (deferred agent results).
 
 ## Problem
 

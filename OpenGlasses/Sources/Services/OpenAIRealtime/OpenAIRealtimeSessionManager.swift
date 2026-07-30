@@ -341,3 +341,17 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         }
     }
 }
+
+// MARK: - Live injection (Plan CB)
+
+extension OpenAIRealtimeSessionManager: LiveSessionInjecting {
+    var canInject: Bool { isActive && connectionState == .ready }
+
+    func injectSharpImage(jpegData: Data) {
+        realtimeService.sendHighResImage(jpegData: jpegData)
+    }
+
+    func injectText(_ text: String, completeTurn: Bool) {
+        realtimeService.sendText(text, completeTurn: completeTurn)
+    }
+}
