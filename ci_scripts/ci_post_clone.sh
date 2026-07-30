@@ -27,7 +27,12 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   tools_dir="$PWD/.ci-tools/xcodegen-${XCODEGEN_VERSION}"
   rm -rf "$tools_dir"
   mkdir -p "$tools_dir"
-  curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
+  # Retries: a single connect failure here (curl exit 7) killed a whole archive under `set -e` —
+  # release assets redirect to objects.githubusercontent.com, a different host from the one the
+  # clone proved reachable, and Xcode Cloud's network drops it occasionally. --retry-all-errors
+  # covers connect-level failures, which plain --retry does not consider transient.
+  curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 \
+    "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
     -o "$tools_dir/xcodegen.zip"
   unzip -oq "$tools_dir/xcodegen.zip" -d "$tools_dir"
   xcodegen_bin="$(find "$tools_dir" -type f -name xcodegen -path '*/bin/*' | head -n 1)"
