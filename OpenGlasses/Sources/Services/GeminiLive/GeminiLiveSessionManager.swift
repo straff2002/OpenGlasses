@@ -145,14 +145,17 @@ class GeminiLiveSessionManager: ObservableObject {
         geminiService.configure(systemInstruction: systemInstruction, toolDeclarations: toolDefs)
 
         // Wire audio capture → Gemini
-        // In iPhone mode, mute mic while the model is speaking to prevent echo feedback.
-        // The co-located loudspeaker + mic overwhelms iOS echo cancellation, causing
-        // the model to hear itself and interrupt or produce garbled output.
+        // Echo suppression is a policy of the reached duplex tier (Plan CC), not a blanket mute:
+        // with voice processing alive the mic stays open while the model speaks (real barge-in via
+        // server VAD); on the half-duplex fallback this is the old mute — drop iPhone-mode buffers
+        // during model speech so the co-located loudspeaker can't feed the model its own voice.
         audioManager.onAudioCaptured = { [weak self] data in
             guard let self else { return }
             Task { @MainActor in
-                // Echo suppression: skip sending mic audio while model speaks on iPhone speaker
-                if self.useIPhoneAudioMode && self.geminiService.isModelSpeaking { return }
+                if EchoSuppressionPolicy.shouldDropCapturedBuffer(
+                    capability: self.audioManager.duplexCapability,
+                    iPhoneMode: self.useIPhoneAudioMode,
+                    modelSpeaking: self.geminiService.isModelSpeaking) { return }
                 self.geminiService.sendAudio(data: data)
             }
         }

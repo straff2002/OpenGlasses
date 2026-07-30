@@ -99,10 +99,19 @@ final class RealtimeAudioEngine {
 
     private let config: RealtimeAudioEngineConfig
 
-    // Keep the engine container permanent for the engine's lifetime. Teardown only stops and
-    // detaches child nodes; it never nils or replaces this engine.
-    private let audioEngine = AVAudioEngine()
+    // The engine container is stable for the lifetime of a capture: teardown only stops and
+    // detaches child nodes. It is REPLACED in exactly one place — `prepareEngineOnQueue`, at
+    // capture start, on the lifecycle queue — because voice processing (Plan CC) only behaves when
+    // enabled on a fresh engine before any wiring or format read. Never swapped mid-capture, so
+    // the recovery paths (interruption/route reset) always see the live container.
+    private var audioEngine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
+
+    /// What this capture actually achieved (Plan CC): `.echoCancelled` when voice-processing IO
+    /// came up alive, `.halfDuplex` otherwise. Written on the lifecycle queue at capture start —
+    /// before any buffer flows — and read by the session managers' capture callbacks to drive
+    /// `EchoSuppressionPolicy`.
+    private(set) var duplexCapability: DuplexAudioCapability = .halfDuplex
 
     // All engine-graph mutations run here so observer-driven recovery can't race start/stop.
     private let audioLifecycleQueue: DispatchQueue
@@ -186,6 +195,11 @@ final class RealtimeAudioEngine {
 
     private func startCaptureOnQueue() throws {
         guard !isCapturing else { return }
+
+        // Plan CC: decide the duplex tier for THIS capture. Voice processing is only attempted for
+        // the co-located phone speaker+mic — in glasses mode the mic is remote and there is no echo
+        // path to cancel, so the risk of the IO swap buys nothing.
+        prepareEngineOnQueue(wantVoiceProcessing: Config.duplexAudioEnabled && useIPhoneMode)
 
         // Idempotent setup: clear any stale tap, attach the player exactly once.
         if isInputTapInstalled {
@@ -293,10 +307,70 @@ final class RealtimeAudioEngine {
             try audioEngine.start()
             playerNode.play()
             isCapturing = true
+            // The first question on any field report is which tier this capture reached.
+            NSLog("%@ Capture started — duplex tier: %@", config.logPrefix, duplexCapability.rawValue)
         } catch {
             tearDownEngineGraphOnQueue(flushPendingAudio: false)
             throw error
         }
+    }
+
+    // MARK: - Duplex tier (Plan CC)
+
+    /// Establish the engine for this capture and set `duplexCapability`.
+    ///
+    /// The ordering here IS the fix. Enabling voice processing on the long-lived engine — one that
+    /// has had taps installed and formats read — silenced capture entirely on recent iOS builds
+    /// (deaf-always, strictly worse than the mute). The IO-unit swap only behaves when it happens
+    /// on a fresh engine, before any wiring and before any format read. A zero sample rate on the
+    /// post-enable format is the known dead-IO signature; on seeing it we rebuild WITHOUT voice
+    /// processing so the half-duplex mute takes over. Failure is graded, not binary:
+    /// echo-cancelled → open mic + barge-in; unavailable → today's mute; deaf-always and
+    /// hearing-itself both structurally excluded.
+    ///
+    /// Re-tried on every capture start (the engine is rebuilt anyway); the verdict holds for the
+    /// duration of that capture so the tier cannot flap mid-conversation.
+    private func prepareEngineOnQueue(wantVoiceProcessing: Bool) {
+        duplexCapability = .halfDuplex
+        guard wantVoiceProcessing else { return }
+
+        replaceEngineOnQueue()
+        do {
+            try audioEngine.inputNode.setVoiceProcessingEnabled(true)
+        } catch {
+            NSLog("%@ Voice processing enable failed (%@) — falling back to half-duplex",
+                  config.logPrefix, error.localizedDescription)
+            replaceEngineOnQueue()
+            return
+        }
+
+        let format = audioEngine.inputNode.outputFormat(forBus: 0)
+        switch VoiceProcessingProbe.verdict(sampleRate: format.sampleRate,
+                                            channelCount: format.channelCount) {
+        case .usable:
+            duplexCapability = .echoCancelled
+        case .deadIO(let reason):
+            NSLog("%@ Voice processing came up dead (%@) — rebuilding without it",
+                  config.logPrefix, reason)
+            replaceEngineOnQueue()
+        }
+    }
+
+    /// Swap in a fresh engine container. Lifecycle-queue only, capture-start only — child nodes are
+    /// detached from the old engine first so the player can re-attach to the new one.
+    private func replaceEngineOnQueue() {
+        if isInputTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isInputTapInstalled = false
+        }
+        if isPlayerNodeAttached {
+            if playerNode.isPlaying { playerNode.stop() }
+            audioEngine.disconnectNodeOutput(playerNode)
+            audioEngine.detach(playerNode)
+            isPlayerNodeAttached = false
+        }
+        audioEngine.stop()
+        audioEngine = AVAudioEngine()
     }
 
     /// Play received PCM audio (Int16 at `config.outputSampleRate`) through the speaker.

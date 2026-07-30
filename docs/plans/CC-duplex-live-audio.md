@@ -1,6 +1,14 @@
 # Plan CC — Duplex Live Audio (echo cancellation that degrades instead of failing)
 
-**Status:** 📋 Planned (2026-07-30)
+**Status:** 🚧 P1+P2 shipped in one PR (2026-07-31) — `DuplexAudioCapability` + `VoiceProcessingProbe`
+(zero-rate dead-IO verdict) + `EchoSuppressionPolicy` (truth table replaces the inline mute in **both**
+session managers), engine container replaced only in `prepareEngineOnQueue` at capture start on the
+lifecycle queue (VP enabled before any wiring/format read; dead-IO → rebuild without VP), tier logged
+per capture start, `duplexAudioEnabled` flag default **off**. Resolved open decisions: VP is retried
+per capture start with the verdict held for that capture (no mid-conversation flapping), and the flag
+is not user-visible — the reached tier is in the capture-start log. VP is only attempted in iPhone
+mode: glasses mode has a remote mic and no echo path, so the IO-swap risk buys nothing there.
+**P3 (device matrix) owed and gates default-on** — checklist in the phase section below.
 
 ## Problem
 

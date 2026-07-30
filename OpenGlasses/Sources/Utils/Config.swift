@@ -1749,6 +1749,18 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "geminiNonBlockingToolsEnabled")
     }
 
+    /// Plan CC P2 — voice-processing echo cancellation for phone-mode live sessions (open mic +
+    /// barge-in). Default OFF until the device matrix in the plan doc passes: the failure mode it
+    /// risks (capture silenced entirely on some OS builds) is strictly worse than the half-duplex
+    /// mute it replaces, and the automatic fallback needs proving on hardware first.
+    static var duplexAudioEnabled: Bool {
+        UserDefaults.standard.object(forKey: "duplexAudioEnabled") as? Bool ?? false
+    }
+
+    static func setDuplexAudioEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "duplexAudioEnabled")
+    }
+
     // MARK: - OpenAI Realtime Configuration
 
     /// Find the best OpenAI model config for Realtime mode.
