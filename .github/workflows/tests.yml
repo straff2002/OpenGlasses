@@ -68,13 +68,20 @@ jobs:
       - name: Run unit tests
         run: |
           set -o pipefail
+          # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
+          # plugins, so without them the run dies on 'Plugin "CudaBuild" from package "mlx-swift"
+          # must be enabled before it can be used' before any test executes.
+          # 2>&1: xcodebuild reports its errors on stderr — without merging, the failure tail
+          # below shows package resolution instead of the actual cause.
           xcodebuild test \
             -project OpenGlasses.xcodeproj \
             -scheme OpenGlasses \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath TestResults.xcresult \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             SWIFT_EMIT_LOC_STRINGS=NO \
-            | tee xcodebuild.log | grep -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
+            2>&1 | tee xcodebuild.log | grep -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
             || { tail -100 xcodebuild.log; exit 1; }
 
       - name: Upload result bundle on failure
