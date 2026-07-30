@@ -28,7 +28,10 @@ final class DeviceSessionCoordinator {
     /// The app-wide coordinator. Its factory creates a real auto-selected `DeviceSession` lazily on
     /// first `acquire`, so constructing `shared` touches no SDK.
     static let shared = DeviceSessionCoordinator(makeSession: {
-        try Wearables.shared.createSession(deviceSelector: AutoDeviceSelector(wearables: Wearables.shared))
+        // Configure on demand: `Wearables.shared` traps rather than throws when unconfigured, so
+        // without this an acquire on a device where configure() failed would kill the process.
+        try WearablesBootstrap.requireConfigured()
+        return try Wearables.shared.createSession(deviceSelector: AutoDeviceSelector(wearables: Wearables.shared))
     })
 
     private let makeSession: () throws -> DeviceSessionHandle

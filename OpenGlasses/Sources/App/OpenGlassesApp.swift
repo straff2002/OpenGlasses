@@ -17,18 +17,21 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
     Task { @MainActor in
         AppStateProvider.shared?.recordCallback(url: url, source: source)
     }
-    Task {
+    Task { @MainActor in
+        // Meta AI can deliver a callback at any time, including before anything else has needed
+        // the SDK. Configure on demand — without this, handleUrl traps rather than throwing.
+        guard WearablesBootstrap.ensureConfigured() else {
+            NSLog("[OpenGlasses] [\(source)] Wearables SDK unavailable — dropping URL callback")
+            AppStateProvider.shared?.addDebugEvent("Dropped \(source) callback: SDK unavailable")
+            return
+        }
         do {
             let result = try await Wearables.shared.handleUrl(url)
             NSLog("[OpenGlasses] [\(source)] handleUrl result: \(String(describing: result))")
-            Task { @MainActor in
-                AppStateProvider.shared?.addDebugEvent("handleUrl success from \(source): \(String(describing: result))")
-            }
+            AppStateProvider.shared?.addDebugEvent("handleUrl success from \(source): \(String(describing: result))")
         } catch {
             NSLog("[OpenGlasses] [\(source)] handleUrl failed: \(error.localizedDescription)")
-            Task { @MainActor in
-                AppStateProvider.shared?.addDebugEvent("handleUrl failed from \(source): \(error.localizedDescription)")
-            }
+            AppStateProvider.shared?.addDebugEvent("handleUrl failed from \(source): \(error.localizedDescription)")
         }
     }
 }
@@ -139,8 +142,11 @@ struct OpenGlassesApp: App {
         // Mint the deep-link trust token before any URL can be delivered, so a first-party link
         // is never rejected because the app hadn't got round to creating one.
         DeepLinkTrust.ensureToken()
-        // Defer Wearables SDK (Bluetooth permission) until after onboarding
-        if Config.hasCompletedOnboarding {
+        // Configure eagerly once the user is past onboarding, so auto-reconnect and the launch
+        // state check behave exactly as before. Everything else goes through
+        // WearablesBootstrap.ensureConfigured() on demand, so a user who never reaches here can
+        // still connect without trapping — see WearablesBootstrap for the desync this fixes.
+        if Config.isPastOnboarding {
             configureWearables()
         }
         NetworkMonitorService.register()
@@ -318,11 +324,12 @@ struct OpenGlassesApp: App {
                     appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "OpenGlasses")
                     appState.updateLiveActivity()
                 }
-                if Config.hasCompletedOnboarding {
-                    Task {
+                if Config.isPastOnboarding {
+                    Task { @MainActor in
                         // Give onOpenURL time to process any pending Meta Auth callbacks
                         try? await Task.sleep(nanoseconds: 1_500_000_000)
 
+                        guard WearablesBootstrap.ensureConfigured() else { return }
                         let state = Wearables.shared.registrationState
                         if state.rawValue < 3 {
                             print("📋 Registration dropped to \(state.rawValue) after background — waiting for natural reconnect...")
@@ -357,40 +364,40 @@ struct OpenGlassesApp: App {
     }
 
     private func configureWearables() {
+        NSLog("[OpenGlasses] Logging active")
+        // Single owner of configure(); safe to call more than once.
+        guard WearablesBootstrap.ensureConfigured() else {
+            NSLog("[OpenGlasses] Wearables SDK unavailable — glasses features disabled this launch")
+            return
+        }
+        NSLog("[OpenGlasses] Meta Wearables SDK configured successfully")
+        let state = Wearables.shared.registrationState
+        NSLog("[OpenGlasses] Registration state: \(state.rawValue)")
+        let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
+        let mwdat = Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any]
+        if let mwdat {
+            NSLog("[OpenGlasses] MWDAT keys: \(mwdat.keys.sorted().joined(separator: ", "))")
+        } else {
+            NSLog("[OpenGlasses] MWDAT dictionary missing from Info.plist")
+        }
+        let appLinkURL = mwdat?["AppLinkURLScheme"] as? String
+        let metaAppID = mwdat?["MetaAppID"] as? String
+
+        NSLog("[OpenGlasses] Bundle ID: \(bundleId)")
+        NSLog("[OpenGlasses] AppLinkURLScheme (Universal Link): \(appLinkURL ?? "nil")")
+        NSLog("[OpenGlasses] MetaAppID: \(metaAppID ?? "nil")")
+
         do {
-            NSLog("[OpenGlasses] Logging active")
-            try Wearables.configure()
-            NSLog("[OpenGlasses] Meta Wearables SDK configured successfully")
-            let state = Wearables.shared.registrationState
-            NSLog("[OpenGlasses] Registration state: \(state.rawValue)")
-            let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
-            let mwdat = Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any]
-            if let mwdat {
-                NSLog("[OpenGlasses] MWDAT keys: \(mwdat.keys.sorted().joined(separator: ", "))")
-            } else {
-                NSLog("[OpenGlasses] MWDAT dictionary missing from Info.plist")
-            }
-            let appLinkURL = mwdat?["AppLinkURLScheme"] as? String
-            let metaAppID = mwdat?["MetaAppID"] as? String
-
-            NSLog("[OpenGlasses] Bundle ID: \(bundleId)")
-            NSLog("[OpenGlasses] AppLinkURLScheme (Universal Link): \(appLinkURL ?? "nil")")
-            NSLog("[OpenGlasses] MetaAppID: \(metaAppID ?? "nil")")
-
-            do {
-                let parsed = try Configuration(bundle: .main)
-                let app = parsed.appConfiguration
-                NSLog("[OpenGlasses] Parsed config bundleIdentifier=\(app.bundleIdentifier)")
-                NSLog("[OpenGlasses] Parsed config appLinkURLScheme=\(app.appLinkURLScheme ?? "nil")")
-                NSLog("[OpenGlasses] Parsed config metaAppId=\(app.metaAppId ?? "nil")")
-                NSLog("[OpenGlasses] Parsed config clientTokenPresent=\(app.clientToken != nil)")
-                NSLog("[OpenGlasses] Parsed config teamID=\(app.teamID ?? "nil")")
-                NSLog("[OpenGlasses] Parsed attestation hasCompleteData=\(parsed.attestationConfiguration.hasCompleteData)")
-            } catch {
-                NSLog("[OpenGlasses] Configuration(bundle:) parse failed: \(error.localizedDescription)")
-            }
+            let parsed = try Configuration(bundle: .main)
+            let app = parsed.appConfiguration
+            NSLog("[OpenGlasses] Parsed config bundleIdentifier=\(app.bundleIdentifier)")
+            NSLog("[OpenGlasses] Parsed config appLinkURLScheme=\(app.appLinkURLScheme ?? "nil")")
+            NSLog("[OpenGlasses] Parsed config metaAppId=\(app.metaAppId ?? "nil")")
+            NSLog("[OpenGlasses] Parsed config clientTokenPresent=\(app.clientToken != nil)")
+            NSLog("[OpenGlasses] Parsed config teamID=\(app.teamID ?? "nil")")
+            NSLog("[OpenGlasses] Parsed attestation hasCompleteData=\(parsed.attestationConfiguration.hasCompleteData)")
         } catch {
-            NSLog("[OpenGlasses] Failed to configure Wearables SDK: \(error.localizedDescription)")
+            NSLog("[OpenGlasses] Configuration(bundle:) parse failed: \(error.localizedDescription)")
         }
     }
 }
@@ -640,6 +647,7 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     private func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
+        guard WearablesBootstrap.ensureConfigured() else { return 0 }
         let waitStart = ContinuousClock.now
         while true {
             let state = Wearables.shared.registrationState.rawValue
@@ -975,11 +983,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
         setupServiceCallbacks()
 
-        // Defer Wearables.shared calls until after onboarding (requires configure() first).
+        // Defer the SDK's Bluetooth prompt until the user is past onboarding.
         // startPermissionRequiringServices() itself observes + auto-connects — calling those
         // two here as well DOUBLED every glasses listener (device-traced: every registration/
         // devices/permission log line appeared twice from launch).
-        if Config.hasCompletedOnboarding {
+        // `isPastOnboarding`, not `hasCompletedOnboarding`: the latter leaves a user who saved a
+        // key without finishing onboarding with the glasses stack permanently off.
+        if Config.isPastOnboarding {
             startPermissionRequiringServices()
         }
 
@@ -1530,6 +1540,13 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        // Every SDK access below traps if configure() never succeeded. Registration stays at 0 and
+        // the UI shows the unregistered state, which is the honest outcome.
+        guard WearablesBootstrap.ensureConfigured() else {
+            addDebugEvent("Wearables SDK unavailable — glasses features disabled")
+            return
+        }
+
         // Monitor devices list
         let deviceToken = Wearables.shared.addDevicesListener { [weak self] deviceIds in
             Task { @MainActor in
@@ -1609,6 +1626,11 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             // Small delay to let SDK initialize
             try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5s
+            guard WearablesBootstrap.ensureConfigured() else {
+                self.isConnected = false
+                self.addDebugEvent("Wearables SDK unavailable — skipping launch state check")
+                return
+            }
             let state = Wearables.shared.registrationState
             self.registrationStateRaw = state.rawValue
             print("📋 Launch state check: state=\(state.rawValue)")
@@ -1641,6 +1663,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// granted at least one permission (e.g., camera) through the Meta AI app."
     private func requestEarlyPermission() async {
         addDebugEvent("Requesting early camera permission for device discovery...")
+        guard WearablesBootstrap.ensureConfigured() else {
+            addDebugEvent("Wearables SDK unavailable — cannot request glasses camera permission")
+            return
+        }
 
         // Ensure iOS camera permission first
         let iosVideoStatus = AVCaptureDevice.authorizationStatus(for: .video)
@@ -1717,6 +1743,12 @@ class AppState: ObservableObject, AppStateProtocol {
 
     func completeAuthorizationInMetaAI() async {
         addDebugEvent("Manual Meta authorization requested")
+        // The Connect button is the path that used to kill the app: for a user who saved an API key
+        // without finishing onboarding, nothing had ever called configure().
+        guard WearablesBootstrap.ensureConfigured() else {
+            addDebugEvent("Wearables SDK unavailable — cannot start registration (\(WearablesBootstrap.statusDescription))")
+            return
+        }
         do {
             try await Wearables.shared.startRegistration()
         } catch {
@@ -1741,6 +1773,10 @@ class AppState: ObservableObject, AppStateProtocol {
 
     func resetMetaRegistration() async {
         addDebugEvent("Manual reset requested: startUnregistration")
+        guard WearablesBootstrap.ensureConfigured() else {
+            addDebugEvent("Wearables SDK unavailable — cannot reset registration")
+            return
+        }
         do {
             try await Wearables.shared.startUnregistration()
             addDebugEvent("startUnregistration succeeded")
@@ -2508,8 +2544,20 @@ class AppState: ObservableObject, AppStateProtocol {
     private let voiceCommandParser = VoiceCommandParser.default
 
     private func isStopCommand(_ text: String) -> Bool { voiceCommandParser.isStop(text) }
-    private func isGoodbyeCommand(_ text: String) -> Bool { voiceCommandParser.isGoodbye(text) }
-    private func isPhotoCommand(_ text: String) -> Bool { voiceCommandParser.isPhoto(text) }
+    private func isGoodbyeCommand(_ text: String) -> Bool { authorises(.goodbye, text) }
+    private func isPhotoCommand(_ text: String) -> Bool { authorises(.photo, text) }
+
+    /// Resolve a command candidate, logging any demotion so a field miss is traceable to the clause
+    /// that caused it. Counts only, never the words — transcripts stay out of the log.
+    private func authorises(_ command: VoiceCommandParser.Command, _ text: String) -> Bool {
+        guard let match = voiceCommandParser.match(command, in: text) else { return false }
+        if let rule = match.demotedBy {
+            NSLog("[Voice] %@ candidate demoted by %@ (%d tokens) — routing as speech",
+                  command.rawValue, rule.rawValue, PhraseMatcher.tokenize(text).count)
+            addDebugEvent("Voice \(command.rawValue) demoted: \(rule.rawValue)")
+        }
+        return match.authorises
+    }
 
     /// After finishing or short-circuiting a turn, either keep listening for a follow-up (while a
     /// conversation is active) or drop back to wake-word detection. Replaces the 8+ copy-pasted

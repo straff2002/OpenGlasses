@@ -58,7 +58,11 @@ options:
 packages:
   meta-wearables-dat-ios:
     url: https://github.com/facebook/meta-wearables-dat-ios.git
-    from: "0.8.0"
+    # Pinned exact, not `from:`. For a 0.x package `from:` admits any later 0.y, and this SDK
+    # breaks API on minor bumps: 0.8.0 removed the `Capability` protocol and `addCapability` and
+    # made Stream.start()/stop() synchronous; 0.7.0 removed `DeviceStateSession` outright. A
+    # published 0.9.0 would be adopted on the next resolve and break the build with no change here.
+    version: "0.8.0"
   HaishinKit:
     url: https://github.com/shogo4405/HaishinKit.swift.git
     from: "2.2.5"
@@ -66,8 +70,11 @@ packages:
     url: https://github.com/ml-explore/mlx-swift-lm.git
     version: "3.31.3"
   swift-huggingface:
+    # Same 0.x exposure as the DAT SDK, and it already drifted: the spec said `from: "0.1.0"` while
+    # Package.resolved had walked to 0.9.0 — eight minor versions of a pre-1.0 package, adopted
+    # silently. Pinned at the version actually in use.
     url: https://github.com/huggingface/swift-huggingface.git
-    from: "0.1.0"
+    version: "0.9.0"
   swift-transformers:
     url: https://github.com/huggingface/swift-transformers.git
     from: "1.0.0"
@@ -108,7 +115,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.7"
-        CURRENT_PROJECT_VERSION: "326"
+        CURRENT_PROJECT_VERSION: "327"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -179,7 +186,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.7"
-        CURRENT_PROJECT_VERSION: "326"
+        CURRENT_PROJECT_VERSION: "327"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -217,7 +224,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.7"
-        CURRENT_PROJECT_VERSION: "326"
+        CURRENT_PROJECT_VERSION: "327"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic

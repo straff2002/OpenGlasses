@@ -14,21 +14,28 @@ class GlassesConnectionService: ObservableObject {
     private var connectedDeviceId: DeviceIdentifier?
 
     init() {
-        // Don't call observeDevices() here — Wearables.configure() may not
-        // have been called yet (deferred until after onboarding).
-        // Call startObserving() explicitly after Wearables is configured.
-        if Config.hasCompletedOnboarding {
+        // Only observe when the user is past onboarding, so the SDK's Bluetooth prompt still waits
+        // until they've reached for the glasses. `isPastOnboarding` rather than
+        // `hasCompletedOnboarding`: the narrower flag left anyone who saved an API key without
+        // finishing onboarding with this listener permanently unarmed, so even a registration that
+        // completed would never surface as connected.
+        if Config.isPastOnboarding {
             observeDevices()
         }
     }
 
-    /// Begin observing connected devices. Call after Wearables.configure().
+    /// Begin observing connected devices. Configures the SDK on demand — callers are not required
+    /// to have done it first.
     func startObserving() {
         guard devicesListenerToken == nil else { return }
         observeDevices()
     }
 
     private func observeDevices() {
+        guard WearablesBootstrap.ensureConfigured() else {
+            connectionStatus = "Meta SDK unavailable"
+            return
+        }
         devicesListenerToken = Wearables.shared.addDevicesListener { [weak self] deviceIds in
             Task { @MainActor in
                 self?.handleDevicesChanged(deviceIds)
@@ -53,6 +60,14 @@ class GlassesConnectionService: ObservableObject {
     }
 
     func connect() async {
+        // Configure here rather than assuming a caller did. This is the path that used to kill the
+        // app outright: an unconfigured `Wearables.shared` is a fatalError, not a throw.
+        guard WearablesBootstrap.ensureConfigured() else {
+            connectionStatus = "Meta SDK unavailable — \(WearablesBootstrap.failureReason ?? "not configured")"
+            return
+        }
+        // The listener may never have been armed (SDK unconfigured at init); arm it now.
+        startObserving()
         connectionStatus = "Registering..."
         let stateBefore = Wearables.shared.registrationState
         print("📋 Registration state before: \(stateBefore)")

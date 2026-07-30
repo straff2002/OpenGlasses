@@ -1,0 +1,93 @@
+name: Unit Tests
+
+# Runs OpenGlassesTests on every PR — the tracked test gate (Plan CD P1).
+#
+# This file is force-added past the `.github/` gitignore (same as pages.yml): the ignore exists to
+# keep *personal* workflows local, but the test gate has to travel with the repo. It exists because
+# the launch/Connect crash fixed in Plan CD was reachable for months while 224 test files never ran
+# in any tracked CI — Xcode Cloud's workflow config lives in App Store Connect where the repo
+# can't see or version it.
+#
+# Runner notes (proven against this codebase on GitHub-hosted runners):
+# - macos-26 for the iOS 26 SDK; macos-15's Xcode is too old for HaishinKit/the deployment target.
+# - brew install xcodegen works on GitHub Actions (the ghcr.io resolution failure is Xcode Cloud
+#   only — see ci_scripts/ci_post_clone.sh, which installs from a GitHub release instead).
+# - Watch targets are skipped: the watchOS platform isn't needed to run the iOS unit tests and
+#   slows the build.
+# - SWIFT_EMIT_LOC_STRINGS=NO so the build can't churn the tracked Localizable.xcstrings.
+# - No CODE_SIGNING_ALLOWED=NO: simulator Debug builds sign to run locally without an identity,
+#   and disabling signing outright is known to fail ~10 keychain-backed tests spuriously.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Skip Watch targets
+        run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
+
+      - name: Generate Xcode project
+        run: ./Scripts/generate-xcodeproj.sh
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          phones = [d for devs in data.values() for d in devs if "iPhone" in d["name"]]
+          if not phones:
+              sys.exit("no available iPhone simulator on this image")
+          print(phones[-1]["udid"])')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
+          # plugins, so without them the run dies on 'Plugin "CudaBuild" from package "mlx-swift"
+          # must be enabled before it can be used' before any test executes.
+          # 2>&1: xcodebuild reports its errors on stderr — without merging, the failure tail
+          # below shows package resolution instead of the actual cause.
+          xcodebuild test \
+            -project OpenGlasses.xcodeproj \
+            -scheme OpenGlasses \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            SWIFT_EMIT_LOC_STRINGS=NO \
+            2>&1 | tee xcodebuild.log | grep -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
+            || { tail -100 xcodebuild.log; exit 1; }
+
+      - name: Upload result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          retention-days: 7

@@ -892,15 +892,12 @@ struct OnboardingView: View {
 
     private func configureWearablesSDK() {
         guard !bluetoothConfigured else { return }
-        do {
-            try Wearables.configure()
-            bluetoothConfigured = true
-            NSLog("[Onboarding] Wearables SDK configured")
-        } catch {
-            NSLog("[Onboarding] Wearables.configure() failed: %@", error.localizedDescription)
-            // Still mark as configured to avoid retry loop — user can reconnect in Settings
-            bluetoothConfigured = true
-        }
+        // Funnels through the single owner of configure() so this and the launch path cannot
+        // configure twice. Marked done either way: a failure here must not become a retry loop,
+        // and the user can still reconnect from Settings.
+        _ = WearablesBootstrap.ensureConfigured()
+        bluetoothConfigured = true
+        NSLog("[Onboarding] Wearables SDK %@", WearablesBootstrap.statusDescription)
     }
 
     private func requestHomeKitPermission() async {

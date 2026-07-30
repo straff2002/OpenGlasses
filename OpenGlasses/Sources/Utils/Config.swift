@@ -96,10 +96,35 @@ struct Config {
 
     static func setHasCompletedOnboarding(_ completed: Bool) { hasCompletedOnboarding = completed }
 
+    /// Pure form of the onboarding gate, so the flag interaction below is testable without touching
+    /// the Keychain that backs `savedModels`.
+    static func needsOnboarding(hasCompletedOnboarding: Bool, hasAnyAPIKey: Bool) -> Bool {
+        !hasCompletedOnboarding && !hasAnyAPIKey
+    }
+
+    /// Pure form of ``isPastOnboarding``.
+    static func isPastOnboarding(hasCompletedOnboarding: Bool, hasAnyAPIKey: Bool) -> Bool {
+        !needsOnboarding(hasCompletedOnboarding: hasCompletedOnboarding, hasAnyAPIKey: hasAnyAPIKey)
+    }
+
     /// True when the user hasn't completed onboarding and has no configured API keys.
     static var needsOnboarding: Bool {
-        !hasCompletedOnboarding && savedModels.allSatisfy { $0.apiKey.isEmpty }
+        needsOnboarding(
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            hasAnyAPIKey: !savedModels.allSatisfy { $0.apiKey.isEmpty }
+        )
     }
+
+    /// True when the user is past onboarding: they either finished it, or arrived with API keys
+    /// already configured (an upgrade from a pre-onboarding build), which is the same condition
+    /// that suppresses the onboarding screen.
+    ///
+    /// Services must gate on this rather than on `hasCompletedOnboarding`. The two differ for
+    /// anyone who saved a key without finishing onboarding: `needsOnboarding` goes false so the
+    /// screen never appears again and `hasCompletedOnboarding` is never set, leaving the glasses
+    /// stack switched off forever with no in-app route to turn it on. Gating on the narrower flag
+    /// meant even a completed registration would never surface as connected.
+    static var isPastOnboarding: Bool { !needsOnboarding }
 
     // MARK: - Wake Word
 

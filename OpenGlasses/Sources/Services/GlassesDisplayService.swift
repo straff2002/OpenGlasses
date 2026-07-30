@@ -137,6 +137,9 @@ final class GlassesDisplayService: ObservableObject {
             return testCapabilityOverride
         }
         let supported: Bool = {
+            // Single choke point for the HUD: `ensureDisplay()` gates on this, so an unconfigured
+            // SDK reports "no display" instead of trapping on `deviceSelector`/`Wearables.shared`.
+            guard WearablesBootstrap.ensureConfigured() else { return false }
             guard let id = deviceSelector.activeDevice,
                   let device = Wearables.shared.deviceForIdentifier(id) else {
                 return false
