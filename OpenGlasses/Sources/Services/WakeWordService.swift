@@ -747,14 +747,17 @@ class WakeWordService: NSObject, ObservableObject {
         if result.isFinal { restartRecognition() }
     }
 
+    /// Whole-token stop matching, shared with `VoiceCommandParser` (see `PhraseMatcher`).
+    ///
+    /// This used to be `transcript.contains(phrase)`, which fired on any word *containing* "stop":
+    /// "it stopped working yesterday", "nonstop", "stops" and "unstoppable" all cut the assistant
+    /// off — and worse, routed the utterance to `onStopCommand` (discarded) rather than `onBargeIn`
+    /// (answered), so the user's sentence vanished instead of being replied to.
+    ///
+    /// `.anywhere` here, unlike the parser's `.utteranceEdge`: this list is only "stop" plus persona
+    /// variants, and a missed stop means the user cannot interrupt.
     private func containsStopPhrase(_ transcript: String) -> Bool {
-        for phrase in allStopPhrases {
-            if transcript.contains(phrase) { return true }
-        }
-        // Also match if the transcript is just "stop" with minor noise
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed == "stop" || trimmed.hasSuffix(" stop") { return true }
-        return false
+        PhraseMatcher.containsStopPhrase(transcript, phrases: allStopPhrases, position: .anywhere)
     }
 
     /// Check all persona wake phrases and return the matched one, or nil.

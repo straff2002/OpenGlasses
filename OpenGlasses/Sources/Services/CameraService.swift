@@ -79,6 +79,7 @@ class CameraService: ObservableObject {
     // MARK: - Permission
 
     private func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
+        guard WearablesBootstrap.ensureConfigured() else { return 0 }
         let waitStart = ContinuousClock.now
         while true {
             let state = Wearables.shared.registrationState.rawValue
@@ -90,6 +91,10 @@ class CameraService: ObservableObject {
     }
 
     func ensurePermission() async throws {
+        // No SDK, no glasses permission to grant. Throwing here (rather than touching
+        // `Wearables.shared`, which traps when unconfigured) surfaces as the existing
+        // "Meta SDK not registered" state.
+        guard WearablesBootstrap.ensureConfigured() else { throw CameraError.sdkNotRegistered }
         // The cached flag is only a fast path PAST the iOS prompt + registration wait — the
         // Meta permission itself is re-verified live every time. Live-traced: the user revoked
         // the app in the Meta AI app mid-session, and the stale flag sailed straight past the
@@ -425,7 +430,11 @@ class CameraService: ObservableObject {
         // showed the desk, and the assistant confidently described it while the user pointed
         // their glasses at something else. A wrong-camera photo is worse than an error.
         let data: Data
-        if Wearables.shared.registrationState.rawValue < 3 {
+        // An unconfigured SDK is indistinguishable from unregistered glasses as far as this
+        // decision goes, and falls the same way: use the phone camera rather than trapping on
+        // `Wearables.shared`. This is what lets vision tools work on a device (or simulator)
+        // where the glasses SDK never came up.
+        if !WearablesBootstrap.ensureConfigured() || Wearables.shared.registrationState.rawValue < 3 {
             NSLog("[Camera] Glasses not registered (state < 3) — capturing from iPhone back camera")
             data = try await phoneSource.capturePhoto()
             lastCaptureSource = .phone
@@ -631,6 +640,7 @@ class CameraService: ObservableObject {
 
     /// Start continuous video streaming from the glasses camera.
     func startStreaming() async throws {
+        guard WearablesBootstrap.ensureConfigured() else { throw CameraError.sdkNotRegistered }
         guard !isStreaming else { return }
         idleTeardownTask?.cancel()   // explicit streaming owns the session now
         continuousStreamingIntent = true

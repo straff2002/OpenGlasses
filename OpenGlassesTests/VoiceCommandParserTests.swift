@@ -16,6 +16,9 @@ final class VoiceCommandParserTests: XCTestCase {
         XCTAssertTrue(parser.isStop("stop the timer"))
         XCTAssertTrue(parser.isStop("cancel"))
         XCTAssertTrue(parser.isStop("never mind"))
+        // Now tokenised, so ASR punctuation no longer defeats the match (Plan CD P2).
+        XCTAssertTrue(parser.isStop("stop."))
+        XCTAssertTrue(parser.isStop("please stop"))
     }
 
     func testStopDoesNotMatchInsideAnotherWord() {
@@ -23,7 +26,7 @@ final class VoiceCommandParserTests: XCTestCase {
         XCTAssertFalse(parser.isStop("what's the weather"))
     }
 
-    // MARK: - Goodbye (substring)
+    // MARK: - Goodbye
 
     func testGoodbyeMatchesPaddedPhrases() {
         XCTAssertTrue(parser.isGoodbye("goodbye"))
@@ -34,6 +37,13 @@ final class VoiceCommandParserTests: XCTestCase {
 
     func testGoodbyeDoesNotMatchUnrelated() {
         XCTAssertFalse(parser.isGoodbye("what time is it"))
+    }
+
+    /// A sign-off has to end the utterance (Plan CD P2, Rule B). This inverts the earlier
+    /// characterization of the substring matcher — same input, opposite expectation — rather than
+    /// weakening it. Detail and positive controls live in `PhraseMatchingTests`.
+    func testGoodbyeDoesNotMatchWhenTheSignOffIsNotFinal() {
+        XCTAssertFalse(parser.isGoodbye("that's all i wanted to ask about the weather"))
     }
 
     // MARK: - Photo
@@ -47,6 +57,11 @@ final class VoiceCommandParserTests: XCTestCase {
 
     func testPhotoDoesNotMatchUnrelated() {
         XCTAssertFalse(parser.isPhoto("what do you see"))
+    }
+
+    /// Asking how the camera works must not fire it (Plan CD P2, Rule A).
+    func testPhotoDoesNotMatchAQuestionAboutTakingPhotos() {
+        XCTAssertFalse(parser.isPhoto("how do i take a photo with these glasses"))
     }
 
     // MARK: - Persona wake-prefix

@@ -40,6 +40,17 @@ These harden *existing* ambient captions too, and are fully headless-testable:
 - **`TranslationCaptionFormatter`** — speaker-change labels (`[2]:` only when the diarized
   speaker *changes*, stable across interim→final), original-text ribbon (optional smaller
   line), HUD line shaping via the existing condense/width rules.
+- **`ScriptAwareJoiner`** — fixes a live-caption defect that exists *today*, independent of
+  translation. Live transcription arrives in word-segmented chunks with separator spaces
+  (ASR-style), and every consumer concatenates them naively — `GeminiLiveSessionManager`
+  does `userTranscript += text`. Between Latin words those spaces are correct; between CJK
+  characters they are arbitrary mid-sentence gaps, so Chinese renders as `你手里 拿的 是`.
+  This is not a font problem: the spaces are in the string. Collapse whitespace **only** where
+  both neighbours are CJK characters or CJK punctuation, so a mixed sentence keeps exactly the
+  spaces that belong there (`你手里拿的是 Hypervolt Go 3 按摩枪`). Reuse the script ranges
+  already in `TranscriptGuard.cjkFraction` — that type detects majority-CJK *hallucinations*,
+  a different problem, so extract the ranges rather than duplicating them. Applies to Gemini
+  Live input/output transcripts, OpenAI Realtime transcripts, and ambient captions.
 
 ### Two-way mode
 One session, two language legs (A→B and B→A). The provider seam takes a
@@ -62,7 +73,7 @@ HUD shows the line addressed to the wearer.
 
 ### P1 / PR1 — Deterministic core 🟢
 - `TranslationSegment`, `TranslationDirectionPolicy`, `TranslationCaptionProvider` protocol.
-- `EndpointDebouncer`, `CaptionCompactor`, `TranslationCaptionFormatter` (pure).
+- `EndpointDebouncer`, `CaptionCompactor`, `TranslationCaptionFormatter`, `ScriptAwareJoiner` (pure).
 - Wire compactor + debouncer under the existing ambient-caption path behind a flag
   (`captionCompactionEnabled`, default on — behavior-preserving for short utterances by
   construction, tests prove it).
@@ -70,7 +81,8 @@ HUD shows the line addressed to the wearer.
   fixtures — no network in tests).
 - Tests: debounce discard/commit timing, compaction invariants (final == last interim; bounded
   memory), speaker-label transitions, two-way routing table, parser fixtures incl. malformed
-  frames.
+  frames, joiner behaviour on pure-CJK / pure-Latin / mixed / CJK-punctuation boundaries (Latin
+  spacing must be provably untouched).
 
 ### P2 / PR2 — Cloud provider live + settings
 - Websocket client on the parser (connection lifecycle per the realtime-hardening patterns:
