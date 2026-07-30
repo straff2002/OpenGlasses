@@ -10,7 +10,10 @@ final class NativeToolRouter {
 
     /// Callback for periodic "still working" updates during long tool executions.
     /// Set by AppState to speak progress updates via TTS.
-    var onLongRunningUpdate: ((String) -> Void)?
+    /// Fires every 10 s while a tool runs, with the elapsed seconds. The *consumer* decides how to
+    /// surface it (Plan CB): Direct mode speaks a deterministic phrase; live modes stay silent here
+    /// because the two-phase ack in `ToolCallRouter` already covers them in the model's own voice.
+    var onLongRunningUpdate: ((Int) -> Void)?
 
     /// Human-in-the-loop gate for high-impact / irreversible tool calls. Set by AppState.
     /// When agent mode is on, destructive actions are confirmed by the user before running —
@@ -174,7 +177,7 @@ final class NativeToolRouter {
                 guard !Task.isCancelled else { break }
                 elapsed += 10
                 NSLog("[NativeToolRouter] Tool %@ still running after %ds", name, elapsed)
-                self?.onLongRunningUpdate?("Still working on that...")
+                self?.onLongRunningUpdate?(elapsed)
             }
         }
 

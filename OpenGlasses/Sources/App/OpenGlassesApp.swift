@@ -575,6 +575,17 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var remoteInvoke: RemoteInvokeService = makeRemoteInvokeService()
     let geminiLiveSession = GeminiLiveSessionManager()
     let openAIRealtimeSession = OpenAIRealtimeSessionManager()
+
+    /// The live session that can put content in front of its model right now, or nil outside live
+    /// modes (Plan CB). Resolved per call — never cache the session managers' conformances, they
+    /// are per-session state behind long-lived objects.
+    var activeLiveInjector: LiveSessionInjecting? {
+        switch currentMode {
+        case .geminiLive: return geminiLiveSession.canInject ? geminiLiveSession : nil
+        case .openaiRealtime: return openAIRealtimeSession.canInject ? openAIRealtimeSession : nil
+        default: return nil
+        }
+    }
     let backgroundVoice = BackgroundVoiceService()
 
     // Native tool system
@@ -680,11 +691,15 @@ class AppState: ObservableObject, AppStateProtocol {
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 
-        // Wire "still working" TTS callback for long-running tool executions
-        nativeToolRouter.onLongRunningUpdate = { [weak self] message in
+        // Wire "still working" updates for long-running tool executions (Plan CB). Direct mode
+        // speaks a deterministic phrase; during a live session this stays SILENT — the same router
+        // serves live tool calls, where ToolCallRouter's two-phase ack already covers the wait in
+        // the model's own voice, and this TTS was talking over it in a different one.
+        nativeToolRouter.onLongRunningUpdate = { [weak self] elapsed in
             guard let self else { return }
             Task { @MainActor in
-                await self.speechService.speak(message)
+                guard self.activeLiveInjector == nil else { return }
+                await self.speechService.speak(AsyncDeliveryPhrasing.directModeStillWorking(elapsedSeconds: elapsed))
             }
         }
 

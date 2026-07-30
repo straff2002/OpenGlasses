@@ -240,6 +240,41 @@ class OpenAIRealtimeService: ObservableObject {
         }
     }
 
+    // MARK: - Mid-session injection (Plan CB)
+
+    /// Put text in front of the model as a user turn. `completeTurn: true` follows with
+    /// `response.create` so the model actually answers — `conversation.item.create` alone only
+    /// appends, the Realtime spelling of the Gemini `turnComplete` trap. The streamed-frame path
+    /// above stays append-only deliberately: forcing a response per frame would be wrong.
+    func sendText(_ text: String, completeTurn: Bool) {
+        guard connectionState == .ready, let task = webSocketTask else {
+            NSLog("[OpenAI RT] sendText skipped — state: %@", String(describing: connectionState))
+            return
+        }
+        sendQueue.async {
+            Self.sendJSONDirect(LiveInjectionEnvelope.realtimeText(text), via: task)
+            if completeTurn {
+                Self.sendJSONDirect(LiveInjectionEnvelope.realtimeResponseCreate(), via: task)
+            }
+        }
+    }
+
+    /// Push a pre-encoded full-quality still into the conversation, bypassing the streamed-frame
+    /// path's quality-0.5 re-encode. No `response.create`: for `look_closely` the pending tool
+    /// response drives generation, and elsewhere the caller pairs it with a completing text.
+    func sendHighResImage(jpegData: Data, prompt: String? = nil) {
+        guard connectionState == .ready, let task = webSocketTask else {
+            NSLog("[OpenAI RT] sendHighResImage skipped — state: %@", String(describing: connectionState))
+            return
+        }
+        sendQueue.async {
+            let json = LiveInjectionEnvelope.realtimeImage(
+                base64JPEG: jpegData.base64EncodedString(), prompt: prompt)
+            NSLog("[OpenAI RT] Injecting sharp frame (%d KB)", jpegData.count / 1024)
+            Self.sendJSONDirect(json, via: task)
+        }
+    }
+
     // MARK: - Interruption
 
     /// Cancel the current model response (client-side interrupt).

@@ -609,3 +609,17 @@ class GeminiLiveSessionManager: ObservableObject {
         }
     }
 }
+
+// MARK: - Live injection (Plan CB)
+
+extension GeminiLiveSessionManager: LiveSessionInjecting {
+    var canInject: Bool { isActive && connectionState == .ready }
+
+    func injectSharpImage(jpegData: Data) {
+        geminiService.sendHighResImage(jpegData: jpegData)
+    }
+
+    func injectText(_ text: String, completeTurn: Bool) {
+        geminiService.sendText(text, completeTurn: completeTurn)
+    }
+}

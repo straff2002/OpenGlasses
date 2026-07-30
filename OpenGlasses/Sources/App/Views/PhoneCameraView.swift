@@ -18,6 +18,9 @@ struct PhoneCameraView: View {
     let onCancel: () -> Void
 
     @StateObject private var camera = PhoneCameraController()
+    /// Zoom at pinch start — a magnification gesture reports scale against its own beginning, so
+    /// this is captured once per gesture and multiplied, never accumulated (Plan CB P3).
+    @State private var zoomAtGestureStart: CGFloat?
 
     var body: some View {
         ZStack {
@@ -26,6 +29,32 @@ struct PhoneCameraView: View {
             if camera.isReady {
                 CameraPreview(session: camera.session)
                     .ignoresSafeArea()
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { scale in
+                                let start = zoomAtGestureStart ?? camera.zoomFactor
+                                zoomAtGestureStart = start
+                                camera.setZoom(PhoneZoomPolicy.factor(
+                                    gestureStart: start,
+                                    gestureScale: scale,
+                                    deviceMax: camera.maxZoomFactor))
+                            }
+                            .onEnded { _ in zoomAtGestureStart = nil }
+                    )
+            }
+
+            // Zoom readout — only above ~1.05×; at rest a label would sit on the scene for nothing.
+            if PhoneZoomPolicy.showsReadout(factor: camera.zoomFactor) {
+                VStack {
+                    Spacer()
+                    Text(PhoneZoomPolicy.readoutLabel(factor: camera.zoomFactor))
+                        .font(.callout.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.5), in: Capsule())
+                        .padding(.bottom, 140)
+                }
             }
 
             VStack {
@@ -109,10 +138,32 @@ final class PhoneCameraController: NSObject, ObservableObject, @unchecked Sendab
     private let output = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.openglasses.phone-camera.session")
     private var captureHandler: ((Data?) -> Void)?
+    private var device: AVCaptureDevice?
 
     @Published var isReady = false
     @Published var isCapturing = false
     @Published var error: String?
+    /// Current sensor zoom (Plan CB P3). Applied via `setZoom`; read by the pinch gesture and
+    /// the on-screen readout.
+    @Published var zoomFactor: CGFloat = 1.0
+    /// The device's own ceiling, captured at configure time so `PhoneZoomPolicy` can clamp.
+    @Published var maxZoomFactor: CGFloat = PhoneZoomPolicy.maxUsefulZoom
+
+    /// Zoom at the sensor, so the captured still gains the detail too — not just the preview.
+    func setZoom(_ factor: CGFloat) {
+        let clamped = PhoneZoomPolicy.factor(gestureStart: factor, gestureScale: 1, deviceMax: maxZoomFactor)
+        sessionQueue.async { [self] in
+            guard let device else { return }
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = clamped
+                device.unlockForConfiguration()
+                DispatchQueue.main.async { self.zoomFactor = clamped }
+            } catch {
+                NSLog("[PhoneCamera] Zoom lock failed: %@", error.localizedDescription)
+            }
+        }
+    }
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -144,6 +195,11 @@ final class PhoneCameraController: NSObject, ObservableObject, @unchecked Sendab
             session.addInput(input)
             if session.canAddOutput(output) { session.addOutput(output) }
             session.commitConfiguration()
+            self.device = device
+            let deviceMax = device.activeFormat.videoMaxZoomFactor
+            DispatchQueue.main.async {
+                self.maxZoomFactor = min(PhoneZoomPolicy.maxUsefulZoom, deviceMax)
+            }
 
             if !session.isRunning { session.startRunning() }
             let running = session.isRunning
