@@ -16,9 +16,16 @@ struct SkillPackToolWrapper: NativeTool {
 
     let packId: String
     let action: SkillPackAction
+    /// The pack's declared settings, so `{{setting.key}}` substitutions resolve the user's
+    /// configured values (P2).
+    var settingDeclarations: [SkillPackManifest.SettingDeclaration] = []
     /// Resolves a native tool for `.tool` bindings. Injected; never captures the registry (the
     /// wrapper is *in* the registry — a strong loop there would leak both).
     let resolveNativeTool: @MainActor (String) -> (any NativeTool)?
+
+    private var settingsValues: [String: String] {
+        SkillPackSettings.values(packId: packId, declarations: settingDeclarations)
+    }
 
     static func toolName(packId: String, actionName: String) -> String {
         "pack_" + packId.replacingOccurrences(of: ".", with: "_").replacingOccurrences(of: "-", with: "_")
@@ -45,7 +52,7 @@ struct SkillPackToolWrapper: NativeTool {
             // rides inside the Plan R envelope — the router skips framing for registry tools
             // (isKnownNativeTool), which is exactly right for real native tools and exactly wrong
             // for pack content, so the wrapper frames its own output.
-            let filled = Self.substitute(template: template, args: args)
+            let filled = Self.substitute(template: template, args: args, settings: settingsValues)
             return PromptInjectionPolicy.wrap(toolName: name, content: filled)
 
         case .tool(let target, let boundArgs):
@@ -56,7 +63,7 @@ struct SkillPackToolWrapper: NativeTool {
             // underneath, bound keys win — the pack author's contract, not the model's.
             var merged = args
             for (key, template) in boundArgs {
-                merged[key] = Self.substitute(template: template, args: args)
+                merged[key] = Self.substitute(template: template, args: args, settings: settingsValues)
             }
             return try await tool.execute(args: merged)
 
@@ -69,7 +76,7 @@ struct SkillPackToolWrapper: NativeTool {
             guard Config.agentModeEnabled else {
                 return "This skill delegates to the remote agent, and Agent Mode is off. Enable Agent Mode in Settings to use it."
             }
-            let filled = Self.substitute(template: task, args: args)
+            let filled = Self.substitute(template: task, args: args, settings: settingsValues)
             guard let bridge = AppStateProvider.shared?.openClawBridge else {
                 return "The remote agent isn't available right now."
             }
@@ -81,12 +88,16 @@ struct SkillPackToolWrapper: NativeTool {
         }
     }
 
-    /// `{{param}}` → the argument's string form; unmatched placeholders stay visible rather than
-    /// silently vanishing, so a template/schema mismatch is diagnosable from the transcript.
-    static func substitute(template: String, args: [String: Any]) -> String {
+    /// `{{param}}` → the argument's string form, `{{setting.key}}` → the user's configured value
+    /// for this pack (Plan BX P2 settings-as-schema). Unmatched placeholders stay visible rather
+    /// than silently vanishing, so a template/schema mismatch is diagnosable from the transcript.
+    static func substitute(template: String, args: [String: Any], settings: [String: String] = [:]) -> String {
         var out = template
         for (key, value) in args {
             out = out.replacingOccurrences(of: "{{\(key)}}", with: "\(value)")
+        }
+        for (key, value) in settings {
+            out = out.replacingOccurrences(of: "{{setting.\(key)}}", with: value)
         }
         return out
     }
@@ -105,6 +116,7 @@ extension NativeToolRegistry {
                 register(SkillPackToolWrapper(
                     packId: manifest.id,
                     action: action,
+                    settingDeclarations: manifest.settings,
                     resolveNativeTool: { [weak self] target in
                         guard let self else { return nil }
                         // .tool bindings compose over native tools only — resolving another

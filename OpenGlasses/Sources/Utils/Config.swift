@@ -1761,6 +1761,30 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "duplexAudioEnabled")
     }
 
+    // MARK: - Skill packs (Plan BX)
+
+    /// Signed catalog index URL. Default is the repo's GitHub Pages deployment (the catalog is a
+    /// committed file; publishing is a git push). Enterprises can point at their own index —
+    /// whatever serves it must serve the signed envelope shape `SkillPackCatalog.parse` expects.
+    static var skillPackCatalogURL: String {
+        UserDefaults.standard.string(forKey: "skillPackCatalogURL")
+            ?? "https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json"
+    }
+
+    static func setSkillPackCatalogURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "skillPackCatalogURL")
+    }
+
+    /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
+    /// index verification.
+    static var skillPackDevModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "skillPackDevModeEnabled")
+    }
+
+    static func setSkillPackDevModeEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "skillPackDevModeEnabled")
+    }
+
     // MARK: - OpenAI Realtime Configuration
 
     /// Find the best OpenAI model config for Realtime mode.

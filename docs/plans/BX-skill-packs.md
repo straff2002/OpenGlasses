@@ -16,6 +16,22 @@ framing — the router skips framing for registry tools, so the wrapper frames i
 binding parses and answers honestly pending P2. P2 (catalog + Settings UI) and P3 (QR/LAN sideload)
 next.
 
+**P2 shipped (2026-07-31)** — `SkillPackCatalog` (signed envelope: signature over exact base64-wrapped
+payload bytes, so no JSON-canonicalization hazard; explicit refusal of newer index versions),
+`SkillPackArchive` (pack zip → install shape via the Plan BT `ZipArchiveReader`, no new dependency;
+zip-bomb entry cap), `SkillPackHardwareGate` (ready/degraded/blocked against connected hardware),
+`SkillPackCatalogService` (download → sha256 → extract → install with injectable fetch; every stage
+failure is a visible per-pack state), `SkillPackSettings` (settings-as-schema persisted under
+`skillpack.<id>.<key>`, reaching bindings via `{{setting.<key>}}` — only *declared* keys flow),
+Settings → Skill Packs UI (installed rows w/ kill switch + unsigned/partial-load badges + per-pack
+settings sheet rendered from schema; catalog browse/install; developer-mode toggle), and
+`Scripts/skillpack-sign.swift` (keygen / sign-pack / sign-catalog — private key stays off-repo, the
+Field Assist rule). **Hosting decision resolved:** repo-served static JSON on the existing GitHub
+Pages deployment (`Config.skillPackCatalogURL`, overridable). **Catalog signing is never loosened**
+— developer mode admits unsigned *packs* only; a poisoned index is a fleet-level attack. Owed: mint
+the production catalog keypair (run `keygen`, embed the public key, keep the private half with the
+Field Assist key) and commit the first signed `skillpacks/catalog.json`; P3 QR/LAN sideload.
+
 Make OpenGlasses extensible by *installable content*, not app updates: a **skill pack** is a
 signed zip the app downloads (or sideloads), validates, and merges into the assistant at
 runtime — new voice-invocable actions, prompt/persona content, procedures, and settings,

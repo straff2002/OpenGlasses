@@ -375,6 +375,20 @@ struct ToolsActionsSettingsScreen: View {
                 }
 
                 NavigationLink {
+                    SkillPacksSettingsView()
+                        .environmentObject(appState)
+                } label: {
+                    HStack {
+                        Label("Skill Packs", systemImage: "shippingbox")
+                        Spacer()
+                        if !appState.skillPackStore.installedPacks.isEmpty {
+                            Text("\(appState.skillPackStore.installedPacks.count) installed")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                NavigationLink {
                     SiriExposureView()
                 } label: {
                     Label("Siri & Search", systemImage: "mic.badge.plus")
