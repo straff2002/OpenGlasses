@@ -1,6 +1,20 @@
 # Plan BX — Skill Packs & In-App Catalog
 
-**Status: 📋 Planned.**
+**Status: 🚧 P1 shipped (2026-07-31)** — `SkillPackManifest` (+ `lossyDecode` with named-action drop
+report), `SkillPackValidator` (caps, shapes, native-collision, Plan R screen **at reject severity** —
+for a pack, install *is* the trust decision, so quarantine-level scanner findings refuse rather than
+badge), `SkillPackSignature` (ed25519 over manifest + sorted payload hashes; production key is a
+placeholder until P2 mints the catalog key — safe because unsigned installs are already a distinct
+dev-mode-only path), `SkillPackStore` (install/upgrade/remove under `Documents/skillpacks/`,
+`JSONStore` salvage semantics, path-traversal refusal, unreadable-state write lock),
+`SkillPackToolWrapper` + registry merge/rebuild (`registerSkillPackTools`/`removeSkillPackTools`,
+`AppState.refreshSkillPackTools()`). **Deviation from plan:** registered names are
+`pack_<id-with-underscores>_<action>` not `pack:<id>/<action>` — LLM function-name charsets on both
+provider wires exclude `:` and `/`; the no-shadowing property holds unchanged. Prompt/tool/gateway
+bindings execute (gateway refuses without Agent Mode; pack output rides `PromptInjectionPolicy`
+framing — the router skips framing for registry tools, so the wrapper frames its own); procedure
+binding parses and answers honestly pending P2. P2 (catalog + Settings UI) and P3 (QR/LAN sideload)
+next.
 
 Make OpenGlasses extensible by *installable content*, not app updates: a **skill pack** is a
 signed zip the app downloads (or sideloads), validates, and merges into the assistant at

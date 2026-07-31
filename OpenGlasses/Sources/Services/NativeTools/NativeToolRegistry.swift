@@ -254,6 +254,15 @@ final class NativeToolRegistry {
         tools[tool.name] = tool
     }
 
+    /// Remove every registered skill-pack wrapper (Plan BX). The store's merge calls this first,
+    /// so uninstall/disable is a rebuild rather than a leak: packs removed from the store stop
+    /// existing in the registry the next time the merge runs.
+    func removeSkillPackTools() {
+        for (name, tool) in tools where tool is SkillPackToolWrapper {
+            tools.removeValue(forKey: name)
+        }
+    }
+
     func tool(named name: String) -> (any NativeTool)? {
         guard Config.isToolEnabled(name) else { return nil }
         // HIPAA mode disables tools that could leak PHI
