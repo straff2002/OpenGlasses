@@ -93,12 +93,15 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             systemInstruction: systemInstruction
         )
 
-        // Wire audio capture → service
+        // Wire audio capture → service. Echo suppression follows the reached duplex tier
+        // (Plan CC): open mic when voice processing is alive, the old iPhone-mode mute otherwise.
         audioManager.onAudioCaptured = { [weak self] data in
             guard let self else { return }
             Task { @MainActor in
-                // Echo suppression: skip mic audio while model speaks on iPhone
-                if self.useIPhoneAudioMode && self.realtimeService.isModelSpeaking { return }
+                if EchoSuppressionPolicy.shouldDropCapturedBuffer(
+                    capability: self.audioManager.duplexCapability,
+                    iPhoneMode: self.useIPhoneAudioMode,
+                    modelSpeaking: self.realtimeService.isModelSpeaking) { return }
                 self.realtimeService.sendAudio(data: data)
             }
         }
