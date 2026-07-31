@@ -1,7 +1,11 @@
 # Skill Pack Catalog
 
-`catalog.json` is the signed index the app fetches (Plan BX). It's served by the repo's GitHub
-Pages deployment at:
+`catalog.json` is the signed index the app fetches (Plan BX); `packs/` holds the published pack
+zips (also Pages-served), and `src/` their unpacked sources — edit in `src/`, then re-zip, re-sign,
+and update the index per the flow below. `SkillPackCatalogTests` embeds byte-copies of the
+committed catalog *and* zips, so drift between what's published and what's tested fails the suite.
+
+It's served by the repo's GitHub Pages deployment at:
 
 ```
 https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json

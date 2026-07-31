@@ -61,9 +61,14 @@ struct SkillPackToolWrapper: NativeTool {
             }
             // Bound args are templates over the caller's args; caller args pass through
             // underneath, bound keys win — the pack author's contract, not the model's.
+            // Substitution yields strings, but native tools type-check their args (`as? Int`),
+            // so a purely numeric/boolean result is coerced — without this, a `tool` binding
+            // could never satisfy a required integer parameter like set_timer's `seconds`
+            // (found authoring the first real pack, not in review).
             var merged = args
             for (key, template) in boundArgs {
-                merged[key] = Self.substitute(template: template, args: args, settings: settingsValues)
+                let substituted = Self.substitute(template: template, args: args, settings: settingsValues)
+                merged[key] = Self.coerce(substituted)
             }
             return try await tool.execute(args: merged)
 
@@ -86,6 +91,16 @@ struct SkillPackToolWrapper: NativeTool {
             case .failure(let error): return "Skill delegation failed: \(error)"
             }
         }
+    }
+
+    /// A fully numeric or boolean substitution result becomes the typed value; anything else
+    /// stays a string. Deliberately conservative — "300" coerces, "300s" does not.
+    static func coerce(_ value: String) -> Any {
+        if let int = Int(value) { return int }
+        if let double = Double(value) { return double }
+        if value == "true" { return true }
+        if value == "false" { return false }
+        return value
     }
 
     /// `{{param}}` → the argument's string form, `{{setting.key}}` → the user's configured value
