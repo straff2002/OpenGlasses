@@ -591,6 +591,9 @@ class AppState: ObservableObject, AppStateProtocol {
     // Native tool system
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
+    /// Installed skill packs (Plan BX). Actions merge into the registry below; re-merge after any
+    /// install/remove/enable change via `refreshSkillPackTools()`.
+    let skillPackStore: SkillPackStore
 
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
@@ -690,6 +693,15 @@ class AppState: ObservableObject, AppStateProtocol {
             activeNamespace: { memoryForNamespace.activePersonaId ?? "global" }
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
+
+        // Skill packs (Plan BX): the store validates against the RAW native tool names — captured
+        // before any pack merge, so a previously installed pack can't launder a name past the
+        // validator for the next install.
+        let registryForPacks = nativeToolRegistry
+        skillPackStore = SkillPackStore(nativeToolNames: {
+            Set(registryForPacks.allTools.compactMap { $0 is SkillPackToolWrapper ? nil : $0.name })
+        })
+        nativeToolRegistry.registerSkillPackTools(from: skillPackStore)
 
         // Wire "still working" updates for long-running tool executions (Plan CB). Direct mode
         // speaks a deterministic phrase; during a live session this stays SILENT — the same router
@@ -2561,6 +2573,11 @@ class AppState: ObservableObject, AppStateProtocol {
     private func isStopCommand(_ text: String) -> Bool { voiceCommandParser.isStop(text) }
     private func isGoodbyeCommand(_ text: String) -> Bool { authorises(.goodbye, text) }
     private func isPhotoCommand(_ text: String) -> Bool { authorises(.photo, text) }
+
+    /// Rebuild the registry's skill-pack tools after an install/remove/enable change (Plan BX).
+    func refreshSkillPackTools() {
+        nativeToolRegistry.registerSkillPackTools(from: skillPackStore)
+    }
 
     /// Resolve a command candidate, logging any demotion so a field miss is traceable to the clause
     /// that caused it. Counts only, never the words — transcripts stay out of the log.
