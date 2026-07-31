@@ -122,6 +122,18 @@ final class SkillPackCatalogTests: XCTestCase {
             "a newer index is 'update the app', never a partial parse")
     }
 
+    /// The envelope actually committed at `skillpacks/catalog.json` must verify against the
+    /// embedded production key. Byte-for-byte copy here: if either the published catalog or
+    /// `productionPublicKeyBase64` changes without the other, this fails — the drift this test
+    /// exists to catch. Update both together (sign with `Scripts/skillpack-sign.swift`).
+    func testCommittedCatalogVerifiesAgainstProductionKey() {
+        let committed = #"{"payload":"eyJ2ZXJzaW9uIjoxLCJwYWNrcyI6W119","signature":"GLNPI2mrxy791gLlHMtD24vIAnNla0fnxJGMiZUCE5UwOSeELF9HVX4IC287FKAgdZ49wP0z6EMErZVNZFCjDQ=="}"#
+        guard case .success(let packs) = SkillPackCatalog.parse(envelopeData: Data(committed.utf8)) else {
+            return XCTFail("the committed catalog must verify against the embedded production key")
+        }
+        XCTAssertTrue(packs.isEmpty, "first published catalog is the empty index")
+    }
+
     // MARK: - Hardware gate
 
     func testHardwareGateTable() {

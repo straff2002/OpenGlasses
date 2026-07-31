@@ -28,9 +28,10 @@ settings sheet rendered from schema; catalog browse/install; developer-mode togg
 `Scripts/skillpack-sign.swift` (keygen / sign-pack / sign-catalog — private key stays off-repo, the
 Field Assist rule). **Hosting decision resolved:** repo-served static JSON on the existing GitHub
 Pages deployment (`Config.skillPackCatalogURL`, overridable). **Catalog signing is never loosened**
-— developer mode admits unsigned *packs* only; a poisoned index is a fleet-level attack. Owed: mint
-the production catalog keypair (run `keygen`, embed the public key, keep the private half with the
-Field Assist key) and commit the first signed `skillpacks/catalog.json`; P3 QR/LAN sideload.
+— developer mode admits unsigned *packs* only; a poisoned index is a fleet-level attack. **Production keypair minted 2026-08-01** — public key embedded, private half off-repo with the
+Field Assist key; first signed (empty) `skillpacks/catalog.json` committed, with a test pinning the
+committed envelope against the embedded key so the two can't drift, and `skillpacks/README.md`
+documenting the publish flow. Owed: P3 QR/LAN sideload.
 
 Make OpenGlasses extensible by *installable content*, not app updates: a **skill pack** is a
 signed zip the app downloads (or sideloads), validates, and merges into the assistant at

@@ -10,11 +10,10 @@ import CryptoKit
 /// developer mode, loudly labeled — that policy lives in `SkillPackStore`, not here.
 enum SkillPackSignature {
 
-    /// Production signing key (base64, Curve25519 raw representation). Placeholder until the
-    /// first-party catalog key is minted alongside P2's catalog infrastructure — which is fine
-    /// precisely because unsigned installs are already a distinct, developer-mode-only path:
-    /// nothing verifies against this key yet, and nothing pretends to.
-    static let productionPublicKeyBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    /// Production signing key (base64, Curve25519 raw representation), minted 2026-08-01 via
+    /// `Scripts/skillpack-sign.swift keygen`. The private half is held only by the vendor,
+    /// alongside the Field Assist licensing key — it never ships in the app or the repo.
+    static let productionPublicKeyBase64 = "X01+yfa6ZRTOMpqrQpdZBlRc6ZyhksPaj+k961ocTy8="
 
     /// The canonical byte string the signature covers: the manifest bytes, then one line per
     /// payload file — `sha256(path)=<hex>` — sorted by path. Deterministic by construction; any
