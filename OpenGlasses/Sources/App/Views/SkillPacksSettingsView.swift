@@ -220,6 +220,33 @@ struct SkillPacksSettingsView: View {
     }
 }
 
+/// Mounts the sideload confirmation/error alerts over the root view (Plan BX P3). Its own
+/// `@ObservedObject` so prompt changes repaint even though the service hangs off `AppState`.
+struct SkillPackSideloadPromptOverlay: View {
+    @ObservedObject var sideload: SkillPackSideloadService
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .alert(item: $sideload.prompt) { prompt in
+                switch prompt {
+                case .confirm(let pending):
+                    return Alert(
+                        title: Text("Install Skill Pack?"),
+                        message: Text(pending.confirmationMessage),
+                        primaryButton: .default(Text("Install")) { sideload.confirm(pending) },
+                        secondaryButton: .cancel { sideload.dismiss() })
+                case .error(let message):
+                    return Alert(title: Text("Skill Pack"), message: Text(message),
+                                 dismissButton: .default(Text("OK")) { sideload.dismiss() })
+                case .installed(let message):
+                    return Alert(title: Text("Installed"), message: Text(message),
+                                 dismissButton: .default(Text("OK")) { sideload.dismiss() })
+                }
+            }
+    }
+}
+
 /// Renders a pack's typed setting declarations — settings-as-schema, no per-pack UI code.
 struct SkillPackSettingsSheet: View {
     let packId: String

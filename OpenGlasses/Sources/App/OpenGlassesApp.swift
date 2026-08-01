@@ -160,6 +160,9 @@ struct OpenGlassesApp: App {
                 RootView()
                     .environmentObject(appState)
 
+                // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
+                SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
+
                 // HIPAA biometric lock overlay
                 if isHipaaLocked {
                     BiometricLockView(isLocked: $isHipaaLocked)
@@ -197,6 +200,23 @@ struct OpenGlassesApp: App {
                        !DeepLinkTrust.isTrusted(url) {
                         NSLog("[OpenGlasses] Ignored untrusted deep link: %@/%@",
                               url.host ?? "?", url.lastPathComponent)
+                        return
+                    }
+
+                    // Skill-pack sideload (Plan BX P3). Deliberately outside the DeepLinkTrust
+                    // token gate: a QR-scanned link can't carry the app-group token, and this
+                    // handler never acts — it fetches a preview and raises a confirmation alert;
+                    // the human tap is the gate. Source URLs are HTTPS-or-LAN-only (see
+                    // SkillPackSideload.isPermittedSource).
+                    if url.scheme == "openglasses", url.host == "skillpack" {
+                        switch SkillPackSideload.parse(url) {
+                        case .success(let request):
+                            Task { @MainActor in
+                                await appState.skillPackSideload.handle(request)
+                            }
+                        case .failure(let error):
+                            NSLog("[OpenGlasses] Refused skillpack link: %@", String(describing: error))
+                        }
                         return
                     }
 
@@ -594,6 +614,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Installed skill packs (Plan BX). Actions merge into the registry below; re-merge after any
     /// install/remove/enable change via `refreshSkillPackTools()`.
     let skillPackStore: SkillPackStore
+    /// QR/LAN sideload path (Plan BX P3) — fetch + preview + human-confirmed install.
+    let skillPackSideload: SkillPackSideloadService
 
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
@@ -702,6 +724,13 @@ class AppState: ObservableObject, AppStateProtocol {
             Set(registryForPacks.allTools.compactMap { $0 is SkillPackToolWrapper ? nil : $0.name })
         })
         nativeToolRegistry.registerSkillPackTools(from: skillPackStore)
+        let storeForSideload = skillPackStore
+        skillPackSideload = SkillPackSideloadService(
+            store: storeForSideload,
+            onInstalled: { [weak registryForPacks] in
+                guard let registryForPacks else { return }
+                registryForPacks.registerSkillPackTools(from: storeForSideload)
+            })
 
         // Wire "still working" updates for long-running tool executions (Plan CB). Direct mode
         // speaks a deterministic phrase; during a live session this stays SILENT — the same router
