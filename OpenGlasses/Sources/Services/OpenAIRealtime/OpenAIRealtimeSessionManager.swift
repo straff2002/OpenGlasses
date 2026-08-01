@@ -145,7 +145,9 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         realtimeService.onOutputTranscription = { [weak self] text in
             guard let self else { return }
             Task { @MainActor in
-                self.aiTranscript += text
+                // Deltas here (unlike input) — join script-aware so CJK output doesn't render
+                // with ASR word-gap spaces (Plan BY).
+                self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
             }
         }
 

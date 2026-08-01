@@ -56,6 +56,14 @@ class AmbientCaptionService: ObservableObject {
     /// Rolling transcript for current utterance
     private var lastFinalizedText = ""
 
+    // Plan BY P1 — caption mechanics behind `Config.captionCompactionEnabled` (default on;
+    // behavior-preserving for short utterances by construction — a single-segment caption renders
+    // and finalizes identically). The compactor keeps one caption entry accumulating across the
+    // recognizer's premature endpoints; the debouncer decides which endpoints were premature.
+    private var compactor = CaptionCompactor()
+    private var endpointDebouncer = EndpointDebouncer()
+    private var endpointCommitTask: Task<Void, Never>?
+
     init() {
         recognizer = SFSpeechRecognizer(locale: SpeechLocaleResolver.current)
     }
@@ -154,12 +162,29 @@ class AmbientCaptionService: ObservableObject {
 
                 if let result = result {
                     let text = result.bestTranscription.formattedString
-                    self.currentCaption = text
-                    self.glassesDisplay?.showText(text)
+                    if Config.captionCompactionEnabled {
+                        // Tokens arriving cancel a held endpoint: the previous "final" was a
+                        // premature split, and this session's text continues the same caption.
+                        if self.endpointDebouncer.tokensArrived(now: Date()) {
+                            self.endpointCommitTask?.cancel()
+                            self.compactor.beginContinuation()
+                        }
+                        self.compactor.acceptSegmentInterim(text)
+                        let rendered = self.compactor.rendered
+                        self.currentCaption = rendered
+                        self.glassesDisplay?.showText(rendered)
+                    } else {
+                        self.currentCaption = text
+                        self.glassesDisplay?.showText(text)
+                    }
                     self.resetSilenceTimer()
 
                     if result.isFinal {
-                        self.finalizeCaption(text)
+                        if Config.captionCompactionEnabled {
+                            self.holdEndpointThenCommit()
+                        } else {
+                            self.finalizeCaption(text)
+                        }
                         // Restart for continuous recognition
                         if self.isActive {
                             self.startRecognitionSession()
@@ -209,6 +234,14 @@ class AmbientCaptionService: ObservableObject {
     }
 
     private func stopRecognitionSession() {
+        // Session teardown commits any pending caption rather than dropping it.
+        endpointCommitTask?.cancel()
+        endpointCommitTask = nil
+        if Config.captionCompactionEnabled {
+            endpointDebouncer.committed()
+            let pending = compactor.finalize()
+            if !pending.isEmpty { finalizeCaption(pending) }
+        }
         silenceTimer?.invalidate()
         silenceTimer = nil
         recognitionTask?.cancel()
@@ -242,6 +275,22 @@ class AmbientCaptionService: ObservableObject {
             captionHistory = Array(captionHistory.prefix(maxHistory))
         }
         print("🎙️ Visual note inserted into caption history")
+    }
+
+    /// Hold the endpoint for the debounce window; commit only if no more tokens arrive (Plan BY).
+    /// A premature endpoint is cancelled by `tokensArrived` in the recognition callback, and the
+    /// caption keeps accumulating instead of splitting mid-sentence.
+    private func holdEndpointThenCommit() {
+        endpointDebouncer.endpointSignaled(now: Date())
+        endpointCommitTask?.cancel()
+        endpointCommitTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: UInt64(self.endpointDebouncer.holdInterval * 1_000_000_000))
+            guard !Task.isCancelled, self.endpointDebouncer.shouldCommit(now: Date()) else { return }
+            self.endpointDebouncer.committed()
+            let final = self.compactor.finalize()
+            self.finalizeCaption(final)
+        }
     }
 
     private func finalizeCaption(_ text: String, speaker: Int? = nil) {

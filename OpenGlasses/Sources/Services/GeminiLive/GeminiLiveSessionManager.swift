@@ -179,10 +179,13 @@ class GeminiLiveSessionManager: ObservableObject {
         }
 
         // Wire transcriptions
+        // Script-aware joining (Plan BY): live transcription arrives in word-segmented chunks
+        // with separator spaces — naive += rendered Chinese as "你手里 拿的 是". The joiner
+        // collapses the seam only when both neighbours are CJK, so Latin spacing is untouched.
         geminiService.onInputTranscription = { [weak self] text in
             guard let self else { return }
             Task { @MainActor in
-                self.userTranscript += text
+                self.userTranscript = ScriptAwareJoiner.join(self.userTranscript, text)
                 self.aiTranscript = ""
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
@@ -192,7 +195,7 @@ class GeminiLiveSessionManager: ObservableObject {
         geminiService.onOutputTranscription = { [weak self] text in
             guard let self else { return }
             Task { @MainActor in
-                self.aiTranscript += text
+                self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
             }
         }
 

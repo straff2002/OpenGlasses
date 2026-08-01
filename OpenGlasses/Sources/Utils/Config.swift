@@ -1785,6 +1785,19 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "skillPackDevModeEnabled")
     }
 
+    // MARK: - Captions (Plan BY)
+
+    /// Rolling compaction + endpoint debouncing under ambient captions. Default ON — behavior-
+    /// preserving for short utterances by construction (a single-segment caption renders and
+    /// finalizes identically); the flag exists as the field kill switch, not a beta gate.
+    static var captionCompactionEnabled: Bool {
+        UserDefaults.standard.object(forKey: "captionCompactionEnabled") as? Bool ?? true
+    }
+
+    static func setCaptionCompactionEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "captionCompactionEnabled")
+    }
+
     // MARK: - OpenAI Realtime Configuration
 
     /// Find the best OpenAI model config for Realtime mode.
