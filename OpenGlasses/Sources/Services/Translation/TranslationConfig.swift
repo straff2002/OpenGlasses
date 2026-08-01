@@ -28,6 +28,32 @@ extension Config {
     static var isTranslationCloudConfigured: Bool {
         translationCaptionsEnabled && isGeminiLiveConfigured && !hipaaMode
     }
+
+    // MARK: Two-way conversation mode (BY P3)
+
+    /// Two-way conversation mode: each side's speech renders in the other's language.
+    static var translationTwoWayEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "translationTwoWayEnabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "translationTwoWayEnabled") }
+    }
+
+    /// The wearer's own language in two-way mode (the leg the HUD shows).
+    static var translationLanguageA: String {
+        get { UserDefaults.standard.string(forKey: "translationLanguageA") ?? "en" }
+        set { UserDefaults.standard.set(newValue, forKey: "translationLanguageA") }
+    }
+
+    /// The interlocutor's language in two-way mode.
+    static var translationLanguageB: String {
+        get { UserDefaults.standard.string(forKey: "translationLanguageB") ?? "es" }
+        set { UserDefaults.standard.set(newValue, forKey: "translationLanguageB") }
+    }
+
+    /// The language translated captions render in for the *wearer* — leg A in two-way mode,
+    /// the target otherwise. Drives the `TranscriptGuard` locale and HUD leg routing.
+    static var translationWearerLanguage: String {
+        translationTwoWayEnabled ? translationLanguageA : translationTargetLanguage
+    }
 }
 
 /// Curated language-pair scope for the v1 UI (BY open decision: curated beats free-pick — the

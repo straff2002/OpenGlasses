@@ -57,8 +57,12 @@ final class OnDeviceASREngine {
     #endif
 
     /// Transcribe mono float samples (any sample rate — resampled to 16 kHz internally), off the main
-    /// actor. Returns the recognized text.
-    func transcribe(samples: [Float], sampleRate: Double) async throws -> String {
+    /// actor. Returns the recognized text. `expectedLocaleIdentifier` feeds the artifact filter's
+    /// script-mismatch rule; translation callers pass `"auto"` (BY P3) because foreign-language
+    /// speech is exactly what they expect — the device STT locale would drop a CJK transcript as
+    /// a hallucination before it could be translated.
+    func transcribe(samples: [Float], sampleRate: Double,
+                    expectedLocaleIdentifier: String = Config.speechRecognitionLocale) async throws -> String {
         guard Self.isCompiledIn else { throw ASRError.notCompiledIn }
         guard modelStore.isModelPresent else { throw ASRError.modelUnavailable }
         // BS P1: effectively-silent audio must not reach the recognizer — this model
@@ -81,8 +85,8 @@ final class OnDeviceASREngine {
             }
         }
         // BS P1: drop unmistakable artifact shapes (boilerplate, degenerate repetition,
-        // script mismatch vs the configured recognition locale).
-        guard let kept = TranscriptGuard.filter(raw, expectedLocaleIdentifier: Config.speechRecognitionLocale) else {
+        // script mismatch vs the caller's expected locale).
+        guard let kept = TranscriptGuard.filter(raw, expectedLocaleIdentifier: expectedLocaleIdentifier) else {
             NSLog("[ASR] Artifact filter dropped transcript: %@", String(raw.prefix(60)))
             return ""
         }

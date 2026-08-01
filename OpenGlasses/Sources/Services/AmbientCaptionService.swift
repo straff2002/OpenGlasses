@@ -21,6 +21,9 @@ class AmbientCaptionService: ObservableObject {
         /// Source-language transcript when `text` is a translation (BY P2) — the show-original
         /// ribbon. Nil on plain transcription paths.
         var original: String? = nil
+        /// Detected source language of a translated caption (BY P3) — routes the entry to its
+        /// leg in the two-way split view. Nil on plain transcription paths.
+        var language: String? = nil
     }
 
     private var recognizer: SFSpeechRecognizer?
@@ -31,9 +34,27 @@ class AmbientCaptionService: ObservableObject {
     /// `Config.isDiarizationConfigured`. Nil on the default (unlabeled) path.
     private var diarizer: DeepgramSTTService?
 
-    /// Translated-caption provider (BY P2), used instead of both paths above when
-    /// `Config.isTranslationCloudConfigured`. Nil otherwise.
+    /// Translated-caption provider, cloud tier (BY P2). Nil unless the session picked it.
     private var translator: GeminiTranslationProvider?
+
+    /// Translated-caption provider, on-device tier (BY P3): SenseVoice → Apple Translation.
+    private var onDeviceTranslator: OnDeviceTranslationProvider?
+
+    /// The direction the live translation session was started with; nil when not translating.
+    private var translationDirection: TranslationDirectionPolicy?
+
+    /// Set by AppState — the Apple Translation engine (hosted in the app root) the on-device
+    /// tier translates through, and reachability for the offline → on-device tier rule.
+    weak var translationEngine: AppleTranslationEngine?
+    weak var reachability: Reachability?
+
+    /// Own ASR engine instance (model presence is filesystem state; the ~240 MB model itself
+    /// loads lazily inside the recognizer, shared via the model directory).
+    private let onDeviceASR = OnDeviceASREngine()
+
+    /// Whether the live session is a translation session (either tier) — drives the two-way
+    /// split overlay.
+    var translationActive: Bool { translator != nil || onDeviceTranslator != nil }
 
     /// Maps diarization speaker ids to names/colours for the caption chips.
     let speakerRegistry = SpeakerRegistry()
@@ -143,11 +164,11 @@ class AmbientCaptionService: ObservableObject {
         guard !presenceSuspended else { return }
         stopRecognitionSession()
 
-        // Translated-caption path (BY P2 — opt-in, Gemini-keyed, non-HIPAA): captions render in
-        // the target language via the cloud tier. Takes precedence over diarization (whether the
-        // two compose is an open BY decision, deferred with the speaker-chip rail).
-        if Config.isTranslationCloudConfigured {
-            startTranslationSession()
+        // Translated-caption path (BY P2/P3 — opt-in): tier picked per session — HIPAA/offline
+        // route on-device, else cloud (`TranslationTierPolicy`). Takes precedence over
+        // diarization (whether the two compose is an open BY decision, deferred with the
+        // speaker-chip rail). An unavailable tier falls through to plain transcription.
+        if Config.translationCaptionsEnabled, startTranslationSession() {
             return
         }
 
@@ -226,39 +247,82 @@ class AmbientCaptionService: ObservableObject {
         }
     }
 
-    /// Translated captions via the cloud tier (BY P2), fed by the same shared-engine buffer
-    /// fan-out (no second mic session). Interim segments render live; the provider's final —
-    /// equal to its last interim by construction — becomes the history entry, carrying the
-    /// source-language transcript for the show-original ribbon. Device-pending; the stream
-    /// folding it relies on is unit-tested.
-    private func startTranslationSession() {
-        let translator = GeminiTranslationProvider()
-        translator.onSegment = { [weak self] segment in
-            guard let self, self.isActive else { return }
-            if segment.isFinal {
-                self.finalizeCaption(segment.text,
-                                     original: segment.original,
-                                     expectedLocale: Config.translationTargetLanguage)
-            } else {
-                self.currentCaption = segment.text
-                self.glassesDisplay?.showText(segment.text)
-                self.resetSilenceTimer()
-            }
-        }
-        self.translator = translator
-        do {
-            try translator.start(direction: .oneWay(target: Config.translationTargetLanguage))
-        } catch {
-            // Gate changed between the branch check and start — fall through to plain captions.
-            self.translator = nil
-            NSLog("[Captions] Translation unavailable (%@) — falling back to transcription",
-                  error.localizedDescription)
-            startRecognitionSession()
-            return
-        }
+    /// Translated captions (BY P2/P3), fed by the same shared-engine buffer fan-out (no second
+    /// mic session). Picks the tier per session and returns false when none is usable, so the
+    /// caller falls through to plain transcription in the same invocation. Device-pending; the
+    /// tier policy, stream folding, and utterance segmentation it relies on are unit-tested.
+    private func startTranslationSession() -> Bool {
+        let tier = TranslationTierPolicy.tier(
+            hipaa: Config.hipaaMode,
+            offline: !(reachability?.isOnline ?? true),
+            cloudConfigured: Config.isTranslationCloudConfigured,
+            onDeviceAvailable: onDeviceASR.isReady && translationEngine != nil)
+        let direction = TranslationRouting.currentDirection()
 
-        wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
-            Task { @MainActor in self?.translator?.sendAudio(buffer) }
+        switch tier {
+        case .cloud:
+            let translator = GeminiTranslationProvider()
+            translator.onSegment = { [weak self] segment in
+                self?.handleTranslationSegment(segment)
+            }
+            do {
+                try translator.start(direction: direction)
+            } catch {
+                NSLog("[Captions] Cloud translation unavailable (%@)", error.localizedDescription)
+                return false
+            }
+            self.translator = translator
+            translationDirection = direction
+            wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+                Task { @MainActor in self?.translator?.sendAudio(buffer) }
+            }
+            return true
+
+        case .onDevice:
+            guard let engine = translationEngine else { return false }
+            let provider = OnDeviceTranslationProvider(asr: onDeviceASR, engine: engine)
+            provider.onSegment = { [weak self] segment in
+                self?.handleTranslationSegment(segment)
+            }
+            do {
+                try provider.start(direction: direction)
+            } catch {
+                NSLog("[Captions] On-device translation unavailable (%@)", error.localizedDescription)
+                return false
+            }
+            onDeviceTranslator = provider
+            translationDirection = direction
+            wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+                Task { @MainActor in self?.onDeviceTranslator?.sendAudio(buffer) }
+            }
+            return true
+
+        case .unavailable(let reason):
+            NSLog("[Captions] Translation unavailable: %@ — plain transcription", reason)
+            return false
+        }
+    }
+
+    /// Both tiers land here. The phone surface shows every leg; the in-lens HUD shows only the
+    /// wearer's leg — in two-way, the line addressed to *them* (BY P3). Finals repeat the HUD
+    /// text (a no-op for the cloud tier, where final == last interim; the only text the
+    /// interim-less on-device tier ever shows).
+    private func handleTranslationSegment(_ segment: TranslationSegment) {
+        guard isActive else { return }
+        let direction = translationDirection ?? .oneWay(target: Config.translationTargetLanguage)
+        let wearerLeg = TranslationRouting.isWearerLeg(
+            detected: segment.language, direction: direction,
+            wearerLanguage: Config.translationWearerLanguage)
+        if segment.isFinal {
+            let renderLanguage = direction.renderLanguage(forDetected: segment.language)
+                ?? Config.translationWearerLanguage
+            if wearerLeg { glassesDisplay?.showText(segment.text) }
+            finalizeCaption(segment.text, original: segment.original,
+                            language: segment.language, expectedLocale: renderLanguage)
+        } else {
+            currentCaption = segment.text
+            if wearerLeg { glassesDisplay?.showText(segment.text) }
+            resetSilenceTimer()
         }
     }
 
@@ -303,6 +367,9 @@ class AmbientCaptionService: ObservableObject {
         diarizer = nil
         translator?.stop()
         translator = nil
+        onDeviceTranslator?.stop()
+        onDeviceTranslator = nil
+        translationDirection = nil
         wakeWordService?.removeAudioBufferConsumer(id: "ambient_captions")
     }
 
@@ -347,7 +414,7 @@ class AmbientCaptionService: ObservableObject {
     }
 
     private func finalizeCaption(_ text: String, speaker: Int? = nil, original: String? = nil,
-                                 expectedLocale: String? = nil) {
+                                 language: String? = nil, expectedLocale: String? = nil) {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         // BS P1: captions feed summaries, the Spotlight index, and Brain — drop
         // unmistakable silence-decode artifacts regardless of which engine produced them
@@ -365,7 +432,8 @@ class AmbientCaptionService: ObservableObject {
         guard trimmed != lastFinalizedText else { return }
 
         lastFinalizedText = trimmed
-        let entry = CaptionEntry(text: trimmed, timestamp: Date(), speaker: speaker, original: original)
+        let entry = CaptionEntry(text: trimmed, timestamp: Date(), speaker: speaker,
+                                 original: original, language: language)
         captionHistory.insert(entry, at: 0)
 
         // Trim history
@@ -384,7 +452,8 @@ class AmbientCaptionService: ObservableObject {
                 if !self.currentCaption.isEmpty {
                     // On the translation path the caption is target-language text — judge it
                     // against that locale, not the device STT locale (BY P2; see finalizeCaption).
-                    let locale = self.translator != nil ? Config.translationTargetLanguage : nil
+                    let translating = self.translator != nil || self.onDeviceTranslator != nil
+                    let locale = translating ? Config.translationWearerLanguage : nil
                     self.finalizeCaption(self.currentCaption, expectedLocale: locale)
                 }
             }

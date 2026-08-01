@@ -1,6 +1,6 @@
 # Plan BY — Live Translation Captions
 
-**Status:** 🚧 P1+P2 shipped (2026-08-01) — P1 pure caption mechanics: `ScriptAwareJoiner` (CJK
+**Status:** ✅ Shipped — P1 (2026-08-01), P2 (2026-08-01), P3 (2026-08-01). P1 pure caption mechanics: `ScriptAwareJoiner` (CJK
 word-gap collapse, single script-range source shared with `TranscriptGuard`, applied live at both
 Gemini transcript accumulators, the Realtime output accumulator, and the compactor seams),
 `EndpointDebouncer` (hold ~500 ms, tokens discard premature endpoints), `CaptionCompactor`
@@ -22,8 +22,22 @@ interim/final `TranslationSegment`s, final == last interim; tag parsing degrades
 key + **not** HIPAA, re-checked per audio buffer so a mid-session HIPAA flip kills egress — the
 AQ lesson). `TranslationSettingsView` (target language from curated list, show-original ribbon,
 provider status), HIPAA "What changes" row, `captionBackendChanged` → live session re-pick.
-Device-pending: live latency/quality validation of the translator session.
-Next: P3 on-device tier (SenseVoice → Apple Translation) + two-way + HUD wearer-leg rendering.
+**P3 (on-device tier + two-way + HUD legs):** `OnDeviceTranslationProvider` — SenseVoice ASR
+(expected locale "auto" so foreign scripts survive the artifact filter) → `NLLanguageRecognizer`
+→ Apple Translation, zero cloud egress (usable under HIPAA and offline; fail-open to the
+untranslated transcript). `UtteranceSegmenter` (pure: energy-based boundaries reusing the
+`TranscriptGuard` RMS gate; silence-hold + bounded force-emit),
+`AppleTranslationEngine`/`TranslationEngineHost` (the Translation framework only hands out
+sessions through SwiftUI — invisible host in the app root serves a MainActor request queue with
+timeout), `TranslationRouting` (pure: settings → direction; wearer-leg predicate). Tier picked
+per session by `TranslationTierPolicy` (HIPAA/offline → on-device, else cloud; unavailable
+falls through to plain transcription). Two-way conversation mode: `.twoWay(a, b)` to either
+tier, split phone overlay (leg per render language), HUD shows only the wearer's leg.
+Settings: two-way toggle + Your/Their language, on-device tier status; HIPAA row now
+"on-device only". Device-pending: translation-pair downloads, mic distance/diarization
+quality in two-way, live latency.
+All three phases shipped; remaining open decisions: diarized speaker-chip composition with
+translated captions, curated-list expansion.
 
 Subtitle the world: real-time translated captions of surrounding speech, on the phone overlay
 and the in-lens HUD — "they're speaking Spanish, you read English." Plus a **two-way

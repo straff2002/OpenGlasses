@@ -18,9 +18,17 @@ struct AmbientCaptionOverlay: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            // Recent history (faded)
-            ForEach(captionService.captionHistory.prefix(3).reversed()) { entry in
-                historyRow(entry)
+            if Config.translationTwoWayEnabled, captionService.translationActive {
+                // Two-way conversation split (BY P3): the interlocutor's leg on top (their
+                // language), the wearer's leg below — each side reads their own half.
+                twoWayLeg(wearer: false)
+                Divider().overlay(.white.opacity(0.3)).padding(.horizontal, 40)
+                twoWayLeg(wearer: true)
+            } else {
+                // Recent history (faded)
+                ForEach(captionService.captionHistory.prefix(3).reversed()) { entry in
+                    historyRow(entry)
+                }
             }
 
             // Current live caption
@@ -57,6 +65,32 @@ struct AmbientCaptionOverlay: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Captions from this voice will show this name. Give two chips the same name to merge them.")
+        }
+    }
+
+    /// One leg of the two-way split: entries whose *render* language belongs to this side.
+    /// Wearer leg = entries translated into the wearer's language (leg A).
+    @ViewBuilder
+    private func twoWayLeg(wearer: Bool) -> some View {
+        let direction = TranslationRouting.currentDirection()
+        let entries = captionService.captionHistory.prefix(6).reversed().filter { entry in
+            TranslationRouting.isWearerLeg(detected: entry.language, direction: direction,
+                                           wearerLanguage: Config.translationWearerLanguage) == wearer
+        }
+        let legLanguage = wearer ? Config.translationLanguageA : Config.translationLanguageB
+        VStack(spacing: 2) {
+            Text("→ \(TranslationLanguages.displayName(for: legLanguage))")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+            if entries.isEmpty {
+                Text("…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.25))
+            } else {
+                ForEach(entries.suffix(2)) { entry in
+                    historyRow(entry)
+                }
+            }
         }
     }
 
