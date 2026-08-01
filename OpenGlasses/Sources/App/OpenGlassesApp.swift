@@ -1298,41 +1298,83 @@ class AppState: ObservableObject, AppStateProtocol {
         let oldMode = currentMode
         currentMode = mode
         Config.setAppMode(mode)
-        releaseFramePin(trigger: .modeSwitch)   // Plan CE (CF's redial will re-push instead)
+
+        // Plan CF: was a live call in progress? Captured BEFORE teardown — the policy turns
+        // this into an auto-redial so switching brains mid-call doesn't go silently dead.
+        let wasSessionActive = (oldMode == .geminiLive && geminiLiveSession.isActive)
+            || (oldMode == .openaiRealtime && openAIRealtimeSession.isActive)
+        let actions = ModeSwitchPolicy.actions(from: oldMode, to: mode,
+                                               wasSessionActive: wasSessionActive,
+                                               autoRedial: Config.modeSwitchAutoRedialEnabled)
+        // Plan CE interplay (open question resolved "yes" in CF): a redial carries a held pin
+        // into the new session — the referent is the user's intent, not the session's lifetime.
+        // Only a non-redialing switch releases it.
+        if !actions.contains(.startSession(mode)) {
+            releaseFramePin(trigger: .modeSwitch)
+        }
 
         Task {
-            // Tear down old mode
-            switch oldMode {
-            case .direct:
-                wakeWordService.stopListening()
-                speechService.stopSpeaking()
-                inConversation = false
-                isListening = false
-            case .geminiLive:
-                geminiLiveSession.stopSession()
-                backgroundVoice.endBackgroundSession()
-                await cameraService.tearDown()
-            case .openaiRealtime:
-                openAIRealtimeSession.stopSession()
-                backgroundVoice.endBackgroundSession()
-                await cameraService.tearDown()
-            }
+            for action in actions {
+                switch action {
+                case .teardown(let target):
+                    switch target {
+                    case .direct:
+                        wakeWordService.stopListening()
+                        speechService.stopSpeaking()
+                        inConversation = false
+                        isListening = false
+                    case .geminiLive:
+                        geminiLiveSession.stopSession()
+                        backgroundVoice.endBackgroundSession()
+                        await cameraService.tearDown()
+                    case .openaiRealtime:
+                        openAIRealtimeSession.stopSession()
+                        backgroundVoice.endBackgroundSession()
+                        await cameraService.tearDown()
+                    }
 
-            // Brief delay for audio session to release
-            try? await Task.sleep(nanoseconds: 500_000_000)
+                case .settleDelay:
+                    // Brief delay for audio session to release
+                    try? await Task.sleep(nanoseconds: 500_000_000)
 
-            // Start new mode
-            switch mode {
-            case .direct:
-                try? await wakeWordService.startListening()
-            case .geminiLive, .openaiRealtime:
-                // Start background voice session to keep audio alive when backgrounded
-                backgroundVoice.startBackgroundSession()
-                // Start camera streaming so frames are available when session starts
-                do {
-                    try await cameraService.startStreaming()
-                } catch {
-                    NSLog("[App] Camera streaming failed to start: %@", error.localizedDescription)
+                case .startSubstrate(let target):
+                    switch target {
+                    case .direct:
+                        try? await wakeWordService.startListening()
+                    case .geminiLive, .openaiRealtime:
+                        // Background voice keeps audio alive when backgrounded; camera up so
+                        // frames are available when the session starts
+                        backgroundVoice.startBackgroundSession()
+                        do {
+                            try await cameraService.startStreaming()
+                        } catch {
+                            NSLog("[App] Camera streaming failed to start: %@", error.localizedDescription)
+                        }
+                    }
+
+                case .startSession(let target):
+                    // The redial. Errors surface exactly as a manual failed connect would —
+                    // the managers publish `connectionState`/`errorMessage` themselves, and the
+                    // automatic path must not swallow them.
+                    switch target {
+                    case .geminiLive: await geminiLiveSession.startSession()
+                    case .openaiRealtime: await openAIRealtimeSession.startSession()
+                    case .direct: break   // policy never emits this
+                    }
+                    let ready = (target == .geminiLive && geminiLiveSession.isActive)
+                        || (target == .openaiRealtime && openAIRealtimeSession.isActive)
+                    if ready {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        // Plan CE: re-push a held pin so the new brain sees the same referent.
+                        if Config.framePinEnabled, framePin.isPinned {
+                            injectPinnedFrame()
+                            framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
+                        }
+                        NSLog("[App] Mode-switch redial connected (%@)", target.rawValue)
+                    } else {
+                        NSLog("[App] Mode-switch redial failed (%@) — error surfaced via session state",
+                              target.rawValue)
+                    }
                 }
             }
         }
