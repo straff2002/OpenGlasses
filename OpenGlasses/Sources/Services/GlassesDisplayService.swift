@@ -1,57 +1,35 @@
 import Foundation
-import MWDATCore
-import MWDATDisplay
 
-/// Mirrors short content to the Ray-Ban *Display* in-lens HUD (DAT SDK `MWDATDisplay`).
+/// Mirrors short content to the in-lens HUD through the active `GlassesDisplayBackend`
+/// (Plan AH): Ray-Ban Display via the DAT SDK (`MetaDisplayBackend`, default) or EVEN
+/// Realities G2 over BLE (`EvenDisplayBackend`).
 ///
 /// Producers wired so far:
 /// - Phase 1: AI responses (`TextToSpeechService`) and the live ambient-caption line.
 /// - Phase 2: notifications (proactive/calendar + geofence alerts) and Navigation
 ///   Assist guidance, rendered with an icon + heading + body.
 ///
-/// Everything is additive — the on-phone overlay and TTS are untouched. On glasses
-/// without a display (`Device.supportsDisplay() == false`) every call is a safe no-op
-/// and no `DeviceSession` is ever created, so non-Display Ray-Ban hardware is unaffected.
+/// Everything is additive — the on-phone overlay and TTS are untouched. When the active
+/// backend reports no display, every call is a safe no-op and no transport is created.
 ///
-/// Session ownership: this service manages its own `DeviceSession` (via
-/// `AutoDeviceSelector`), separate from `CameraService`. The SDK allows a single
-/// session per device, so while the HUD session is held the camera falls back to its
-/// existing iPhone-camera path. Unifying the two into one shared `DeviceSession`
-/// (camera + display capabilities on one session) is a tracked follow-up.
+/// This service owns everything backend-neutral: the latest-wins render queue, dedup,
+/// the interactive gate (Plan X), flash-then-restore, and text condensing
+/// (`HUDTextShaper`). Backends own capability, transport lifecycle, and the
+/// content→device mapping. The backend choice governs the DISPLAY only — camera/audio
+/// run on their own services, so a Meta camera + EVEN HUD hybrid works by construction.
 @MainActor
 final class GlassesDisplayService: ObservableObject {
-    /// True once the display capability is started and content is being shown.
+    /// True once the display transport is active and content is being shown.
     @Published private(set) var isDisplayActive = false
-    /// Whether the currently-active glasses report an in-lens display.
+    /// Whether the currently-active backend reports an in-lens display.
     @Published private(set) var hasDisplayCapability = false
 
     /// Debug event callback (wired to `AppState.addDebugEvent`).
     var onDebugEvent: ((String) -> Void)?
 
-    /// Semantic icon for HUD content. Mapped internally to a `MWDATDisplay.IconName`
-    /// so producers don't need to import the SDK.
-    enum HUDIcon: Equatable {
-        case none
-        case info, success, warning, error
-        case navigation, hazard
-        case calendar, location, reminder, message
-
-        fileprivate var iconName: IconName? {
-            switch self {
-            case .none: return nil
-            case .info: return .iCircle
-            case .success: return .checkmarkCircle
-            case .warning: return .exclamationTriangle
-            case .error: return .exclamationCircle
-            case .navigation: return .compassNorthUpRed
-            case .hazard: return .exclamationTriangle
-            case .calendar: return .calendar
-            case .location: return .house
-            case .reminder: return .bell
-            case .message: return .speechBubble
-            }
-        }
-    }
+    /// Kept as a nested alias — `HUDIcon` moved next to the DSL (Plan AH); existing
+    /// `GlassesDisplayService.HUDIcon` references stay valid.
+    typealias HUDIcon = OpenGlasses.HUDIcon
 
     /// A single HUD frame: optional heading + body, with an optional leading icon.
     private struct HUDContent: Equatable {
@@ -73,13 +51,43 @@ final class GlassesDisplayService: ObservableObject {
         case screen(HUDScreen)
     }
 
-    /// Lazily initialized after `Wearables.configure()` has been called.
-    private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
-    private var deviceSession: DeviceSession?
-    private var display: Display?
+    // MARK: - Backends (Plan AH)
+
+    private lazy var metaBackend: MetaDisplayBackend = {
+        let backend = MetaDisplayBackend()
+        wire(backend)
+        return backend
+    }()
+
+    private lazy var evenBackend: EvenDisplayBackend = {
+        let backend = EvenDisplayBackend()
+        wire(backend)
+        return backend
+    }()
+
+    /// The backend the config selects. Resolved per call — switching backends in
+    /// Settings takes effect on the next render.
+    private var activeBackend: GlassesDisplayBackend {
+        switch Config.displayBackend {
+        case .metaRayBan: return metaBackend
+        case .evenG2: return evenBackend
+        }
+    }
+
+    private func wire(_ backend: GlassesDisplayBackend) {
+        backend.onItemSelected = { [weak self] id in
+            self?.screenSelectionHandler?(id)
+        }
+        backend.onTransportError = { [weak self] error in
+            self?.handleRenderError(error)
+        }
+        if let meta = backend as? MetaDisplayBackend {
+            meta.onDebugEvent = { [weak self] message in self?.onDebugEvent?(message) }
+        }
+    }
 
     /// Latest-wins render queue. Rapid updates collapse to the most recent frame so we
-    /// never flood the BLE link — only one `send` is ever in flight.
+    /// never flood the link — only one `send` is ever in flight.
     private var pending: Frame?
     private var isRendering = false
     /// The ambient op last pushed to the HUD; identical follow-ups are skipped.
@@ -102,13 +110,13 @@ final class GlassesDisplayService: ObservableObject {
 
     // MARK: - Testing seam
     //
-    // No Ray-Ban *Display* hardware is available in CI/sim, so the interactive logic
-    // (capability gate, ambient suppression, render-key dedup, flash-then-restore) is
-    // validated headlessly. `testCapabilityOverride` bypasses the hardware capability
-    // check; `testRenderSink`, when set, captures the frame the queue *would* send
-    // instead of hitting the SDK. Both are nil in production — the real SDK path is
-    // untouched. The Neural Band itself is simulated in tests by invoking the
-    // `onClick` of the buttons produced by `makeScreenView(_:)`.
+    // No display hardware is available in CI/sim, so the interactive logic (capability
+    // gate, ambient suppression, render-key dedup, flash-then-restore) is validated
+    // headlessly. `testCapabilityOverride` bypasses the backend capability check;
+    // `testRenderSink`, when set, captures the frame the queue *would* send instead of
+    // hitting a backend. Both are nil in production — the real paths are untouched. The
+    // Neural Band itself is simulated in tests by invoking the `onClick` of the buttons
+    // produced by `MetaDisplayBackend.makeScreenView(_:)`.
     var testCapabilityOverride: Bool?
     var testRenderSink: ((HUDFrame) -> Void)?
 
@@ -119,33 +127,13 @@ final class GlassesDisplayService: ObservableObject {
         case clear
     }
 
-    /// Max characters for the body line — kept short for in-lens legibility.
-    /// `nonisolated` so `condense`'s default argument can reference it without a
-    /// Swift 6 main-actor-isolation warning (it's an immutable Sendable constant).
-    private nonisolated static let maxLength = 120
-    /// Max characters for a heading.
-    private nonisolated static let maxTitleLength = 40
-
     // MARK: - Capability
 
-    /// Whether the active glasses expose an in-lens display. Cheap, synchronous, and
+    /// Whether the active backend exposes an in-lens display. Cheap, synchronous, and
     /// safe to call frequently. Updates `hasDisplayCapability` as a side effect.
     @discardableResult
     func deviceSupportsDisplay() -> Bool {
-        if let testCapabilityOverride {
-            if hasDisplayCapability != testCapabilityOverride { hasDisplayCapability = testCapabilityOverride }
-            return testCapabilityOverride
-        }
-        let supported: Bool = {
-            // Single choke point for the HUD: `ensureDisplay()` gates on this, so an unconfigured
-            // SDK reports "no display" instead of trapping on `deviceSelector`/`Wearables.shared`.
-            guard WearablesBootstrap.ensureConfigured() else { return false }
-            guard let id = deviceSelector.activeDevice,
-                  let device = Wearables.shared.deviceForIdentifier(id) else {
-                return false
-            }
-            return device.supportsDisplay()
-        }()
+        let supported = testCapabilityOverride ?? activeBackend.isAvailable
         if hasDisplayCapability != supported { hasDisplayCapability = supported }
         return supported
     }
@@ -185,16 +173,16 @@ final class GlassesDisplayService: ObservableObject {
         present(HUDContent(title: nil, body: text, icon: icon), transient: false, duration: 0)
     }
 
-    /// Clear the HUD (keeps the session alive for fast subsequent updates).
+    /// Clear the HUD (keeps the transport alive for fast subsequent updates).
     func clear() {
         guard isEnabled else { return }
-        guard isDisplayActive || display != nil else { return }
+        guard isDisplayActive || lastRendered != nil || lastScreenKey != nil else { return }
         enqueue(.op(.clear))
     }
 
     /// Present an interactive screen (task card / menu). Drives the HUD into interactive
-    /// mode; band selections route back via `onSelect(itemID)`. No-op when the feature is
-    /// off or the glasses have no display.
+    /// mode; on-device selections route back via `onSelect(itemID)`. No-op when the
+    /// feature is off or the glasses have no display.
     func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
         guard isEnabled, deviceSupportsDisplay() else { return }
         screenSelectionHandler = onSelect
@@ -214,11 +202,14 @@ final class GlassesDisplayService: ObservableObject {
         enqueue(.op(.clear))
     }
 
-    /// Fully tear down the display session. Call on feature disable / mode switch /
+    /// Fully tear down the display transport. Call on feature disable / mode switch /
     /// app teardown.
     func shutdown() async {
         pending = nil
-        await teardownDisplay()
+        await activeBackend.shutdown()
+        isDisplayActive = false
+        lastRendered = nil
+        lastScreenKey = nil
     }
 
     // MARK: - Presentation
@@ -229,8 +220,8 @@ final class GlassesDisplayService: ObservableObject {
         // transient notifications still flash (and restore the screen on auto-clear).
         if isInteractive && !transient { return }
         var shaped = content
-        shaped.body = Self.condense(content.body)
-        shaped.title = content.title.map { Self.condense($0, max: Self.maxTitleLength) }
+        shaped.body = HUDTextShaper.condense(content.body)
+        shaped.title = content.title.map { HUDTextShaper.condense($0, max: HUDTextShaper.maxTitleLength) }
         let hasBody = !shaped.body.isEmpty
         let hasTitle = !(shaped.title?.isEmpty ?? true)
         guard hasBody || hasTitle else { return }
@@ -274,8 +265,12 @@ final class GlassesDisplayService: ObservableObject {
                             sink(Self.descriptor(for: op))
                         } else {
                             switch op {
-                            case .show(let content): try await self.renderContent(content)
-                            case .clear: try await self.renderClear()
+                            case .show(let content):
+                                try await self.activeBackend.showContent(
+                                    title: content.title, body: content.body, icon: content.icon)
+                                self.isDisplayActive = true
+                            case .clear:
+                                try await self.activeBackend.clear()
                             }
                         }
                         self.lastRendered = op
@@ -285,7 +280,8 @@ final class GlassesDisplayService: ObservableObject {
                         if let sink = self.testRenderSink {
                             sink(.screen(renderKey: screen.renderKey))
                         } else {
-                            try await self.renderScreen(screen)
+                            try await self.activeBackend.send(screen: screen)
+                            self.isDisplayActive = true
                         }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
@@ -299,55 +295,6 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
-    private func renderContent(_ content: HUDContent) async throws {
-        let display = try await ensureDisplay()
-        let iconName = content.icon.iconName
-        let hasTitle = !(content.title?.isEmpty ?? true)
-
-        let view = FlexBox(
-            direction: .column,
-            spacing: 6,
-            alignment: .start,
-            padding: EdgeInsets(all: 12)
-        ) {
-            if hasTitle, let title = content.title {
-                // Heading row (icon + title), then body underneath.
-                if let iconName {
-                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
-                        Icon(name: iconName)
-                        Text(title, style: .heading, color: .primary)
-                    }
-                } else {
-                    Text(title, style: .heading, color: .primary)
-                }
-                Text(content.body, style: .body, color: .secondary)
-            } else {
-                // Body only — inline with the icon when present.
-                if let iconName {
-                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
-                        Icon(name: iconName)
-                        Text(content.body, style: .body, color: .primary)
-                    }
-                } else {
-                    Text(content.body, style: .body, color: .primary)
-                }
-            }
-        }
-        try await display.send(view)
-    }
-
-    private func renderClear() async throws {
-        // Nothing to clear if we never started a session.
-        guard let display else { return }
-        // DAT 0.8.0: explicit clear instead of sending an empty FlexBox.
-        try await display.clearDisplay()
-    }
-
-    private func renderScreen(_ screen: HUDScreen) async throws {
-        let display = try await ensureDisplay()
-        try await display.send(makeScreenView(screen))
-    }
-
     private static func descriptor(for op: RenderOp) -> HUDFrame {
         switch op {
         case .show(let content): return .content(body: content.body, title: content.title, icon: content.icon)
@@ -355,137 +302,14 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
-    /// Build the SDK view tree for `screen` for the on-phone preview/mirror
-    /// (`HUDPreviewView`). Session-free; the returned tree's button taps route nowhere.
-    /// Shares `makeScreenView` with the on-glasses path so the phone mirror is a single
-    /// source of truth.
-    static func previewFlexBox(for screen: HUDScreen) -> FlexBox {
-        GlassesDisplayService().makeScreenView(screen)
-    }
-
-    /// Build the interactive `FlexBox` for `screen`. Internal and free of SDK session
-    /// state so tests can inspect the component tree and invoke each Button's `onClick`
-    /// to simulate a Neural-Band selection.
-    func makeScreenView(_ screen: HUDScreen) -> FlexBox {
-        // Pre-shape all text and presentation here (MainActor context) so the
-        // result-builder closure below never references the MainActor-isolated
-        // `condense`/`maxLength`. Each button model carries only Sendable values —
-        // never the HUDItem, whose `action` closure isn't Sendable; selection routes
-        // back by id.
-        let headingText = screen.title.flatMap { $0.isEmpty ? nil : Self.condense($0, max: Self.maxTitleLength) }
-        let lineModels = screen.lines.map { line in
-            (text: Self.condense(line.text), iconName: line.icon.iconName,
-             style: line.emphasis.textStyle, color: line.emphasis.textColor)
-        }
-        let buttonModels = screen.items.map { item in
-            (id: item.id, label: Self.condense(item.label, max: Self.maxTitleLength),
-             style: item.style.buttonStyle, iconName: item.icon.iconName)
-        }
-
-        return FlexBox(
-            direction: .column,
-            spacing: 6,
-            alignment: .start,
-            padding: EdgeInsets(all: 12)
-        ) {
-            if let headingText {
-                Text(headingText, style: .heading, color: .primary)
-            }
-            for line in lineModels {
-                if let iconName = line.iconName {
-                    FlexBox(direction: .row, spacing: 6, alignment: .center) {
-                        Icon(name: iconName)
-                        Text(line.text, style: line.style, color: line.color)
-                    }
-                } else {
-                    Text(line.text, style: line.style, color: line.color)
-                }
-            }
-            for button in buttonModels {
-                let id = button.id
-                Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
-                    Task { @MainActor in self?.screenSelectionHandler?(id) }
-                })
-            }
-        }
-    }
+    // `previewFlexBox(for:)` — the on-phone FlexBox mirror — lives in
+    // MetaDisplayBackend.swift (the SDK-importing file) as an extension of this class.
 
     /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
     /// rendered tree, in order, so a test can simulate Neural-Band selections without
     /// importing the SDK. Each fires exactly the routing the real button would.
     func testInteractiveButtonActions(for screen: HUDScreen) -> [() -> Void] {
-        makeScreenView(screen).children
-            .compactMap { ($0 as? Button)?.onClick }
-            .map { onClick in { onClick() } }
-    }
-
-    // MARK: - Session lifecycle
-
-    private func ensureDisplay() async throws -> Display {
-        // Reuse a live display/session.
-        if let display, deviceSession?.state == .started {
-            return display
-        }
-        // Drop stale references if the session died underneath us.
-        if deviceSession?.state == .stopped || deviceSession?.state == .idle {
-            display = nil
-            deviceSession = nil
-            isDisplayActive = false
-        }
-
-        guard deviceSupportsDisplay() else { throw GlassesDisplayError.noDisplay }
-
-        let session: DeviceSession
-        if let existing = deviceSession {
-            session = existing
-        } else {
-            session = try Wearables.shared.createSession(deviceSelector: deviceSelector)
-            deviceSession = session
-        }
-
-        if session.state != .started {
-            try session.start()
-            let deadline = ContinuousClock.now + .seconds(10)
-            while ContinuousClock.now < deadline {
-                if session.state == .started || session.state == .stopped { break }
-                try await Task.sleep(nanoseconds: 200_000_000)
-            }
-        }
-        guard session.state == .started else { throw GlassesDisplayError.sessionUnavailable }
-
-        let display: Display
-        if let existing = self.display {
-            display = existing
-        } else {
-            // We exclusively own this session, so the display capability can't already
-            // be active. `addDisplay()` throws DeviceSessionError; surface failures via
-            // the render-error path (which tears down and rebuilds a fresh session).
-            display = try session.addDisplay()
-            self.display = display
-        }
-
-        display.start()  // DAT 0.8.0: Display.start() is synchronous
-        isDisplayActive = true
-        onDebugEvent?("HUD display started")
-        return display
-    }
-
-    private func teardownDisplay() async {
-        if let display {
-            // Blank the waveguide BEFORE stopping, and give the clear a beat to land —
-            // stopping with content still up can surface the system home screen on the
-            // lens instead of going dark (device-traced ordering; iOS DAT has no
-            // `removeDisplay`, so clear → settle → stop is the whole discipline).
-            try? await display.clearDisplay()
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            display.stop()  // DAT 0.8.0: Display.stop() is synchronous
-        }
-        display = nil
-        deviceSession?.stop()
-        deviceSession = nil
-        isDisplayActive = false
-        lastRendered = nil
-        lastScreenKey = nil
+        metaBackend.testButtonActions(for: screen)
     }
 
     private func handleRenderError(_ error: Error) {
@@ -493,31 +317,11 @@ final class GlassesDisplayService: ObservableObject {
         if case GlassesDisplayError.noDisplay = error { return }
         NSLog("[Display] HUD render failed: %@", String(describing: error))
         onDebugEvent?("HUD error: \(String(describing: error))")
-        // Drop references so the next render rebuilds the session from scratch.
-        display = nil
-        deviceSession?.stop()
-        deviceSession = nil
+        // Drop references so the next render rebuilds the transport from scratch.
+        activeBackend.resetAfterError()
         isDisplayActive = false
         lastRendered = nil
         lastScreenKey = nil
-    }
-
-    // MARK: - Text shaping
-
-    /// Collapse whitespace and truncate to a HUD-legible length.
-    private static func condense(_ text: String, max: Int = maxLength) -> String {
-        let collapsed = text
-            .replacingOccurrences(of: "\n", with: " ")
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        guard collapsed.count > max else { return collapsed }
-        let cut = collapsed.prefix(max)
-        // Prefer to break on the last space so we don't slice a word in half.
-        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.index(cut.startIndex, offsetBy: max / 2) {
-            return String(cut[..<lastSpace]) + "…"
-        }
-        return String(cut) + "…"
     }
 }
 
@@ -529,33 +333,6 @@ enum GlassesDisplayError: LocalizedError {
         switch self {
         case .noDisplay: return "Connected glasses have no in-lens display"
         case .sessionUnavailable: return "Display session unavailable"
-        }
-    }
-}
-
-// MARK: - HUD model → SDK mapping (Plan X)
-
-fileprivate extension HUDEmphasis {
-    var textStyle: TextStyle {
-        switch self {
-        case .primary, .secondary: return .body
-        case .meta: return .meta
-        }
-    }
-    var textColor: TextColor {
-        switch self {
-        case .primary: return .primary
-        case .secondary, .meta: return .secondary
-        }
-    }
-}
-
-fileprivate extension HUDButtonStyle {
-    var buttonStyle: ButtonStyle {
-        switch self {
-        case .primary: return .primary
-        case .secondary: return .secondary
-        case .outline: return .outline
         }
     }
 }

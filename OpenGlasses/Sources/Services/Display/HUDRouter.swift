@@ -83,19 +83,39 @@ final class HUDRouter: ObservableObject {
     }
 
     /// Voice leg of the band+voice+phone input model: while a task card is active,
-    /// "next/done/skip/back" drive the source. Returns `true` if it consumed the
-    /// utterance (so the caller doesn't also send it to the LLM). No-op otherwise.
+    /// "next/done/skip/back" drive the source, and on a decision step a spoken branch
+    /// label selects that branch (Plan AH — on EVEN there is no band, so without this
+    /// decision workflows dead-end; same conservative matching discipline as the
+    /// launcher: exact label, else unique substring, ambiguity is a no-op). Returns
+    /// `true` if it consumed the utterance (so the caller doesn't also send it to the
+    /// LLM). No-op otherwise.
     @discardableResult
     func handleVoiceCommand(_ text: String) async -> Bool {
-        guard isPresentingTask, let source = taskSource,
-              let command = HUDVoiceCommand.parse(text) else { return false }
-        switch command {
-        case .complete: await source.complete()
-        case .skip: await source.skip()
-        case .back: await source.back()
-        case .briefing: return false   // global (digest) command — the app-level handler owns it
+        guard isPresentingTask, let source = taskSource else { return false }
+        if let command = HUDVoiceCommand.parse(text) {
+            switch command {
+            case .complete: await source.complete()
+            case .skip: await source.skip()
+            case .back: await source.back()
+            case .briefing: return false   // global (digest) command — the app-level handler owns it
+            }
+            return true
         }
-        return true
+
+        let choices = source.choices
+        guard !choices.isEmpty else { return false }
+        let phrase = HUDLauncher.normalize(text)
+        guard !phrase.isEmpty else { return false }
+        if let exact = choices.first(where: { HUDLauncher.normalize($0.label) == phrase }) {
+            await source.choose(exact.id)
+            return true
+        }
+        let matches = choices.filter { HUDLauncher.normalize($0.label).contains(phrase) }
+        if matches.count == 1 {
+            await source.choose(matches[0].id)
+            return true
+        }
+        return false
     }
 
     // MARK: - Launcher screen stack (Display Phase 4 / Plan Y)

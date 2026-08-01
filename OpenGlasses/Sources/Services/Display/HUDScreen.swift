@@ -3,12 +3,46 @@ import Foundation
 /// SDK-free description of one interactive HUD screen (Display Phase 3 / Plan X).
 ///
 /// A screen is a heading + some non-interactive content lines + a list of
-/// band-selectable items. `GlassesDisplayService` renders it to a `MWDATDisplay`
-/// `FlexBox`/`Button` tree; nothing here imports the SDK, so screens are pure data
-/// and unit-testable headlessly. `HUDIcon` is reused from `GlassesDisplayService`.
+/// band-selectable items. The active `GlassesDisplayBackend` renders it (Meta: a
+/// `MWDATDisplay` FlexBox/Button tree; EVEN G2: a monochrome text frame — Plan AH);
+/// nothing here imports an SDK, so screens are pure data and unit-testable headlessly.
 
-/// Text emphasis for a content line, mapped to the SDK's `TextStyle`/`TextColor`
-/// inside `GlassesDisplayService`.
+/// Semantic icon for HUD content. Lives with the DSL (Plan AH) so the DSL's owner isn't
+/// an SDK-importing class; each backend maps it to its own representation (Meta:
+/// `MWDATDisplay.IconName`; EVEN: a text glyph).
+enum HUDIcon: Equatable {
+    case none
+    case info, success, warning, error
+    case navigation, hazard
+    case calendar, location, reminder, message
+}
+
+/// Shared HUD text shaping (Plan AH — extracted from `GlassesDisplayService` so every
+/// backend condenses identically).
+enum HUDTextShaper {
+    /// Max characters for a body line — kept short for in-lens legibility.
+    static let maxBodyLength = 120
+    /// Max characters for a heading.
+    static let maxTitleLength = 40
+
+    /// Collapse whitespace and truncate to a HUD-legible length.
+    static func condense(_ text: String, max: Int = maxBodyLength) -> String {
+        let collapsed = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard collapsed.count > max else { return collapsed }
+        let cut = collapsed.prefix(max)
+        // Prefer to break on the last space so we don't slice a word in half.
+        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.index(cut.startIndex, offsetBy: max / 2) {
+            return String(cut[..<lastSpace]) + "…"
+        }
+        return String(cut) + "…"
+    }
+}
+
+/// Text emphasis for a content line; each backend maps it to its own representation.
 enum HUDEmphasis: Equatable {
     case primary    // body / primary colour
     case secondary  // body / secondary colour
@@ -25,10 +59,10 @@ enum HUDButtonStyle: Equatable {
 /// A non-interactive content line (optional leading icon + text).
 struct HUDLine: Equatable {
     let text: String
-    let icon: GlassesDisplayService.HUDIcon
+    let icon: HUDIcon
     let emphasis: HUDEmphasis
 
-    init(_ text: String, icon: GlassesDisplayService.HUDIcon = .none, emphasis: HUDEmphasis = .primary) {
+    init(_ text: String, icon: HUDIcon = .none, emphasis: HUDEmphasis = .primary) {
         self.text = text
         self.icon = icon
         self.emphasis = emphasis
@@ -40,13 +74,13 @@ struct HUDLine: Equatable {
 struct HUDItem: Identifiable {
     let id: String
     let label: String
-    let icon: GlassesDisplayService.HUDIcon
+    let icon: HUDIcon
     let style: HUDButtonStyle
     let action: () -> Void
 
     init(id: String,
          label: String,
-         icon: GlassesDisplayService.HUDIcon = .none,
+         icon: HUDIcon = .none,
          style: HUDButtonStyle = .secondary,
          action: @escaping () -> Void) {
         self.id = id
