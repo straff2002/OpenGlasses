@@ -118,9 +118,9 @@
 	<key>NSAppleMusicUsageDescription</key>
 	<string>OpenGlasses plays music and controls playback hands-free through your glasses.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>OpenGlasses uses Bluetooth to connect to your Ray-Ban Meta smart glasses.</string>
+	<string>OpenGlasses uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>OpenGlasses uses Bluetooth to connect to your Ray-Ban Meta smart glasses.</string>
+	<string>OpenGlasses uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>OpenGlasses accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
 	<key>NSCalendarsUsageDescription</key>

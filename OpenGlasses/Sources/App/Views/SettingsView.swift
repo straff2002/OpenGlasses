@@ -605,6 +605,16 @@ struct HardwarePrivacyView: View {
                     Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
                 }
                 NavigationLink {
+                    EvenDisplaySettingsView()
+                } label: {
+                    HStack {
+                        Label("Display Backend", systemImage: "display")
+                        Spacer()
+                        Text(Config.displayBackend.displayName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                NavigationLink {
                     TeleprompterSettingsView(service: appState.teleprompterService,
                                              store: appState.teleprompterStore)
                 } label: {

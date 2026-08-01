@@ -1,6 +1,24 @@
 # Plan AH — EVEN Realities G2 Display Backend (second HUD target)
 
-**Status:** Drafted, not scheduled; **revised 2026-07-10 after a code-verified review** (protocol
+**Status:** ✅ Steps 1–4 shipped + step 5 dark (2026-08-02). The widened `GlassesDisplayBackend`
+seam is real: `MetaDisplayBackend` extracted as a pure refactor (render queue / interactive gate /
+flash-then-restore stay backend-neutral in `GlassesDisplayService`; all pre-existing HUD tests
+green untouched), `HUDIcon` + condensing moved next to the DSL (`HUDTextShaper`; nested typealias
+keeps old references valid). EVEN stack: `EvenPacket` (CRC-16/CCITT-FALSE with published-vector
+tests — no community bytes copied, per the licensing rider; framing, fragmentation, reassembly),
+`EvenFrame`/`EvenScreenRenderer` (.lines v1; bitmap variant defined; all ten icons mapped;
+emphasis → plain/indent/"· "; numbered items), `EvenDisplayBackend` over a mock transport
+(decodable packet stream + selection round-trip tested), `EvenBLETransport` **ships dark**
+(CoreBluetooth, dual-lens, foreground-only v1 — decisions named; auth handshake stubbed pending
+capture logs). Input gap closed: spoken branch-label selection on decision cards
+(`HUDRouter.handleVoiceCommand`, conservative exact/unique-substring). Hybrid decision resolved:
+the backend choice governs the DISPLAY only — camera/audio services are untouched, so Meta camera
++ EVEN HUD works by construction and no camera-guard change was needed. Settings: backend picker +
+dual-lens pairing; Info.plist BLE strings reworded. Device-pending: every byte-level protocol
+claim (UUIDs, service ids, handshake), temple-gesture event format (Phase 2), L/R mirroring
+validation.
+
+Previously: Drafted, **revised 2026-07-10 after a code-verified review** (protocol
 widened, BLE section added, renderer contract pinned, input story corrected). Speculative until
 there's a device in hand — the protocol is a community reverse-engineered reconstruction, so treat
 every byte-level claim as "validate against capture logs / hardware first."
