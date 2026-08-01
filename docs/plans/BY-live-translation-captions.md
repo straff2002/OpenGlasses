@@ -1,6 +1,17 @@
 # Plan BY — Live Translation Captions
 
-**Status: 📋 Planned.**
+**Status:** 🚧 P1 shipped (2026-08-01) — pure caption mechanics: `ScriptAwareJoiner` (CJK
+word-gap collapse, single script-range source shared with `TranscriptGuard`, applied live at both
+Gemini transcript accumulators, the Realtime output accumulator, and the compactor seams),
+`EndpointDebouncer` (hold ~500 ms, tokens discard premature endpoints), `CaptionCompactor`
+(stable-prefix + revisable tail; final == last interim by construction; bounded on monologues;
+segment/continuation mode for SFSpeech restarts + delta mode for chunk providers),
+`TranslationSegment`/`TranslationDirectionPolicy`/`TranslationCaptionProvider` seam,
+`TranslationCaptionFormatter` (change-only speaker labels, tail-biased window wrap). Wired under
+ambient captions behind `captionCompactionEnabled` (default ON — behavior-preserving for short
+utterances, proven by test; the flag is a kill switch). Cloud-provider parser deferred with the
+bake-off (P2) — the likely cloud tier rides the existing Gemini Live wire, whose parser already
+exists. Next: P2 cloud tier live + settings + HIPAA gate; P3 on-device tier + two-way + HUD.
 
 Subtitle the world: real-time translated captions of surrounding speech, on the phone overlay
 and the in-lens HUD — "they're speaking Spanish, you read English." Plus a **two-way

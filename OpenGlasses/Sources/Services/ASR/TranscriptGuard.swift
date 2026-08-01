@@ -86,11 +86,9 @@ enum TranscriptGuard {
     static func cjkFraction(of text: String) -> Double {
         let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }
         guard !letters.isEmpty else { return 0 }
-        let cjk = letters.filter { scalar in
-            (0x4E00...0x9FFF).contains(Int(scalar.value))       // CJK unified
-                || (0x3040...0x30FF).contains(Int(scalar.value)) // Hiragana/Katakana
-                || (0xAC00...0xD7AF).contains(Int(scalar.value)) // Hangul
-        }
+        // Script ranges live in ScriptAwareJoiner (Plan BY) — one source for "is this CJK",
+        // shared with the caption spacing fix, so the two can't drift.
+        let cjk = letters.filter { ScriptAwareJoiner.isCJK($0) }
         return Double(cjk.count) / Double(letters.count)
     }
 
