@@ -30,6 +30,9 @@ class GeminiLiveService: ObservableObject {
     var onDisconnected: ((String?) -> Void)?
     var onInputTranscription: ((String) -> Void)?
     var onOutputTranscription: ((String) -> Void)?
+    /// Model text parts (BY P2). Only meaningful for TEXT-modality sessions — the voice session
+    /// gets its words back via `onOutputTranscription`.
+    var onTextOutput: ((String) -> Void)?
     var onToolCall: ((GeminiToolCall) -> Void)?
     var onToolCallCancellation: ((GeminiToolCallCancellation) -> Void)?
     var onReconnected: (() -> Void)?
@@ -77,6 +80,8 @@ class GeminiLiveService: ObservableObject {
     // Dynamic configuration for mode/tool setup
     private var systemInstruction: String = ""
     private var toolDeclarations: [[String: Any]] = []
+    /// `["AUDIO"]` for the voice session; `["TEXT"]` for the translation-caption session (BY P2).
+    private var responseModalities: [String] = ["AUDIO"]
 
     init() {
         let config = URLSessionConfiguration.default
@@ -86,9 +91,11 @@ class GeminiLiveService: ObservableObject {
 
     /// Configure the session parameters before connecting.
     /// Call this before `connect()` to set mode-specific instructions and tools.
-    func configure(systemInstruction: String, toolDeclarations: [[String: Any]]) {
+    func configure(systemInstruction: String, toolDeclarations: [[String: Any]],
+                   responseModalities: [String] = ["AUDIO"]) {
         self.systemInstruction = systemInstruction
         self.toolDeclarations = toolDeclarations
+        self.responseModalities = responseModalities
     }
 
     // MARK: - Connect / Disconnect
@@ -191,6 +198,7 @@ class GeminiLiveService: ObservableObject {
         onToolCall = nil
         onToolCallCancellation = nil
         onReconnected = nil
+        onTextOutput = nil
         connectionState = .disconnected
         isModelSpeaking = false
         videoFramesSent = 0
@@ -359,42 +367,43 @@ class GeminiLiveService: ObservableObject {
             toolsArray = [["functionDeclarations": declarations]]
         }
 
-        let setup: [String: Any] = [
-            "setup": [
-                "model": Config.geminiLiveModel,
-                "generationConfig": [
-                    "responseModalities": ["AUDIO"],
-                    "thinkingConfig": [
-                        "thinkingBudget": 0
-                    ]
+        var setupBody: [String: Any] = [
+            "model": Config.geminiLiveModel,
+            "generationConfig": [
+                "responseModalities": responseModalities,
+                "thinkingConfig": [
+                    "thinkingBudget": 0
+                ]
+            ],
+            "systemInstruction": [
+                "parts": [
+                    ["text": systemInstruction]
+                ]
+            ],
+            "tools": toolsArray,
+            "realtimeInputConfig": [
+                "automaticActivityDetection": [
+                    "disabled": false,
+                    "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
+                    "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
+                    "silenceDurationMs": 500,
+                    "prefixPaddingMs": 40
                 ],
-                "systemInstruction": [
-                    "parts": [
-                        ["text": systemInstruction]
+                "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
+                "turnCoverage": "TURN_INCLUDES_ALL_INPUT",
+                "contextWindowCompression": [
+                    "slidingWindow": [
+                        "targetTokens": 80000
                     ]
-                ],
-                "tools": toolsArray,
-                "realtimeInputConfig": [
-                    "automaticActivityDetection": [
-                        "disabled": false,
-                        "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
-                        "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
-                        "silenceDurationMs": 500,
-                        "prefixPaddingMs": 40
-                    ],
-                    "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
-                    "turnCoverage": "TURN_INCLUDES_ALL_INPUT",
-                    "contextWindowCompression": [
-                        "slidingWindow": [
-                            "targetTokens": 80000
-                        ]
-                    ]
-                ],
-                "inputAudioTranscription": [:] as [String: Any],
-                "outputAudioTranscription": [:] as [String: Any]
-            ]
+                ]
+            ],
+            "inputAudioTranscription": [:] as [String: Any]
         ]
-        sendJSON(setup)
+        // Only a voice session has model audio to transcribe.
+        if responseModalities.contains("AUDIO") {
+            setupBody["outputAudioTranscription"] = [:] as [String: Any]
+        }
+        sendJSON(["setup": setupBody])
     }
 
     private func sendJSON(_ json: [String: Any]) {
@@ -559,12 +568,13 @@ class GeminiLiveService: ObservableObject {
                 onAudioReceived?(audioData)
             }
 
-            // Model text output (logged)
+            // Model text output (TEXT-modality sessions consume this; voice sessions just log)
             if let modelTurn = serverContent["modelTurn"] as? [String: Any],
                let parts = modelTurn["parts"] as? [[String: Any]] {
                 for part in parts where part["inlineData"] == nil {
                     if let text = part["text"] as? String {
                         NSLog("[Gemini] %@", text)
+                        onTextOutput?(text)
                     }
                 }
             }

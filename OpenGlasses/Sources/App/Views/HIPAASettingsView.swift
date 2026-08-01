@@ -244,6 +244,8 @@ struct HIPAASettingsView: View {
                               detail: "Disabled — prevents uncontrolled PHI sharing")
                     changeRow(icon: "cloud.fill", color: .red, title: "Cloud Memory Sync",
                               detail: "Disabled — memories stay on-device only")
+                    changeRow(icon: "globe", color: .red, title: "Caption Translation",
+                              detail: "Disabled — audio never streams to the cloud")
                     changeRow(icon: "list.clipboard.fill", color: AppAccent.aiCoral, title: "Audit Logging",
                               detail: "All data access events are recorded")
                     changeRow(icon: "calendar.badge.clock", color: AppAccent.aiCoral, title: "Auto-Purge",

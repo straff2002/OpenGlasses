@@ -278,6 +278,22 @@ struct ServicesSettingsView: View {
                 Text("Label captions and meeting transcripts by speaker (\u{201C}who said what\u{201D}) via Deepgram. Off by default.")
             }
 
+            // MARK: Translation
+            Section {
+                NavigationLink {
+                    TranslationSettingsView()
+                } label: {
+                    HStack {
+                        Label("Translation", systemImage: "globe")
+                        Spacer()
+                        Text(Config.isTranslationCloudConfigured ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("Translated captions — surrounding speech rendered in your language. Off by default.")
+            }
+
             // MARK: Web Search
             Section {
                 SecretInputField(placeholder: "Perplexity API Key", text: $perplexityKeyInput)

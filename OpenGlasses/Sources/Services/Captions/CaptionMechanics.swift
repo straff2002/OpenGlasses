@@ -224,8 +224,20 @@ struct TranslationSegment: Equatable {
     let isFinal: Bool
     /// Diarized speaker index; nil on single-speaker paths.
     let speaker: Int?
-    /// BCP-47 of `text` (the *output* language), when the provider reports it.
+    /// BCP-47 of the *detected source* language, when the provider reports it.
     let language: String?
+    /// Source-language transcript this segment translates (the show-original ribbon), when the
+    /// provider captured one.
+    let original: String?
+
+    init(text: String, isFinal: Bool, speaker: Int? = nil, language: String? = nil,
+         original: String? = nil) {
+        self.text = text
+        self.isFinal = isFinal
+        self.speaker = speaker
+        self.language = language
+        self.original = original
+    }
 }
 
 /// Which direction(s) a session translates.

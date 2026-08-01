@@ -18,6 +18,9 @@ class AmbientCaptionService: ObservableObject {
         /// Diarized speaker id (`nil` = unlabeled / single-speaker path). Resolve to a display
         /// name via `speakerRegistry`.
         var speaker: Int? = nil
+        /// Source-language transcript when `text` is a translation (BY P2) — the show-original
+        /// ribbon. Nil on plain transcription paths.
+        var original: String? = nil
     }
 
     private var recognizer: SFSpeechRecognizer?
@@ -27,6 +30,10 @@ class AmbientCaptionService: ObservableObject {
     /// Live diarized provider, used instead of `SFSpeechRecognizer` when
     /// `Config.isDiarizationConfigured`. Nil on the default (unlabeled) path.
     private var diarizer: DeepgramSTTService?
+
+    /// Translated-caption provider (BY P2), used instead of both paths above when
+    /// `Config.isTranslationCloudConfigured`. Nil otherwise.
+    private var translator: GeminiTranslationProvider?
 
     /// Maps diarization speaker ids to names/colours for the caption chips.
     let speakerRegistry = SpeakerRegistry()
@@ -136,6 +143,14 @@ class AmbientCaptionService: ObservableObject {
         guard !presenceSuspended else { return }
         stopRecognitionSession()
 
+        // Translated-caption path (BY P2 — opt-in, Gemini-keyed, non-HIPAA): captions render in
+        // the target language via the cloud tier. Takes precedence over diarization (whether the
+        // two compose is an open BY decision, deferred with the speaker-chip rail).
+        if Config.isTranslationCloudConfigured {
+            startTranslationSession()
+            return
+        }
+
         // Diarized path (opt-in, keyed, non-HIPAA): label captions with speaker chips via
         // Deepgram. When off/unconfigured this is skipped entirely and the on-device
         // SFSpeechRecognizer path below runs exactly as before.
@@ -211,6 +226,42 @@ class AmbientCaptionService: ObservableObject {
         }
     }
 
+    /// Translated captions via the cloud tier (BY P2), fed by the same shared-engine buffer
+    /// fan-out (no second mic session). Interim segments render live; the provider's final —
+    /// equal to its last interim by construction — becomes the history entry, carrying the
+    /// source-language transcript for the show-original ribbon. Device-pending; the stream
+    /// folding it relies on is unit-tested.
+    private func startTranslationSession() {
+        let translator = GeminiTranslationProvider()
+        translator.onSegment = { [weak self] segment in
+            guard let self, self.isActive else { return }
+            if segment.isFinal {
+                self.finalizeCaption(segment.text,
+                                     original: segment.original,
+                                     expectedLocale: Config.translationTargetLanguage)
+            } else {
+                self.currentCaption = segment.text
+                self.glassesDisplay?.showText(segment.text)
+                self.resetSilenceTimer()
+            }
+        }
+        self.translator = translator
+        do {
+            try translator.start(direction: .oneWay(target: Config.translationTargetLanguage))
+        } catch {
+            // Gate changed between the branch check and start — fall through to plain captions.
+            self.translator = nil
+            NSLog("[Captions] Translation unavailable (%@) — falling back to transcription",
+                  error.localizedDescription)
+            startRecognitionSession()
+            return
+        }
+
+        wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+            Task { @MainActor in self?.translator?.sendAudio(buffer) }
+        }
+    }
+
     /// Live diarized recognition via Deepgram, fed by the same shared-engine buffer fan-out the
     /// SFSpeech path uses (no second mic session). Device-pending; the JSON→segment parsing it
     /// relies on is unit-tested.
@@ -250,6 +301,8 @@ class AmbientCaptionService: ObservableObject {
         recognitionRequest = nil
         diarizer?.stop()
         diarizer = nil
+        translator?.stop()
+        translator = nil
         wakeWordService?.removeAudioBufferConsumer(id: "ambient_captions")
     }
 
@@ -293,12 +346,16 @@ class AmbientCaptionService: ObservableObject {
         }
     }
 
-    private func finalizeCaption(_ text: String, speaker: Int? = nil) {
+    private func finalizeCaption(_ text: String, speaker: Int? = nil, original: String? = nil,
+                                 expectedLocale: String? = nil) {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         // BS P1: captions feed summaries, the Spotlight index, and Brain — drop
         // unmistakable silence-decode artifacts regardless of which engine produced them
-        // (the filter is conservative; real speech passes).
-        guard TranscriptGuard.filter(text, expectedLocaleIdentifier: Config.speechRecognitionLocale) != nil else {
+        // (the filter is conservative; real speech passes). Translated captions pass their
+        // target language as the expected locale — judging Chinese output against the device's
+        // STT locale would flag every caption as a CJK hallucination (BY P2).
+        let locale = expectedLocale ?? Config.speechRecognitionLocale
+        guard TranscriptGuard.filter(text, expectedLocaleIdentifier: locale) != nil else {
             NSLog("[Captions] Artifact filter dropped caption: %@", String(text.prefix(60)))
             return
         }
@@ -308,7 +365,7 @@ class AmbientCaptionService: ObservableObject {
         guard trimmed != lastFinalizedText else { return }
 
         lastFinalizedText = trimmed
-        let entry = CaptionEntry(text: trimmed, timestamp: Date(), speaker: speaker)
+        let entry = CaptionEntry(text: trimmed, timestamp: Date(), speaker: speaker, original: original)
         captionHistory.insert(entry, at: 0)
 
         // Trim history
@@ -325,7 +382,10 @@ class AmbientCaptionService: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 if !self.currentCaption.isEmpty {
-                    self.finalizeCaption(self.currentCaption)
+                    // On the translation path the caption is target-language text — judge it
+                    // against that locale, not the device STT locale (BY P2; see finalizeCaption).
+                    let locale = self.translator != nil ? Config.translationTargetLanguage : nil
+                    self.finalizeCaption(self.currentCaption, expectedLocale: locale)
                 }
             }
         }
