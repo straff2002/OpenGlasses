@@ -8,6 +8,7 @@ enum HUDVoiceCommand: Equatable {
     case complete   // "done" / "next" / "complete" / "finished"
     case skip       // "skip"
     case back       // "back" / "previous"
+    case briefing   // "what's new" / "catch me up" / "briefing" (Plan BZ — digest glance)
 
     static func parse(_ text: String) -> HUDVoiceCommand? {
         // Lowercase, strip punctuation, collapse whitespace.
@@ -26,6 +27,9 @@ enum HUDVoiceCommand: Equatable {
             return .skip
         case "back", "go back", "previous", "previous step", "step back":
             return .back
+        case "whats new", "what is new", "catch me up", "briefing", "my briefing",
+             "anything for me", "anything new", "show briefing":
+            return .briefing
         default:
             return nil
         }

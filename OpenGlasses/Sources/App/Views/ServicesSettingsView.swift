@@ -278,6 +278,22 @@ struct ServicesSettingsView: View {
                 Text("Label captions and meeting transcripts by speaker (\u{201C}who said what\u{201D}) via Deepgram. Off by default.")
             }
 
+            // MARK: Notification Digest
+            Section {
+                NavigationLink {
+                    DigestSettingsView()
+                } label: {
+                    HStack {
+                        Label("Notification Digest", systemImage: "list.bullet.rectangle")
+                        Spacer()
+                        Text(Config.digestEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("\u{201C}What's new\u{201D} — one ranked glance of pending notifications on the HUD or spoken.")
+            }
+
             // MARK: Translation
             Section {
                 NavigationLink {

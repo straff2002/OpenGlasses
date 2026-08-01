@@ -22,20 +22,13 @@ class AgentNotificationQueue: ObservableObject {
         let priority: Priority
         var delivered: Bool = false
 
-        enum Priority: String, Codable {
-            case low       // Can be discarded if stale (weather, routine check-ins)
-            case medium    // Deliver if <2 hours old (calendar reminders, email summaries)
-            case high      // Always deliver (urgent alerts, security, user-requested)
-        }
+        /// Shared with the notification digest (Plan BZ) — same raw values, so persisted
+        /// queue JSON keeps decoding; same staleness numbers, covered by this queue's tests.
+        typealias Priority = NotificationPriority
 
         /// Whether this notification is still relevant based on age.
         var isStale: Bool {
-            let age = Date().timeIntervalSince(createdAt)
-            switch priority {
-            case .low: return age > 1800      // 30 minutes
-            case .medium: return age > 7200   // 2 hours
-            case .high: return false          // Never stale
-            }
+            priority.isStale(age: Date().timeIntervalSince(createdAt))
         }
     }
 
@@ -43,6 +36,10 @@ class AgentNotificationQueue: ObservableObject {
     private let storageURL: URL
 
     weak var appState: AppState?
+
+    /// Plan BZ: fires when a notification is queued (not delivered immediately), so the
+    /// digest can aggregate it. Wired by AppState.
+    var onQueued: ((QueuedNotification) -> Void)?
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -78,6 +75,7 @@ class AgentNotificationQueue: ObservableObject {
             queue.append(notification)
             pendingCount = queue.filter { !$0.delivered }.count
             save()
+            onQueued?(notification)
             NSLog("[AgentQueue] Queued: %@ (priority: %@, pending: %d)",
                   source, priority.rawValue, pendingCount)
         }
@@ -241,6 +239,21 @@ class AgentNotificationQueue: ObservableObject {
     func clearAll() {
         queue.removeAll()
         pendingCount = 0
+        save()
+    }
+
+    /// Plan BZ P3: dismissing a digest acknowledges the agent items it showed — mark them
+    /// delivered so the reconnect path doesn't speak what the user already read.
+    func markDelivered(ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        var changed = false
+        for index in queue.indices where ids.contains(queue[index].id) && !queue[index].delivered {
+            queue[index].delivered = true
+            changed = true
+        }
+        guard changed else { return }
+        queue.removeAll { $0.delivered }
+        pendingCount = queue.count
         save()
     }
 }
