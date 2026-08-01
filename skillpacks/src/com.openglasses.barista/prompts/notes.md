@@ -1,0 +1,1 @@
+Field notes: sour+fast=under-extracted, bitter+slow=over-extracted. Ratio counts from dry dose to liquid yield.

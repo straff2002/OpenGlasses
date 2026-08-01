@@ -1,0 +1,42 @@
+{
+  "id": "com.openglasses.barista",
+  "version": "1.0.0",
+  "name": "Barista Coach",
+  "summary": "Espresso dial-in guidance through the glasses",
+  "hardware": [{"type": "camera", "level": "optional"}],
+  "actions": [
+    {
+      "name": "dial_in_shot",
+      "description": "Use when the user wants help dialing in espresso — shot ran too fast or slow, tastes sour or bitter, or they mention grind size, dose, or yield.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "shot_time_s": {"type": "number", "description": "How long the shot ran, in seconds"},
+          "taste": {"type": "string", "description": "How it tasted: sour, bitter, balanced, weak"}
+        }
+      },
+      "binding": {
+        "kind": "prompt",
+        "template": "The user is dialing in espresso on a {{setting.roast_level}} roast. Shot time: {{shot_time_s}}s, taste: {{taste}}. Target 25-30s for a 1:2 ratio. Sour or fast means grind finer or dose up slightly; bitter or slow means grind coarser or dose down. Give ONE specific adjustment to try next, sized to how far off they are, then stop."
+      }
+    },
+    {
+      "name": "brew_ratio",
+      "description": "Use when the user asks what yield or ratio to target for an espresso dose, e.g. 'I dosed 18 grams, what should I pull?'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dose_g": {"type": "number", "description": "Dry coffee dose in grams"}
+        },
+        "required": ["dose_g"]
+      },
+      "binding": {
+        "kind": "prompt",
+        "template": "Dose is {{dose_g}}g on a {{setting.roast_level}} roast. Recommend a target yield in grams for a 1:2 ratio (1:2.5 if the roast is light), state the number plainly, and mention the 25-30s window."
+      }
+    }
+  ],
+  "settings": [
+    {"key": "roast_level", "type": "select", "label": "Roast level", "options": ["light", "medium", "dark"]}
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "id": "com.openglasses.focus",
+  "version": "1.0.0",
+  "name": "Focus Sessions",
+  "summary": "Pomodoro-style focus timers by voice",
+  "actions": [
+    {
+      "name": "start_focus_session",
+      "description": "Use when the user wants a focus or pomodoro session, e.g. 'give me a focus block' or 'start a 25 minute pomodoro'. Convert their request to seconds.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "seconds": {"type": "integer", "description": "Session length in seconds — e.g. 25 minutes is 1500. Use 1500 if the user doesn't say."}
+        },
+        "required": ["seconds"]
+      },
+      "binding": {
+        "kind": "tool",
+        "name": "set_timer",
+        "boundArgs": {"label": "focus session"}
+      }
+    },
+    {
+      "name": "start_break",
+      "description": "Use when the user finishes a focus session and wants a short break timer.",
+      "parameters": {"type": "object", "properties": {}},
+      "binding": {
+        "kind": "tool",
+        "name": "set_timer",
+        "boundArgs": {"seconds": "300", "label": "break"}
+      }
+    }
+  ],
+  "settings": []
+}

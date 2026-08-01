@@ -16,6 +16,36 @@ framing — the router skips framing for registry tools, so the wrapper frames i
 binding parses and answers honestly pending P2. P2 (catalog + Settings UI) and P3 (QR/LAN sideload)
 next.
 
+**P2 shipped (2026-07-31)** — `SkillPackCatalog` (signed envelope: signature over exact base64-wrapped
+payload bytes, so no JSON-canonicalization hazard; explicit refusal of newer index versions),
+`SkillPackArchive` (pack zip → install shape via the Plan BT `ZipArchiveReader`, no new dependency;
+zip-bomb entry cap), `SkillPackHardwareGate` (ready/degraded/blocked against connected hardware),
+`SkillPackCatalogService` (download → sha256 → extract → install with injectable fetch; every stage
+failure is a visible per-pack state), `SkillPackSettings` (settings-as-schema persisted under
+`skillpack.<id>.<key>`, reaching bindings via `{{setting.<key>}}` — only *declared* keys flow),
+Settings → Skill Packs UI (installed rows w/ kill switch + unsigned/partial-load badges + per-pack
+settings sheet rendered from schema; catalog browse/install; developer-mode toggle), and
+`Scripts/skillpack-sign.swift` (keygen / sign-pack / sign-catalog — private key stays off-repo, the
+Field Assist rule). **Hosting decision resolved:** repo-served static JSON on the existing GitHub
+Pages deployment (`Config.skillPackCatalogURL`, overridable). **Catalog signing is never loosened**
+— developer mode admits unsigned *packs* only; a poisoned index is a fleet-level attack. **Production keypair minted 2026-08-01** — public key embedded, private half off-repo with the
+Field Assist key; first signed (empty) `skillpacks/catalog.json` committed, with a test pinning the
+committed envelope against the embedded key so the two can't drift, and `skillpacks/README.md`
+documenting the publish flow.
+
+**P3 shipped (2026-08-01)** — sideload/dev loop: `openglasses://skillpack?url=…&sig=…` handled
+outside the `DeepLinkTrust` token gate *by design* (a QR link can't carry the app-group token); the
+compensating control is that the link never acts — `SkillPackSideloadService` fetches, previews,
+and raises a confirmation alert with identity + signature status, and the human tap is the gate.
+Source policy: HTTPS anywhere, plain HTTP only to private/LAN hosts (RFC 1918 / loopback /
+link-local / `.local`, pinned by table test); unsigned packs still require Developer Mode; signed
+sideloads verify via the `sig` param. `Scripts/serve-skillpack.sh` (zip + LAN serve + QR via
+qrencode) closes the author loop; `docs/skillpack-authoring.md` is the manifest reference. First
+catalog content shipped alongside: `com.openglasses.barista` + `com.openglasses.focus` under
+`skillpacks/src|packs/`, drift-pinned into the test suite — authoring the focus pack exposed and
+fixed the bound-arg typing gap (string→Int/Bool coercion). **Plan complete except** P4 (JS
+handlers, deliberately deferred) and the Plan Q export-format migration open decision.
+
 Make OpenGlasses extensible by *installable content*, not app updates: a **skill pack** is a
 signed zip the app downloads (or sideloads), validates, and merges into the assistant at
 runtime — new voice-invocable actions, prompt/persona content, procedures, and settings,
