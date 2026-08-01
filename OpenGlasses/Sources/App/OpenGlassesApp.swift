@@ -317,6 +317,7 @@ struct OpenGlassesApp: App {
                 } else {
                     print("📱 App moved to background — stopping mic/camera (no glasses)")
                     appState.wakeWordService.stopListening()
+                    appState.releaseFramePin(trigger: .cameraTeardown)   // Plan CE
                     Task { await appState.cameraService.stopStreaming() }
                 }
                 appState.conversationStore.lock()
@@ -453,6 +454,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // Stop realtime streaming sessions (they need the BT audio link)
                 if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
                 if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
+                releaseFramePin(trigger: .sessionStop)   // Plan CE
 
                 // Stop camera streaming and TTS (no speakers to output to)
                 Task { await cameraService.stopStreaming() }
@@ -534,6 +536,9 @@ class AppState: ObservableObject, AppStateProtocol {
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
+    /// Frame pinning (Plan CE): the pinned frame the model sees instead of the live feed.
+    let framePin = FramePin()
+    private var framePinGate = FramePinGate()
 
     /// Presence-aware throttle (Plan W): fuses cheap on-device signals into an engagement mode that
     /// scales the continuous loops' cadence and lowers the agent autonomy ceiling when disengaged.
@@ -998,22 +1003,39 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         // Wire camera frames for realtime sessions:
-        // Direct push: CameraService streams frames to whichever session is active
+        // Direct push: CameraService streams frames to whichever session is active.
+        // Frame pinning (Plan CE) gates ONLY this model-facing path: while a pin is held, live
+        // frames are suppressed and the pinned frame is re-injected on a heartbeat (sharp-inject,
+        // bypassing the throttler, so the model's copy is exactly the on-screen frame). Every
+        // other framePublisher consumer keeps receiving live frames.
         cameraService.onVideoFrame = { [weak self] image in
             guard let self else { return }
-            if self.currentMode == .geminiLive {
-                self.geminiLiveSession.submitVideoFrame(image)
-            } else if self.currentMode == .openaiRealtime {
-                self.openAIRealtimeSession.submitVideoFrame(image)
+            let pinned = Config.framePinEnabled && self.framePin.isPinned
+            switch self.framePinGate.evaluate(isPinned: pinned, now: Date().timeIntervalSinceReferenceDate) {
+            case .suppress:
+                return
+            case .resendPinned:
+                self.injectPinnedFrame()
+                return
+            case .deliverLive:
+                if self.currentMode == .geminiLive {
+                    self.geminiLiveSession.submitVideoFrame(image)
+                } else if self.currentMode == .openaiRealtime {
+                    self.openAIRealtimeSession.submitVideoFrame(image)
+                }
             }
         }
 
-        // Polling fallback for both session managers
+        // Polling fallback for both session managers — a held pin substitutes for the live frame
         geminiLiveSession.onRequestVideoFrame = { [weak self] in
-            return self?.cameraService.latestFrame
+            guard let self else { return nil }
+            if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
+            return self.cameraService.latestFrame
         }
         openAIRealtimeSession.onRequestVideoFrame = { [weak self] in
-            return self?.cameraService.latestFrame
+            guard let self else { return nil }
+            if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
+            return self.cameraService.latestFrame
         }
 
         // Location context for both
@@ -1276,6 +1298,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let oldMode = currentMode
         currentMode = mode
         Config.setAppMode(mode)
+        releaseFramePin(trigger: .modeSwitch)   // Plan CE (CF's redial will re-push instead)
 
         Task {
             // Tear down old mode
@@ -2815,10 +2838,59 @@ class AppState: ObservableObject, AppStateProtocol {
     /// start the camera. This avoids re-triggering fragile Meta camera permission flows.
     private func currentVisionFrameDataIfAvailable() -> Data? {
         guard Config.activeModel?.visionEnabled == true else { return nil }
+        // Frame pinning (Plan CE): a held pin IS the referent — multi-turn "and the label? and
+        // the connector?" interrogates the same scene, whether or not the camera still streams.
+        if Config.framePinEnabled, let pinned = framePin.pinnedFrame,
+           let pinnedData = pinned.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
+           !LLMImagePreparer.isDegenerate(pinnedData) {
+            return pinnedData
+        }
         guard cameraService.isStreaming, let frame = cameraService.latestFrame else { return nil }
         guard let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
               !LLMImagePreparer.isDegenerate(data) else { return nil }
         return data
+    }
+
+    // MARK: - Frame Pinning (Plan CE)
+
+    /// Pin the current camera frame: the model receives nothing newer until release. The exact
+    /// pinned frame is pushed to the live session immediately (sharp-inject, bypassing the
+    /// throttler), so the model's referent is the on-screen frame, not whatever the throttler
+    /// last sampled. Returns false when there's nothing to pin.
+    @discardableResult
+    func pinCurrentFrame() -> Bool {
+        guard Config.framePinEnabled, let frame = cameraService.latestFrame else { return false }
+        framePin.pin(frame: frame)
+        framePinGate.reset()
+        injectPinnedFrame()
+        framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        glassesDisplay.flash("📌 Pinned")
+        NSLog("[FramePin] Pinned frame (%.0f×%.0f)", frame.size.width, frame.size.height)
+        return true
+    }
+
+    /// Release a held pin for `trigger` (policy-gated; a no-op when nothing is pinned). The
+    /// per-session frame gates reset so the first live frame after release goes through as a
+    /// keyframe rather than being deduped against the pin.
+    func releaseFramePin(trigger: FramePinReleaseTrigger) {
+        guard FramePinReleasePolicy.shouldRelease(on: trigger), framePin.unpin() else { return }
+        framePinGate.reset()
+        geminiLiveSession.resetFrameGateAfterPin()
+        openAIRealtimeSession.resetFrameGateAfterPin()
+        if trigger == .explicitUnpin {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            glassesDisplay.flash("Pin released")
+        }
+        NSLog("[FramePin] Released (%@)", String(describing: trigger))
+    }
+
+    /// Sharp-inject the pinned frame into the active live session (no-op outside live modes —
+    /// Direct mode reads the pin at photo time instead).
+    private func injectPinnedFrame() {
+        guard let frame = framePin.pinnedFrame,
+              let jpeg = frame.jpegData(compressionQuality: 0.8) else { return }
+        activeLiveInjector?.injectSharpImage(jpegData: jpeg)
     }
 
     // MARK: - Smart Camera Activation
@@ -3796,6 +3868,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Stop realtime sessions
         if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
         if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
+        releaseFramePin(trigger: .sessionStop)   // Plan CE
 
         // Stop camera + recording
         Task { await cameraService.stopStreaming() }

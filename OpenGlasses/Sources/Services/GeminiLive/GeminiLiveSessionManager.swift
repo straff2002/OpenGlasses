@@ -101,6 +101,12 @@ class GeminiLiveSessionManager: ObservableObject {
     // Timer for periodic frame capture
     private var frameTimer: Task<Void, Never>?
 
+    /// Plan CE: after an unpin the next live frame must reach the model as a keyframe — reset
+    /// the throttler's dedup gate so it isn't dropped as "same scene" as the pinned frame.
+    func resetFrameGateAfterPin() {
+        frameThrottler.reset()
+    }
+
     // MARK: - Session Lifecycle
 
     func startSession() async {

@@ -22,6 +22,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     private let frameThrottler = FrameThrottler(interval: 2.0)  // Less frequent than Gemini — OpenAI charges per image
     private var stateObservation: Task<Void, Never>?
 
+    /// Plan CE: after an unpin the next live frame must reach the model as a keyframe — reset
+    /// the throttler's dedup gate so it isn't dropped as "same scene" as the pinned frame.
+    func resetFrameGateAfterPin() {
+        frameThrottler.reset()
+    }
+
     /// Local, network-independent speech for terminal session cues (Plan BD).
     private let localCueSynth = AVSpeechSynthesizer()
 
