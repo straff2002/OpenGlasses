@@ -93,6 +93,7 @@ final class HUDRouter: ObservableObject {
         case .complete: await source.complete()
         case .skip: await source.skip()
         case .back: await source.back()
+        case .briefing: return false   // global (digest) command — the app-level handler owns it
         }
         return true
     }

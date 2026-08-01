@@ -543,6 +543,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Presence-aware throttle (Plan W): fuses cheap on-device signals into an engagement mode that
     /// scales the continuous loops' cadence and lowers the agent autonomy ceiling when disengaged.
     let presenceMonitor = PresenceMonitor()
+    /// Notification digest (Plan BZ): first-party event streams composed into one glance.
+    let notificationDigest = NotificationDigestService()
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
     /// re-engagement.
     let heldRecommendations = HeldRecommendationStore()
@@ -1093,6 +1095,9 @@ class AppState: ObservableObject, AppStateProtocol {
         proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
             self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
+            // Plan BZ: calendar/proactive alerts also feed the digest.
+            self.notificationDigest.ingest(source: .proactive, title: message,
+                                           priority: urgency == .high ? .high : .medium)
             Task {
                 await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
             }
@@ -1235,6 +1240,9 @@ class AppState: ObservableObject, AppStateProtocol {
             geofenceTool.onAlert = { [weak self] message, urgency in
                 guard let self else { return }
                 self.glassesDisplay.showNotification(title: "Location", body: message, icon: .location)
+                // Plan BZ: geofence transitions feed the digest (near-dup dedup absorbs bounces).
+                self.notificationDigest.ingest(source: .geofence, title: message,
+                                               priority: urgency == .high ? .high : .medium)
                 Task {
                     await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
                 }
@@ -1483,6 +1491,33 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(procedureHUDToken)
 
         // Wire the HUD launcher's leaf actions (Display Phase 4 / Plan Y).
+        // Notification digest (Plan BZ): surface + rewrite + source wiring.
+        notificationDigest.hudRouter = hudRouter
+        notificationDigest.presence = presenceMonitor
+        notificationDigest.speak = { [weak self] text in
+            Task { await self?.speechService.speak(text) }
+        }
+        // One-shot structured call — never the conversation path, so rewrites can't pollute
+        // chat history. Offline/reserve skip the rewrite entirely (fallback lines only).
+        notificationDigest.rewrite = { [weak self] prompt, schema in
+            await self?.llmService.completeStructured(
+                systemPrompt: "You compress notifications into terse heads-up display lines.",
+                userText: prompt, jsonSchema: schema, toolName: "digest_lines", maxTokens: 300)
+        }
+        notificationDigest.acknowledgeAgentItems = { [weak self] ids in
+            self?.agentNotificationQueue.markDelivered(ids: ids)
+        }
+        notificationDigest.isOffline = { [weak self] in !(self?.reachability.isOnline ?? true) }
+        agentNotificationQueue.onQueued = { [weak self] notification in
+            self?.notificationDigest.ingest(
+                source: .agent, title: notification.message, priority: notification.priority,
+                threadKey: notification.id, awaitingReply: notification.priority == .high)
+        }
+        hudLauncher.digestHasContent = { [weak self] in self?.notificationDigest.hasContent ?? false }
+        hudLauncher.openDigest = { [weak self] in
+            Task { await self?.notificationDigest.presentGlance() }
+        }
+
         hudLauncher.runQuickAction = { [weak self] action in
             Task { @MainActor in await self?.executeQuickAction(action) }
         }
@@ -1705,6 +1740,15 @@ class AppState: ObservableObject, AppStateProtocol {
                         Task {
                             try? await Task.sleep(nanoseconds: 3_000_000_000)
                             self.agentNotificationQueue.onGlassesReconnected()
+                        }
+                    }
+                    // Plan BZ: flash the digest once on reconnect when something urgent is
+                    // pending (presence- and power-gated inside; after the queue's window so
+                    // spoken delivery and the glance don't collide).
+                    if wasDisconnected {
+                        Task {
+                            try? await Task.sleep(nanoseconds: 5_000_000_000)
+                            await self.notificationDigest.autoSurfaceOnConnect()
                         }
                     }
                 } else if self.isConnected {
@@ -2756,6 +2800,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self, HUDLauncher.isOpenCommand(text), self.hudLauncher.hasContent else { return false }
                 print("🎛 HUD launcher opened")
                 self.hudLauncher.open()
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Notification digest (Plan BZ): "what's new" / "catch me up" pulls up the glance.
+            // Global — works with or without a task card; strict whole-phrase match only.
+            VoiceCommandHandler(label: "digest-briefing") { [weak self] text in
+                guard let self, Config.digestEnabled,
+                      HUDVoiceCommand.parse(text) == .briefing else { return false }
+                print("📋 Digest briefing requested")
+                await self.notificationDigest.presentGlance()
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },

@@ -13,6 +13,9 @@ final class HUDLauncher {
 
     /// Injected by AppState — the real app effects.
     var runQuickAction: ((QuickAction) -> Void)?
+    /// "What's new" branch (Plan BZ): gate + open action for the notification digest.
+    var digestHasContent: (() -> Bool)?
+    var openDigest: (() -> Void)?
     var switchPersona: ((Persona) -> Void)?
     var activePersonaId: (() -> String?)?
 
@@ -95,6 +98,12 @@ final class HUDLauncher {
         if router.isPresentingTask {
             branches.append(HUDItem(id: "branch:resume", label: "Resume task", icon: .navigation, style: .primary) { [weak self] in
                 self?.router.resumeTask()
+            })
+        }
+        // Plan BZ: the digest glance — only when it would show something.
+        if digestHasContent?() == true {
+            branches.append(HUDItem(id: "branch:digest", label: "What's new", icon: .info, style: .primary) { [weak self] in
+                self?.openDigest?()
             })
         }
         if !Config.quickActions.isEmpty {

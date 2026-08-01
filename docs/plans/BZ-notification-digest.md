@@ -1,6 +1,27 @@
 # Plan BZ — Proactive Notification Digest & HUD Glance
 
-**Status: 📋 Planned.**
+**Status: ✅ Shipped (2026-08-01, P1–P3 in one PR).** Pure core: `NotificationPriority`
+lifted out of `AgentNotificationQueue` (typealias adoption, same raw values + staleness
+numbers, existing queue tests unchanged), `DigestItem`/`DigestRanker` (explicit ladder:
+urgent > time-sensitive [imminent ≤15 min or geofence] > actionable > informational >
+routine, ties by recency)/`DigestDeduper` (threadKey → latest; near-dup same source +
+normalized body within 10 min)/`DigestStaleness` (shared age rule + seen-cap + event lapsed
+>5 min)/`DigestComposer` (top-N + overflow)/`DigestLineBuilder` (fallback
+`[Calendar] Standup in 8 min`, structured rewrite prompt+schema, clamp: empty/control/
+over-length → template; wrong line count → all templates). Live edge:
+`NotificationDigestService` (JSONStore BB semantics incl. unreadable→never-write; sources:
+proactive/calendar + geofence via the existing onAlert wiring, agent queue via new `onQueued`
+hook; rewrite through `completeStructured` — one-shot, never the conversation path).
+Surfaces: `HUDVoiceCommand.briefing` ("what's new"/"catch me up", strict whole-phrase, global
+handler in the voice chain), launcher "What's new" branch (content-gated), glance screen
+(lines + "+N more" + Dismiss), spoken digest (tags stripped, overflow appended),
+auto-surface-on-reconnect (urgent-only, 5 s after the queue's spoken window), `DigestSettingsView`
+(enable/lines/delivery/auto-surface/clear). P3 gates: presence `.away` and power `.reserve`
+suppress auto-surface; `.reserve`/offline skip the rewrite (fallback floor); dismissal marks
+shown agent items delivered (`AgentNotificationQueue.markDelivered`). Device-pending:
+on-glasses legibility/line-count tuning, rewrite latency. Open decision unchanged: the
+morning-briefing nudge stays a spoken reminder for now; reminders/sync sources are wired
+types without producers yet.
 
 Compose OpenGlasses' *own* event streams into one ranked, deduplicated, LLM-rewritten
 **digest** — a terse "here's what matters right now" glance the user can pull up on the HUD
