@@ -69,11 +69,21 @@ struct AmbientCaptionOverlay: View {
                     renameSpeakerId = chip.speakerId
                 }
             }
-            Text(entry.text)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.white.opacity(0.5))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 1) {
+                Text(entry.text)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                // Show-original ribbon (BY P2): the source-language words under the translation.
+                if Config.translationShowOriginal, let original = entry.original {
+                    Text(original)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                }
+            }
         }
     }
 }

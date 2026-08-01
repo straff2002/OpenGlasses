@@ -818,6 +818,12 @@ class AppState: ObservableObject, AppStateProtocol {
         hipaaService.onModeChanged = { [weak ambientCaptions] in
             ambientCaptions?.reconfigureForModeChange()
         }
+        // Same teardown when translation settings change under a live session (BY P2) — the
+        // backend branch is picked at session start, so a settings flip must restart it.
+        NotificationCenter.default.addObserver(forName: .captionBackendChanged, object: nil,
+                                               queue: .main) { [weak ambientCaptions] _ in
+            Task { @MainActor in ambientCaptions?.reconfigureForModeChange() }
+        }
         // Teleprompter (Phase 2): shared audio engine for live recognition + the in-lens HUD.
         teleprompterService.wakeWordService = wakeWordService
         teleprompterService.glassesDisplay = glassesDisplay

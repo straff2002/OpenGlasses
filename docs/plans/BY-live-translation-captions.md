@@ -1,6 +1,6 @@
 # Plan BY — Live Translation Captions
 
-**Status:** 🚧 P1 shipped (2026-08-01) — pure caption mechanics: `ScriptAwareJoiner` (CJK
+**Status:** 🚧 P1+P2 shipped (2026-08-01) — P1 pure caption mechanics: `ScriptAwareJoiner` (CJK
 word-gap collapse, single script-range source shared with `TranscriptGuard`, applied live at both
 Gemini transcript accumulators, the Realtime output accumulator, and the compactor seams),
 `EndpointDebouncer` (hold ~500 ms, tokens discard premature endpoints), `CaptionCompactor`
@@ -9,9 +9,21 @@ segment/continuation mode for SFSpeech restarts + delta mode for chunk providers
 `TranslationSegment`/`TranslationDirectionPolicy`/`TranslationCaptionProvider` seam,
 `TranslationCaptionFormatter` (change-only speaker labels, tail-biased window wrap). Wired under
 ambient captions behind `captionCompactionEnabled` (default ON — behavior-preserving for short
-utterances, proven by test; the flag is a kill switch). Cloud-provider parser deferred with the
-bake-off (P2) — the likely cloud tier rides the existing Gemini Live wire, whose parser already
-exists. Next: P2 cloud tier live + settings + HIPAA gate; P3 on-device tier + two-way + HUD.
+utterances, proven by test; the flag is a kill switch).
+**P2 (bake-off resolved: the cloud tier rides the existing Gemini Live wire):**
+`GeminiTranslationProvider` — a TEXT-modality `GeminiLiveService` session with a translator
+system instruction (`TranslationPromptBuilder`, injection-pinned, `[xx] ` source-language tag
+contract), reusing the wire's reconnect backoff / generation gate / off-main parsing.
+`TranslationStreamAccumulator` (pure: deltas + turnComplete + input transcription →
+interim/final `TranslationSegment`s, final == last interim; tag parsing degrades to plain text),
+`TranslationTierPolicy` (pure: HIPAA/offline → on-device, else cloud, honest reasons),
+`PCMConverter.resample` (the wire is fixed at 16 kHz), wired as a third
+`AmbientCaptionService` backend behind `Config.isTranslationCloudConfigured` (opt-in + Gemini
+key + **not** HIPAA, re-checked per audio buffer so a mid-session HIPAA flip kills egress — the
+AQ lesson). `TranslationSettingsView` (target language from curated list, show-original ribbon,
+provider status), HIPAA "What changes" row, `captionBackendChanged` → live session re-pick.
+Device-pending: live latency/quality validation of the translator session.
+Next: P3 on-device tier (SenseVoice → Apple Translation) + two-way + HUD wearer-leg rendering.
 
 Subtitle the world: real-time translated captions of surrounding speech, on the phone overlay
 and the in-lens HUD — "they're speaking Spanish, you read English." Plus a **two-way
