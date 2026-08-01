@@ -163,6 +163,10 @@ struct OpenGlassesApp: App {
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
 
+                // Apple Translation session host (BY P3) — invisible; the framework only hands
+                // out sessions through a view, so the on-device tier's session lives here.
+                TranslationEngineHost(engine: appState.translationEngine)
+
                 // HIPAA biometric lock overlay
                 if isHipaaLocked {
                     BiometricLockView(isLocked: $isHipaaLocked)
@@ -576,6 +580,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// locally and flushed on reconnect.
     let offlineQueue = OfflineQueue()
     let reachability = Reachability()
+    /// On-device translation (BY P3) — sessions are served by `TranslationEngineHost` in the
+    /// app root; the engine itself is UI-free.
+    let translationEngine = AppleTranslationEngine()
     lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: LocalSyncSink())
 
     /// Alternative hands-free triggers (Additional Capabilities #5) — shake/acoustic/volume, all
@@ -813,6 +820,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService
         ambientCaptions.glassesDisplay = glassesDisplay
+        // BY P3: on-device translation tier — the Apple Translation engine is hosted in the app
+        // root (`TranslationEngineHost`); reachability drives the offline → on-device tier rule.
+        ambientCaptions.translationEngine = translationEngine
+        ambientCaptions.reachability = reachability
         // Toggling HIPAA mid-session must tear down any live cloud diarization at once (Plan BM
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.
         hipaaService.onModeChanged = { [weak ambientCaptions] in
