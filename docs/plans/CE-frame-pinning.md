@@ -1,6 +1,19 @@
 # Plan CE — Frame Pinning ("this" means this)
 
-**Status: 📋 Planned (2026-08-01).**
+**Status: ✅ P1+P2 shipped (2026-08-01)** — `FramePin` / `FramePinGate` (immediate sharp-inject
+on pin credited against the heartbeat via `notePinnedPushed`; suppress until heartbeat; unpin
+clears) / `FramePinReleaseTrigger`+`FramePinReleasePolicy` (allCases-walked test so new triggers
+must decide consciously; expiry off by default), wired at all three chokepoints behind
+`Config.framePinEnabled` (default on): push gate with sharp-inject resends bypassing the
+throttler, poll substitution, Direct-mode photo reuse in `currentVisionFrameDataIfAvailable`
+(pin works even with the camera stopped). Release triggers wired: mode switch, session stop
+(glasses disconnect + stop-everything), camera teardown on backgrounding. Unpin resets both
+session managers' `FrameThrottler` dedup gates so the first live frame is a keyframe. Surfaces:
+`LivePreviewView` long-press pin + `PinnedFrameCard` overlay (tap to release, haptics),
+`pin_frame` NativeTool (pin/unpin/status via `AppStateProvider`), HUD `flash` cues on
+pin/release (a persistent HUD indicator would fight the caption surface — revisit with P3).
+**P3 (device validation) remains deferred** — heartbeat sufficiency under live suppression,
+gesture-to-frame latency, launcher quick action.
 
 Let the user **pin the current camera frame** so that "this" stays stable. Pointing at the
 world and saying "what's this?" fails the moment the camera moves — and on glasses the camera

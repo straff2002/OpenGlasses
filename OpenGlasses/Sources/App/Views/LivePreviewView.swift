@@ -21,6 +21,15 @@ struct LivePreviewView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .accessibilityLabel("Live camera feed from glasses")
+                    // Frame pinning (Plan CE): long-press freezes what the model sees.
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        if Config.framePinEnabled, !appState.framePin.isPinned {
+                            appState.pinCurrentFrame()
+                        }
+                    }
+                    .accessibilityAction(named: "Pin this frame") {
+                        appState.pinCurrentFrame()
+                    }
             } else if isStartingStream {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -140,6 +149,12 @@ struct LivePreviewView: View {
                 .padding(.bottom, 40)
             }
 
+            // Pinned-frame card (Plan CE): what the model sees, floating over the still-live
+            // preview — the disagreement between the two IS the feature. Tap to release.
+            PinnedFrameCard(pin: appState.framePin) {
+                appState.releaseFramePin(trigger: .explicitUnpin)
+            }
+
             // Recording duration overlay
             if appState.videoRecorder.isRecording {
                 VStack {
@@ -202,6 +217,52 @@ struct LivePreviewView: View {
                 isStartingStream = false
                 streamError = "Couldn't start the camera. Make sure your glasses are connected and try again."
             }
+        }
+    }
+}
+
+/// The pinned frame as a floating card over the live preview (Plan CE). Separate view so the
+/// `FramePin` ObservableObject is actually observed — `AppState`'s objectWillChange doesn't
+/// forward a nested object's changes.
+private struct PinnedFrameCard: View {
+    @ObservedObject var pin: FramePin
+    let onRelease: () -> Void
+
+    var body: some View {
+        if let pinned = pin.pinnedFrame {
+            VStack {
+                HStack {
+                    Button(action: onRelease) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("PINNED")
+                                    .font(.system(size: 10, weight: .bold))
+                                Spacer(minLength: 0)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            Image(uiImage: pinned)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.65)))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.yellow.opacity(0.8), lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Pinned frame — the assistant sees this. Tap to release.")
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(.top, 60)
+            .padding(.leading, 16)
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
         }
     }
 }
