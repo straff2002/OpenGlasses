@@ -58,6 +58,22 @@ class LocationService: NSObject, ObservableObject {
         }
     }
 
+    /// Step-level guidance needs Best accuracy and a tight filter (Plan CA); all-day context
+    /// does not. Guiding only — `endPrecisionGuidance` restores the coarse defaults so
+    /// navigation doesn't turn the app into a battery drain.
+    func beginPrecisionGuidance() {
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.distanceFilter = 3
+        locationManager.activityType = .fitness
+        locationManager.startUpdatingLocation()
+    }
+
+    func endPrecisionGuidance() {
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        locationManager.distanceFilter = 100
+        locationManager.activityType = .other
+    }
+
     /// One-shot fix await: re-kick updates (idempotent) and poll briefly for a location.
     /// Covers the two nil-fix realities: the first GPS fix after launch takes seconds, and
     /// when-in-use permission stops updates while the app is backgrounded — a turn that

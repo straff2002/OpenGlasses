@@ -16,6 +16,10 @@ final class HUDLauncher {
     /// "What's new" branch (Plan BZ): gate + open action for the notification digest.
     var digestHasContent: (() -> Bool)?
     var openDigest: (() -> Void)?
+
+    /// Navigate branch (Plan CA): recent destinations + start handler.
+    var recentDestinations: (() -> [String])?
+    var startNavigation: ((String) -> Void)?
     var switchPersona: ((Persona) -> Void)?
     var activePersonaId: (() -> String?)?
 
@@ -118,6 +122,13 @@ final class HUDLauncher {
                 self.router.push(self.workflowsScreen())
             })
         }
+        // Plan CA: walk-again to a recent destination.
+        if !(recentDestinations?() ?? []).isEmpty {
+            branches.append(HUDItem(id: "branch:navigate", label: "Navigate", icon: .navigation, style: .secondary) { [weak self] in
+                guard let self else { return }
+                self.router.push(self.navigateScreen())
+            })
+        }
         if isFieldAssistActive(), !procedures().isEmpty {
             branches.append(HUDItem(id: "branch:sops", label: "SOPs", icon: .navigation, style: .secondary) { [weak self] in
                 guard let self else { return }
@@ -137,6 +148,20 @@ final class HUDLauncher {
     private func playbooks() -> [Playbook] { availablePlaybooks?() ?? [] }
     private func procedures() -> [Procedure] { availableProcedures?() ?? [] }
     private func isFieldAssistActive() -> Bool { fieldAssistActive?() ?? false }
+
+    /// Recent destinations as a band-selectable list (Plan CA). Five recents fit one screen.
+    private func navigateScreen() -> HUDScreen {
+        var items = (recentDestinations?() ?? []).prefix(4).enumerated().map { index, name in
+            HUDItem(id: "nav:\(index)", label: name, icon: .navigation, style: .primary) { [weak self] in
+                self?.startNavigation?(name)
+                self?.router.dismiss()
+            }
+        }
+        items.append(HUDItem(id: "back", label: "Back", style: .outline) { [weak self] in
+            self?.router.pop()
+        })
+        return HUDScreen(title: "Navigate", lines: [], items: items)
+    }
 
     private func quickActionsScreen(page: Int = 0) -> HUDScreen {
         HUDMenuBuilder.quickActions(

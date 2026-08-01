@@ -278,6 +278,17 @@ struct ServicesSettingsView: View {
                 Text("Label captions and meeting transcripts by speaker (\u{201C}who said what\u{201D}) via Deepgram. Off by default.")
             }
 
+            // MARK: Walking Navigation
+            Section {
+                NavigationLink {
+                    NavigationSettingsView()
+                } label: {
+                    Label("Walking Navigation", systemImage: "figure.walk")
+                }
+            } footer: {
+                Text("Turn-by-turn pedestrian directions on the HUD — \u{201C}navigate to\u{2026}\u{201D}.")
+            }
+
             // MARK: Notification Digest
             Section {
                 NavigationLink {
