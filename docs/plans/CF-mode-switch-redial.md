@@ -1,6 +1,15 @@
 # Plan CF — Mode-Switch Auto-Redial (switching brains shouldn't hang up)
 
-**Status: 📋 Planned (2026-08-01).**
+**Status: ✅ P1 shipped (2026-08-01)** — `ModeSwitchPolicy` (pure: the switch sequence as data;
+`.startSession` appended exactly when `wasSessionActive && target.isRealtime && autoRedial`;
+ordering invariants tested) + `switchMode` executes the action list, capturing
+`wasSessionActive` from the outgoing manager before teardown. Redial errors surface via the
+managers' published `connectionState`/`errorMessage` exactly as a manual connect (verified: the
+automatic path awaits `startSession()` and adds nothing that could swallow them). Success
+haptic on ready. CE interplay resolved "yes": a redial keeps a held frame pin and re-pushes it
+into the new session (sharp-inject + heartbeat credit); only a non-redialing switch releases.
+Kill switch `modeSwitchAutoRedialEnabled` (default on). Spoken-cue decision + settle-delay
+tuning remain **P2 (device-pending)**.
 
 Make switching between live modes mid-call **hang up and redial automatically** instead of
 going silently dead. Picking a different brain is a user intent about *who they're talking to*,
