@@ -1,6 +1,27 @@
 # Plan CA — Turn-by-Turn Walking Navigation (HUD)
 
-**Status: 📋 Planned.**
+**Status: ✅ Shipped (2026-08-01, P1–P3 in one PR; device-pending edges noted).** Pure core:
+`RoutePoint`/`Maneuver` (keyword-parsed from MapKit's English instruction text — MapKit exposes
+no maneuver field; non-English degrades to `.continueStraight` with text intact)/`RouteStep`
+(maneuver point + inbound leg + inbound distance), `RouteGeometry` (haversine +
+point-to-leg via local tangent projection), `DistanceFormatter` (banding: ≤15 → now, nearest
+10 <100 m, nearest 50 <1 km, nearest 100 beyond; metric/imperial compact+spoken),
+`ManeuverPhraser` ("← 40 m · King St" / "In 40 metres, turn left onto King Street."),
+`NavigationCuePolicy` (approach once per step + imminent once), `RouteProgressTracker`
+(accuracy-scaled advance/arrival radii, off-route needs K=4 consecutive fixes beyond
+max(30 m, 1.5×accuracy) measured against inbound+next legs, 30 s reroute throttle; depart
+passes immediately). Live edge: `WalkingRouteService` — `MKLocalSearch`
+(confirm-top-candidate, open decision resolved for hands-free) → `MKDirections` walking →
+step mapping (instruction applies at polyline head; synthetic arrive appended),
+`LocationService.begin/endPrecisionGuidance` (Best/3 m/.fitness while guiding only),
+HUD render via `showNavigation` + urgency-scaled TTS (imminent = high), throttled reroute
+with spoken cue, arrival announcement, ETA/remaining in tool status. Surfaces: `navigate`
+tool (start/stop/status), `NavigationSettingsView` (units override, voice cues, recents),
+launcher "Navigate" branch over recent destinations. Power gate (BV): reserve = no continuous
+countdown, cues only. Deferred/device-pending: real-walk GPS + reroute tuning, backgrounded
+guidance, heading "face this way" cue, App Intent entry (the AppShortcut string-parameter
+metadata constraint makes it a deliberate, separately-validated change), next-turn arrow
+bitmap. Offline routing remains out of scope (MapKit needs network — stated in settings copy).
 
 Hands-free pedestrian navigation: the phone plans a walking route, and each maneuver appears as
 a terse HUD card and a spoken cue at the right moment — "turn left onto King Street in 40 m" —

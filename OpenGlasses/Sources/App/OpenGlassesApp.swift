@@ -545,6 +545,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let presenceMonitor = PresenceMonitor()
     /// Notification digest (Plan BZ): first-party event streams composed into one glance.
     let notificationDigest = NotificationDigestService()
+    /// Turn-by-turn walking navigation (Plan CA).
+    let walkingRoute = WalkingRouteService()
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
     /// re-engagement.
     let heldRecommendations = HeldRecommendationStore()
@@ -1516,6 +1518,20 @@ class AppState: ObservableObject, AppStateProtocol {
         hudLauncher.digestHasContent = { [weak self] in self?.notificationDigest.hasContent ?? false }
         hudLauncher.openDigest = { [weak self] in
             Task { await self?.notificationDigest.presentGlance() }
+        }
+
+        // Walking navigation (Plan CA): location + HUD + urgency-scaled TTS, launcher recents.
+        walkingRoute.locationService = locationService
+        walkingRoute.glassesDisplay = glassesDisplay
+        walkingRoute.speak = { [weak self] text, urgency in
+            Task { await self?.speechService.speak(text, urgency: urgency, mirrorToHUD: false) }
+        }
+        hudLauncher.recentDestinations = { Config.recentDestinations }
+        hudLauncher.startNavigation = { [weak self] destination in
+            Task {
+                do { _ = try await self?.walkingRoute.start(destination: destination) }
+                catch { NSLog("[Navigation] Launcher start failed: %@", error.localizedDescription) }
+            }
         }
 
         hudLauncher.runQuickAction = { [weak self] action in

@@ -44,6 +44,7 @@ final class NativeToolRegistry {
         register(PhoneCallTool())
         register(FlashlightTool())
         register(PinFrameTool())   // Plan CE: "pin this" — resolves AppState at execution time
+        register(NavigateTool())   // Plan CA: walking directions — resolves AppState at execution time
         register(DeviceInfoTool())
         register(PomodoroTool())
         register(LocationSearchTool(locationService: locationService))
