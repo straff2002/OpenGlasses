@@ -7,8 +7,10 @@ import Foundation
 /// All triggers are **opt-in / off by default**: the volume-button trigger runs against Apple's HIG
 /// and has historically drawn rejections, so nothing here is on unless the user enables it.
 ///
-/// Note: a glasses double-tap / touchpad trigger is deliberately absent — the DAT SDK exposes no
-/// gesture/touchpad stream (firmware owns focus/select), so triggers must be phone-side.
+/// Note: a glasses double-tap / touchpad trigger is deliberately absent here — the DAT SDK exposes
+/// no gesture/touchpad stream (firmware owns focus/select). The temple-tap route that *does* work
+/// (claiming Now Playing so temple gestures arrive as AVRCP media commands) is its own subsystem:
+/// `MediaTriggerService` (Plan CH), because it needs a claim/release policy these detectors don't.
 enum AlternativeTrigger: String, CaseIterable, Identifiable, Codable {
     /// A deliberate phone shake (CoreMotion).
     case shake

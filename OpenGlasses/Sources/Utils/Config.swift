@@ -198,6 +198,17 @@ struct Config {
         AlternativeTrigger.allCases.contains { alternativeTriggerEnabled($0) }
     }
 
+    /// Temple-tap media trigger (Plan CH): claim Now Playing so a glasses temple double-tap
+    /// (AVRCP next-track) starts the assistant. Off by default — experimental, and it holds the
+    /// Now Playing session whenever the user's own audio isn't playing.
+    static var mediaTriggerEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "mediaTriggerEnabled")
+    }
+
+    static func setMediaTriggerEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "mediaTriggerEnabled")
+    }
+
     // MARK: - LLM Provider (legacy — kept for migration)
 
     /// Selected LLM provider
