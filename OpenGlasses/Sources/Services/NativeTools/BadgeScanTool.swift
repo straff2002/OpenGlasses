@@ -42,12 +42,22 @@ struct BadgeScanTool: NativeTool {
         let payload = scanBarcodePayloads(in: cgImage)
             .compactMap { BadgePayloadParser.parse($0) }
             .first { !$0.isEmpty }
-        let reconciliation = BadgeReconciler.reconcile(ocr: fields.isAcceptable ? fields : nil,
+        let ocrReadable = fields.isAcceptable
+        let reconciliation = BadgeReconciler.reconcile(ocr: ocrReadable ? fields : nil,
                                                        payload: payload)
         let contact = reconciliation.contact
+        // Identity resting on the QR alone is uncorroborated — a plausible-looking
+        // organiser/sponsor vCard could pass the shape gate. Accept it (it's the case
+        // QR helps most) but label the provenance in the record and the reply.
+        let nameFromQROnly = !ocrReadable && reconciliation.qrTrusted
 
         guard let personName = contact.name else {
-            return "I couldn't read a name off that badge. Try getting closer or angling toward the light, then ask again."
+            var failure = "I couldn't read a name off that badge. Try getting closer or angling toward the light, then ask again."
+            if let context = reconciliation.context {
+                let bits = [context.name, context.organization, context.email].compactMap { $0 }
+                if !bits.isEmpty { failure += " The badge QR only had event info (\(bits.joined(separator: ", ")))." }
+            }
+            return failure
         }
 
         let detail = [contact.title, contact.organization].compactMap { $0 }.joined(separator: ", ")
@@ -61,6 +71,7 @@ struct BadgeScanTool: NativeTool {
         var record = "Met \(personName)"
         if !detail.isEmpty { record += " (\(detail))" }
         if !reachable.isEmpty { record += " — \(reachable)" }
+        if nameFromQROnly { record += " (name from badge QR; printed text unreadable — unverified against the badge)" }
         record += " — badge scanned \(met)"
         if let place, !place.isEmpty { record += " at \(place)" }
         // An untrusted payload still says where the meeting happened (organiser/event
@@ -88,6 +99,8 @@ struct BadgeScanTool: NativeTool {
             reply += " The badge QR named someone else — probably the organiser's card — so I used the printed name and kept the QR as event context."
         } else if reconciliation.context != nil {
             reply += " The badge QR looked like an event card, so I kept it as context."
+        } else if nameFromQROnly {
+            reply += " That name came from the badge QR only — I couldn't read the printed text to double-check it."
         }
         if faceService != nil {
             reply += " Say 'remember this person as \(personName)' to link their face too."
