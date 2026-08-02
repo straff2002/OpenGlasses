@@ -599,6 +599,26 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). Ray-Ban Display glasses only — no effect on glasses without a built-in display."
                 )
+                InfoToggle(
+                    title: "HUD Choice Buttons",
+                    isOn: Binding(
+                        get: { Config.hudChoiceButtonsEnabled },
+                        set: { Config.setHudChoiceButtonsEnabled($0) }
+                    ),
+                    info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
+                )
+                InfoToggle(
+                    title: "Dwell Capture",
+                    isOn: Binding(
+                        get: { Config.dwellCaptureEnabled },
+                        set: { newValue in
+                            Config.setDwellCaptureEnabled(newValue)
+                            if !newValue { appState.dwellCapture.stop() }
+                            else { appState.dwellCapture.start(cameraService: appState.cameraService) }
+                        }
+                    ),
+                    info: "Hold your gaze on an object for about two seconds and it's captured to Photos automatically — hands-free, no wake word. Uses on-device object detection while the camera streams; off by default because the detection loop uses extra battery."
+                )
                 NavigationLink {
                     HUDMirrorView(router: appState.hudRouter)
                 } label: {
