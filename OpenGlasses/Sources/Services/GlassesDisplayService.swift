@@ -105,6 +105,12 @@ final class GlassesDisplayService: ObservableObject {
     /// *persistent* producers (AI replies, captions, navigation) are suppressed while
     /// set; transient notifications flash over the screen and then restore it.
     @Published private(set) var isInteractive = false
+
+    /// Plan BP: the last frame the queue resolved, as a screen — the web mirror's
+    /// read-only source (`hud.json`). Ambient content wraps into a lines-only screen;
+    /// nil = cleared. Updated even in mirror-only mode (no native display available),
+    /// which is the entitlement-free story: producers render, the backend send is skipped.
+    @Published private(set) var mirrorScreen: HUDScreen?
     private var currentScreen: HUDScreen?
     private var screenSelectionHandler: ((String) -> Void)?
 
@@ -184,7 +190,7 @@ final class GlassesDisplayService: ObservableObject {
     /// mode; on-device selections route back via `onSelect(itemID)`. No-op when the
     /// feature is off or the glasses have no display.
     func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
-        guard isEnabled, deviceSupportsDisplay() else { return }
+        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
         screenSelectionHandler = onSelect
         currentScreen = screen
         isInteractive = true
@@ -215,7 +221,9 @@ final class GlassesDisplayService: ObservableObject {
     // MARK: - Presentation
 
     private func present(_ content: HUDContent, transient: Bool, duration: TimeInterval) {
-        guard isEnabled, deviceSupportsDisplay() else { return }
+        // The web mirror (Plan BP) keeps the queue alive even without a native display —
+        // that's the entitlement-free path; the backend send itself is capability-gated.
+        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
         // While an interactive screen is held, suppress persistent ambient frames;
         // transient notifications still flash (and restore the screen on auto-clear).
         if isInteractive && !transient { return }
@@ -261,9 +269,10 @@ final class GlassesDisplayService: ObservableObject {
                     switch frame {
                     case .op(let op):
                         if op == self.lastRendered { continue } // skip redundant identical sends
+                        self.updateMirror(for: op)
                         if let sink = self.testRenderSink {
                             sink(Self.descriptor(for: op))
-                        } else {
+                        } else if self.deviceSupportsDisplay() {
                             switch op {
                             case .show(let content):
                                 try await self.activeBackend.showContent(
@@ -277,9 +286,10 @@ final class GlassesDisplayService: ObservableObject {
                         self.lastScreenKey = nil
                     case .screen(let screen):
                         if screen.renderKey == self.lastScreenKey { continue }
+                        self.mirrorScreen = screen
                         if let sink = self.testRenderSink {
                             sink(.screen(renderKey: screen.renderKey))
-                        } else {
+                        } else if self.deviceSupportsDisplay() {
                             try await self.activeBackend.send(screen: screen)
                             self.isDisplayActive = true
                         }
@@ -292,6 +302,16 @@ final class GlassesDisplayService: ObservableObject {
                 }
             }
             self.isRendering = false
+        }
+    }
+
+    private func updateMirror(for op: RenderOp) {
+        switch op {
+        case .show(let content):
+            mirrorScreen = HUDScreen(title: content.title,
+                                     lines: [HUDLine(content.body, icon: content.icon)])
+        case .clear:
+            mirrorScreen = nil
         }
     }
 

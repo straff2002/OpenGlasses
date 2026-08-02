@@ -1,8 +1,20 @@
 # Plan BP — Web App HUD Mirror (Ray-Ban Display, entitlement-free path)
 
-**Status:** Drafted, not scheduled. Speculative until first hardware contact — the whole point of
-this plan is that it *can* reach real Ray-Ban Display hardware without the DAT display entitlement,
-but the reachability questions in P3 are unvalidated and deliberately deferred.
+**Status:** ✅ P1+P2 shipped (2026-08-02); P3/P4 hardware-deferred as designed. P1:
+`WebHUDPayload` (Codable DTO, stable wire names) + `WebHUDRenderer` (pure single-file HTML —
+additive-black asserted, amber non-cyan focus, `mrbd-web-app-capable` meta, D-pad keyboard nav,
+inline/polling modes sharing one client-side render function, `</`-escape so payload text can't
+close the script block, textContent-only DOM so markup never executes). P2:
+`GlassesDisplayService.mirrorScreen` tap at the render-queue resolution point (ambient content
+wraps to a lines-only screen; **mirror-only mode**: with `hudMirrorEnabled` the queue resolves
+frames even without a native display — the backend send is capability-gated, which IS the
+entitlement-free story), `WebHUDMirrorServer` (NWListener :8766 per the Plan E pattern, Keychain
+token, pure tested router: page unauthenticated/data token-gated/405 on non-GET/404, HIPAA →
+503 everywhere + listener killed on mode flip), settings surface (registration URL with
+hash-riding token, rotate, desktop-preview HTML export). Gated
+`agentModeEnabled && hudMirrorEnabled` (default off). 14 tests. P3 (LAN/tailnet/relay
+reachability) and P4 (enrollment, optics legibility, poll-vs-battery, web-view lifecycle)
+remain the 1-hour hardware experiments they were scoped as.
 
 ## Why this might matter
 
@@ -102,10 +114,30 @@ Developer-Mode URL registration + QR enrollment; smoke: legibility at 600×600 o
 feel, poll cadence vs. battery, web-view lifecycle (does the page survive glance-away/return, does
 `localStorage` persist).
 
+### P5 — Push transport & pairing polish (follow-up, post-P4)
+
+Field evidence from other apps on this surface says WebSocket/fetch are the network
+primitives available to the glasses web view — which means the 2 s poll in
+`WebHUDMirrorServer` is probably not the ceiling:
+
+- **Push over WebSocket:** a minimal, dependency-free WS client inlined in the rendered page
+  (no bundler, no client library — the page stays a single self-contained file per P1's
+  contract), falling back to the existing poll when the socket can't connect. Server side is
+  one upgrade route on the existing listener. Poll cadence vs. battery (P4's question)
+  largely dissolves if push works.
+- **D-pad room-code pairing:** if URL-hash enrollment proves awkward on-device, a 6-char
+  code editor driven entirely by D-pad (left/right cursor, up/down character cycle, Enter
+  submit) is the keyboard-less fallback — a pure reducer, fixture-testable like the rest of
+  the renderer.
+- **Embedding gotcha (recorded for whenever third-party content appears):** iframes steal
+  D-pad focus unless `tabindex="-1"` is set — the focus model must keep arrow keys on our
+  own focusables.
+
 ## Open questions
 
 - LAN reachability / HTTPS requirement (P3 — the gating unknown).
-- Does the glasses web view support SSE/WebSocket, or is polling the ceiling?
+- Does the glasses web view support SSE/WebSocket, or is polling the ceiling? (P5 bets yes
+  on WebSocket; verify at hardware contact.)
 - Web-view lifecycle: process kept alive between glances? poll timers throttled?
 - Input surface beyond arrows/Enter (touchpad swipe mapping, any extra keys).
 - Whether the registered-URL hash survives enrollment round-trip intact.
