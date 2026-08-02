@@ -71,10 +71,16 @@ record with time+place, linked to face recognition when a face is in frame.
   badge layouts as text+box fixtures, incl. lanyard-flipped and partial-occlusion cases).
   Rejects below a confidence floor rather than guessing — same absence-honesty rule as the
   vision substrate.
-- **Wiring — `scan_badge` `NativeTool`:** photo capture → `VNRecognizeTextRequest` →
-  parser → on accept, persist a person record (name, title, org, met-at time + reverse-geocoded
-  place) into the brain store (`BrainStore.shared.ingest`, native-first per house rule) and
-  speak a one-line confirm. If `FaceRecognitionService` has a face in the same frame, offer
+- **`BadgePayloadParser` (pure):** most badges carry a QR (vCard/MeCard/URL). The payload
+  is machine-authored ground truth, so it's parsed into contact fields (name, title, org,
+  phone, email, website) and **wins over the OCR heuristics wherever both speak**
+  (`BadgeContact.merged` — OCR fills payload gaps, never overrides it). Opaque lead-scan
+  blobs and ticket ids map to nothing rather than to a guess.
+- **Wiring — `scan_badge` `NativeTool`:** photo capture → `VNRecognizeTextRequest` +
+  `VNDetectBarcodesRequest` (QR/Aztec/DataMatrix/microQR) on the same frame → parse +
+  merge → on accept, persist a person record (name, title, org, phone/email/website when
+  the QR provides them, met-at time + reverse-geocoded place) into the brain store
+  (`BrainStore.shared.ingest`, native-first per house rule) and speak a one-line confirm. If `FaceRecognitionService` has a face in the same frame, offer
   `rememberFace(name:)` enrolment so the badge name and the faceprint join up. Repeat
   sightings of the same name merge into a timeline on the existing record rather than
   duplicating.

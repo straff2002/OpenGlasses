@@ -309,3 +309,85 @@ final class BadgeFieldParserTests: XCTestCase {
         XCTAssertEqual(BadgeFieldParser.parse(lines).name, "Ludwig van Beethoven")
     }
 }
+
+// MARK: - BadgePayloadParser (Plan CG — badge QR payloads)
+
+final class BadgePayloadParserTests: XCTestCase {
+
+    func testVCardParsesAllFields() {
+        let payload = """
+        BEGIN:VCARD
+        VERSION:3.0
+        FN:Jane O'Brien-Smith
+        N:O'Brien-Smith;Jane;;;
+        ORG:Initech Systems Inc.;Platform Team
+        TITLE:Senior Software Engineer
+        TEL;TYPE=CELL:+64211234567
+        EMAIL:jane@initech.example
+        URL:https://initech.example
+        END:VCARD
+        """
+        let contact = BadgePayloadParser.parse(payload)
+        XCTAssertEqual(contact?.name, "Jane O'Brien-Smith")
+        XCTAssertEqual(contact?.organization, "Initech Systems Inc.")
+        XCTAssertEqual(contact?.title, "Senior Software Engineer")
+        XCTAssertEqual(contact?.phone, "+64211234567")
+        XCTAssertEqual(contact?.email, "jane@initech.example")
+        XCTAssertEqual(contact?.website, "https://initech.example")
+    }
+
+    func testVCardNFallbackReordersName() {
+        let payload = "BEGIN:VCARD\nN:Park;Kim;;;\nEND:VCARD"
+        XCTAssertEqual(BadgePayloadParser.parse(payload)?.name, "Kim Park")
+    }
+
+    func testVCardFoldedLineUnfolds() {
+        let payload = "BEGIN:VCARD\nFN:Jane\n Smith\nEND:VCARD"
+        XCTAssertEqual(BadgePayloadParser.parse(payload)?.name, "JaneSmith")
+    }
+
+    func testMeCardParses() {
+        let payload = "MECARD:N:Doe,John;ORG:Acme Corp;TEL:+15550100;EMAIL:john@acme.example;;"
+        let contact = BadgePayloadParser.parse(payload)
+        XCTAssertEqual(contact?.name, "John Doe")
+        XCTAssertEqual(contact?.organization, "Acme Corp")
+        XCTAssertEqual(contact?.phone, "+15550100")
+        XCTAssertEqual(contact?.email, "john@acme.example")
+    }
+
+    func testBareURLBecomesWebsiteOnly() {
+        let contact = BadgePayloadParser.parse("https://example.com/profile/jane")
+        XCTAssertEqual(contact?.website, "https://example.com/profile/jane")
+        XCTAssertNil(contact?.name)
+    }
+
+    func testOpaqueLeadScanBlobYieldsNothing() {
+        XCTAssertNil(BadgePayloadParser.parse("TKT-88213-AZQ"))
+        XCTAssertNil(BadgePayloadParser.parse(""))
+    }
+
+    func testMergePayloadWinsOverOCR() {
+        let ocr = BadgeFields(name: "Jane Q'Brlen-Smlth",  // classic OCR mangling
+                              title: nil, organization: "lnitech", confidence: 0.6)
+        let qr = BadgeContact(name: "Jane O'Brien-Smith", organization: "Initech Systems Inc.")
+        let merged = BadgeContact.merged(ocr: ocr, payload: qr)
+        XCTAssertEqual(merged.name, "Jane O'Brien-Smith")
+        XCTAssertEqual(merged.organization, "Initech Systems Inc.")
+    }
+
+    func testMergeOCRFillsPayloadGaps() {
+        let ocr = BadgeFields(name: "Kim Park", title: "Marketing Director",
+                              organization: nil, confidence: 0.7)
+        let qr = BadgeContact(phone: "+15550100")
+        let merged = BadgeContact.merged(ocr: ocr, payload: qr)
+        XCTAssertEqual(merged.name, "Kim Park")
+        XCTAssertEqual(merged.title, "Marketing Director")
+        XCTAssertEqual(merged.phone, "+15550100")
+    }
+
+    func testMergeRejectedOCRContributesNothing() {
+        let merged = BadgeContact.merged(ocr: nil, payload: BadgeContact(name: "Sam Taylor"))
+        XCTAssertEqual(merged.name, "Sam Taylor")
+        XCTAssertNil(merged.organization)
+    }
+}

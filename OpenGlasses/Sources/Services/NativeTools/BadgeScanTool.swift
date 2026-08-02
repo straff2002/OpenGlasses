@@ -34,19 +34,30 @@ struct BadgeScanTool: NativeTool {
             return "Could not read the captured frame."
         }
 
+        // OCR and QR run on the same frame; a QR payload (vCard/MeCard) is
+        // machine-authored ground truth, so its fields win over the OCR heuristics.
         let lines = try await recognizeLines(in: cgImage)
         let fields = BadgeFieldParser.parse(lines)
+        let payload = scanBarcodePayloads(in: cgImage)
+            .compactMap { BadgePayloadParser.parse($0) }
+            .first { !$0.isEmpty }
+        let contact = BadgeContact.merged(ocr: fields.isAcceptable ? fields : nil, payload: payload)
 
-        guard fields.isAcceptable, let personName = fields.name else {
+        guard let personName = contact.name else {
             return "I couldn't read a name off that badge. Try getting closer or angling toward the light, then ask again."
         }
 
-        let detail = [fields.title, fields.organization].compactMap { $0 }.joined(separator: ", ")
+        let detail = [contact.title, contact.organization].compactMap { $0 }.joined(separator: ", ")
+        let reachable = [contact.phone.map { "phone \($0)" },
+                         contact.email.map { "email \($0)" },
+                         contact.website.map { "web \($0)" }]
+            .compactMap { $0 }.joined(separator: ", ")
         let place = await MainActor.run { locationService.geocodedPlace }
         let met = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short)
 
         var record = "Met \(personName)"
         if !detail.isEmpty { record += " (\(detail))" }
+        if !reachable.isEmpty { record += " — \(reachable)" }
         record += " — badge scanned \(met)"
         if let place, !place.isEmpty { record += " at \(place)" }
 
@@ -56,6 +67,7 @@ struct BadgeScanTool: NativeTool {
 
         var reply = "Saved \(personName)"
         if !detail.isEmpty { reply += ", \(detail)" }
+        if contact.phone != nil || contact.email != nil { reply += ", with contact details from the badge QR" }
         reply += "."
         if faceService != nil {
             reply += " Say 'remember this person as \(personName)' to link their face too."
@@ -69,6 +81,16 @@ struct BadgeScanTool: NativeTool {
         if let latest = await MainActor.run(body: { cameraService.latestFrame }) { return latest }
         if let data = try? await cameraService.capturePhoto() { return UIImage(data: data) }
         return nil
+    }
+
+    /// Badge QR/matrix codes on the same frame. Failure is empty, not thrown — the OCR
+    /// path stands alone when there's no code.
+    private func scanBarcodePayloads(in cgImage: CGImage) -> [String] {
+        let request = VNDetectBarcodesRequest()
+        request.symbologies = [.qr, .aztec, .dataMatrix, .microQR]
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        guard (try? handler.perform([request])) != nil else { return [] }
+        return (request.results ?? []).compactMap { $0.payloadStringValue }
     }
 
     private func recognizeLines(in cgImage: CGImage) async throws -> [RecognizedTextLine] {
