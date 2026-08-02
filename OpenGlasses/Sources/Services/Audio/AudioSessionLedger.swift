@@ -14,6 +14,9 @@ enum AudioSessionOwner: String, Sendable, CaseIterable {
     case openAIRealtime
     case expertCall
     case textToSpeech
+    /// Temple-tap media trigger's silent Now Playing claim (Plan CH) — only ever a coexisting
+    /// rider under the wake-word listener's session, never an exclusive holder.
+    case mediaTrigger
 }
 
 /// A claim on the shared session: who holds it, an opaque token identifying this exact claim, and a
