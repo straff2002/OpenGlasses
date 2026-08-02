@@ -256,6 +256,7 @@ OpenGlasses 采用了 Apple 的**相机**与**助手** App Intent Schema，因�
 - **实时相机预览** — 实时查看眼镜视角
 - **视频录制** — MP4 格式，可配置比特率
 - **RTMP 直播** — 直播到 YouTube、Twitch、Kick
+- **弹幕朗读** — 直播时将 Twitch 聊天读进耳朵（只读、无需 OAuth）：限速去重、提及主播的消息优先，助手语音始终优先，实时会话期间自动静默。默认关闭，可选"仅提及"模式
 - **WebRTC 浏览器直播** — 可分享的 URL，点对点观看
 - **隐私滤镜** — 自动模糊旁观者面部
 
@@ -421,7 +422,7 @@ open OpenGlasses.xcodeproj
 |------|--------|
 | **ElevenLabs** | API 密钥 + 语音选择（24 种语音） |
 | **Perplexity** | API 密钥（未设置时回退到 DuckDuckGo） |
-| **直播** | 平台 + RTMP URL + 直播密钥 |
+| **直播** | 平台 + RTMP URL + 直播密钥 + 弹幕朗读（Twitch 频道、语速上限、仅提及） |
 | **OpenClaw** | 启用 + 连接模式 + 主机/端口 + Token |
 | **Home Assistant** | URL + 长期访问令牌 |
 
