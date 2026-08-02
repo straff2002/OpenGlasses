@@ -122,6 +122,9 @@ final class NativeToolRegistry {
                 captureSharpFrame: { try await camera.capturePhoto() },
                 injectorProvider: { AppStateProvider.shared?.activeLiveInjector }))
             register(VisionAssessTool())   // structured vision (read the instrument, etc.) via StructuredVisionService.shared
+            // Plan CG: badge OCR → person record in the brain store.
+            register(BadgeScanTool(cameraService: camera, locationService: locationService,
+                                   faceService: faceRecognitionService))
             if let recorder = videoRecorder {
                 register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,
                                             medicalExportService: medicalExportService))

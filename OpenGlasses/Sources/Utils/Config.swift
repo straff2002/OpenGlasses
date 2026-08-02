@@ -330,6 +330,18 @@ struct Config {
 
     static func setNarrateModelSwitchesEnabled(_ enabled: Bool) { narrateModelSwitchesEnabled = enabled }
 
+    /// Whether explicit multiple-choice replies ("A) …, B) …") render as band-selectable
+    /// HUD buttons (Plan CG). Detection is deliberately conservative; default on.
+    @UserDefaultsBacked("hudChoiceButtonsEnabled", default: true) static var hudChoiceButtonsEnabled: Bool
+
+    static func setHudChoiceButtonsEnabled(_ enabled: Bool) { hudChoiceButtonsEnabled = enabled }
+
+    /// Whether holding your gaze on an object for ~2 s captures it (Plan CG). Default off —
+    /// the saliency loop costs battery.
+    @UserDefaultsBacked("dwellCaptureEnabled", default: false) static var dwellCaptureEnabled: Bool
+
+    static func setDwellCaptureEnabled(_ enabled: Bool) { dwellCaptureEnabled = enabled }
+
     private static let modelFallbackOrderKey = "modelFallbackOrder"
 
     /// User-ordered fallback model ids the cascade tries after the active model (cost preference:

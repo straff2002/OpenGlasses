@@ -536,6 +536,9 @@ class AppState: ObservableObject, AppStateProtocol {
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
+    /// Dwell capture (Plan CG): gaze-hold on an object captures it. Passive until frames
+    /// flow; `Config.dwellCaptureEnabled` gates the per-frame work.
+    let dwellCapture = DwellCaptureService()
     /// Frame pinning (Plan CE): the pinned frame the model sees instead of the live feed.
     let framePin = FramePin()
     private var framePinGate = FramePinGate()
@@ -752,6 +755,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // speaks a deterministic phrase; during a live session this stays SILENT — the same router
         // serves live tool calls, where ToolCallRouter's two-phase ack already covers the wait in
         // the model's own voice, and this TTS was talking over it in a different one.
+        // Plan CG: dwell capture speaks its confirmation through the shared TTS, and its
+        // frame tap rides the existing camera publisher.
+        dwellCapture.announce = { [weak self] text in await self?.speechService.speak(text) }
+        dwellCapture.start(cameraService: cameraService)
+
         nativeToolRouter.onLongRunningUpdate = { [weak self] elapsed in
             guard let self else { return }
             Task { @MainActor in
@@ -3104,6 +3112,24 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.startThinkingSound()
     }
 
+    /// Plan CG: render an explicit multiple-choice reply as band-selectable HUD buttons.
+    /// Selection re-enters the conversation exactly like a spoken utterance would.
+    private func presentChoiceButtonsIfDetected(in response: String) {
+        guard Config.hudChoiceButtonsEnabled else { return }
+        let choices = ChoiceDetector.detect(in: response)
+        guard !choices.isEmpty else { return }
+
+        let items = choices.enumerated().map { index, choice in
+            HUDItem(id: "choice-\(index)", label: choice.label, action: {})
+        }
+        glassesDisplay.present(screen: HUDScreen(title: "Choose", items: items)) { [weak self] id in
+            guard let self,
+                  let index = Int(id.dropFirst("choice-".count)),
+                  choices.indices.contains(index) else { return }
+            Task { await self.sendTextMessage(choices[index].spokenForm) }
+        }
+    }
+
     func handleTranscription(_ text: String) async {
         // Shared consent surface, voice half (BN P1): while an approve/deny prompt is pending, a
         // short spoken yes/no answers THE PROMPT — never the model. Checked before the
@@ -3484,6 +3510,10 @@ class AppState: ObservableObject, AppStateProtocol {
                     // offer to remember it (or silently save it in Agent Mode).
                     MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
                                                          toolNames: nativeToolRouter.takeTurnToolNames())
+
+                    // Plan CG: an explicit multiple-choice reply renders as band-selectable
+                    // HUD buttons; selecting one feeds the option back as the next user turn.
+                    if speakResponse { presentChoiceButtonsIfDetected(in: response) }
                 },
                 speak: { [self] response in
                     // Speak the response (user can still say "stop")
