@@ -602,6 +602,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Alternative hands-free triggers (Additional Capabilities #5) — shake/acoustic/volume, all
     /// opt-in, each routing to the same entry point as the wake word.
     let alternativeTriggers = AlternativeTriggerService()
+    let mediaTrigger = MediaTriggerService()
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
@@ -1629,6 +1630,25 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
         if Config.anyAlternativeTriggerEnabled { alternativeTriggers.start() }
+
+        // Temple-tap media trigger (Plan CH): a glasses temple double-tap arrives as an AVRCP
+        // next-track command while we hold Now Playing, and routes to the same entry as the wake
+        // word. The claim/release policy keeps the user's audio and realtime sessions first.
+        mediaTrigger.isSuppressed = { [weak self] in
+            guard let self else { return true }
+            return self.inConversation || self.isProcessing || AssistiveModeService.shared.isActive
+        }
+        mediaTrigger.realtimeSessionActive = { [weak self] in
+            (self?.geminiLiveSession.isActive ?? false) || (self?.openAIRealtimeSession.isActive ?? false)
+        }
+        mediaTrigger.onTrigger = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.noteUserInteraction()
+                await self.handleWakeWordDetected(manual: true)
+            }
+        }
+        if Config.mediaTriggerEnabled { mediaTrigger.start() }
 
         wakeWordService.onStopCommand = { [weak self] in
             Task { @MainActor in
@@ -4111,6 +4131,8 @@ struct NowPlayingSnapshot {
     static func current() -> NowPlayingSnapshot? {
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         guard let info, !info.isEmpty else { return nil }
+        // The temple-tap trigger's silent claim (Plan CH) must not read back as user media.
+        guard !SilentNowPlayingClaimer.isOwnInfo(info) else { return nil }
         let title = info[MPMediaItemPropertyTitle] as? String
         let artist = info[MPMediaItemPropertyArtist] as? String
         let album = info[MPMediaItemPropertyAlbumTitle] as? String

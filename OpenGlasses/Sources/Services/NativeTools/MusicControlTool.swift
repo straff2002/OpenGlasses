@@ -25,6 +25,12 @@ struct MusicControlTool: NativeTool {
             return "No action provided. Use: play, pause, toggle, next, previous, or now_playing."
         }
 
+        // Commands are for the *user's* player — tell the temple-tap trigger (Plan CH) to drop
+        // its Now Playing claim first so we never race their playback for the session.
+        if !["search", "now_playing", "current", "what_is_playing"].contains(action.lowercased()) {
+            NotificationCenter.default.post(name: MediaTriggerService.userPlaybackRequested, object: nil)
+        }
+
         // Search and play-by-name need async work, handle separately
         switch action.lowercased() {
         case "search":
