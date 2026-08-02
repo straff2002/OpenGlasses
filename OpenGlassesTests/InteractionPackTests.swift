@@ -366,28 +366,121 @@ final class BadgePayloadParserTests: XCTestCase {
         XCTAssertNil(BadgePayloadParser.parse(""))
     }
 
-    func testMergePayloadWinsOverOCR() {
+}
+
+// MARK: - BadgeReconciler (Plan CG — QR vs OCR trust)
+
+final class BadgeReconcilerTests: XCTestCase {
+
+    // Names agree (fuzzily) → the QR's clean spelling and fields win.
+    func testAgreementPayloadWins() {
         let ocr = BadgeFields(name: "Jane Q'Brlen-Smlth",  // classic OCR mangling
                               title: nil, organization: "lnitech", confidence: 0.6)
-        let qr = BadgeContact(name: "Jane O'Brien-Smith", organization: "Initech Systems Inc.")
-        let merged = BadgeContact.merged(ocr: ocr, payload: qr)
-        XCTAssertEqual(merged.name, "Jane O'Brien-Smith")
-        XCTAssertEqual(merged.organization, "Initech Systems Inc.")
+        let qr = BadgeContact(name: "Jane O'Brien-Smith", organization: "Initech Systems Inc.",
+                              email: "jane@initech.example")
+        let result = BadgeReconciler.reconcile(ocr: ocr, payload: qr)
+        XCTAssertTrue(result.qrTrusted)
+        XCTAssertFalse(result.namesDisagreed)
+        XCTAssertEqual(result.contact.name, "Jane O'Brien-Smith")
+        XCTAssertEqual(result.contact.organization, "Initech Systems Inc.")
+        XCTAssertEqual(result.contact.email, "jane@initech.example")
     }
 
-    func testMergeOCRFillsPayloadGaps() {
-        let ocr = BadgeFields(name: "Kim Park", title: "Marketing Director",
+    // Agreement with a subset name still counts.
+    func testSubsetNamesAgree() {
+        XCTAssertTrue(BadgeReconciler.namesAgree("Jane Smith", "Jane Elizabeth Smith"))
+    }
+
+    // Different people → printed name wins; the QR card moves to context, never into
+    // the person's own fields.
+    func testDisagreementMovesPayloadToContext() {
+        let ocr = BadgeFields(name: "Sam Taylor", title: "Engineer",
                               organization: nil, confidence: 0.7)
-        let qr = BadgeContact(phone: "+15550100")
-        let merged = BadgeContact.merged(ocr: ocr, payload: qr)
-        XCTAssertEqual(merged.name, "Kim Park")
-        XCTAssertEqual(merged.title, "Marketing Director")
-        XCTAssertEqual(merged.phone, "+15550100")
+        let qr = BadgeContact(name: "Jane Smith", organization: "DevCon Events",
+                              phone: "+15550100", email: "info@devcon.example")
+        let result = BadgeReconciler.reconcile(ocr: ocr, payload: qr)
+        XCTAssertFalse(result.qrTrusted)
+        XCTAssertTrue(result.namesDisagreed)
+        XCTAssertEqual(result.contact.name, "Sam Taylor")
+        XCTAssertNil(result.contact.phone)
+        XCTAssertNil(result.contact.email)
+        XCTAssertNil(result.contact.organization)  // the QR org belongs to the other card
+        XCTAssertEqual(result.context?.name, "Jane Smith")
+        XCTAssertEqual(result.context?.organization, "DevCon Events")
+        XCTAssertEqual(result.context?.email, "info@devcon.example")
     }
 
-    func testMergeRejectedOCRContributesNothing() {
-        let merged = BadgeContact.merged(ocr: nil, payload: BadgeContact(name: "Sam Taylor"))
-        XCTAssertEqual(merged.name, "Sam Taylor")
-        XCTAssertNil(merged.organization)
+    // Organiser-shaped QR "name" fails the plausibility gate: OCR identity wins, and
+    // the event card is preserved as context (it says where the meeting happened).
+    func testImplausibleQRNameBecomesContext() {
+        let ocr = BadgeFields(name: "Kim Park", title: nil, organization: nil, confidence: 0.7)
+        let qr = BadgeContact(name: "DevCon Registration Desk", email: "info@devcon.example")
+        let result = BadgeReconciler.reconcile(ocr: ocr, payload: qr)
+        XCTAssertFalse(result.qrTrusted)
+        XCTAssertFalse(result.namesDisagreed)  // gate rejection, not a person mismatch
+        XCTAssertEqual(result.contact.name, "Kim Park")
+        XCTAssertNil(result.contact.email)
+        XCTAssertEqual(result.context?.name, "DevCon Registration Desk")
+        XCTAssertEqual(result.context?.email, "info@devcon.example")
+    }
+
+    // A trusted payload leaves no context sidecar — its fields ARE the contact.
+    func testTrustedPayloadHasNoContext() {
+        let ocr = BadgeFields(name: "Kim Park", title: nil, organization: nil, confidence: 0.7)
+        let qr = BadgeContact(name: "Kim Park", phone: "+15550100")
+        XCTAssertNil(BadgeReconciler.reconcile(ocr: ocr, payload: qr).context)
+    }
+
+    // QR-only (OCR below floor): a plausible person card is accepted.
+    func testQROnlyPlausibleNameAccepted() {
+        let qr = BadgeContact(name: "Sam Taylor", phone: "+15550100")
+        let result = BadgeReconciler.reconcile(ocr: nil, payload: qr)
+        XCTAssertTrue(result.qrTrusted)
+        XCTAssertEqual(result.contact.name, "Sam Taylor")
+        XCTAssertEqual(result.contact.phone, "+15550100")
+    }
+
+    // QR-only with an implausible name: nothing identifies a person, but the event
+    // card is still preserved as context.
+    func testQROnlyImplausibleNameYieldsNoPersonButContext() {
+        let qr = BadgeContact(name: "VIP Admission Pass", email: "tickets@devcon.example")
+        let result = BadgeReconciler.reconcile(ocr: nil, payload: qr)
+        XCTAssertNil(result.contact.name)
+        XCTAssertFalse(result.qrTrusted)
+        XCTAssertEqual(result.context?.name, "VIP Admission Pass")
+    }
+
+    // A bare-URL payload (website only) survives reconciliation alongside OCR identity…
+    func testWebsiteOnlyPayloadKeepsWebsiteWithoutOCRName() {
+        let result = BadgeReconciler.reconcile(ocr: nil, payload: BadgeContact(website: "https://example.com"))
+        XCTAssertEqual(result.contact.website, "https://example.com")
+        XCTAssertNil(result.contact.name)
+    }
+
+    // OCR fills gaps the trusted payload leaves open.
+    func testAgreementOCRFillsGaps() {
+        let ocr = BadgeFields(name: "Kim Park", title: "Marketing Director",
+                              organization: "Acme Corp", confidence: 0.7)
+        let qr = BadgeContact(name: "Kim Park", phone: "+15550100")
+        let result = BadgeReconciler.reconcile(ocr: ocr, payload: qr)
+        XCTAssertTrue(result.qrTrusted)
+        XCTAssertEqual(result.contact.title, "Marketing Director")
+        XCTAssertEqual(result.contact.organization, "Acme Corp")
+        XCTAssertEqual(result.contact.phone, "+15550100")
+    }
+
+    // Fuzzy matcher sanity: unrelated names never agree, and one shared first name
+    // is not agreement.
+    func testUnrelatedNamesDoNotAgree() {
+        XCTAssertFalse(BadgeReconciler.namesAgree("Sam Taylor", "Jane Smith"))
+        XCTAssertFalse(BadgeReconciler.namesAgree("Kim Park", "Kim Kardashian"))
+        XCTAssertFalse(BadgeReconciler.namesAgree("Ana Ruiz", "Ben Cohen"))
+    }
+
+    func testPlausibilityGateVocabulary() {
+        XCTAssertTrue(BadgeReconciler.isPlausiblePersonName("Ludwig van Beethoven"))
+        XCTAssertFalse(BadgeReconciler.isPlausiblePersonName("DevCon 2026 Registration"))
+        XCTAssertFalse(BadgeReconciler.isPlausiblePersonName("Exhibitor Pass"))
+        XCTAssertFalse(BadgeReconciler.isPlausiblePersonName("Jane"))  // single token
     }
 }

@@ -71,10 +71,20 @@ record with time+place, linked to face recognition when a face is in frame.
   badge layouts as text+box fixtures, incl. lanyard-flipped and partial-occlusion cases).
   Rejects below a confidence floor rather than guessing — same absence-honesty rule as the
   vision substrate.
-- **`BadgePayloadParser` (pure):** most badges carry a QR (vCard/MeCard/URL). The payload
-  is machine-authored ground truth, so it's parsed into contact fields (name, title, org,
-  phone, email, website) and **wins over the OCR heuristics wherever both speak**
-  (`BadgeContact.merged` — OCR fills payload gaps, never overrides it). Opaque lead-scan
+- **`BadgePayloadParser` + `BadgeReconciler` (pure):** most badges carry a QR
+  (vCard/MeCard/URL), parsed into contact fields (name, title, org, phone, email,
+  website). But a badge QR is machine-authored, **not necessarily about the wearer** —
+  organiser vCards, registration blobs, and sponsor cards all ride badge QRs. So the
+  payload is *reconciled* against the OCR, not blindly preferred: its name must pass a
+  person-shape plausibility gate (no digits, no event/registration vocabulary) and,
+  when OCR also read a name, fuzzily agree with it (token match with edit-distance
+  tolerance, so OCR mangling and middle-name subsets still agree). Agreement → the QR's
+  clean spelling and contact details win, OCR fills gaps. Disagreement or an implausible
+  QR name → the printed name wins and the payload never enters the person's own fields —
+  if the card isn't the person, their phone/email aren't either. But the rejected payload
+  isn't discarded: it rides the brain record as a clearly-labelled **context sidecar**
+  (an organiser/event vCard says *where the meeting happened* — "met at DevCon" is
+  recallable later). The spoken confirm says which way the QR went. Opaque lead-scan
   blobs and ticket ids map to nothing rather than to a guess.
 - **Wiring — `scan_badge` `NativeTool`:** photo capture → `VNRecognizeTextRequest` +
   `VNDetectBarcodesRequest` (QR/Aztec/DataMatrix/microQR) on the same frame → parse +

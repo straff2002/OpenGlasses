@@ -34,14 +34,17 @@ struct BadgeScanTool: NativeTool {
             return "Could not read the captured frame."
         }
 
-        // OCR and QR run on the same frame; a QR payload (vCard/MeCard) is
-        // machine-authored ground truth, so its fields win over the OCR heuristics.
+        // OCR and QR run on the same frame, then reconcile: the payload only wins when
+        // its name is person-shaped and agrees with what's printed — badge QRs are
+        // often the organiser's card or a registration blob, not the wearer.
         let lines = try await recognizeLines(in: cgImage)
         let fields = BadgeFieldParser.parse(lines)
         let payload = scanBarcodePayloads(in: cgImage)
             .compactMap { BadgePayloadParser.parse($0) }
             .first { !$0.isEmpty }
-        let contact = BadgeContact.merged(ocr: fields.isAcceptable ? fields : nil, payload: payload)
+        let reconciliation = BadgeReconciler.reconcile(ocr: fields.isAcceptable ? fields : nil,
+                                                       payload: payload)
+        let contact = reconciliation.contact
 
         guard let personName = contact.name else {
             return "I couldn't read a name off that badge. Try getting closer or angling toward the light, then ask again."
@@ -60,6 +63,16 @@ struct BadgeScanTool: NativeTool {
         if !reachable.isEmpty { record += " — \(reachable)" }
         record += " — badge scanned \(met)"
         if let place, !place.isEmpty { record += " at \(place)" }
+        // An untrusted payload still says where the meeting happened (organiser/event
+        // card) — keep it as context, clearly separated from the person's own details.
+        if let context = reconciliation.context {
+            let contextBits = [context.name, context.organization, context.email,
+                               context.phone, context.website].compactMap { $0 }
+            if !contextBits.isEmpty {
+                record += ". Badge QR context (event/organiser card, not \(personName)'s details): "
+                    + contextBits.joined(separator: ", ")
+            }
+        }
 
         await MainActor.run {
             BrainStore.shared.ingest(text: record, subject: personName, sourceKind: "badge_scan")
@@ -67,8 +80,15 @@ struct BadgeScanTool: NativeTool {
 
         var reply = "Saved \(personName)"
         if !detail.isEmpty { reply += ", \(detail)" }
-        if contact.phone != nil || contact.email != nil { reply += ", with contact details from the badge QR" }
+        if reconciliation.qrTrusted, contact.phone != nil || contact.email != nil {
+            reply += ", with contact details from the badge QR"
+        }
         reply += "."
+        if reconciliation.namesDisagreed {
+            reply += " The badge QR named someone else — probably the organiser's card — so I used the printed name and kept the QR as event context."
+        } else if reconciliation.context != nil {
+            reply += " The badge QR looked like an event card, so I kept it as context."
+        }
         if faceService != nil {
             reply += " Say 'remember this person as \(personName)' to link their face too."
         }
