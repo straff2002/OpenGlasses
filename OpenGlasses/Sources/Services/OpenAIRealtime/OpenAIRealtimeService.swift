@@ -67,6 +67,13 @@ class OpenAIRealtimeService: ObservableObject {
 
     // Track current response for interruption
     private var currentResponseId: String?
+    /// The conversation item currently streaming audio (from `response.audio.delta`), so a
+    /// barge-in can truncate exactly that item (CJ item 6).
+    private var currentAudioItemId: String?
+    private var currentAudioContentIndex = 0
+    /// Confirmed-played milliseconds of the current response's audio — wired by the session
+    /// manager to `RealtimeAudioEngine.confirmedPlayedMilliseconds`. Never wall-clock.
+    var playedAudioMilliseconds: (() -> Int)?
 
     init() {
         let config = URLSessionConfiguration.default
@@ -278,13 +285,31 @@ class OpenAIRealtimeService: ObservableObject {
     // MARK: - Interruption
 
     /// Cancel the current model response (client-side interrupt).
+    ///
+    /// Sends `response.cancel`, then `conversation.item.truncate` with the confirmed-played
+    /// `audio_end_ms` (CJ item 6): without the truncate, the server-side conversation item keeps
+    /// the full unheard audio, so later turns reference speech the user never heard. The played
+    /// count is read *before* `onInterrupted` stops playback (stopping discards the queue and
+    /// resets the accounting).
     func cancelResponse() {
         guard let task = webSocketTask else { return }
         isModelSpeaking = false
+        let playedMs = playedAudioMilliseconds?() ?? 0
+        let itemId = currentAudioItemId
+        let contentIndex = currentAudioContentIndex
+        currentAudioItemId = nil
         onInterrupted?()
         sendQueue.async {
-            let json: [String: Any] = ["type": "response.cancel"]
-            Self.sendJSONDirect(json, via: task)
+            Self.sendJSONDirect(["type": "response.cancel"], via: task)
+            if let itemId, playedMs > 0 {
+                Self.sendJSONDirect([
+                    "type": "conversation.item.truncate",
+                    "item_id": itemId,
+                    "content_index": contentIndex,
+                    "audio_end_ms": playedMs,
+                ], via: task)
+                NSLog("[OpenAI RT] Truncated %@ at %dms (confirmed played)", itemId, playedMs)
+            }
         }
     }
 
@@ -472,6 +497,10 @@ class OpenAIRealtimeService: ObservableObject {
                 if let responseId = json["response_id"] as? String {
                     currentResponseId = responseId
                 }
+                if let itemId = json["item_id"] as? String {
+                    currentAudioItemId = itemId
+                    currentAudioContentIndex = json["content_index"] as? Int ?? 0
+                }
                 onAudioReceived?(audioData)
             }
 
@@ -483,6 +512,7 @@ class OpenAIRealtimeService: ObservableObject {
         case "response.done":
             isModelSpeaking = false
             currentResponseId = nil
+            currentAudioItemId = nil
             responseLatencyLogged = false
             // Record this response's token usage for the cost tracker (Plan AU).
             if let usage = RealtimeUsage.openAIResponseUsage(json) {

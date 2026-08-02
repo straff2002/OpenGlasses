@@ -37,6 +37,11 @@ class GeminiLiveService: ObservableObject {
     var onToolCallCancellation: ((GeminiToolCallCancellation) -> Void)?
     var onReconnected: (() -> Void)?
 
+    /// Latest resumable session handle from `sessionResumptionUpdate` (Plan CJ item 7); goes
+    /// into the next setup message so a reconnect resumes rather than cold-starts. Cleared on
+    /// intentional disconnect — a deliberately fresh session must not inherit stale context.
+    private var resumptionHandle: String?
+
     // Reconnection
     private var intentionalDisconnect = false
     private var reconnectAttempts = 0
@@ -180,6 +185,7 @@ class GeminiLiveService: ObservableObject {
 
     func disconnect() {
         intentionalDisconnect = true
+        resumptionHandle = nil   // CJ item 7: a deliberate teardown must not resume later
         _ = generationGate.advance()   // BR P3: outstanding callbacks are stale from here
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -397,7 +403,10 @@ class GeminiLiveService: ObservableObject {
                     ]
                 ]
             ],
-            "inputAudioTranscription": [:] as [String: Any]
+            "inputAudioTranscription": [:] as [String: Any],
+            // Plan CJ item 7: always request resumption updates; with a stored handle this
+            // resumes the prior session (goAway rotation / network drop) instead of cold-starting.
+            "sessionResumption": GeminiSessionResumption.setupValue(handle: resumptionHandle)
         ]
         // Only a voice session has model audio to transcribe.
         if responseModalities.contains("AUDIO") {
@@ -514,6 +523,13 @@ class GeminiLiveService: ObservableObject {
         if json["setupComplete"] != nil {
             connectionState = .ready
             resolveConnect(success: true)
+            return
+        }
+
+        // Session-resumption handle update (Plan CJ item 7) — store the latest resumable handle
+        // so the next reconnect resumes instead of cold-starting.
+        if let update = GeminiSessionResumption.update(from: json) {
+            resumptionHandle = GeminiSessionResumption.apply(update, to: resumptionHandle)
             return
         }
 

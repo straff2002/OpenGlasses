@@ -78,7 +78,21 @@ final class HealthSafetyAdvisor {
         let user = query.kind == .canITake
             ? "Can I take \(query.subject)?"
             : "Can I eat \(query.subject)?"
-        return try? await llm.completeStateless(user, system: system)
+        guard let raw = try? await llm.completeStateless(user, system: system) else { return nil }
+
+        // Retrieve-or-silence gate (Plan CJ item 3): the advisory is grounded ONLY in the user's
+        // vault entries — no guideline text was retrieved — so any external-authority citation
+        // the model free-formed is unverifiable. Withhold it from speech and queue it for review
+        // (the field-session audit log when one is active; always the console).
+        let gated = CitationGate.scrub(raw)
+        if !gated.queuedCitations.isEmpty {
+            NSLog("[HealthSafety] Withheld %d unretrieved citation claim(s) from speech: %@",
+                  gated.queuedCitations.count, gated.queuedCitations.joined(separator: " | "))
+            FieldSessionService.shared.logAssistantMessage(
+                "Withheld unverified citation claims from health-safety advisory for \"\(query.subject)\"",
+                citations: gated.queuedCitations)
+        }
+        return gated.spokenText.isEmpty ? nil : gated.spokenText
     }
 
     // MARK: - Vault helpers

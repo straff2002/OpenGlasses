@@ -2140,6 +2140,13 @@ struct Config {
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
+    /// Category-only privacy reporting in vision prompts (Plan CJ item 4): the model reports
+    /// *that* a sensitive item is visible but is schema-forbidden from transcribing its content.
+    /// Default on — the language-side complement to the pixel-side face blur above.
+    @UserDefaultsBacked("visionPrivacyCategoriesEnabled", default: true) static var visionPrivacyCategoriesEnabled: Bool
+
+    static func setVisionPrivacyCategoriesEnabled(_ enabled: Bool) { visionPrivacyCategoriesEnabled = enabled }
+
     // MARK: - Health Data Sharing with AI
 
     /// Whether HealthKit-derived data (e.g. workout history) may be sent to the

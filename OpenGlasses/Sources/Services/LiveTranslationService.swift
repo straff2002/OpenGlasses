@@ -23,6 +23,7 @@ final class LiveTranslationService: ObservableObject {
     /// registers as a non-exclusive rider rather than acquiring the session — it must not preempt
     /// or deactivate it.
     private var coexistToken: UUID?
+    private var routeChangeObserver: NSObjectProtocol?
 
     /// Callback when a translation is ready to be spoken
     var onTranslation: ((String) -> Void)?
@@ -58,11 +59,31 @@ final class LiveTranslationService: ObservableObject {
 
         await startListening()
         coexistToken = AudioSessionCoordinator.shared.beginCoexisting(.liveTranslation)
+
+        // Rebuild the engine + tap when the hardware route changes (CJ item 5): the glasses
+        // dropping off Bluetooth mid-translation left the tap pinned to a dead route — the one
+        // engine in the app with no route-change handling. Same recovery every other engine uses.
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            let reason = reasonValue.flatMap(AVAudioSession.RouteChangeReason.init) ?? .unknown
+            guard reason == .oldDeviceUnavailable || reason == .newDeviceAvailable else { return }
+            Task { @MainActor in
+                guard let self, self.isActive else { return }
+                print("🌍 LiveTranslation: audio route changed — rebuilding engine")
+                self.restartListening()
+            }
+        }
         print("🌍 Live translation started: \(source) → \(target)")
     }
 
     func stop() {
         isActive = false
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
         silenceTimer?.cancel()
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -105,6 +126,15 @@ final class LiveTranslationService: ObservableObject {
 
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        // Validate the live hardware format before installing the tap (CJ item 5): a mid-route
+        // Bluetooth transition can briefly report a zero format, and installing then crashes.
+        // Same guard as WakeWordService; retry via the normal restart path.
+        guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+            print("⚠️ LiveTranslation: invalid input format (route transition?) — retrying")
+            if isActive { restartListening() }
+            return
+        }
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             request.append(buffer)
