@@ -635,6 +635,16 @@ struct HardwarePrivacyView: View {
                     }
                 }
                 NavigationLink {
+                    WebHUDMirrorSettingsView()
+                } label: {
+                    HStack {
+                        Label("Web HUD Mirror", systemImage: "globe.desk")
+                        Spacer()
+                        Text(Config.hudMirrorEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                NavigationLink {
                     TeleprompterSettingsView(service: appState.teleprompterService,
                                              store: appState.teleprompterStore)
                 } label: {

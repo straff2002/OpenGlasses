@@ -550,6 +550,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let notificationDigest = NotificationDigestService()
     /// Turn-by-turn walking navigation (Plan CA).
     let walkingRoute = WalkingRouteService()
+    /// Web HUD mirror server (Plan BP) — entitlement-free Ray-Ban Display web-view path.
+    let webHUDMirror = WebHUDMirrorServer()
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
     /// re-engagement.
     let heldRecommendations = HeldRecommendationStore()
@@ -843,8 +845,10 @@ class AppState: ObservableObject, AppStateProtocol {
         ambientCaptions.reachability = reachability
         // Toggling HIPAA mid-session must tear down any live cloud diarization at once (Plan BM
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.
-        hipaaService.onModeChanged = { [weak ambientCaptions] in
+        hipaaService.onModeChanged = { [weak ambientCaptions, weak self] in
             ambientCaptions?.reconfigureForModeChange()
+            // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
+            if Config.hipaaMode { self?.webHUDMirror.stop() }
         }
         // Same teardown when translation settings change under a live session (BY P2) — the
         // backend branch is picked at session start, so a settings flip must restart it.
@@ -1240,6 +1244,14 @@ class AppState: ObservableObject, AppStateProtocol {
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
         MCPGlassesServer.shared.startIfEnabled()
+
+        // Web HUD mirror (Plan BP, dev-only): serves the current HUD frame to the glasses'
+        // built-in web view — the entitlement-free Ray-Ban Display path. Read-only.
+        webHUDMirror.payloadProvider = { [weak self] in
+            guard let screen = self?.glassesDisplay.mirrorScreen else { return .empty }
+            return WebHUDPayload.from(screen: screen)
+        }
+        webHUDMirror.startIfEnabled()
 
         // Pre-fetch Home Assistant entity cache for fuzzy matching
         Task { await HomeAssistantEntityCache.shared.refreshIfNeeded() }
