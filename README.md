@@ -284,6 +284,7 @@ The agentic path is hardened against **prompt injection** — untrusted content 
 - **Live Camera Preview** — real-time view of glasses POV
 - **Video Recording** — MP4 with configurable bitrate, glasses-mic audio muxed in, optional live transcription. **No recording time limit** — say "record a video" and it runs until you say "stop recording" (built for meetings and long sessions; the practical limits are glasses battery/thermals and phone storage, not the app). If storage is low it warns with the estimated minutes left, and if the glasses stop mid-recording (battery, thermal shutdown, out of range) it automatically stops, saves everything captured, and tells you.
 - **RTMP Broadcasting** — live stream to YouTube, Twitch, Kick
+- **Chat Read-Aloud** — while broadcasting, Twitch chat is spoken into your ear (read-only, no OAuth): rate-capped and de-duplicated, mentions jump the queue, assistant speech always wins, and it goes quiet during realtime sessions. Opt-in, with a mentions-only mode
 - **WebRTC Browser Streaming** — shareable URL for peer-to-peer viewing
 - **Privacy Filter** — auto-blurs bystander faces
 
@@ -501,7 +502,7 @@ All settings are in-app — no source code editing needed.
 |---------|----------|
 | **ElevenLabs** | API key + voice selection (24 voices) |
 | **Perplexity** | API key (DuckDuckGo fallback if not set) |
-| **Live Streaming** | Platform + RTMP URL + stream key |
+| **Live Streaming** | Platform + RTMP URL + stream key + chat read-aloud (Twitch channel, rate, mentions-only) |
 | **OpenClaw** | Enable + connection mode + host/port + token |
 | **Home Assistant** | URL + Long-Lived Access Token |
 

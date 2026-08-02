@@ -532,6 +532,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let audioRecorder = AudioRecordingService()
     let meetingAssistant = MeetingAssistantService()
     let broadcastService = BroadcastService()
+    /// Broadcast chat read-aloud (Plan CI) — lives and dies with the broadcast session.
+    let chatReadback = BroadcastChatReadbackService()
     let locationService = LocationService()
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
@@ -2525,6 +2527,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func toggleBroadcast() async {
         if broadcastService.isBroadcasting {
             broadcastService.stopBroadcast()
+            chatReadback.stop()
         } else {
             do {
                 try await broadcastService.startBroadcast(
@@ -2532,10 +2535,34 @@ class AppState: ObservableObject, AppStateProtocol {
                     streamKey: Config.broadcastStreamKey,
                     from: cameraService.framePublisher
                 )
+                startChatReadbackIfConfigured()
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Start chat read-aloud alongside a live broadcast (Plan CI) — opt-in, and only when a
+    /// channel is configured (the RTMP stream key is opaque, so the channel can't be derived).
+    private func startChatReadbackIfConfigured() {
+        guard Config.broadcastChatReadbackEnabled else { return }
+        let channel = Config.broadcastChatChannel.trimmingCharacters(in: .whitespaces)
+        guard !channel.isEmpty else {
+            NSLog("[ChatReadback] enabled but no channel configured — skipping")
+            return
+        }
+        chatReadback.ttsBusy = { [weak self] in
+            guard let self else { return true }
+            return self.speechService.isSpeaking || self.inConversation || self.isProcessing
+        }
+        chatReadback.realtimeSessionActive = { [weak self] in
+            (self?.geminiLiveSession.isActive ?? false) || (self?.openAIRealtimeSession.isActive ?? false)
+        }
+        chatReadback.speak = { [weak self] item in
+            // Low urgency; the built-in HUD mirror doubles as the plan's ambient chat line.
+            await self?.speechService.speak(item.text, urgency: .low)
+        }
+        chatReadback.start(channel: channel, rules: Config.broadcastChatRules)
     }
 
     // MARK: - Background Resource Optimization

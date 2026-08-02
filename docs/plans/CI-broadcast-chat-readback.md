@@ -1,6 +1,17 @@
 # Plan CI — Broadcast Chat Read-Aloud (two-way streaming)
 
-**Status: 📋 Planned (2026-08-02)**
+**Status: 🚧 P1+P2 shipped (2026-08-02); P3 device smoke deferred** — `TwitchChatMessageParser`
+(IRCv3 tags, `/me` ACTION, tag escaping, emote-range stripping, UTF-8 names; hostile-input
+fixtures: control chars, 10k-char lines, tag injection — output always TTS-safe plain text) +
+`ChatReadbackPolicy` (rate cap, bounded drop-oldest queue, 30 s dedup with "times N", URL/
+command/emote-only filters, mention queue-jump, names once per burst, TTS-busy hold, realtime
+suppression flushes the queue) both pure and fixture-tested. Wiring: `TwitchChatClient`
+(anonymous justinfan read-only login — zero new auth surface; PING→PONG; capped-backoff
+reconnect) behind a `ChatSocketConnecting` seam, `BroadcastChatReadbackService` pump coupled
+to the broadcast toggle, TTS via the normal `speak` path only when idle (assistant always
+wins; HUD line comes free via speak's mirror). Settings: opt-in toggle + channel + rate slider
++ mentions-only (the channel is explicit — the RTMP key is opaque, so it can't be derived).
+Device-pending (P3): TTS bleed into the broadcast mic, battery, YouTube chat conformer.
 
 `BroadcastService` streams the glasses POV out over RTMP; nothing comes back. A streamer
 wearing glasses can't see chat at all — their phone is in their pocket. Reading chat to them

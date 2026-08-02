@@ -23,6 +23,10 @@ struct ServicesSettingsView: View {
     @State private var broadcastOrientation: String = Config.broadcastOrientation
     @State private var broadcastSource: String = Config.broadcastDefaultSource
     @State private var broadcastDualCapture: Bool = Config.broadcastDualCapture
+    @State private var chatReadbackEnabled: Bool = Config.broadcastChatReadbackEnabled
+    @State private var chatChannel: String = Config.broadcastChatChannel
+    @State private var chatRateCap: Double = Double(Config.broadcastChatRateCap)
+    @State private var chatMentionsOnly: Bool = Config.broadcastChatMentionsOnly
 
     // Camera
     @State private var cameraResolution: String = Config.cameraResolution
@@ -490,6 +494,31 @@ struct ServicesSettingsView: View {
                     .onChange(of: broadcastDualCapture) { _, value in
                         Config.setBroadcastDualCapture(value)
                     }
+
+                // Plan CI: chat read-aloud — read-only Twitch chat spoken to the wearer.
+                Toggle("Chat Read-Aloud (Twitch)", isOn: $chatReadbackEnabled)
+                    .onChange(of: chatReadbackEnabled) { _, value in
+                        Config.setBroadcastChatReadbackEnabled(value)
+                    }
+                if chatReadbackEnabled {
+                    TextField("Twitch Channel", text: $chatChannel)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: chatChannel) { _, value in
+                            Config.setBroadcastChatChannel(value)
+                        }
+                    VStack(alignment: .leading) {
+                        Text("Spoken messages per minute: \(Int(chatRateCap))")
+                        Slider(value: $chatRateCap, in: 2...15, step: 1)
+                            .onChange(of: chatRateCap) { _, value in
+                                Config.setBroadcastChatRateCap(Int(value))
+                            }
+                    }
+                    Toggle("Mentions Only", isOn: $chatMentionsOnly)
+                        .onChange(of: chatMentionsOnly) { _, value in
+                            Config.setBroadcastChatMentionsOnly(value)
+                        }
+                }
             } header: {
                 Text("Live Streaming")
             } footer: {
