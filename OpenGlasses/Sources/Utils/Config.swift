@@ -2021,6 +2021,51 @@ struct Config {
         !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
     }
 
+    // MARK: - Broadcast Chat Read-Aloud (Plan CI)
+
+    /// Read the stream's chat to the wearer over TTS while broadcasting. Off by default.
+    static var broadcastChatReadbackEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "broadcastChatReadbackEnabled")
+    }
+    static func setBroadcastChatReadbackEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "broadcastChatReadbackEnabled")
+    }
+
+    /// The Twitch channel whose chat to read. The RTMP stream key is an opaque credential (no
+    /// channel name in it), so the channel is set explicitly here — which also covers restreams.
+    static var broadcastChatChannel: String {
+        UserDefaults.standard.string(forKey: "broadcastChatChannel") ?? ""
+    }
+    static func setBroadcastChatChannel(_ value: String) {
+        UserDefaults.standard.set(value, forKey: "broadcastChatChannel")
+    }
+
+    /// Max chat messages spoken per minute (rate cap). Default 6.
+    static var broadcastChatRateCap: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastChatRateCap")
+        return value > 0 ? value : 6
+    }
+    static func setBroadcastChatRateCap(_ value: Int) {
+        UserDefaults.standard.set(value, forKey: "broadcastChatRateCap")
+    }
+
+    /// Speak only messages that mention the channel handle.
+    static var broadcastChatMentionsOnly: Bool {
+        UserDefaults.standard.bool(forKey: "broadcastChatMentionsOnly")
+    }
+    static func setBroadcastChatMentionsOnly(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "broadcastChatMentionsOnly")
+    }
+
+    /// The readback rules assembled from Settings (streamer handle = the channel name).
+    static var broadcastChatRules: ChatReadbackRules {
+        var rules = ChatReadbackRules()
+        rules.rateCapPerMinute = broadcastChatRateCap
+        rules.mentionsOnly = broadcastChatMentionsOnly
+        rules.streamerHandle = broadcastChatChannel
+        return rules
+    }
+
     // MARK: - Camera Quality
 
     /// Camera stream resolution: "low" (360p), "medium" (504p), "high" (720p). Default: high.
