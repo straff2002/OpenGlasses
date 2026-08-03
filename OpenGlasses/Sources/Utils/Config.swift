@@ -2077,6 +2077,18 @@ struct Config {
         return rules
     }
 
+    // MARK: - Fingerspelling model (Plan CK)
+
+    /// HuggingFace repo hosting the converted fingerspelling Core ML model (unpacked files).
+    /// Empty until the artefact is published (`Scripts/convert-fingerspelling-model.py`) —
+    /// the model store reports "not configured" and the feature stays dormant.
+    static var fingerspellingModelRepo: String {
+        UserDefaults.standard.string(forKey: "fingerspellingModelRepo") ?? ""
+    }
+    static func setFingerspellingModelRepo(_ value: String) {
+        UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "fingerspellingModelRepo")
+    }
+
     // MARK: - Gemini via Vertex AI (Plan AI — Google OAuth provider)
 
     /// The user's own GCP OAuth *iOS* client ID (`…apps.googleusercontent.com`). Not a secret;

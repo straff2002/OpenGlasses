@@ -1,9 +1,21 @@
 # Plan CK — Sign-Language Recognition (fingerspelling first)
 
-**Status: 📝 Drafted (2026-08-02), not scheduled** — the one genuinely new capability class
-surfaced by the 2026-08-02 field survey. Real-time sign-to-speech is squarely in the
-accessibility tier's mission (Plan A) and nothing we ship touches it. Drafted now so the
-shape is agreed before anyone starts; blocked on the model story, not on app code.
+**Status: 🚧 P0 shipped, model story resolved (2026-08-03)** — `LandmarkWindower` (canonical
+21-joint order, wrist-origin/palm-scale/mirror/y-flip normalisation, CMVN, windowing) and
+`DecodeStabilityPolicy` (confidence floor → OOV rejection → majority vote → display streak →
+gap-commit with dictionary gate) shipped pure with full synthetic-stream suites, plus the
+download-on-demand model layer (`FingerspellingModelBundle/Store/Downloader`, Kokoro/ASR
+discipline: staging → verify → atomic install; repo configurable so publishing the artefact
+needs no app update) and `Scripts/convert-fingerspelling-model.py`.
+
+**Model story (resolved):** an MIT-licensed reference implementation surfaced by the
+2026-08-02 survey ships a Conformer-CTC checkpoint (12 blocks / 384 dim / 6 heads, 63
+hand-landmark features — the exact `LandmarkWindower` contract) trained on **FSboard**
+(Google, CC BY 4.0, 3M+ characters) with a KenLM rescoring option. Path to live: run the
+conversion script against that checkpoint (fp16 Core ML ≈ 80 MB), publish unpacked to a
+HuggingFace repo, set `fingerspellingModelRepo` in Settings. FSboard attribution is owed in
+the About screen when the model ships (P2). The small-model alternative remains retraining
+on FSboard with the Apache-2.0 Kaggle-winning recipe (≤40 MB by construction).
 
 ## What v1 would be (and what it wouldn't)
 
@@ -34,11 +46,15 @@ places, and the spell-it-out fallback deaf signers already use with non-signers.
 
 ## Sequencing
 
-- **P0 (anytime, cheap):** `LandmarkWindower` + `DecodeStabilityPolicy` + fixtures.
-- **P1 (blocked on model):** model eval harness — offline accuracy on recorded landmark
-  fixtures before any live wiring.
-- **P2:** live pipeline behind an accessibility-tier toggle; TTS output; HUD caption mirror.
-- **P3:** device smoke — frame rate vs. battery, distance/angle envelope, two-person UX.
+- **P0 ✅ (2026-08-03):** `LandmarkWindower` + `DecodeStabilityPolicy` + fixtures, plus the
+  model download layer + conversion script (model story resolved — see Status).
+- **P1 (unblocked; needs the converted artefact published):** model eval harness — offline
+  accuracy on recorded landmark fixtures before any live wiring; Vision→canonical joint-order
+  extractor.
+- **P2:** live pipeline behind an accessibility-tier toggle; TTS output; HUD caption mirror;
+  FSboard attribution in About.
+- **P3:** device smoke — frame rate vs. battery, distance/angle envelope (FSboard is
+  selfie-framed; glasses are 1–2 m), two-person UX.
 
 ## Open questions
 
