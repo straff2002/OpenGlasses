@@ -1,6 +1,7 @@
 # Plan CK — Sign-Language Recognition (fingerspelling first)
 
-**Status: 🚧 P0 shipped, model story resolved (2026-08-03)** — `LandmarkWindower` (canonical
+**Status: 🚧 P0 shipped; gate corpus corrected, passing model converted — publish pending
+approval (2026-08-03)** — `LandmarkWindower` (canonical
 21-joint order, wrist-origin/palm-scale/mirror/y-flip normalisation, CMVN, windowing) and
 `DecodeStabilityPolicy` (confidence floor → OOV rejection → majority vote → display streak →
 gap-commit with dictionary gate) shipped pure with full synthetic-stream suites, plus the
@@ -16,21 +17,40 @@ rescoring option. The checkpoint was converted (fp16 Core ML, 79 MB; strict stat
 `Config.fingerspellingModelRepo` now defaults to — the in-app downloader works out of the box.
 FSboard attribution is owed in the About screen when the feature ships (P2).
 
-**P1 eval gate: the first candidate FAILED (2026-08-03).** `Scripts/eval-fingerspelling-model.py`
-scored the converted checkpoint against 197 real FSboard held-out test clips: **~91% CER**
-(greedy; the upstream project's own runtime with its KenLM decoder scores ~96% on the same
-clips, confidences 0.1–0.4). Conversion parity was perfect, and a 32-variant feature-pipeline
-grid probe found no configuration that helps — the gate condemns the checkpoint, not the
-pipeline: it does not generalise to conversational-speed continuous fingerspelling (its
-upstream app demos slow deliberate spelling through a 192-frame windowed commit policy).
-`fingerspellingModelRepo` therefore stays empty (feature dormant); the converted artefact's
-hosting repo is kept **private** ("keep and hide", 2026-08-03) with the eval warning on its
-model card — retained for diffing against a future retrained candidate, invisible otherwise.
-Everything in-app was already invisible: P2 never wired any UI, so the cores + download layer
-stay dormant in the codebase awaiting a candidate that passes the gate. **Next candidate: retrain on FSboard with the Apache-2.0
-Kaggle-winning recipe** (the paper-adjacent bar: winning models reached ~20–25% CER greedy at
-≤40 MB) — needs a GPU training run (decision owed: where/budget). The eval harness is the
-standing gate: any candidate must clear ~25% CER greedy before P2 wiring begins.
+**P1 eval gate (corrected 2026-08-03 late): the FSboard Kaggle release is garbled; on clean
+data the first candidate still fails.** The original ~91% CER verdict (and the upstream
+runtime's ~96%) was measured on the FSboard Kaggle release (daun_v3), which is **unusable**:
+each frame's x/y/z lists are stride-1 windows at offsets 0/1/2 of one interleaved buffer, so
+only ~⅓ of each frame's landmarks exist and the rest are unrecoverable (the official
+arrow→parquet conversion script inherits the garble; decision: never gate on it). The
+standing gate corpus is now the **ASL-fingerspelling competition rerun set** (CC-BY 4.0 with
+commercial use expressly allowed; parses clean with pandas) via
+`Scripts/eval-fingerspelling-model.py --comp-parquet/--comp-labels`. Clean-data verdicts
+(greedy CER): the converted first candidate **61% torch / 63% Core ML** — it decodes real
+text (the 91% was a garbled-input artifact) but sits 2.4× over the bar, so the condemnation
+stands on honest evidence; a competition-winning TFLite control scores **15.3%** on the same
+harness, validating the ~25% bar. `fingerspellingModelRepo` stays empty (feature dormant);
+the condemned artefact's hosting repo stays **private** ("keep and hide"); the P2 cores +
+download layer stay dormant awaiting a candidate that passes the gate.
+
+**Replacement candidate: PASSES the gate and is converted (2026-08-03).** The competition's
+2nd-place CTC model — Apache-2.0 under the competition's winner-license rule, which
+expressly forbids limits on commercial use of the code or model; training data is the
+competition corpus (CC-BY 4.0, commercial use allowed) — scores **20.7% CER greedy over 300
+gate sequences** from the published solution weights, and the converted **fp16 Core ML
+artefact (15 MB) scores 20.8%** on the same gate. Conversion notes: fixed 768-frame window
+with an explicit float mask input (the architecture is mask-aware, so masked-fixed inference
+is equivalent to variable-length for real frames — verified to ~1e-6 in Keras and 100%
+argmax parity in Core ML; coremltools cannot convert the dynamic-length path or the RNN
+while_loop, hence a hand-unrolled GRU head, verified bit-exact). Its input contract differs
+from P0's `LandmarkWindower`: MediaPipe Holistic **543 landmarks × xyz (1629 features)** with
+per-sequence standardisation, all-NaN frame drop, and left-hand mirror — P2 wiring must
+extend the landmark pipeline (face mesh + full pose) before this ships, and About
+attribution for this model is the competition dataset (Google / Deaf Professional Arts
+Network, CC-BY 4.0) rather than FSboard. The artefact is staged locally; **publishing to the
+model repo awaits approval** — nothing default-on changes in-app. Fallback if a smaller or
+retrainable model is ever needed: the Apache-2.0 competition-winning recipe on FSboard
+(~20–25% CER at ≤40 MB; GPU run, venue/budget decision owed).
 
 Two contract corrections found by inspecting the real checkpoint (vs. the survey notes):
 the input is **162 features = 54 landmarks (21 dominant-hand + 33 pose) × 3**, all
@@ -39,9 +59,10 @@ wrist-origin/palm-scale normalised — not hand-only 63; and CMVN is **per-utter
 therefore needs a P1 extension: a pose-landmark channel (Vision's body-pose request has 19
 joints vs the 33 expected — mapping + zero-fill strategy to be validated by the eval
 harness) and utterance-level CMVN. Provenance note: the training pipeline is not published
-(hyperparameters are recorded in the checkpoint); the P1 eval harness on FSboard's held-out
-test split is the accuracy gate before anything ships to users. The small-model alternative
-remains retraining on FSboard with the Apache-2.0 Kaggle-winning recipe (≤40 MB).
+(hyperparameters are recorded in the checkpoint); the P1 eval harness on the competition
+rerun corpus is the accuracy gate before anything ships to users. (These corrections apply
+to the now-condemned first candidate; the passing replacement above has its own, larger
+contract — 543 Holistic landmarks — which supersedes this for P2 wiring.)
 
 ## What v1 would be (and what it wouldn't)
 

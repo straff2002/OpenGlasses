@@ -1,30 +1,42 @@
 #!/usr/bin/env python3
-"""FSboard CER eval for fingerspelling model candidates (Plan CK P1 — the ship gate).
+"""CER eval for fingerspelling model candidates (Plan CK P1 — the ship gate).
 
-Scores a candidate against real held-out FSboard test clips (real Deaf signers at
-conversational speed): parses the Kaggle arrow shards (tf.train.SequenceExamples of
-MediaPipe Holistic landmarks), rebuilds the model's input contract (dominant hand + pose,
+Scores a candidate against real held-out fingerspelling clips (real Deaf signers at
+conversational speed), rebuilds the model's input contract (dominant hand + pose,
 left mirrored x→1−x, invalid-hand frames dropped, wrist/palm normalised, NaN→0,
 per-utterance CMVN), greedy-CTC decodes, and reports character error rate.
+
+STANDING GATE CORPUS: the ASL-fingerspelling competition rerun set (--comp-parquet +
+--comp-labels): plain parquet of MediaPipe Holistic landmarks + a labels parquet
+(sequence_id, phrase). It parses clean with pandas and is licensed CC-BY 4.0 with
+commercial use expressly allowed.
+
+The FSboard Kaggle release (daun_v3) mode (--shard) is UNUSABLE as of 2026-08-03: its
+per-frame x/y/z lists are stride-1 windows at offsets 0/1/2 of one interleaved buffer
+(y = x shifted by 1, z by 2; wrist z is exactly 0 at buf[2]), so only ~1/3 of each
+frame's landmarks exist and the rest are unrecoverable. The official conversion script
+inherits the same garble. The flag is kept only for the day Google fixes the release —
+do not gate on it.
 
 Two scorers: --checkpoint runs the PyTorch reference full-clip (model truth); --mlpackage
 runs the converted Core ML in fixed 96-frame chunks (the deployed configuration). Pass either
 or both.
 
-History: the first candidate (the converted MIT reference checkpoint) FAILED this gate on
-2026-08-03 — ~91% CER (its own upstream runtime + KenLM: ~96%). Conversion parity was
-perfect, so the gate condemns the checkpoint, not the pipeline. Any future candidate
-(e.g. retrained on FSboard via the Apache-2.0 Kaggle-winning recipe) must beat ~25% CER
-greedy before P2 wiring begins.
+History (clean corpus, greedy CER): the first candidate (the converted reference
+Conformer) scored 61% torch / 63% Core ML on 2026-08-03 — decodes real text, but 2.4x
+over the bar; legitimately condemned. (Its earlier ~91%/~96% verdict was measured on the
+garbled FSboard release and is superseded.) A competition-winning TFLite control scores
+15.3% on the same harness, so the bar stands. Any candidate must beat ~25% CER greedy
+before P2 wiring begins.
 
 Setup:
   uv venv --python 3.12 venv && uv pip install --python venv/bin/python \
-      "torch==2.8.0" "torchaudio==2.8.0" "coremltools==9.0" numpy pyarrow tensorflow kaggle
-  KAGGLE_API_TOKEN=… kaggle datasets download googleai/fsboard \
-      -f "daun_v3/landmarks/daun_v3-test.arrow-00000-of-00020" -p .
+      "torch==2.8.0" "torchaudio==2.8.0" "coremltools==9.0" numpy pandas pyarrow tensorflow kaggle
+  KAGGLE_API_TOKEN=… kaggle datasets download sohier/529505295052950 -p comp-data --unzip
 
 Usage:
-  python3 Scripts/eval-fingerspelling-model.py --shard daun_v3-test.arrow-00000-of-00020 \
+  python3 Scripts/eval-fingerspelling-model.py \
+      --comp-parquet comp-data/111123288.parquet --comp-labels comp-data/labels.pq \
       [--checkpoint best.ckpt] [--mlpackage FingerspellingConformer.mlpackage] [--clips 200]
 """
 
@@ -63,6 +75,46 @@ def parse_clip(serialized, tf):
         return arr
 
     return prompt, part("right_hand", 21), part("left_hand", 21), part("pose", 33)
+
+
+def iter_shard_clips(shard_path, clips):
+    """FSboard Kaggle arrow shard (garbled release — see module docstring)."""
+    import tensorflow as tf
+    table = pyarrow.feather.read_table(shard_path, columns=["serialized"])
+    count = 0
+    for chunk in table["serialized"].chunks:
+        for serialized in chunk:
+            if count >= clips:
+                return
+            count += 1
+            yield parse_clip(serialized.as_py(), tf)
+
+
+def iter_comp_clips(parquet_path, labels_path, clips):
+    """Competition rerun parquet + labels — the standing gate corpus."""
+    import pandas as pd
+
+    def cols(part, size):
+        return {a: [f"{a}_{part}_{i}" for i in range(size)] for a in "xyz"}
+
+    rh, lh, po = cols("right_hand", 21), cols("left_hand", 21), cols("pose", 33)
+    wanted = sum([rh[a] for a in "xyz"] + [lh[a] for a in "xyz"] + [po[a] for a in "xyz"], [])
+    labels = pd.read_parquet(labels_path)
+    phrase_by_seq = dict(zip(labels.sequence_id, labels.phrase))
+    seqs = pd.read_parquet(parquet_path, columns=wanted)
+
+    def part(df, spec, size):
+        return np.stack([df[spec[a]].to_numpy(dtype=np.float32) for a in "xyz"], axis=-1)
+
+    count = 0
+    for seq_id in seqs.index.unique():
+        if count >= clips:
+            return
+        count += 1
+        df = seqs.loc[seqs.index == seq_id]
+        prompt = phrase_by_seq.get(seq_id)
+        yield (str(prompt) if prompt is not None else None,
+               part(df, rh, 21), part(df, lh, 21), part(df, po, 33))
 
 
 def build_features(right, left, pose):
@@ -166,15 +218,20 @@ def coreml_chunked(mlmodel, feats):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--shard", required=True)
+    parser.add_argument("--comp-parquet", help="competition rerun landmarks parquet (standing gate)")
+    parser.add_argument("--comp-labels", help="competition labels parquet (sequence_id, phrase)")
+    parser.add_argument("--shard", help="FSboard Kaggle arrow shard (garbled release — do not gate on it)")
     parser.add_argument("--checkpoint")
     parser.add_argument("--mlpackage")
     parser.add_argument("--clips", type=int, default=200)
     args = parser.parse_args()
     if not args.checkpoint and not args.mlpackage:
         sys.exit("pass --checkpoint and/or --mlpackage")
+    if bool(args.comp_parquet) != bool(args.comp_labels):
+        sys.exit("--comp-parquet and --comp-labels go together")
+    if not args.comp_parquet and not args.shard:
+        sys.exit("pass --comp-parquet/--comp-labels (standing gate) or --shard")
 
-    import tensorflow as tf
     model = torch = mlmodel = None
     if args.checkpoint:
         model, torch = load_torch_model(args.checkpoint)
@@ -182,41 +239,41 @@ def main():
         import coremltools as ct
         mlmodel = ct.models.MLModel(args.mlpackage)
 
-    table = pyarrow.feather.read_table(args.shard, columns=["serialized"])
+    if args.comp_parquet:
+        clip_iter = iter_comp_clips(args.comp_parquet, args.comp_labels, args.clips)
+    else:
+        print("WARNING: FSboard Kaggle shard mode — the daun_v3 release is garbled; "
+              "results are meaningless until Google fixes it.", file=sys.stderr)
+        clip_iter = iter_shard_clips(args.shard, args.clips)
+
     count = evaluated = 0
     torch_cers, coreml_cers, samples = [], [], []
-    for chunk in table["serialized"].chunks:
-        for serialized in chunk:
-            if count >= args.clips:
-                break
-            count += 1
-            prompt, right, left, pose = parse_clip(serialized.as_py(), tf)
-            ref = norm_text(prompt or "")
-            feats = build_features(right, left, pose)
-            if feats is None or not ref:
-                continue
-            row = [ref]
-            if model is not None:
-                with torch.no_grad():
-                    lp, _ = model(torch.from_numpy(feats)[None],
-                                  torch.tensor([feats.shape[0]], dtype=torch.int32))
-                hyp = norm_text(greedy_decode(lp[0].numpy()))
-                torch_cers.append(cer(hyp, ref)); row.append(hyp)
-            if mlmodel is not None:
-                hyp = norm_text(greedy_decode(coreml_chunked(mlmodel, feats)))
-                coreml_cers.append(cer(hyp, ref)); row.append(hyp)
-            evaluated += 1
-            if evaluated <= 8:
-                samples.append(row)
-            if evaluated % 25 == 0:
-                bits = []
-                if torch_cers:
-                    bits.append(f"torch {np.mean(torch_cers)*100:.1f}%")
-                if coreml_cers:
-                    bits.append(f"coreml {np.mean(coreml_cers)*100:.1f}%")
-                print(f"  {evaluated} clips: CER " + "  ".join(bits), flush=True)
-        if count >= args.clips:
-            break
+    for prompt, right, left, pose in clip_iter:
+        count += 1
+        ref = norm_text(prompt or "")
+        feats = build_features(right, left, pose)
+        if feats is None or not ref:
+            continue
+        row = [ref]
+        if model is not None:
+            with torch.no_grad():
+                lp, _ = model(torch.from_numpy(feats)[None],
+                              torch.tensor([feats.shape[0]], dtype=torch.int32))
+            hyp = norm_text(greedy_decode(lp[0].numpy()))
+            torch_cers.append(cer(hyp, ref)); row.append(hyp)
+        if mlmodel is not None:
+            hyp = norm_text(greedy_decode(coreml_chunked(mlmodel, feats)))
+            coreml_cers.append(cer(hyp, ref)); row.append(hyp)
+        evaluated += 1
+        if evaluated <= 8:
+            samples.append(row)
+        if evaluated % 25 == 0:
+            bits = []
+            if torch_cers:
+                bits.append(f"torch {np.mean(torch_cers)*100:.1f}%")
+            if coreml_cers:
+                bits.append(f"coreml {np.mean(coreml_cers)*100:.1f}%")
+            print(f"  {evaluated} clips: CER " + "  ".join(bits), flush=True)
 
     print(f"\nEvaluated {evaluated}/{count} clips")
     if torch_cers:
