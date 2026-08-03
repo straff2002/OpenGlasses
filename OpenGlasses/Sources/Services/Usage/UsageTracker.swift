@@ -80,7 +80,7 @@ final class UsageTracker: ObservableObject {
                                cacheWriteTokens: intValue(u["cache_creation_input_tokens"]),
                                cacheReadTokens: intValue(u["cache_read_input_tokens"]),
                                recognized: recognized)
-        case .gemini:
+        case .gemini, .geminiVertex:   // Vertex returns the same usageMetadata shape
             guard let u = json["usageMetadata"] as? [String: Any] else { return nil }
             let recognized = u["promptTokenCount"] != nil || u["candidatesTokenCount"] != nil
             return ParsedUsage(tokensIn: intValue(u["promptTokenCount"]),

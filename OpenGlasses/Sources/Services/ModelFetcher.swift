@@ -75,6 +75,8 @@ enum ModelFetcher {
             return await fetchMiniMax(apiKey: apiKey, baseURL: baseURL)
         case .openai, .groq, .zai, .xai, .openrouter, .custom:
             return await fetchOpenAICompatible(apiKey: apiKey, baseURL: baseURL)
+        case .geminiVertex:
+            return []  // OAuth-only; no key-based listing endpoint (type the model ID)
         case .local, .appleOnDevice:
             return []  // Local/Apple models are managed separately
         }

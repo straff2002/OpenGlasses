@@ -2077,6 +2077,33 @@ struct Config {
         return rules
     }
 
+    // MARK: - Gemini via Vertex AI (Plan AI — Google OAuth provider)
+
+    /// The user's own GCP OAuth *iOS* client ID (`…apps.googleusercontent.com`). Not a secret;
+    /// the account credential lives in the keychain via `GoogleOAuthService`.
+    static var googleOAuthClientID: String {
+        UserDefaults.standard.string(forKey: "googleOAuthClientID") ?? ""
+    }
+    static func setGoogleOAuthClientID(_ value: String) {
+        UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "googleOAuthClientID")
+    }
+
+    /// GCP project ID — a path component of every Vertex endpoint URL.
+    static var vertexProjectID: String {
+        UserDefaults.standard.string(forKey: "vertexProjectID") ?? ""
+    }
+    static func setVertexProjectID(_ value: String) {
+        UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vertexProjectID")
+    }
+
+    /// Vertex region (host + path component). "global" uses the region-less host.
+    static var vertexRegion: String {
+        UserDefaults.standard.string(forKey: "vertexRegion") ?? "us-central1"
+    }
+    static func setVertexRegion(_ value: String) {
+        UserDefaults.standard.set(value, forKey: "vertexRegion")
+    }
+
     // MARK: - Camera Quality
 
     /// Camera stream resolution: "low" (360p), "medium" (504p), "high" (720p). Default: high.

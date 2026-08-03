@@ -125,8 +125,12 @@ struct ModelFormView: View {
                     )
                 }
 
-                // ChatGPT authenticates via the account sign-in only — there is no key to paste.
-                if selectedProvider != .chatgpt {
+                if selectedProvider == .geminiVertex {
+                    GoogleSignInRows(onChange: resetModelList)
+                }
+
+                // Account-sign-in providers have no key to paste.
+                if selectedProvider != .chatgpt && selectedProvider != .geminiVertex {
                     SecretInputField(placeholder: anthropicKeyPlaceholder, text: $apiKey)
                         .onChange(of: apiKey) { _, _ in resetModelList() }
                 }
@@ -351,6 +355,7 @@ struct ModelFormView: View {
         case .openai: return "Get your API key at platform.openai.com"
         case .chatgpt: return "Sign in with your ChatGPT account — uses your subscription, no API key. Serves the codex model family."
         case .gemini: return "Get your API key at aistudio.google.com"
+        case .geminiVertex: return "Sign in with your Google account — Gemini on your own GCP project via Vertex AI, no API key. Needs a GCP iOS OAuth client ID and project ID (console.cloud.google.com). Gemini Live mode still uses the AI Studio key provider."
         case .groq: return "Get your API key at console.groq.com"
         case .zai: return "Z.ai subscription — OpenAI-compatible API"
         case .qwen: return "Coding Plan subscription — coding-intl.dashscope.aliyuncs.com"
@@ -369,6 +374,7 @@ struct ModelFormView: View {
     private var accountOAuthReady: Bool {
         (selectedProvider == .anthropic && claudeOAuth.isConnected)
             || (selectedProvider == .chatgpt && chatgptOAuth.isConnected)
+            || (selectedProvider == .geminiVertex && GoogleOAuthService.shared.isConnected)
     }
 
     private var anthropicKeyPlaceholder: String {
