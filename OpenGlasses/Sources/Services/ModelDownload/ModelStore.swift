@@ -1,12 +1,13 @@
 import Foundation
 
-/// Download/availability state of the Kokoro model bundle.
-enum KokoroModelState: Equatable {
-    /// No model on disk yet (the default — Kokoro is a no-op until it's downloaded).
+/// Download/availability state of an on-device model bundle. Shared by every tier (aliased as
+/// `KokoroModelState` / `ASRModelState`) so the Settings status rows switch over one shape.
+enum ModelDownloadState: Equatable {
+    /// No model on disk yet (the default — the tier is a no-op until it's downloaded).
     case notDownloaded
     /// A download is in progress (0...1).
     case downloading(progress: Double)
-    /// Downloaded; verifying the extracted files against the bundle descriptor.
+    /// Downloaded; verifying the staged files against the bundle descriptor.
     case verifying
     /// All required files/directories are present on disk; the engine can load it.
     case ready
@@ -14,39 +15,35 @@ enum KokoroModelState: Equatable {
     case failed(reason: String)
 }
 
-/// Tracks whether a Kokoro model bundle (`KokoroModelBundle`) is present in Application Support
-/// (Additional Capabilities #1). Kokoro is a **no-op until the model is present** — the int8 weights
-/// are ~90 MB, so they're downloaded on first enable rather than bundled (avoids binary bloat),
-/// mirroring the SDK's no-Display no-op discipline.
+/// Tracks whether a model bundle is present in Application Support. The models are hundreds of MB,
+/// so they're downloaded on first enable rather than bundled (avoids binary bloat), and each engine
+/// is a **no-op until its model is present** — mirroring the SDK's no-Display no-op discipline.
 ///
 /// This is the *presence/selection* half — pure file-system bookkeeping driven by the bundle's
 /// declared file + directory set, so it's fully unit-testable by pointing `directory` at a temp
-/// folder. The actual network download + extraction lives in `KokoroModelDownloader`.
-struct KokoroModelStore {
+/// folder. The actual network download lives in `ModelDownloader`.
+struct ModelStore<Bundle: DownloadableModelBundle> {
 
     /// The bundle whose artefacts define "installed".
-    let bundle: KokoroModelBundle
+    let bundle: Bundle
 
     /// Where the model files live. Injectable so tests can use a temp directory.
     let directory: URL
 
     private let fileManager: FileManager
 
-    init(bundle: KokoroModelBundle = .active, directory: URL, fileManager: FileManager = .default) {
+    init(bundle: Bundle = .active, directory: URL? = nil, fileManager: FileManager = .default) {
         self.bundle = bundle
-        self.directory = directory
         self.fileManager = fileManager
+        self.directory = directory ?? Self.defaultDirectory(for: bundle, fileManager: fileManager)
     }
 
-    /// App-wide store rooted at `Application Support/KokoroTTS`, for the active bundle.
-    static let shared = KokoroModelStore(directory: Self.defaultDirectory)
-
-    /// `Application Support/KokoroTTS` (falls back to a temp dir if Application Support is somehow
-    /// unavailable — defensive; never expected in practice).
-    static var defaultDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("KokoroTTS", isDirectory: true)
+    /// `Application Support/<bundle.directoryName>` (falls back to a temp dir if Application Support
+    /// is somehow unavailable — defensive; never expected in practice).
+    static func defaultDirectory(for bundle: Bundle, fileManager: FileManager = .default) -> URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        return base.appendingPathComponent(bundle.directoryName, isDirectory: true)
     }
 
     /// The on-disk URL a required file/directory would live at (whether or not it exists yet).
@@ -94,8 +91,8 @@ struct KokoroModelStore {
     }
 
     /// Presence-derived state. (`.downloading` / `.verifying` / `.failed` are reported by
-    /// `KokoroModelDownloader` while it works.)
-    var state: KokoroModelState {
+    /// `ModelDownloader` while it works.)
+    var state: ModelDownloadState {
         isModelPresent ? .ready : .notDownloaded
     }
 
