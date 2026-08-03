@@ -1,7 +1,8 @@
 import Foundation
 
-/// Failure modes of the Kokoro model download.
-enum KokoroDownloadError: LocalizedError, Equatable {
+/// Failure modes of a model download. Shared by every tier (aliased as `KokoroDownloadError` /
+/// `ASRDownloadError`).
+enum ModelDownloadError: LocalizedError, Equatable {
     /// The download finished but the bundle is missing required artefacts.
     case incompleteDownload(missing: String)
 
@@ -13,48 +14,48 @@ enum KokoroDownloadError: LocalizedError, Equatable {
     }
 }
 
-/// Orchestrates first-enable download of a `KokoroModelBundle` into Application Support (Additional
-/// Capabilities #1). The **deterministic core** of the download — the state machine, the
-/// download-to-staging → verify → atomic-install flow, and failure cleanup — is driven through an
-/// **injected installer**, so the orchestration is fully unit-testable headlessly with a fake that
-/// just writes files.
+/// Orchestrates first-enable download of a model bundle into Application Support. The
+/// **deterministic core** — the state machine, the download-to-staging → verify → atomic-install
+/// flow, and failure cleanup — is driven through an **injected installer**, so the orchestration is
+/// fully unit-testable headlessly with a fake that just writes files.
 ///
-/// The default installer is `HuggingFaceModelInstaller.live`, which fetches the bundle's unpacked
-/// files from HuggingFace (no archive decoding needed). It isn't user-triggerable yet: the Settings
-/// UI shows only model status, because the model is unusable until the sherpa-onnx binary is
-/// compiled in (`KOKORO_ENABLED`), so there's no point downloading ~185 MB that can't be played.
+/// The default installer is the bundle's `liveInstaller` (per-tier network code: the HuggingFace
+/// tree-enumerating fetch for Kokoro, a direct per-file fetch for ASR). Stages into a sibling
+/// directory and only atomically swaps it into place once it verifies, so a partial/failed download
+/// never leaves a half-installed model that would pass the presence check.
 @MainActor
-final class KokoroModelDownloader: ObservableObject {
+final class ModelDownloader<Bundle: DownloadableModelBundle>: ObservableObject {
 
     /// Progress is reported on the main actor as a fraction 0...1.
     typealias ProgressHandler = @MainActor (Double) -> Void
 
     /// Fetches `bundle`'s files into `destination` (a staging directory), reporting progress.
     /// Throws to signal a failed download.
-    typealias Installer = (_ bundle: KokoroModelBundle,
+    typealias Installer = (_ bundle: Bundle,
                            _ destination: URL,
                            _ progress: @escaping ProgressHandler) async throws -> Void
 
-    @Published private(set) var state: KokoroModelState
+    @Published private(set) var state: ModelDownloadState
 
-    private let bundle: KokoroModelBundle
+    private let bundle: Bundle
     private let modelDirectory: URL
     private let fileManager: FileManager
     private let installer: Installer
 
-    init(bundle: KokoroModelBundle = .active,
-         modelDirectory: URL = KokoroModelStore.defaultDirectory,
+    init(bundle: Bundle = .active,
+         modelDirectory: URL? = nil,
          fileManager: FileManager = .default,
-         installer: @escaping Installer = HuggingFaceModelInstaller.live.makeInstaller()) {
+         installer: @escaping Installer = Bundle.liveInstaller) {
         self.bundle = bundle
-        self.modelDirectory = modelDirectory
         self.fileManager = fileManager
+        self.modelDirectory = modelDirectory
+            ?? ModelStore.defaultDirectory(for: bundle, fileManager: fileManager)
         self.installer = installer
-        self.state = KokoroModelStore(bundle: bundle, directory: modelDirectory, fileManager: fileManager).state
+        self.state = ModelStore(bundle: bundle, directory: self.modelDirectory, fileManager: fileManager).state
     }
 
-    private var store: KokoroModelStore {
-        KokoroModelStore(bundle: bundle, directory: modelDirectory, fileManager: fileManager)
+    private var store: ModelStore<Bundle> {
+        ModelStore(bundle: bundle, directory: modelDirectory, fileManager: fileManager)
     }
 
     /// Re-derive `state` from what's on disk (e.g. when the Settings screen appears).
@@ -64,9 +65,7 @@ final class KokoroModelDownloader: ObservableObject {
     }
 
     /// Download + install the bundle. Idempotent: a no-op (→ `.ready`) when the model is already
-    /// present. Installs into a sibling staging directory and only swaps it into place once the
-    /// extracted files verify against the descriptor, so a partial/failed download never leaves a
-    /// half-installed model that would pass the presence check.
+    /// present.
     func download() async {
         if store.isModelPresent {
             state = .ready
@@ -75,7 +74,7 @@ final class KokoroModelDownloader: ObservableObject {
 
         state = .downloading(progress: 0)
         let staging = modelDirectory.deletingLastPathComponent()
-            .appendingPathComponent("KokoroTTS-staging-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("\(bundle.directoryName)-staging-\(UUID().uuidString)", isDirectory: true)
 
         do {
             try? fileManager.removeItem(at: staging)
@@ -86,10 +85,10 @@ final class KokoroModelDownloader: ObservableObject {
             }
 
             state = .verifying
-            let staged = KokoroModelStore(bundle: bundle, directory: staging, fileManager: fileManager)
+            let staged = ModelStore(bundle: bundle, directory: staging, fileManager: fileManager)
             guard staged.isModelPresent else {
                 let missing = (staged.missingFiles + staged.missingDirectories).joined(separator: ", ")
-                throw KokoroDownloadError.incompleteDownload(missing: missing)
+                throw ModelDownloadError.incompleteDownload(missing: missing)
             }
 
             // Atomically replace any previous install with the verified staging directory.

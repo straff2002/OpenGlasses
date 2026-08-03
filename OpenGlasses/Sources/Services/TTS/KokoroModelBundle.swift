@@ -1,5 +1,23 @@
 import Foundation
 
+/// The Kokoro TTS tier's aliases onto the shared model-download layer (Additional Capabilities #1).
+/// The store/downloader/state-machine logic is the generic `ModelStore` / `ModelDownloader`; this
+/// tier contributes only its bundle descriptor and its live installer (the HuggingFace
+/// tree-enumerating fetch in `HuggingFaceModelInstaller`).
+typealias KokoroModelState = ModelDownloadState
+typealias KokoroDownloadError = ModelDownloadError
+typealias KokoroModelStore = ModelStore<KokoroModelBundle>
+typealias KokoroModelDownloader = ModelDownloader<KokoroModelBundle>
+
+extension ModelStore where Bundle == KokoroModelBundle {
+
+    /// App-wide store rooted at `Application Support/KokoroTTS`, for the active bundle.
+    static var shared: KokoroModelStore { KokoroModelStore(directory: defaultDirectory) }
+
+    /// `Application Support/KokoroTTS`.
+    static var defaultDirectory: URL { defaultDirectory(for: .active) }
+}
+
 /// Describes a downloadable Kokoro model bundle for sherpa-onnx (Additional Capabilities #1 — the
 /// on-device TTS tier). A value type so the store/downloader logic is pure and the artefact set is a
 /// single source of truth.
@@ -9,13 +27,16 @@ import Foundation
 /// plain per-file fetch — no `.tar.bz2`/bzip2 decoding needed. The `model.int8.onnx` alone is ~114 MB
 /// and `voices.bin` ~54 MB, so the full bundle is ~185 MB: downloaded on first enable rather than
 /// bundled, which is the whole rationale for the on-device tier.
-struct KokoroModelBundle: Equatable {
+struct KokoroModelBundle: DownloadableModelBundle {
 
     /// Stable identifier, also the extracted folder name upstream.
     let id: String
 
     /// User-facing name for the Settings status row.
     let displayName: String
+
+    /// Sub-directory under Application Support that holds the installed model files.
+    let directoryName: String
 
     /// The HuggingFace repo id hosting the bundle's files, e.g.
     /// `csukuangfj/kokoro-int8-multi-lang-v1_1`. Files are stored unpacked, so the downloader lists
@@ -37,21 +58,9 @@ struct KokoroModelBundle: Equatable {
     /// not pass as "ready".
     let requiredDirectories: [String]
 
-    /// The HuggingFace tree API URL listing every file in the repo (recursive), for the downloader to
-    /// enumerate what to fetch and compute the total size.
-    var huggingFaceTreeAPIURL: URL {
-        // swiftlint:disable:next force_unwrapping — composed from a validated repo id.
-        URL(string: "https://huggingface.co/api/models/\(huggingFaceRepo)/tree/main?recursive=true")!
-    }
-
-    /// The download URL for a single file `path` within the repo.
-    func huggingFaceResolveURL(for path: String) -> URL {
-        let escaped = path
-            .split(separator: "/", omittingEmptySubsequences: false)
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0) }
-            .joined(separator: "/")
-        // swiftlint:disable:next force_unwrapping — repo id + percent-escaped path.
-        return URL(string: "https://huggingface.co/\(huggingFaceRepo)/resolve/main/\(escaped)")!
+    /// The production installer: the HuggingFace tree-enumerating per-file fetch.
+    static var liveInstaller: KokoroModelDownloader.Installer {
+        HuggingFaceModelInstaller.live.makeInstaller()
     }
 
     // swiftlint:disable force_unwrapping — static, known-good literal URLs.
@@ -61,6 +70,7 @@ struct KokoroModelBundle: Equatable {
     static let int8MultiLangV1_1 = KokoroModelBundle(
         id: "kokoro-int8-multi-lang-v1_1",
         displayName: "Kokoro (int8, multilingual)",
+        directoryName: "KokoroTTS",
         huggingFaceRepo: "csukuangfj/kokoro-int8-multi-lang-v1_1",
         gitHubArchiveURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2")!,
         approxDownloadBytes: 185_000_000,
