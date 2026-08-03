@@ -8,14 +8,40 @@ download-on-demand model layer (`FingerspellingModelBundle/Store/Downloader`, Ko
 discipline: staging → verify → atomic install; repo configurable so publishing the artefact
 needs no app update) and `Scripts/convert-fingerspelling-model.py`.
 
-**Model story (resolved):** an MIT-licensed reference implementation surfaced by the
-2026-08-02 survey ships a Conformer-CTC checkpoint (12 blocks / 384 dim / 6 heads, 63
-hand-landmark features — the exact `LandmarkWindower` contract) trained on **FSboard**
-(Google, CC BY 4.0, 3M+ characters) with a KenLM rescoring option. Path to live: run the
-conversion script against that checkpoint (fp16 Core ML ≈ 80 MB), publish unpacked to a
-HuggingFace repo, set `fingerspellingModelRepo` in Settings. FSboard attribution is owed in
-the About screen when the model ships (P2). The small-model alternative remains retraining
-on FSboard with the Apache-2.0 Kaggle-winning recipe (≤40 MB by construction).
+**Model story (resolved; artefact published 2026-08-03):** an MIT-licensed reference
+implementation surfaced by the 2026-08-02 survey ships a Conformer-CTC checkpoint (12 blocks
+/ 384 dim / 6 heads) trained on **FSboard** (Google, CC BY 4.0, 3M+ characters) with a KenLM
+rescoring option. The checkpoint was converted (fp16 Core ML, 79 MB; strict state-dict load;
+100% argmax parity vs the source) and published unpacked to the HuggingFace repo that
+`Config.fingerspellingModelRepo` now defaults to — the in-app downloader works out of the box.
+FSboard attribution is owed in the About screen when the feature ships (P2).
+
+**P1 eval gate: the first candidate FAILED (2026-08-03).** `Scripts/eval-fingerspelling-model.py`
+scored the converted checkpoint against 197 real FSboard held-out test clips: **~91% CER**
+(greedy; the upstream project's own runtime with its KenLM decoder scores ~96% on the same
+clips, confidences 0.1–0.4). Conversion parity was perfect, and a 32-variant feature-pipeline
+grid probe found no configuration that helps — the gate condemns the checkpoint, not the
+pipeline: it does not generalise to conversational-speed continuous fingerspelling (its
+upstream app demos slow deliberate spelling through a 192-frame windowed commit policy).
+`fingerspellingModelRepo` therefore stays empty (feature dormant); the converted artefact's
+hosting repo is kept **private** ("keep and hide", 2026-08-03) with the eval warning on its
+model card — retained for diffing against a future retrained candidate, invisible otherwise.
+Everything in-app was already invisible: P2 never wired any UI, so the cores + download layer
+stay dormant in the codebase awaiting a candidate that passes the gate. **Next candidate: retrain on FSboard with the Apache-2.0
+Kaggle-winning recipe** (the paper-adjacent bar: winning models reached ~20–25% CER greedy at
+≤40 MB) — needs a GPU training run (decision owed: where/budget). The eval harness is the
+standing gate: any candidate must clear ~25% CER greedy before P2 wiring begins.
+
+Two contract corrections found by inspecting the real checkpoint (vs. the survey notes):
+the input is **162 features = 54 landmarks (21 dominant-hand + 33 pose) × 3**, all
+wrist-origin/palm-scale normalised — not hand-only 63; and CMVN is **per-utterance**
+(computed from the clip's own valid frames), not fixed shipped stats. `LandmarkWindower`
+therefore needs a P1 extension: a pose-landmark channel (Vision's body-pose request has 19
+joints vs the 33 expected — mapping + zero-fill strategy to be validated by the eval
+harness) and utterance-level CMVN. Provenance note: the training pipeline is not published
+(hyperparameters are recorded in the checkpoint); the P1 eval harness on FSboard's held-out
+test split is the accuracy gate before anything ships to users. The small-model alternative
+remains retraining on FSboard with the Apache-2.0 Kaggle-winning recipe (≤40 MB).
 
 ## What v1 would be (and what it wouldn't)
 
