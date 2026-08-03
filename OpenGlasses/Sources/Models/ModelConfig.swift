@@ -24,7 +24,7 @@ struct ModelConfig: Codable, Identifiable, Equatable {
 
     static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {
         switch provider {
-        case .anthropic, .gemini, .openai:
+        case .anthropic, .gemini, .geminiVertex, .openai:
             return true
         case .chatgpt:
             // Codex models accept image input over the Responses backend (BW P4 verifies live).

@@ -1,8 +1,14 @@
 # Plan AI — LLM Provider Auth Paths (reference + provider additions)
 
-**Status:** 📝 Reference, revised 2026-07-10 after a code-verified review. One buildable item
-(Vertex OAuth provider) survives; the Claude-app Shortcut item is demoted to an appendix; runtime
-failover is **owned by Plan BK P2b**, not this doc (this plan hands it two requirements, below).
+**Status:** 📝 Reference; **Vertex OAuth provider shipped 2026-08-03** — `GoogleOAuth`/`VertexAI`
+pure cores (PKCE, reverse-DNS callback, form-encoded token requests, regional endpoint builder),
+`GoogleOAuthService` edge (`ASWebAuthenticationSession`, keychain, refresh-with-leeway),
+`.geminiVertex` provider case routed through a shared `geminiRequest` builder at all five Gemini
+call sites (Bearer auth, per-turn re-resolution), model-editor UI (client ID / project / region /
+sign-in). Gemini Live + streaming scoped out as planned. The BK P2b hand-off item 2 verified
+already satisfied: `ModelFallbackChain` classifies `missingAPIKey` as per-candidate. The
+Claude-app Shortcut item stays demoted to an appendix; runtime failover is **owned by Plan BK
+P2b**, not this doc (this plan hands it two requirements, below).
 
 How OpenGlasses authenticates to an LLM backend, what each path costs in *functionality*, and
 where OAuth / "use my account" actually works.

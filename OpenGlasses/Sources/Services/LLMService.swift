@@ -9,6 +9,7 @@ enum LLMProvider: String, CaseIterable {
     case openai = "openai"
     case chatgpt = "chatgpt"   // ChatGPT subscription (Codex OAuth) — Responses backend, no API key (Plan BW)
     case gemini = "gemini"
+    case geminiVertex = "geminiVertex"   // Gemini via Vertex AI — Google OAuth, no API key (Plan AI)
     case groq = "groq"
     case zai = "zai"
     case qwen = "qwen"
@@ -25,6 +26,7 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "OpenAI (GPT)"
         case .chatgpt: return "ChatGPT (Subscription)"
         case .gemini: return "Google (Gemini)"
+        case .geminiVertex: return "Gemini (Vertex AI)"
         case .groq: return "Groq"
         case .zai: return "Z.ai (Subscription)"
         case .qwen: return "Qwen (Subscription)"
@@ -43,6 +45,7 @@ enum LLMProvider: String, CaseIterable {
         case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
         case .openai: return URL(string: "https://platform.openai.com/api-keys")
         case .gemini: return URL(string: "https://aistudio.google.com/apikey")
+        case .geminiVertex: return URL(string: "https://console.cloud.google.com/apis/credentials")
         case .groq: return URL(string: "https://console.groq.com/keys")
         case .minimax: return URL(string: "https://platform.minimaxi.com")
         case .xai: return URL(string: "https://console.x.ai")
@@ -56,7 +59,7 @@ enum LLMProvider: String, CaseIterable {
     var isOpenAICompatible: Bool {
         switch self {
         // .chatgpt speaks the Responses API, not chat completions — its own send path.
-        case .anthropic, .gemini, .chatgpt, .local, .appleOnDevice: return false
+        case .anthropic, .gemini, .geminiVertex, .chatgpt, .local, .appleOnDevice: return false
         case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom: return true
         }
     }
@@ -68,6 +71,7 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "https://api.openai.com/v1/chat/completions"
         case .chatgpt: return ChatGPTOAuth.backendResponsesURL
         case .gemini: return "https://generativelanguage.googleapis.com/v1beta"
+        case .geminiVertex: return ""   // built per-request from project/region (VertexAI.endpointURL)
         case .groq: return "https://api.groq.com/openai/v1/chat/completions"
         case .zai: return "https://api.z.ai/api/coding/paas/v4/chat/completions"
         case .qwen: return "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
@@ -87,6 +91,7 @@ enum LLMProvider: String, CaseIterable {
         case .openai: return "gpt-4o"
         case .chatgpt: return ChatGPTOAuth.defaultModel
         case .gemini: return "gemini-2.0-flash"
+        case .geminiVertex: return "gemini-2.0-flash"
         case .groq: return "llama-3.3-70b-versatile"
         case .zai: return "glm-4.5"
         case .qwen: return "qwen3.5-plus"
@@ -110,7 +115,7 @@ enum LLMProvider: String, CaseIterable {
     /// Whether this provider requires an API key
     var requiresAPIKey: Bool {
         switch self {
-        case .local, .appleOnDevice, .chatgpt: return false   // .chatgpt authenticates via account sign-in
+        case .local, .appleOnDevice, .chatgpt, .geminiVertex: return false   // account sign-in, not a key
         default: return true
         }
     }
@@ -118,7 +123,7 @@ enum LLMProvider: String, CaseIterable {
     /// Whether this provider supports listing models via API
     var supportsModelListing: Bool {
         switch self {
-        case .local, .appleOnDevice: return false
+        case .local, .appleOnDevice, .geminiVertex: return false
         default: return true   // .chatgpt lists from its static codex catalog
         }
     }
@@ -547,7 +552,7 @@ class LLMService: ObservableObject {
             rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
         case .chatgpt:
             rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
-        case .gemini:
+        case .gemini, .geminiVertex:
             rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
         case .local:
             rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken)
@@ -685,7 +690,7 @@ class LLMService: ObservableObject {
             return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
         case .chatgpt:
             return try await sendChatGPT(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .gemini:
+        case .gemini, .geminiVertex:
             return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
         case .local:
             return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
@@ -939,12 +944,8 @@ class LLMService: ObservableObject {
                       let text = message["content"] as? String else { return nil }
                 return text
 
-            case .gemini:
-                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.timeoutInterval = 15
+            case .gemini, .geminiVertex:
+                guard var request = try? await geminiRequest(for: modelConfig, timeout: 15) else { return nil }
                 let body: [String: Any] = [
                     "system_instruction": ["parts": [["text": "You are a conversation summarizer. Be concise and factual."]]],
                     "contents": [["role": "user", "parts": [["text": summarizationPrompt]]]],
@@ -1043,12 +1044,8 @@ class LLMService: ObservableObject {
                       let text = message["content"] as? String else { return nil }
                 return text
 
-            case .gemini:
-                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.timeoutInterval = 20
+            case .gemini, .geminiVertex:
+                guard var request = try? await geminiRequest(for: modelConfig, timeout: 20) else { return nil }
                 let body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": [["role": "user", "parts": [
@@ -1156,12 +1153,8 @@ class LLMService: ObservableObject {
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.openAI(data)
 
-            case .gemini:
-                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.timeoutInterval = 30
+            case .gemini, .geminiVertex:
+                guard var request = try? await geminiRequest(for: modelConfig, timeout: 30) else { return nil }
                 // `responseMimeType` + a translated `responseSchema` enforce the exact JSON shape
                 // (not just "some JSON") — the Gemini equivalent of Anthropic/OpenAI forced tool-use.
                 let body: [String: Any] = [
@@ -1258,12 +1251,8 @@ class LLMService: ObservableObject {
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.openAI(data)
 
-            case .gemini:
-                guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelConfig.model):generateContent?key=\(modelConfig.apiKey)") else { return nil }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.timeoutInterval = 45
+            case .gemini, .geminiVertex:
+                guard var request = try? await geminiRequest(for: modelConfig, timeout: 45) else { return nil }
                 let body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": [["role": "user", "parts": [["text": userText]]]],
@@ -1314,7 +1303,7 @@ class LLMService: ObservableObject {
             return try await sendAnthropic(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
         case .chatgpt:
             return try await sendChatGPT(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        case .gemini:
+        case .gemini, .geminiVertex:
             return try await sendGemini(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
         case .local, .appleOnDevice:
             throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
@@ -2231,17 +2220,43 @@ class LLMService: ObservableObject {
 
     // MARK: - Google Gemini
 
-    private func sendGemini(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?) async throws -> String {
-        let apiKey = config.apiKey
-        guard !apiKey.isEmpty else {
-            throw LLMError.missingAPIKey("Gemini API key not configured")
+    /// Endpoint + auth for a Gemini-family `generateContent` request (Plan AI). AI Studio
+    /// (`.gemini`) keys the query string; Vertex (`.geminiVertex`) builds the project/region
+    /// URL and authenticates with the Google account's Bearer token, refreshed with leeway.
+    /// Credential problems throw `missingAPIKey` — per-candidate for the fallback chain, so a
+    /// mid-session refresh failure moves to the next model instead of dead-airing the turn.
+    func geminiRequest(for config: ModelConfig, timeout: TimeInterval? = nil) async throws -> URLRequest {
+        var request: URLRequest
+        switch config.llmProvider {
+        case .geminiVertex:
+            guard let endpoint = VertexAI.endpointURL(
+                projectID: Config.vertexProjectID, region: Config.vertexRegion, model: config.model) else {
+                throw LLMError.invalidConfiguration("Vertex AI needs a GCP project ID and region — set them in the model editor.")
+            }
+            guard let token = await GoogleOAuthService.shared.validAccessToken() else {
+                throw LLMError.missingAPIKey("Google account not connected — sign in with Google in the model editor.")
+            }
+            request = URLRequest(url: endpoint)
+            VertexAI.apply(accessToken: token, to: &request)
+        default:
+            guard !config.apiKey.isEmpty else {
+                throw LLMError.missingAPIKey("Gemini API key not configured")
+            }
+            guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(config.model):generateContent?key=\(config.apiKey)") else {
+                throw LLMError.invalidConfiguration("Invalid Gemini URL")
+            }
+            request = URLRequest(url: url)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        request.httpMethod = "POST"
+        if let timeout { request.timeoutInterval = timeout }
+        return request
+    }
 
-        let model = config.model
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
-        guard let url = URL(string: urlString) else {
-            throw LLMError.invalidConfiguration("Invalid Gemini URL")
-        }
+    private func sendGemini(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?) async throws -> String {
+        // Validate credentials up front (fast-fail before touching history); each tool-loop
+        // turn re-resolves below so a token refreshed mid-loop is picked up.
+        _ = try await geminiRequest(for: config)
 
         // Add user message to history
         if let imageData = imageData {
@@ -2261,9 +2276,9 @@ class LLMService: ObservableObject {
             dispatcher: makeToolDispatcher(),
             performTurn: { [weak self] in
                 guard let self else { throw LLMError.invalidResponse("Gemini") }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                // Re-resolve endpoint + auth per turn — a Vertex token refreshed mid-tool-loop
+                // is picked up; AI Studio resolves to the same keyed URL every time.
+                var request = try await self.geminiRequest(for: config)
 
                 // Gemini format: system instruction + contents array
                 var contents: [[String: Any]] = []
