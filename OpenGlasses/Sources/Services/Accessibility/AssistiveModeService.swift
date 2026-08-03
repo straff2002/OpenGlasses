@@ -88,7 +88,12 @@ final class AssistiveModeService: ObservableObject {
 
         let mode = AssistiveRouter.route(transcription: pendingTranscription)
         currentMode = mode
-        let systemPrompt = AssistiveRouter.systemPrompt(for: mode)
+        // CJ item 4: the ambient loop points a camera at the world continuously — the
+        // category-only privacy guarantee rides on every frame prompt (default on).
+        var systemPrompt = AssistiveRouter.systemPrompt(for: mode)
+        if Config.visionPrivacyCategoriesEnabled {
+            systemPrompt += "\n\n" + AssessmentPrivacy.promptFragment
+        }
         let userText = AssistiveRouter.userText(for: mode, transcription: pendingTranscription)
         pendingTranscription = nil // consume
 

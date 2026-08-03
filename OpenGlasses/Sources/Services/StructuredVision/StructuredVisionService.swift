@@ -79,11 +79,23 @@ final class StructuredVisionService: ObservableObject {
         defer { isAnalyzing = false }
 
         let userText = note.map { "Assess the scene. Context: \($0)" } ?? "Assess the scene."
-        guard let json = await analyze(schema.systemPrompt, userText, imageData, schema.jsonSchema, "assessment") else {
+
+        // CJ item 4: category-only privacy reporting — every vertical gets the `sensitive_items`
+        // capability at this one chokepoint (default on).
+        var systemPrompt = schema.systemPrompt
+        var jsonSchema = schema.jsonSchema
+        if Config.visionPrivacyCategoriesEnabled {
+            (systemPrompt, jsonSchema) = AssessmentPrivacy.augment(systemPrompt: systemPrompt, jsonSchema: jsonSchema)
+        }
+
+        guard let json = await analyze(systemPrompt, userText, imageData, jsonSchema, "assessment") else {
             throw StructuredVisionError.analysisFailed
         }
         var card = try schema.makeCard(from: json, context: note)
         card = schema.backstop(card)
+        if Config.visionPrivacyCategoriesEnabled {
+            card = card.addingFindings(AssessmentPrivacy.findings(for: AssessmentPrivacy.reportedCategories(in: json)))
+        }
         latest = card
         mirrorToHUD(card)
         return card

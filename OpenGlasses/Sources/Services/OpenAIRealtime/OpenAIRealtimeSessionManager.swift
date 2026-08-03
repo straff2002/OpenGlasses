@@ -126,6 +126,11 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             self?.audioManager.playAudio(data: data)
         }
 
+        // CJ item 6: barge-in truncation reports confirmed-played audio, never wall-clock.
+        realtimeService.playedAudioMilliseconds = { [weak self] in
+            self?.audioManager.confirmedPlayedMilliseconds ?? 0
+        }
+
         // Wire interruption
         realtimeService.onInterrupted = { [weak self] in
             self?.audioManager.stopPlayback()
@@ -134,6 +139,9 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         // Wire turn complete
         realtimeService.onTurnComplete = { [weak self] in
             guard let self else { return }
+            // Fresh played-audio window per response (CJ item 6) — the completed response's
+            // tail may still be draining, but its frames must not count against the next one.
+            self.audioManager.resetPlaybackProgress()
             Task { @MainActor in
                 self.userTranscript = ""
             }

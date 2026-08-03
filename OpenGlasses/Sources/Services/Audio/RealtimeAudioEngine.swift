@@ -120,6 +120,9 @@ final class RealtimeAudioEngine {
     private var isCapturing = false
     private var isInputTapInstalled = false
     private var isPlayerNodeAttached = false
+    /// Confirmed-played frame accounting for barge-in truncation (CJ item 6). Confined to
+    /// `audioLifecycleQueue`, like all playback state.
+    private var playbackLedger = PlaybackProgressLedger()
     private var useIPhoneMode = false
     /// Bumped on every (re)start and teardown; tags tap buffers so stale ones are dropped.
     private var audioGraphGeneration: UInt64 = 0
@@ -424,9 +427,32 @@ final class RealtimeAudioEngine {
             }
         }
 
-        playerNode.scheduleBuffer(buffer)
+        // CJ item 6: count this buffer as played only when the hardware confirms it rendered.
+        // `.dataPlayedBack` callbacks also fire for buffers a later `stop()` discards — the
+        // ledger's generation check drops those (discarded ≠ heard).
+        let generation = playbackLedger.scheduled(frames: frameCount)
+        playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            self?.audioLifecycleQueue.async {
+                self?.playbackLedger.played(frames: frameCount, generation: generation)
+            }
+        }
         if !playerNode.isPlaying {
             playerNode.play()
+        }
+    }
+
+    /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
+    /// completion callbacks, never wall-clock. Read this *before* `stopPlayback()` on barge-in.
+    var confirmedPlayedMilliseconds: Int {
+        syncOnAudioLifecycleQueue {
+            playbackLedger.playedMilliseconds(sampleRate: config.outputSampleRate)
+        }
+    }
+
+    /// Start a fresh played-audio accounting window (call at each response boundary).
+    func resetPlaybackProgress() {
+        audioLifecycleQueue.async { [weak self] in
+            self?.playbackLedger.reset()
         }
     }
 
@@ -439,6 +465,9 @@ final class RealtimeAudioEngine {
 
     private func stopPlaybackOnQueue() {
         guard isPlayerNodeAttached else { return }
+        // Reset before stop: the stop fires completion callbacks for every *discarded* buffer,
+        // and the generation bump keeps them out of the played count.
+        playbackLedger.reset()
         playerNode.stop()
         if isCapturing, audioEngine.isRunning {
             playerNode.play()
