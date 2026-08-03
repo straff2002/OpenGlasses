@@ -2079,9 +2079,11 @@ struct Config {
 
     // MARK: - Fingerspelling model (Plan CK)
 
-    /// HuggingFace repo hosting the converted fingerspelling Core ML model (unpacked files).
-    /// Empty until the artefact is published (`Scripts/convert-fingerspelling-model.py`) —
-    /// the model store reports "not configured" and the feature stays dormant.
+    /// HuggingFace repo hosting the converted fingerspelling Core ML model (unpacked files,
+    /// produced by `Scripts/convert-fingerspelling-model.py`). Deliberately empty (feature
+    /// dormant): the first converted candidate FAILED the FSboard eval gate (~91% CER — see
+    /// the CK plan doc), so nothing is worth defaulting to yet. Set explicitly to trial a
+    /// staged artefact.
     static var fingerspellingModelRepo: String {
         UserDefaults.standard.string(forKey: "fingerspellingModelRepo") ?? ""
     }
