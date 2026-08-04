@@ -37,6 +37,8 @@ struct BottomControlBar: View {
     /// Observes the same UserDefaults key `Config.silentMode` writes, so the push-to-talk
     /// BarButton re-renders on toggle AND stays live-synced with the Settings switch.
     @AppStorage("silentMode") private var pushToTalk = false
+    /// Arranged item order (Settings → Quick Actions → Bar Layout); empty = shipped order.
+    @AppStorage("dockItemOrder") private var dockOrder = ""
 
     private var photoDisabledForLocalModel: Bool {
         guard let model = Config.activeModel, model.llmProvider == .local else { return false }
@@ -57,74 +59,10 @@ struct BottomControlBar: View {
             // Utility row: everything else, one tile idiom, scrolls when it outgrows the width.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    // Contextual: on-device model chip (was a full-width band above the bar).
-                    if let local = appState.llmService.localLLMService,
-                       let active = Config.activeModel, active.llmProvider == .local {
-                        LocalModelTile(service: local, modelConfig: active)
-                    }
-
-                    // Model picker rides next to the load chip — the two model controls
-                    // read as one group.
-                    BarButton(
-                        icon: "brain",
-                        label: appState.llmService.activeModelName,
-                        truncateLabel: true
-                    ) {
-                        showModelPicker = true
-                    }
-
-                    // The user's quick actions (was its own band of glass tiles).
-                    if appState.isConnected && appState.currentMode == .direct {
-                        QuickActionTiles()
-                    }
-
-                    cameraButton
-
-                    if previewVisible {
-                        BarButton(
-                            icon: "eye",
-                            label: "Preview",
-                            isActive: appState.videoRecorder.isRecording
-                        ) {
-                            showPreview = true
-                        }
-                    }
-
-                    if let chatBinding = showChatInput {
-                        BarButton(icon: "keyboard", label: "Type") {
-                            chatBinding.wrappedValue = true
-                        }
-                    }
-
-                    // Push-to-talk toggle — same switch as Settings (one owner: AppState.setPushToTalk).
-                    // Labelled with the mode a tap switches TO, not the current one: showing the
-                    // current mode read as a state badge, and people hunting for push-to-talk
-                    // couldn't tell this button was where to change it.
-                    BarButton(
-                        icon: pushToTalk ? "waveform" : "hand.tap.fill",
-                        label: pushToTalk ? "Wake Word" : "Push-Talk",
-                        isActive: false
-                    ) {
-                        appState.setPushToTalk(!pushToTalk)
-                    }
-                    .accessibilityLabel(pushToTalk ? "Switch to wake word listening" : "Switch to push to talk")
-
-                    if Config.accessibilityModeEnabled {
-                        BarButton(
-                            icon: assistive.isActive ? "eye.fill" : "eye",
-                            label: assistive.isActive ? "Assistive On" : "Assistive",
-                            isActive: assistive.isActive
-                        ) {
-                            appState.toggleAssistiveMode()
-                        }
-                    }
-
-                    if appState.isConnected {
-                        // "Sleep" undersold what this does — it disconnects the glasses
-                        // session outright (stops speech, wake word, camera, live sessions).
-                        BarButton(icon: "moon.fill", label: "Disconnect") {
-                            appState.disconnectGlasses()
-                        }
+                    // Items render in the user's arranged order (Settings → Quick
+                    // Actions → Bar Layout); contextual ones still gate themselves.
+                    ForEach(DockLayout.decode(dockOrder)) { item in
+                        dockView(for: item)
                     }
                 }
                 .padding(.horizontal, 4)
@@ -135,6 +73,91 @@ struct BottomControlBar: View {
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
+    }
+
+    // MARK: - Dock items
+
+    /// One arrangeable slot of the scrolling row. Contextual gating lives with
+    /// the item, so moving a slot never changes WHEN it appears — only where.
+    @ViewBuilder
+    private func dockView(for item: DockItem) -> some View {
+        switch item {
+        case .model:
+            // Contextual: on-device model chip rides just before the picker —
+            // the two model controls read as one group wherever they're placed.
+            if let local = appState.llmService.localLLMService,
+               let active = Config.activeModel, active.llmProvider == .local {
+                LocalModelTile(service: local, modelConfig: active)
+            }
+            BarButton(
+                icon: "brain",
+                label: appState.llmService.activeModelName,
+                truncateLabel: true
+            ) {
+                showModelPicker = true
+            }
+
+        case .quickActions:
+            // The user's quick actions (was its own band of glass tiles).
+            if appState.isConnected && appState.currentMode == .direct {
+                QuickActionTiles()
+            }
+
+        case .camera:
+            cameraButton
+
+        case .preview:
+            if previewVisible {
+                BarButton(
+                    icon: "eye",
+                    label: "Preview",
+                    isActive: appState.videoRecorder.isRecording
+                ) {
+                    showPreview = true
+                }
+            }
+
+        case .type:
+            if let chatBinding = showChatInput {
+                BarButton(icon: "keyboard", label: "Type") {
+                    chatBinding.wrappedValue = true
+                }
+            }
+
+        case .micMode:
+            // Push-to-talk toggle — same switch as Settings (one owner: AppState.setPushToTalk).
+            // Labelled with the mode a tap switches TO, not the current one: showing the
+            // current mode read as a state badge, and people hunting for push-to-talk
+            // couldn't tell this button was where to change it.
+            BarButton(
+                icon: pushToTalk ? "waveform" : "hand.tap.fill",
+                label: pushToTalk ? "Wake Word" : "Push-Talk",
+                isActive: false
+            ) {
+                appState.setPushToTalk(!pushToTalk)
+            }
+            .accessibilityLabel(pushToTalk ? "Switch to wake word listening" : "Switch to push to talk")
+
+        case .assistive:
+            if Config.accessibilityModeEnabled {
+                BarButton(
+                    icon: assistive.isActive ? "eye.fill" : "eye",
+                    label: assistive.isActive ? "Assistive On" : "Assistive",
+                    isActive: assistive.isActive
+                ) {
+                    appState.toggleAssistiveMode()
+                }
+            }
+
+        case .disconnect:
+            if appState.isConnected {
+                // "Sleep" undersold what this does — it disconnects the glasses
+                // session outright (stops speech, wake word, camera, live sessions).
+                BarButton(icon: "moon.fill", label: "Disconnect") {
+                    appState.disconnectGlasses()
+                }
+            }
+        }
     }
 
     // MARK: - Hero Capsule

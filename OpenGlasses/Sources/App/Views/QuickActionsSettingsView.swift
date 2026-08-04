@@ -8,6 +8,10 @@ struct QuickActionsSettingsView: View {
     @State private var showAddSheet = false
     @State private var previewingTemplate: QuickAction?
     @State private var showAllQuickActions = Config.showAllQuickActions
+    /// Same key the dock observes — reordering here re-renders the bar live.
+    @AppStorage("dockItemOrder") private var dockOrder = ""
+
+    private var dockOrderItems: [DockItem] { DockLayout.decode(dockOrder) }
 
     /// Pre-built quick action templates users can add.
     static let templates: [QuickAction] = [
@@ -109,6 +113,25 @@ struct QuickActionsSettingsView: View {
                 }
             }
 
+            // MARK: - Bar Layout (Plan CL follow-up)
+            // The dock's built-in buttons were fixed in code while quick actions
+            // reordered above — people hunting for the push-to-talk tile couldn't
+            // move it. The whole scrolling row is arrangeable now.
+            Section {
+                ForEach(dockOrderItems) { item in
+                    Label(item.displayName, systemImage: item.icon)
+                }
+                .onMove { from, to in
+                    var items = dockOrderItems
+                    items.move(fromOffsets: from, toOffset: to)
+                    dockOrder = DockLayout.encode(items)
+                }
+            } header: {
+                Text("Bar Layout")
+            } footer: {
+                Text("The order of everything in the Voice tab's control bar — Quick Actions is the block configured above. Drag to reorder; buttons that only appear in context (Preview, Disconnect) keep their conditions, just in your order.")
+            }
+
             // MARK: - Display Mode
             Section {
                 InfoToggle(
@@ -171,7 +194,8 @@ struct QuickActionsSettingsView: View {
                 Button { showAddSheet = true } label: { Image(systemName: "plus") }
             }
             ToolbarItem(placement: .topBarLeading) {
-                if !actions.isEmpty { EditButton() }
+                // Always shown: even with no quick actions, Bar Layout reorders.
+                EditButton()
             }
         }
         .sheet(isPresented: $showAddSheet) {
