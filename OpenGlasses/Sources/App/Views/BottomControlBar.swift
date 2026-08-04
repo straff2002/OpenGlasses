@@ -97,13 +97,17 @@ struct BottomControlBar: View {
                     }
 
                     // Push-to-talk toggle — same switch as Settings (one owner: AppState.setPushToTalk).
+                    // Labelled with the mode a tap switches TO, not the current one: showing the
+                    // current mode read as a state badge, and people hunting for push-to-talk
+                    // couldn't tell this button was where to change it.
                     BarButton(
-                        icon: pushToTalk ? "hand.tap.fill" : "waveform",
-                        label: pushToTalk ? "Push-Talk" : "Wake Word",
-                        isActive: pushToTalk
+                        icon: pushToTalk ? "waveform" : "hand.tap.fill",
+                        label: pushToTalk ? "Wake Word" : "Push-Talk",
+                        isActive: false
                     ) {
                         appState.setPushToTalk(!pushToTalk)
                     }
+                    .accessibilityLabel(pushToTalk ? "Switch to wake word listening" : "Switch to push to talk")
 
                     if Config.accessibilityModeEnabled {
                         BarButton(

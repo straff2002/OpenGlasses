@@ -17,32 +17,56 @@ struct VoiceWaveline: View {
 
     var state: VoiceVisualState = .idle
     var height: CGFloat = 76
+    @Environment(\.appAccent) private var accent
 
-    /// A sunset spectrum around the app's AI accent — four clearly DISTINCT hues (orange, gold,
-    /// pink, red), because near-identical corals blur back into one thick line. Stays off
-    /// violet/cyan per the brand rule.
-    static let coral = AppAccent.aiCoral
-    static let gold  = Color(red: 0.96, green: 0.76, blue: 0.23)   // golden yellow
-    static let rose  = Color(red: 0.91, green: 0.36, blue: 0.54)   // warm pink
-    static let ember = Color(red: 0.85, green: 0.27, blue: 0.23)   // deep red
+    /// A spectrum around the SELECTED accent — the primary strand is the accent itself and the
+    /// companions are hue-rotated variants, spread far enough apart to stay clearly distinct
+    /// (near-identical hues blur back into one thick line). With Coral selected this reproduces
+    /// the original sunset ribbon; picking Blue or Green in Look & Feel re-dresses the wave the
+    /// same way it re-dresses the rest of the app. A greyscale accent (White) has no hue to
+    /// rotate, so the companions fan out in brightness instead.
+    static func palette(around accent: Color) -> [Color] {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(accent).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+
+        guard saturation > 0.05 else {
+            return [0.85, 0.55, 0.70, brightness].map {
+                Color(hue: 0, saturation: 0, brightness: $0)
+            }
+        }
+
+        func companion(_ hueShift: CGFloat, _ brightnessScale: CGFloat) -> Color {
+            let h = (hue + hueShift).truncatingRemainder(dividingBy: 1)
+            return Color(hue: h < 0 ? h + 1 : h,
+                         saturation: saturation,
+                         brightness: min(1, brightness * brightnessScale))
+        }
+        // Matches the original coral ribbon's spread: gold ≈ +0.07, ember ≈ −0.04 and darker,
+        // rose ≈ −0.10; the last entry is the untouched accent (primary strand).
+        return [companion(0.07, 1.05), companion(-0.04, 0.80), companion(-0.10, 0.95), accent]
+    }
 
     /// The ribbon, back to front. Offsets/detunes are constants (phase-continuous); the negative
     /// ampScale mirrors a strand so it *must* cross the others — that guaranteed crossing is what
     /// makes the eye read "several threads" instead of "one thick line".
-    static let strands: [WavelineStrand] = [
-        WavelineStrand(phaseShift: 2.1, timeScale: 0.82, ampScale:  0.90,
-                       color: gold,  lineWidth: 1.8, opacity: 0.75),
-        WavelineStrand(phaseShift: 4.4, timeScale: 1.18, ampScale:  0.78,
-                       color: ember, lineWidth: 1.8, opacity: 0.70),
-        WavelineStrand(phaseShift: 1.1, timeScale: 0.94, ampScale: -0.75,
-                       color: rose,  lineWidth: 1.6, opacity: 0.75),
-        WavelineStrand(phaseShift: 0.0, timeScale: 1.00, ampScale:  1.00,
-                       color: coral, lineWidth: 2.4, opacity: 1.00),
-    ]
+    static func strands(around accent: Color) -> [WavelineStrand] {
+        let colors = palette(around: accent)
+        return [
+            WavelineStrand(phaseShift: 2.1, timeScale: 0.82, ampScale:  0.90,
+                           color: colors[0], lineWidth: 1.8, opacity: 0.75),
+            WavelineStrand(phaseShift: 4.4, timeScale: 1.18, ampScale:  0.78,
+                           color: colors[1], lineWidth: 1.8, opacity: 0.70),
+            WavelineStrand(phaseShift: 1.1, timeScale: 0.94, ampScale: -0.75,
+                           color: colors[2], lineWidth: 1.6, opacity: 0.75),
+            WavelineStrand(phaseShift: 0.0, timeScale: 1.00, ampScale:  1.00,
+                           color: colors[3], lineWidth: 2.4, opacity: 1.00),
+        ]
+    }
 
     @State private var amplitudes = WavelineParams.params(for: .idle)
 
     var body: some View {
+        let strands = Self.strands(around: accent)
         // Capped at 60fps: the glow's 6px blur is an offscreen Gaussian pass per frame, and on
         // ProMotion an uncapped .animation runs it at 120Hz — twice the GPU/battery for motion
         // this slow-moving, with no visible difference.
@@ -50,14 +74,14 @@ struct VoiceWaveline: View {
             let t = timeline.date.timeIntervalSinceReferenceDate
             Canvas { context, size in
                 // Soft glow underlay traces the primary strand, then the ribbon on top.
-                if let primary = Self.strands.last {
+                if let primary = strands.last {
                     var glow = context
                     glow.addFilter(.blur(radius: 6))
                     glow.stroke(strandPath(primary, time: t, size: size),
                                 with: shading(for: primary, opacityScale: 0.30, width: size.width),
                                 style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 }
-                for strand in Self.strands {
+                for strand in strands {
                     context.stroke(strandPath(strand, time: t, size: size),
                                    with: shading(for: strand, width: size.width),
                                    style: StrokeStyle(lineWidth: strand.lineWidth, lineCap: .round))
@@ -107,7 +131,7 @@ struct VoiceWaveline: View {
 }
 
 /// One thread of the ribbon: constant phase offset + constant speed detune (so each strand is
-/// individually phase-continuous), its own coral-family colour, weight, and amplitude scale.
+/// individually phase-continuous), its own accent-family colour, weight, and amplitude scale.
 struct WavelineStrand {
     let phaseShift: Double
     let timeScale: Double
@@ -117,13 +141,14 @@ struct WavelineStrand {
     let opacity: Double
 }
 
-/// The home screen's atmosphere: a faint coral radiance behind the conversation zone that
+/// The home screen's atmosphere: a faint accent radiance behind the conversation zone that
 /// breathes with the same voice state as the waveline — one motion system, two expressions.
 /// Deliberately near-subliminal (single-digit opacities): the screen should feel lit by the
 /// assistant's presence, never painted with it. Sits over the system background, so light and
 /// dark mode both keep their character.
 struct VoiceAmbience: View {
     var state: VoiceVisualState = .idle
+    @Environment(\.appAccent) private var accent
 
     private var glow: Double {
         switch state {
@@ -138,7 +163,7 @@ struct VoiceAmbience: View {
         ZStack {
             Color(.systemBackground)
             RadialGradient(
-                colors: [VoiceWaveline.coral.opacity(glow), .clear],
+                colors: [accent.opacity(glow), .clear],
                 center: UnitPoint(x: 0.5, y: 0.42),   // behind the waveline zone
                 startRadius: 0,
                 endRadius: 420)
