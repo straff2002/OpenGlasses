@@ -538,6 +538,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
+    /// Hermes agent bridge (Plan CL P5): optional LAN "brain" behind Agent Mode.
+    let hermesBridge = HermesBridgeService()
     /// Dwell capture (Plan CG): gaze-hold on an object captures it. Passive until frames
     /// flow; `Config.dwellCaptureEnabled` gates the per-frame work.
     let dwellCapture = DwellCaptureService()
@@ -1318,6 +1320,21 @@ class AppState: ObservableObject, AppStateProtocol {
         if Config.isOpenClawAgentActive {
             openClawEventClient.connect()
             Task { await openClawBridge.checkConnection() }
+        }
+
+        // Hermes agent bridge (Plan CL P5): eyes on request, events into the field log.
+        hermesBridge.photoProvider = { [weak self] in
+            guard let self, self.isConnected else {
+                throw NSError(domain: "HermesBridge", code: 3,
+                              userInfo: [NSLocalizedDescriptionKey: "Glasses camera unavailable"])
+            }
+            return try await self.cameraService.capturePhoto()
+        }
+        hermesBridge.onDebugEvent = { [weak self] event in
+            self?.addDebugEvent(event)
+        }
+        if hermesBridge.isEnabled {
+            hermesBridge.connect()
         }
 
         // Privacy filter — apply saved preference
@@ -3387,6 +3404,21 @@ class AppState: ObservableObject, AppStateProtocol {
                                 await narrateModelSwitch(from: from, to: to, failure: failure)
                             }
                         )
+                    }
+                    // Hermes agent bridge (Plan CL P5): when enabled (Agent Mode), the
+                    // bridge is the brain for the turn — it runs its own tools/memory and
+                    // may request a photo mid-query. Any failure falls through to the
+                    // normal local/cloud path so the bridge can never strand a turn.
+                    if hermesBridge.isEnabled {
+                        do {
+                            let bridged = try await hermesBridge.ask(query)
+                            nowPlayingAtStart = nil
+                            return bridged
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            addDebugEvent("Hermes bridge failed (\(error.localizedDescription)) — using normal path")
+                        }
                     }
                     if useLocalAgent {
                         // Weather-decision turn ("do I take a jacket"): pre-fetch the forecast

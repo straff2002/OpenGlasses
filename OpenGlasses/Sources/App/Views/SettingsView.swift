@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.appAccent) private var accent
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
+    @AppStorage("appAppearance") private var appearance: String = "dark"
 
     // Owner gate (BM P10): Simple-Mode exit always asks; Settings entry asks when the flag is on.
     @State private var settingsOwnerGateEnabled = Config.settingsOwnerGateEnabled
@@ -18,150 +19,136 @@ struct SettingsView: View {
     // Simple Mode and About sections.
 
     var body: some View {
-        Form {
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            // MARK: — Categories (hub)
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            // Each row pushes a screen in SettingsScreens.swift holding the full sections.
-            // Simple Mode hides the owner-only configuration surface (models, personas,
-            // behavior, tools, integrations, advanced) — the device keeps working exactly
-            // as configured; those categories just stop being visible/editable.
+        // The hub is an OGDesign page (Plan CL): hero device card, then one
+        // grouped card of category rows, each with a live value summary.
+        // Simple Mode hides the owner-only configuration surface (models, personas,
+        // behavior, tools, integrations, advanced) — the device keeps working exactly
+        // as configured; those categories just stop being visible/editable.
+        OGScrollPage {
+            OGHeroDeviceCard(
+                title: appState.glassesService.deviceName ?? "Meta Glasses",
+                status: appState.isConnected ? "Connected" : "Not connected",
+                dot: appState.isConnected ? OGTheme.ok : Color.secondary,
+                batteryPercent: appState.glassesService.batteryLevel,
+                chips: [
+                    ("Camera", appState.isConnected),
+                    ("Display", appState.glassesDisplay.hasDisplayCapability),
+                    ("HUD \(Config.glassesDisplayEnabled ? "on" : "off")", Config.glassesDisplayEnabled),
+                ]
+            )
 
-            Section {
-                NavigationLink {
-                    VoiceTriggersSettingsScreen(appState: appState)
-                } label: {
-                    categoryRow(
-                        "Voice & Triggers",
-                        systemImage: "waveform",
-                        description: "Wake phrase, push-to-talk, hands-free triggers"
+            OGSection {
+                categoryLink(destination: VoiceTriggersSettingsScreen(appState: appState)) {
+                    OGRow(
+                        "Voice & Triggers", icon: "waveform",
+                        subtitle: "Wake phrase, push-to-talk, hands-free triggers",
+                        value: "“\(Config.wakePhrase.capitalized)”"
                     )
                 }
 
                 if !simpleModeEnabled {
-                    NavigationLink {
-                        AIPersonalitySettingsScreen(appState: appState)
-                    } label: {
-                        categoryRow(
-                            "AI & Personality",
-                            systemImage: "brain.head.profile",
-                            description: "Models, personas, prompt, and behaviour"
+                    OGDivider()
+                    categoryLink(destination: AIPersonalitySettingsScreen(appState: appState)) {
+                        OGRow(
+                            "AI & Personality", icon: "brain.head.profile",
+                            subtitle: "Models, personas, prompt, and behaviour",
+                            value: Config.activeModel?.name
                         )
                     }
-
-                    NavigationLink {
-                        ToolsActionsSettingsScreen(appState: appState)
-                    } label: {
-                        categoryRow(
-                            "Tools & Actions",
-                            systemImage: "wrench.and.screwdriver",
-                            description: "Quick actions, tools, skills, and playbooks"
+                    OGDivider()
+                    categoryLink(destination: ToolsActionsSettingsScreen(appState: appState)) {
+                        OGRow(
+                            "Tools & Actions", icon: "wrench.and.screwdriver",
+                            subtitle: "Quick actions, tools, skills, and playbooks"
                         )
                     }
-
-                    NavigationLink {
-                        ConnectionsSettingsScreen(appState: appState)
-                    } label: {
-                        categoryRow(
-                            "Connections",
-                            systemImage: "point.3.connected.trianglepath.dotted",
-                            description: "Services, gateways, and MCP servers"
+                    OGDivider()
+                    categoryLink(destination: ConnectionsSettingsScreen(appState: appState)) {
+                        OGRow(
+                            "Connections", icon: "point.3.connected.trianglepath.dotted",
+                            subtitle: "Services, gateways, and MCP servers"
                         )
                     }
                 }
 
-                NavigationLink {
-                    GlassesPrivacySettingsScreen(appState: appState)
-                } label: {
-                    categoryRow(
-                        "Glasses & Privacy",
-                        systemImage: "lock.shield",
-                        description: "Hardware, privacy, and medical compliance"
+                OGDivider()
+                categoryLink(destination: GlassesPrivacySettingsScreen(appState: appState)) {
+                    OGRow(
+                        "Glasses & Privacy", icon: "lock.shield",
+                        subtitle: "Hardware, privacy, and medical compliance",
+                        value: appState.isConnected ? "Connected" : nil
                     )
                 }
-
-                NavigationLink {
-                    LookFeelSettingsScreen()
-                } label: {
-                    categoryRow(
-                        "Look & Feel",
-                        systemImage: "paintbrush",
-                        description: "Theme, accent colour, and languages"
+                OGDivider()
+                categoryLink(destination: LookFeelSettingsScreen()) {
+                    OGRow(
+                        "Look & Feel", icon: "paintbrush",
+                        subtitle: "Theme, accent colour, and languages",
+                        value: appearance.capitalized
                     )
                 }
 
                 if !simpleModeEnabled {
-                    NavigationLink {
-                        AdvancedSettingsScreen(appState: appState)
-                    } label: {
-                        categoryRow(
-                            "Advanced",
-                            systemImage: "gearshape.2",
-                            description: "Diagnostics and power-user tools"
+                    OGDivider()
+                    categoryLink(destination: AdvancedSettingsScreen(appState: appState)) {
+                        OGRow(
+                            "Advanced", icon: "gearshape.2", mutedIcon: true,
+                            subtitle: "Diagnostics and power-user tools",
+                            value: "Test panel"
                         )
                     }
                 }
             }
 
             // MARK: Simple Mode (always visible so the owner can leave it — behind the owner gate)
-            Section {
-                Toggle(isOn: Binding(
-                    get: { simpleModeEnabled },
-                    set: { requestSimpleModeChange(to: $0) }
-                )) {
-                    Label("Simple Mode", systemImage: "dial.low")
+            OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
+                OGRow("Simple Mode", icon: "dial.low", showsChevron: false) {
+                    Toggle("", isOn: Binding(
+                        get: { simpleModeEnabled },
+                        set: { requestSimpleModeChange(to: $0) }
+                    ))
+                    .labelsHidden()
                 }
-                Toggle(isOn: $settingsOwnerGateEnabled) {
-                    Label("Lock Settings", systemImage: "faceid")
+                OGDivider()
+                OGRow("Lock Settings", icon: "faceid", showsChevron: false) {
+                    Toggle("", isOn: $settingsOwnerGateEnabled)
+                        .labelsHidden()
+                        .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
                 }
-                .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
                 if exitGate.lastFailed {
+                    OGDivider()
                     Label("Couldn't verify it's you — Simple Mode stays on.", systemImage: "exclamationmark.triangle")
                         .font(.footnote)
                         .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                 }
-            } footer: {
-                Text("Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.")
             }
 
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            // MARK: — About
-            // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            Section {
-                HStack {
-                    Label("Version", systemImage: "info.circle")
-                    Spacer()
-                    Text(Self.appVersion)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    Label("Build", systemImage: "hammer")
-                    Spacer()
-                    Text(Self.buildNumber)
-                        .foregroundStyle(.secondary)
-                }
-
+            OGSection(
+                header: "About",
+                footer: "OpenGlasses © 2026 Skunkworks NZ Ltd. All rights reserved. Free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
+            ) {
+                OGRow("Version", icon: "info.circle", mutedIcon: true, value: Self.appVersion, showsChevron: false)
+                OGDivider()
+                OGRow("Build", icon: "hammer", mutedIcon: true, value: Self.buildNumber, showsChevron: false)
+                OGDivider()
                 Button {
                     let webURL = URL(string: "https://discord.gg/8W2qaXJzz9")!
                     UIApplication.shared.open(webURL)
                 } label: {
-                    HStack {
-                        Label("Discord", systemImage: "bubble.left.and.bubble.right")
-                        Spacer()
-                        Text("OpenGlasses Discord")
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "arrow.up.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    OGRow("Discord", icon: "bubble.left.and.bubble.right", showsChevron: false) {
+                        HStack(spacing: 4) {
+                            Text("OpenGlasses Discord")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .foregroundStyle(Color(.label))
-            } header: {
-                Text("About")
-            } footer: {
-                Text("OpenGlasses © 2026 Skunkworks NZ Ltd. All rights reserved. Free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built.")
+                .buttonStyle(.plain)
             }
         }
         .navigationTitle("Settings")
@@ -178,21 +165,13 @@ struct SettingsView: View {
 
     // MARK: - Category Row
 
-    /// A hub row: category label plus a one-line description of what lives inside.
-    /// The description lives INSIDE the Label's title so it aligns with the title text —
-    /// as a sibling of the Label it started at the leading edge, colliding with the icon.
-    private func categoryRow(_ title: String, systemImage: String, description: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(description)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        } icon: {
-            Image(systemName: systemImage)
-        }
-        .padding(.vertical, 2)
+    /// A hub row wrapped in a plain-styled NavigationLink — outside a List,
+    /// the link adds no chrome of its own, so `OGRow` supplies the chevron.
+    private func categoryLink<D: View, L: View>(
+        destination: D, @ViewBuilder label: () -> L
+    ) -> some View {
+        NavigationLink { destination } label: { label() }
+            .buttonStyle(.plain)
     }
 
     // MARK: - Owner gate (BM P10)
@@ -564,7 +543,7 @@ struct SmartRoutingView: View {
 
 struct HardwarePrivacyView: View {
     @ObservedObject var appState: AppState
-    @Binding var useGlassesMicForWakeWord: Bool
+    @Binding var micRoute: MicRoute
     @Binding var privacyFilterEnabled: Bool
     @Binding var conversationEncryptionEnabled: Bool
     @Binding var isTogglingEncryption: Bool
@@ -572,12 +551,20 @@ struct HardwarePrivacyView: View {
 
     var body: some View {
         Form {
+            // Plan CL P3: unified capture route. Headset mode exists because the
+            // glasses' hands-free mic link makes Display glasses put their call
+            // screen over the lens HUD — earbuds carry mic + voice, lens stays free.
             Section {
-                InfoToggle(
-                    title: "Listen via Glasses Mic",
-                    isOn: $useGlassesMicForWakeWord,
-                    info: "Routes the wake word listener through the glasses' Bluetooth microphone instead of the phone mic. Enables true hands-free use — say the wake phrase without touching your phone. Uses more battery due to continuous Bluetooth audio streaming."
-                )
+                Picker("Microphone", selection: $micRoute) {
+                    ForEach(MicRoute.allCases) { route in
+                        Text(route.label).tag(route)
+                    }
+                }
+            } footer: {
+                Text("Where the wake-word listener captures voice. Glasses Mic enables true hands-free use but streams Bluetooth audio continuously (more battery) — and on Display glasses the active hands-free link covers the lens HUD with the call screen. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never re-routes to Bluetooth.")
+            }
+
+            Section {
                 InfoToggle(
                     title: "Audio-Only Mode",
                     isOn: Binding(

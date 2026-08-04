@@ -82,6 +82,7 @@ struct VoiceTriggersSettingsScreen: View {
             }
         }
         .navigationTitle("Voice & Triggers")
+        .ogFormStyle()
     }
 }
 
@@ -256,6 +257,7 @@ struct AIPersonalitySettingsScreen: View {
             }
         }
         .navigationTitle("AI & Personality")
+        .ogFormStyle()
         .sheet(item: $editingModel) { model in
             ModelEditorView(model: model) { updated in
                 if let idx = modelConfigs.firstIndex(where: { $0.id == updated.id }) {
@@ -471,6 +473,7 @@ struct ToolsActionsSettingsScreen: View {
             }
         }
         .navigationTitle("Tools & Actions")
+        .ogFormStyle()
     }
 }
 
@@ -509,13 +512,27 @@ struct ConnectionsSettingsScreen: View {
                 } label: {
                     Label("MCP Servers", systemImage: "point.3.connected.trianglepath.dotted")
                 }
+
+                NavigationLink {
+                    HermesBridgeSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Label("Hermes Bridge", systemImage: "laptopcomputer.and.iphone")
+                        Spacer()
+                        if Config.hermesBridgeEnabled {
+                            Text(appState.hermesBridge.status == .connected ? "Connected" : "On")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             } header: {
                 Text("Connected Apps & Services")
             } footer: {
-                Text("ElevenLabs voices, Perplexity search, broadcast targets, and live-streaming live under Services. Gateways are OpenClaw bridges to your devices (smart home, automations). MCP Servers expose external tool servers the AI can call.")
+                Text("ElevenLabs voices, Perplexity search, broadcast targets, and live-streaming live under Services. Gateways are OpenClaw bridges to your devices (smart home, automations). MCP Servers expose external tool servers the AI can call. Hermes Bridge routes conversations through a Hermes agent running on your Mac.")
             }
         }
         .navigationTitle("Connections")
+        .ogFormStyle()
     }
 }
 
@@ -527,7 +544,7 @@ struct GlassesPrivacySettingsScreen: View {
 
     // Privacy filter
     @State private var privacyFilterEnabled = Config.privacyFilterEnabled
-    @State private var useGlassesMicForWakeWord = Config.useGlassesMicForWakeWord
+    @State private var micRoute = Config.micRoute
 
     // Security
     @State private var conversationEncryptionEnabled = Config.conversationEncryptionEnabled
@@ -539,7 +556,7 @@ struct GlassesPrivacySettingsScreen: View {
                 NavigationLink {
                     HardwarePrivacyView(
                         appState: appState,
-                        useGlassesMicForWakeWord: $useGlassesMicForWakeWord,
+                        micRoute: $micRoute,
                         privacyFilterEnabled: $privacyFilterEnabled,
                         conversationEncryptionEnabled: $conversationEncryptionEnabled,
                         isTogglingEncryption: $isTogglingEncryption
@@ -581,6 +598,7 @@ struct GlassesPrivacySettingsScreen: View {
             }
         }
         .navigationTitle("Glasses & Privacy")
+        .ogFormStyle()
         .onDisappear {
             saveSettings()
         }
@@ -591,7 +609,7 @@ struct GlassesPrivacySettingsScreen: View {
     private func saveSettings() {
         Config.setPrivacyFilterEnabled(privacyFilterEnabled)
         appState.privacyFilter.isEnabled = privacyFilterEnabled
-        Config.setUseGlassesMicForWakeWord(useGlassesMicForWakeWord)
+        Config.setMicRoute(micRoute)
 
         appState.restartWakeWordIfDirect()
     }
@@ -659,6 +677,7 @@ struct LookFeelSettingsScreen: View {
             }
         }
         .navigationTitle("Look & Feel")
+        .ogFormStyle()
     }
 }
 
@@ -671,6 +690,12 @@ struct AdvancedSettingsScreen: View {
     var body: some View {
         Form {
             Section {
+                NavigationLink {
+                    DeveloperPanelView(appState: appState)
+                } label: {
+                    Label("Developer", systemImage: "stethoscope")
+                }
+
                 NavigationLink {
                     PromptInspectorView(appState: appState)
                 } label: {
@@ -707,5 +732,6 @@ struct AdvancedSettingsScreen: View {
             }
         }
         .navigationTitle("Advanced")
+        .ogFormStyle()
     }
 }

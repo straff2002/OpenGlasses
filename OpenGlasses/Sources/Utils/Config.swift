@@ -2175,6 +2175,46 @@ struct Config {
         !tavilyAPIKey.isEmpty
     }
 
+    // MARK: - Brave Search
+
+    /// Brave Search API key. Stored in the Keychain (see `KeychainService`).
+    static var braveAPIKey: String {
+        if let key = KeychainService.string(for: "braveAPIKey"), !key.isEmpty {
+            return key
+        }
+        return ""
+    }
+
+    static func setBraveAPIKey(_ key: String) {
+        KeychainService.setString(key, for: "braveAPIKey")
+    }
+
+    static var isBraveConfigured: Bool {
+        !braveAPIKey.isEmpty
+    }
+
+    // MARK: - Hermes Agent Bridge (Plan CL P5)
+
+    /// Route conversation turns through a Hermes agent bridge on the LAN.
+    /// Like every gateway feature, only effective while Agent Mode is on.
+    @UserDefaultsBacked("hermesBridgeEnabled", default: false) static var hermesBridgeEnabled: Bool
+    static func setHermesBridgeEnabled(_ enabled: Bool) { hermesBridgeEnabled = enabled }
+
+    @UserDefaultsBacked("hermesBridgeHost", default: "") static var hermesBridgeHost: String
+    static func setHermesBridgeHost(_ host: String) { hermesBridgeHost = host }
+
+    @UserDefaultsBacked("hermesBridgePort", default: HermesBridgeProtocol.defaultPort) static var hermesBridgePort: Int
+    static func setHermesBridgePort(_ port: Int) { hermesBridgePort = port }
+
+    /// Optional bridge auth token (`?token=`). Stored in the Keychain.
+    static var hermesBridgeToken: String {
+        KeychainService.string(for: "hermesBridgeToken") ?? ""
+    }
+
+    static func setHermesBridgeToken(_ token: String) {
+        KeychainService.setString(token, for: "hermesBridgeToken")
+    }
+
     // MARK: - Privacy Filter
 
     @UserDefaultsBacked("privacyFilterEnabled", default: false) static var privacyFilterEnabled: Bool
@@ -2272,8 +2312,26 @@ struct Config {
         UserDefaults.standard.set(name, forKey: "accentColorName")
     }
 
-    // MARK: - Glasses Mic for Wake Word
+    // MARK: - Mic Route (Plan CL P3)
 
+    /// Unified capture route: phone / glasses / headset. Migrates the old
+    /// `useGlassesMicForWakeWord` boolean (whose default was glasses-on).
+    static var micRoute: MicRoute {
+        if let raw = UserDefaults.standard.string(forKey: "micRoute"),
+           let route = MicRoute(rawValue: raw) {
+            return route
+        }
+        return useGlassesMicForWakeWord ? .glasses : .phone
+    }
+
+    static func setMicRoute(_ route: MicRoute) {
+        UserDefaults.standard.set(route.rawValue, forKey: "micRoute")
+        // Keep the legacy boolean coherent for anything that still reads it.
+        UserDefaults.standard.set(route == .glasses, forKey: "useGlassesMicForWakeWord")
+    }
+
+    /// Legacy boolean, kept for migration and old readers. `.headset` counts
+    /// as "not glasses" — the whole point is keeping the glasses link idle.
     static var useGlassesMicForWakeWord: Bool {
         let key = "useGlassesMicForWakeWord"
         if UserDefaults.standard.object(forKey: key) == nil { return true }
@@ -2281,7 +2339,7 @@ struct Config {
     }
 
     static func setUseGlassesMicForWakeWord(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "useGlassesMicForWakeWord")
+        setMicRoute(enabled ? .glasses : .phone)
     }
 
     /// Use on-device speech recognition for the always-on wake-word listener (Plan BE). Default on:
