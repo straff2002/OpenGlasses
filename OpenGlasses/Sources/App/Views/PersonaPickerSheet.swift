@@ -645,7 +645,7 @@ struct PersonaRow: View {
         HStack(spacing: 12) {
             Image(systemName: persona.icon ?? "person.circle")
                 .font(.title3)
-                .foregroundStyle(isActive ? AppAccent.aiCoral : .secondary)
+                .foregroundStyle(isActive ? AppAccent.color : .secondary)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {

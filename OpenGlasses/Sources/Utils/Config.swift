@@ -2305,7 +2305,7 @@ struct Config {
     // MARK: - Accent Color
 
     static var accentColorName: String {
-        UserDefaults.standard.string(forKey: "accentColorName") ?? "brand"
+        UserDefaults.standard.string(forKey: "accentColorName") ?? AppAccent.defaultPresetID
     }
 
     static func setAccentColorName(_ name: String) {

@@ -76,7 +76,7 @@ struct PersonasView: View {
                         } label: {
                             Label("Project", systemImage: "folder")
                         }
-                        .tint(AppAccent.aiCoral)
+                        .tint(AppAccent.color)
                     }
                 }
             } header: {

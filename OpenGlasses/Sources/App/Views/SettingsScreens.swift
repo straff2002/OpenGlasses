@@ -606,7 +606,7 @@ struct GlassesPrivacySettingsScreen: View {
 
 /// Theme, accent colour, and languages (always visible, including Simple Mode).
 struct LookFeelSettingsScreen: View {
-    @AppStorage("accentColorName") private var accentColorName: String = "violet"
+    @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
 
     var body: some View {
         Form {

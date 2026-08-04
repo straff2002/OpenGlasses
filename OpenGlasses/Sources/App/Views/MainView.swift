@@ -9,7 +9,7 @@ struct MainView: View {
     @State private var selectedTab = 0
     @State private var showOnboarding = Config.needsOnboarding
     @AppStorage("appAppearance") private var appearance: String = "dark"
-    @AppStorage("accentColorName") private var accentColorName: String = "green"
+    @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
 
     private var colorScheme: ColorScheme? {
         switch appearance {
