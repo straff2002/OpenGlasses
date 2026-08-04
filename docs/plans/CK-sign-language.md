@@ -1,10 +1,12 @@
 # Plan CK — Sign-Language Recognition (fingerspelling first)
 
-**Status: 🚧 P0 + P2 wiring shipped (2026-08-04); publish pending approval** — the P2
-live-decode pipeline (MediaPipe holistic landmarks → `HolisticWindower` →
-`FingerspellingLiveDecoder` → `DecodeStabilityPolicy`) is implemented behind seams and
-golden-fixture-tested against the Python reference; the feature stays dormant until the
-model artefact is published (see P2 section). Earlier state: `LandmarkWindower` (canonical
+**Status: 🚧 P0 + P2 shipped, model published (2026-08-05)** — the P2 live-decode
+pipeline (MediaPipe holistic landmarks → `HolisticWindower` → `FingerspellingLiveDecoder`
+→ `DecodeStabilityPolicy`) is implemented behind seams and golden-fixture-tested against
+the Python reference, and the verified artefact is published with
+`Config.fingerspellingModelRepo` defaulting to it (see P2 §5). Remaining before users see
+it: the activation surface (accessibility toggle, camera→landmarker wiring, TTS/HUD
+output, About attribution) and P3 device smoke. Earlier state: `LandmarkWindower` (canonical
 21-joint order, wrist-origin/palm-scale/mirror/y-flip normalisation, CMVN, windowing) and
 `DecodeStabilityPolicy` (confidence floor → OOV rejection → majority vote → display streak →
 gap-commit with dictionary gate) shipped pure with full synthetic-stream suites, plus the
@@ -166,11 +168,14 @@ device-smoke question.
    greedy CTC collapse, plus the commit/streak/gap word logic P0 established; committed
    words → TTS (hookup at publish).
 
-5. **Artifact plumbing**: publish the mlpackage + vocab sidecar + landmarker task to the
-   HF model repo (**approval + fresh token consent required — not done**), then flip
-   `Config.fingerspellingModelRepo`. Apache-2.0 LICENSE + competition-dataset CC-BY 4.0
-   attribution live in the HF repo; the About screen gains the competition-dataset
-   attribution (not FSboard) when the feature ships.
+5. **Artifact plumbing ✅ (2026-08-05)**: the mlpackage + vocab sidecar + landmarker task
+   are published to the HF model repo (Apache-2.0 LICENSE + competition-dataset CC-BY 4.0
+   attribution live there) and `Config.fingerspellingModelRepo` now defaults to it — the
+   in-app downloader works out of the box. The published artefact was regenerated from
+   source and verified three ways: bit-identical logits against the committed fixtures
+   (max |Δ| = 0.000), the env-gated Swift engine test passing against it, and the standing
+   gate re-scoring 20.81% CER / median 10.8% (original: 20.8%/10.8%). The About screen
+   gains the competition-dataset attribution (not FSboard) when the feature ships.
 
 6. **Tests as the gate (no device needed)**: golden fixtures exported from the Python
    reference (`Scripts/export-fingerspelling-fixtures.py`: three gate-corpus sequences —

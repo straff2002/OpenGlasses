@@ -12,11 +12,11 @@ enum FingerspellingModelState: Equatable {
 }
 
 /// Describes the downloadable fingerspelling model (Plan CK): the gate-passing CTC model
-/// over 543 holistic landmarks (20.8% CER on the competition-corpus gate), converted to a
-/// 15 MB fp16 Core ML package and hosted as unpacked files on HuggingFace — downloaded on
-/// first enable rather than bundled (the Kokoro/SenseVoice discipline). The repo is
-/// configured rather than hard-coded because the converted artefact hasn't been published
-/// yet; until it is, the store reports `.notConfigured` and the feature stays dormant.
+/// over 543 holistic landmarks (20.8% CER on the competition-corpus gate), converted to
+/// an fp16 Core ML package and hosted as unpacked files on HuggingFace (published
+/// 2026-08-05, `Config.fingerspellingModelRepo`) — downloaded on first enable rather
+/// than bundled (the Kokoro/SenseVoice discipline). The repo stays configurable so a
+/// staged replacement artefact needs no app update.
 ///
 /// Alongside the model: `vocab.txt` (the CTC charset, blank first, one symbol per line —
 /// a sanity copy of `FingerspellingCTCDecoder.charset`) and `holistic_landmarker.task`
@@ -60,7 +60,7 @@ struct FingerspellingModelBundle: Equatable {
             displayName: "Fingerspelling (CTC)",
             directoryName: "FingerspellingModel",
             huggingFaceRepo: Config.fingerspellingModelRepo,
-            approxDownloadBytes: 29_000_000,
+            approxDownloadBytes: 32_000_000,
             requiredFiles: [
                 "\(modelPackageName)/Manifest.json",
                 "\(modelPackageName)/Data/com.apple.CoreML/model.mlmodel",

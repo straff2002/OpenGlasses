@@ -2079,13 +2079,17 @@ struct Config {
 
     // MARK: - Fingerspelling model (Plan CK)
 
-    /// HuggingFace repo hosting the converted fingerspelling Core ML model (unpacked files,
-    /// produced by `Scripts/convert-fingerspelling-model.py`). Deliberately empty (feature
-    /// dormant): the first converted candidate FAILED the FSboard eval gate (~91% CER — see
-    /// the CK plan doc), so nothing is worth defaulting to yet. Set explicitly to trial a
-    /// staged artefact.
+    /// HuggingFace repo hosting the fingerspelling Core ML model (unpacked files: the
+    /// mlpackage, `vocab.txt`, and the holistic landmarker task — see
+    /// `FingerspellingModelBundle`). Default is the published gate-passing artefact
+    /// (20.8% CER on the competition-corpus gate, published 2026-08-05); override via
+    /// UserDefaults to trial a staged alternative.
+    static let fingerspellingModelRepoDefault = "Skunk0/openglasses-fingerspelling-ctc"
     static var fingerspellingModelRepo: String {
-        UserDefaults.standard.string(forKey: "fingerspellingModelRepo") ?? ""
+        let stored = UserDefaults.standard.string(forKey: "fingerspellingModelRepo")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let stored, !stored.isEmpty else { return fingerspellingModelRepoDefault }
+        return stored
     }
     static func setFingerspellingModelRepo(_ value: String) {
         UserDefaults.standard.set(value.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "fingerspellingModelRepo")
