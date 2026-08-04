@@ -679,6 +679,7 @@ struct ModeTemplatePreview: View {
     @ObservedObject var appState: AppState
     let onInstall: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var editingPromptPreset: PromptPreset? = nil
 
 
     private var modelName: String {
@@ -722,8 +723,17 @@ struct ModeTemplatePreview: View {
                 }
                 LabeledContent("Model", value: modelName)
                 LabeledContent("Prompt Preset", value: presetName)
+                if let preset = Config.savedPresets.first(where: { $0.id == template.presetId }) {
+                    Button {
+                        editingPromptPreset = preset
+                    } label: {
+                        Label("Edit Prompt", systemImage: "square.and.pencil")
+                    }
+                }
             } header: {
                 Text("Configuration")
+            } footer: {
+                Text("Editing a built-in prompt makes it your own copy, safe from app updates.")
             }
 
             // MARK: Soul / Personality
@@ -763,5 +773,17 @@ struct ModeTemplatePreview: View {
         }
         .navigationTitle("Mode Preview")
         .navigationBarTitleDisplayMode(.inline)
+        // Same editor + fork-on-save semantics as the System Prompt list.
+        .sheet(item: $editingPromptPreset) { preset in
+            PromptPresetEditorView(preset: preset) { updated in
+                var presets = Config.savedPresets
+                if let idx = presets.firstIndex(where: { $0.id == updated.id }) {
+                    presets[idx] = updated
+                } else {
+                    presets.append(updated)
+                }
+                Config.setSavedPresets(presets)
+            }
+        }
     }
 }

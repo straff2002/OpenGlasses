@@ -512,23 +512,10 @@ struct ConnectionsSettingsScreen: View {
                 } label: {
                     Label("MCP Servers", systemImage: "point.3.connected.trianglepath.dotted")
                 }
-
-                NavigationLink {
-                    HermesBridgeSettingsView(appState: appState)
-                } label: {
-                    HStack {
-                        Label("Hermes Bridge", systemImage: "laptopcomputer.and.iphone")
-                        Spacer()
-                        if Config.hermesBridgeEnabled {
-                            Text(appState.hermesBridge.status == .connected ? "Connected" : "On")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
             } header: {
                 Text("Connected Apps & Services")
             } footer: {
-                Text("ElevenLabs voices, Perplexity search, broadcast targets, and live-streaming live under Services. Gateways are OpenClaw bridges to your devices (smart home, automations). MCP Servers expose external tool servers the AI can call. Hermes Bridge routes conversations through a Hermes agent running on your Mac.")
+                Text("ElevenLabs voices, Perplexity search, broadcast targets, and live-streaming live under Services. Gateways connect the app to external agents — OpenClaw tool bridges and the Hermes agent bridge. MCP Servers expose external tool servers the AI can call.")
             }
         }
         .navigationTitle("Connections")
