@@ -1,7 +1,12 @@
 # Plan CK — Sign-Language Recognition (fingerspelling first)
 
-**Status: 🚧 P0 shipped; gate corpus corrected, passing model converted — publish pending
-approval (2026-08-03)** — `LandmarkWindower` (canonical
+**Status: 🚧 P0 + P2 shipped, model published (2026-08-05)** — the P2 live-decode
+pipeline (MediaPipe holistic landmarks → `HolisticWindower` → `FingerspellingLiveDecoder`
+→ `DecodeStabilityPolicy`) is implemented behind seams and golden-fixture-tested against
+the Python reference, and the verified artefact is published with
+`Config.fingerspellingModelRepo` defaulting to it (see P2 §5). Remaining before users see
+it: the activation surface (accessibility toggle, camera→landmarker wiring, TTS/HUD
+output, About attribution) and P3 device smoke. Earlier state: `LandmarkWindower` (canonical
 21-joint order, wrist-origin/palm-scale/mirror/y-flip normalisation, CMVN, windowing) and
 `DecodeStabilityPolicy` (confidence floor → OOV rejection → majority vote → display streak →
 gap-commit with dictionary gate) shipped pure with full synthetic-stream suites, plus the
@@ -98,10 +103,93 @@ places, and the spell-it-out fallback deaf signers already use with non-signers.
 - **P1 (unblocked; needs the converted artefact published):** model eval harness — offline
   accuracy on recorded landmark fixtures before any live wiring; Vision→canonical joint-order
   extractor.
-- **P2:** live pipeline behind an accessibility-tier toggle; TTS output; HUD caption mirror;
-  FSboard attribution in About.
-- **P3:** device smoke — frame rate vs. battery, distance/angle envelope (FSboard is
-  selfie-framed; glasses are 1–2 m), two-person UX.
+- **P2 ✅ core wiring (2026-08-04):** the live-decode pipeline below — MediaPipe Tasks
+  dependency, `HolisticLandmarkService` seam, `HolisticWindower` + CTC decode pure cores,
+  golden fixtures from the Python reference. The activation surface (accessibility-tier
+  toggle, TTS hookup, HUD caption mirror, About attribution) lands with the model publish —
+  wiring a user-visible toggle to a `.notConfigured` download would be dead UI.
+- **P3:** device smoke — frame rate vs. battery with the holistic landmarker live,
+  distance/angle envelope (the corpus is selfie-framed; glasses are 1–2 m), decode cadence
+  tuning, two-person UX.
+
+## P2 — live decode wiring (architecture set by the 2026-08-03 ablation)
+
+**Why MediaPipe:** the passing model consumes the full MediaPipe Holistic contract
+(543 landmarks × xyz = 1629 features). Ablation on the gate corpus: full **21.1%** CER,
+hands+full-pose **29.2%** (over the bar), hands+pose+lips **31.1%** (partial face perturbs
+the per-sequence normalisation), hands-only **55.6%**. Apple Vision cannot express the
+contract (19 body joints vs 33 BlazePose; ~76 face points vs 468 mesh), so the landmark
+source is **MediaPipe Tasks iOS** — the extractor family that produced the training corpus,
+i.e. the model's native input distribution. Known fallback curve if the landmarker is too
+heavy on device: drop face → 29.2%.
+
+**Camera geometry note:** corpus clips are signers facing their own phone camera; the
+glasses wearer faces a signing interlocutor who faces the glasses camera — same facing
+geometry, no mirroring correction expected. Distance/angle/stability shift remains a P3
+device-smoke question.
+
+### Components (deterministic core first, integration behind seams)
+
+1. **Dependency** (decided 2026-08-04): MediaPipe Tasks Vision 1.0.0 as a **vendored local
+   SPM package** (`Vendor/MediaPipeTasks`, mirroring `Vendor/SherpaOnnx`) — CocoaPods would
+   bolt a second dependency manager onto the XcodeGen+SPM project. Twist: the graph static
+   libraries are 410 MB / 818 MB — over GitHub's 100 MB per-file hard limit — so unlike
+   SherpaOnnx the binaries are **fetched, not committed**: `Scripts/fetch-mediapipe-frameworks.sh`
+   (pinned version + sha256, Google's official artefacts) populates the gitignored
+   `Frameworks/`, locally and in `ci_post_clone.sh`. The graph runtime's per-SDK
+   `-force_load` lives on the app target in `project.base.yml` (SPM can't express
+   sim-vs-device linker flags) and is **Release-only**: unit tests never execute the
+   graph, and force-loading the 818 MB simulator archive into Debug bloated the debug
+   dylib ~76 MB and hung the XCTest runner at bootstrap — a Debug *device* run of the real
+   landmarker needs the flags copied to Debug for that session (P3 does exactly that).
+   The landmark model (`holistic_landmarker.task`, ~14 MB) ships through the existing
+   fingerspelling download bundle rather than the app bundle.
+
+2. **`HolisticLandmarkService`** (integration, behind the `HolisticLandmarkProviding`
+   protocol so unit tests never touch the SDK): MediaPipe 1.0.0 ships a **single holistic
+   landmarker task** (face + pose + both hands in one video-running-mode call, monotonic
+   timestamps) — supersedes the drafted three-landmarker assembly. Output assembled as
+   (543, 3) in canonical order — face 0–467 (first 468 of the tasks-API's 478), left hand
+   468–488, pose 489–521, right hand 522–542 — NaN where a part is undetected.
+
+3. **`HolisticWindower`** (pure core; replaces `LandmarkWindower`'s contract for this
+   model): per window ≤ 768 frames: drop all-NaN frames, whole-window handedness vote →
+   mirror (x → 1−x plus the left/right landmark swap table, shipped as a Swift constant
+   generated from the training pipeline's correspondence tables), per-window per-channel
+   standardisation over present values, NaN→0, flatten to 1629, zero-pad to 768 + float
+   mask.
+
+4. **Inference + decode** (pure core + Core ML): `FingerspellingInferenceEngine` compiles
+   and runs the downloaded mlpackage (features (1,768,1629) + mask (1,768) → logits
+   (1,384,62)); `FingerspellingCTCDecoder` reads the first ⌈T/2⌉ rows (greedy collapse,
+   blank 0, ids−1 → 59-char charset shipped in code with a `vocab.txt` sanity sidecar);
+   `FingerspellingLiveDecoder` feeds per-row observations into the existing
+   `DecodeStabilityPolicy` — with vote window and display streak of 1 the policy *is* the
+   greedy CTC collapse, plus the commit/streak/gap word logic P0 established; committed
+   words → TTS (hookup at publish).
+
+5. **Artifact plumbing ✅ (2026-08-05)**: the mlpackage + vocab sidecar + landmarker task
+   are published to the HF model repo (Apache-2.0 LICENSE + competition-dataset CC-BY 4.0
+   attribution live there) and `Config.fingerspellingModelRepo` now defaults to it — the
+   in-app downloader works out of the box. The published artefact was regenerated from
+   source and verified three ways: bit-identical logits against the committed fixtures
+   (max |Δ| = 0.000), the env-gated Swift engine test passing against it, and the standing
+   gate re-scoring 20.81% CER / median 10.8% (original: 20.8%/10.8%). The About screen
+   gains the competition-dataset attribution (not FSboard) when the feature ships.
+
+6. **Tests as the gate (no device needed)**: golden fixtures exported from the Python
+   reference (`Scripts/export-fingerspelling-fixtures.py`: three gate-corpus sequences —
+   plain, left-handed, and with dropped all-NaN frames — recording raw landmarks →
+   features → logits → decoded text) with the Swift pipeline held to them (small tolerance
+   on features/logits, exact on decode). Synthetic-stream suites for buffer/mask edge
+   cases (short clips, all-NaN runs, >768 overflow, left-hand flip). MediaPipe seam mocked
+   throughout; no `.shared` service exercise in unit tests.
+
+### Explicitly deferred to P3
+Frame-rate/battery envelope with the holistic landmarker live, distance/angle robustness,
+decode cadence tuning (per-second re-decode vs gap-triggered; re-feeding refined rows),
+confidence-floor tuning against live logit distributions, and the drop-face fallback
+decision if perf demands it.
 
 ## Open questions
 

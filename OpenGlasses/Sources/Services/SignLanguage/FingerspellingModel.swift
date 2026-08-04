@@ -11,16 +11,18 @@ enum FingerspellingModelState: Equatable {
     case failed(reason: String)
 }
 
-/// Describes the downloadable fingerspelling model (Plan CK): a Conformer-CTC over hand
-/// landmarks, converted to Core ML (`Scripts/convert-fingerspelling-model.py`) and hosted as
-/// unpacked files on HuggingFace — downloaded on first enable rather than bundled (the
-/// Kokoro/SenseVoice discipline; the fp16 model is ~80 MB). The repo is configured rather than
-/// hard-coded because the converted artefact hasn't been published yet; until it is, the store
-/// reports `.notConfigured` and the feature stays dormant.
+/// Describes the downloadable fingerspelling model (Plan CK): the gate-passing CTC model
+/// over 543 holistic landmarks (20.8% CER on the competition-corpus gate), converted to
+/// an fp16 Core ML package and hosted as unpacked files on HuggingFace (published
+/// 2026-08-05, `Config.fingerspellingModelRepo`) — downloaded on first enable rather
+/// than bundled (the Kokoro/SenseVoice discipline). The repo stays configurable so a
+/// staged replacement artefact needs no app update.
 ///
-/// Alongside the model: `vocab.txt` (the CTC charset, blank first, one symbol per line) and
-/// `cmvn.json` (`{"mean": [63], "std": [63]}` feature stats) — both consumed by the pure
-/// pipeline (`LandmarkWindower.applyCMVN`, the P1 decoder).
+/// Alongside the model: `vocab.txt` (the CTC charset, blank first, one symbol per line —
+/// a sanity copy of `FingerspellingCTCDecoder.charset`) and `holistic_landmarker.task`
+/// (the MediaPipe holistic landmark extractor consumed by `HolisticLandmarkService` —
+/// distributed with the model rather than app-bundled). Per-sequence standardisation
+/// replaced the old CMVN sidecar; there are no shipped feature stats.
 struct FingerspellingModelBundle: Equatable {
 
     let id: String
@@ -47,23 +49,24 @@ struct FingerspellingModelBundle: Equatable {
         return URL(string: "https://huggingface.co/\(huggingFaceRepo)/resolve/main/\(escaped)")
     }
 
-    static let modelPackageName = "FingerspellingConformer.mlpackage"
+    static let modelPackageName = "Fingerspelling2P.mlpackage"
+    static let landmarkerTaskName = "holistic_landmarker.task"
 
     /// The active bundle; the repo comes from Settings so publishing the artefact needs no
     /// app update.
     static var active: FingerspellingModelBundle {
         FingerspellingModelBundle(
-            id: "fingerspelling-conformer-v1",
-            displayName: "Fingerspelling (Conformer-CTC)",
+            id: "fingerspelling-ctc-v2",
+            displayName: "Fingerspelling (CTC)",
             directoryName: "FingerspellingModel",
             huggingFaceRepo: Config.fingerspellingModelRepo,
-            approxDownloadBytes: 85_000_000,
+            approxDownloadBytes: 32_000_000,
             requiredFiles: [
                 "\(modelPackageName)/Manifest.json",
                 "\(modelPackageName)/Data/com.apple.CoreML/model.mlmodel",
                 "\(modelPackageName)/Data/com.apple.CoreML/weights/weight.bin",
                 "vocab.txt",
-                "cmvn.json",
+                landmarkerTaskName,
             ]
         )
     }

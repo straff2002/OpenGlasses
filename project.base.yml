@@ -88,6 +88,11 @@ packages:
   # tier (Additional Capabilities #1). Local package; binaries under Vendor/SherpaOnnx/Frameworks.
   SherpaOnnx:
     path: Vendor/SherpaOnnx
+  # Vendored MediaPipe Tasks Vision (Plan CK fingerspelling landmark pipeline). Local
+  # package; binaries under Vendor/MediaPipeTasks/Frameworks are FETCHED, not committed —
+  # run Scripts/fetch-mediapipe-frameworks.sh once after cloning (CI does it post-clone).
+  MediaPipeTasks:
+    path: Vendor/MediaPipeTasks
 
 targets:
   OpenGlasses:
@@ -115,7 +120,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "346"
+        CURRENT_PROJECT_VERSION: "347"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -128,6 +133,23 @@ targets:
         # The vendored sherpa-onnx binary (Vendor/SherpaOnnx) provides the C API for both.
         OTHER_SWIFT_FLAGS: "$(inherited) -D KOKORO_ENABLED -D SHERPA_ONNX_ENABLED"
         SKIP_INSTALL: "NO"
+      configs:
+        # MediaPipe's graph runtime lives in a separate per-SDK archive (SPM can't express
+        # sim-vs-device linker flags — this is the podspec's user_target_xcconfig,
+        # translated). The framework references its symbols, so every config must link it;
+        # only Release *force-loads* it, because calculator registration happens in static
+        # initialisers that plain archive linking dead-strips. Debug deliberately skips
+        # force_load: unit tests never execute the graph, and force-loading the 818 MB
+        # simulator archive bloated the debug dylib by ~76 MB and hung the XCTest runner
+        # at bootstrap (abseil static-init lock contention). Trade-off: running the real
+        # landmarker in a *Debug* device build needs Release's -force_load copied to Debug
+        # for that session (P3 device smoke will do exactly that).
+        Debug:
+          "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"
+          "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"
+        Release:
+          "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) -force_load $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"
+          "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) -force_load $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"
     dependencies:
       - package: meta-wearables-dat-ios
         product: MWDATCore
@@ -157,6 +179,8 @@ targets:
         product: WebRTC
       - package: SherpaOnnx
         product: SherpaOnnxWrapper
+      - package: MediaPipeTasks
+        product: MediaPipeTasksShim
       - target: GlassesActivityWidget
       - target: OpenGlassesShareExtension
 
@@ -186,7 +210,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "346"
+        CURRENT_PROJECT_VERSION: "347"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -224,7 +248,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "346"
+        CURRENT_PROJECT_VERSION: "347"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic

@@ -46,6 +46,18 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # The MediaPipe binaries (Plan CK) are fetched, not committed — the graph static
+      # libraries exceed GitHub's per-file size limit. Cached so the ~440 MB download
+      # doesn't repeat every run; the fetch script is idempotent on a cache hit.
+      - name: Cache MediaPipe frameworks
+        uses: actions/cache@v4
+        with:
+          path: Vendor/MediaPipeTasks/Frameworks
+          key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
+
+      - name: Fetch MediaPipe frameworks
+        run: ./Scripts/fetch-mediapipe-frameworks.sh
+
       - name: Skip Watch targets
         run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
 

@@ -4,6 +4,12 @@ targets:
     platform: iOS
     sources:
       - path: OpenGlassesTests
+        excludes:
+          - "Fixtures/**"
+      # Golden fixtures exported from the Python reference pipeline (Plan CK —
+      # Scripts/export-fingerspelling-fixtures.py); loaded via Bundle(for:).
+      - path: OpenGlassesTests/Fixtures
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.tests
