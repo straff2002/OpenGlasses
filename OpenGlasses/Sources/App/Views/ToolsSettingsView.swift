@@ -134,6 +134,13 @@ struct ToolsSettingsView: View {
                 ForEach(filteredTools, id: \.name) { tool in
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 8) {
+                            // What the tool does, in the words the AI itself is given —
+                            // the schema below is meaningless without it.
+                            Text(tool.description)
+                                .font(.caption)
+                                .foregroundStyle(Color(.label))
+                                .fixedSize(horizontal: false, vertical: true)
+
                             if let properties = tool.params["properties"] as? [String: Any], !properties.isEmpty {
                                 Text("Parameters")
                                     .font(.caption)
