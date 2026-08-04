@@ -49,6 +49,11 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 echo "ci_post_clone: $(xcodegen --version 2>&1 | head -n 1)"
 
+# MediaPipe Tasks frameworks (Plan CK) are fetched, not committed — the graph static
+# libraries exceed GitHub's per-file size limit. Pinned + sha256-verified from dl.google.com
+# (Google's official CocoaPods artefacts); the script is idempotent.
+./Scripts/fetch-mediapipe-frameworks.sh
+
 ./Scripts/generate-xcodeproj.sh
 
 # Xcode Cloud requires a committed Package.resolved and will NOT resolve packages
