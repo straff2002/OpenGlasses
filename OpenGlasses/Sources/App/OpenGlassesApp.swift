@@ -1897,7 +1897,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // Already registered this session
                 self.hasEverRegistered = true
                 self.addDebugEvent("Already registered on launch")
-                await requestEarlyPermission()
+                await requestEarlyPermission(allowRequest: false)
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
@@ -1906,7 +1906,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if settledState.rawValue >= 3 {
                     self.hasEverRegistered = true
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
-                    await requestEarlyPermission()
+                    await requestEarlyPermission(allowRequest: false)
                 } else {
                     self.isConnected = false
                     self.addDebugEvent("State \(settledState.rawValue) — tap Connect to register")
@@ -1915,11 +1915,18 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Request camera permission early so devices appear in addDevicesListener.
+    /// Establish camera permission early so devices appear in addDevicesListener.
     /// Per Meta docs: "A device will not appear in devicesStream until the user has
     /// granted at least one permission (e.g., camera) through the Meta AI app."
-    private func requestEarlyPermission() async {
-        addDebugEvent("Requesting early camera permission for device discovery...")
+    ///
+    /// `allowRequest` decides what happens when the permission is *not* already granted.
+    /// Requesting it deep-links out to the Meta AI app, so that only ever happens for a
+    /// user-initiated action — the same rule `autoConnectGlasses()` follows for registration.
+    /// At launch we only *check*: an already-granted permission still connects silently, but a
+    /// registered user with no glasses paired is no longer thrown into the Meta AI app on every
+    /// single launch, where there is nothing for them to approve.
+    private func requestEarlyPermission(allowRequest: Bool) async {
+        addDebugEvent("Checking early camera permission for device discovery...")
         guard WearablesBootstrap.ensureConfigured() else {
             addDebugEvent("Wearables SDK unavailable — cannot request glasses camera permission")
             return
@@ -1951,6 +1958,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.isConnected = true
                 // Also ensure CameraService knows permission is cached
                 cameraService.permissionGranted = true
+                return
+            }
+
+            guard allowRequest else {
+                addDebugEvent("Camera permission not granted — tap Connect to approve in Meta AI")
                 return
             }
 
@@ -2016,7 +2028,9 @@ class AppState: ObservableObject, AppStateProtocol {
         let currentState = Wearables.shared.registrationState.rawValue
         registrationStateRaw = currentState
         if currentState >= 3 {
-            await requestEarlyPermission()
+            // User-initiated: deep-linking to the Meta AI app to approve the permission is the
+            // whole point of this path.
+            await requestEarlyPermission(allowRequest: true)
             return
         }
 
