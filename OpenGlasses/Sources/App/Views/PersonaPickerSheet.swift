@@ -458,6 +458,7 @@ struct PersonaDetailView: View {
 
     @State private var soulText: String = ""
     @State private var hasChanges = false
+    @State private var editingPromptPreset: PromptPreset? = nil
 
     private var modelName: String {
         Config.savedModels.first { $0.id == persona.modelId }?.name ?? "Default"
@@ -515,8 +516,15 @@ struct PersonaDetailView: View {
                         Text(preset.prompt.prefix(300) + (preset.prompt.count > 300 ? "..." : ""))
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
+                        Button {
+                            editingPromptPreset = preset
+                        } label: {
+                            Label("Edit Prompt", systemImage: "square.and.pencil")
+                        }
                     } header: {
                         Text("System Prompt")
+                    } footer: {
+                        Text("Editing a built-in prompt makes it your own copy, safe from app updates.")
                     }
                 }
 
@@ -602,6 +610,18 @@ struct PersonaDetailView: View {
             .onAppear {
                 soulText = persona.soulOverride ?? ""
             }
+            // Same editor + fork-on-save semantics as the System Prompt list.
+            .sheet(item: $editingPromptPreset) { preset in
+                PromptPresetEditorView(preset: preset) { updated in
+                    var presets = Config.savedPresets
+                    if let idx = presets.firstIndex(where: { $0.id == updated.id }) {
+                        presets[idx] = updated
+                    } else {
+                        presets.append(updated)
+                    }
+                    Config.setSavedPresets(presets)
+                }
+            }
         }
     }
 
@@ -625,7 +645,7 @@ struct PersonaRow: View {
         HStack(spacing: 12) {
             Image(systemName: persona.icon ?? "person.circle")
                 .font(.title3)
-                .foregroundStyle(isActive ? AppAccent.aiCoral : .secondary)
+                .foregroundStyle(isActive ? AppAccent.color : .secondary)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -679,6 +699,7 @@ struct ModeTemplatePreview: View {
     @ObservedObject var appState: AppState
     let onInstall: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var editingPromptPreset: PromptPreset? = nil
 
 
     private var modelName: String {
@@ -722,8 +743,17 @@ struct ModeTemplatePreview: View {
                 }
                 LabeledContent("Model", value: modelName)
                 LabeledContent("Prompt Preset", value: presetName)
+                if let preset = Config.savedPresets.first(where: { $0.id == template.presetId }) {
+                    Button {
+                        editingPromptPreset = preset
+                    } label: {
+                        Label("Edit Prompt", systemImage: "square.and.pencil")
+                    }
+                }
             } header: {
                 Text("Configuration")
+            } footer: {
+                Text("Editing a built-in prompt makes it your own copy, safe from app updates.")
             }
 
             // MARK: Soul / Personality
@@ -763,5 +793,17 @@ struct ModeTemplatePreview: View {
         }
         .navigationTitle("Mode Preview")
         .navigationBarTitleDisplayMode(.inline)
+        // Same editor + fork-on-save semantics as the System Prompt list.
+        .sheet(item: $editingPromptPreset) { preset in
+            PromptPresetEditorView(preset: preset) { updated in
+                var presets = Config.savedPresets
+                if let idx = presets.firstIndex(where: { $0.id == updated.id }) {
+                    presets[idx] = updated
+                } else {
+                    presets.append(updated)
+                }
+                Config.setSavedPresets(presets)
+            }
+        }
     }
 }

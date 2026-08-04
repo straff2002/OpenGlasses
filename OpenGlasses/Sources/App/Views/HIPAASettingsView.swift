@@ -215,7 +215,6 @@ struct HIPAASettingsView: View {
             // MARK: - Master Toggle
             Section {
                 Toggle("Medical Compliance Mode", isOn: $complianceEnabled)
-                    .tint(AppAccent.aiCoral)
                     .onChange(of: complianceEnabled) { _, newValue in
                         if newValue {
                             showConfirmEnable = true

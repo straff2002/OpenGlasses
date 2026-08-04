@@ -2,11 +2,15 @@
 
 [English](README.md)
 
-一款源代码可用（source-available）的语音 AI 助手应用，专为 Ray-Ban 与 Oakley Meta 智能眼镜打造。内置 85+ 原生工具，支持多 LLM（云端 + 本地设备）并自动路由模型，**完全离线语音模式**（端侧语音转文字、AI 与语音），多角色同时唤醒，在 Ray-Ban Display 眼镜上提供镜内 HUD 与免提任务操作，本地设备知识图谱，实时翻译，免提现场作业指导，实时视觉教练，MCP 工具服务器，以及 CarPlay + Apple Watch 配套应用——全部通过语音免提控制。
+一款源代码可用（source-available）的语音 AI 助手应用，专为 Meta 智能眼镜（Ray-Ban Meta、Ray-Ban Display、Oakley Meta HSTN / Vanguard 及 Meta 自有品牌眼镜）打造，并支持 EVEN Realities G2 作为备选镜内 HUD。内置 85+ 原生工具，支持多 LLM（云端 + 本地设备）并自动路由模型，**完全离线语音模式**（端侧语音转文字、AI 与语音），多角色同时唤醒，在 Ray-Ban Display 眼镜上提供镜内 HUD 与免提任务操作，本地设备知识图谱，实时翻译，免提现场作业指导，实时视觉教练，MCP 工具服务器，以及 CarPlay + Apple Watch 配套应用——全部通过语音免提控制。
 
 > **注意**：Meta Wearables SDK 目前处于**开发者预览**阶段。尚不支持 App Store 分发——每位用户需使用自己的 Meta 开发者凭据从源码构建应用。
 
 ---
+
+<!-- TODO(gallery): 「## 界面预览」放在这里 — docs/media/ 中的设备截图（语音页、设置中心、
+     开发者面板、模式页；之后是镜内 HUD 照片/GIF、实时翻译、步行导航）。请在连接眼镜的真机上
+     截图 — 不要出现错误横幅。 -->
 
 ## 快速开始
 
@@ -18,6 +22,18 @@
 ---
 
 ## 功能特性
+
+一览（详见下方各节）：
+
+| | |
+|---|---|
+| **对话** | 角色（多唤醒词）· Hey Siri · 完全离线语音 · 文字转语音 · 实时模式 · 打断功能 |
+| **思考** | 85+ 原生工具 · 本地设备 LLM · 自托管服务器 · 智能模型路由 · 提示词预设 · 自定义工具 · MCP 服务器 · 语音教学技能 |
+| **视觉** | 实时教练 · 智能捕获 · 物品记忆 · 实时翻译 · 相机与直播 · 镜内 HUD |
+| **记忆** | 社交上下文 · 知识大脑 |
+| **连接** | Home Assistant · CarPlay 与 Apple Watch · 透明度与隐私 |
+| **工作** | 现场作业助手 · 医疗合规 |
+
 
 ### 角色 — 多 AI 个性
 
@@ -333,112 +349,16 @@ OpenGlasses 采用了 Apple 的**相机**与**助手** App Intent Schema，因�
 - **iOS 26+**
 - **Xcode 26+**
 - **实体 iPhone**（需要 Bluetooth、相机、麦克风）
-- **Ray-Ban 或 Oakley Meta 智能眼镜**（通过 Meta AI 应用配对）——镜内 HUD 需要 **Ray-Ban Display**
+- **Meta 智能眼镜** —— Ray-Ban Meta、Ray-Ban Display、Oakley Meta HSTN / Vanguard 及 Meta 自有品牌眼镜（通过 Meta AI 应用配对）；所有型号均具备完整功能，镜内 HUD 需要带显示屏的型号（如 **Ray-Ban Display**）
+- **EVEN Realities G2**（可选，无需 Meta 账号）—— 仅作为**备选 HUD 后端**：卡片、字幕、导航与免提任务操作可渲染到 G2；语音仍走手机/耳机，且因 G2 无摄像头，相机相关功能不可用。可与 Meta 眼镜同时使用 —— Meta 摄像头 + G2 HUD 组合可行
 - 至少一个 LLM：API 密钥（Anthropic、OpenAI、Gemini 等）或已下载的本地模型
 
 ---
 
 ## 从源码构建
 
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/straff2002/OpenGlasses.git
-cd OpenGlasses
-```
-
-### 2. Meta 开发者凭据
-
-1. 前往 [wearables.developer.meta.com](https://wearables.developer.meta.com/)
-2. 创建账号、组织和应用
-3. 记下你的 **Meta App ID** 和 **Client Token**
-4. 在 Meta 控制台 → iOS 设置中，输入你的 Apple Team ID、Bundle ID 和 Universal Link URL
-
-### 3. 配置 Info.plist
-
-更新 `OpenGlasses/Info.plist`：
-
-```xml
-<key>MWDAT</key>
-<dict>
-    <key>AppLinkURLScheme</key>
-    <string>https://YOUR-DOMAIN/YOUR-PATH</string>
-    <key>MetaAppID</key>
-    <string>YOUR_META_APP_ID</string>
-    <key>ClientToken</key>
-    <string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
-    <key>TeamID</key>
-    <string>$(DEVELOPMENT_TEAM)</string>
-</dict>
-```
-
-### 4. Universal Links
-
-在 `https://YOUR-DOMAIN/.well-known/apple-app-site-association` 托管一个 `apple-app-site-association` 文件：
-
-```json
-{
-  "applinks": {
-    "details": [{
-      "appID": "YOUR_TEAM_ID.YOUR_BUNDLE_ID",
-      "paths": ["/YOUR-PATH/*"]
-    }]
-  }
-}
-```
-
-### 5. 启用开发者模式
-
-在 iPhone 上：Meta AI 应用 → 设置 → 关于 → 连续点击版本号 **5 次** → 开启开发者模式。
-
-### 6. 构建与运行
-
-```bash
-open OpenGlasses.xcodeproj
-```
-
-选择你的 iPhone，在 Signing 中设置你的 Team，然后运行（⌘R）。
-
----
-
-## 配置
-
-所有设置都在应用内完成——无需编辑源代码。
-
-### API 密钥（设置 → AI 模型）
-
-| 服务 | 用途 | 获取方式 |
-|------|------|---------|
-| Anthropic | Claude LLM | [console.anthropic.com](https://console.anthropic.com/) |
-| OpenAI | GPT + Realtime | [platform.openai.com](https://platform.openai.com/) |
-| Google Gemini | Gemini Live | [aistudio.google.com](https://aistudio.google.com/) |
-| Groq | 快速推理 | [console.groq.com](https://console.groq.com/) |
-| ElevenLabs | 自然语音 TTS | [elevenlabs.io](https://elevenlabs.io/) |
-| Perplexity | 网络搜索 | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) |
-
-### 服务（设置 → 服务与集成）
-
-| 服务 | 设置项 |
-|------|--------|
-| **ElevenLabs** | API 密钥 + 语音选择（24 种语音） |
-| **Perplexity** | API 密钥（未设置时回退到 DuckDuckGo） |
-| **直播** | 平台 + RTMP URL + 直播密钥 + 弹幕朗读（Twitch 频道、语速上限、仅提及） |
-| **OpenClaw** | 启用 + 连接模式 + 主机/端口 + Token |
-| **Home Assistant** | URL + 长期访问令牌 |
-
----
-
-## 常见问题排查
-
-| 问题 | 解决方案 |
-|------|---------|
-| 唤醒词无法检测 | 点击麦克风按钮重启；检查 Bluetooth 音频路由 |
-| 眼镜无声音输出 | 在 iOS 设置中验证 Bluetooth 连接 |
-| 眼镜无法连接 | 点击 "连接眼镜"；在 Meta AI 应用中启用开发者模式 |
-| HomeKit 找不到设备 | HomeKit 在首次工具调用时初始化——说 "list smart home devices" 并等待 10 秒 |
-| 本地模型崩溃 | Gemma 4 E2B 需要约 8 GB 内存；6GB 设备请使用更小的模型（0.5B–2B） |
-| 模型下载卡住 | 保持应用在前台；短暂切到后台后下载会继续 |
-| "不受信任的开发者" | 设置 → 通用 → VPN 与设备管理 → 验证（需要联网） |
+Meta 开发者凭据、Universal Links、个人签名、应用内配置（API 密钥与服务）以及故障排除，
+全部收录于 **[docs/BUILDING.md](docs/BUILDING.md)**（英文）。
 
 ---
 

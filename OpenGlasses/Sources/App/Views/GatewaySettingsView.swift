@@ -92,6 +92,28 @@ struct GatewaySettingsView: View {
                 }
             }
 
+            // Agent bridge (Plan CL P5): unlike the tool gateways above, the bridge
+            // takes over whole conversation turns — it lives here because "connects
+            // the app to an external agent" is one concept to the user.
+            Section {
+                NavigationLink {
+                    HermesBridgeSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Label("Hermes Bridge", systemImage: "laptopcomputer.and.iphone")
+                        Spacer()
+                        if Config.hermesBridgeEnabled {
+                            Text(appState.hermesBridge.status == .connected ? "Connected" : "On")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Agent Bridge")
+            } footer: {
+                Text("Gateways add tools the assistant can call. The Hermes Bridge goes further: when enabled, an agent on your Mac answers whole conversations with its own tools and memory.")
+            }
+
             // Remote invoke (Plan BH): per-class consent for gateway-initiated device commands.
             remoteInvokeSection
         }

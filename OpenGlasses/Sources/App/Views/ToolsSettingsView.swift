@@ -89,6 +89,18 @@ struct ToolsSettingsView: View {
             .capitalized
     }
 
+    /// JSON-schema type names → words a reader recognises.
+    static func friendlyType(_ type: String?) -> String {
+        switch type {
+        case "string": return "text"
+        case "integer", "number": return "number"
+        case "boolean": return "yes / no"
+        case "array": return "list"
+        case "object": return "details"
+        default: return type ?? ""
+        }
+    }
+
     private var filteredTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         if searchText.isEmpty { return allTools }
         let query = searchText.lowercased()
@@ -134,23 +146,53 @@ struct ToolsSettingsView: View {
                 ForEach(filteredTools, id: \.name) { tool in
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 8) {
+                            // What the tool does, in the words the AI itself is given —
+                            // the schema below is meaningless without it.
+                            Text(tool.description)
+                                .font(.caption)
+                                .foregroundStyle(Color(.label))
+                                .fixedSize(horizontal: false, vertical: true)
+
                             if let properties = tool.params["properties"] as? [String: Any], !properties.isEmpty {
                                 Text("Parameters")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
 
+                                let requiredParams = (tool.params["required"] as? [String]) ?? []
                                 ForEach(Array(properties.keys.sorted()), id: \.self) { key in
                                     if let paramInfo = properties[key] as? [String: Any] {
-                                        HStack(alignment: .top, spacing: 8) {
-                                            Text(key)
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundStyle(Color(.label))
-                                            Spacer()
-                                            Text(paramInfo["type"] as? String ?? "any")
-                                                .font(.system(.caption2, design: .monospaced))
-                                                .foregroundStyle(.secondary)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                                Text(key)
+                                                    .font(.system(.caption, design: .monospaced))
+                                                    .foregroundStyle(Color(.label))
+                                                if !requiredParams.contains(key) {
+                                                    Text("optional")
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.tertiary)
+                                                }
+                                                Spacer()
+                                                Text(Self.friendlyType(paramInfo["type"] as? String))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.tertiary)
+                                            }
+                                            // The schema's own description — the same text that
+                                            // tells the AI what to pass — beats a bare type name.
+                                            if let description = paramInfo["description"] as? String, !description.isEmpty {
+                                                Text(description)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                            if let choices = paramInfo["enum"] as? [String], !choices.isEmpty {
+                                                Text("One of: \(choices.joined(separator: ", "))")
+                                                    .font(.system(.caption2, design: .monospaced))
+                                                    .foregroundStyle(.tertiary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
                                         }
+                                        .padding(.vertical, 2)
                                     }
                                 }
                             }

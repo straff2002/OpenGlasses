@@ -126,28 +126,34 @@ struct PromptPresetEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Name", text: $name)
-                } header: {
-                    Text("Preset Name")
-                } footer: {
-                    Text("A short label to pick this prompt from the list — e.g. \"Concise\", \"Coding helper\", \"British butler\".")
-                }
+            // GeometryReader so the prompt editor fills the screen below the
+            // name field instead of floating at a fixed height over empty form.
+            GeometryReader { geo in
+                Form {
+                    Section {
+                        TextField("Name", text: $name)
+                    } header: {
+                        Text("Preset Name")
+                    } footer: {
+                        Text("A short label to pick this prompt from the list — e.g. \"Concise\", \"Coding helper\", \"British butler\".")
+                    }
 
-                Section {
-                    TextEditor(text: $prompt)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(Color(.label))
-                        .frame(minHeight: 200)
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } header: {
-                    Text("System Prompt")
-                } footer: {
-                    Text("This prompt shapes how the AI responds. It's included with every message.")
+                    Section {
+                        TextEditor(text: $prompt)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(Color(.label))
+                            // Name section + headers/footers take ~250pt; the
+                            // editor gets everything left, never less than 200.
+                            .frame(minHeight: max(200, geo.size.height - 250))
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } header: {
+                        Text("System Prompt")
+                    } footer: {
+                        Text("This prompt shapes how the AI responds. It's included with every message.")
+                    }
                 }
             }
             .navigationTitle(isEditing ? "Edit Preset" : "New Preset")

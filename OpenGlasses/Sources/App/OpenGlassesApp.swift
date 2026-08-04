@@ -538,6 +538,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let proactiveAlerts = ProactiveAlertService()
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
+    /// Hermes agent bridge (Plan CL P5): optional LAN "brain" behind Agent Mode.
+    let hermesBridge = HermesBridgeService()
     /// Dwell capture (Plan CG): gaze-hold on an object captures it. Passive until frames
     /// flow; `Config.dwellCaptureEnabled` gates the per-frame work.
     let dwellCapture = DwellCaptureService()
@@ -1320,6 +1322,21 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { await openClawBridge.checkConnection() }
         }
 
+        // Hermes agent bridge (Plan CL P5): eyes on request, events into the field log.
+        hermesBridge.photoProvider = { [weak self] in
+            guard let self, self.isConnected else {
+                throw NSError(domain: "HermesBridge", code: 3,
+                              userInfo: [NSLocalizedDescriptionKey: "Glasses camera unavailable"])
+            }
+            return try await self.cameraService.capturePhoto()
+        }
+        hermesBridge.onDebugEvent = { [weak self] event in
+            self?.addDebugEvent(event)
+        }
+        if hermesBridge.isEnabled {
+            hermesBridge.connect()
+        }
+
         // Privacy filter — apply saved preference
         privacyFilter.isEnabled = Config.privacyFilterEnabled
     }
@@ -1880,7 +1897,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // Already registered this session
                 self.hasEverRegistered = true
                 self.addDebugEvent("Already registered on launch")
-                await requestEarlyPermission()
+                await requestEarlyPermission(allowRequest: false)
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
@@ -1889,7 +1906,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if settledState.rawValue >= 3 {
                     self.hasEverRegistered = true
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
-                    await requestEarlyPermission()
+                    await requestEarlyPermission(allowRequest: false)
                 } else {
                     self.isConnected = false
                     self.addDebugEvent("State \(settledState.rawValue) — tap Connect to register")
@@ -1898,11 +1915,18 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Request camera permission early so devices appear in addDevicesListener.
+    /// Establish camera permission early so devices appear in addDevicesListener.
     /// Per Meta docs: "A device will not appear in devicesStream until the user has
     /// granted at least one permission (e.g., camera) through the Meta AI app."
-    private func requestEarlyPermission() async {
-        addDebugEvent("Requesting early camera permission for device discovery...")
+    ///
+    /// `allowRequest` decides what happens when the permission is *not* already granted.
+    /// Requesting it deep-links out to the Meta AI app, so that only ever happens for a
+    /// user-initiated action — the same rule `autoConnectGlasses()` follows for registration.
+    /// At launch we only *check*: an already-granted permission still connects silently, but a
+    /// registered user with no glasses paired is no longer thrown into the Meta AI app on every
+    /// single launch, where there is nothing for them to approve.
+    private func requestEarlyPermission(allowRequest: Bool) async {
+        addDebugEvent("Checking early camera permission for device discovery...")
         guard WearablesBootstrap.ensureConfigured() else {
             addDebugEvent("Wearables SDK unavailable — cannot request glasses camera permission")
             return
@@ -1934,6 +1958,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.isConnected = true
                 // Also ensure CameraService knows permission is cached
                 cameraService.permissionGranted = true
+                return
+            }
+
+            guard allowRequest else {
+                addDebugEvent("Camera permission not granted — tap Connect to approve in Meta AI")
                 return
             }
 
@@ -1999,7 +2028,9 @@ class AppState: ObservableObject, AppStateProtocol {
         let currentState = Wearables.shared.registrationState.rawValue
         registrationStateRaw = currentState
         if currentState >= 3 {
-            await requestEarlyPermission()
+            // User-initiated: deep-linking to the Meta AI app to approve the permission is the
+            // whole point of this path.
+            await requestEarlyPermission(allowRequest: true)
             return
         }
 
@@ -3387,6 +3418,21 @@ class AppState: ObservableObject, AppStateProtocol {
                                 await narrateModelSwitch(from: from, to: to, failure: failure)
                             }
                         )
+                    }
+                    // Hermes agent bridge (Plan CL P5): when enabled (Agent Mode), the
+                    // bridge is the brain for the turn — it runs its own tools/memory and
+                    // may request a photo mid-query. Any failure falls through to the
+                    // normal local/cloud path so the bridge can never strand a turn.
+                    if hermesBridge.isEnabled {
+                        do {
+                            let bridged = try await hermesBridge.ask(query)
+                            nowPlayingAtStart = nil
+                            return bridged
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            addDebugEvent("Hermes bridge failed (\(error.localizedDescription)) — using normal path")
+                        }
                     }
                     if useLocalAgent {
                         // Weather-decision turn ("do I take a jacket"): pre-fetch the forecast

@@ -15,6 +15,7 @@ struct ServicesSettingsView: View {
     // Web Search
     @State private var perplexityKeyInput: String = Config.perplexityAPIKey
     @State private var tavilyKeyInput: String = Config.tavilyAPIKey
+    @State private var braveKeyInput: String = Config.braveAPIKey
 
     // Live Streaming
     @State private var broadcastPlatform: String = Config.broadcastPlatform
@@ -360,11 +361,28 @@ struct ServicesSettingsView: View {
                         }
                     }
                 }
+
+                SecretInputField(placeholder: "Brave Search API Key", text: $braveKeyInput)
+                    .onChange(of: braveKeyInput) { _, newValue in
+                        Config.setBraveAPIKey(newValue)
+                    }
+
+                if braveKeyInput.isEmpty {
+                    Link(destination: URL(string: "https://api-dashboard.search.brave.com/")!) {
+                        HStack {
+                            Label("Get API Key", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            Text("brave.com")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             } header: {
                 Text("Web Search")
             } footer: {
                 if perplexityKeyInput.isEmpty && tavilyKeyInput.isEmpty {
-                    Text("Add a Perplexity or Tavily API key for AI-powered search with cited sources. Without one, DuckDuckGo is used.")
+                    Text("Add a Perplexity or Tavily API key for AI-powered search with cited sources, or a Brave Search key for an independent web index. With several configured the order is Perplexity → Tavily → Brave. Without any, DuckDuckGo is used.")
                 } else if !perplexityKeyInput.isEmpty {
                     Text("Web searches use Perplexity AI with cited sources\(tavilyKeyInput.isEmpty ? "" : ", then Tavily").")
                 } else {
