@@ -1,0 +1,160 @@
+# Building from Source
+
+Full setup: Meta developer credentials, Universal Links, personal signing overlays,
+in-app configuration, and troubleshooting. Start with the [Quick Start](../README.md#quick-start)
+if you just want it running.
+
+### 1. Clone
+
+```bash
+git clone https://github.com/straff2002/OpenGlasses.git
+cd OpenGlasses
+```
+
+### 2. Meta Developer Credentials
+
+1. Go to [wearables.developer.meta.com](https://wearables.developer.meta.com/)
+2. Create an account, organization, and app
+3. Note your **Meta App ID** and **Client Token**
+4. In Meta dashboard → iOS settings, enter your Apple Team ID, Bundle ID, and Universal Link URL
+
+### 3. Configure Meta keys (Info.plist)
+
+Put your Meta **App ID**, **Client Token**, and universal-link URL in the `MWDAT` section. Either:
+
+- **Recommended:** run `./Scripts/setup-local-dev.sh`, edit `Config/Info/Info.personal.plist` (gitignored), then `./Scripts/generate-xcodeproj.sh` again; or
+- Edit the shared template `OpenGlasses/Info.plist` if you are not using a personal overlay.
+
+```xml
+<key>MWDAT</key>
+<dict>
+    <key>AppLinkURLScheme</key>
+    <string>https://YOUR-DOMAIN/YOUR-PATH</string>
+    <key>MetaAppID</key>
+    <string>YOUR_META_APP_ID</string>
+    <key>ClientToken</key>
+    <string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
+    <key>TeamID</key>
+    <string>$(DEVELOPMENT_TEAM)</string>
+</dict>
+```
+
+### 4. Universal Links
+
+Host an `apple-app-site-association` file at `https://YOUR-DOMAIN/.well-known/apple-app-site-association`:
+
+```json
+{
+  "applinks": {
+    "details": [{
+      "appID": "YOUR_TEAM_ID.YOUR_BUNDLE_ID",
+      "paths": ["/YOUR-PATH/*"]
+    }]
+  }
+}
+```
+
+**Both ends must match your build, or registration silently never completes** (#246):
+
+- The AASA `appID` must be **your** Team ID + bundle ID — a copied AASA still declaring the upstream app makes iOS refuse the domain association.
+- Your entitlements file must contain the **associated-domains** entitlement for the same domain (`applinks:YOUR-DOMAIN`). Without it, iOS never even attempts the link-back. If you use a personal entitlements overlay, check it has:
+
+```xml
+<key>com.apple.developer.associated-domains</key>
+<array>
+    <string>applinks:YOUR-DOMAIN</string>
+</array>
+```
+
+The failure mode when either end is wrong: approval completes in the Meta AI app, but the approval callback (a Universal Link) never reaches OpenGlasses — registration never finalises, the devices listener never fires, and connecting fails. The in-app error names the stalled registration state and points here.
+
+### 5. Enable Developer Mode
+
+On iPhone: Meta AI app → Settings → About → tap version number **5 times** → toggle Developer Mode on.
+
+### 6. Build & Run
+
+Same as [Quick Start](#quick-start) step 1. The repo ships [`project.base.yml`](project.base.yml) plus optional [`project.local.yml`](project.local.yml.example); XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.
+
+```bash
+brew install xcodegen
+./Scripts/generate-xcodeproj.sh
+open OpenGlasses.xcodeproj
+```
+
+[Xcode Cloud](https://developer.apple.com/documentation/xcode/xcode-cloud) runs `./Scripts/generate-xcodeproj.sh` in `ci_scripts/ci_post_clone.sh` (full app + watch + tests).
+
+Default generate includes **watch** and **unit tests**. To build a slimmer project locally (iPhone + widget only):
+
+```bash
+cp .openglasses-generate.env.example .openglasses-generate.env   # gitignored
+./Scripts/generate-xcodeproj.sh
+```
+
+Or one-off: `OPENGLASSES_SKIP_WATCH=1 OPENGLASSES_SKIP_TESTS=1 ./Scripts/generate-xcodeproj.sh`
+
+#### Optional: personal signing & Meta config
+
+Team ID, entitlements, and Meta keys differ per developer. Those settings live in **gitignored** files (never committed), merged on top of the shared spec via `project.local.yml`:
+
+| File (gitignored) | Purpose |
+|-------------------|---------|
+| `project.local.yml` | Team ID + `DEVELOPMENT_TEAM`; personal entitlements / Info.plist paths (see `project.local.yml.example`) |
+| `Config/Entitlements/Personal/*.entitlements` | Capabilities your provisioning profile supports |
+| `Config/Info/Info.personal.plist` | Full app `Info.plist` when you need your own Meta `ClientToken` / URL schemes |
+
+First-time setup from the templates:
+
+```bash
+./Scripts/setup-local-dev.sh
+```
+
+Edit `project.local.yml` (`developmentTeam`) and the files under `Config/` as needed, then run `./Scripts/generate-xcodeproj.sh` again.
+
+If you only need Xcode’s automatic signing with the shared entitlements, skip the local overlay and set your team in Xcode after opening the generated project.
+
+Select your iPhone, fix signing if prompted, and run (⌘R).
+
+---
+
+## Configuration
+
+All settings are in-app — no source code editing needed.
+
+### API Keys (Settings → AI Models)
+
+| Service | Purpose | Where to Get |
+|---------|---------|--------------|
+| Anthropic | Claude LLM | [console.anthropic.com](https://console.anthropic.com/) |
+| OpenAI | GPT + Realtime | [platform.openai.com](https://platform.openai.com/) |
+| Google Gemini | Gemini Live | [aistudio.google.com](https://aistudio.google.com/) |
+| Groq | Fast inference | [console.groq.com](https://console.groq.com/) |
+| ElevenLabs | Natural TTS | [elevenlabs.io](https://elevenlabs.io/) |
+| Perplexity | Web search | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) |
+
+### Services (Settings → Services & Integrations)
+
+| Service | Settings |
+|---------|----------|
+| **ElevenLabs** | API key + voice selection (24 voices) |
+| **Perplexity** | API key (DuckDuckGo fallback if not set) |
+| **Live Streaming** | Platform + RTMP URL + stream key + chat read-aloud (Twitch channel, rate, mentions-only) |
+| **OpenClaw** | Enable + connection mode + host/port + token |
+| **Home Assistant** | URL + Long-Lived Access Token |
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Wake word not detecting | Tap mic button to restart; check Bluetooth audio routing |
+| No audio through glasses | Verify Bluetooth connection in iOS Settings |
+| Glasses not connecting | Tap "Connect to Glasses"; enable Developer Mode in Meta AI app |
+| HomeKit not finding devices | HomeKit initializes on first tool call — say "list smart home devices" and wait 10s |
+| Local model won't load ("not enough memory") | Close other apps in the app switcher and use **Try again** in Download & Manage Models (live headroom shown there), or switch to a smaller model (0.5B–2B) |
+| Model download stuck | Keep app in foreground; downloads continue if briefly backgrounded |
+| "Untrusted Developer" | Settings → General → VPN & Device Management → Verify (requires internet) |
+
+---
+

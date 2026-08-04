@@ -135,11 +135,8 @@ class WakeWordService: NSObject, ObservableObject {
             print("🎤 Audio already paused (hold count \(pauseHoldCount))")
             return
         }
-        let useGlassesMic = Config.useGlassesMicForWakeWord
         // Omitting mixWithOthers/duckOthers causes iOS to interrupt (pause) other audio apps
-        let options: AVAudioSession.CategoryOptions = useGlassesMic
-            ? [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
-            : [.defaultToSpeaker]
+        let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: false)
         // .default (NOT .measurement): .measurement disables system audio processing/gain,
         // which makes TTS playback extremely quiet on the iPhone speaker. The wake-word /
         // command capture works fine in .default (see resumeOtherAudio, which already does this).
@@ -154,7 +151,7 @@ class WakeWordService: NSObject, ObservableObject {
             [.bluetoothHFP, .bluetoothA2DP, .bluetoothLE].contains($0.portType)
         }
         if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
-        preferGlassesMicIfAvailable(session)
+        preferConfiguredMicIfAvailable(session)
         let outRoute = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
         print("🎤 Pausing other audio for active listening — output route: \(outRoute)")
     }
@@ -170,10 +167,7 @@ class WakeWordService: NSObject, ObservableObject {
             print("🎤 Audio still held by \(pauseHoldCount) other holder(s) — not resuming yet")
             return
         }
-        let useGlassesMic = Config.useGlassesMicForWakeWord
-        let options: AVAudioSession.CategoryOptions = useGlassesMic
-            ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
-            : [.mixWithOthers, .defaultToSpeaker]
+        let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
         // .default (not .measurement) so concurrent music/podcasts keep playing cleanly
         // while the wake-word listener runs — .measurement disables system audio
         // processing and fights other audio even with .mixWithOthers.
@@ -191,25 +185,31 @@ class WakeWordService: NSObject, ObservableObject {
         await resumeOtherAudio()
     }
 
-    /// When "use glasses mic" is on, explicitly prefer a Bluetooth input belonging to the
-    /// glasses (port name contains "Meta"/"Ray-Ban"). On iOS 26 Ray-Ban audio rides
-    /// Bluetooth LE Audio (LC3), so the glasses mic can surface as `.bluetoothLE` rather
-    /// than `.bluetoothHFP`, and the system default input may otherwise stay on the iPhone.
-    /// No-op when the option is off or no such input is present, so the iPhone-mic fallback
-    /// path is never affected. (Recipe from glassbridge's iOS 26 audio learnings; can't be
-    /// verified without Ray-Ban hardware, so it's deliberately additive and guarded.)
-    private func preferGlassesMicIfAvailable(_ session: AVAudioSession) {
-        guard Config.useGlassesMicForWakeWord, let inputs = session.availableInputs else { return }
-        let glassesPortTypes: [AVAudioSession.Port] = [.bluetoothHFP, .bluetoothLE, .headsetMic]
-        guard let glassesInput = inputs.first(where: { port in
-            glassesPortTypes.contains(port.portType) &&
-            ["meta", "ray-ban", "rayban"].contains { port.portName.lowercased().contains($0) }
-        }) else { return }
+    /// Explicitly prefer the Bluetooth input the configured route asks for.
+    /// On iOS 26 Ray-Ban audio rides Bluetooth LE Audio (LC3), so the glasses
+    /// mic can surface as `.bluetoothLE` rather than `.bluetoothHFP`, and the
+    /// system default input may otherwise stay on the iPhone. The headset
+    /// route (Plan CL P3) prefers a non-glasses Bluetooth mic and never falls
+    /// back to the glasses — an active glasses hands-free link is what puts
+    /// their call screen over the lens HUD. No-op on the phone route or when
+    /// no matching input is present, so the iPhone-mic fallback path is never
+    /// affected. (Additive and guarded; needs hardware to verify live.)
+    private func preferConfiguredMicIfAvailable(_ session: AVAudioSession) {
+        let route = Config.micRoute
+        guard route != .phone, let inputs = session.availableInputs else { return }
+        let ports = inputs.map { (name: $0.portName, type: $0.portType) }
+        guard let index = MicRoutePolicy.preferredInputIndex(for: route, ports: ports) else {
+            if route == .headset {
+                print("🎤 No non-glasses Bluetooth mic found — headset route stays on the iPhone mic")
+            }
+            return
+        }
+        let input = inputs[index]
         do {
-            try session.setPreferredInput(glassesInput)
-            print("🎤 Preferred glasses mic input: \(glassesInput.portName) (\(glassesInput.portType.rawValue))")
+            try session.setPreferredInput(input)
+            print("🎤 Preferred \(route.rawValue) mic input: \(input.portName) (\(input.portType.rawValue))")
         } catch {
-            print("🎤 Could not set glasses mic as preferred input: \(error.localizedDescription)")
+            print("🎤 Could not set \(route.rawValue) mic as preferred input: \(error.localizedDescription)")
         }
     }
 
@@ -235,13 +235,10 @@ class WakeWordService: NSObject, ObservableObject {
             mode = .voiceChat
             options = [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
         } else {
-            let useGlassesMic = Config.useGlassesMicForWakeWord
             // .default (not .measurement) so other audio coexists cleanly with the always-on
             // listener — see resumeOtherAudio for the same rationale.
             mode = .default
-            options = useGlassesMic
-                ? [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
-                : [.mixWithOthers, .defaultToSpeaker]
+            options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
         }
 
         do {
@@ -258,8 +255,8 @@ class WakeWordService: NSObject, ObservableObject {
         if carPlayMode {
             print("🎤 CarPlay mode: .playAndRecord + .voiceChat (voice control active)")
         } else {
-            preferGlassesMicIfAvailable(audioSession)
-            print("🎤 Mic source: \(Config.useGlassesMicForWakeWord ? "glasses (Bluetooth)" : "phone (built-in)")")
+            preferConfiguredMicIfAvailable(audioSession)
+            print("🎤 Mic source: \(Config.micRoute.rawValue)")
         }
 
         let route = audioSession.currentRoute

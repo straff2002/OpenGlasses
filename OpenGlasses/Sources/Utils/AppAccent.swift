@@ -9,6 +9,11 @@ enum AppAccent {
         let color: Color
     }
 
+    /// The one fresh-install default, shared by every `@AppStorage` site and
+    /// `Config` — three views each carrying their own literal is how the app
+    /// once rendered green while Look & Feel highlighted Coral.
+    static let defaultPresetID = "violet"   // the Coral preset (legacy id)
+
     /// Brand adaptive colour: #255E88 in light mode, #D9FDFD in dark mode.
     static let brandColor: Color = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark
@@ -35,7 +40,8 @@ enum AppAccent {
 
     /// Resolve a color name to its Color value.
     static func color(for name: String) -> Color {
-        presets.first(where: { $0.id == name })?.color ?? presets[0].color
+        presets.first(where: { $0.id == name })?.color
+            ?? presets.first(where: { $0.id == defaultPresetID })!.color
     }
 
     /// The current accent color (non-reactive, use for one-off reads).
@@ -48,7 +54,9 @@ enum AppAccent {
 
 /// SwiftUI environment key so child views reactively update when accent changes.
 private struct AccentColorKey: EnvironmentKey {
-    static let defaultValue: Color = AppAccent.brandColor
+    /// Resolves the stored selection, so a view that renders outside
+    /// `MainView`'s environment still matches the chosen accent.
+    static let defaultValue: Color = AppAccent.color
 }
 
 extension EnvironmentValues {

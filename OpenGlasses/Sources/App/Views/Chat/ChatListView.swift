@@ -83,7 +83,6 @@ struct ChatListView: View {
                 Label("New Chat", systemImage: "square.and.pencil")
             }
             .buttonStyle(.borderedProminent)
-            .tint(AppAccent.aiCoral)
         }
     }
 
@@ -99,7 +98,6 @@ struct ChatListView: View {
                 Label("Unlock", systemImage: "faceid")
             }
             .buttonStyle(.borderedProminent)
-            .tint(AppAccent.aiCoral)
         }
     }
 
@@ -154,10 +152,10 @@ private struct ThreadRow: View {
 
                 Text(thread.mode.capitalized)
                     .font(.caption2)
-                    .foregroundStyle(AppAccent.aiCoral)
+                    .foregroundStyle(AppAccent.color)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(AppAccent.aiCoral.opacity(0.12))
+                    .background(AppAccent.color.opacity(0.12))
                     .clipShape(Capsule())
             }
         }

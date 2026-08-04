@@ -76,7 +76,7 @@ struct PersonasView: View {
                         } label: {
                             Label("Project", systemImage: "folder")
                         }
-                        .tint(AppAccent.aiCoral)
+                        .tint(AppAccent.color)
                     }
                 }
             } header: {
@@ -175,6 +175,7 @@ struct PersonaEditorView: View {
     @State private var selectedModelId = ""
     @State private var selectedPresetId = "preset-default"
     @State private var enabled = true
+    @State private var editingPromptPreset: PromptPreset? = nil
 
     private let wakePhrasePresets = [
         "openglasses", "hey openglasses", "hey claude", "hey jarvis", "hey rayban",
@@ -243,10 +244,17 @@ struct PersonaEditorView: View {
                             Text(preset.name).tag(preset.id)
                         }
                     }
+
+                    Button {
+                        editingPromptPreset = Config.savedPresets.first { $0.id == selectedPresetId }
+                    } label: {
+                        Label("Edit Prompt", systemImage: "square.and.pencil")
+                    }
+                    .disabled(!Config.savedPresets.contains { $0.id == selectedPresetId })
                 } header: {
                     Text("Personality")
                 } footer: {
-                    Text("The system prompt that shapes how this persona responds.")
+                    Text("The system prompt that shapes how this persona responds. Editing a built-in prompt makes it your own copy, safe from app updates.")
                 }
 
                 Section {
@@ -282,6 +290,20 @@ struct PersonaEditorView: View {
                     if let firstModel = Config.savedModels.first {
                         selectedModelId = firstModel.id
                     }
+                }
+            }
+            // Edit the selected preset in place — same editor and fork-on-save
+            // semantics as the System Prompt list, so built-ins become the
+            // user's own copy.
+            .sheet(item: $editingPromptPreset) { preset in
+                PromptPresetEditorView(preset: preset) { updated in
+                    var presets = Config.savedPresets
+                    if let idx = presets.firstIndex(where: { $0.id == updated.id }) {
+                        presets[idx] = updated
+                    } else {
+                        presets.append(updated)
+                    }
+                    Config.setSavedPresets(presets)
                 }
             }
         }
