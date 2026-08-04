@@ -1,6 +1,6 @@
 # Plan CL — Design Language & Field Polish
 
-**Status:** 🚧 In progress (2026-08-04)
+**Status:** ✅ Shipped (2026-08-04) — PR #291, all phases + on-device field-feedback round
 **One PR** per house style.
 
 ## Why
@@ -114,3 +114,19 @@ logic headlessly).
 
 `MicRoutePolicy` (route → session options + preferred-input selection, pure) and
 `SubsystemTestRunner` unit suites; full suite + Release build green before PR.
+
+## Shipped beyond the plan (same PR, on-device feedback round)
+
+Live testing on device drove nine follow-ups: Hermes Bridge relocated under
+Gateways ("Agent Bridge" section); persona prompts editable from all three
+surfaces that show them (persona editor, mode preview, Persona Details), fork-on-
+save making built-ins user-owned; prompt editor fills the screen; launch no longer
+bounces registered-but-unpaired users into the Meta AI app (permission checked at
+launch, requested only from Connect); native-tools list shows tool descriptions +
+readable parameters (schema descriptions, optional tags, friendly types); one
+accent default (Coral) shared by every site with the selection reaching all chrome
+(hardcoded coral tints removed; coral stays only on AI-output surfaces); waveline +
+ambience derive their palette from the selected accent (hue-rotated companions,
+greyscale fans brightness); the dock's mode toggle names the mode a tap switches
+to; and the whole control bar is arrangeable via `DockLayout` (pure core + tests)
+edited in Settings → Quick Actions → Bar Layout.
