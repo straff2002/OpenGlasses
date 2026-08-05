@@ -2380,6 +2380,16 @@ class AppState: ObservableObject, AppStateProtocol {
         case .openApp:
             guard let scheme = action.urlScheme, let url = URL(string: scheme) else { return }
             await UIApplication.shared.open(url)
+        case .toggleRecording:
+            if sessionRecorder.isRecording {
+                await sessionRecorder.stop()
+            } else {
+                do {
+                    try await sessionRecorder.start()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
 

@@ -76,6 +76,8 @@ struct QuickActionTool: NativeTool {
                     detail += " \(qa.shortcutName ?? "")"
                 case .openApp:
                     detail += " \(qa.urlScheme ?? "")"
+                case .toggleRecording:
+                    detail += " Start/stop meeting recording"
                 }
                 lines.append("- **\(qa.label)**: \(detail)")
             }
