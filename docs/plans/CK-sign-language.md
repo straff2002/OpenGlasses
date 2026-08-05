@@ -1,12 +1,18 @@
 # Plan CK — Sign-Language Recognition (fingerspelling first)
 
-**Status: 🚧 P0 + P2 shipped, model published (2026-08-05)** — the P2 live-decode
-pipeline (MediaPipe holistic landmarks → `HolisticWindower` → `FingerspellingLiveDecoder`
-→ `DecodeStabilityPolicy`) is implemented behind seams and golden-fixture-tested against
-the Python reference, and the verified artefact is published with
-`Config.fingerspellingModelRepo` defaulting to it (see P2 §5). Remaining before users see
-it: the activation surface (accessibility toggle, camera→landmarker wiring, TTS/HUD
-output, About attribution) and P3 device smoke. Earlier state: `LandmarkWindower` (canonical
+**Status: ✅ P0–P2 + activation surface shipped (2026-08-05); P3 device smoke remains** —
+the live-decode pipeline (MediaPipe holistic landmarks → `HolisticWindower` →
+`FingerspellingLiveDecoder` → `DecodeStabilityPolicy`) is golden-fixture-tested against
+the Python reference, the verified artefact is published with
+`Config.fingerspellingModelRepo` defaulting to it (P2 §5), and the activation surface is
+in: `FingerspellingSessionService` (camera frames → pipeline actor → HUD captions +
+spoken committed words, frame-dropping hand-off, injectable seams),
+Settings › Accessibility › Fingerspelling (master toggle, ~32 MB model download row,
+start/stop with live word), and Settings › About › Attributions (competition-corpus
+CC-BY 4.0 + MediaPipe + speech-stack entries). Still ahead: P3 device smoke — frame
+rate/battery with the landmarker live (needs a Release build or the Debug `-force_load`
+copy), distance/angle envelope, decode cadence + confidence-floor tuning, drop-face
+fallback decision. Earlier state: `LandmarkWindower` (canonical
 21-joint order, wrist-origin/palm-scale/mirror/y-flip normalisation, CMVN, windowing) and
 `DecodeStabilityPolicy` (confidence floor → OOV rejection → majority vote → display streak →
 gap-commit with dictionary gate) shipped pure with full synthetic-stream suites, plus the
