@@ -23,8 +23,9 @@ class MeetingAssistantService: ObservableObject {
     /// Caption text accumulated since the last analysis round.
     private var bufferText: String = ""
 
-    /// Number of caption entries we have already consumed from the history array.
-    private var consumedCount: Int = 0
+    /// Position in the caption stream. Sequence-based, because `captionHistory` is capped and
+    /// stops growing once full.
+    private var cursor = CaptionCursor()
 
     /// Task managing the 60-second periodic trigger.
     private var timerTask: Task<Void, Never>?
@@ -44,7 +45,9 @@ class MeetingAssistantService: ObservableObject {
         self.llm = llm
         fullTranscript = []
         bufferText = ""
-        consumedCount = 0
+        // Start from the present: anything already in the buffer predates this meeting.
+        cursor = CaptionCursor()
+        _ = cursor.take(newestFirst: captionService.captionHistory)
         isAnalysing = false
         lastSummary = ""
 
@@ -84,18 +87,13 @@ class MeetingAssistantService: ObservableObject {
     /// Called whenever `captionHistory` publishes a new value.
     /// `captionHistory` is newest-first; we need entries we haven't seen yet.
     private func handleCaptionUpdate(_ history: [AmbientCaptionService.CaptionEntry]) {
-        let totalCount = history.count
-        let newCount = totalCount - consumedCount
-        guard newCount > 0 else { return }
+        let newEntries = cursor.take(newestFirst: history)
+        guard !newEntries.isEmpty else { return }
 
-        // The newest entries are at the front of the array.
-        // We want only the ones we haven't consumed yet, in chronological order.
-        let newEntries = Array(history.prefix(newCount).reversed())
         for entry in newEntries {
             fullTranscript.append(entry.text)
             bufferText += (bufferText.isEmpty ? "" : " ") + entry.text
         }
-        consumedCount = totalCount
 
         // Trigger early if the buffer already has ≥ 100 words.
         let wordCount = bufferText.split(whereSeparator: \.isWhitespace).count

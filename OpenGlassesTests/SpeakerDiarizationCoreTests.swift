@@ -112,7 +112,7 @@ final class SpeakerDiarizationCoreTests: XCTestCase {
         // The diarization-off / single-speaker path never sets a speaker id
         // (`finalizeCaption` defaults it to nil) — those captions get no chip.
         XCTAssertNil(SpeakerChipModel.chip(speaker: nil, registry: freshRegistry()))
-        let entry = AmbientCaptionService.CaptionEntry(text: "hello", timestamp: Date())
+        let entry = AmbientCaptionService.CaptionEntry(text: "hello", timestamp: Date(), seq: 1)
         XCTAssertNil(SpeakerChipModel.chip(speaker: entry.speaker, registry: freshRegistry()))
     }
 

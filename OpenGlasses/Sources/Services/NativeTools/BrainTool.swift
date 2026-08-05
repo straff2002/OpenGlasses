@@ -228,7 +228,7 @@ struct BrainTool: NativeTool {
         }
 
         // Meeting summaries (keyword match over saved notes).
-        let meetingNotes = UserDefaults.standard.array(forKey: "saved_notes") as? [[String: String]] ?? []
+        let meetingNotes = SavedNotesStore.load()
         let meetingLines = meetingNotes.reversed().compactMap { note -> String? in
             guard let content = note["content"] else { return nil }
             let haystack = "\(note["title"] ?? "") \(content)".lowercased()

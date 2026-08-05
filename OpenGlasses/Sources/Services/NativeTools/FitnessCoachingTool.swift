@@ -337,13 +337,15 @@ struct FitnessCoachingTool: NativeTool {
     }
 
     private func saveWorkoutNote(summary: String) {
+        let now = Date()
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
-        let key = "saved_notes"
-        var notes = UserDefaults.standard.stringArray(forKey: key) ?? []
-        let note = "[\(formatter.string(from: Date()))] Workout: \(summary)"
-        notes.append(note)
-        UserDefaults.standard.set(notes, forKey: key)
+        formatter.timeStyle = .none
+        SavedNotesStore.append(
+            title: "Workout Note — \(formatter.string(from: now))",
+            content: summary,
+            date: ISO8601DateFormatter().string(from: now)
+        )
     }
 }
 
