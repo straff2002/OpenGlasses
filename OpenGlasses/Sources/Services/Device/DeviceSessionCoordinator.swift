@@ -57,7 +57,7 @@ final class DeviceSessionCoordinator {
     // MARK: - Lifecycle
 
     /// Lend the shared session to `capability`, creating it on the first acquire. The caller then
-    /// adds its own capability to the returned session (`addStream` for the camera, `addDisplay` for
+    /// adds its own capability to the returned session (`addCamera` for the camera, `addDisplay` for
     /// the HUD).
     @discardableResult
     func acquire(_ capability: Capability) throws -> DeviceSessionHandle {

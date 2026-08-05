@@ -177,10 +177,30 @@ private struct ComponentView: View {
         } else if let icon = component as? MWDATDisplay.Icon {
             SwiftUI.Image(systemName: sfSymbol(for: icon.name))
                 .foregroundColor(AppAccent.aiCoral)
+        } else if let group = component as? MWDATDisplay.ButtonGroup {
+            buttonGroupView(group)
         } else if let nested = component as? MWDATDisplay.FlexBox {
             FlexBoxView(flexBox: nested)
         } else {
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func buttonGroupView(_ group: MWDATDisplay.ButtonGroup) -> some View {
+        HStack(spacing: 8) {
+            ForEach(Array(group.buttons.enumerated()), id: \.offset) { item in
+                buttonView(item.element)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: groupAlignment(group.alignment))
+    }
+
+    private func groupAlignment(_ alignment: MWDATDisplay.ButtonGroupAlignment) -> SwiftUI.Alignment {
+        switch alignment {
+        case .start: return .leading
+        case .end: return .trailing
+        default: return .center
         }
     }
 

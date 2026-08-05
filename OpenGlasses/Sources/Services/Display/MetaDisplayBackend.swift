@@ -176,20 +176,33 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                     Text(line.text, style: line.style, color: line.color)
                 }
             }
-            for button in buttonModels {
-                let id = button.id
-                Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
-                    Task { @MainActor in self?.onItemSelected?(id) }
-                })
+            // DAT 0.9.0 `ButtonGroup`: the sanctioned container for button rows (bare
+            // buttons as loose FlexBox children predate it; flex params on a Button wrap
+            // it in a label-clipping FlexChildWrapper, which the group avoids).
+            if !buttonModels.isEmpty {
+                ButtonGroup(alignment: .center) {
+                    for button in buttonModels {
+                        let id = button.id
+                        Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
+                            Task { @MainActor in self?.onItemSelected?(id) }
+                        })
+                    }
+                }
             }
         }
     }
 
     /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
-    /// rendered tree, in order (simulated Neural-Band selections).
+    /// rendered tree, in order (simulated Neural-Band selections). Buttons live inside
+    /// the tree's `ButtonGroup` (with a loose-Button fallback for future shapes).
     func testButtonActions(for screen: HUDScreen) -> [() -> Void] {
         makeScreenView(screen).children
-            .compactMap { ($0 as? Button)?.onClick }
+            .flatMap { child -> [Button] in
+                if let group = child as? ButtonGroup { return group.buttons }
+                if let button = child as? Button { return [button] }
+                return []
+            }
+            .compactMap(\.onClick)
             .map { onClick in { onClick() } }
     }
 

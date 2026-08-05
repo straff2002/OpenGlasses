@@ -5,11 +5,11 @@ import MWDATCamera
 /// Plan BR P2 — tiered camera-stream recovery + DAT compatibility messaging (pure).
 ///
 /// Stall recovery previously tore down the whole `DeviceSession` every time. The session
-/// is the expensive, slow-to-restart half (BT connection + permission state); the `Stream`
-/// is cheap. Policy: rebuild the stream on the retained session first, and only escalate
-/// to a full session reset when stream-level rebuilds keep failing. (DAT 0.8 has no
-/// `removeStream` — a stream rebuild is stop + `addStream(config:)` on the live session;
-/// if that throws, the caller escalates.)
+/// is the expensive, slow-to-restart half (BT connection + permission state); the `Camera`
+/// capability is cheap. Policy: rebuild the camera on the retained session first, and only
+/// escalate to a full session reset when camera-level rebuilds keep failing. (DAT 0.9 has
+/// no `removeCamera` — a rebuild is `Camera.stop()` + `addCamera(config:)` on the live
+/// session; if that throws, the caller escalates.)
 enum StreamRecoveryPolicy {
     enum Action: Equatable {
         /// Stop + re-add the Stream; keep the DeviceSession.
