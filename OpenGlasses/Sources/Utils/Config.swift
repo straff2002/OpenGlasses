@@ -2893,6 +2893,17 @@ struct Config {
 
     static func setFingerspellingEnabled(_ enabled: Bool) { fingerspellingEnabled = enabled }
 
+    /// P3 tuning knobs, runtime-adjustable so device smoke needs no rebuilds
+    /// (Settings › Accessibility › Fingerspelling › Tuning). Defaults match the shipped
+    /// P2 values; both are read at session start.
+    /// Decode cadence in appended frames (≈ every 0.5 s at 15 fps with the default 8).
+    @UserDefaultsBacked("fingerspellingDecodeEveryFrames", default: 8)
+    static var fingerspellingDecodeEveryFrames: Int
+    /// Confidence floor on per-row CTC observations (0 disables the floor entirely —
+    /// pure greedy decode, matching the offline gate).
+    @UserDefaultsBacked("fingerspellingConfidenceFloor", default: 0.5)
+    static var fingerspellingConfidenceFloor: Double
+
     /// Master toggle for the Field Assist feature. When off, no vaults are loaded
     /// and the FieldSessionTool is not registered.
     static var fieldAssistEnabled: Bool {
