@@ -2130,7 +2130,8 @@ class AppState: ObservableObject, AppStateProtocol {
     func handleBargeIn(_ bargeInText: String) {
         print("⚡ Barge-in: '\(bargeInText)' — stopping TTS and processing")
         speechService.stopSpeaking()
-        currentLLMTask?.cancel()
+        let interruptedTask = currentLLMTask
+        interruptedTask?.cancel()
         currentLLMTask = nil
         isProcessing = false
         speechService.stopThinkingSound()
@@ -2140,10 +2141,12 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
 
-        // Feed the barge-in text directly into the conversation pipeline
-        // handleTranscription handles conversation store, LLM call, etc.
-        Task {
-            await handleTranscription(bargeInText)
+        // Let the cancelled turn finish its cleanup before starting the replacement. Otherwise its
+        // finish closure can race the new turn and reset processing/listening state mid-flight.
+        Task { @MainActor [weak self] in
+            await interruptedTask?.value
+            guard let self, self.inConversation, self.listeningEnabled, !self.isProcessing else { return }
+            await self.handleTranscription(bargeInText)
         }
     }
 
@@ -2165,7 +2168,10 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             NSLog("[Listening] Enabled")
         } else {
-            // Stop everything: wake word, transcription, TTS, Live Activity
+            // Stop everything: wake word, transcription, TTS, Live Activity — including any
+            // in-flight LLM turn, whose finish stage would otherwise resume listening.
+            currentLLMTask?.cancel()
+            currentLLMTask = nil
             wakeWordService.stopListening()
             transcriptionService.stopRecording()
             speechService.stopSpeaking()
@@ -2173,6 +2179,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // Release any audio pause held by an in-flight conversation so Music/Podcasts resume.
             Task { await wakeWordService.forceResumeOtherAudio() }
             isListening = false
+            isProcessing = false
+            inConversation = false
+            activePersona = nil
             NSLog("[Listening] Disabled")
         }
     }
@@ -2866,8 +2875,13 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter ensureEngine: run the audio-engine keepalive first — needed after TTS playback,
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
+        // The user may have disabled listening while the turn was finishing — a finish stage
+        // must never turn the microphone back on behind their back.
+        guard listeningEnabled else { return }
         if inConversation {
             if ensureEngine { try? await wakeWordService.ensureAudioEngineRunning() }
+            // The engine keepalive suspends; re-check the user didn't flip the toggle meanwhile.
+            guard listeningEnabled, inConversation else { return }
             isListening = true
             transcriptionService.startRecording()
         } else {
@@ -4166,6 +4180,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // End active conversation thread
         if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
             conversationStore.endThread()
+        }
+        // The master toggle wins over every restart rule below.
+        if !listeningEnabled {
+            print("🔇 Listening disabled — wake word listener stays off")
+            return
         }
         // In silent mode, don't restart wake word UNLESS we just finished an
         // active conversation — the user was just talking, so they expect the

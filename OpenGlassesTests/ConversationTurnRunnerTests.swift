@@ -14,7 +14,8 @@ final class ConversationTurnRunnerTests: XCTestCase {
     private func recordingDeps(
         into log: Box<[String]>,
         send: (@MainActor () async throws -> String)? = nil,
-        postProcess: (@MainActor (String) async -> String)? = nil
+        postProcess: (@MainActor (String) async -> String)? = nil,
+        accept: (@MainActor (String) async -> Void)? = nil
     ) -> ConversationTurnRunner.Deps {
         ConversationTurnRunner.Deps(
             send: {
@@ -27,7 +28,10 @@ final class ConversationTurnRunnerTests: XCTestCase {
                 guard let postProcess else { return raw }
                 return await postProcess(raw)
             },
-            accept: { log.value.append("accept(\($0))") },
+            accept: {
+                log.value.append("accept(\($0))")
+                if let accept { await accept($0) }
+            },
             speak: { log.value.append("speak(\($0))") },
             onCancelled: { log.value.append("onCancelled") },
             onError: { log.value.append("onError(\(type(of: $0)))") },
@@ -57,8 +61,9 @@ final class ConversationTurnRunnerTests: XCTestCase {
         XCTAssertEqual(log.value, ["send", "onError(TestError)", "finish"])
     }
 
-    /// Barge-in / stop cancel the tracked turn task; a turn cancelled while the LLM was working
-    /// must never accept or speak the now-stale reply — but must still finish.
+    /// Barge-in / stop cancel the tracked turn task; a stale response must not run
+    /// post-processing side effects (memory persistence), be accepted, or be spoken — but must
+    /// still finish.
     func testCancellationDuringSendNeverSpeaksStaleReplyButStillFinishes() async {
         let log = Box<[String]>([])
         // Cancel the surrounding task from inside `send`, as a barge-in would while the LLM call
@@ -70,8 +75,7 @@ final class ConversationTurnRunnerTests: XCTestCase {
         // Run inside a child task (mirroring `currentLLMTask`) so the cancellation stays scoped
         // to the turn, not the test's own task.
         await Task { await ConversationTurnRunner.run(deps) }.value
-        XCTAssertEqual(log.value, ["send", "postProcess(stale)", "onCancelled", "finish"],
-                       "post-processing may complete, but the stale reply is never accepted or spoken")
+        XCTAssertEqual(log.value, ["send", "onCancelled", "finish"])
     }
 
     /// A `send` that surfaces cancellation by throwing (e.g. a cancelled URLSession call) is
@@ -81,5 +85,28 @@ final class ConversationTurnRunnerTests: XCTestCase {
         let deps = recordingDeps(into: log, send: { throw CancellationError() })
         await ConversationTurnRunner.run(deps)
         XCTAssertEqual(log.value, ["send", "onCancelled", "finish"])
+    }
+
+    /// Provider SDKs can throw their own error type after the parent task was already cancelled
+    /// (a barge-in mid-request). The interruption wins: no error is spoken.
+    func testCancelledTaskWithProviderErrorReportsCancelledNotError() async {
+        let log = Box<[String]>([])
+        let deps = recordingDeps(into: log, send: {
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw TestError()
+        })
+        await Task { await ConversationTurnRunner.run(deps) }.value
+        XCTAssertEqual(log.value, ["send", "onCancelled", "finish"])
+    }
+
+    /// A barge-in that lands while `accept` is persisting/mirroring the response must still stop
+    /// the reply from being spoken.
+    func testCancellationAfterAcceptNeverSpeaks() async {
+        let log = Box<[String]>([])
+        let deps = recordingDeps(into: log, accept: { _ in
+            withUnsafeCurrentTask { $0?.cancel() }
+        })
+        await Task { await ConversationTurnRunner.run(deps) }.value
+        XCTAssertEqual(log.value, ["send", "postProcess(raw)", "accept(raw)", "onCancelled", "finish"])
     }
 }
