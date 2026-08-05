@@ -686,6 +686,33 @@ struct HardwarePrivacyView: View {
             }
 
             Section {
+                NavigationLink {
+                    RecordingsView(
+                        store: appState.recordedSessionStore,
+                        controller: appState.sessionRecorder,
+                        audioRecorder: appState.audioRecorder
+                    )
+                } label: {
+                    HStack {
+                        Label("Recordings", systemImage: "waveform")
+                        Spacer()
+                        if appState.sessionRecorder.isRecording {
+                            Text("Recording").foregroundStyle(.red)
+                        }
+                    }
+                }
+                NavigationLink {
+                    MeetingRecordsView()
+                } label: {
+                    Label("Meeting Records", systemImage: "text.book.closed")
+                }
+            } header: {
+                Text("Recordings")
+            } footer: {
+                Text("Preserved meeting recordings with playback and transcripts, and summaries saved by the Meeting Summary tool.")
+            }
+
+            Section {
                 InfoToggle(
                     title: "Blur Bystander Faces",
                     isOn: $privacyFilterEnabled,

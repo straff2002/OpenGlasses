@@ -530,6 +530,15 @@ class AppState: ObservableObject, AppStateProtocol {
     let cameraService = CameraService()
     let videoRecorder = VideoRecordingService()
     let audioRecorder = AudioRecordingService()
+    let recordedSessionStore = RecordedSessionStore()
+    let recordingTranscriber = RecordingTranscriber()
+    /// Lazy: depends on the services above; first touched from the Recordings UI.
+    lazy var sessionRecorder = SessionRecorderController(
+        audioRecorder: audioRecorder,
+        wakeWordService: wakeWordService,
+        store: recordedSessionStore,
+        transcriber: recordingTranscriber
+    )
     let meetingAssistant = MeetingAssistantService()
     let broadcastService = BroadcastService()
     /// Broadcast chat read-aloud (Plan CI) — lives and dies with the broadcast session.
