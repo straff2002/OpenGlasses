@@ -34,6 +34,9 @@ final class FingerspellingSessionService: ObservableObject {
     @Published private(set) var lastCommittedWord: String?
     /// User-facing status/problem line ("Model not downloaded", extraction errors, …).
     @Published private(set) var statusDetail: String?
+    /// Rolling per-stage latency line ("landmarks 34 ms · decode 58 ms") — P3 smoke
+    /// instrumentation, refreshed each decode tick.
+    @Published private(set) var perfSummary: String?
 
     private var frameContinuation: AsyncStream<(UIImage, Int)>.Continuation?
     private var pump: Task<Void, Never>?
@@ -56,7 +59,8 @@ final class FingerspellingSessionService: ObservableObject {
     /// of building latency; tests pass nil (unbounded) so synchronous bursts all arrive.
     func start(dependencies: Dependencies,
                decodeEveryFrames: Int = 8,
-               frameBufferLimit: Int? = 2) {
+               frameBufferLimit: Int? = 2,
+               rules: DecodeStabilityPolicy.Rules = FingerspellingLiveDecoder.ctcRules()) {
         guard !isActive else { return }
         isActive = true
         statusDetail = nil
@@ -72,7 +76,8 @@ final class FingerspellingSessionService: ObservableObject {
         frameContinuation = continuation
         let pipeline = FingerspellingPipeline(landmarks: dependencies.landmarks,
                                               inference: dependencies.inference,
-                                              decodeEveryFrames: decodeEveryFrames)
+                                              decodeEveryFrames: decodeEveryFrames,
+                                              rules: rules)
         pump = Task { [weak self] in
             for await (image, timestamp) in stream {
                 let outcome = await pipeline.process(image: image,
@@ -141,6 +146,10 @@ final class FingerspellingSessionService: ObservableObject {
             return
         }
 
+        // P3 tuning knobs (Settings › Fingerspelling › Tuning): decode cadence and the
+        // observation confidence floor, adjustable on device without rebuilds.
+        var rules = FingerspellingLiveDecoder.ctcRules()
+        rules.confidenceFloor = Config.fingerspellingConfidenceFloor
         start(dependencies: Dependencies(
             landmarks: built.0,
             inference: built.1.logits(for:),
@@ -152,7 +161,9 @@ final class FingerspellingSessionService: ObservableObject {
             },
             clearCaption: { [weak display] in
                 display?.clear()
-            }))
+            }),
+            decodeEveryFrames: Config.fingerspellingDecodeEveryFrames,
+            rules: rules)
 
         self.camera = camera
         frameSubscription = camera.framePublisher.sink { [weak self] image in
@@ -175,6 +186,9 @@ final class FingerspellingSessionService: ObservableObject {
         guard let dependencies else { return }
         if let problem = outcome.problem {
             statusDetail = problem
+        }
+        if let summary = outcome.perfSummary {
+            perfSummary = summary
         }
         for event in outcome.events {
             switch event {
@@ -209,6 +223,8 @@ actor FingerspellingPipeline {
     struct Outcome {
         var events: [DecodeStabilityPolicy.Event] = []
         var problem: String?
+        /// Rolling perf summary, refreshed once per decode tick (P3 smoke instrumentation).
+        var perfSummary: String?
     }
 
     private let landmarks: HolisticLandmarkProviding
@@ -216,6 +232,9 @@ actor FingerspellingPipeline {
     private let decodeEveryFrames: Int
     private var decoder: FingerspellingLiveDecoder
     private var framesSinceDecode = 0
+    /// Rolling per-stage latencies (ms) over the last ~2 s of frames.
+    private var extractionSamples: [Double] = []
+    private var decodeSamples: [Double] = []
 
     init(landmarks: HolisticLandmarkProviding,
          inference: @escaping FingerspellingLiveDecoder.Inference,
@@ -230,6 +249,7 @@ actor FingerspellingPipeline {
     func process(image: UIImage, timestampMilliseconds: Int) -> Outcome {
         var outcome = Outcome()
         let frame: HolisticFrame
+        let extractionStart = CACurrentMediaTime()
         do {
             frame = try landmarks.holisticFrame(for: image,
                                                 timestampMilliseconds: timestampMilliseconds)
@@ -237,18 +257,43 @@ actor FingerspellingPipeline {
             outcome.problem = "Landmark extraction failed: \(error.localizedDescription)"
             return outcome
         }
+        recordSample(&extractionSamples, since: extractionStart)
         outcome.events = decoder.append(frame)
 
         framesSinceDecode += 1
         guard framesSinceDecode >= decodeEveryFrames,
               decoder.windowedFrameCount > 0 else { return outcome }
         framesSinceDecode = 0
+        let decodeStart = CACurrentMediaTime()
         do {
             outcome.events += try decoder.tick(infer: inference)
+            recordSample(&decodeSamples, since: decodeStart)
+            outcome.perfSummary = perfSummary()
         } catch {
             outcome.problem = "Decode failed: \(error.localizedDescription)"
         }
         return outcome
+    }
+
+    // MARK: - P3 instrumentation
+
+    private func recordSample(_ samples: inout [Double], since start: CFTimeInterval) {
+        samples.append((CACurrentMediaTime() - start) * 1000)
+        if samples.count > 30 { samples.removeFirst(samples.count - 30) }
+    }
+
+    /// One line per decode tick, e.g. "landmarks 34 ms · decode 58 ms" — read live in the
+    /// Tuning section and via `[CK-Perf]` in Console during device smoke.
+    private func perfSummary() -> String? {
+        func median(_ samples: [Double]) -> Double? {
+            guard !samples.isEmpty else { return nil }
+            return samples.sorted()[samples.count / 2]
+        }
+        guard let extraction = median(extractionSamples),
+              let decode = median(decodeSamples) else { return nil }
+        let summary = "landmarks \(Int(extraction)) ms · decode \(Int(decode)) ms"
+        NSLog("[CK-Perf] %@", summary)
+        return summary
     }
 
     func flush() -> Outcome {

@@ -79,6 +79,10 @@ final class WearablesBootstrapTests: XCTestCase {
         XCTAssertEqual(bare.errorDescription, "Meta SDK not registered")
     }
 
+    // `resetForTesting` only exists in Debug app builds; these two tests compile out of a
+    // Release-configuration test run (used by the Plan CK P3 perf harness) rather than
+    // breaking the whole test target's build.
+    #if DEBUG
     /// "Not attempted" and "attempted and failed" need opposite fixes, so they must not report the
     /// same thing. Conflating a bad configuration with an absent one is a real time sink.
     func testStatusDescriptionDistinguishesNotAttemptedFromFailed() {
@@ -94,4 +98,5 @@ final class WearablesBootstrapTests: XCTestCase {
         XCTAssertNil(WearablesBootstrap.failureReason)
         XCTAssertEqual(WearablesBootstrap.statusDescription, "not configured")
     }
+    #endif
 }

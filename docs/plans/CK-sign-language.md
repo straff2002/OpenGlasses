@@ -197,6 +197,56 @@ decode cadence tuning (per-second re-decode vs gap-triggered; re-feeding refined
 confidence-floor tuning against live logit distributions, and the drop-face fallback
 decision if perf demands it.
 
+## P3 — device smoke (protocol; no signer required)
+
+Groundwork shipped with this phase: runtime **Tuning** knobs (decode cadence + confidence
+floor, Settings › Accessibility › Fingerspelling — no rebuilds between trials), live
+**pipeline instrumentation** (a rolling "landmarks N ms · decode N ms" line in the Tuning
+section and as `[CK-Perf]` in Console, refreshed per decode tick), and the env-gated
+**perf harness** (`FingerspellingPerfHarnessTests`, `CK_LANDMARKER_TASK`/
+`CK_FS_MLPACKAGE`). Finding recorded during this phase: a Release-configuration
+`xcodebuild test` hangs at runner bootstrap on the 8 GB dev machine — the same abseil
+static-init contention that pushed `-force_load` out of Debug — so the landmarker half of
+the harness is effectively device-only. Simulator decode-tick baseline (Debug config,
+CPU-only, real mlpackage, full 240-frame window): **median 1088 ms / p90 1103 ms** —
+2× the 533 ms decode-every-8-at-15 fps budget on this worst-case substrate. Two readings:
+(a) the frame-dropping hand-off already makes a slow decode degrade gracefully (drops
+frames, never queues latency); (b) the on-device number (ANE, fp16) from the `[CK-Perf]`
+line is the real cadence decider — if it also exceeds ~500 ms, raise decode-every toward
+12–16 in Tuning or shrink the window (a P4 candidate: decode over the trailing ~256
+frames instead of 768).
+
+**App-size delta (measured, device Release):** the graph-archive `-force_load` costs
+**38.0 MB** of app binary — 156.4 MB with vs 118.4 MB linking the same archive without
+force_load (registrars dead-stripped). That is the App Store price of the MediaPipe
+runtime; the drop-face fallback would not reduce it (same graph archive), so any size
+reclaim would have to come from a slimmer custom graph build — noted as a P4-if-ever.
+
+The smoke protocol is designed to run **solo** — no ASL signer available:
+
+1. **Battery/thermal/frame-rate run (no signer needed at all):** Release build on device,
+   camera at 15 fps, start recognition pointed at any busy scene. Record: battery % at
+   0/15/30 min, thermal state (`Wearables.deviceStateStream` thermal level for the
+   glasses + iPhone warmth), whether frames drop (provisional-word cadence stutter).
+   Repeat at 24 fps if the 15 fps run stays cool.
+2. **Accuracy feel via screen replay:** point the glasses at a monitor playing ASL
+   fingerspelling practice videos (names/words at natural speed, e.g. any "fingerspelling
+   practice" series) from ~1–1.5 m. The camera sees a real signer; the full live path
+   runs. Known caveats: flat image (no depth), screen glare — treat as a lower bound.
+   Record: words committed vs shown, letter substitutions, latency from last letter to
+   speech.
+3. **Handshape sanity via self-spelling:** with an ASL alphabet chart, slowly spell a
+   name at arm's length facing a mirror-mounted phone or the glasses on a stand.
+   Fingerspelling is 26 static-ish handshapes — no signing fluency needed. This checks
+   the camera-facing geometry note (P2) with real 3-D hands.
+4. **Tuning sweep:** for each scenario, try decode-every 4/8/12 frames and confidence
+   floor 0/0.35/0.5 — the Tuning section applies on next start. If battery or thermals
+   fail the 30-minute bar, the recorded fallback is dropping the face landmarks
+   (29.2% CER, ablation table above) — that decision gets its own follow-up if needed.
+5. **Debug-build note:** the calculators only register under Release's `-force_load`; a
+   Debug device run needs those flags copied to Debug in `project.base.yml` for the
+   session (revert before committing).
+
 ## Open questions
 
 - Model provenance/licensing (must be clean for a proprietary app — trained-by-us is
