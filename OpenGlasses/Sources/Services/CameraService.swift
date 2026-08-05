@@ -29,10 +29,9 @@ class CameraService: ObservableObject {
     /// alone only pauses streaming and keeps the capability attached for cheap restarts.
     private var cameraCapability: MWDATCamera.Camera?
     private var streamSession: MWDATCamera.Stream?
-    private var photoListenerToken: (any AnyListenerToken)?
-    private var stateListenerToken: (any AnyListenerToken)?
-    private var videoFrameListenerToken: (any AnyListenerToken)?
-    private var errorListenerToken: (any AnyListenerToken)?
+    /// DAT 0.9.0 `ListenerTokenBag`: the four per-stream listeners (state, video frame,
+    /// photo, error) live and die together, so they're cancelled as one in teardown.
+    private let streamListenerBag = ListenerTokenBag()
     private var photoContinuation: CheckedContinuation<Data, Error>?
 
     /// Whether camera permission has been granted (cached to avoid re-checking).
@@ -307,7 +306,7 @@ class CameraService: ObservableObject {
     private func attachListeners(to session: MWDATCamera.Stream) {
         var frameCount = 0
 
-        stateListenerToken = session.statePublisher.listen { [weak self] state in
+        session.statePublisher.listen { [weak self] state in
             Task { @MainActor in
                 guard let self else { return }
                 NSLog("[Camera] State changed: %@", String(describing: state))
@@ -325,9 +324,9 @@ class CameraService: ObservableObject {
                     break
                 }
             }
-        }
+        }.store(in: streamListenerBag)
 
-        videoFrameListenerToken = session.videoFramePublisher.listen { [weak self] frame in
+        session.videoFramePublisher.listen { [weak self] frame in
             // Immediate pixel buffer copy: `makeUIImage()` copies the pixel data out of
             // the VideoToolbox buffer pool right away, preventing VT pool exhaustion
             // that can occur if the buffer is held across async boundaries.
@@ -344,15 +343,15 @@ class CameraService: ObservableObject {
                 self.onVideoFrame?(image)
                 self.framePublisher.send(image)
             }
-        }
+        }.store(in: streamListenerBag)
 
-        photoListenerToken = session.photoDataPublisher.listen { [weak self] photoData in
+        session.photoDataPublisher.listen { [weak self] photoData in
             Task { @MainActor in
                 self?.handlePhotoData(photoData)
             }
-        }
+        }.store(in: streamListenerBag)
 
-        errorListenerToken = session.errorPublisher.listen { [weak self] error in
+        session.errorPublisher.listen { [weak self] error in
             Task { @MainActor in
                 guard let self else { return }
                 let message = CameraErrorPolicy.message(for: error)
@@ -371,7 +370,7 @@ class CameraService: ObservableObject {
                     }
                 }
             }
-        }
+        }.store(in: streamListenerBag)
     }
 
     /// Wait for the session to reach `.streaming` state, starting it if necessary.
@@ -779,10 +778,7 @@ class CameraService: ObservableObject {
             camera.stop()  // cascades to the stream
             await awaitCameraStopped(camera)
         }
-        stateListenerToken = nil
-        videoFrameListenerToken = nil
-        photoListenerToken = nil
-        errorListenerToken = nil
+        await streamListenerBag.cancelAll()
         cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
@@ -814,10 +810,7 @@ class CameraService: ObservableObject {
             await awaitCameraStopped(camera)
         }
         deviceSession?.stop()
-        stateListenerToken = nil
-        videoFrameListenerToken = nil
-        photoListenerToken = nil
-        errorListenerToken = nil
+        await streamListenerBag.cancelAll()
         cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
