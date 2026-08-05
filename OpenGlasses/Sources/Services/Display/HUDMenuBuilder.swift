@@ -117,7 +117,7 @@ enum HUDMenuBuilder {
         switch type {
         case .prompt, .photoThenPrompt: return .message
         case .homeAssistant: return .location
-        case .photo, .siriShortcut, .openApp: return .none
+        case .photo, .siriShortcut, .openApp, .toggleRecording: return .none
         }
     }
 }

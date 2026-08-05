@@ -262,6 +262,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         await appState.captureAndAnalyzePhoto()
                     case .prompt:
                         await appState.capturePhotoAndSend(prompt: action.label)
+                    case .toggleRecording:
+                        await appState.executeQuickAction(action)
                     default:
                         await appState.capturePhotoAndSend(prompt: action.label)
                     }

@@ -228,6 +228,7 @@ struct QuickActionsSettingsView: View {
         case .homeAssistant: return [action.haService, action.haEntityId].compactMap { $0 }.joined(separator: " → ")
         case .siriShortcut: return action.shortcutName ?? "Shortcut"
         case .openApp: return action.urlScheme ?? "URL"
+        case .toggleRecording: return "Start/stop meeting recording"
         }
     }
 }
@@ -478,7 +479,7 @@ struct QuickActionEditorView: View {
                         Text("The URL scheme to open. Examples: weixin://, spotify://, shortcuts://")
                     }
 
-                case .photo:
+                case .photo, .toggleRecording:
                     EmptyView()
                 }
             }
@@ -794,6 +795,7 @@ struct QuickActionEditorView: View {
         case .homeAssistant: return "house"
         case .siriShortcut: return "shortcuts"
         case .openApp: return "arrow.up.forward.app"
+        case .toggleRecording: return "record.circle"
         }
     }
 

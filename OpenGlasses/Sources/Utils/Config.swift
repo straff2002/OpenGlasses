@@ -1482,7 +1482,7 @@ struct Config {
         if let data = UserDefaults.standard.data(forKey: "quickActions"),
            let actions = try? JSONDecoder().decode([QuickAction].self, from: data),
            !actions.isEmpty {
-            let merged = mergeTravelQuickActions(into: actions)
+            let merged = mergeBuiltInQuickActions(into: actions)
             if merged.count != actions.count {
                 setQuickActions(merged)
             }
@@ -1507,10 +1507,14 @@ struct Config {
         }
     }
 
-    private static func mergeTravelQuickActions(into actions: [QuickAction]) -> [QuickAction] {
+    /// Append any built-in actions (travel templates, the record toggle) a user's persisted
+    /// list predates, so new built-ins reach existing installs — same merge semantics the
+    /// travel templates have always had.
+    private static func mergeBuiltInQuickActions(into actions: [QuickAction]) -> [QuickAction] {
         var merged = actions
         let existingIds = Set(actions.map(\.id))
-        for template in QuickAction.travelTemplates where !existingIds.contains(template.id) {
+        for template in QuickAction.travelTemplates + [QuickAction.recordMeeting]
+        where !existingIds.contains(template.id) {
             merged.append(template)
         }
         return merged

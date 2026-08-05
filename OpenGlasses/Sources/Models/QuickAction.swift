@@ -14,6 +14,7 @@ struct QuickAction: Codable, Identifiable {
         case homeAssistant = "homeAssistant"
         case siriShortcut = "siriShortcut"
         case openApp = "openApp"
+        case toggleRecording = "toggleRecording"
 
         var id: String { rawValue }
 
@@ -25,6 +26,7 @@ struct QuickAction: Codable, Identifiable {
             case .homeAssistant: return "Home Assistant"
             case .siriShortcut: return "Siri Shortcut"
             case .openApp: return "Open App"
+            case .toggleRecording: return "Record Meeting"
             }
         }
 
@@ -36,6 +38,7 @@ struct QuickAction: Codable, Identifiable {
             case .homeAssistant: return "Call a Home Assistant service"
             case .siriShortcut: return "Run a Siri Shortcut by name"
             case .openApp: return "Open an app via URL scheme"
+            case .toggleRecording: return "Start or stop a preserved meeting recording"
             }
         }
     }
@@ -82,9 +85,19 @@ struct QuickAction: Codable, Identifiable {
         promptText: "Start a Field Assist session on my default vault. Briefly confirm you're ready and what you can help me troubleshoot."
     )
 
+    /// Built-in record toggle — merged into existing users' persisted lists like the travel
+    /// templates, so the meeting recorder is reachable without reconfiguring the speed dial.
+    static let recordMeeting = QuickAction(
+        id: "record-meeting",
+        label: "Record",
+        icon: "record.circle",
+        type: .toggleRecording
+    )
+
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
                     promptText: "Describe what you see in this image in detail."),
+        recordMeeting,
         QuickAction(id: "calendar", label: "Event", icon: "calendar", type: .photoThenPrompt,
                     promptText: "Extract any event details from this image (dates, times, locations, names) and create a calendar entry summary."),
         QuickAction(id: "task", label: "Task", icon: "checklist", type: .photoThenPrompt,

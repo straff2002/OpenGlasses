@@ -497,6 +497,30 @@ class WakeWordService: NSObject, ObservableObject {
         recognitionRequest = nil
     }
 
+    /// Start the shared engine for an explicit audio-buffer consumer even when always-on wake-word
+    /// listening is disabled. Unlike `startListening()`, this only needs microphone permission and
+    /// does not create a Speech recognition task.
+    func ensureAudioEngineRunningForConsumers() async throws {
+        if let engine = audioEngine, engine.isRunning { return }
+
+        guard await AVAudioApplication.requestRecordPermission() else {
+            errorMessage = "Microphone permission denied"
+            throw WakeWordError.microphonePermissionDenied
+        }
+
+        await configureAudioSession()
+        if let oldEngine = audioEngine {
+            oldEngine.stop()
+            oldEngine.inputNode.removeTap(onBus: 0)
+            audioEngine = nil
+        }
+        try createAndStartAudioEngine()
+
+        guard audioEngine?.isRunning == true else {
+            throw WakeWordError.configurationError("Shared audio engine did not start")
+        }
+    }
+
     /// Get the current audio engine (for shared use by TranscriptionService)
     func getAudioEngine() -> AVAudioEngine? {
         return audioEngine

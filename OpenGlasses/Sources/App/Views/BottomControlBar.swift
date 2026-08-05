@@ -440,20 +440,55 @@ private struct QuickActionTiles: View {
 
     var body: some View {
         ForEach(actions) { action in
-            BarButton(
-                icon: action.icon,
-                label: action.label,
-                isBusy: executingActionId == action.id
-            ) {
-                guard executingActionId == nil else { return }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                executingActionId = action.id
-                Task {
-                    await appState.executeQuickAction(action)
-                    executingActionId = nil
+            if action.type == .toggleRecording {
+                // Live tile: reflects recording state + duration, unlike the fire-and-forget tiles.
+                RecordingQuickActionTile(
+                    action: action,
+                    controller: appState.sessionRecorder,
+                    audioRecorder: appState.audioRecorder
+                )
+            } else {
+                BarButton(
+                    icon: action.icon,
+                    label: action.label,
+                    isBusy: executingActionId == action.id
+                ) {
+                    guard executingActionId == nil else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    executingActionId = action.id
+                    Task {
+                        await appState.executeQuickAction(action)
+                        executingActionId = nil
+                    }
                 }
+                .accessibilityHint(executingActionId == action.id ? "Running" : "Double-tap to execute")
             }
-            .accessibilityHint(executingActionId == action.id ? "Running" : "Double-tap to execute")
         }
+    }
+}
+
+/// The record-meeting quick action as a live dock tile: red stop icon + elapsed duration while
+/// a preserved recording is running. Observes the controller directly because a nested
+/// ObservableObject's changes don't republish through `appState`.
+private struct RecordingQuickActionTile: View {
+    @EnvironmentObject var appState: AppState
+    let action: QuickAction
+    @ObservedObject var controller: SessionRecorderController
+    @ObservedObject var audioRecorder: AudioRecordingService
+
+    var body: some View {
+        BarButton(
+            icon: controller.isRecording ? "stop.circle.fill" : action.icon,
+            label: controller.isRecording ? audioRecorder.formattedDuration : action.label,
+            isActive: controller.isRecording,
+            tint: .red
+        ) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task { await appState.executeQuickAction(action) }
+        }
+        .accessibilityLabel("Record meeting")
+        .accessibilityValue(controller.isRecording
+                            ? "Recording, \(audioRecorder.formattedDuration)" : "Stopped")
+        .accessibilityHint("Double-tap to start or stop recording.")
     }
 }
