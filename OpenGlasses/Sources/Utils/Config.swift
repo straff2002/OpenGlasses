@@ -2886,6 +2886,13 @@ struct Config {
 
     static func setAccessibilityModeEnabled(_ enabled: Bool) { accessibilityModeEnabled = enabled }
 
+    /// Master toggle for fingerspelling recognition (Plan CK): the live camera →
+    /// landmarks → CTC decode → speech pipeline. Off by default; the session also
+    /// requires the downloaded model bundle before it can start.
+    @UserDefaultsBacked("fingerspellingEnabled", default: false) static var fingerspellingEnabled: Bool
+
+    static func setFingerspellingEnabled(_ enabled: Bool) { fingerspellingEnabled = enabled }
+
     /// Master toggle for the Field Assist feature. When off, no vaults are loaded
     /// and the FieldSessionTool is not registered.
     static var fieldAssistEnabled: Bool {

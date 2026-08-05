@@ -1,15 +1,20 @@
-import CoreVideo
 import Foundation
 import MediaPipeTasksShim
+import UIKit
 
 /// Seam between the camera pipeline and the fingerspelling cores (Plan CK P2): one video
 /// frame in, one canonical 543-landmark `HolisticFrame` out. The pure pipeline
 /// (`HolisticWindower` → model → `DecodeStabilityPolicy`) only ever sees this protocol, so
 /// unit tests drive it with synthetic frames and never touch the MediaPipe runtime.
+///
+/// Frames arrive as `UIImage` because that is what `CameraService.framePublisher` emits —
+/// its listener copies pixel data out of the VideoToolbox pool immediately (holding the
+/// SDK's buffers across async boundaries exhausts the pool), so the already-safe `UIImage`
+/// is the natural handoff and `MPImage` consumes it directly.
 protocol HolisticLandmarkProviding {
     /// Extract landmarks from one camera frame. `timestampMilliseconds` must be
     /// monotonically increasing across calls (video running-mode requirement).
-    func holisticFrame(for pixelBuffer: CVPixelBuffer,
+    func holisticFrame(for image: UIImage,
                        timestampMilliseconds: Int) throws -> HolisticFrame
 }
 
@@ -30,9 +35,9 @@ final class HolisticLandmarkService: HolisticLandmarkProviding {
         landmarker = try HolisticLandmarker(options: options)
     }
 
-    func holisticFrame(for pixelBuffer: CVPixelBuffer,
+    func holisticFrame(for image: UIImage,
                        timestampMilliseconds: Int) throws -> HolisticFrame {
-        let image = try MPImage(pixelBuffer: pixelBuffer)
+        let image = try MPImage(uiImage: image)
         let result = try landmarker.detect(videoFrame: image,
                                            timestampInMilliseconds: timestampMilliseconds)
         // The canonical-order assembly itself is pure (`HolisticFrame.assembled`, covered

@@ -133,6 +133,14 @@ struct SettingsView: View {
                 OGDivider()
                 OGRow("Build", icon: "hammer", mutedIcon: true, value: Self.buildNumber, showsChevron: false)
                 OGDivider()
+                NavigationLink {
+                    AttributionsView()
+                } label: {
+                    OGRow("Attributions", icon: "doc.text", mutedIcon: true,
+                          subtitle: "Third-party models and libraries")
+                }
+                .buttonStyle(.plain)
+                OGDivider()
                 Button {
                     let webURL = URL(string: "https://discord.gg/8W2qaXJzz9")!
                     UIApplication.shared.open(webURL)

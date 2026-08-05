@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// Settings UI for the Accessibility Tier (A1 Reading Accessibility): master toggle, default
-/// reading level, and preferred translation language. These defaults feed the `reading_assist`
-/// tool when the user doesn't specify them per request.
+/// Settings UI for the Accessibility Tier: master toggle, default reading level, and
+/// preferred translation language for A1 Reading Accessibility (these defaults feed the
+/// `reading_assist` tool when the user doesn't specify them per request), plus the
+/// independent fingerspelling recognition feature (Plan CK).
 @MainActor
 struct AccessibilitySettingsView: View {
     @AppStorage("accessibilityModeEnabled") private var enabled: Bool = false
+    @AppStorage("fingerspellingEnabled") private var fingerspellingEnabled: Bool = false
     @AppStorage("accessibilityReadingLevel") private var readingLevel: Int = ReadingProfile.Level.adult.rawValue
     @AppStorage("accessibilityReadingLanguage") private var language: String = ReadingProfile.preferredLanguage
 
@@ -60,6 +62,23 @@ struct AccessibilitySettingsView: View {
                 } footer: {
                     Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (e.g. someone in distress) speaks faster. Pauses the normal wake-word assistant while active.")
                 }
+            }
+
+            Section {
+                NavigationLink {
+                    FingerspellingSettingsView()
+                } label: {
+                    HStack {
+                        Label("Fingerspelling", systemImage: "hands.sparkles")
+                        Spacer()
+                        Text(fingerspellingEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Sign Language")
+            } footer: {
+                Text("Recognizes ASL fingerspelling through the glasses camera and speaks the words — on-device, independent of Reading Accessibility.")
             }
         }
         .navigationTitle("Accessibility")
