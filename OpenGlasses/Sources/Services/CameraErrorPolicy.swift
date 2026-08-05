@@ -1,7 +1,7 @@
 import Foundation
 import MWDATCamera
 
-/// Pure mapping from the DAT SDK's typed camera `StreamError` (0.8.0 unified `DatError` model) to a
+/// Pure mapping from the DAT SDK's typed camera `StreamError` (unified `DatError` model) to a
 /// user-facing message and a capture-recovery decision.
 ///
 /// Replaces fragile `String(describing:).contains(...)` matching with the typed enum, and decides
@@ -33,6 +33,8 @@ enum CameraErrorPolicy {
             return "Glasses video streaming hit an error — try again."
         case .internalError:
             return "The glasses camera hit an internal error — try again."
+        case .photoCaptureFailed:
+            return "The glasses couldn't take that photo — try again."
         @unknown default:
             return error.errorDescription ?? "The glasses camera hit an error."
         }
@@ -46,7 +48,9 @@ enum CameraErrorPolicy {
         switch error {
         case .hingesClosed, .timeout, .thermalCritical, .thermalEmergency,
              .peakPowerShutdown, .batteryCritical, .permissionDenied,
-             .deviceNotConnected, .deviceNotFound:
+             .deviceNotConnected, .deviceNotFound, .photoCaptureFailed:
+            // .photoCaptureFailed (0.9.0, replaces the never-emitted CaptureError) is the
+            // device saying THIS capture is dead — fall back to the latest frame now.
             return true
         case .internalError, .videoStreamingError:
             return false

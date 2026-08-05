@@ -412,17 +412,15 @@ struct OpenGlassesApp: App {
         NSLog("[OpenGlasses] AppLinkURLScheme (Universal Link): \(appLinkURL ?? "nil")")
         NSLog("[OpenGlasses] MetaAppID: \(metaAppID ?? "nil")")
 
-        do {
-            let parsed = try Configuration(bundle: .main)
-            let app = parsed.appConfiguration
-            NSLog("[OpenGlasses] Parsed config bundleIdentifier=\(app.bundleIdentifier)")
-            NSLog("[OpenGlasses] Parsed config appLinkURLScheme=\(app.appLinkURLScheme ?? "nil")")
-            NSLog("[OpenGlasses] Parsed config metaAppId=\(app.metaAppId ?? "nil")")
-            NSLog("[OpenGlasses] Parsed config clientTokenPresent=\(app.clientToken != nil)")
-            NSLog("[OpenGlasses] Parsed config teamID=\(app.teamID ?? "nil")")
-            NSLog("[OpenGlasses] Parsed attestation hasCompleteData=\(parsed.attestationConfiguration.hasCompleteData)")
-        } catch {
-            NSLog("[OpenGlasses] Configuration(bundle:) parse failed: \(error.localizedDescription)")
+        // DAT 0.9.0 removed the public `Configuration(bundle:)` parser, so log the raw
+        // MWDAT dictionary fields the SDK reads instead (same diagnostic intent: catch a
+        // placeholder or build-setting-substitution miss before it bites registration).
+        let clientToken = mwdat?["ClientToken"] as? String
+        let teamID = mwdat?["TeamID"] as? String
+        NSLog("[OpenGlasses] Config clientTokenPresent=\(clientToken?.isEmpty == false)")
+        NSLog("[OpenGlasses] Config teamID=\(teamID ?? "nil")")
+        if metaAppID?.hasPrefix("YOUR_") == true || clientToken?.contains("YOUR_") == true {
+            NSLog("[OpenGlasses] ⚠️ MWDAT config still contains placeholder values")
         }
     }
 }

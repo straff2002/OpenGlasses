@@ -24,6 +24,10 @@ class CameraService: ObservableObject {
     /// Lazily initialized after Wearables.configure() has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var deviceSession: DeviceSession?
+    /// DAT 0.9.0: the `Camera` owns the camera hardware resource; the `Stream` hangs off it.
+    /// Detaching the capability is `camera.stop()` (cascades to the stream) — `stream.stop()`
+    /// alone only pauses streaming and keeps the capability attached for cheap restarts.
+    private var cameraCapability: MWDATCamera.Camera?
     private var streamSession: MWDATCamera.Stream?
     private var photoListenerToken: (any AnyListenerToken)?
     private var stateListenerToken: (any AnyListenerToken)?
@@ -159,7 +163,7 @@ class CameraService: ObservableObject {
                     let currentState = Wearables.shared.registrationState.rawValue
                     if currentState < 3 { throw CameraError.sdkNotRegistered }
                 }
-                if (error as? CameraError) == .permissionDenied { throw error }
+                if case .permissionDenied? = error as? CameraError { throw error }
                 if attempt == maxAttempts - 1 { throw CameraError.sdkNotRegistered }
             }
         }
@@ -266,7 +270,7 @@ class CameraService: ObservableObject {
             }
         }()
         let fps = UInt(Config.cameraFrameRate)
-        guard let stream = try deviceSession.addStream(
+        guard let camera = try deviceSession.addCamera(
             config: MWDATCamera.StreamConfiguration(
                 videoCodec: .raw,
                 resolution: resolution,
@@ -275,11 +279,12 @@ class CameraService: ObservableObject {
         ) else {
             throw CameraError.streamNotReady
         }
-        streamSession = stream
+        cameraCapability = camera
+        streamSession = camera.stream
         activeStreamResolution = effectiveResolution
-        attachListeners(to: stream)
+        attachListeners(to: camera.stream)
         // (session error watcher already attached above, before start)
-        NSLog("[Camera] Created persistent Stream (.\(effectiveResolution), \(fps)fps)")
+        NSLog("[Camera] Created persistent Camera capability (.\(effectiveResolution), \(fps)fps)")
     }
 
     /// BR P2: device-level errors (incl. `.datAppOnTheGlassesUpdateRequired`) arrive on the
@@ -375,7 +380,7 @@ class CameraService: ObservableObject {
 
         // Start the session if not already running
         if session.state == .stopped {
-            session.start()  // DAT 0.8.0: Stream.start() is synchronous
+            session.start()  // DAT 0.8.0+: Stream.start() is synchronous
         }
 
         // Wait for streaming state. During a cold start the stream bounces through .stopped
@@ -474,6 +479,9 @@ class CameraService: ObservableObject {
         // launch, link up at +4.7s. Retry with backoff (~12s window) while the link returns.
         var sessionError: Error?
         var firstError: Error?
+        // Fresh cycle, fresh verdict — a stale notice from before a glasses update must not
+        // abort attempts that could now succeed (the watcher re-sets it if still true).
+        compatibilityNotice = nil
         for attempt in 1...4 {
             do {
                 try await ensureSession()
@@ -483,6 +491,13 @@ class CameraService: ObservableObject {
                 if firstError == nil { firstError = error }
                 sessionError = error
                 NSLog("[Camera] ensureSession attempt %d/4 failed: %@", attempt, error.localizedDescription)
+                // A compatibility refusal (outdated glasses-side DAT app / firmware) arrives on
+                // the session error stream and kills the session before .started. Retrying can
+                // never succeed — stop churning and surface the actionable update message.
+                if let notice = compatibilityNotice {
+                    NSLog("[Camera] Compatibility refusal — aborting session retries")
+                    throw CameraError.incompatible(notice)
+                }
                 if Self.isSessionAlreadyExists(error) {
                     // The phantom is a glasses-side session still tearing down — either our
                     // own previous one, or one LEAKED by a killed/reinstalled app instance
@@ -756,34 +771,35 @@ class CameraService: ObservableObject {
         }
     }
 
-    /// BR P2: drop the Stream and its listeners but keep the DeviceSession alive — a failed
-    /// stream must not strand a half-open session (`ensureSession` re-adds the stream on
-    /// the retained session).
+    /// BR P2: drop the Camera capability and its listeners but keep the DeviceSession alive —
+    /// a failed stream must not strand a half-open session (`ensureSession` re-adds the camera
+    /// on the retained session).
     private func teardownStreamOnly() async {
-        if let stream = streamSession {
-            stream.stop()
-            await awaitStreamStopped(stream)
+        if let camera = cameraCapability {
+            camera.stop()  // cascades to the stream
+            await awaitCameraStopped(camera)
         }
         stateListenerToken = nil
         videoFrameListenerToken = nil
         photoListenerToken = nil
         errorListenerToken = nil
+        cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
-        NSLog("[Camera] Stream torn down (session retained)")
+        NSLog("[Camera] Camera capability torn down (session retained)")
     }
 
-    /// Bounded wait for a stopped stream to actually reach `.stopped`. The camera
-    /// capability is process-wide and is freed when the stream finishes stopping — not
-    /// when the session is torn down — so arming a replacement stream before then throws
+    /// Bounded wait for a stopped Camera to actually reach `.stopped`. The camera
+    /// capability is process-wide and is freed when the Camera finishes stopping — not
+    /// when the session is torn down — so arming a replacement camera before then throws
     /// `capabilityAlreadyActive`. `stop()` is synchronous but the state transition isn't.
-    private func awaitStreamStopped(_ stream: MWDATCamera.Stream, timeout: Duration = .seconds(2)) async {
+    private func awaitCameraStopped(_ camera: MWDATCamera.Camera, timeout: Duration = .seconds(2)) async {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if stream.state == .stopped { return }
+            if camera.state == .stopped { return }
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
-        NSLog("[Camera] Stream did not reach .stopped within %.0fs — proceeding",
+        NSLog("[Camera] Camera did not reach .stopped within %.0fs — proceeding",
               Double(timeout.components.seconds))
     }
 
@@ -791,17 +807,18 @@ class CameraService: ObservableObject {
     private func resetSession() async {
         sessionErrorTask?.cancel()
         sessionErrorTask = nil
-        if let stream = streamSession {
-            stream.stop()
-            // Wait for the capability to actually free (see `awaitStreamStopped`) so the
-            // retry loop's next `ensureSession` doesn't collide with the dying stream.
-            await awaitStreamStopped(stream)
+        if let camera = cameraCapability {
+            camera.stop()
+            // Wait for the capability to actually free (see `awaitCameraStopped`) so the
+            // retry loop's next `ensureSession` doesn't collide with the dying camera.
+            await awaitCameraStopped(camera)
         }
         deviceSession?.stop()
         stateListenerToken = nil
         videoFrameListenerToken = nil
         photoListenerToken = nil
         errorListenerToken = nil
+        cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
         deviceSession = nil
@@ -891,7 +908,7 @@ class CameraService: ObservableObject {
         // No-op: audio session management is handled by WakeWordService
     }
 
-    // Error mapping now lives in the pure, typed `CameraErrorPolicy` (DAT 0.8.0 unified errors).
+    // Error mapping now lives in the pure, typed `CameraErrorPolicy` (DAT unified `DatError` model).
 }
 
 enum CameraError: LocalizedError {
@@ -902,6 +919,9 @@ enum CameraError: LocalizedError {
     case sdkNotRegistered
     case streamNotReady
     case sessionBusy
+    /// The session was refused for a compatibility reason (e.g. the glasses-side DAT app is
+    /// too old for this SDK). Carries the actionable `DATCompatibilityMessage` copy.
+    case incompatible(String)
 
     var errorDescription: String? {
         switch self {
@@ -912,6 +932,7 @@ enum CameraError: LocalizedError {
         case .sdkNotRegistered: return "Meta SDK not registered — open Meta app first"
         case .streamNotReady: return "Camera stream not ready — try again"
         case .sessionBusy: return "The glasses are still releasing a previous camera session — try again in about a minute"
+        case .incompatible(let message): return message
         }
     }
 }
