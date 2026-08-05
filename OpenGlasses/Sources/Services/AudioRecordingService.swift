@@ -31,7 +31,7 @@ class AudioRecordingService: ObservableObject {
     private var recordingStartDate: Date?
 
     private(set) var recordingTranscript = ""
-    private var lastCaptionCount = 0
+    private var captionCursor = CaptionCursor()
 
     private static let audioConsumerId = "audio_recording"
 
@@ -46,7 +46,7 @@ class AudioRecordingService: ObservableObject {
         guard !isRecording else { return }
 
         let tempDir = FileManager.default.temporaryDirectory
-        let fileName = "OG_Audio_\(Int(Date().timeIntervalSince1970)).m4a"
+        let fileName = Self.recordingFileName()
         let url = tempDir.appendingPathComponent(fileName)
         try? FileManager.default.removeItem(at: url)
 
@@ -70,7 +70,11 @@ class AudioRecordingService: ObservableObject {
         self.outputURL = url
         self.audioStartTime = nil
         self.recordingTranscript = ""
-        self.lastCaptionCount = 0
+        // Start from the present: captions already buffered predate this recording.
+        self.captionCursor = CaptionCursor()
+        if let captions = ambientCaptionService {
+            _ = self.captionCursor.take(newestFirst: captions.captionHistory)
+        }
         self.recordingStartDate = Date()
         self.recordingDuration = 0
         self.isRecording = true
@@ -134,16 +138,19 @@ class AudioRecordingService: ObservableObject {
 
     // MARK: - Private
 
+    /// A recording can be stopped and restarted within one second. Include a UUID so each
+    /// session owns a distinct audio file instead of colliding on a timestamp-only name.
+    static func recordingFileName(now: Date = Date(), id: UUID = UUID()) -> String {
+        "OG_Audio_\(Int(now.timeIntervalSince1970))_\(id.uuidString).m4a"
+    }
+
     private func collectCaptions() {
         guard let captions = ambientCaptionService else { return }
-        let history = captions.captionHistory
-        guard history.count > lastCaptionCount else { return }
-        let newEntries = history[lastCaptionCount...]
+        let newEntries = captionCursor.take(newestFirst: captions.captionHistory)
         let newText = newEntries.map(\.text).joined(separator: " ")
         if !newText.isEmpty {
             recordingTranscript += (recordingTranscript.isEmpty ? "" : " ") + newText
         }
-        lastCaptionCount = history.count
     }
 
     private func saveToDocuments(_ src: URL) -> URL? {

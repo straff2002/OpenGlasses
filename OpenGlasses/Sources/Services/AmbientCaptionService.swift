@@ -11,10 +11,13 @@ class AmbientCaptionService: ObservableObject {
     @Published var currentCaption = ""
     @Published var captionHistory: [CaptionEntry] = []
 
-    struct CaptionEntry: Identifiable {
+    struct CaptionEntry: Identifiable, CaptionSequenced {
         let id = UUID()
         let text: String
         let timestamp: Date
+        /// Monotonic id assigned on insert. `captionHistory` is capped, so consumers cannot track
+        /// their position by array count — they track this instead (see `CaptionCursor`).
+        let seq: UInt64
         /// Diarized speaker id (`nil` = unlabeled / single-speaker path). Resolve to a display
         /// name via `speakerRegistry`.
         var speaker: Int? = nil
@@ -80,6 +83,15 @@ class AmbientCaptionService: ObservableObject {
 
     /// Max history entries to keep
     private let maxHistory = 50
+
+    /// Ever-increasing caption id. Never reset — a consumer holding an older `seq` must not have
+    /// it silently reused, or it would stop seeing new captions.
+    private var nextSeq: UInt64 = 0
+
+    private func makeSeq() -> UInt64 {
+        nextSeq += 1
+        return nextSeq
+    }
 
     /// Rolling transcript for current utterance
     private var lastFinalizedText = ""
@@ -389,7 +401,7 @@ class AmbientCaptionService: ObservableObject {
     /// transcript and assistant have context about what was seen.
     func insertVisualNote(_ description: String) {
         let note = "[Visual: \(description)]"
-        let entry = CaptionEntry(text: note, timestamp: Date())
+        let entry = CaptionEntry(text: note, timestamp: Date(), seq: makeSeq())
         captionHistory.insert(entry, at: 0)
         if captionHistory.count > maxHistory {
             captionHistory = Array(captionHistory.prefix(maxHistory))
@@ -432,8 +444,8 @@ class AmbientCaptionService: ObservableObject {
         guard trimmed != lastFinalizedText else { return }
 
         lastFinalizedText = trimmed
-        let entry = CaptionEntry(text: trimmed, timestamp: Date(), speaker: speaker,
-                                 original: original, language: language)
+        let entry = CaptionEntry(text: trimmed, timestamp: Date(), seq: makeSeq(),
+                                 speaker: speaker, original: original, language: language)
         captionHistory.insert(entry, at: 0)
 
         // Trim history

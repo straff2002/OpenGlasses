@@ -30,7 +30,7 @@ enum SiriContentProvider {
             )
         }
         if config.isEnabled(.meetingSummary) {
-            let raw = defaults.array(forKey: "saved_notes") as? [[String: String]] ?? []
+            let raw = SavedNotesStore.load(defaults: defaults)
             records += SiriContentAdapters.meetingSummaries(rawSavedNotes: raw)
         }
         if config.isEnabled(.savedLocation) {

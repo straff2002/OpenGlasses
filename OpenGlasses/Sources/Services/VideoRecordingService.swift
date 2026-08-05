@@ -67,6 +67,9 @@ class VideoRecordingService: ObservableObject {
     /// Transcript accumulated during recording (from ambient captions).
     @Published private(set) var recordingTranscript: String = ""
     private var transcriptEntries: [String] = []
+    /// Position in the caption stream. Sequence-based, because `captionHistory` is capped and
+    /// stops growing once full.
+    private var captionCursor = CaptionCursor()
 
     var formattedDuration: String {
         let hours = Int(recordingDuration) / 3600
@@ -238,6 +241,11 @@ class VideoRecordingService: ObservableObject {
         self.lastFrameAt = nil
         self.recordingTranscript = ""
         self.transcriptEntries = []
+        // Start from the present: captions already buffered predate this recording.
+        self.captionCursor = CaptionCursor()
+        if let captions = ambientCaptionService {
+            _ = self.captionCursor.take(newestFirst: captions.captionHistory)
+        }
         self.isRecording = true
 
         // Subscribe to video frames on a background queue
@@ -401,16 +409,13 @@ class VideoRecordingService: ObservableObject {
     /// Collect new caption entries from ambient captions into the recording transcript.
     private func collectCaptions() {
         guard let captions = ambientCaptionService else { return }
-        let history = captions.captionHistory
-        let newCount = history.count - transcriptEntries.count
-        guard newCount > 0 else { return }
+        let newEntries = captionCursor.take(newestFirst: captions.captionHistory)
+        guard !newEntries.isEmpty else { return }
 
-        // captionHistory is newest-first, so take the new entries from the front
-        let newEntries = history.prefix(newCount)
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "HH:mm:ss"
 
-        for entry in newEntries.reversed() {
+        for entry in newEntries {
             let timestamp = dateFormatter.string(from: entry.timestamp)
             let line = "[\(timestamp)] \(entry.text)"
             transcriptEntries.append(line)
