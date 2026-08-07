@@ -151,6 +151,8 @@ All settings are in-app — no source code editing needed.
 | Wake word not detecting | Tap mic button to restart; check Bluetooth audio routing |
 | No audio through glasses | Verify Bluetooth connection in iOS Settings |
 | Glasses not connecting | Tap "Connect to Glasses"; enable Developer Mode in Meta AI app |
+| Camera says "Your glasses need an update" | The glasses-side DAT software lags the SDK this app builds against. Update the Meta AI app from the App Store, power-cycle the glasses in their case, and if it persists unlink/relink the app connection in Meta AI. If none of that helps, Meta hasn't shipped the matching glasses update yet — everything else works; camera/streaming resume automatically once the rollout lands |
+| Glasses mic silent (beeps play, nothing transcribed) | Bluetooth *audio* pairing is broken while the app link still works — happens after a glasses reset. Forget the glasses in iOS Settings → Bluetooth, put them in the case with the lid open, hold the case button until the LED pulses blue, re-pair via the Meta AI app prompt, then restart the iPhone. Re-grant the app connection + camera permission after |
 | HomeKit not finding devices | HomeKit initializes on first tool call — say "list smart home devices" and wait 10s |
 | Local model won't load ("not enough memory") | Close other apps in the app switcher and use **Try again** in Download & Manage Models (live headroom shown there), or switch to a smaller model (0.5B–2B) |
 | Model download stuck | Keep app in foreground; downloads continue if briefly backgrounded |

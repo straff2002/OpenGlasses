@@ -43,7 +43,7 @@ At a glance — every item links to its section below:
 | **Talk** | [Personas](#personas--multiple-ai-personalities) · [Hey Siri](#hey-siri--ask-by-voice-without-the-wake-word) · [Fully Offline Voice](#fully-offline-voice-mode) · [Text-to-Speech](#text-to-speech) · [Realtime Modes](#realtime-modes) · [Barge-In](#barge-in) |
 | **Think** | [85+ Native Tools](#85-native-tools) · [On-Device LLM](#on-device-local-llm) · [Self-Hosted Server](#self-hosted-local-server-ollama-llamacpp-vllm) · [Smart Routing](#smart-model-routing) · [Prompt Presets](#prompt-presets) · [Custom Tools](#custom-tools) · [MCP Servers](#mcp-servers-model-context-protocol) · [Voice-Taught Skills](#voice-taught-skills) |
 | **See** | [Live Coach](#live-coach--real-time-vision-coaching) · [Smart Capture](#smart-capture) · [Object Memory](#object-memory) · [Live Translation](#live-translation) · [Camera & Streaming](#camera--streaming) · [Display HUD](#ray-ban-display-hud) |
-| **Remember** | [Social Context](#social-context) · [Knowledge Brain](#on-device-knowledge-brain) |
+| **Remember** | [Social Context](#social-context) · [Knowledge Brain](#on-device-knowledge-brain) · [Meeting Recorder](#meeting-recorder) |
 | **Connect** | [Home Assistant](#home-assistant-integration) · [CarPlay & Apple Watch](#carplay--apple-watch) · [Transparency & Privacy](#transparency--privacy) |
 | **Work** | [Field Assist](#field-assist--guided-field-service) · [Medical Compliance](#medical-compliance) |
 
@@ -303,6 +303,10 @@ The agentic path is hardened against **prompt injection** — untrusted content 
 - **Chat Read-Aloud** — while broadcasting, Twitch chat is spoken into your ear (read-only, no OAuth): rate-capped and de-duplicated, mentions jump the queue, assistant speech always wins, and it goes quiet during realtime sessions. Opt-in, with a mentions-only mode
 - **WebRTC Browser Streaming** — shareable URL for peer-to-peer viewing
 - **Privacy Filter** — auto-blurs bystander faces
+
+### Meeting Recorder
+
+One tap on the **Record button** in the quick actions bar (or by voice) captures a meeting through the glasses mic — with live captions on screen while it records, even if wake-word listening is off. Recordings are **preserved** in an in-app library with playback, and each one gets a transcript automatically: speaker-labeled cloud transcription when Deepgram is configured, with the downloaded on-device model as the private/offline fallback. Medical Compliance Mode keeps transcription fully on-device.
 
 ### Ray-Ban Display HUD
 
