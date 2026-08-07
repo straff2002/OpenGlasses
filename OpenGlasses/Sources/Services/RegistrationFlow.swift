@@ -26,7 +26,17 @@ enum RegistrationFlow {
     /// Diagnostic failure message for a connect that gave up — names the stalled layer instead of
     /// a bare "Could not connect to glasses" (issue #246: that string hid a broken registration
     /// link-back for an entire debugging evening). Still actionable, now also diagnosable.
-    static func connectFailureMessage(stateRaw: Int) -> String {
+    ///
+    /// `configStatus` lets a bad MWDAT config pre-empt the generic advice: a placeholder app ID
+    /// stalls registration in exactly the same way a missed link-back does, and telling the user
+    /// to re-approve in Meta AI when the *build* is misconfigured sends them down the wrong path
+    /// for hours. Defaults to `.ok` so existing callers are unaffected.
+    static func connectFailureMessage(stateRaw: Int,
+                                      configStatus: MWDATConfigCheck.Status = .ok) -> String {
+        if !isRegistered(stateRaw: stateRaw),
+           let configProblem = MWDATConfigCheck.message(for: configStatus) {
+            return configProblem
+        }
         if isRegistered(stateRaw: stateRaw) {
             return "Glasses registered but no device appeared (state \(stateRaw)). Make sure the glasses are on, nearby, and connected in the Meta AI app, then try again."
         }

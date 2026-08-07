@@ -127,6 +127,16 @@ targets:
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlasses/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
+        # Meta DAT credentials. The Info.plist references these as $(...) so the committed
+        # plist stays the single source of truth for every OTHER key — overriding
+        # INFOPLIST_FILE to a personal copy is what caused ITMS-90683 (a snapshot went stale
+        # and silently dropped newly added usage descriptions), and later left MetaAppID on
+        # the placeholder, which stalls DAT registration below state 3 and means the camera
+        # permission prompt never fires.
+        # Real values belong in the gitignored project.local.yml — never here. These
+        # placeholders are what the launch-time check in OpenGlassesApp looks for.
+        MWDAT_META_APP_ID: YOUR_META_APP_ID
+        MWDAT_CLIENT_TOKEN_HASH: YOUR_CLIENT_TOKEN_HASH
         INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
         # Compiles the real on-device sherpa-onnx inference paths — Kokoro TTS (Additional

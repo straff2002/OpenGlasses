@@ -55,8 +55,10 @@ secrets/*
 !secrets/*.example
 Config/Entitlements/Personal/*.entitlements
 !Config/Entitlements/Personal/*.entitlements.example
+# Meta DAT credentials live in project.local.yml (ignored above) as build settings substituted
+# into the committed Info.plist. The old Config/Info/Info.personal.plist override is gone — a
+# whole-plist copy went stale (ITMS-90683) and later swallowed those credentials.
 Config/Info/Info.personal.plist
-!Config/Info/Info.personal.plist.example
 
 # Xcode user data (don't track)
 xcuserdata/
