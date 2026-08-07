@@ -7,15 +7,23 @@ targets:
       base:
         CODE_SIGN_ENTITLEMENTS: Config/Entitlements/Personal/OpenGlasses.entitlements
         DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
-        # Leave the app on the committed OpenGlasses/Info.plist (the default) so newly added
-        # usage-description keys can't go stale in a personal copy — a stale copy caused an
-        # App Store ITMS-90683 ("missing NSLocationAlwaysAndWhenInUseUsageDescription").
-        # ONLY uncomment the override below if you REBRAND (custom bundle id / display name):
-        # it REPLACES the app's entire Info.plist, so Info.personal.plist must be a FULL plist
-        # (all CFBundle*/usage keys) that you keep in sync with OpenGlasses/Info.plist by hand.
-        # If you also change PRODUCT_BUNDLE_IDENTIFIER, override
-        # WK_COMPANION_APP_BUNDLE_IDENTIFIER on the OpenGlassesWatch target to match.
-        # INFOPLIST_FILE: Config/Info/Info.personal.plist
+        # Meta DAT credentials from developers.meta.com. These are substituted into the
+        # committed OpenGlasses/Info.plist's MWDAT dict at build time, which keeps that plist
+        # the single source of truth for every other key. A client token reads
+        # AR|<app id>|<hash>; only the trailing hash goes here.
+        #
+        # Without these the app builds and launches, but DAT registration never completes —
+        # and since the camera permission prompt is gated behind registration, the symptom is
+        # a Connect button that seems to do nothing, not an obvious credentials error.
+        MWDAT_META_APP_ID: "YOUR_META_APP_ID"
+        MWDAT_CLIENT_TOKEN_HASH: "YOUR_CLIENT_TOKEN_HASH"
+        # Never override INFOPLIST_FILE to a personal plist copy. That mechanism was removed:
+        # the copy went stale and dropped newly added usage descriptions (App Store
+        # ITMS-90683), and withdrawing it silently took the Meta credentials with it.
+        # Rebranding doesn't need it — PRODUCT_BUNDLE_IDENTIFIER and
+        # INFOPLIST_KEY_CFBundleDisplayName are build settings. If you change
+        # PRODUCT_BUNDLE_IDENTIFIER, also override WK_COMPANION_APP_BUNDLE_IDENTIFIER on the
+        # OpenGlassesWatch target to match.
 
   GlassesActivityWidget:
     settings:

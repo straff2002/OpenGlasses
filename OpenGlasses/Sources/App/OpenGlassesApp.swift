@@ -419,8 +419,11 @@ struct OpenGlassesApp: App {
         let teamID = mwdat?["TeamID"] as? String
         NSLog("[OpenGlasses] Config clientTokenPresent=\(clientToken?.isEmpty == false)")
         NSLog("[OpenGlasses] Config teamID=\(teamID ?? "nil")")
-        if metaAppID?.hasPrefix("YOUR_") == true || clientToken?.contains("YOUR_") == true {
-            NSLog("[OpenGlasses] ⚠️ MWDAT config still contains placeholder values")
+        // A placeholder/unsubstituted credential doesn't fail loudly — it stalls registration
+        // below the state that gates the camera permission prompt, which reads as "the Connect
+        // button does nothing". Name it here so it's the first suspect, not the last.
+        if let problem = MWDATConfigCheck.message(for: MWDATConfigCheck.validate(mwdat)) {
+            NSLog("[OpenGlasses] ⚠️ %@", problem)
         }
     }
 }
@@ -4099,8 +4102,11 @@ class AppState: ObservableObject, AppStateProtocol {
 
         guard isConnected else {
             let stateRaw = Wearables.shared.registrationState.rawValue
-            errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw)
-            addDebugEvent("connectAndListen gave up: registrationState=\(stateRaw)")
+            let configStatus = MWDATConfigCheck.validate(
+                Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
+            errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
+                                                                  configStatus: configStatus)
+            addDebugEvent("connectAndListen gave up: registrationState=\(stateRaw), config=\(configStatus)")
             return
         }
 

@@ -18,26 +18,35 @@ cd OpenGlasses
 3. Note your **Meta App ID** and **Client Token**
 4. In Meta dashboard → iOS settings, enter your Apple Team ID, Bundle ID, and Universal Link URL
 
-### 3. Configure Meta keys (Info.plist)
+### 3. Configure Meta keys
 
-Put your Meta **App ID**, **Client Token**, and universal-link URL in the `MWDAT` section. Either:
+Your Meta **App ID** and **Client Token** are build settings, substituted into the committed
+`OpenGlasses/Info.plist` at build time. Put them in the gitignored `project.local.yml` — never
+in the plist itself:
 
-- **Recommended:** run `./Scripts/setup-local-dev.sh`, edit `Config/Info/Info.personal.plist` (gitignored), then `./Scripts/generate-xcodeproj.sh` again; or
-- Edit the shared template `OpenGlasses/Info.plist` if you are not using a personal overlay.
-
-```xml
-<key>MWDAT</key>
-<dict>
-    <key>AppLinkURLScheme</key>
-    <string>https://YOUR-DOMAIN/YOUR-PATH</string>
-    <key>MetaAppID</key>
-    <string>YOUR_META_APP_ID</string>
-    <key>ClientToken</key>
-    <string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
-    <key>TeamID</key>
-    <string>$(DEVELOPMENT_TEAM)</string>
-</dict>
+```yaml
+targets:
+  OpenGlasses:
+    settings:
+      base:
+        MWDAT_META_APP_ID: "<your Meta app id>"
+        MWDAT_CLIENT_TOKEN_HASH: "<hash after the second | of your client token>"
 ```
+
+Then re-run `./Scripts/generate-xcodeproj.sh`. A client token looks like
+`AR|<app id>|<hash>`; only the trailing hash goes in `MWDAT_CLIENT_TOKEN_HASH`, since the plist
+composes the rest. `./Scripts/setup-local-dev.sh` preserves both values when it rewrites
+`project.local.yml`.
+
+Without them the app builds and launches normally, but DAT registration never completes — and
+because the camera permission prompt is gated behind registration, the symptom is a Connect
+button that appears to do nothing rather than an obvious credentials error. The app names this
+at launch (`⚠️ Glasses config is still the committed placeholder`) and in the connect-failure
+message.
+
+> Don't override `INFOPLIST_FILE` to a personal plist copy. That mechanism was removed: the
+> copy went stale and silently dropped newly added usage descriptions (App Store ITMS-90683),
+> and when it was withdrawn it took the Meta credentials with it.
 
 ### 4. Universal Links
 
@@ -99,9 +108,8 @@ Team ID, entitlements, and Meta keys differ per developer. Those settings live i
 
 | File (gitignored) | Purpose |
 |-------------------|---------|
-| `project.local.yml` | Team ID + `DEVELOPMENT_TEAM`; personal entitlements / Info.plist paths (see `project.local.yml.example`) |
+| `project.local.yml` | Team ID + `DEVELOPMENT_TEAM`, personal entitlements paths, and the Meta credentials `MWDAT_META_APP_ID` / `MWDAT_CLIENT_TOKEN_HASH` (see `project.local.yml.example`) |
 | `Config/Entitlements/Personal/*.entitlements` | Capabilities your provisioning profile supports |
-| `Config/Info/Info.personal.plist` | Full app `Info.plist` when you need your own Meta `ClientToken` / URL schemes |
 
 First-time setup from the templates:
 

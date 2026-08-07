@@ -94,9 +94,9 @@
 		<key>AppLinkURLScheme</key>
 		<string>openglasses://</string>
 		<key>ClientToken</key>
-		<string>AR|YOUR_META_APP_ID|YOUR_CLIENT_TOKEN_HASH</string>
+		<string>AR|$(MWDAT_META_APP_ID)|$(MWDAT_CLIENT_TOKEN_HASH)</string>
 		<key>MetaAppID</key>
-		<string>YOUR_META_APP_ID</string>
+		<string>$(MWDAT_META_APP_ID)</string>
 		<key>TeamID</key>
 		<string>$(DEVELOPMENT_TEAM)</string>
 	</dict>
