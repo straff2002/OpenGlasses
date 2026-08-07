@@ -562,6 +562,15 @@ class LLMService: ObservableObject {
             rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
         }
 
+        // Local reasoning models (LFM2.5) are stripped at the generate layer —
+        // LocalLLMService owns the template-opened <think> handling and every local
+        // consumer needs the clean answer, not just this path. Surface the suppressed
+        // chain-of-thought for the prompt inspector and return the (already clean) text.
+        if provider == .local, let localThink = localLLMService?.lastReasoning {
+            lastReasoning = localThink
+            return rawResponse
+        }
+
         // Strip <think> tags: keep reasoning in history but don't speak it
         if Config.agentModeEnabled {
             let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
@@ -2875,6 +2884,14 @@ extension LLMService {
     }
 
     static func stripThinkTags(_ text: String) -> (spoken: String, reasoning: String?) {
+        // Template-opened reasoning (LFM-style chat templates emit the opening <think> as
+        // part of the generation prompt): the completion carries a bare </think> with no
+        // opener. Re-open so the paired-tag pass below handles both shapes.
+        var text = text
+        if let close = text.range(of: "</think>"),
+           text[..<close.lowerBound].range(of: "<think>") == nil {
+            text = "<think>" + text
+        }
         let pattern = "<think>[\\s\\S]*?</think>"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return (text, nil)

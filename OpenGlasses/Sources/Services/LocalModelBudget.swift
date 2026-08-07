@@ -17,9 +17,27 @@ import Foundation
 ///
 /// No MLX import — deliberately headless-testable.
 enum LocalModelBudget {
-    /// Tokens reserved for the model's own output. Must match `GenerateParameters(maxTokens:)`
-    /// in `LocalLLMService.generate`; if that changes, change this.
+    /// Tokens reserved for the model's own output. `LocalLLMService.generate` derives its
+    /// `GenerateParameters(maxTokens:)` from `generationReserve(for:)`, so budget and cap
+    /// can't drift apart.
     static let generationReserve = 512
+
+    /// Models that always emit chain-of-thought before the answer (LFM2.5's chat template
+    /// pre-opens a `<think>` block on every turn). The think tokens spend from the same
+    /// generation budget as the spoken answer, so these models get a larger reserve —
+    /// 512 could exhaust mid-think and produce an all-reasoning (empty-spoken) turn.
+    static let reasoningModelIds: Set<String> = [
+        "LiquidAI/LFM2.5-2.6B-MLX-4bit",
+    ]
+
+    /// Generation reserve for reasoning models: think block + answer.
+    static let reasoningGenerationReserve = 1024
+
+    /// Per-model generation reserve (tokens the model may emit this turn).
+    static func generationReserve(for modelId: String?) -> Int {
+        guard let modelId, reasoningModelIds.contains(modelId) else { return generationReserve }
+        return reasoningGenerationReserve
+    }
 
     /// Small extra cushion for chat-template scaffolding and count drift between our estimate and
     /// the model's actual tokenization.
@@ -42,6 +60,7 @@ enum LocalModelBudget {
         "mlx-community/gemma-2-2b-it-4bit": 4096,
         "mlx-community/gemma-4-e2b-it-4bit": 4096,
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx": 4096,
+        "LiquidAI/LFM2.5-2.6B-MLX-4bit": 4096,   // 128K advertised; memory is the real ceiling
     ]
 
     /// Real context window for a model id, or the conservative default for an unknown id.
@@ -50,11 +69,12 @@ enum LocalModelBudget {
         return window
     }
 
-    /// Maximum tokenized-prompt length for a model: its window minus the generation reserve and a
+    /// Maximum tokenized-prompt length for a model: its window minus its generation reserve and a
     /// safety margin. Never returns less than a small floor so a mis-entered window can't produce a
     /// zero/negative budget that rejects every prompt.
     static func promptBudget(for modelId: String?) -> Int {
-        promptBudget(contextWindow: contextWindow(for: modelId))
+        max(minimumBudget,
+            contextWindow(for: modelId) - generationReserve(for: modelId) - safetyMargin)
     }
 
     /// Budget from an explicit window (unit-test entry point).
