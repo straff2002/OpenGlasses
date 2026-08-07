@@ -36,6 +36,35 @@ final class LocalModelBudgetTests: XCTestCase {
                        LocalModelBudget.minimumBudget)
     }
 
+    // MARK: - Reasoning-model reserve (LFM2.5)
+
+    func testReasoningModelGetsLargerGenerationReserve() {
+        // The think block spends from the same cap as the answer — 512 exhausts mid-think.
+        let lfm = "LiquidAI/LFM2.5-2.6B-MLX-4bit"
+        XCTAssertTrue(LocalModelBudget.reasoningModelIds.contains(lfm))
+        XCTAssertEqual(LocalModelBudget.generationReserve(for: lfm),
+                       LocalModelBudget.reasoningGenerationReserve)
+        XCTAssertGreaterThan(LocalModelBudget.reasoningGenerationReserve,
+                             LocalModelBudget.generationReserve)
+    }
+
+    func testNonReasoningModelKeepsDefaultReserve() {
+        XCTAssertEqual(LocalModelBudget.generationReserve(for: "mlx-community/Qwen2.5-3B-Instruct-4bit"),
+                       LocalModelBudget.generationReserve)
+        XCTAssertEqual(LocalModelBudget.generationReserve(for: nil),
+                       LocalModelBudget.generationReserve)
+    }
+
+    func testReasoningModelPromptBudgetSubtractsItsOwnReserve() {
+        // Budget must shrink by the REASONING reserve, or prompt + think + answer overflows
+        // the window mid-stream (the uncatchable per-token OOM the budget exists to prevent).
+        let lfm = "LiquidAI/LFM2.5-2.6B-MLX-4bit"
+        XCTAssertEqual(LocalModelBudget.promptBudget(for: lfm),
+                       LocalModelBudget.contextWindow(for: lfm)
+                           - LocalModelBudget.reasoningGenerationReserve
+                           - LocalModelBudget.safetyMargin)
+    }
+
     // MARK: - Truncation: drop oldest history first
 
     /// Each history turn counts as 10 tokens; system + user baseline is 20. Lets us drive the

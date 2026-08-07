@@ -23,6 +23,10 @@ final class LocalLLMService: ObservableObject {
     private var modelContainer: ModelContainer?
     private var activeDownloadTask: Task<Void, Error>?
 
+    /// Chain-of-thought stripped from the last generation (reasoning models only; nil
+    /// otherwise). Surfaced by LLMService for the prompt inspector — never spoken.
+    private(set) var lastReasoning: String?
+
     /// Injectable download primitive (BK P5) so a test can drive a fake download — and its
     /// cancellation — without touching the network. `nil` ⇒ the real `HubClient` path. Reports
     /// fractional progress; throws (e.g. `CancellationError`) to abort.
@@ -108,6 +112,16 @@ final class LocalLLMService: ObservableObject {
             notes: "Tiny vision model — basic photo understanding"
         ),
         // Text-only MLX models
+        RecommendedModel(
+            id: "LiquidAI/LFM2.5-2.6B-MLX-4bit",
+            name: "LFM2.5 2.6B (Reasoning)",
+            estimatedSize: "1.6 GB",
+            hasVision: false,
+            hasToolCalling: true,
+            notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
+                + "pause before speech starts), then answers with strong tool use and "
+                + "instruction following. Best quality per GB of the text-only models."
+        ),
         RecommendedModel(
             id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
             name: "Qwen 2.5 3B",
@@ -491,9 +505,24 @@ final class LocalLLMService: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(bgObserver) }
 
-        // Generate
-        let parameters = GenerateParameters(maxTokens: 512, temperature: 0.7, topP: 0.9)
+        // Generate — sampling and token cap are per-model (reasoning models differ)
+        let parameters = Self.generateParameters(for: loadedModelId)
         let stream = try await container.generate(input: input, parameters: parameters)
+
+        // Reasoning models (LFM2.5) start every completion inside a template-opened <think>
+        // block. Suppress it on the token stream (the UI preview must not show — and TTS
+        // must not speak — chain-of-thought) and strip it from the returned text below.
+        let isReasoningModel = LocalModelBudget.reasoningModelIds.contains(loadedModelId ?? "")
+        var filteredOnToken = onToken
+        if isReasoningModel, let onToken {
+            // No end-of-stream flush needed: the caller replaces the streamed preview with
+            // the (fully stripped) returned text, so a held-back tail is only cosmetic.
+            let filter = ThinkStreamFilter()
+            filteredOnToken = { chunk in
+                let visible = filter.ingest(chunk)
+                if !visible.isEmpty { onToken(visible) }
+            }
+        }
 
         // Drive the stream through the pure loop below so we can bail out *before* requesting the
         // next token — before MLX submits the next Metal command buffer. Non-text generations
@@ -510,13 +539,31 @@ final class LocalLLMService: ObservableObject {
             isBackgrounded: { [weak self] in
                 (self?.enteredBackgroundDuringGeneration ?? false) || UIApplication.shared.applicationState == .background
             },
-            onToken: onToken
+            onToken: filteredOnToken
         )
         // Memory telemetry per turn — footprint should now stay flat across questions;
         // before the cacheLimit cap it grew ~0.7 GB per turn until the Jetsam kill.
         NSLog("🔬 LocalLLM.generate done — mlx active=%dMB cache=%dMB, app footprint=%dMB",
               Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576,
               Int(MemoryHeadroom.appFootprintBytes() / 1_048_576))
+
+        // Strip the think block from the RETURNED text too, at this layer rather than in
+        // LLMService: every consumer (tool-call parsing, corrective regens, uncertainty
+        // re-ask query rewriting, agent scheduler) must see the answer only — think text
+        // routinely "announces" plans and would false-trigger the announce-without-action
+        // corrective regen, or leak reasoning into a web-search query. An all-think
+        // completion (reserve exhausted mid-think) returns empty here, which the caller's
+        // empty-completion guard surfaces as a catchable error instead of dead air.
+        if isReasoningModel {
+            let (spoken, reasoning) = ThinkStreamFilter.strip(output)
+            lastReasoning = reasoning
+            if let reasoning {
+                NSLog("🔬 LocalLLM.generate think block: %d chars — %@",
+                      reasoning.count, String(reasoning.prefix(160)))
+            }
+            return spoken
+        }
+        lastReasoning = nil
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -580,6 +627,27 @@ final class LocalLLMService: ObservableObject {
         NSLog("🔬 LocalLLM.generateVisionTurn done — mlx active=%dMB cache=%dMB",
               Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Sampling parameters per model. Reasoning models (LFM2.5) follow Liquid's recommended
+    /// low-temperature settings (temp 0.1, top-k 50, repetition penalty 1.1) and take their
+    /// token cap from `LocalModelBudget.generationReserve(for:)` — the think block spends
+    /// from the same cap as the spoken answer, so they get the larger reasoning reserve.
+    /// Everything else keeps the long-standing defaults.
+    nonisolated static func generateParameters(for modelId: String?) -> GenerateParameters {
+        if let modelId, LocalModelBudget.reasoningModelIds.contains(modelId) {
+            return GenerateParameters(
+                maxTokens: LocalModelBudget.generationReserve(for: modelId),
+                temperature: 0.1,
+                topK: 50,
+                repetitionPenalty: 1.1
+            )
+        }
+        return GenerateParameters(
+            maxTokens: LocalModelBudget.generationReserve(for: modelId),
+            temperature: 0.7,
+            topP: 0.9
+        )
     }
 
     /// Shape token ids for the loaded model (see the call site in `generate` for why):
