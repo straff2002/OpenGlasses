@@ -30,6 +30,11 @@ class FaceRecognitionService: ObservableObject {
     /// Callback to speak a name when recognized
     var onRecognition: ((String) -> Void)?
 
+    /// CO Item 1: fired instead of `onRecognition` when two or more enrolled people are too close
+    /// to separate. Names are ordered best-first, but the ordering is explicitly not a ranking the
+    /// caller should collapse back into a single answer — that is the bug this exists to prevent.
+    var onAmbiguousRecognition: (([String]) -> Void)?
+
     private var frameSubscription: AnyCancellable?
     private var processingFrame = false
 
@@ -117,13 +122,25 @@ class FaceRecognitionService: ObservableObject {
 
             let faceprint = faceprints[0]
 
-            // Check if this person already exists
-            if let existingIdx = findMatch(for: faceprint) {
-                let oldName = knownFaces[existingIdx].name
-                knownFaces[existingIdx].name = name
-                knownFaces[existingIdx].lastSeen = Date()
+            // Check if this person already exists. CO Item 1: this branch *renames an existing
+            // record*, so acting on a near-tie is the destructive form of the confident-wrong bug —
+            // enrolling one sibling would silently rewrite the other's name. Refuse and ask.
+            switch classify(faceprint) {
+            case .confident(let candidate):
+                let oldName = knownFaces[candidate.index].name
+                knownFaces[candidate.index].name = name
+                knownFaces[candidate.index].lastSeen = Date()
                 saveFaces()
                 return "Updated \(oldName) to \(name)."
+
+            case .ambiguous(let contenders):
+                let names = contenders.map { knownFaces[$0.index].name }
+                return "That face is too close to call between \(Self.spokenList(names)) — I won't "
+                     + "rename the wrong person. Remove the one that's wrong in Settings, then "
+                     + "save \(name) again."
+
+            case .none:
+                break
             }
 
             let face = KnownFace(name: name, faceprint: faceprint)
@@ -177,9 +194,10 @@ class FaceRecognitionService: ObservableObject {
 
                 await MainActor.run {
                     for faceprint in faceprints {
-                        if let matchIdx = self.findMatch(for: faceprint) {
-                            let name = self.knownFaces[matchIdx].name
-                            self.knownFaces[matchIdx].lastSeen = Date()
+                        switch self.classify(faceprint) {
+                        case .confident(let candidate):
+                            let name = self.knownFaces[candidate.index].name
+                            self.knownFaces[candidate.index].lastSeen = Date()
                             self.lastRecognizedName = name
 
                             // Check cooldown before announcing
@@ -191,6 +209,22 @@ class FaceRecognitionService: ObservableObject {
                             self.lastAnnouncedNames[name] = Date()
                             self.onRecognition?(name)
                             print("👤 Recognized: \(name)")
+
+                        case .ambiguous(let contenders):
+                            // CO Item 1: too close to call. Say so rather than picking the leader —
+                            // and don't touch `lastSeen`, since we don't know whose it is.
+                            let names = contenders.map { self.knownFaces[$0.index].name }
+                            let key = names.sorted().joined(separator: "|")
+                            if let lastAnnounced = self.lastAnnouncedNames[key],
+                               Date().timeIntervalSince(lastAnnounced) < self.announceCooldown {
+                                continue
+                            }
+                            self.lastAnnouncedNames[key] = Date()
+                            self.onAmbiguousRecognition?(names)
+                            print("👤 Ambiguous: \(names.joined(separator: " / "))")
+
+                        case .none:
+                            continue
                         }
                     }
                     self.processingFrame = false
@@ -263,6 +297,31 @@ class FaceRecognitionService: ObservableObject {
 
     private func findMatch(for faceprint: [Float]) -> Int? {
         FaceMatcher.bestMatch(for: faceprint, among: knownFaces.map(\.faceprint), threshold: matchThreshold)
+    }
+
+    /// What the wearer hears on a near-tie. Phrased as a real question, for two reasons: it is
+    /// honest about the app's state, and it lets the normal conversation loop act on the answer
+    /// through the existing face tools. It also has to *read* as a question so CO Item 4 grants the
+    /// longer silence window — otherwise the prompt closes before the user can answer it, which
+    /// would be a worse experience than the confident wrong guess this replaces.
+    nonisolated static func ambiguityPrompt(names: [String]) -> String {
+        "That might be \(spokenList(names)) — which one is it?"
+    }
+
+    /// "Sam or Alex" / "Sam, Alex or Jo" — spoken aloud, so it needs the conjunction.
+    /// `nonisolated` so phrasing is testable without standing up the main-actor service.
+    nonisolated static func spokenList(_ names: [String]) -> String {
+        guard let last = names.last else { return "" }
+        guard names.count > 1 else { return last }
+        return names.dropLast().joined(separator: ", ") + " or " + last
+    }
+
+    /// CO Item 1: the full outcome, including the near-tie case `findMatch` cannot express.
+    func classify(_ faceprint: [Float]) -> FaceMatcher.MatchOutcome {
+        FaceMatcher.match(for: faceprint,
+                          among: knownFaces.map(\.faceprint),
+                          threshold: matchThreshold,
+                          margin: Config.faceMatchAmbiguityMargin)
     }
 
     // MARK: - Persistence

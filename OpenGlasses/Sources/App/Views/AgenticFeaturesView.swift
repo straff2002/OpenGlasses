@@ -8,6 +8,7 @@ struct AgenticFeaturesView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccent) private var accent
     @State private var enabled = Config.agentModeEnabled
+    @State private var visionAttachment = Config.agentVisionAttachmentEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
     @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
     @State private var showShareSheet = false
@@ -49,6 +50,22 @@ struct AgenticFeaturesView: View {
             }
 
             if enabled {
+                // Plan CN — a separate grant from Agent Mode itself. Enabling agents authorises
+                // dispatching text tasks; sending camera frames to the same endpoint is a
+                // different promise, so it is a different switch and it starts off.
+                Section {
+                    InfoToggle(
+                        title: "Let Agents See",
+                        isOn: $visionAttachment,
+                        info: "Off by default. When on, a task you hand to a remote agent can carry one still from the glasses camera, so the agent reads a label, serial plate or form directly instead of working from the assistant's description of it. Pin a frame first to choose exactly what it sees; otherwise the current view is used, and only when your request refers to something visible. The image is blurred for bystander faces if that setting is on, and never sent in HIPAA mode. Custom agent endpoints also need an image field named in their configuration."
+                    )
+                    .onChange(of: visionAttachment) { _, on in
+                        Config.setAgentVisionAttachmentEnabled(on)
+                    }
+                } footer: {
+                    Text("A camera frame leaves your device for whichever agent endpoint you've configured. Separate from Agentic Features itself, so turning agents on never starts sending pictures on its own.")
+                }
+
                 // Safety supervisor (Plan S) — deterministic veto rules before any agent action.
                 Section {
                     NavigationLink {

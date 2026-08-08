@@ -63,8 +63,17 @@ final class AgentSessionService: ObservableObject {
 
     // MARK: - Dispatch
 
+    /// Plan CN: resolves the frame to attach, or nil. Wired by AppState to the pinned-or-live
+    /// path (already privacy-filtered); tests inject. Nil seam ⇒ never attach.
+    var resolveAttachment: ((AgentAttachmentPolicy.Decision) -> AgentTaskAttachment?)?
+
+    /// Plan CN: the policy inputs AppState alone can answer (pin state, camera state).
+    var attachmentContext: (() -> (pinHeld: Bool, pinAge: TimeInterval?, cameraStreaming: Bool))?
+
     @discardableResult
-    func dispatch(prompt: String, project: String?) async -> Result<AgentRun, AgentHarnessError> {
+    func dispatch(prompt: String,
+                  project: String?,
+                  explicitAttach: Bool? = nil) async -> Result<AgentRun, AgentHarnessError> {
         // BK P0: dispatching a remote agent run is an autonomous action — gate it at the service
         // layer, not only at the tool layer (`AgentControlTool`). Latent today (its only caller is
         // tool-gated), but this is the gate-at-the-service-layer lesson the phase codifies.
@@ -72,8 +81,29 @@ final class AgentSessionService: ObservableObject {
         guard let harness = activeHarness else { return .failure(.notConfigured(Config.defaultAgentHarness)) }
         guard harness.isConfigured else { return .failure(.notConfigured(harness.kind)) }
 
+        // Plan CN: decide whether the wearer's view rides along, and tell the agent what it is
+        // looking at. A skip is never an error — the task still goes, just without the picture.
+        let context = attachmentContext?() ?? (pinHeld: false, pinAge: nil, cameraStreaming: false)
+        let decision = AgentAttachmentPolicy.decide(
+            settingEnabled: Config.agentVisionAttachmentEnabled,
+            agentModeEnabled: Config.agentModeEnabled,
+            hipaaMode: Config.hipaaMode,
+            pinHeld: context.pinHeld,
+            pinAge: context.pinAge,
+            cameraStreaming: context.cameraStreaming,
+            prompt: prompt,
+            explicitAttach: explicitAttach,
+            maxPinAge: Config.agentVisionAttachmentMaxPinAge)
+
+        let attachment = resolveAttachment?(decision)
+        let dispatchedPrompt = AgentAttachmentPhrasing.prompt(prompt, attaching: attachment?.source)
+        if case .skip(let reason) = decision {
+            NSLog("[CN] Dispatching without a frame (%@)", reason.rawValue)
+        }
+
         do {
-            var run = try await harness.start(prompt: prompt, project: project)
+            var run = try await harness.start(prompt: dispatchedPrompt, project: project,
+                                              attachment: attachment)
             if run.status == .queued { run.status = .running }
             activeRun = run
             result = AgentRunResult()

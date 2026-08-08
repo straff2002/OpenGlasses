@@ -21,6 +21,11 @@ struct CustomHarnessConfig: Codable, Equatable {
     var promptField: String = "prompt"
     var projectField: String = "project"
 
+    /// Plan CN: body key carrying a base64 JPEG of the wearer's view. **Empty by default, meaning
+    /// never attach.** An arbitrary user-configured endpoint must not start receiving multi-megabyte
+    /// bodies because a setting elsewhere got flipped — opting in is naming the field.
+    var imageField: String = ""
+
     /// Dot-paths into the responses (e.g. "data.run.id"). See `JSONPath`.
     var idPath: String = "id"
     var statusPath: String = "status"
@@ -57,6 +62,10 @@ struct CustomHarnessConfig: Codable, Equatable {
 extension CustomHarnessConfig {
     /// Build the start request, or `nil` if `startURL` is invalid.
     func startRequest(prompt: String, project: String?) -> URLRequest? {
+        startRequest(prompt: prompt, project: project, attachment: nil)
+    }
+
+    func startRequest(prompt: String, project: String?, attachment: AgentTaskAttachment?) -> URLRequest? {
         guard let url = URL(string: startURL.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -64,8 +73,18 @@ extension CustomHarnessConfig {
         applyAuth(&request)
         var body: [String: Any] = [promptField: prompt]
         if let project, !project.isEmpty { body[projectField] = project }
+
+        // Plan CN: only when the user named a field for it.
+        let field = imageField.trimmingCharacters(in: .whitespacesAndNewlines)
+        let carriesImage = !field.isEmpty && attachment != nil
+        if carriesImage, let attachment {
+            body[field] = attachment.jpeg.base64EncodedString()
+        }
+
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 30
+        // A few megabytes of base64 on cellular does not fit in 30 s, and a timeout here surfaces
+        // as "couldn't start the agent" — sending the user to look in entirely the wrong place.
+        request.timeoutInterval = carriesImage ? 90 : 30
         return request
     }
 

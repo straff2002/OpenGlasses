@@ -4,8 +4,55 @@ import UIKit
 import CoreImage
 import Combine
 
+/// Which frame consumers the bystander blur is applied to (Plan CO Item 0).
+///
+/// The blur was written and then never called — `processFrame` had no call sites anywhere in the
+/// app, so the Settings toggle was inert and the promise it made was false. Wiring it back raises
+/// the question the original never answered: *which* consumers? Two constraints decide it.
+///
+/// 1. **Face recognition must see raw pixels.** The blur is indiscriminate (the known-contact
+///    exemption list was removed in BK P6 as dead code), so filtering ahead of recognition would
+///    blur the very faces the user deliberately enrolled and break the feature outright.
+/// 2. **Blurring costs a Vision pass plus a Core Image composite per frame.** That is affordable on
+///    the model-facing paths, which `FrameThrottler` has already reduced to roughly one frame a
+///    second, and is not affordable at recording/broadcast frame rates without a dedicated
+///    off-main pipeline that does not exist yet.
+///
+/// So v1 covers egress to third-party models — the highest-stakes path, and the throttled one.
+/// Recording, broadcast and expert streams are **not yet covered**, which the Settings copy now
+/// says out loud rather than implying otherwise.
+enum PrivacyFilterScope: String, CaseIterable {
+    /// Frames pushed or polled into a live realtime session (Gemini Live, OpenAI Realtime).
+    case liveSession
+    /// Stills attached to a Direct-mode LLM turn.
+    case directModelTurn
+    /// The frozen frame taken by Plan CE — filtered once at pin time, not per resend.
+    case pinnedFrame
+    /// A still attached to a delegated remote-agent task (Plan CN).
+    case agentAttachment
+    /// Face enrolment and matching. Never filtered — see constraint 1.
+    case faceRecognition
+    /// Video recording to disk. Not yet covered — see constraint 2.
+    case recording
+    /// RTMP broadcast and expert streaming. Not yet covered — see constraint 2.
+    case broadcast
+
+    /// Whether the bystander blur is applied to this consumer when the setting is on.
+    var isFiltered: Bool {
+        switch self {
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment:
+            return true
+        case .faceRecognition, .recording, .broadcast:
+            return false
+        }
+    }
+}
+
 /// Automatically detects and blurs bystander faces in video frames.
-/// Can be applied to recorded/streamed video for privacy compliance in public spaces.
+///
+/// Applied at the model-facing chokepoints listed in `PrivacyFilterScope` — the same
+/// gate-at-the-chokepoint shape `FramePin` uses, and for the same reason: filtering inside
+/// `CameraService` would catch consumers that must not be filtered.
 @MainActor
 class PrivacyFilterService: ObservableObject {
     @Published var isEnabled = false
@@ -56,25 +103,22 @@ class PrivacyFilterService: ObservableObject {
         return blurred
     }
 
-    /// Process a frame from the publisher pipeline (for recording/streaming).
-    /// Returns a new publisher that applies the privacy filter.
-    func filteredPublisher(from source: PassthroughSubject<UIImage, Never>) -> AnyPublisher<UIImage, Never> {
-        if isEnabled {
-            return source
-                .receive(on: DispatchQueue.global(qos: .userInitiated))
-                .map { [weak self] image -> UIImage in
-                    // Can't access @MainActor self from background, so do sync processing
-                    guard let cgImage = image.cgImage else { return image }
-                    let service = self
-                    let faceRects = service?.detectFacesSync(in: cgImage) ?? []
-                    guard !faceRects.isEmpty else { return image }
-                    return service?.blurFaces(in: image, faceRects: faceRects) ?? image
-                }
-                .eraseToAnyPublisher()
-        } else {
-            return source.eraseToAnyPublisher()
-        }
+    /// The single entry point for call sites: blur for `scope`, or hand the frame back untouched
+    /// when that consumer is exempt (`PrivacyFilterScope.isFiltered`) or the filter is off.
+    ///
+    /// Callers pass their scope rather than deciding for themselves, so "is face recognition
+    /// exempt?" is answered in one tested place instead of at each chokepoint.
+    func filtered(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage {
+        guard scope.isFiltered else { return image }
+        return processFrame(image)
     }
+
+    // `filteredPublisher` was removed with the Item 0 wiring. It had no callers (like
+    // `processFrame`, which is how the whole feature came to be inert), and it sampled `isEnabled`
+    // once at construction so a mid-session toggle would never have reached it. The recording and
+    // broadcast paths it was meant for need an off-main pipeline at 30 fps, not a `.map` on a
+    // background queue — same judgement as the BK P6 removal above: don't ship a surface that
+    // doesn't do what its name says.
 
     // MARK: - Face Detection
 

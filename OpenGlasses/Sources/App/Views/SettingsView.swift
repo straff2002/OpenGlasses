@@ -716,7 +716,7 @@ struct HardwarePrivacyView: View {
                 InfoToggle(
                     title: "Blur Bystander Faces",
                     isOn: $privacyFilterEnabled,
-                    info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur to bystanders. Protects the privacy of people around you during streaming or recording. Processing happens entirely on-device."
+                    info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur before a frame is sent to an AI provider — live sessions, photos attached to a question, pinned frames, and frames handed to a remote agent. Detection and blurring happen entirely on-device. Does not yet cover video recording or broadcasting, which keep the unblurred frame. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
                 InfoToggle(
                     title: "Share Health Data with AI",
