@@ -2487,7 +2487,7 @@ class LLMService: ObservableObject {
     /// The reduced tool set a local model is offered — only simple, reliable, self-contained tools
     /// (each resolves its own inputs, e.g. `get_weather`/`where_am_i` read LocationService directly,
     /// so the 2B model never has to supply coordinates it doesn't have).
-    static let localSafeTools: Set<String> = [
+    nonisolated static let localSafeTools: Set<String> = [
         "get_weather", "get_datetime", "calculate", "set_timer",
         "flashlight", "brightness", "calendar", "reminder",
         "set_alarm", "step_count", "device_info", "music_control",

@@ -153,7 +153,7 @@ final class LocalLLMService: ObservableObject {
     /// (verified 2026-07-16), so vision is *attempted* — and a mapping failure now demotes
     /// gracefully to the text factory (`loadModel`), with image turns refused honestly by
     /// the vision guard in LLMService. Nothing regresses if a checkpoint doesn't cooperate.
-    static let visionModelIds: Set<String> = [
+    nonisolated static let visionModelIds: Set<String> = [
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
         "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
         "mlx-community/gemma-4-e2b-it-4bit",
@@ -578,19 +578,6 @@ final class LocalLLMService: ObservableObject {
         container: ModelContainer,
         onToken: ((String) -> Void)?
     ) async throws -> String {
-        guard let ciImage = CIImage(data: imageData) else {
-            throw LocalLLMError.generationFailed("Couldn't decode the photo.")
-        }
-
-        var chat: [Chat.Message] = [.system(systemPrompt)]
-        for turn in history.suffix(4) {
-            chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
-        }
-        chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
-        // 896² is Gemma's native vision resolution and a sane cap for every supported VLM —
-        // a full-resolution glasses photo through the image pipeline is a pure memory spike.
-        let userInput = UserInput(chat: chat,
-                                  processing: .init(resize: CGSize(width: 896, height: 896)))
         let parameters = GenerateParameters(maxTokens: 512, temperature: 0.7, topP: 0.9)
 
         // Same mid-generation backgrounding watch as the text path (Metal in the background
@@ -609,7 +596,22 @@ final class LocalLLMService: ObservableObject {
         defer { NotificationCenter.default.removeObserver(bgObserver) }
 
         NSLog("🔬 LocalLLM.generateVisionTurn model=%@ image=%dKB", loadedModelId ?? "?", imageData.count / 1024)
+        // `UserInput` (and the `CIImage` inside it) isn't `Sendable`, so it's built *inside* the
+        // `@Sendable` closure from Sendable ingredients only — the image data, the prompt strings
+        // and the history — rather than constructed out here and captured across the boundary.
         let output = try await container.perform { context -> String in
+            guard let ciImage = CIImage(data: imageData) else {
+                throw LocalLLMError.generationFailed("Couldn't decode the photo.")
+            }
+            var chat: [Chat.Message] = [.system(systemPrompt)]
+            for turn in history.suffix(4) {
+                chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
+            }
+            chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+            // 896² is Gemma's native vision resolution and a sane cap for every supported VLM —
+            // a full-resolution glasses photo through the image pipeline is a pure memory spike.
+            let userInput = UserInput(chat: chat,
+                                      processing: .init(resize: CGSize(width: 896, height: 896)))
             let lmInput = try await context.processor.prepare(input: userInput)
             let stream = try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
             var iterator = stream.makeAsyncIterator()

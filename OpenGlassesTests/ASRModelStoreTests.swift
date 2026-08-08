@@ -124,7 +124,7 @@ final class ASRModelStoreTests: XCTestCase {
             for name in bundle.requiredFiles {
                 try Data(repeating: 0x42, count: 8).write(to: destination.appendingPathComponent(name))
             }
-            await progress(1.0)
+            progress(1.0)
         }
         let downloader = ASRModelDownloader(bundle: bundle, modelDirectory: modelDir, installer: installer)
         await downloader.download()

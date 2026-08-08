@@ -50,7 +50,10 @@ final class WakeWordHardeningTests: XCTestCase {
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 256)!
         buffer.frameLength = 256
 
-        let received = NSCountedSet()
+        // `nonisolated(unsafe)`: `NSCountedSet` isn't `Sendable`, and the forwarders below are
+        // `@Sendable` closures called from a background queue. Every touch is `lock`-guarded —
+        // which is the point of the test — so the unsafety is the discipline, not a hole.
+        nonisolated(unsafe) let received = NSCountedSet()
         let lock = NSLock()
         box.setForwarders(["a": { _ in lock.lock(); received.add("a"); lock.unlock() }])
 

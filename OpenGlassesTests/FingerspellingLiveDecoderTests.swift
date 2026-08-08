@@ -108,7 +108,7 @@ final class FingerspellingLiveDecoderTests: XCTestCase {
         appendFrames(&decoder, 4)
         // A three-way tie between letters: the argmax is a letter but its softmax
         // probability ≈ 1/3 — under the 0.5 confidence floor, so it must count as blank.
-        let events = try decoder.tick(infer: { input in
+        let events = decoder.tick(infer: { input in
             let validRows = (input.frameCount + 1) / 2
             var tied = [Float](repeating: -20, count: 62)
             tied[33] = 5; tied[34] = 5; tied[35] = 5 // 'a', 'b', 'c'
@@ -152,7 +152,7 @@ final class FingerspellingLiveDecoderTests: XCTestCase {
         appendFrames(&decoder, 2)
         XCTAssertEqual(decoder.windowedFrameCount, HolisticWindower.windowLength)
         var fedRows = 0
-        _ = try decoder.tick(infer: { input in
+        _ = decoder.tick(infer: { input in
             fedRows = (input.frameCount + 1) / 2
             return (0..<fedRows).map { _ in self.logitRow(nil) }
         })

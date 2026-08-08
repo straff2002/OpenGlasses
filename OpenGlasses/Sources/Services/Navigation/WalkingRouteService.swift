@@ -111,7 +111,10 @@ final class WalkingRouteService: ObservableObject {
 
     private func walkingRoute(from origin: CLLocationCoordinate2D, to item: MKMapItem) async throws -> MKRoute {
         let request = MKDirections.Request()
-        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
+        // A coordinate-only origin: no address to attach, which is all `MKDirections` reads.
+        request.source = MKMapItem(
+            location: CLLocation(latitude: origin.latitude, longitude: origin.longitude),
+            address: nil)
         request.destination = item
         request.transportType = .walking
         let response = try await MKDirections(request: request).calculate()

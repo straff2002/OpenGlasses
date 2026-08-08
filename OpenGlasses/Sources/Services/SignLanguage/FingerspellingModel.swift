@@ -52,6 +52,34 @@ struct FingerspellingModelBundle: Equatable {
     static let modelPackageName = "Fingerspelling2P.mlpackage"
     static let landmarkerTaskName = "holistic_landmarker.task"
 
+    /// Production installer: fetch each required file (sub-paths preserved) with URLSession.
+    ///
+    /// Lives on the bundle rather than the `@MainActor` downloader, mirroring `ASRModelBundle`:
+    /// the download loop and its file moves have no business on the main actor, and a `static`
+    /// on the main-actor class couldn't be read from the downloader's default argument without
+    /// a hop. The `await` on `progress` is a genuine hop to the `@MainActor` handler.
+    static let liveInstaller: FingerspellingModelDownloader.Installer = { bundle, destination, progress in
+        let files = bundle.requiredFiles
+        var completed = 0
+        for path in files {
+            guard let url = bundle.huggingFaceResolveURL(for: path) else {
+                throw FingerspellingDownloadError.notConfigured
+            }
+            let dest = destination.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            let (tempURL, response) = try await URLSession.shared.download(from: url)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw FingerspellingDownloadError.incompleteDownload(missing: "\(path) (HTTP \(http.statusCode))")
+            }
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: tempURL, to: dest)
+            completed += 1
+            let fraction = Double(completed) / Double(max(files.count, 1))
+            await progress(fraction)
+        }
+    }
+
     /// The active bundle; the repo comes from Settings so publishing the artefact needs no
     /// app update.
     static var active: FingerspellingModelBundle {
@@ -161,7 +189,7 @@ final class FingerspellingModelDownloader: ObservableObject {
     init(bundle: FingerspellingModelBundle = .active,
          modelDirectory: URL? = nil,
          fileManager: FileManager = .default,
-         installer: @escaping Installer = FingerspellingModelDownloader.liveInstaller) {
+         installer: @escaping Installer = FingerspellingModelBundle.liveInstaller) {
         self.bundle = bundle
         self.fileManager = fileManager
         self.modelDirectory = modelDirectory
@@ -230,26 +258,4 @@ final class FingerspellingModelDownloader: ObservableObject {
         state = store.state
     }
 
-    /// Production installer: fetch each required file (sub-paths preserved) with URLSession.
-    static let liveInstaller: Installer = { bundle, destination, progress in
-        let files = bundle.requiredFiles
-        var completed = 0
-        for path in files {
-            guard let url = bundle.huggingFaceResolveURL(for: path) else {
-                throw FingerspellingDownloadError.notConfigured
-            }
-            let dest = destination.appendingPathComponent(path)
-            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            let (tempURL, response) = try await URLSession.shared.download(from: url)
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                throw FingerspellingDownloadError.incompleteDownload(missing: "\(path) (HTTP \(http.statusCode))")
-            }
-            try? FileManager.default.removeItem(at: dest)
-            try FileManager.default.moveItem(at: tempURL, to: dest)
-            completed += 1
-            let fraction = Double(completed) / Double(max(files.count, 1))
-            await progress(fraction)
-        }
-    }
 }

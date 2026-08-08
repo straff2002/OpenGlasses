@@ -139,9 +139,20 @@ final class GoogleOAuthService: NSObject, ObservableObject {
 extension GoogleOAuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-                .first ?? ASPresentationAnchor()
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            // Prefer the scene the user is actually looking at, then any key window, then any
+            // window at all — an existing window always beats a fresh one as an anchor.
+            if let anchor = scenes.first(where: { $0.activationState == .foregroundActive })?.keyWindow {
+                return anchor
+            }
+            if let anchor = scenes.lazy.compactMap(\.keyWindow).first { return anchor }
+            if let anchor = scenes.lazy.flatMap(\.windows).first { return anchor }
+            if let scene = scenes.first { return UIWindow(windowScene: scene) }
+            // Unreachable: `start()` is only called from a user-initiated sign-in, which requires
+            // a live window scene. `init(windowScene:)` is the only UIWindow initialiser that
+            // survives iOS 26, so a scene-less process has no anchor to offer — and the empty
+            // window this used to return could never have presented anything either.
+            preconditionFailure("presentationAnchor requested with no connected UIWindowScene")
         }
     }
 }

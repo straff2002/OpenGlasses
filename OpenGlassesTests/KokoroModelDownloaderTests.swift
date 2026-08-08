@@ -35,7 +35,7 @@ final class KokoroModelDownloaderTests: XCTestCase {
     /// Writes every required file + directory into `destination` (a complete, valid install).
     private func fullInstaller(progressSteps: [Double] = []) -> KokoroModelDownloader.Installer {
         { bundle, destination, progress in
-            for step in progressSteps { await progress(step) }
+            for step in progressSteps { progress(step) }
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             for name in bundle.requiredFiles {
                 try Data(repeating: 0x42, count: 8).write(to: destination.appendingPathComponent(name))
