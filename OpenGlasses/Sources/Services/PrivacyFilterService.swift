@@ -32,18 +32,31 @@ enum PrivacyFilterScope: String, CaseIterable {
     case agentAttachment
     /// Face enrolment and matching. Never filtered — see constraint 1.
     case faceRecognition
-    /// Video recording to disk. Not yet covered — see constraint 2.
+    /// Video recording to disk. Covered as of Plan CP, via `OutboundFrameRelay`.
     case recording
-    /// RTMP broadcast and expert streaming. Not yet covered — see constraint 2.
+    /// RTMP broadcast and WebRTC browser streaming. Covered as of Plan CP.
     case broadcast
+    /// Expert streaming (peer-to-peer and meeting-link transports). Covered as of Plan CP.
+    case expertStream
 
     /// Whether the bystander blur is applied to this consumer when the setting is on.
     var isFiltered: Bool {
         switch self {
-        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment:
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
+             .recording, .broadcast, .expertStream:
             return true
-        case .faceRecognition, .recording, .broadcast:
+        case .faceRecognition:
             return false
+        }
+    }
+
+    /// Consumers fed by the shared `OutboundFrameRelay` (Plan CP) rather than filtered at their own
+    /// chokepoint. They run at camera rate, so they share one blur pass instead of each paying for
+    /// their own — which also means adding a consumer here is a wiring change, not a new call site.
+    var usesOutboundRelay: Bool {
+        switch self {
+        case .recording, .broadcast, .expertStream: return true
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition: return false
         }
     }
 }
@@ -72,6 +85,10 @@ class PrivacyFilterService: ObservableObject {
 
     /// Whether processing is suspended (background optimization for streaming).
     private var isSuspended = false
+
+    /// Read-only view of the suspend state for `OutboundFrameRelay` (Plan CP), which has to make
+    /// the same passthrough decision per frame.
+    var isSuspendedForBackground: Bool { isSuspended }
 
     // MARK: - Public API
 
