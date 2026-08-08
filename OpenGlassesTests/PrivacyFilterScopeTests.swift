@@ -21,12 +21,14 @@ final class PrivacyFilterScopeTests: XCTestCase {
         XCTAssertFalse(PrivacyFilterScope.faceRecognition.isFiltered)
     }
 
-    /// Recording and broadcast are deliberately uncovered in v1 (30 fps needs an off-main pipeline
-    /// that does not exist yet). Asserted rather than left implicit so that when someone builds
-    /// that pipeline, this test fails and reminds them to update the Settings copy too.
-    func testRecordingAndBroadcastAreNotYetCovered() {
-        XCTAssertFalse(PrivacyFilterScope.recording.isFiltered)
-        XCTAssertFalse(PrivacyFilterScope.broadcast.isFiltered)
+    /// Recording and broadcast were deliberately uncovered in CO Item 0, asserted so that building
+    /// the pipeline would fail this test and force the user-facing copy to be corrected with it.
+    /// Plan CP built it; the assertion flipped, and the copy was updated in the same change. Kept
+    /// as a record of how the carve-out was retired rather than quietly forgotten.
+    func testOutboundConsumersAreCoveredSinceCP() {
+        XCTAssertTrue(PrivacyFilterScope.recording.isFiltered)
+        XCTAssertTrue(PrivacyFilterScope.broadcast.isFiltered)
+        XCTAssertTrue(PrivacyFilterScope.expertStream.isFiltered)
     }
 
     /// A new case must not default into either bucket silently — walking `allCases` means adding

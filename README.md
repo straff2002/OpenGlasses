@@ -302,7 +302,7 @@ The agentic path is hardened against **prompt injection** — untrusted content 
 - **RTMP Broadcasting** — live stream to YouTube, Twitch, Kick
 - **Chat Read-Aloud** — while broadcasting, Twitch chat is spoken into your ear (read-only, no OAuth): rate-capped and de-duplicated, mentions jump the queue, assistant speech always wins, and it goes quiet during realtime sessions. Opt-in, with a mentions-only mode
 - **WebRTC Browser Streaming** — shareable URL for peer-to-peer viewing
-- **Privacy Filter** — auto-blurs bystander faces before a frame is sent to an AI provider (live sessions, stills attached to a question, pinned frames, agent attachments). Detection and blurring are on-device. Video recording and broadcasting keep the unblurred frame for now; faces you've enrolled are matched unblurred so recognition still works
+- **Privacy Filter** — auto-blurs bystander faces before a frame leaves the device: AI providers, recordings, RTMP broadcast, browser streaming and expert calls all get the blurred frame from one shared pass. Detection and blurring are on-device. On video the blur tracks faces between detections, so someone stepping into shot can be briefly visible before the next pass; faces you've enrolled are matched unblurred so recognition still works
 
 ### Meeting Recorder
 

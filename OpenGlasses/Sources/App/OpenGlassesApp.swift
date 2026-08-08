@@ -584,6 +584,11 @@ class AppState: ObservableObject, AppStateProtocol {
     let faceRecognition = FaceRecognitionService()
     let memoryRewind = MemoryRewindService()
     let privacyFilter = PrivacyFilterService()
+
+    /// Plan CP: one blur pass shared by every consumer that sends frames off the device. Outbound
+    /// consumers subscribe to `outboundFrames.publisher`, never to `cameraService.framePublisher`
+    /// directly — that is what keeps "which consumers are filtered" a single decision.
+    lazy var outboundFrames = OutboundFrameRelay(filter: privacyFilter)
     let webRTCStreaming = WebRTCStreamingService()
     let liveActivityManager = LiveActivityManager()
     let agentDocs = AgentDocumentStore()
@@ -1326,7 +1331,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Field Assist Phase 5 (Plan K2): expert stream bridge for escalations. Transport
         // (MJPEG / WebRTC) is selected in Settings; MJPEG is the working default.
         EscalationCoordinator.shared.bridge = ExpertStreamBridge(
-            streamer: webRTCStreaming, framePublisher: cameraService.framePublisher)
+            streamer: webRTCStreaming, framePublisher: outboundFrames.publisher)
 
         // Plan M3: hand the audio session to a live expert call (pause TTS + wake word), and
         // refuse to start one while a realtime voice session (Gemini Live / OpenAI Realtime)
@@ -1430,6 +1435,11 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Privacy filter — apply saved preference
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        // Plan CP: attached once, for the app's lifetime. While the filter is off this is a plain
+        // passthrough (no queue hop, no copy), so there is no cost to leaving it wired in — and
+        // wiring it here rather than per-stream means a consumer cannot accidentally subscribe to
+        // the raw publisher and bypass the blur.
+        outboundFrames.attach(to: cameraService.framePublisher)
     }
 
     /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
@@ -2669,7 +2679,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 let frameSize = cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
                 let bitrate = max(Config.recordingBitrate, 4_000_000)
                 try videoRecorder.startRecording(
-                    from: cameraService.framePublisher,
+                    from: outboundFrames.publisher,   // CP: blurred before it reaches disk
                     bitrate: bitrate,
                     outputSize: frameSize
                 )
@@ -2689,7 +2699,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 try await broadcastService.startBroadcast(
                     rtmpURL: Config.broadcastRTMPURL,
                     streamKey: Config.broadcastStreamKey,
-                    from: cameraService.framePublisher
+                    from: outboundFrames.publisher    // CP: blurred before it reaches the wire
                 )
                 startChatReadbackIfConfigured()
             } catch {
@@ -3904,7 +3914,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
                 let frameSize = self.cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
                 try self.videoRecorder.startRecording(
-                    from: self.cameraService.framePublisher,
+                    from: self.outboundFrames.publisher,   // CP
                     bitrate: max(Config.recordingBitrate, 4_000_000),
                     outputSize: frameSize
                 )
