@@ -41,7 +41,11 @@ struct CustomAgentHarness: AgentHarness {
     // MARK: - AgentHarness
 
     func start(prompt: String, project: String?) async throws -> AgentRun {
-        guard let request = config.startRequest(prompt: prompt, project: project) else {
+        try await start(prompt: prompt, project: project, attachment: nil)
+    }
+
+    func start(prompt: String, project: String?, attachment: AgentTaskAttachment?) async throws -> AgentRun {
+        guard let request = config.startRequest(prompt: prompt, project: project, attachment: attachment) else {
             throw AgentHarnessError.notConfigured(kind)
         }
         let json = try await sendJSON(request)

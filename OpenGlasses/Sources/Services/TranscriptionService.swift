@@ -20,7 +20,21 @@ class TranscriptionService: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
     private var noSpeechTimer: Timer?
-    private let silenceThreshold: TimeInterval = 2.0
+    /// CO Item 4: the silence window before the conversation ends. Normally
+    /// `SpeechContinuationPolicy.baseWindow`, widened for the next turn when the assistant's own
+    /// answer was a question the user still has to think about. Set via `noteAssistantSpoke`.
+    private var silenceThreshold: TimeInterval = SpeechContinuationPolicy.baseWindow
+
+    /// Tell the transcriber what the assistant just said, so the next silence window can account
+    /// for a question. Called from the TTS completion path.
+    func noteAssistantSpoke(_ text: String?) {
+        let window = SpeechContinuationPolicy.silenceWindow(afterSpeaking: text)
+        if window != silenceThreshold {
+            NSLog("[CO] Silence window %.1fs → %.1fs (question-shaped: %@)",
+                  silenceThreshold, window, window > SpeechContinuationPolicy.baseWindow ? "yes" : "no")
+        }
+        silenceThreshold = window
+    }
     private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
 

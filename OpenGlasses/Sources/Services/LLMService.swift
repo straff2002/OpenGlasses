@@ -2317,7 +2317,11 @@ class LLMService: ObservableObject {
                 var body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": contents,
-                    "generationConfig": ["maxOutputTokens": includeTools ? 1024 : Config.maxTokens]
+                    // CO Item 2: a bounded thinking budget on the tool turn, and an allowance that
+                    // covers thinking *plus* the answer. Without this, reasoning and reply compete
+                    // for the same 1024 tokens and the turn can come back empty with a STOP finish.
+                    "generationConfig": GeminiBudgetPolicy.generationConfig(
+                        includesTools: includeTools, configuredMaxTokens: Config.maxTokens)
                 ]
 
                 if includeTools {
@@ -2392,7 +2396,17 @@ class LLMService: ObservableObject {
             },
             finalize: { [weak self] turn in
                 guard let self else { throw LLMError.invalidResponse("Gemini") }
-                guard !turn.text.isEmpty else { throw LLMError.invalidResponse("Gemini") }
+                guard !turn.text.isEmpty else {
+                    // CO Item 2: an empty completion is classified `retryOtherModel`, so the
+                    // cascade silently rescues the turn and the user never notices. Good
+                    // behaviour, terrible observability — a systematic defect (an unbounded
+                    // thinking pass eating the whole allowance) would read as ordinary model
+                    // churn. Mark it distinctly on the way past so it can be found in a log.
+                    NSLog("[CO-EmptyCompletion] Gemini returned zero output tokens on a %@ turn — "
+                          + "cascading. If this repeats, suspect the thinking/answer budget split.",
+                          includeTools ? "tool" : "plain")
+                    throw LLMError.invalidResponse("Gemini")
+                }
                 self.conversationHistory.append(["role": "assistant", "content": turn.text])
                 return turn.text
             }

@@ -159,8 +159,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Multiplier applied to the iOS speech rate for the current utterance (driven by urgency).
     private var activeRateMultiplier: Float = 1.0
 
+    /// The last thing the assistant actually said. CO Item 4 reads it to decide how long to wait
+    /// for a reply — a question earns a longer window than a statement. Recorded before the
+    /// glasses-only suppression check below, because whether it reached a speaker is irrelevant to
+    /// whether the app is now expecting an answer.
+    private(set) var lastSpokenText: String?
+
     func speak(_ text: String, urgency: SpeechUrgency = .low, mirrorToHUD: Bool = true) async {
         guard !text.isEmpty else { return }
+        lastSpokenText = text
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
 
@@ -410,7 +417,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
     }
 
-    private func playTone(frequency: Double, duration: Double) {
+    /// Internal (was private) so CO Item 3 can give a rejected or held utterance an audible cue —
+    /// the whole point of that item is that the user hears something.
+    func playTone(frequency: Double, duration: Double) {
         do {
             let toneData = try Self.generateToneData(frequency: frequency, duration: duration, sampleRate: 44100)
             let player = try AVAudioPlayer(data: toneData)

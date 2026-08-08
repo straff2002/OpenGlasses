@@ -38,6 +38,13 @@ struct AgentControlTool: NativeTool {
                     "enum": AgentHarnessKind.allCases.map(\.rawValue),
                     "description": "For action=switch_harness: which configured backend to make the default.",
                 ],
+                "attach": [
+                    "type": "boolean",
+                    "description": "For action=start: attach what the camera is looking at. Set true "
+                        + "for tasks about something physically present (a label, serial plate, "
+                        + "receipt, form) so the agent reads it directly instead of your description "
+                        + "of it; set false to keep the task text-only. Omit to decide automatically.",
+                ],
             ],
             "required": [] as [String],
         ]
@@ -58,7 +65,9 @@ struct AgentControlTool: NativeTool {
                 return "What should the agent do? Give me a task to start."
             }
             let project = (args["project"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            switch await session.dispatch(prompt: prompt, project: project?.isEmpty == false ? project : nil) {
+            switch await session.dispatch(prompt: prompt,
+                                          project: project?.isEmpty == false ? project : nil,
+                                          explicitAttach: args["attach"] as? Bool) {
             case .success(let run):
                 return "Started the agent on \(run.project ?? "your task"). I'll let you know when it's done."
             case .failure(let error):

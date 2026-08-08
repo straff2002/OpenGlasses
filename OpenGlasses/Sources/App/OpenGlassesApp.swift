@@ -671,7 +671,38 @@ class AppState: ObservableObject, AppStateProtocol {
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
     /// narrates only the FIRST fallback hop (not once per hop). Reset at the start of every turn.
     private var didNarrateModelSwitchThisTurn = false
-    @Published private(set) var isProcessing: Bool = false
+    @Published private(set) var isProcessing: Bool = false {
+        didSet {
+            // CO Item 3: stamped here rather than at the ten-odd assignment sites, so a new one
+            // cannot forget to and leave the hold window measuring from nothing.
+            guard isProcessing != oldValue else { return }
+            turnStartedAt = isProcessing ? Date() : nil
+        }
+    }
+
+    /// When the in-flight turn was dispatched (nil when idle) — the clock the hold window runs on.
+    private var turnStartedAt: Date?
+
+    /// CO Item 3: at most one utterance is held while a turn runs. Not a queue — replaying a
+    /// backlog of stale phrases at someone is worse than dropping them, and the newest intent is
+    /// the one worth keeping, so a second deferral simply overwrites the first.
+    private var heldUtterance: (text: String, heldAt: Date)?
+
+    private func turnElapsedSeconds() -> TimeInterval? {
+        turnStartedAt.map { Date().timeIntervalSince($0) }
+    }
+
+    /// Replay whatever was held while the finished turn ran, if it hasn't gone stale.
+    private func replayHeldUtteranceIfFresh() {
+        guard let held = heldUtterance else { return }
+        heldUtterance = nil
+        guard TurnAdmissionPolicy.heldUtteranceIsStillFresh(heldAt: held.heldAt) else {
+            NSLog("[CO] Dropped a held utterance that went stale: %@", held.text)
+            return
+        }
+        Task { @MainActor in await self.handleTranscription(held.text) }
+    }
+
     private var hasEverRegistered: Bool = false
     var inConversation: Bool = false
 
@@ -915,6 +946,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.speechService.speak("That's \(name).")
             }
         }
+        // CO Item 1: a near-tie is spoken as a question, not resolved to the leader. No encounter
+        // is logged — writing the wrong person into the encounter history would outlive the moment
+        // and quietly corrupt every later "when did I last see…" answer.
+        faceRecognition.onAmbiguousRecognition = { [weak self] names in
+            Task { @MainActor in
+                guard let self else { return }
+                await self.speechService.speak(FaceRecognitionService.ambiguityPrompt(names: names))
+            }
+        }
 
         // HIPAA: enforce retention policy on launch
         if Config.hipaaMode {
@@ -1049,24 +1089,33 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.injectPinnedFrame()
                 return
             case .deliverLive:
+                // CO Item 0: bystander blur, applied where the frame leaves for a third-party
+                // model. Throttled to ~1 fps by this point, so the Vision pass is affordable here
+                // in a way it would not be on the recording path.
+                let outbound = self.privacyFilter.filtered(image, for: .liveSession)
                 if self.currentMode == .geminiLive {
-                    self.geminiLiveSession.submitVideoFrame(image)
+                    self.geminiLiveSession.submitVideoFrame(outbound)
                 } else if self.currentMode == .openaiRealtime {
-                    self.openAIRealtimeSession.submitVideoFrame(image)
+                    self.openAIRealtimeSession.submitVideoFrame(outbound)
                 }
             }
         }
 
         // Polling fallback for both session managers — a held pin substitutes for the live frame
+        // A held pin is already filtered at pin time (CO Item 0), so only the live fallback needs
+        // a pass here — re-blurring an already-blurred pin every poll would burn a Vision pass to
+        // no effect.
         geminiLiveSession.onRequestVideoFrame = { [weak self] in
             guard let self else { return nil }
             if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
-            return self.cameraService.latestFrame
+            guard let live = self.cameraService.latestFrame else { return nil }
+            return self.privacyFilter.filtered(live, for: .liveSession)
         }
         openAIRealtimeSession.onRequestVideoFrame = { [weak self] in
             guard let self else { return nil }
             if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
-            return self.cameraService.latestFrame
+            guard let live = self.cameraService.latestFrame else { return nil }
+            return self.privacyFilter.filtered(live, for: .liveSession)
         }
 
         // Location context for both
@@ -1164,6 +1213,38 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return false }
             return await self.toolConfirmationCoordinator.requestConfirmation(
                 toolName: "code_agent", summary: request.summary, source: request.source)
+        }
+
+        // Plan CN: the pin/camera facts the attachment policy needs, and the frame itself.
+        AgentSessionService.shared.attachmentContext = { [weak self] in
+            guard let self else { return (pinHeld: false, pinAge: nil, cameraStreaming: false) }
+            let pinned = Config.framePinEnabled && self.framePin.isPinned
+            return (pinHeld: pinned,
+                    pinAge: self.framePin.pinnedAt.map { Date().timeIntervalSince($0) },
+                    cameraStreaming: self.cameraService.isStreaming)
+        }
+        AgentSessionService.shared.resolveAttachment = { [weak self] decision in
+            guard let self, case .attach(let source) = decision else { return nil }
+            // A pin is already privacy-filtered at pin time (CO Item 0); a live frame is filtered
+            // here, under `.agentAttachment`, before any of it leaves the device.
+            let frame: UIImage?
+            switch source {
+            case .pinned: frame = self.framePin.pinnedFrame
+            case .live:
+                frame = self.cameraService.latestFrame.map {
+                    self.privacyFilter.filtered($0, for: .agentAttachment)
+                }
+            }
+            guard let frame,
+                  let raw = frame.jpegData(compressionQuality: 0.9) else { return nil }
+            // Same bounded encoding every other outbound image uses — no second size policy.
+            let prepared = LLMImagePreparer.prepared(raw)
+            guard !LLMImagePreparer.isDegenerate(prepared) else {
+                NSLog("[CN] Refusing to attach a degenerate frame — a blank tells the agent the "
+                      + "camera saw nothing, which is worse than sending no image at all.")
+                return nil
+            }
+            return AgentTaskAttachment(jpeg: prepared, source: source, pixelSize: frame.size)
         }
 
         // Configure Navigation Assist (Plan J) similarly.
@@ -1746,12 +1827,27 @@ class AppState: ObservableObject, AppStateProtocol {
                     AssistiveModeService.shared.noteTranscription(text)
                     return
                 }
-                // Prevent processing if already handling a response
-                guard !self.isProcessing else {
-                    print("⚠️ Transcription ignored - already processing")
-                    return
+                // CO Item 3: a turn already in flight used to mean the utterance was dropped behind
+                // a debug print — no tone, no HUD, nothing the wearer could perceive. Now it is
+                // either held for the turn that is finishing or refused audibly.
+                switch TurnAdmissionPolicy.decide(isProcessing: self.isProcessing,
+                                                  turnElapsed: self.turnElapsedSeconds(),
+                                                  utterance: text) {
+                case .accept:
+                    await self.handleTranscription(text)
+
+                case .deferToQueue:
+                    self.heldUtterance = (text: text, heldAt: Date())
+                    self.speechService.playTone(frequency: 660, duration: 0.06)
+                    self.glassesDisplay.flash("⏳ Got it — one sec")
+                    NSLog("[CO] Held an utterance while a turn was in flight: %@", text)
+
+                case .rejectWithCue(let reason):
+                    guard reason != .emptyUtterance else { return }
+                    self.speechService.playTone(frequency: 330, duration: 0.12)
+                    self.glassesDisplay.flash("⚠️ Didn't catch that — say it again")
+                    NSLog("[CO] Rejected an utterance (%@): %@", String(describing: reason), text)
                 }
-                await self.handleTranscription(text)
             }
         }
 
@@ -2903,7 +2999,12 @@ class AppState: ObservableObject, AppStateProtocol {
             // The engine keepalive suspends; re-check the user didn't flip the toggle meanwhile.
             guard listeningEnabled, inConversation else { return }
             isListening = true
+            // CO Item 4: if what we just said was a question, give the user room to think before
+            // the silence window ends the conversation out from under them.
+            transcriptionService.noteAssistantSpoke(speechService.lastSpokenText)
             transcriptionService.startRecording()
+            // CO Item 3: a turn is over, so anything held while it ran can be answered now.
+            replayHeldUtteranceIfFresh()
         } else {
             await returnToWakeWord()
         }
@@ -3090,7 +3191,8 @@ class AppState: ObservableObject, AppStateProtocol {
             return pinnedData
         }
         guard cameraService.isStreaming, let frame = cameraService.latestFrame else { return nil }
-        guard let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
+        let outbound = privacyFilter.filtered(frame, for: .directModelTurn)   // CO Item 0
+        guard let data = outbound.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
               !LLMImagePreparer.isDegenerate(data) else { return nil }
         return data
     }
@@ -3104,7 +3206,10 @@ class AppState: ObservableObject, AppStateProtocol {
     @discardableResult
     func pinCurrentFrame() -> Bool {
         guard Config.framePinEnabled, let frame = cameraService.latestFrame else { return false }
-        framePin.pin(frame: frame)
+        // CO Item 0: filter once, here. Every downstream use of a pin — the immediate sharp-inject,
+        // the heartbeat resends, the Direct-mode reuse, the pinned card on screen, a CN agent
+        // attachment — then carries the same blurred pixels without repeating the Vision pass.
+        framePin.pin(frame: privacyFilter.filtered(frame, for: .pinnedFrame))
         framePinGate.reset()
         injectPinnedFrame()
         framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)

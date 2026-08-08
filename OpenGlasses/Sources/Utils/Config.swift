@@ -2229,6 +2229,32 @@ struct Config {
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
+    /// Plan CO Item 1 — similarity gap the leading face must open over the runner-up before the
+    /// name is spoken as a fact. Inside this margin the app names the possibilities instead of
+    /// guessing. Configurable because the right value can only be found against real enrolments;
+    /// raising it makes the app more cautious, lowering it more confidently wrong.
+    @UserDefaultsBacked("faceMatchAmbiguityMargin", default: Double(FaceMatcher.defaultMargin))
+    static var faceMatchAmbiguityMarginValue: Double
+
+    static var faceMatchAmbiguityMargin: Float { Float(faceMatchAmbiguityMarginValue) }
+
+    // MARK: - Agent Vision Attachment (Plan CN)
+
+    /// Whether a delegated remote-agent task may carry a still from the wearer's camera.
+    ///
+    /// **Default off, and deliberately distinct from `agentModeEnabled`.** Agent Mode bought
+    /// "dispatch text tasks to my agent"; quietly upgrading that to "and ship frames from a
+    /// head-mounted camera to the same endpoint" is a scope expansion the user never agreed to.
+    @UserDefaultsBacked("agentVisionAttachmentEnabled", default: false)
+    static var agentVisionAttachmentEnabled: Bool
+
+    static func setAgentVisionAttachmentEnabled(_ enabled: Bool) { agentVisionAttachmentEnabled = enabled }
+
+    /// Beyond this age a held pin is a forgotten pin, not a statement about the present.
+    @UserDefaultsBacked("agentVisionAttachmentMaxPinAge",
+                        default: AgentAttachmentPolicy.defaultMaxPinAge)
+    static var agentVisionAttachmentMaxPinAge: TimeInterval
+
     /// Category-only privacy reporting in vision prompts (Plan CJ item 4): the model reports
     /// *that* a sensitive item is visible but is schema-forbidden from transcribing its content.
     /// Default on — the language-side complement to the pixel-side face blur above.

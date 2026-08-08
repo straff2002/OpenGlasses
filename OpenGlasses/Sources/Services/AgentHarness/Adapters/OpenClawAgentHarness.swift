@@ -29,8 +29,18 @@ struct OpenClawAgentHarness: AgentHarness {
     // MARK: - AgentHarness
 
     func start(prompt: String, project: String?) async throws -> AgentRun {
+        try await start(prompt: prompt, project: project, attachment: nil)
+    }
+
+    func start(prompt: String, project: String?, attachment: AgentTaskAttachment?) async throws -> AgentRun {
         var params: [String: Any] = ["prompt": prompt]
         if let project { params["project"] = project }
+        // Plan CN. Whether the gateway accepts unknown params or rejects the call is unverified
+        // against a live endpoint, which is why the feature ships behind a default-off setting.
+        if let attachment {
+            params["image_base64"] = attachment.jpeg.base64EncodedString()
+            params["image_mime"] = "image/jpeg"
+        }
         let response = try await send("agent.start", params)
         if let error = response["error"] as? String {
             throw AgentHarnessError.transport(error)

@@ -15,6 +15,10 @@ protocol AgentHarness {
     /// Dispatch a task. Returns the created run (typically `.queued`/`.running`).
     func start(prompt: String, project: String?) async throws -> AgentRun
 
+    /// Dispatch a task with an optional camera still (Plan CN). Defaulted below so adapters that
+    /// have no image channel — and every existing test — keep working untouched.
+    func start(prompt: String, project: String?, attachment: AgentTaskAttachment?) async throws -> AgentRun
+
     /// Normalized event stream for a run — stream- or poll-backed by the adapter.
     func events(for run: AgentRun) -> AsyncStream<AgentEvent>
 
@@ -31,6 +35,12 @@ protocol AgentHarness {
 
 extension AgentHarness {
     func respondToInput(_ run: AgentRun, approved: Bool) async throws {}
+
+    /// Plan CN default: an adapter with no image channel simply ignores the attachment rather than
+    /// failing the dispatch. Losing the picture degrades the task; refusing it loses the task.
+    func start(prompt: String, project: String?, attachment: AgentTaskAttachment?) async throws -> AgentRun {
+        try await start(prompt: prompt, project: project)
+    }
 }
 
 /// Errors an adapter surfaces to `AgentSessionService` (mapped to spoken/tool failures).
