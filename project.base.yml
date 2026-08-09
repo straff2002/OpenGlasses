@@ -121,7 +121,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "351"
+        CURRENT_PROJECT_VERSION: "352"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -147,20 +147,35 @@ targets:
       configs:
         # MediaPipe's graph runtime lives in a separate per-SDK archive (SPM can't express
         # sim-vs-device linker flags — this is the podspec's user_target_xcconfig,
-        # translated). The framework references its symbols, so every config must link it;
-        # only Release *force-loads* it, because calculator registration happens in static
-        # initialisers that plain archive linking dead-strips. Debug deliberately skips
-        # force_load: unit tests never execute the graph, and force-loading the 818 MB
-        # simulator archive bloated the debug dylib by ~76 MB and hung the XCTest runner
-        # at bootstrap (abseil static-init lock contention). Trade-off: running the real
-        # landmarker in a *Debug* device build needs Release's -force_load copied to Debug
-        # for that session (P3 device smoke will do exactly that).
+        # translated). The framework references its symbols, so every config must link it.
+        #
+        # NOTHING force-loads it any more (issue #304). Force-loading dragged in every object
+        # file of the 410 MB device archive — 867 OpenFst `FstRegisterer` static initialisers
+        # plus ~47,859 abseil symbols — and ran them pre-`main` on the main thread, where the
+        # registry deadlocked on an `absl::Mutex` that never resolved. iOS killed the process
+        # at the 20-second launch watchdog (`0x8BADF00D`): black screen, no Release build
+        # would launch on device, side-loaded or via TestFlight. The same contention had
+        # already been seen hanging the XCTest runner at bootstrap, which is why Debug never
+        # force-loaded.
+        #
+        # Root cause is a duplicate abseil runtime, not force_load itself:
+        # `MediaPipeTasksCommon.framework` carries its own abseil (2,046 symbols, incl. 26
+        # `absl::Mutex::lock`) and the archive carries another ~47,859, so force-loading puts
+        # two copies in one process and the registrars can bind to a different instance than
+        # the one whose state was initialised. (Vendored sherpa-onnx is NOT involved — it has
+        # zero `fst::`/`absl` symbols.)
+        #
+        # Cost of dropping it: plain archive linking dead-strips the calculator registrations,
+        # so the MediaPipe graph paths (holistic landmarker → fingerspelling, Plan CK) do not
+        # work in a Release build. That loses nothing that previously *worked* — Release never
+        # launched on device, so those paths have never run in a shipping build. Restoring
+        # them needs the duplicate-abseil fix, not this flag: see #304.
         Debug:
           "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"
           "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"
         Release:
-          "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) -force_load $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"
-          "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) -force_load $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"
+          "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"
+          "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) $(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"
     dependencies:
       - package: meta-wearables-dat-ios
         product: MWDATCore
@@ -221,7 +236,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "351"
+        CURRENT_PROJECT_VERSION: "352"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -259,7 +274,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "351"
+        CURRENT_PROJECT_VERSION: "352"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
