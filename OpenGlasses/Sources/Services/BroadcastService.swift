@@ -423,6 +423,11 @@ enum BroadcastError: LocalizedError {
 
 /// BS P2: seam for the shared mic tap (adopted by WakeWordService — the same fan-out the
 /// video recorder uses). Kept minimal so tests can inject a fake.
+///
+/// `@MainActor` because both the adopter (`WakeWordService`) and both call sites
+/// (`startBroadcast`/`stopBroadcast`) are main-actor: the consumer *registry* is main-actor
+/// state, even though the handlers themselves are `@Sendable` and run on the audio thread.
+@MainActor
 protocol BroadcastAudioProviding: AnyObject {
     func addAudioBufferConsumer(id: String, handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void)
     func removeAudioBufferConsumer(id: String)

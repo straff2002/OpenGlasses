@@ -131,7 +131,7 @@ final class MediaTriggerService {
         guard !isRunning, isEnabled() else { return }
         isRunning = true
         let center = NotificationCenter.default
-        let reevaluate: (Notification) -> Void = { [weak self] _ in
+        let reevaluate: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor in self?.evaluate() }
         }
         // Every signal that the audio world changed funnels into one re-evaluation; the policy

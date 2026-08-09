@@ -130,7 +130,9 @@ class VideoRecordingService: ObservableObject {
     var onAutoStopped: ((String) -> Void)?
 
     /// Seconds without a frame (after at least one arrived) before recording auto-stops.
-    static let frameStallSeconds: TimeInterval = 15
+    /// `nonisolated` so `shouldAutoStop`'s default argument (evaluated outside the actor) can
+    /// read it without a hop.
+    nonisolated static let frameStallSeconds: TimeInterval = 15
 
     /// Wall-clock of the most recent appended frame (nil until the first frame arrives).
     /// Written from the background frame queue, read by the main-actor watchdog tick.

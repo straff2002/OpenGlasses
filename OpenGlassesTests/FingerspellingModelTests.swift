@@ -72,7 +72,7 @@ final class FingerspellingModelTests: XCTestCase {
                                                             withIntermediateDirectories: true)
                     try Data("model-bytes".utf8).write(to: dest)
                 }
-                await progress(1.0)
+                progress(1.0)
             })
         await downloader.download()
         XCTAssertEqual(downloader.state, .ready)

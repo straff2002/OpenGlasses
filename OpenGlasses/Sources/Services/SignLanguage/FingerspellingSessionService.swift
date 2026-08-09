@@ -86,7 +86,7 @@ final class FingerspellingSessionService: ObservableObject {
             }
             let finale = await pipeline.flush()
             await self?.apply(finale)
-            await self?.finishStopped()
+            self?.finishStopped()
         }
     }
 

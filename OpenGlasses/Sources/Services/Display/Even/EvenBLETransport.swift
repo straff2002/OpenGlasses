@@ -15,10 +15,15 @@ import Foundation
 final class EvenBLETransport: NSObject, ObservableObject, EvenTransporting {
 
     // Community-reconstructed UUIDs (base 00002760-08C2-11E1-9073-0E8AC72EXXXX).
-    static let writeCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E5401")
-    static let notifyCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E5402")
-    static let renderCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E6402")
-    static let advertisedNamePrefix = "Even G2"
+    //
+    // `nonisolated` because the CoreBluetooth delegate callbacks below read them before hopping
+    // to the main actor — matching a UUID or an advertised name must not cost an actor hop on the
+    // BLE callback queue. `CBUUID` isn't annotated `Sendable`, but these are immutable value
+    // objects created once, so `nonisolated(unsafe)` states that rather than working around it.
+    nonisolated(unsafe) static let writeCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E5401")
+    nonisolated(unsafe) static let notifyCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E5402")
+    nonisolated(unsafe) static let renderCharUUID = CBUUID(string: "00002760-08C2-11E1-9073-0E8AC72E6402")
+    nonisolated static let advertisedNamePrefix = "Even G2"
 
     var onEvent: (([UInt8]) -> Void)?
     var onDisconnect: ((Error?) -> Void)?

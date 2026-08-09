@@ -738,7 +738,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     if let all = try? Data(contentsOf: url) {
                         try? all.suffix(100_000).write(to: url)
                     }
-                    try? handle.seekToEnd()
+                    _ = try? handle.seekToEnd()
                 }
                 try? handle.write(contentsOf: data)
             } else {
@@ -2647,7 +2647,9 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
         do {
-            let photoData = try await cameraService.capturePhoto()
+            // The data is discarded on purpose: `capturePhoto()` saves every capture to the
+            // "Glasses" album itself, and this path only reports that it landed.
+            _ = try await cameraService.capturePhoto()
             // Restore audio for wake word if in direct mode
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -3896,7 +3898,9 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             capturePhoto: { [weak self] in
                 guard let self else { throw RemoteInvokeError.unavailable }
-                let data = try await self.cameraService.capturePhoto()
+                // Discarded on purpose — `capturePhoto()` files it in the "Glasses" album; the
+                // remote caller only needs the capture to have happened.
+                _ = try await self.cameraService.capturePhoto()
                 self.cameraService.restoreAudioForWakeWord()
             },
             startAudioRecording: { [weak self] in

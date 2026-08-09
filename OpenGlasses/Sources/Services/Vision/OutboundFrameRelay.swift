@@ -109,7 +109,11 @@ final class OutboundFrameRelay: ObservableObject {
                     return
                 }
 
-                self.queue.async {
+                // `[weak self]` here as well as on the inner `Task`: after the `guard let self`
+                // above, `self` is a strong local, so an unannotated closure would capture it
+                // strongly and the inner `[weak self]` would be decorative — a relay released
+                // mid-pipeline would be held alive to composite and publish one more frame.
+                self.queue.async { [weak self] in
                     let blurred = Self.composite(image, rects: rects, context: context) ?? image
                     Task { @MainActor [weak self] in self?.finish(with: blurred) }
                 }
