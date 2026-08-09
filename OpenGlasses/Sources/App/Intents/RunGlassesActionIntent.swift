@@ -6,8 +6,11 @@ import Foundation
 /// the user has exposed in Settings → Siri & Search.
 struct RunGlassesActionIntent: AppIntent {
     static var title: LocalizedStringResource = "Run OpenGlasses Action"
+    // App Intent metadata must not name a reserved term — App Store Connect rejects the upload
+    // with ITMS-90626 ("Invalid Siri Support") if a title or description contains "Siri" (or
+    // "Apple"). Ordinary UI copy is unaffected; only extracted intent metadata is scanned.
     static var description = IntentDescription(
-        "Run an OpenGlasses action you've exposed to Siri — built-in, authored, or custom"
+        "Run an OpenGlasses action you've exposed for voice — built-in, authored, or custom"
     )
 
     static var isDiscoverable: Bool { true }
