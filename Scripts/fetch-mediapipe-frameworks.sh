@@ -18,12 +18,27 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 dest="$repo_root/Vendor/MediaPipeTasks/Frameworks"
 stamp="$dest/.fetched-$VERSION"
 
+# Google ships these frameworks with no CFBundleVersion / CFBundleShortVersionString, which App
+# Store Connect rejects on upload ("This bundle ... is invalid. The Info.plist file is missing the
+# required key: CFBundleVersion"). Embedded frameworks must carry both, so stamp the pinned
+# MediaPipe version into every slice. `plutil -replace` adds the key when absent, so this is
+# idempotent — and it runs on the already-fetched path too, so existing checkouts and warm CI
+# caches get repaired without a 1.2 GB re-download.
+patch_bundle_versions() {
+  local plist
+  while IFS= read -r plist; do
+    plutil -replace CFBundleVersion -string "$VERSION" "$plist"
+    plutil -replace CFBundleShortVersionString -string "$VERSION" "$plist"
+  done < <(find "$dest" -path "*.framework/Info.plist" -type f)
+}
+
 if [ -f "$stamp" ] \
    && [ -d "$dest/MediaPipeTasksVision.xcframework" ] \
    && [ -d "$dest/MediaPipeTasksCommon.xcframework" ] \
    && [ -f "$dest/graph_libraries/libMediaPipeTasksCommon_device_graph.a" ] \
    && [ -f "$dest/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a" ]; then
-  echo "MediaPipeTasks ${VERSION} already fetched."
+  patch_bundle_versions
+  echo "MediaPipeTasks ${VERSION} already fetched (bundle versions verified)."
   exit 0
 fi
 
@@ -49,6 +64,8 @@ mkdir -p "$dest/graph_libraries"
 mv "$work/vision/frameworks/MediaPipeTasksVision.xcframework" "$dest/"
 mv "$work/common/frameworks/MediaPipeTasksCommon.xcframework" "$dest/"
 mv "$work/common/frameworks/graph_libraries/"*.a "$dest/graph_libraries/"
+
+patch_bundle_versions
 
 touch "$stamp"
 echo "MediaPipeTasks ${VERSION} installed under Vendor/MediaPipeTasks/Frameworks."
