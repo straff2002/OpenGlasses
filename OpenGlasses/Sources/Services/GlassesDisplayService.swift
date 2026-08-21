@@ -278,6 +278,11 @@ final class GlassesDisplayService: ObservableObject {
                                 try await self.activeBackend.showContent(
                                     title: content.title, body: content.body, icon: content.icon)
                                 self.isDisplayActive = true
+                                // Plan CU P1: marked here, where content reaches the backend, not
+                                // where it was requested. The queue above is latest-wins, so a
+                                // requested frame can be superseded and never render at all — a
+                                // missing `hudRenderedAt` is that, not a missing mark call.
+                                TurnRecorder.markHUDRendered(at: Date())
                             case .clear:
                                 try await self.activeBackend.clear()
                             }

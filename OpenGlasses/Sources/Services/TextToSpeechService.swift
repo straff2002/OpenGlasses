@@ -270,6 +270,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             }
             do {
                 try Task.checkCancellation()
+                // Plan CU P1: which engine is speaking, which is not the configured preference —
+                // any engine here can fall through to the next at runtime (offline, no quota, no
+                // Kokoro model), and a cloud round trip and an on-device synthesis are not
+                // comparable numbers. Tagged on the way *in*, because the playback marks happen
+                // inside the call below; last-wins means an engine that throws is simply
+                // overwritten by the next one to try.
+                TurnRecorder.noteSpeechEngine(engine)
                 switch engine {
                 case .elevenLabs:
                     try await speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
@@ -642,7 +649,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             self.speechContinuation = continuation
             player.delegate = self
-            player.play()
+            let started = player.play()
+            // Plan CU P1: the closest honest "the wearer is hearing this" on the ElevenLabs/Kokoro
+            // path. `AVAudioPlayer` has no did-start callback, so this is `play()` accepting the
+            // request rather than the first sample reaching the speaker — a fixed, small optimism
+            // that the iOS-voice path (a real `didStart`) does not share, so cross-engine
+            // first-audio comparisons carry it.
+            if started { TurnRecorder.markPlaybackStart(at: Date()) }
             print("🔊 ElevenLabs: Playing audio (\(String(format: "%.1f", player.duration))s)")
         }
     }
@@ -704,14 +717,20 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     // MARK: - AVSpeechSynthesizerDelegate (iOS fallback)
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        // Plan CU P1: stamped before the main-actor hop, so the measurement is the callback rather
+        // than the callback plus however long the main actor took to get to us.
+        let startedAt = Date()
         Task { @MainActor in
             self.isSpeaking = true
+            TurnRecorder.markPlaybackStart(at: startedAt)
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let finishedAt = Date()
         Task { @MainActor in
             print("🔊 iOS TTS: didFinish")
+            TurnRecorder.markPlaybackEnd(at: finishedAt)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -815,8 +834,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
 extension TextToSpeechService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        let finishedAt = Date()
         Task { @MainActor in
             print("🔊 ElevenLabs: Playback finished (success=\(flag))")
+            // Plan CU P1: only the clean finish is `spokeDone`. The decode-error path below resumes
+            // the same continuation the same way, so the *caller* can't tell them apart — which is
+            // exactly why the mark has to be made here and not where the continuation resumes.
+            if flag { TurnRecorder.markPlaybackEnd(at: finishedAt) }
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil

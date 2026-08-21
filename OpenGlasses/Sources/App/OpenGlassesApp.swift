@@ -661,6 +661,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
 
+    /// Plan CU P1 — the turn-latency ring buffer, surfaced for the Developer panel to observe.
+    /// `TurnRecorder` owns it and writes it from the turn path; nothing on this state does.
+    let turnLedger = TurnLedger.shared
+
     // Tier 1 services
     let conversationStore = ConversationStore()
     /// On-device FTS index over conversation turns for cross-session recall (Memory & Recall Phase 2).
@@ -705,6 +709,10 @@ class AppState: ObservableObject, AppStateProtocol {
             NSLog("[CO] Dropped a held utterance that went stale: %@", held.text)
             return
         }
+        // Plan CU P1: the replay is a brand-new turn, but the wearer has been waiting since the
+        // park — hand the recorder the park time so the turn carries `heldSeconds` rather than
+        // reporting a perceived latency that starts after the wait it was measuring.
+        TurnRecorder.noteHeldUtterance(parkedAt: held.heldAt)
         Task { @MainActor in await self.handleTranscription(held.text) }
     }
 
@@ -927,14 +935,17 @@ class AppState: ObservableObject, AppStateProtocol {
         videoRecorder.meetingAssistant = meetingAssistant
         videoRecorder.llmClosure = { [weak self] prompt in
             guard let self else { throw LLMError.missingAPIKey("AppState deallocated") }
-            return try await self.llmService.sendMessage(prompt)
+            // Off-turn (Plan CU P1): the meeting assistant runs on the recording's clock, alongside
+            // whatever the wearer is saying to the app — see `TurnRecorder.offTurn`.
+            return try await TurnRecorder.offTurn { try await self.llmService.sendMessage(prompt) }
         }
         audioRecorder.wakeWordService = wakeWordService
         audioRecorder.ambientCaptionService = ambientCaptions
         audioRecorder.meetingAssistant = meetingAssistant
         audioRecorder.llmClosure = { [weak self] prompt in
             guard let self else { throw LLMError.missingAPIKey("AppState deallocated") }
-            return try await self.llmService.sendMessage(prompt)
+            // Off-turn for the same reason as `videoRecorder.llmClosure` above.
+            return try await TurnRecorder.offTurn { try await self.llmService.sendMessage(prompt) }
         }
         medicalExportService.hipaaService = hipaaService
         faceRecognition.onRecognition = { [weak self] name in
@@ -2245,6 +2256,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Stop the current response and process the barge-in text as a new query.
     func handleBargeIn(_ bargeInText: String) {
         print("⚡ Barge-in: '\(bargeInText)' — stopping TTS and processing")
+        // Plan CU P1: read before `stopSpeaking()` clears it. A barge-in over playback is a turn
+        // that worked and was cut short — its stage times are sound data. A barge-in while the
+        // model is still generating is a turn that never delivered, and the cancellation path tags
+        // that one `abandoned` instead.
+        if speechService.isSpeaking { TurnRecorder.noteInterrupted() }
         speechService.stopSpeaking()
         let interruptedTask = currentLLMTask
         interruptedTask?.cancel()
@@ -2352,13 +2368,19 @@ class AppState: ObservableObject, AppStateProtocol {
     private func sendPhotoToLLM(imageData: Data, prompt: String, userLog: String) async {
         isProcessing = true
         speechService.startThinkingSound()
+        // Plan CU P1: the phone-camera fallback and the photo command below are a second, hand-rolled
+        // turn spine — they predate `ConversationTurnRunner` and never went through it, so the marks
+        // that spine carries have to be repeated here or every "take a photo and…" turn is invisible.
+        TurnRecorder.beginTurn()
         do {
+            TurnRecorder.mark(.commit)
             let rawResponse = try await llmService.sendMessage(
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: imageData,
                 memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
             )
+            TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
@@ -2367,12 +2389,15 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             isProcessing = false
             speechService.stopThinkingSound()
+            TurnRecorder.handOffToSpeech()
             await speechService.speak(response)
         } catch {
+            TurnRecorder.noteAbandoned()
             isProcessing = false
             speechService.stopThinkingSound()
             errorMessage = error.localizedDescription
         }
+        TurnRecorder.endTurn()
     }
 
     /// Capture a photo and send it to the LLM with a custom prompt.
@@ -2384,8 +2409,12 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         isProcessing = true
         speechService.startThinkingSound()
+        TurnRecorder.beginTurn()
+        TurnRecorder.mark(.commit)
         do {
+            let grabStartedAt = Date()
             let photoData = try await cameraService.capturePhoto()
+            TurnRecorder.addFrameGrabTime(since: grabStartedAt)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -2397,6 +2426,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 imageData: photoData,
                 memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
             )
+            TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
@@ -2407,12 +2437,14 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = false
             speechService.stopThinkingSound()
             startStopListener()
+            TurnRecorder.handOffToSpeech()
             await speechService.speak(response)
             stopStopListener()
 
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
         } catch {
+            TurnRecorder.noteAbandoned()
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -2422,6 +2454,7 @@ class AppState: ObservableObject, AppStateProtocol {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
         }
+        TurnRecorder.endTurn()
     }
 
     /// Toggle Assistive Mode (A3). Wires the shared service to this AppState's camera/LLM/TTS.
@@ -2518,8 +2551,12 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         isProcessing = true
         speechService.startThinkingSound()
+        TurnRecorder.beginTurn()
+        TurnRecorder.mark(.commit)
         do {
+            let grabStartedAt = Date()
             let photoData = try await cameraService.capturePhoto()
+            TurnRecorder.addFrameGrabTime(since: grabStartedAt)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -2532,6 +2569,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 imageData: photoData,
                 memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
             )
+            TurnRecorder.mark(.generationDone)
             var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
             // A phone-camera capture must SAY so — the phone sees the desk, not what the
             // glasses are pointed at, and an unannounced camera swap reads as hallucination.
@@ -2548,12 +2586,14 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = false
             speechService.stopThinkingSound()
             startStopListener()
+            TurnRecorder.handOffToSpeech()
             await speechService.speak(response)
             stopStopListener()
 
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
         } catch {
+            TurnRecorder.noteAbandoned()
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -2563,6 +2603,7 @@ class AppState: ObservableObject, AppStateProtocol {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
         }
+        TurnRecorder.endTurn()
     }
 
     func captureAndSharePhoto() async {
@@ -3126,7 +3167,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     await ConversationTurnRunner.run(.init(
                         send: {
                             // Capture and send to LLM concurrently — no extra round-trip speech
+                            let grabStartedAt = Date()
                             let photoData = try await self.cameraService.capturePhoto()
+                            TurnRecorder.addFrameGrabTime(since: grabStartedAt)
                             try Task.checkCancellation()
                             // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                             self.cameraService.restoreAudioForWakeWord()
@@ -3313,6 +3356,13 @@ class AppState: ObservableObject, AppStateProtocol {
             return data
         }
 
+        // Plan CU P1: the grab sits between commit and first token, so a vision turn's raw TTFT
+        // contains it — uncorrected, the Bluetooth stream's wait reads as model latency. Timed from
+        // here rather than from the top of the function: the already-streaming path above returns a
+        // frame we already had, and charging that to the model would be just as wrong in reverse.
+        let grabStartedAt = Date()
+        defer { TurnRecorder.addFrameGrabTime(since: grabStartedAt) }
+
         // Try to start streaming and capture
         do {
             try await cameraService.startStreaming()
@@ -3349,7 +3399,14 @@ class AppState: ObservableObject, AppStateProtocol {
             from: .init(name: from?.name ?? "the model", isLocal: from?.llmProvider == .local),
             to: .init(name: to?.name ?? "another model", isLocal: to?.llmProvider == .local),
             failure: failure)
+        // Plan CU P1: `speak` blocks until the whole notice has been *played*, and it sits inside
+        // the turn's commit → generationDone span while being the app talking, not the model.
+        // Unbracketed, a cascade turn charges those 2–4 s to `modelSeconds` and to TTFT and reports
+        // ~8 s of "model latency" for a 5 s model — the same mis-attribution `toolSeconds` exists to
+        // prevent, and it fires exactly when someone is looking at the panel.
+        let narrationStartedAt = Date()
         await speechService.speak(phrase, urgency: .low, mirrorToHUD: true)
+        TurnRecorder.addNonModelTime(since: narrationStartedAt)
         speechService.startThinkingSound()
     }
 
@@ -3453,11 +3510,18 @@ class AppState: ObservableObject, AppStateProtocol {
         if let directCall = classification.directToolCall,
            let router = llmService.nativeToolRouter {
             isProcessing = true
+            // Plan CU P1: tier-0 is a turn shape in its own right and the fastest one the app has —
+            // no backend is ever dispatched, so `commitAt`/`firstTokenAt`/`generationDoneAt` stay
+            // nil by construction. Leaving it unrecorded would mean the aggregate only ever
+            // described the slow turns.
+            TurnRecorder.beginTurn()
+            let toolStartedAt = Date()
             do {
                 let result = try await router.registry.executeTool(
                     name: directCall.toolName,
                     arguments: directCall.arguments
                 )
+                TurnRecorder.addToolTime(since: toolStartedAt)
                 lastResponse = result
                 print("⚡ Direct tool call: \(directCall.toolName) → \(result)")
 
@@ -3471,17 +3535,25 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
 
                 startStopListener()
+                TurnRecorder.handOffToSpeech()
                 await speechService.speak(result)
                 stopStopListener()
             } catch {
                 // Fall through to normal LLM path if direct call fails
                 print("⚠️ Direct tool call failed, falling back to LLM: \(error)")
+                // Plan CU P1: the LLM turn below answers this same utterance, so seal this attempt
+                // as its own abandoned record and hand back the stamps it claimed. Sealed here
+                // rather than at the gate below, which `isProcessing = false` is about to skip.
+                TurnRecorder.abandonTurnReleasingUtterance()
                 isProcessing = false
                 // Don't return — continue to normal LLM path below
             }
 
             if isProcessing {
                 isProcessing = false
+                // Sealed before resuming: the resume path replays a held utterance, which starts
+                // the next turn.
+                TurnRecorder.endTurn()
                 await resumeListeningOrReturnToWakeWord(ensureEngine: true)
                 return
             }
@@ -3543,7 +3615,14 @@ class AppState: ObservableObject, AppStateProtocol {
                     // (cold launch / backgrounded when-in-use) instead of a location-less prompt.
                     let locationCtx: String?
                     if classification.relevantSections.contains(.location) {
+                        // Plan CU P1: a cold fix blocks for up to `awaitLocationContext`'s timeout
+                        // between commit and the backend call. Not a tool and not a frame grab, so
+                        // without this bracket it is charged in full to TTFT and `modelSeconds`, and
+                        // only on location-flavoured turns — skewing one slice of a cohort rather
+                        // than shifting the whole distribution, which is harder to notice.
+                        let locationWaitStartedAt = Date()
                         locationCtx = await locationService.awaitLocationContext()
+                        TurnRecorder.addNonModelTime(since: locationWaitStartedAt)
                     } else {
                         locationCtx = nil
                     }
@@ -4055,11 +4134,15 @@ class AppState: ObservableObject, AppStateProtocol {
         """
 
         do {
-            let response = try await llmService.sendMessage(
-                triagePrompt,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? triagePrompt : nil) : nil,
-                agentContext: currentAgentContext
-            )
+            // Plan CU P1: triage runs on OpenClaw's schedule, not the wearer's, and traverses the
+            // same `sendMessage` / `runToolLoop` a voice turn does — see `TurnRecorder.offTurn`.
+            let response = try await TurnRecorder.offTurn {
+                try await llmService.sendMessage(
+                    triagePrompt,
+                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? triagePrompt : nil) : nil,
+                    agentContext: currentAgentContext
+                )
+            }
 
             let cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -4130,11 +4213,14 @@ class AppState: ObservableObject, AppStateProtocol {
             """
 
             do {
-                let summary = try await llmService.sendMessage(
-                    summaryPrompt,
-                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? summaryPrompt : nil) : nil,
-                    agentContext: currentAgentContext
-                )
+                // Off-turn for the same reason as the triage call above.
+                let summary = try await TurnRecorder.offTurn {
+                    try await llmService.sendMessage(
+                        summaryPrompt,
+                        memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? summaryPrompt : nil) : nil,
+                        agentContext: currentAgentContext
+                    )
+                }
                 let cleaned = summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !cleaned.uppercased().hasPrefix("SKIP") else { return }
 

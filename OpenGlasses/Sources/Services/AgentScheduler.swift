@@ -280,12 +280,18 @@ class AgentScheduler: ObservableObject {
         """
 
         do {
-            let response = try await appState.llmService.sendMessage(
-                wrappedPrompt,
-                locationContext: appState.locationService.locationContext,
-                memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
-                agentContext: appState.currentAgentContext
-            )
+            // Plan CU P1: a scheduled run fires on its own timer and can overlap a voice turn,
+            // through the very `sendMessage` / `runToolLoop` that turn is using. Off-turn, so it
+            // cannot re-tag that turn's cohort with this run's model or add its tool seconds to it —
+            // see `TurnRecorder.offTurn`.
+            let response = try await TurnRecorder.offTurn {
+                try await appState.llmService.sendMessage(
+                    wrappedPrompt,
+                    locationContext: appState.locationService.locationContext,
+                    memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
+                    agentContext: appState.currentAgentContext
+                )
+            }
 
             let processed = Config.userMemoryEnabled
                 ? appState.userMemory.parseAndExecuteCommands(in: response)
