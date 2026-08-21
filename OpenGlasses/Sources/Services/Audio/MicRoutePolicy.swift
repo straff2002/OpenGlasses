@@ -87,4 +87,25 @@ enum MicRoutePolicy {
             return ports.firstIndex { bluetoothMicPorts.contains($0.type) && !looksLikeGlasses(portName: $0.name) }
         }
     }
+
+    /// Which route the session's **live** input is on, given the ports it is currently routed to.
+    ///
+    /// The inverse of `preferredInputIndex`, and it exists because the two answers diverge
+    /// routinely: `preferredInputIndex` returns nil when the preferred port isn't there, and
+    /// `WakeWordService` then leaves capture on the phone while `Config.micRoute` still says
+    /// `.glasses`. A preference is not an observation — glasses go flat, sleep, or wander out of
+    /// range mid-session — and anything measuring the audio (Plan CU's cohorts, P2's acoustic
+    /// thresholds) must be told which mic actually carried the words, or an 8 kHz HFP population
+    /// and a 48 kHz phone-mic one end up in one bucket whose average describes neither.
+    ///
+    /// Classification mirrors `preferredInputIndex` exactly: a Bluetooth mic port whose name looks
+    /// like glasses is `.glasses`, any other Bluetooth mic port is `.headset`, anything else is the
+    /// phone. `nil` only for an empty list — a session with no input port has not been observed at
+    /// all, and the caller should fall back rather than assert a route nobody saw.
+    static func resolvedRoute(from ports: [(name: String, type: AVAudioSession.Port)]) -> MicRoute? {
+        guard !ports.isEmpty else { return nil }
+        if preferredInputIndex(for: .glasses, ports: ports) != nil { return .glasses }
+        if preferredInputIndex(for: .headset, ports: ports) != nil { return .headset }
+        return .phone
+    }
 }

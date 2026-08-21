@@ -66,6 +66,18 @@ struct DeveloperPanelView: View {
             .buttonStyle(.plain)
             .disabled(runner.isRunning)
 
+            OGSection(header: "Turn Latency") {
+                NavigationLink {
+                    TurnTimelineDebugView(ledger: appState.turnLedger)
+                } label: {
+                    OGRow(
+                        "Turn Timeline", icon: "waveform.path.ecg",
+                        subtitle: "Recorded voice turns, stage breakdown, cohort latency"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
             OGSection(
                 header: "Debug Events",
                 footer: "The persistent field log lives in Documents/debug-events.log and survives relaunches."

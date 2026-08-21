@@ -40,8 +40,15 @@ enum ConversationTurnRunner {
 
     @MainActor
     static func run(_ deps: Deps) async {
+        // Plan CU P1: this spine is where `commit` and `generationDone` are honest for every
+        // backend at once. Deliberately not inside `runToolLoop` — auxiliary completions
+        // (classification, history summarisation) run through that same loop *during* a turn, and
+        // first-wins marks would hand the turn its neighbour's timings.
+        TurnRecorder.beginTurn()
         do {
+            TurnRecorder.mark(.commit)
             let raw = try await deps.send()
+            TurnRecorder.mark(.generationDone)
             // `postProcess` can persist memory and inject prompt state, so a response cancelled
             // while in flight must not reach it.
             try Task.checkCancellation()
@@ -51,10 +58,13 @@ enum ConversationTurnRunner {
             try Task.checkCancellation()
             await deps.accept(response)
             try Task.checkCancellation()
+            TurnRecorder.handOffToSpeech()
             await deps.speak(response)
         } catch is CancellationError {
+            TurnRecorder.noteAbandoned()
             deps.onCancelled()
         } catch {
+            TurnRecorder.noteAbandoned()
             // URLSession/provider SDKs can surface their own error after the parent task was
             // cancelled. The interruption wins: do not speak an error after a user barge-in.
             if Task.isCancelled {
@@ -64,5 +74,6 @@ enum ConversationTurnRunner {
             }
         }
         await deps.finish()
+        TurnRecorder.endTurn()
     }
 }

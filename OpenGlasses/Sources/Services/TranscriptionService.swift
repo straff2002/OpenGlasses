@@ -38,6 +38,18 @@ class TranscriptionService: ObservableObject {
     private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
 
+    /// When the recognizer last reported hearing something — i.e. when the silence window that is
+    /// running right now was armed.
+    ///
+    /// Plan CU P1: `stopRecording()` runs when that window *expires*, `silenceThreshold` seconds
+    /// (2.0 s, or 6.0 s after a question-shaped reply) after the wearer actually stopped talking.
+    /// Stamping speech-end there would fold the entire endpointing floor into the start of
+    /// `perceivedLatency` — the headline metric would silently exclude the one stage P2 exists to
+    /// remove, and the before/after would come out flat on a change that worked. Bounded by
+    /// construction: the window is re-armed on every partial, so this is never more than one window
+    /// old.
+    private var lastSpeechObservedAt: Date?
+
     /// Shared audio engine — set by AppState from WakeWordService
     weak var sharedAudioEngineProvider: WakeWordService?
 
@@ -60,7 +72,12 @@ class TranscriptionService: ObservableObject {
         guard !isRecording else { return }
 
         didReceiveSpeech = false
+        lastSpeechObservedAt = nil
         currentTranscription = ""
+        // Plan CU P1: a new utterance means the previous one has been dealt with, whatever became
+        // of it — the turn that answered it has already claimed its stamps, and a voice command
+        // that never became a turn must not leave one behind for the next one to inherit.
+        TurnRecorder.forgetPendingUtterance()
 
         // Pick the recognizer: on-device SenseVoice when selected + its model is ready, else Apple.
         let availability = ASREngineSelector.Availability(
@@ -91,6 +108,14 @@ class TranscriptionService: ObservableObject {
 
     func stopRecording() {
         guard isRecording else { return }
+
+        // Plan CU P1: the mic went quiet when the silence window now expiring was ARMED, not when
+        // it expired — see `lastSpeechObservedAt`. Falls back to now for the stops that never armed
+        // one: the on-device engine (whole-buffer, no partials at all), a recognizer error, or an
+        // external stop before any speech arrived. Stamped before the on-device branch below, whose
+        // SenseVoice decode runs after the mic went quiet and belongs to the wait, not the speech.
+        TurnRecorder.noteSpeechEnd(at: lastSpeechObservedAt ?? Date())
+        lastSpeechObservedAt = nil
 
         silenceTimer?.invalidate()
         silenceTimer = nil
@@ -282,6 +307,9 @@ class TranscriptionService: ObservableObject {
     }
 
     private func resetSilenceTimer() {
+        // Plan CU P1: purely a stamp — the window's length and firing are untouched. Arming it is
+        // the last moment speech was observed, and that is what `stopRecording` records.
+        lastSpeechObservedAt = Date()
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
             Task { @MainActor in

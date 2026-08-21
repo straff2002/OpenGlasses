@@ -481,6 +481,12 @@ class LLMService: ObservableObject {
         }
 
         let provider = modelConfig.llmProvider
+        // Plan CU P1: tag the turn with the model that is about to serve it, read here rather than
+        // afterwards. `sendMessageCascading` restores the pre-turn active model in a `defer` before
+        // it returns, so anything that asks once the turn is over names the model that didn't
+        // answer. Tags are last-wins, so a cascade's final attempt is the one that sticks.
+        TurnRecorder.noteBackend(.direct(provider), model: modelConfig.model)
+
         let isOnDevice = (provider == .local || provider == .appleOnDevice)
         let hasNativeTools = nativeToolRouter != nil
         let includeOpenClaw = Config.isOpenClawAgentActive && openClawBridge != nil
@@ -1941,7 +1947,10 @@ class LLMService: ObservableObject {
             var events = parser.consume(chunk)
             if flush { events += parser.flush() }
             for event in events {
-                if let delta = accumulator.consume(event) { onToken(delta) }
+                if let delta = accumulator.consume(event) {
+                    TurnRecorder.markFirstToken()
+                    onToken(delta)
+                }
             }
         }
 
@@ -2107,6 +2116,7 @@ class LLMService: ObservableObject {
 
             if let chunk = delta["content"] as? String, !chunk.isEmpty {
                 fullContent += chunk
+                TurnRecorder.markFirstToken()
                 onToken(chunk)
             }
             if let calls = delta["tool_calls"] as? [[String: Any]] {
@@ -2183,6 +2193,7 @@ class LLMService: ObservableObject {
                         var b = blocks[idx] ?? ["type": "text", "text": ""]
                         b["text"] = ((b["text"] as? String) ?? "") + t
                         blocks[idx] = b
+                        TurnRecorder.markFirstToken()
                         onToken(t)
                     } else if dtype == "input_json_delta", let pj = delta["partial_json"] as? String {
                         toolJSON[idx, default: ""] += pj
@@ -2698,7 +2709,12 @@ class LLMService: ObservableObject {
             // Execute the tool
             print("🔧 Local model tool call: \(toolName)(\(toolArgs))")
             toolCallStatus = .executing(toolName)
+            // Plan CU P1: the on-device path is deliberately not on `runToolLoop` (see the comment
+            // above `sendLocal`), so its single tool round trip needs its own bracket. The
+            // generation passes either side of it report themselves through `addGeneration`.
+            let toolStartedAt = Date()
             let result = await router.handleToolCall(name: toolName, args: toolArgs)
+            TurnRecorder.addToolTime(since: toolStartedAt)
             toolCallStatus = .idle
 
             let resultText: String

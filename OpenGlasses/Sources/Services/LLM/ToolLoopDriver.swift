@@ -136,6 +136,13 @@ func runToolLoop(
 
         adapter.appendAssistantToolCall(turn)
 
+        // Plan CU P1: one round trip's execution, held apart from the model's own time. With 36+
+        // native tools behind this loop, a turn that spent four seconds inside a HomeKit call
+        // otherwise reports four seconds of model latency and we go and optimise the model. The
+        // `defer` covers the yield-to-human return below as well as the normal exit.
+        let toolsStartedAt = Date()
+        defer { TurnRecorder.addToolTime(since: toolsStartedAt) }
+
         var outcomes: [ToolDispatchOutcome] = []
         for call in turn.toolCalls {
             let outcome = await adapter.dispatcher.dispatch(call)

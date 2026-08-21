@@ -526,21 +526,37 @@ final class LocalLLMService: ObservableObject {
 
         // Drive the stream through the pure loop below so we can bail out *before* requesting the
         // next token — before MLX submits the next Metal command buffer. Non-text generations
-        // (`.info`/`.toolCall`) are skipped; the loop keeps pulling until a text chunk or the end.
+        // (`.toolCall`/unknown) are skipped; the loop keeps pulling until a text chunk or the end.
+        //
+        // `.info` is the exception (Plan CU P1): MLX reports its own token count and decode time
+        // there, and that pair is the *only* input `TurnTimeline.tokensPerSecond` accepts — a rate
+        // taken from timeline marks would divide a first-wins, backfilled window into a token count
+        // it doesn't cover. Captured here and applied below rather than from inside the closure,
+        // which is deliberately kept free of anything that could suspend mid-generation.
+        var reported: GenerateCompletionInfo?
         var iterator = stream.makeAsyncIterator()
         let output = try await Self.drainTokenStream(
             nextChunk: {
                 while let generation = await iterator.next() {
                     if case .chunk(let text) = generation { return text }
-                    // .info / .toolCall / unknown — not spoken text; keep pulling.
+                    if case .info(let info) = generation { reported = info }
                 }
                 return nil
             },
             isBackgrounded: { [weak self] in
                 (self?.enteredBackgroundDuringGeneration ?? false) || UIApplication.shared.applicationState == .background
             },
-            onToken: filteredOnToken
+            // Plan CU P1: first-token is worth marking whether or not the caller wanted a streamed
+            // preview — voice turns pass no `onToken` at all, and this is the only per-chunk seam
+            // the local path has.
+            onToken: { chunk in
+                TurnRecorder.markFirstToken()
+                filteredOnToken?(chunk)
+            }
         )
+        if let reported {
+            TurnRecorder.addGeneration(tokens: reported.generationTokenCount, seconds: reported.generateTime)
+        }
         // Memory telemetry per turn — footprint should now stay flat across questions;
         // before the cacheLimit cap it grew ~0.7 GB per turn until the Jetsam kill.
         NSLog("🔬 LocalLLM.generate done — mlx active=%dMB cache=%dMB, app footprint=%dMB",
@@ -599,6 +615,7 @@ final class LocalLLMService: ObservableObject {
         // `UserInput` (and the `CIImage` inside it) isn't `Sendable`, so it's built *inside* the
         // `@Sendable` closure from Sendable ingredients only — the image data, the prompt strings
         // and the history — rather than constructed out here and captured across the boundary.
+        let report = LockedGenerationReport()
         let output = try await container.perform { context -> String in
             guard let ciImage = CIImage(data: imageData) else {
                 throw LocalLLMError.generationFailed("Couldn't decode the photo.")
@@ -619,12 +636,23 @@ final class LocalLLMService: ObservableObject {
                 nextChunk: {
                     while let generation = await iterator.next() {
                         if case .chunk(let text) = generation { return text }
+                        if case .info(let info) = generation { report.note(info) }
                     }
                     return nil
                 },
                 isBackgrounded: { backgroundedFlag.isSet },
-                onToken: onToken
+                onToken: { chunk in
+                    report.noteToken(at: Date())
+                    onToken?(chunk)
+                }
             )
+        }
+        // Plan CU P1: applied on this side of `container.perform`, where the main actor is ours
+        // again. First token is the wall-clock stamp the drain took; the token/decode pair is MLX's
+        // own report, the only pair `TurnTimeline.tokensPerSecond` will divide.
+        if let firstTokenAt = report.firstTokenAt { TurnRecorder.mark(.firstToken, at: firstTokenAt) }
+        if let completion = report.completion {
+            TurnRecorder.addGeneration(tokens: completion.generationTokenCount, seconds: completion.generateTime)
         }
         NSLog("🔬 LocalLLM.generateVisionTurn done — mlx active=%dMB cache=%dMB",
               Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
@@ -891,5 +919,39 @@ final class LockedFlag: @unchecked Sendable {
     func set() {
         lock.lock(); defer { lock.unlock() }
         value = true
+    }
+}
+
+/// What a vision turn's token drain observed, collected off the main actor and applied to the turn
+/// timeline once `container.perform` returns (Plan CU P1).
+///
+/// The drain runs inside a `@Sendable` closure, so it cannot touch `TurnRecorder` — which is
+/// main-actor isolated — and must not hop there mid-generation either: a suspension between MLX
+/// token pulls is exactly the kind of cost instrumentation is not allowed to add. So the two facts
+/// worth keeping are parked behind a lock and read back on the other side.
+final class LockedGenerationReport: @unchecked Sendable {
+    private let lock = NSLock()
+    private var first: Date?
+    private var info: GenerateCompletionInfo?
+
+    /// Stamp the first token. Later tokens are a lock and a nil check.
+    func noteToken(at time: Date) {
+        lock.lock(); defer { lock.unlock() }
+        if first == nil { first = time }
+    }
+
+    func note(_ completion: GenerateCompletionInfo) {
+        lock.lock(); defer { lock.unlock() }
+        info = completion
+    }
+
+    var firstTokenAt: Date? {
+        lock.lock(); defer { lock.unlock() }
+        return first
+    }
+
+    var completion: GenerateCompletionInfo? {
+        lock.lock(); defer { lock.unlock() }
+        return info
     }
 }

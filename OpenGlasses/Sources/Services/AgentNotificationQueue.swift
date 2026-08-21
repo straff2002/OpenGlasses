@@ -201,12 +201,16 @@ class AgentNotificationQueue: ObservableObject {
 
         appState.speechService.startThinkingSound()
         do {
-            let response = try await appState.llmService.sendMessage(
-                prompt,
-                locationContext: appState.locationService.locationContext,
-                memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
-                agentContext: appState.currentAgentContext
-            )
+            // Off-turn (Plan CU P1): the digest fires on the queue's own schedule and shares the
+            // turn path's `sendMessage` / `runToolLoop` — see `TurnRecorder.offTurn`.
+            let response = try await TurnRecorder.offTurn {
+                try await appState.llmService.sendMessage(
+                    prompt,
+                    locationContext: appState.locationService.locationContext,
+                    memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
+                    agentContext: appState.currentAgentContext
+                )
+            }
             appState.lastResponse = response
             appState.speechService.stopThinkingSound()
             await appState.speechService.speak(response)
