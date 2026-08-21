@@ -136,6 +136,22 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             self?.audioManager.stopPlayback()
         }
 
+        // CW P2: an audio-graph rebuild destroyed reply audio that was queued and never rendered.
+        // Run the same truncate-on-loss barge-in uses: without it the server-side item keeps the
+        // unheard tail, and later turns reference speech the wearer never got. Reaching for
+        // `cancelResponse` rather than a bespoke path is deliberate — the loss is the same event
+        // as an interrupt from the conversation's point of view, and it already reports the
+        // confirmed-played point rather than wall-clock.
+        audioManager.onPlaybackDiscarded = { [weak self] lostMilliseconds in
+            guard lostMilliseconds > 0 else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                NSLog("[OpenAI Session] %d ms of reply audio lost to an audio-graph rebuild — truncating",
+                      lostMilliseconds)
+                self.realtimeService.cancelResponse()
+            }
+        }
+
         // Wire turn complete
         realtimeService.onTurnComplete = { [weak self] in
             guard let self else { return }

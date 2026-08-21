@@ -97,6 +97,18 @@ final class RealtimeAudioEngine {
     /// speaking (OpenAI client-side VAD). Never fires when `config.vad` is `nil`.
     var onVoiceInterrupt: (() -> Void)?
 
+    /// Fires with the milliseconds of scheduled-but-unheard audio a graph rebuild destroyed
+    /// (Plan CW P2). The listener owes the backend the same truncate-on-loss it sends on barge-in:
+    /// a reply the wearer never heard must not stay in the model's context as though they had.
+    /// Invoked on the audio-lifecycle queue.
+    var onPlaybackDiscarded: ((Int) -> Void)?
+
+    /// Ceiling on mirrored playback — ~10 s of 24 kHz mono Int16, comfortably past the longest
+    /// burst a realtime server sends ahead of real time, and small enough that a session cannot
+    /// grow into it. Past this, new buffers still play; they just cannot be carried, and the
+    /// mirror counts them so the loss report stays honest.
+    private static let pendingPlaybackByteLimit = 512 * 1024
+
     private let config: RealtimeAudioEngineConfig
 
     // The engine container is stable for the lifetime of a capture: teardown only stops and
@@ -123,7 +135,18 @@ final class RealtimeAudioEngine {
     /// Confirmed-played frame accounting for barge-in truncation (CJ item 6). Confined to
     /// `audioLifecycleQueue`, like all playback state.
     private var playbackLedger = PlaybackProgressLedger()
+    /// What the player node still owes us, mirrored so a rebuild can carry it (CW P2).
+    /// Confined to `audioLifecycleQueue`; updated at the same three points as `playbackLedger`.
+    private var pendingPlayback = PendingPlaybackMirror(byteLimit: pendingPlaybackByteLimit)
+    /// Buffers drained ahead of a rebuild, waiting for the new graph. Non-empty only across the
+    /// asynchronous middle of `attemptAudioResetOnQueue`.
+    private var carriedPlayback: [PendingPlaybackMirror.Entry] = []
     private var useIPhoneMode = false
+    /// The input format the current tap and resampling converter were built for (Plan CW P1).
+    /// Recovery compares the live format against this: an unchanged format means a stopped engine
+    /// only needs `start()`, a changed one means the tap is producing garbage and must be rebuilt.
+    /// `nil` between captures.
+    private var tapInputFormat: (sampleRate: Double, channels: UInt32)?
     /// Bumped on every (re)start and teardown; tags tap buffers so stale ones are dropped.
     private var audioGraphGeneration: UInt64 = 0
     /// Our claim on the shared session, held while the conversation owns the mic.
@@ -233,6 +256,10 @@ final class RealtimeAudioEngine {
         NSLog("%@ Native input: %.0fHz %dch, needs resample: %@", config.logPrefix,
               inputNativeFormat.sampleRate, inputNativeFormat.channelCount,
               needsResample ? "YES" : "NO")
+
+        // CW P1: remember what the tap and converter below are built for, so recovery can tell a
+        // stopped engine (restartable, playback survives) from a re-routed one (must rebuild).
+        tapInputFormat = (inputNativeFormat.sampleRate, inputNativeFormat.channelCount)
 
         // New generation: the tap below tags its buffers with it; the accumulator only accepts the
         // current generation, so buffers from a previous (torn-down) capture are dropped.
@@ -373,6 +400,15 @@ final class RealtimeAudioEngine {
             isPlayerNodeAttached = false
         }
         audioEngine.stop()
+        // CW P3: hand the voice-processing IO unit back before dropping the engine that owns it.
+        // We enable it on a fresh engine (Plan CC) and previously discarded that engine without
+        // ever disabling it, leaving an IO unit to be retired by ARC — the reported failure mode
+        // for that elsewhere is no microphone on the *next* session until the app is relaunched.
+        // Cheap, ordered, and not a guarantee worth leaving to deallocation timing.
+        if audioEngine.inputNode.isVoiceProcessingEnabled {
+            try? audioEngine.inputNode.setVoiceProcessingEnabled(false)
+        }
+        audioEngine.reset()
         audioEngine = AVAudioEngine()
     }
 
@@ -391,17 +427,43 @@ final class RealtimeAudioEngine {
         // the engine non-nil but silently dead: `isRunning == false` while the graph looks
         // intact, and every scheduled buffer is swallowed without an error. Resurrect the
         // engine before scheduling instead of dropping the response into the void.
+        // CW P1: this path used to `start()` unconditionally, which is right for the common case
+        // and wrong when the route moved underneath us — restarting into a stale tap keeps a graph
+        // that is producing garbage. Same decision function as the route-change path, so the two
+        // can no longer disagree about what a dead engine means.
         if !audioEngine.isRunning {
-            do {
-                try audioEngine.start()
-                NSLog("%@ Playback engine was dead — restarted before scheduling", config.logPrefix)
-            } catch {
-                NSLog("%@ Playback engine restart failed (%@) — dropping %d bytes",
-                      config.logPrefix, error.localizedDescription, data.count)
+            guard recoverGraphOnQueue(trigger: .schedulingDiscovery) else {
+                NSLog("%@ Playback graph unusable — dropping %d bytes",
+                      config.logPrefix, data.count)
                 return
             }
         }
 
+        let frameCount = frameCount(forByteCount: data.count)
+        guard frameCount > 0 else { return }
+
+        // CJ item 6: count this buffer as played only when the hardware confirms it rendered.
+        // `.dataPlayedBack` callbacks also fire for buffers a later `stop()` discards — the
+        // ledger's generation check drops those (discarded ≠ heard).
+        let generation = playbackLedger.scheduled(frames: frameCount)
+        // CW P2: keep our own copy of what the player node now holds. The node will not tell us
+        // what it still owes when a rebuild takes it away.
+        pendingPlayback.scheduled(pcm: data, frames: frameCount, generation: generation)
+        scheduleBufferOnQueue(pcm: data, frames: frameCount, generation: generation)
+    }
+
+    /// Frames of `config.outputSampleRate` PCM in a byte count of received audio.
+    private func frameCount(forByteCount bytes: Int) -> UInt32 {
+        UInt32(bytes) / (config.bitsPerSample / 8 * config.channels)
+    }
+
+    /// Convert Int16 PCM to the player's float format and hand it to the node.
+    ///
+    /// Separated from `playAudioOnQueue` (CW P2) because the carry-over path re-schedules buffers
+    /// the ledger has **already** counted: re-entering the accounting would double-count them as
+    /// scheduled and make `confirmedPlayedMilliseconds` under-report for the rest of the response.
+    @discardableResult
+    private func scheduleBufferOnQueue(pcm: Data, frames: UInt32, generation: UInt64) -> Bool {
         guard let playerFormat = try? AudioFormatFactory.pcm(
             .pcmFormatFloat32,
             sampleRate: config.outputSampleRate,
@@ -409,36 +471,77 @@ final class RealtimeAudioEngine {
             interleaved: false,
             context: "playback"
         ) else {
-            NSLog("%@ Invalid playback format — dropping %d bytes", config.logPrefix, data.count)
-            return
+            NSLog("%@ Invalid playback format — dropping %d bytes", config.logPrefix, pcm.count)
+            return false
         }
 
-        let frameCount = UInt32(data.count) / (config.bitsPerSample / 8 * config.channels)
-        guard frameCount > 0 else { return }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: playerFormat, frameCapacity: frames) else {
+            return false
+        }
+        buffer.frameLength = frames
 
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: playerFormat, frameCapacity: frameCount) else { return }
-        buffer.frameLength = frameCount
-
-        guard let floatData = buffer.floatChannelData else { return }
-        data.withUnsafeBytes { rawBuffer in
+        guard let floatData = buffer.floatChannelData else { return false }
+        pcm.withUnsafeBytes { rawBuffer in
             guard let int16Ptr = rawBuffer.bindMemory(to: Int16.self).baseAddress else { return }
-            for i in 0..<Int(frameCount) {
+            for i in 0..<Int(frames) {
                 floatData[0][i] = Float(int16Ptr[i]) / Float(Int16.max)
             }
         }
 
-        // CJ item 6: count this buffer as played only when the hardware confirms it rendered.
-        // `.dataPlayedBack` callbacks also fire for buffers a later `stop()` discards — the
-        // ledger's generation check drops those (discarded ≠ heard).
-        let generation = playbackLedger.scheduled(frames: frameCount)
         playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             self?.audioLifecycleQueue.async {
-                self?.playbackLedger.played(frames: frameCount, generation: generation)
+                guard let self else { return }
+                self.playbackLedger.played(frames: frames, generation: generation)
+                self.pendingPlayback.retire(generation: generation)
             }
         }
         if !playerNode.isPlaying {
             playerNode.play()
         }
+        return true
+    }
+
+    /// Re-schedule the buffers a rebuild carried across, under their original generation so the
+    /// ledger's played-count is continuous rather than restarting at zero (CW P2).
+    private func rescheduleCarriedPlaybackOnQueue() {
+        let carried = carriedPlayback
+        carriedPlayback = []
+        guard !carried.isEmpty else { return }
+
+        guard isCapturing, isPlayerNodeAttached else {
+            // The rebuild did not produce a graph to play on. That is a loss like any other and
+            // has to be reported, not quietly forgotten on the way out.
+            reportPlaybackLoss(frames: carried.reduce(0) { $0 &+ UInt64($1.frames) },
+                               context: "rebuild produced no graph")
+            return
+        }
+
+        var restored: UInt64 = 0
+        var lost: UInt64 = 0
+        for entry in carried {
+            pendingPlayback.scheduled(pcm: entry.pcm, frames: entry.frames, generation: entry.generation)
+            if scheduleBufferOnQueue(pcm: entry.pcm, frames: entry.frames, generation: entry.generation) {
+                restored &+= UInt64(entry.frames)
+            } else {
+                lost &+= UInt64(entry.frames)
+            }
+        }
+        NSLog("%@ Carried %d ms of queued playback across the rebuild",
+              config.logPrefix,
+              PendingPlaybackMirror.milliseconds(frames: restored, sampleRate: config.outputSampleRate))
+        if lost > 0 { reportPlaybackLoss(frames: lost, context: "re-schedule failed") }
+    }
+
+    /// Announce playback that was scheduled and never heard (CW P2).
+    ///
+    /// Silence is indistinguishable from "the assistant never spoke", and worse, the backend still
+    /// believes it delivered the reply — so the conversation continues from a false premise. The
+    /// listener is expected to run the same truncate-on-loss path barge-in already uses.
+    private func reportPlaybackLoss(frames: UInt64, context: String) {
+        guard frames > 0 else { return }
+        let ms = PendingPlaybackMirror.milliseconds(frames: frames, sampleRate: config.outputSampleRate)
+        NSLog("%@ Discarded %d ms of unplayed audio (%@)", config.logPrefix, ms, context)
+        onPlaybackDiscarded?(ms)
     }
 
     /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
@@ -452,7 +555,12 @@ final class RealtimeAudioEngine {
     /// Start a fresh played-audio accounting window (call at each response boundary).
     func resetPlaybackProgress() {
         audioLifecycleQueue.async { [weak self] in
-            self?.playbackLedger.reset()
+            guard let self else { return }
+            self.playbackLedger.reset()
+            // A response boundary retires the mirror with the ledger. Nothing is reported: the
+            // tail may still be draining and is expected to be heard, it just belongs to the
+            // window that closed.
+            self.pendingPlayback.discardAll()
         }
     }
 
@@ -468,6 +576,9 @@ final class RealtimeAudioEngine {
         // Reset before stop: the stop fires completion callbacks for every *discarded* buffer,
         // and the generation bump keeps them out of the played count.
         playbackLedger.reset()
+        // Barge-in already reports its own truncation point from the ledger, so the discarded
+        // frames here need clearing but not announcing — announcing them would double-report.
+        pendingPlayback.discardAll()
         playerNode.stop()
         if isCapturing, audioEngine.isRunning {
             playerNode.play()
@@ -532,7 +643,7 @@ final class RealtimeAudioEngine {
                 NSLog("%@ Interruption ended — resuming", self.config.logPrefix)
                 self.resumeAfterInterruptionOnQueue()
             case .resetGraph:
-                self.attemptAudioResetOnQueue()
+                self.recoverGraphOnQueue(trigger: .routeChange)
             case .none:
                 break
             }
@@ -547,8 +658,11 @@ final class RealtimeAudioEngine {
         audioLifecycleQueue.async { [weak self] in
             guard let self else { return }
             if AudioInterruptionPolicy.action(for: reason, isCapturing: self.isCapturing) == .resetGraph {
-                NSLog("%@ Route changed (reason %lu) — resetting engine", self.config.logPrefix, raw)
-                self.attemptAudioResetOnQueue()
+                // CW P1: the session policy says the route moved; how much of the graph that
+                // actually costs is a separate question, and a glasses HFP mic arriving at session
+                // start (`.newDeviceAvailable`) usually costs nothing but a `start()`.
+                NSLog("%@ Route changed (reason %lu) — recovering engine", self.config.logPrefix, raw)
+                self.recoverGraphOnQueue(trigger: .routeChange)
             }
         }
     }
@@ -573,8 +687,89 @@ final class RealtimeAudioEngine {
             }
             NSLog("%@ Resumed after interruption", config.logPrefix)
         } catch {
-            NSLog("%@ Resume failed: %@ — resetting", config.logPrefix, error.localizedDescription)
+            NSLog("%@ Resume failed: %@ — recovering", config.logPrefix, error.localizedDescription)
+            recoverGraphOnQueue(trigger: .interruptionEnded)
+        }
+    }
+
+    /// The graph state as the engine actually presents it right now (Plan CW P1). Lifecycle-queue
+    /// only — every field is a live read off `AVAudioEngine`.
+    private func observedGraphStateOnQueue() -> AudioGraphState {
+        var formatChanged = false
+        if let tapInputFormat {
+            let live = audioEngine.inputNode.outputFormat(forBus: 0)
+            formatChanged = AudioGraphRecovery.formatChanged(
+                fromSampleRate: tapInputFormat.sampleRate, fromChannels: tapInputFormat.channels,
+                toSampleRate: live.sampleRate, toChannels: live.channelCount
+            )
+        }
+        return AudioGraphState(
+            engineRunning: audioEngine.isRunning,
+            nodesAttached: isPlayerNodeAttached && isInputTapInstalled,
+            formatChanged: formatChanged,
+            isCapturing: isCapturing
+        )
+    }
+
+    /// Repair the graph proportionately to what is actually wrong with it (Plan CW P1).
+    ///
+    /// Replaces the reflex that made a route settle at session start destroy the first reply: the
+    /// engine stopping is not the same event as the graph breaking, and `AudioGraphRecovery` is
+    /// where that distinction is decided and tested. Returns `true` if the graph is usable when it
+    /// returns — a `.rebuild` returns `false` because the rebuild completes asynchronously.
+    @discardableResult
+    private func recoverGraphOnQueue(trigger: AudioGraphTrigger) -> Bool {
+        let state = observedGraphStateOnQueue()
+        switch AudioGraphRecovery.action(for: trigger, state: state) {
+        case .none:
+            return state.isCapturing
+
+        case .restart:
+            do {
+                try audioEngine.start()
+                // CW P3: a restart can come back with dead IO — the same zero-sample-rate
+                // signature `VoiceProcessingProbe` already screens for at capture start. Reporting
+                // success here would leave a deaf engine running and nothing else would notice.
+                let live = audioEngine.inputNode.outputFormat(forBus: 0)
+                if case .deadIO(let reason) = VoiceProcessingProbe.verdict(
+                    sampleRate: live.sampleRate, channelCount: live.channelCount
+                ) {
+                    NSLog("%@ Graph restarted deaf (%@) — escalating to rebuild",
+                          config.logPrefix, reason)
+                    carriedPlayback = pendingPlayback.drain()
+                    attemptAudioResetOnQueue()
+                    return false
+                }
+                if isPlayerNodeAttached, !playerNode.isPlaying { playerNode.play() }
+                NSLog("%@ Graph restarted after %@ — queued playback preserved",
+                      config.logPrefix, trigger.rawValue)
+                return true
+            } catch {
+                // A restart that will not start is a broken graph after all; fall through to the
+                // heavier path rather than reporting a success nobody can hear. The queue comes
+                // with us — the graph is being replaced, not the audio abandoned.
+                NSLog("%@ Graph restart failed (%@) — rebuilding", config.logPrefix,
+                      error.localizedDescription)
+                carriedPlayback = pendingPlayback.drain()
+                attemptAudioResetOnQueue()
+                return false
+            }
+
+        case .rebuild(let carryPlayback):
+            NSLog("%@ Rebuilding graph after %@ (carry playback: %@)", config.logPrefix,
+                  trigger.rawValue, carryPlayback ? "yes" : "no")
+            if carryPlayback {
+                // Take the queue off the doomed player node before the teardown detaches it;
+                // `rescheduleCarriedPlaybackOnQueue` puts it on the new one.
+                carriedPlayback = pendingPlayback.drain()
+            } else {
+                // The buffers no longer match the graph they were built for, so they cannot come
+                // along — but the wearer not hearing them is a fact the backend has to be told.
+                reportPlaybackLoss(frames: pendingPlayback.discardAll(),
+                                   context: "format changed under queued playback")
+            }
             attemptAudioResetOnQueue()
+            return false
         }
     }
 
@@ -599,6 +794,10 @@ final class RealtimeAudioEngine {
                 } catch {
                     NSLog("%@ Audio reset failed: %@", self.config.logPrefix, error.localizedDescription)
                 }
+                // CW P2: runs on both paths. On success it re-schedules the carried buffers onto
+                // the new player node; on failure it reports them lost. Either way the queue does
+                // not just evaporate.
+                self.syncOnAudioLifecycleQueue { self.rescheduleCarriedPlaybackOnQueue() }
             }
         }
     }
@@ -608,6 +807,13 @@ final class RealtimeAudioEngine {
     private func tearDownEngineGraphOnQueue(flushPendingAudio: Bool, completion: (() -> Void)? = nil) {
         audioGraphGeneration &+= 1
         isCapturing = false
+        // The tap this described is about to be removed; a stale format here would make the next
+        // recovery compare against a graph that no longer exists.
+        tapInputFormat = nil
+        // The player node is about to be detached, taking its queue with it. Rebuild paths have
+        // already drained or reported the mirror, so this only clears a deliberate stop's tail —
+        // silently, because a stop the wearer asked for is not a loss to announce.
+        pendingPlayback.discardAll()
 
         audioEngine.stop()
 
