@@ -1,6 +1,15 @@
-# Plan A — Accessibility Tier (new IAP)
+# Plan A — Accessibility Tier (free, never an IAP)
 
-**Strategic fit:** A coherent paid track parallel to Medical Compliance. Audience: dyslexia, ADHD, low-vision, language learners, neurodivergent users. Three composable features.
+> **Pricing decided 2026-08-09: accessibility is free and stays free.** This plan was drafted as a
+> paid track parallel to Medical Compliance; that framing is withdrawn. Charging disabled users for
+> access to the thing that makes the product usable for them is the wrong call, and the code already
+> agrees — there is no accessibility product id in `StoreKitService`, no entitlement check anywhere,
+> and no paywall (the only one is `MedicalCompliancePaywallView`). Every gate is
+> `Config.accessibilityModeEnabled`, a plain user toggle. Nothing needs un-shipping; this note exists
+> so the IAP framing is not reintroduced from the old text below.
+
+**Strategic fit:** Audience: dyslexia, ADHD, low-vision, language learners, neurodivergent users.
+Three composable features, all free.
 
 **Effort:** ~3-5 days total
 
@@ -89,15 +98,15 @@
 
 ## Build order
 
-1. **A2** first — smallest, broadly useful even before IAP ships
-2. **A1** second — most user-visible utility, clear value prop
-3. **A3** third — most novel, gates behind IAP completion
+1. **A2** first — smallest, broadly useful
+2. **A1** second — most user-visible utility
+3. **A3** third — most novel
 
 ## Open questions
 
-- Bundle all three into one IAP, or sell A1 separately and A3 in a higher tier?
-- Does A2 (urgency TTS) ship universally, or also gate behind IAP? *Recommendation: universal — it's a quality improvement, not an accessibility feature per se.*
-- IAP product ID convention — match Medical Compliance per-region pricing pattern?
+- ~~Bundle all three into one IAP, or sell A1 separately and A3 in a higher tier?~~ **Resolved:** none of them are sold. All three ship free.
+- ~~Does A2 (urgency TTS) ship universally, or also gate behind IAP?~~ **Resolved:** universal, along with the rest.
+- ~~IAP product ID convention?~~ **Resolved:** no product id. Accessibility is also not an entitlement an org profile can grant (Plan CT) — there is nothing to grant.
 - Reading level UI — slider in Settings? Per-query override via voice ("simplify for a 10-year-old")?
 
 ## Dependencies / prereqs
