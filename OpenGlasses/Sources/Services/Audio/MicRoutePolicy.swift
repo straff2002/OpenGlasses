@@ -36,8 +36,30 @@ enum MicRoute: String, CaseIterable, Identifiable {
 /// Pure route → audio-session decisions, so the selection rules are unit-
 /// testable without an `AVAudioSession`. `WakeWordService` applies them.
 enum MicRoutePolicy {
-    /// Port-name markers that identify the glasses across Meta's lineup.
-    static let glassesNameMarkers = ["meta", "ray-ban", "rayban", "oakley", "glasses"]
+    /// Port-name markers that identify a pair of glasses rather than earbuds.
+    ///
+    /// Plan CQ P0: this list is deliberately **data-only** so a newly supported device is a
+    /// one-line addition, and deliberately **conservative** so it never claims a headset.
+    /// A false positive here is not cosmetic — the `.headset` route skips anything that looks
+    /// like glasses, so a mismatched pair of earbuds would silently stop being selectable, and
+    /// the `.glasses` route would grab them instead. That is why the entries are distinctive
+    /// brand or product tokens ("even g", "camera glasses") and never bare fragments like
+    /// "even", "g2" or "cyan", which appear inside ordinary headset names.
+    ///
+    /// Non-Meta entries are **unverified against hardware** — they are the advertised names
+    /// these devices are reported to use, and matching them only affects which route label the
+    /// user sees and which port the route prefers.
+    static let glassesNameMarkers = [
+        // Meta's lineup.
+        "meta", "ray-ban", "rayban", "oakley", "glasses",
+        // Plan CQ Track B — the OEM capture-to-storage class, sold under many badges.
+        // (Products literally named "Camera Glasses" are already caught by "glasses".)
+        "anko", "heycyan",
+        // Plan CQ Track A — developer camera glasses.
+        "mentra",
+        // Display-tier glasses (Plan AH and the wider display class).
+        "even g", "vuzix",
+    ]
 
     static func looksLikeGlasses(portName: String) -> Bool {
         let name = portName.lowercased()

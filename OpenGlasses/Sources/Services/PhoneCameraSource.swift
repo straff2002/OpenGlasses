@@ -11,7 +11,20 @@ import UIKit
 /// Not @MainActor: AVCaptureSession config/start/stop run on `sessionQueue`. The single
 /// in-flight capture continuation is set and resumed on the main queue for thread safety
 /// (same discipline as PhoneCameraController).
-final class PhoneCameraSource: NSObject, @unchecked Sendable {
+/// The phone camera as `CameraService` sees it — one still, on demand.
+///
+/// A seam rather than a concrete reference because this is the branch the coordinator takes
+/// whenever the glasses camera *can't* serve a capture, so any test that exercises that decision
+/// lands in real AVFoundation. On a simulator whose camera privacy decision is still unresolved,
+/// `requestAccess` then waits forever for a prompt no test runner can answer — the test hangs
+/// rather than fails. Injecting the source keeps the fallback decision testable without a camera,
+/// mirroring `GlassesCameraBackend` on the glasses side.
+protocol PhoneCameraCapturing: AnyObject {
+    /// Capture a single still as JPEG data.
+    func capturePhoto() async throws -> Data
+}
+
+final class PhoneCameraSource: NSObject, PhoneCameraCapturing, @unchecked Sendable {
     private let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.openglasses.phone-camera.source")

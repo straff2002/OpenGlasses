@@ -557,8 +557,50 @@ struct HardwarePrivacyView: View {
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
 
+    /// Plan CQ P0: what class of device is connected, resolved from the three things that
+    /// actually determine it. Re-read on each render — this view is cheap and the answer
+    /// changes when glasses connect or drop.
+    private var connectedTier: GlassesTier? {
+        GlassesTierPolicy.resolve(
+            cameraCapabilities: appState.cameraService.activeCapabilities,
+            displayBackendActive: appState.glassesDisplay.isDisplayActive,
+            audioPortNames: (AVAudioSession.sharedInstance().availableInputs ?? []).map(\.portName)
+        )
+    }
+
     var body: some View {
         Form {
+            // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
+            // Any glasses that pair as a Bluetooth headset already run the whole voice loop, so
+            // say what the connected pair CAN do rather than letting the user find the limits
+            // one failed feature at a time.
+            Section("Connected Glasses") {
+                if let tier = connectedTier {
+                    LabeledContent("Device class", value: tier.label)
+                    Text(tier.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LabeledContent(
+                        "Camera",
+                        value: CameraFeatureGate.summary(given: appState.cameraService.capabilities)
+                    )
+                    let blocked = CameraFeatureGate.unavailableFeatures(
+                        given: appState.cameraService.activeCapabilities ?? .unavailable
+                    )
+                    if !blocked.isEmpty {
+                        Text("Unavailable on these glasses: "
+                             + blocked.map(\.displayName).joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No glasses detected. Pair them in iOS Settings — any glasses that "
+                         + "connect as a Bluetooth headset can run the voice features.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // Plan CL P3: unified capture route. Headset mode exists because the
             // glasses' hands-free mic link makes Display glasses put their call
             // screen over the lens HUD — earbuds carry mic + voice, lens stays free.
