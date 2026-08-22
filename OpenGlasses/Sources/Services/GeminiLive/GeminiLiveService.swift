@@ -391,41 +391,12 @@ class GeminiLiveService: ObservableObject {
                   replaced, resolution.model)
         }
 
-        var setupBody: [String: Any] = [
-            "model": Config.geminiLiveModel,   // live family — see GeminiLiveModelPolicy
-            "generationConfig": [
-                "responseModalities": responseModalities,
-                "thinkingConfig": [
-                    "thinkingBudget": 0
-                ]
-            ],
-            "systemInstruction": [
-                "parts": [
-                    ["text": systemInstruction]
-                ]
-            ],
-            "tools": toolsArray,
-            "realtimeInputConfig": [
-                "automaticActivityDetection": [
-                    "disabled": false,
-                    "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
-                    "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
-                    "silenceDurationMs": 500,
-                    "prefixPaddingMs": 40
-                ],
-                "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
-                "turnCoverage": "TURN_INCLUDES_ALL_INPUT",
-                "contextWindowCompression": [
-                    "slidingWindow": [
-                        "targetTokens": 80000
-                    ]
-                ]
-            ],
-            "inputAudioTranscription": [:] as [String: Any],
-            // Plan CJ item 7: always request resumption updates; with a stored handle this
-            // resumes the prior session (goAway rotation / network drop) instead of cold-starting.
-            "sessionResumption": GeminiSessionResumption.setupValue(handle: resumptionHandle)
-        ]
+        var setupBody = GeminiLiveSetup.body(
+            model: Config.geminiLiveModel,
+            responseModalities: responseModalities,
+            systemInstruction: systemInstruction,
+            tools: toolsArray,
+            sessionResumption: GeminiSessionResumption.setupValue(handle: resumptionHandle))
         // Only a voice session has model audio to transcribe.
         if responseModalities.contains("AUDIO") {
             setupBody["outputAudioTranscription"] = [:] as [String: Any]
