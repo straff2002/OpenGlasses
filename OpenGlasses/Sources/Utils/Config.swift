@@ -1849,13 +1849,21 @@ struct Config {
 
     // MARK: - Recording
 
-    static var recordingBitrate: Int {
+    /// Explicit user override for the recording bitrate, or `nil` to let `VideoBitratePolicy`
+    /// derive it from the encoded frame size and frame rate. There is deliberately no default
+    /// here any more: a constant cannot be right for both 360×640 and 720×1280.
+    static var recordingBitrateOverride: Int? {
         let val = UserDefaults.standard.integer(forKey: "recordingBitrate")
-        return val != 0 ? val : 1_500_000
+        return val > 0 ? val : nil
     }
 
-    static func setRecordingBitrate(_ bitrate: Int) {
-        UserDefaults.standard.set(bitrate, forKey: "recordingBitrate")
+    /// Set the override, or pass `nil` to clear it and go back to the derived bitrate.
+    static func setRecordingBitrate(_ bitrate: Int?) {
+        if let bitrate, bitrate > 0 {
+            UserDefaults.standard.set(bitrate, forKey: "recordingBitrate")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "recordingBitrate")
+        }
     }
 
     /// User-selected folder bookmark for saving transcripts and recordings.

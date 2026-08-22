@@ -2679,10 +2679,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     try await cameraService.startStreaming()
                 }
                 let frameSize = cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
-                let bitrate = max(Config.recordingBitrate, 4_000_000)
                 try videoRecorder.startRecording(
                     from: outboundFrames.publisher,   // CP: blurred before it reaches disk
-                    bitrate: bitrate,
+                    bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
                     outputSize: frameSize
                 )
             } catch {
@@ -3919,7 +3918,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 let frameSize = self.cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
                 try self.videoRecorder.startRecording(
                     from: self.outboundFrames.publisher,   // CP
-                    bitrate: max(Config.recordingBitrate, 4_000_000),
+                    bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
                     outputSize: frameSize
                 )
             },
