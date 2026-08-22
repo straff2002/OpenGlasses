@@ -22,35 +22,38 @@ then strike it here.
 
 ## A. Buildable now (headless follow-up PRs)
 
+**Refreshed 2026-08-22** against the tree (previous pass: 2026-07-11). Fifteen rows were **verified
+shipped and removed** rather than struck — the strikethroughs had grown to outnumber the live work,
+which is the one thing this table cannot afford. Removed as done: AU streamed/realtime token capture,
+pricing editor, **cache-token capture**, family-prefix overpricing guard (`ModelPricing.isSnapshotSuffix`)
+and the `untrackedTurns` drift marker; AN project export/import; AB rubric breadth; U author UI,
+`schema_version` + lossy-decode rejection, typed `captureRecord` OpKind, `SessionExporter` folding;
+O standalone `DocumentsView`; AW user-correction capture; AT threshold Settings control; S complexity
+classifier; V custom auth-header kind + `SSETransport` initialize handshake; T purge/prune trigger
+wiring, launch-time flush and `inFlight` startup recovery; BM P8 Brain/Teleprompter project scoping
+(`scopedNamespaces()` in both tools); BM P10 owner gate (`OwnerGatePolicy`).
+
 | Plan | Outstanding item | Notes |
 |---|---|---|
-| ~~[AU](llm-cost-usage-tracker.md)~~ | ~~Streamed-Chat + realtime-voice token capture~~ | ✅ Shipped — streamed-Chat SSE (`StreamingUsageAccumulator`) + realtime voice (`RealtimeUsage` + `CumulativeUsageMeter`: OpenAI Realtime `response.done`, Gemini Live cumulative `usageMetadata`) |
-| ~~[AU](llm-cost-usage-tracker.md)~~ | ~~Settings pricing editor~~ | ✅ Shipped — `ModelPricingEditorView` + persisted `Config.modelPricingOverrides` |
-| ~~[AN](projects-scoped-contexts.md)~~ | ~~Shareable project export/import bundle~~ | ✅ Shipped — `ProjectBundle`/`ProjectBundleCodec` + `ProjectExporter`; export (share sheet) in `ProjectDetailView`, import (file picker) in `PersonasView` |
-| ~~[AB](health-safety-advisor.md)~~ | ~~Broader interaction-rubric coverage~~ | ✅ Shipped — +7 drug classes (statin/nitrate/PDE5/benzo/opioid/methotrexate/lithium) + alcohol; rules for MAOI+SSRI, PDE5+nitrate, methotrexate/lithium+NSAID, opioid+benzo, ACE+K-sparing, NSAID-in-pregnancy, alcohol+sedative, statin+grapefruit |
+| [T](T-offline-field-queue-and-sync.md) | **Persist the conflict baseline**, then `PeerSyncSink` vs BL's `MockOpsPeer` | Re-verified 2026-08-22: three of the four named prereqs are done, but `ConflictResolver.knownVersion` is an in-memory `[String: Int]`, so every relaunch resets each session to version 0 and the first flush after launch cannot detect a conflict it should. Fix that before the networked sink, or the sink's first real test is against a resolver that can't fail |
+| [T](T-offline-field-queue-and-sync.md) | Route per-event `SessionLogger` entries through the queue | Rescoped 2026-08-22: photo evidence and session export already enqueue (`FieldSessionService.swift:227`, `:309`); the `log.jsonl` events themselves are still file-only |
+| [U](U-structured-capture-flows.md) | Remaining camera-binding **routing** (scan_code / photo / ocr_text) | Unchanged — no tool consults an active flow step yet; follow the `VisionAssessTool.swift:52` pattern (tool checks for an active step, offers the resolved value). Accuracy validation stays in B |
+| [CU](CU-voice-turn-latency.md) | Wire realtime turn boundaries into `TurnRecorder` | New 2026-08-22, and named in P1's own deferred list: `TurnBackend` models both realtime stacks and the cohorts keep them apart, but neither session manager marks a turn, so no realtime turn is recorded and the Direct-vs-realtime baseline cannot be read off the panel |
+| [AB](health-safety-advisor.md) | OCR-label `can_i_eat` **build half**: `use_camera` glue over the MedicationIdentifier OCR path (or a `food_label` schema on the AD substrate) | Unchanged — the camera+OCR plumbing exists; only label accuracy is device-gated. Plus the rubric riders: consume `.anticoagulated`, NSAID+asthma rule, `isClassified` unrecognized wording |
+| [AJ](additional-capabilities.md) | Adopt `DeviceSessionCoordinator` in `CameraService` + `GlassesDisplayService` | Unchanged and re-verified 2026-08-22: the coordinator still has **zero consumers outside its own file**. Headless refactor on the fake-session seam; only simultaneous-use validation stays device-bound |
+| [AK](standalone-chat-experience.md) | **BM P9:** SSE session seam + fixture tests + mid-stream-error handling + retry policy | Unchanged — no streaming seam protocol exists; partials-as-success truncation, accumulator concatenation, no 429 retry |
 | [AV](visual-state-memory.md) | Thumbnail injection (second flag) + BrainStore ingest of aged keyframes | Both ride the shipped ring-buffer/builder; text-only context ships today |
-| ~~[U](U-structured-capture-flows.md)~~ | ~~No-code capture-flow author UI~~ | ✅ Shipped — pure `CaptureFlowBuilder` (validate + JSON round-trip) + `CaptureFlowAuthorView` (compose steps → export flow JSON) |
-| [S](S-plan-then-execute-and-safety-supervisor.md) | Phase 2: ~~LLM complexity classifier~~ ✅ + parallel-safe execution | Classifier shipped (`ComplexityClassifier` + `Config.llmComplexityClassifierEnabled`); parallel-safe concurrent steps still pending (changes the executor model) |
-| [T](T-offline-field-queue-and-sync.md) | Durability fixes + `PeerSyncSink` vs BL's `MockOpsPeer` | Moved from C (2026-07-10): BL supplies the target + test double. Prereqs first: `inFlight` startup recovery, launch-time flush, persisted conflict baselines + advance-on-conflict fix, wire `purgeDone`/`prunePhotoEvidence` triggers (policy shipped, never called) |
-| [T](T-offline-field-queue-and-sync.md) | Route `SessionLogger` entries through the queue | Plain headless plumbing, mislabeled device-pending before; U's CaptureRecords already flow |
-| [U](U-structured-capture-flows.md) | Remaining camera-binding **routing** (scan_code / photo / ocr_text) | Headless half moved from B (2026-07-10): follow the `VisionAssessTool.swift:52` pattern (tool checks for an active step, offers resolved value); accuracy validation stays in B |
-| [U](U-structured-capture-flows.md) | `schema_version` + lossy-decode rejection report; typed `captureRecord` OpKind; `SessionExporter` folding | New 2026-07-10: authored flows currently vanish silently on decode failure (`CaptureFlowLibrary.swift:34-50`); records enqueue as untyped `.logEntry` |
-| [V](V-mcp-catalogue-and-transport-breadth.md) | Catalog custom auth-header kind (`X-API-Key`) | New 2026-07-10: prerequisite for BL P1 one-tap peer install; transport + manual editor already support arbitrary headers |
-| [V](V-mcp-catalogue-and-transport-breadth.md) | `SSETransport` initialize handshake | Moved from C (2026-07-10): buildable headless against BL's `MockOpsPeer`; BL PR2 depends on it |
-| [AB](health-safety-advisor.md) | OCR-label `can_i_eat` **build half**: `use_camera` glue over the MedicationIdentifier OCR path (or a `food_label` schema on the AD substrate) | Moved from B (2026-07-10): the camera+OCR plumbing already exists; only label accuracy stays device-gated. Plus the rubric riders: consume `.anticoagulated`, NSAID+asthma rule, `isClassified` unrecognized wording |
-| [AU](llm-cost-usage-tracker.md) | Cache-token capture + prefix-overpricing guard + shape-drift "untracked" marker | New 2026-07-10: Anthropic cache fields are invisible to the tracker (largest error source post-BF); a future dated model id silently bills at the family rate |
-| [AN](projects-scoped-contexts.md) | **BM P8:** scope `BrainTool`/`TeleprompterTool` to `{active project, global}` | New 2026-07-10: project boundary violated today — `brain ask` in a global chat retrieves every project's docs (`BrainTool.swift:187`, nil namespace = ALL) |
-| [AK](standalone-chat-experience.md) | **BM P9:** SSE session seam + fixture tests + mid-stream-error handling + retry policy | New 2026-07-10: partials-as-success truncation, accumulator concatenation, no 429 retry |
-| [AJ](additional-capabilities.md) | Adopt `DeviceSessionCoordinator` in `CameraService` + `GlassesDisplayService` | Moved from B (2026-07-10): headless refactor on the fake-session seam; only simultaneous-use validation stays device-bound |
-| [AM](embedding-quality-upgrade.md) | Skip-gated contextual A/B benchmark test + debug "Run embedding benchmark" row; grow the corpus to ~20-30 labelled pairs | New 2026-07-10: the cheapest path to the default-flip decision |
-| [AJ](additional-capabilities.md) | **BM P10:** owner gate (biometric/PIN) on Settings + Simple-Mode exit | New 2026-07-10: Simple Mode's exit is an unauthenticated toggle exposing decrypted key fields |
-| ~~[O](O-document-rag.md)~~ | ~~Standalone `DocumentsView`~~ | ✅ Shipped — global docs manager grouped by project: list / add-text / import-file / delete |
-| ~~[AW](skill-self-evolution.md)~~ | ~~User-correction capture signal~~ | ✅ Shipped — pure `UserCorrectionDetector` + `SkillEvolutionService.noteUserTurn` (records a `.userCorrection` sample against the prior exchange), wired into `sendTextMessage`; Agent-Mode-gated |
-| ~~[AT](frame-dedup-change-gate.md)~~ | ~~Advanced-threshold Settings control~~ | ✅ Shipped — `LiveVisionSettingsView` (toggle + threshold + heartbeat) under Settings → Advanced. Flipping the default *on* is still device-gated → B |
+| [S](S-plan-then-execute-and-safety-supervisor.md) | Phase 2: parallel-safe concurrent execution | Classifier shipped; concurrent steps still pending (changes the executor model) |
+| [AM](embedding-quality-upgrade.md) | Skip-gated contextual A/B benchmark test + debug "Run embedding benchmark" row; grow the corpus to ~20-30 labelled pairs | The cheapest path to the default-flip decision |
 | [AM](embedding-quality-upgrade.md) | Optional bundled MiniLM Core ML path | Gated on the `recall@k` benchmark showing a lift; the `EmbeddingBackend` seam is in place |
 | [AJ](additional-capabilities.md) | Declarative HUD widget board (#7) | Display Phase-5 concept; defer until X/Y are fully exercised and a concrete multi-widget use case exists |
 
 ## B. Hardware-pending (glasses · mic · camera · on-device model · audio routing)
+
+**Refreshed 2026-08-22.** Nine rows below are *device smoke owed on already-implemented code*, most
+added since the last pass. They are one hardware session, not nine pieces of work, and at least two
+default-off flags (CC's duplex audio, AT's frame dedup) cannot be turned on until it happens — so
+the queue is now long enough that scheduling it beats picking up another headless PR.
 
 | Plan | Shipped core | Live edge remaining | Validate with |
 |---|---|---|---|
@@ -69,8 +72,22 @@ then strike it here.
 | [AQ](speaker-diarization.md) | Parser/merger/registry + provider seam (24 tests) | Speaker-naming accuracy on real multi-speaker audio | On-device mic, multiple speakers |
 | [X](X-interactive-hud-now-next-tasks.md) | Band card + voice bridge + sources (30 tests) | On-device band free-navigation spike | A Display device |
 | [AA](first-aid-assist.md) | CPR metronome + protocol catalog + AED + tool (23 tests) | Metronome timing precision + AED spoken/HUD interplay | On hardware |
+| [BR](BR-realtime-and-stream-hardening.md) | `ToolCallBreaker` + `StreamRecoveryPolicy` ([#236](https://github.com/straff2002/OpenGlasses/pull/236)) | Device smoke — recovery ladder against a real stream drop | Glasses camera stream, forced interruption |
+| [BS](BS-transcript-guard-and-broadcast-breadth.md) | `TranscriptGuard` + broadcast breadth ([#238](https://github.com/straff2002/OpenGlasses/pull/238)) | Endpoint + device smoke — energy gate against real silence on the HFP mic | Glasses mic in a quiet room |
+| [CB](CB-live-vision-detail.md) | Vision detail + async delivery (P1–P3) | Device smoke — sharp-frame quality, injected-turn behaviour, zoom feel | Glasses camera in a live session |
+| [CC](CC-duplex-live-audio.md) | Graded echo cancellation (P1+P2, flag **default off**) | **P3 device matrix — this is what gates flipping the flag on**; barge-in in phone mode without the model hearing itself | Phone speaker + phone mic, then glasses |
+| [CD](CD-fork-surfaced-remediation.md) | Fork-surfaced correctness fixes (P1–P3) | Device smoke of the Connect flow (P1 was a live startup crash) | A cold install on device |
+| [CG](CG-interaction-pack.md) | `ChoiceDetector`/`DwellTracker`/`BadgeFieldParser` (P1+P2) | P3 device smoke — dwell feel and badge OCR on real badges | Glasses camera + a Display device |
+| [CK](CK-sign-language.md) | Fingerspelling decode pipeline (P0+P2, model published) | Solo physical smoke per the protocol in the plan doc | Glasses camera, one signer |
+| [CW](CW-realtime-audio-rig-recovery.md) | `AudioGraphRecovery` + `PendingPlaybackMirror` (41 tests) | **P4** first-reply survival on glasses HFP + restart-vs-rebuild ratio; P3's playout-tail drain needs an `async` teardown through both session managers | Glasses HFP mic at realtime session start |
+| [AT](frame-dedup-change-gate.md) / [AV](visual-state-memory.md) | (see rows above) | Both default-off flags flip on the same motion sanity-check | One live streaming-vision session |
 
 ## C. Backend / service-pending (gateway · relay · external API)
+
+**Refreshed 2026-08-22.** Four of these rows (N, AR, BH, V's OAuth half) wait on the same missing
+artefact, and it now has a plan: **[CR](CR-cloud-action-agent-gateway.md)** — we have a complete
+gateway *client* and no gateway. Read this section as CR's acceptance list rather than as five
+independent blockages.
 
 | Plan | Shipped core | Live edge remaining | Unblocked by |
 |---|---|---|---|

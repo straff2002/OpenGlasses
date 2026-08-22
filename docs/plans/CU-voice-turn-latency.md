@@ -1,6 +1,6 @@
 # Plan CU — Voice Turn Latency & Instrumentation
 
-**Status: 📝 Drafted 2026-08-22** — no PR yet.
+**Status: 🚧 P1 shipped 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`. The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 is next** — it is what P1 exists to make measurable.
 
 Every Direct-mode turn pays a fixed floor of dead air before the model is even asked.
 `TranscriptionService` commits a turn on a silence timer whose window is
