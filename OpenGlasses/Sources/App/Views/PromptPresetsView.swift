@@ -97,7 +97,7 @@ struct PromptPresetsView: View {
                     presets[idx] = updated
                     Config.setSavedPresets(presets)
                     if updated.id == activeId {
-                        appState.applyActivePresetChange(activeId, clearHistory: false)
+                        appState.applyActivePresetChange(activeId, promptTextChanged: true)
                     }
                 }
             }
