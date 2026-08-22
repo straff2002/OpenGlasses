@@ -1,6 +1,6 @@
 # Plan CQ — Third-Party Glasses Backends (camera seam + two device classes)
 
-**Status:** 🚧 P0 + P1 built (2026-08-09) — the shared foundation, both fully headless.
+**Status:** 🚧 P0 + P1 + B/P4 built (2026-08-09) — the shared foundation plus the Track B protocol core, all fully headless; every phase that can be finished without hardware.
 
 **P0 ✅** `GlassesTier` + pure `GlassesTierPolicy` (most-capable-wins; "not connected" stays
 distinct from "connected but limited"), widened `MicRoutePolicy.glassesNameMarkers` guarded by a

@@ -113,6 +113,11 @@ struct TurnTimelineDebugView: View {
                 OGChip(text: turn.backend?.label ?? "unknown", available: turn.backend != nil)
                 OGChip(text: turn.ttsEngine?.rawValue ?? "unknown", available: turn.ttsEngine != nil)
                 OGChip(text: turn.micRoute?.shortLabel ?? "unknown", available: turn.micRoute != nil)
+                // Plan CU P2: which signal ended the wearer's speech. Shown only when there was
+                // one — a typed turn has no endpointing story, and "unknown" would imply it did.
+                if let reason = turn.endOfTurnReason {
+                    OGChip(text: reason.rawValue, available: true)
+                }
                 Spacer(minLength: 0)
                 Text(turn.id.uuidString.prefix(8))
                     .font(.caption2.monospaced())

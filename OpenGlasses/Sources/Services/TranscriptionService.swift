@@ -38,6 +38,32 @@ class TranscriptionService: ObservableObject {
     private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
 
+    // MARK: - Acoustic end-of-turn (Plan CU P2)
+
+    /// The detector, when one is installed. Nil — or installed but unavailable — takes
+    /// `EndOfTurnPolicy` rule 1, where the silence timer decides alone and this file behaves exactly
+    /// as it did before P2.
+    var speechActivityDetector: SpeechActivityDetecting? {
+        didSet {
+            oldValue?.onEvent = nil
+            speechActivityDetector?.onEvent = { [weak self] event in
+                self?.handleSpeechActivity(event)
+            }
+        }
+    }
+
+    /// When the detector says the wearer stopped — the moment silence began, not when it was
+    /// confirmed. Nil while they are still talking, and nil again for each new utterance.
+    private var acousticSpeechEndedAt: Date?
+
+    /// Whether the detector has heard speech in this utterance. Kept apart from `didReceiveSpeech`
+    /// (the recognizer's opinion) because `EndOfTurnPolicy` rule 3 turns on *neither* having heard
+    /// anything, and a voice the recognizer cannot parse is still a wearer who is talking.
+    private var acousticSpeechObserved: Bool = false
+
+    /// Which signal ended this utterance, once one has.
+    private var endOfTurnReason: EndOfTurnPolicy.Reason?
+
     /// When the recognizer last reported hearing something — i.e. when the silence window that is
     /// running right now was armed.
     ///
@@ -73,6 +99,10 @@ class TranscriptionService: ObservableObject {
 
         didReceiveSpeech = false
         lastSpeechObservedAt = nil
+        acousticSpeechEndedAt = nil
+        acousticSpeechObserved = false
+        endOfTurnReason = nil
+        speechActivityDetector?.begin()
         currentTranscription = ""
         // Plan CU P1: a new utterance means the previous one has been dealt with, whatever became
         // of it — the turn that answered it has already claimed its stamps, and a voice command
@@ -114,8 +144,16 @@ class TranscriptionService: ObservableObject {
         // one: the on-device engine (whole-buffer, no partials at all), a recognizer error, or an
         // external stop before any speech arrived. Stamped before the on-device branch below, whose
         // SenseVoice decode runs after the mic went quiet and belongs to the wait, not the speech.
-        TurnRecorder.noteSpeechEnd(at: lastSpeechObservedAt ?? Date())
+        //
+        // Plan CU P2: when the detector ended the turn, its stamp is the better one — the moment
+        // the wearer actually went quiet, rather than the last time the recognizer happened to emit
+        // a partial (which lags it by up to a burst gap). Preferring it here is what lets
+        // `perceivedLatency` show the floor being removed instead of absorbing it.
+        TurnRecorder.noteSpeechEnd(at: acousticSpeechEndedAt ?? lastSpeechObservedAt ?? Date())
+        if let reason = endOfTurnReason { TurnRecorder.noteEndOfTurnReason(reason) }
         lastSpeechObservedAt = nil
+        acousticSpeechEndedAt = nil
+        speechActivityDetector?.end()
 
         silenceTimer?.invalidate()
         silenceTimer = nil
@@ -307,17 +345,68 @@ class TranscriptionService: ObservableObject {
     }
 
     private func resetSilenceTimer() {
-        // Plan CU P1: purely a stamp — the window's length and firing are untouched. Arming it is
-        // the last moment speech was observed, and that is what `stopRecording` records.
+        // Plan CU P1: the stamp. Arming the window is the last moment speech was observed, and that
+        // is what `stopRecording` records — P2 added a better stamp for the turns a detector ends,
+        // but this one still carries every turn the timer ends, which is all of them today.
         lastSpeechObservedAt = Date()
-        silenceTimer?.invalidate()
-        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.cleanupEngine()
-                self.stopRecording()
+        // Plan CU P2: the window's length and firing now come from `EndOfTurnPolicy` rather than
+        // from `silenceThreshold` directly. With no detector installed it returns this same
+        // deadline; the name is kept because ~all callers mean "speech happened, re-arm".
+        evaluateEndOfTurn()
+    }
+
+    // MARK: - End-of-turn arbitration (Plan CU P2)
+
+    /// Ask `EndOfTurnPolicy` whether this utterance is over, and either commit or re-arm one timer
+    /// for the deadline it names.
+    ///
+    /// Every deadline in the voice path now comes from the policy rather than from a
+    /// `silenceThreshold` scattered across call sites — with no detector installed the policy
+    /// returns the same deadline the old timer used, which is what makes "unchanged when
+    /// unavailable" a property of the code rather than a claim about it.
+    private func evaluateEndOfTurn() {
+        guard isRecording else { return }
+
+        let detector = speechActivityDetector
+        let decision = EndOfTurnPolicy.decide(.init(
+            now: Date(),
+            detectorAvailable: detector?.isAvailable ?? false,
+            speechObserved: didReceiveSpeech || acousticSpeechObserved,
+            lastRecognizerActivityAt: lastSpeechObservedAt,
+            acousticSpeechEndedAt: acousticSpeechEndedAt,
+            timerWindow: silenceThreshold
+        ))
+
+        switch decision {
+        case .commit(let reason):
+            endOfTurnReason = reason
+            silenceTimer?.invalidate()
+            silenceTimer = nil
+            cleanupEngine()
+            stopRecording()
+
+        case .wait(let deadline):
+            silenceTimer?.invalidate()
+            // Never schedule in the past: a deadline that has already passed but did not commit
+            // means some other rule holds the turn, and a zero-interval repeat would spin.
+            let interval = max(deadline.timeIntervalSinceNow, 0.05)
+            silenceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                Task { @MainActor in self?.evaluateEndOfTurn() }
             }
         }
+    }
+
+    /// A transition from the detector. Only two things can arrive here, a few times per turn.
+    private func handleSpeechActivity(_ event: SpeechActivityGate.Event) {
+        guard isRecording else { return }
+        switch event {
+        case .speechStarted:
+            acousticSpeechObserved = true
+            acousticSpeechEndedAt = nil        // whatever we thought had ended, has not
+        case .speechEnded(let at):
+            acousticSpeechEndedAt = at
+        }
+        evaluateEndOfTurn()
     }
 }
 
