@@ -19,6 +19,13 @@ struct ModelPickerSheet: View {
     }
 
     @State private var selectedTier: Config.ModelTier = Config.modelTier
+    @State private var selectedMode: AppMode = Config.appMode
+
+    /// Which modes are selectable, and why not when they aren't. Read at display time so adding a
+    /// key in Settings and coming back here shows the mode unlocked.
+    private var modeOptions: [ConversationModeAvailability.Option] {
+        ConversationModeAvailability.options(for: ConversationModeAvailability.current)
+    }
 
     @ViewBuilder
     private var modelContent: some View {
@@ -31,6 +38,33 @@ struct ModelPickerSheet: View {
             )
         } else {
             List {
+                Section {
+                    Picker("Mode", selection: $selectedMode) {
+                        ForEach(modeOptions) { option in
+                            Text(option.mode.displayName).tag(option.mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedMode) { previous, mode in
+                        guard let option = modeOptions.first(where: { $0.mode == mode }) else { return }
+                        guard option.isAvailable else {
+                            // Bounce back rather than switching into a mode that cannot start —
+                            // the reason is shown in the footer, so the refusal is explained.
+                            selectedMode = previous
+                            return
+                        }
+                        appState.switchMode(to: mode)
+                    }
+                } footer: {
+                    if let blocked = modeOptions.first(where: { $0.mode == selectedMode && !$0.isAvailable }),
+                       let reason = blocked.unavailableReason {
+                        Text(reason)
+                    } else if let unavailable = modeOptions.first(where: { !$0.isAvailable }),
+                              let reason = unavailable.unavailableReason {
+                        Text(reason)
+                    }
+                }
+
                 Section {
                     Picker("Speed", selection: $selectedTier) {
                         ForEach(Config.ModelTier.allCases) { tier in

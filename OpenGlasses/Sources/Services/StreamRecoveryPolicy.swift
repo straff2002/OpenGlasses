@@ -66,7 +66,12 @@ enum DATCompatibilityMessage {
     static func message(for error: DeviceSessionError) -> String? {
         switch error {
         case .datAppOnTheGlassesUpdateRequired:
-            return "Your glasses need an update before streaming can work — open the Meta AI app and install the pending update."
+            // Device-traced 2026-08-23: this used to say "open the Meta AI app and install the
+            // pending update", and Meta AI showed no pending update — because the glasses-side DAT
+            // app is a different artefact from the phone app and the firmware. Point at the screen
+            // that actually opens it (Settings → Hardware & Privacy → Update Glasses App, which
+            // deep-links via the SDK) rather than sending the user hunting.
+            return "The glasses' companion app needs updating — Settings › Hardware & Privacy › Update Glasses App."
         default:
             return nil
         }
