@@ -19,6 +19,8 @@ DerivedData
 
 # Swift Package Manager
 .build/
+# xcodebuild -clonedSourcePackagesDirPath target (CI caches this; see .github/workflows/tests.yml)
+.spm-checkouts/
 .swiftpm/
 Packages/
 Package.pins
