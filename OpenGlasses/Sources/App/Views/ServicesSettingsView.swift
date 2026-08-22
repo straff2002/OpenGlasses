@@ -6,6 +6,10 @@ import UniformTypeIdentifiers
 /// Accessed via NavigationLink from the main SettingsView.
 struct ServicesSettingsView: View {
     @ObservedObject var appState: AppState
+    @AppStorage("digestEnabled") private var digestEnabled = true
+    @AppStorage("diarizationEnabled") private var diarizationEnabled = false
+    @AppStorage("translationCaptionsEnabled") private var translationCaptionsEnabled = false
+    @AppStorage("hipaaMode") private var hipaaMode = false
 
     // Text-to-Speech — self-contained: seeded from Config, persisted on change.
     @State private var elevenLabsKeyInput: String = Config.elevenLabsAPIKey
@@ -57,6 +61,14 @@ struct ServicesSettingsView: View {
     @State private var elevenLabsVoices: [TextToSpeechService.ElevenLabsVoice] = []
     @State private var elevenLabsVoicesLoading = false
     @State private var elevenLabsVoicesError: String?
+
+    private var isDiarizationOn: Bool {
+        diarizationEnabled && !Config.deepgramAPIKey.isEmpty && !hipaaMode
+    }
+
+    private var isTranslationOn: Bool {
+        translationCaptionsEnabled && Config.isGeminiLiveConfigured && !hipaaMode
+    }
 
     var body: some View {
         Form {
@@ -275,7 +287,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Diarization", systemImage: "person.2.wave.2")
                         Spacer()
-                        Text(Config.isDiarizationConfigured ? "On" : "Off")
+                        Text(isDiarizationOn ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -302,7 +314,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Notification Digest", systemImage: "list.bullet.rectangle")
                         Spacer()
-                        Text(Config.digestEnabled ? "On" : "Off")
+                        Text(digestEnabled ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -318,7 +330,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Translation", systemImage: "globe")
                         Spacer()
-                        Text(Config.isTranslationCloudConfigured ? "On" : "Off")
+                        Text(isTranslationOn ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
