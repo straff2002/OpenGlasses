@@ -74,6 +74,30 @@ final class LLMImagePreparerTests: XCTestCase {
         XCTAssertTrue(LLMImagePreparer.isDegenerate(Data()))
     }
 
+    func testTightTPMCapsBytesAndLongEdge() {
+        let size = CGSize(width: 1280, height: 720)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let noisy = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            for y in stride(from: 0, to: 720, by: 2) {
+                for x in stride(from: 0, to: 1280, by: 2) {
+                    UIColor(
+                        hue: CGFloat((x + y) % 360) / 360,
+                        saturation: 1,
+                        brightness: 1,
+                        alpha: 1
+                    ).setFill()
+                    ctx.fill(CGRect(x: x, y: y, width: 2, height: 2))
+                }
+            }
+        }.jpegData(compressionQuality: 0.95)!
+        XCTAssertGreaterThan(noisy.count, LLMImagePreparer.Limits.tightTPM.maxBytes)
+
+        let out = LLMImagePreparer.prepared(noisy, tightTPM: true)
+        XCTAssertLessThanOrEqual(longEdge(of: out), Int(LLMImagePreparer.Limits.tightTPM.maxLongEdge))
+        XCTAssertLessThanOrEqual(out.count, LLMImagePreparer.Limits.tightTPM.maxBytes)
+    }
+
     func testRealFramesAreNotDegenerate() {
         XCTAssertFalse(LLMImagePreparer.isDegenerate(jpeg(width: 32, height: 32)),
                        "the minimum edge itself passes")

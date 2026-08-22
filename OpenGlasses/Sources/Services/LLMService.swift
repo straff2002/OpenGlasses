@@ -206,6 +206,31 @@ class LLMService: ObservableObject {
         return prompt + "\n\nThe person speaking to you is the user wearing the glasses. Address them directly as \"you\". Never address OpenGlasses — that is your own name."
     }
 
+    static func leanCloudPrompt(hasImage: Bool, memoryContext: String? = nil) -> String {
+        var prompt = """
+        You are OpenGlasses, a voice assistant on smart glasses. Replies are spoken aloud.
+        Answer in 1–2 short sentences. No markdown, lists, preamble, or follow-up questions.
+        """
+        if hasImage {
+            prompt += """
+
+
+            A photo from the glasses camera is attached. You CAN see it — never deny vision.
+            Name the main subject and anything asked. Skip background, lighting, and composition unless asked.
+            If asked to read text: quote it verbatim; translate only if asked.
+            """
+        }
+        if let memory = memoryContext?.trimmingCharacters(in: .whitespacesAndNewlines), !memory.isEmpty {
+            let clipped = memory.count > 400 ? String(memory.prefix(400)) + "…" : memory
+            prompt += "\n\nKnown about the wearer: \(clipped)"
+        }
+        return prompt
+    }
+
+    static func leanVisionCloudPrompt() -> String {
+        leanCloudPrompt(hasImage: true)
+    }
+
     private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil) async -> String {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
@@ -228,8 +253,9 @@ class LLMService: ObservableObject {
             VISION & CAMERA:
             - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
             - You CAN see images — never say you lack camera or vision access.
+            - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
             - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
-            - For objects, products, landmarks: identify and describe them.
+            - For objects, products, landmarks: identify them briefly — do not catalog every detail.
             - After reading text from an image, offer to copy it to clipboard or translate it.
             """
         }
@@ -515,11 +541,16 @@ class LLMService: ObservableObject {
             return "I can't look at photos with the current on-device model. Switch to a vision-capable local model like SmolVLM2, or a cloud model, and try again."
         }
 
+        let smallContext = !isOnDevice && Config.llmImageLightweightPromptEnabled
+        let effectiveIncludeTools = smallContext ? false : includeTools
+
         let fullPrompt: String
         if isOnDevice {
             fullPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
                 hasImage: imageData != nil, turn: text)
+        } else if smallContext {
+            fullPrompt = Self.leanCloudPrompt(hasImage: imageData != nil, memoryContext: memoryContext)
         } else {
             let nativeToolDescriptions = nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? []
             let gatewayToolNames = openClawBridge?.availableToolNames ?? []
@@ -527,8 +558,9 @@ class LLMService: ObservableObject {
         }
 
         var toolsLabel = ""
-        if hasNativeTools { toolsLabel += " [NativeTools]" }
-        if includeOpenClaw { toolsLabel += " [OpenClaw]" }
+        if hasNativeTools && !smallContext { toolsLabel += " [NativeTools]" }
+        if includeOpenClaw && !smallContext { toolsLabel += " [OpenClaw]" }
+        if smallContext { toolsLabel += " [SmallContext]" }
         print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(toolsLabel)")
 
         // Plan-then-execute (Plan S): for a multi-step request in agent mode, plan deliberately and
@@ -555,17 +587,17 @@ class LLMService: ObservableObject {
         let rawResponse: String
         switch provider {
         case .anthropic:
-            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .chatgpt:
-            rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .gemini, .geminiVertex:
-            rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData)
+            rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext)
         case .local:
             rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken)
         case .appleOnDevice:
             rawResponse = try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
         case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         }
 
         // Local reasoning models (LFM2.5) are stripped at the generate layer —
@@ -577,18 +609,12 @@ class LLMService: ObservableObject {
             return rawResponse
         }
 
-        // Strip <think> tags: keep reasoning in history but don't speak it
-        if Config.agentModeEnabled {
-            let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
-            lastReasoning = reasoning
-            if let reasoning {
-                NSLog("[LLMService] Think: %@", String(reasoning.prefix(200)))
-            }
-            return spoken
+        let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
+        lastReasoning = reasoning
+        if let reasoning {
+            NSLog("[LLMService] Think: %@", String(reasoning.prefix(200)))
         }
-
-        lastReasoning = nil
-        return rawResponse
+        return spoken
     }
 
     // MARK: - Model Cascade (BK P2b)
@@ -1039,7 +1065,7 @@ class LLMService: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
                 request.timeoutInterval = 20
-                let body: [String: Any] = [
+                var body: [String: Any] = [
                     "model": modelConfig.model,
                     "max_tokens": maxTokens,
                     "messages": [
@@ -1050,6 +1076,7 @@ class LLMService: ObservableObject {
                         ]]
                     ]
                 ]
+                Self.applyQwenReasoning(to: &body, provider: provider, model: modelConfig.model, disableThinking: true)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -1057,7 +1084,7 @@ class LLMService: ObservableObject {
                       let choices = json["choices"] as? [[String: Any]],
                       let message = choices.first?["message"] as? [String: Any],
                       let text = message["content"] as? String else { return nil }
-                return text
+                return Self.stripThinkTags(text).spoken
 
             case .gemini, .geminiVertex:
                 guard var request = try? await geminiRequest(for: modelConfig, timeout: 20) else { return nil }
@@ -1357,7 +1384,7 @@ class LLMService: ObservableObject {
 
     // Internal (not private) so the BM P9 fixture tests can drive the full streamed tool loop
     // through a stubbed `streamingSession`.
-    func sendAnthropic(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+    func sendAnthropic(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         // An explicit API key wins; otherwise fall back to a connected Claude account (OAuth).
         let apiKey = await AnthropicAuth.resolveCredential(apiKey: config.apiKey)
         guard !apiKey.isEmpty else {
@@ -1411,18 +1438,20 @@ class LLMService: ObservableObject {
                 self.conversationHistory = HistoryHygiene.repairDanglingToolUse(
                     HistoryHygiene.pruneImages(self.conversationHistory, keepLast: 1))
 
+                let historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+
                 // Prompt caching (Plan BF): the system prompt + tool schemas are large and byte-stable
                 // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
                 // cache on every follow-up turn instead of re-billing full input tokens each time.
                 var body: [String: Any] = [
                     "model": config.model,
-                    "max_tokens": includeTools ? 1024 : Config.maxTokens,
+                    "max_tokens": smallContext ? (imageData != nil ? 160 : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
                     "system": [[
                         "type": "text",
                         "text": systemPrompt,
                         "cache_control": ["type": "ephemeral"]
                     ]],
-                    "messages": self.conversationHistory
+                    "messages": historyForRequest
                 ]
 
                 if includeTools {
@@ -1557,7 +1586,7 @@ class LLMService: ObservableObject {
     /// closure; a bool flag with one realistic writer needs no stronger isolation.
     nonisolated(unsafe) private static var customEndpointRejectsTools = false
 
-    private func sendOpenAICompatible(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+    private func sendOpenAICompatible(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         let provider = config.llmProvider
         let apiKey = config.apiKey
         let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: apiKey)
@@ -1634,8 +1663,7 @@ class LLMService: ObservableObject {
                 }
 
                 // OpenAI format: system prompt is a message in the array.
-                // Groq's free tier has tight TPM limits — trim history aggressively.
-                let historySlice = provider == .groq ? Array(self.conversationHistory.suffix(6)) : self.conversationHistory
+                let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
                 var messages: [[String: Any]] = [
                     ["role": "system", "content": systemPrompt]
                 ]
@@ -1643,9 +1671,11 @@ class LLMService: ObservableObject {
 
                 var body: [String: Any] = [
                     "model": config.model,
-                    "max_tokens": includeTools ? 1024 : Config.maxTokens,
+                    "max_tokens": smallContext ? (imageData != nil ? 160 : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
                     "messages": messages
                 ]
+                Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
+                                        disableThinking: smallContext || (imageData != nil && supportsVision))
 
                 // Only attach Tools if the provider reliably supports function calling.
                 // Custom endpoints get tools too (Gemini/vLLM/newer Ollama all speak OpenAI
@@ -1821,7 +1851,7 @@ class LLMService: ObservableObject {
     /// against the Responses backend. History stays in the chat shape (`ResponsesTranslator`
     /// converts to Responses items at request time), so history hygiene, pruning, and
     /// persistence behave exactly like the OpenAI-compatible path.
-    private func sendChatGPT(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+    private func sendChatGPT(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         guard let token = await ChatGPTOAuthService.shared.validAccessToken() else {
             throw LLMError.missingAPIKey("ChatGPT account not connected — sign in with ChatGPT in the model editor")
         }
@@ -1862,9 +1892,10 @@ class LLMService: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 ChatGPTAuth.apply(credential: token, accountID: accountID, to: &request)
                 let streaming = onToken != nil
+                let historyForRequest = self.requestHistory(for: .chatgpt, smallContext: smallContext)
                 let body = ResponsesTranslator.requestBody(
                     model: config.model, instructions: systemPrompt,
-                    history: self.conversationHistory, tools: tools, stream: streaming)
+                    history: historyForRequest, tools: tools, stream: streaming)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 request.timeoutInterval = 120
 
@@ -2095,6 +2126,7 @@ class LLMService: ObservableObject {
         var toolAcc: [Int: (id: String, name: String, args: String)] = [:]  // tool_calls accumulate by index
         var usage = StreamingUsageAccumulator()   // from the final include_usage chunk
         var sawDone = false
+        let thinkFilter = ThinkStreamFilter(startsInThink: false)
 
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
@@ -2115,9 +2147,11 @@ class LLMService: ObservableObject {
                   let delta = choice["delta"] as? [String: Any] else { continue }
 
             if let chunk = delta["content"] as? String, !chunk.isEmpty {
-                fullContent += chunk
+                let visible = thinkFilter.ingest(chunk)
+                guard !visible.isEmpty else { continue }
+                fullContent += visible
                 TurnRecorder.markFirstToken()
-                onToken(chunk)
+                onToken(visible)
             }
             if let calls = delta["tool_calls"] as? [[String: Any]] {
                 for call in calls {
@@ -2142,6 +2176,7 @@ class LLMService: ObservableObject {
         recordUsage(provider: provider, model: model, tokensIn: usage.tokensIn, tokensOut: usage.tokensOut,
                     cacheWriteTokens: usage.cacheWriteTokens, cacheReadTokens: usage.cacheReadTokens)
 
+        fullContent += thinkFilter.flush()
         var message: [String: Any] = ["role": "assistant", "content": fullContent]
         if !toolAcc.isEmpty {
             message["tool_calls"] = toolAcc.sorted { $0.key < $1.key }.map { _, v in
@@ -2273,7 +2308,7 @@ class LLMService: ObservableObject {
         return request
     }
 
-    private func sendGemini(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?) async throws -> String {
+    private func sendGemini(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false) async throws -> String {
         // Validate credentials up front (fast-fail before touching history); each tool-loop
         // turn re-resolves below so a token refreshed mid-loop is picked up.
         _ = try await geminiRequest(for: config)
@@ -2302,7 +2337,7 @@ class LLMService: ObservableObject {
 
                 // Gemini format: system instruction + contents array
                 var contents: [[String: Any]] = []
-                for msg in self.conversationHistory {
+                for msg in self.requestHistory(for: config.llmProvider, smallContext: smallContext) {
                     let role = msg["role"] as? String ?? "user"
                     if role == "user" || role == "model" {
                         let geminiRole = role == "assistant" ? "model" : role
@@ -2332,7 +2367,8 @@ class LLMService: ObservableObject {
                     // covers thinking *plus* the answer. Without this, reasoning and reply compete
                     // for the same 1024 tokens and the turn can come back empty with a STOP finish.
                     "generationConfig": GeminiBudgetPolicy.generationConfig(
-                        includesTools: includeTools, configuredMaxTokens: Config.maxTokens)
+                        includesTools: includeTools,
+                        configuredMaxTokens: smallContext && imageData != nil ? 160 : Config.maxTokens)
                 ]
 
                 if includeTools {
@@ -2874,6 +2910,48 @@ class LLMService: ObservableObject {
         compressContextWindowIfNeeded()
     }
 
+    private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
+        if smallContext {
+            return Self.compactHistory(conversationHistory, keepLast: 4)
+        }
+        if provider == .groq {
+            return Self.compactHistory(conversationHistory, keepLast: 6)
+        }
+        return conversationHistory
+    }
+
+    static func compactHistory(_ history: [[String: Any]], keepLast: Int) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        for msg in history {
+            let role = msg["role"] as? String ?? "user"
+            if role == "tool" || role == "function" { continue }
+            if Self.historyMessageHasImage(msg) {
+                out.append(msg)
+                continue
+            }
+            guard let text = Self.plainText(from: msg), !text.isEmpty else { continue }
+            let clipped = text.count > 600 ? String(text.prefix(600)) + "…" : text
+            let outRole = (role == "model") ? "assistant" : role
+            out.append(["role": outRole, "content": clipped])
+        }
+        return Array(out.suffix(keepLast))
+    }
+
+    private static func historyMessageHasImage(_ message: [String: Any]) -> Bool {
+        let blocks = (message["content"] as? [[String: Any]]) ?? (message["parts"] as? [[String: Any]]) ?? []
+        return blocks.contains { block in
+            if let type = block["type"] as? String, type == "image" || type == "image_url" { return true }
+            return block["inlineData"] != nil
+        }
+    }
+
+    private static func plainText(from message: [String: Any]) -> String? {
+        if let text = message["content"] as? String { return text }
+        let blocks = (message["content"] as? [[String: Any]]) ?? (message["parts"] as? [[String: Any]]) ?? []
+        let joined = blocks.compactMap { $0["text"] as? String }.joined(separator: " ")
+        return joined.isEmpty ? nil : joined
+    }
+
     /// Inject a hidden system message into conversation history.
     /// Used by the memory nudge to prompt periodic review without the user seeing it.
     func injectSystemMessage(_ message: String) {
@@ -2914,36 +2992,18 @@ extension LLMService {
     }
 
     static func stripThinkTags(_ text: String) -> (spoken: String, reasoning: String?) {
-        // Template-opened reasoning (LFM-style chat templates emit the opening <think> as
-        // part of the generation prompt): the completion carries a bare </think> with no
-        // opener. Re-open so the paired-tag pass below handles both shapes.
-        var text = text
-        if let close = text.range(of: "</think>"),
-           text[..<close.lowerBound].range(of: "<think>") == nil {
-            text = "<think>" + text
+        let hasOpen = text.contains("<think>")
+        let hasClose = text.contains("</think>")
+        guard hasOpen || hasClose else { return (text, nil) }
+        return ThinkStreamFilter.strip(text, startsInThink: hasClose && !hasOpen)
+    }
+
+    static func applyQwenReasoning(to body: inout [String: Any], provider: LLMProvider, model: String, disableThinking: Bool) {
+        guard provider == .groq || provider == .qwen, model.lowercased().contains("qwen") else { return }
+        body["reasoning_format"] = "hidden"
+        if disableThinking {
+            body["reasoning_effort"] = "none"
         }
-        let pattern = "<think>[\\s\\S]*?</think>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return (text, nil)
-        }
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = regex.matches(in: text, options: [], range: range)
-        guard !matches.isEmpty else { return (text, nil) }
-
-        // Extract all reasoning blocks
-        let reasoning = matches.compactMap { match -> String? in
-            guard let matchRange = Range(match.range, in: text) else { return nil }
-            var block = String(text[matchRange])
-            block = block.replacingOccurrences(of: "<think>", with: "")
-            block = block.replacingOccurrences(of: "</think>", with: "")
-            return block.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.joined(separator: "\n")
-
-        // Remove think tags from the spoken output
-        let spoken = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return (spoken, reasoning.isEmpty ? nil : reasoning)
     }
 }
 

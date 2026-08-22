@@ -545,8 +545,9 @@ struct Config {
     VISION & CAMERA:
     - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
     - You CAN see images — never say you lack camera or vision access.
+    - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
     - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
-    - For objects, products, landmarks: identify and describe them.
+    - For objects, products, landmarks: identify them briefly — do not catalog every detail.
     - After reading text from an image, offer to copy it to clipboard or translate it.
 
     KNOWLEDGE:
@@ -2153,6 +2154,59 @@ struct Config {
 
     static func setCameraFrameRate(_ fps: Int) {
         UserDefaults.standard.set(fps, forKey: "cameraFrameRate")
+    }
+
+    // MARK: - LLM Image Compression
+
+    static var llmImagePreset: String {
+        UserDefaults.standard.string(forKey: "llmImagePreset") ?? "full"
+    }
+
+    static func setLLMImagePreset(_ preset: String) {
+        UserDefaults.standard.set(preset, forKey: "llmImagePreset")
+    }
+
+    static var llmImageCustomMaxLongEdge: Int {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomMaxLongEdge") as? Int
+        return v ?? 1568
+    }
+
+    static func setLLMImageCustomMaxLongEdge(_ value: Int) {
+        UserDefaults.standard.set(value, forKey: "llmImageCustomMaxLongEdge")
+    }
+
+    static var llmImageCustomMaxBytes: Int {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomMaxBytes") as? Int
+        return v ?? 1_500_000
+    }
+
+    static func setLLMImageCustomMaxBytes(_ value: Int) {
+        UserDefaults.standard.set(value, forKey: "llmImageCustomMaxBytes")
+    }
+
+    static var llmImageCustomJPEGQuality: CGFloat {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomJPEGQuality") as? Double
+        return v.map { CGFloat($0) } ?? 0.75
+    }
+
+    static func setLLMImageCustomJPEGQuality(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(value), forKey: "llmImageCustomJPEGQuality")
+    }
+
+    static var llmImagePresetDisplayName: String {
+        switch llmImagePreset {
+        case "balanced": return "Balanced"
+        case "compact": return "Compact"
+        case "custom": return "Custom"
+        case "off": return "Original"
+        default: return "Full Quality"
+        }
+    }
+
+    @UserDefaultsBacked("llmImageLightweightPromptEnabled", default: false) static var llmImageLightweightPromptEnabled: Bool
+
+    static func setLLMImageLightweightPromptEnabled(_ enabled: Bool) {
+        llmImageLightweightPromptEnabled = enabled
     }
 
     // MARK: - Perplexity Search
