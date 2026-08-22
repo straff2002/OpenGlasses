@@ -1,7 +1,8 @@
 # Plan CV — Continuous Scene Narration
 
-**Status: 📝 Drafted 2026-08-22** — no PR yet. Extends [A](A-accessibility-tier.md) (A3 assistive
-modes), which is **free and never an IAP** — so is this.
+**Status: 🚧 P1 shipped 2026-08-23** — the three pure cores landed; nothing is wired yet, which is
+P2. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
+so is this.
 
 Plan A shipped assistive scene and social modes as **on-demand**: the wearer asks, a frame is
 captured, the model answers. That is the right shape for *"what am I holding?"* and the wrong shape
@@ -104,15 +105,47 @@ decision turned into a toggle that did nothing.
 
 ## Phases
 
-### P1 — Pure cores
+### P1 — Pure cores ✅ shipped 2026-08-23
 
-- **`NarrationGate`** — the missing text gate: word-overlap similarity against the last *spoken*
-  description, dwell (the view must settle before a description is worth generating), and a
-  duty-cycle floor (minimum interval between inferences regardless of change). Pure, time injected,
-  fixture-tested with real rephrasing families.
-- **Shared ambient-speech arbitration** — extracted from `ChatReadbackPolicy`, CI's tests preserved.
-- **`NarrationSessionPolicy`** — the mode state machine: silent-watching vs speaking, what "start
-  narrating" / "stop narrating" do, and what happens on interruption.
+- **`NarrationGate`** (`Services/Vision/NarrationGate.swift`) — the missing text gate, sitting
+  beside `FrameGate` because it is its partner. Two decision points: `evaluateGeneration(at:)`
+  applies the duty-cycle floor and then dwell, and consumes the pending scene change so a static
+  scene is described once rather than on every tick; `evaluateSpeech(_:)` scores word overlap
+  against the last *spoken* description and moves that baseline **only** when it says speak.
+  - Similarity is the overlap coefficient over content words — stop-worded (including the
+    boilerplate a VLM wraps everything in: *"the image shows…"*), generic person references folded
+    to one token, crudely de-pluralised — with the denominator floored so a terse description can't
+    score 1.0 by being a subset of a verbose one. Overlap rather than Jaccard because two
+    descriptions of one scene are routinely different lengths and Jaccard punishes that as if it
+    were a change of subject.
+  - The fixtures measure the asymmetry rather than asserting it: across a five-way rephrasing
+    family every pair scores **≥ 0.6**, and the worst genuine scene change scores **0.2** — a
+    0.4-wide gap around the 0.5 threshold, so it sits in a gap and not on a boundary. A test fails
+    if that margin ever drops below 0.2.
+  - `evaluateSpeech` takes **no** `now`, deliberately: the two time-based rules are on the
+    generation side, and "said recently enough not to repeat" is the arbiter's dedup window.
+  - **Dwell has a ceiling** (default 8 s), which the draft did not call for and the feature needs:
+    a wearer walking a corridor never settles, so an uncapped dwell rule would describe nothing for
+    the entire walk — the exact case this plan exists for.
+- **Shared ambient-speech arbitration** (`Services/Speech/AmbientSpeechArbiter.swift`) — the rate
+  cap, bounded drop-oldest queue, dedup window, TTS-busy hold and suppression-flushes-the-queue
+  behaviour, lifted out of `ChatReadbackPolicy` as a generic value type over its payload.
+  `ChatReadbackPolicy` keeps its taste (filters, URL stripping, mention matching, "times N", burst
+  naming) and delegates the rest; its public surface is unchanged and **`ChatReadbackPolicyTests`
+  was not touched and passes as written**, which is what makes this an extraction rather than a
+  rewrite. `AmbientSpeechRules.narration` is the second consumer's preset (a deliberately tiny
+  queue — a description of a room the wearer has already left is worse than silence).
+- **`NarrationSessionPolicy`** (`Services/Accessibility/NarrationSessionPolicy.swift`) — the mode
+  state machine. `.start` lands in `.watching`, silent, always; `.stopNarrating` falls back to
+  watching rather than off, so the grounding keeps accumulating. Interruptions split in two, and
+  the split is the substance: `userTurn` / `realtimeSession` take **the ear only** (watching
+  continues, the queue flushes), while `backgrounded` / `cameraUnavailable` halt the loop outright
+  and set a `haltReason` the transition reports as owed to the wearer. The requested mode survives
+  every interruption, so recovery restores what the wearer asked for; `.stop` beats everything and
+  a later recovery does not resurrect the session.
+- **Privacy scope** — `PrivacyFilterScope.sceneNarration`, exempt, with the reasoning on the case
+  itself. `OutboundFramePrivacyTests` now pins the exemption set as exactly the two non-egress
+  consumers rather than "face recognition only", so a third has to be argued for rather than added.
 
 ### P2 — The loop
 
@@ -121,6 +154,19 @@ forced re-send of an unchanged scene is exactly what must not produce a fresh an
 `generateVisionTurn` → `NarrationGate` → arbitration → TTS/HUD. Descriptions retained as a bounded
 rolling context that Direct-mode questions can ground against. Settings toggle under the
 accessibility surface, and voice commands routed through `AssistiveRouter`.
+
+The cores are all P2 has to call: `NarrationGate.noteSceneChange(at:)` on `.distinct` only,
+`evaluateGeneration(at:)` before spending an inference, `evaluateSpeech(_:)` on what comes back,
+`AmbientSpeechArbiter(rules: .narration)` for the floor, and `NarrationSessionPolicy` deciding
+whether any of it should be running at all.
+
+**Found while building P1, and P2 has to resolve it:** `SceneWatcherService` is a proactive
+scene-observation loop already in the tree with **no call sites anywhere** — its two `Config`
+accessors are read by nothing and it has no Settings UI — and its `isDuplicate` compares
+*characters* rather than words, so it suppresses nearly everything once one observation lands. It
+is the same shape `PrivacyFilterService`'s own comments call out. Either `SceneNarrationService`
+subsumes it and it is deleted, or it is rebuilt on `NarrationGate`; shipping two proactive scene
+loops, one of them broken and dormant, is not an option.
 
 ### P3 — Honest limits in the UI
 
