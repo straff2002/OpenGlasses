@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Show toolchain
         run: |
@@ -60,7 +60,7 @@ jobs:
       # libraries exceed GitHub's per-file size limit. Cached so the ~440 MB download
       # doesn't repeat every run; the fetch script is idempotent on a cache hit.
       - name: Cache MediaPipe frameworks
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: Vendor/MediaPipeTasks/Frameworks
           key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
@@ -78,7 +78,7 @@ jobs:
       # stale-artefact failures that look like source bugs. Caching the inputs is safe; caching
       # the outputs is not.
       - name: Cache SPM checkouts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .spm-checkouts
           key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload result bundle on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: TestResults
           path: TestResults.xcresult
