@@ -110,7 +110,27 @@ class GeminiLiveService: ObservableObject {
     /// a later attempt.
     private(set) var lastCloseReason: String?
 
+    /// Model this session will use, decided before the socket opens. Defaults to the offline
+    /// fallback so a session that somehow skips `prepareLiveModel` still names something real.
+    private(set) var resolvedLiveModel = GeminiLiveModelPolicy.Resolution(
+        model: GeminiLiveModelPolicy.offlineFallbackModel,
+        substitutedFor: nil,
+        usedOfflineFallback: true)
+
+    /// Ask the account which models can open a Live session, and pick one.
+    ///
+    /// Runs before connecting rather than at setup time because it may make a network call, and a
+    /// setup message must go out promptly once the socket is open. Failure is not fatal: an empty
+    /// list resolves to the offline fallback and the attempt proceeds.
+    private func prepareLiveModel() async {
+        let key = Config.geminiLiveAPIKey
+        let available = await GeminiLiveModelCatalog.shared.liveModels(apiKey: key)
+        resolvedLiveModel = GeminiLiveModelPolicy.resolve(
+            configured: Config.geminiLiveConfiguredModel, available: available)
+    }
+
     func connect() async -> Bool {
+        await prepareLiveModel()
         lastCloseReason = nil
         guard let url = Config.geminiLiveWebSocketURL else {
             connectionState = .error("No Gemini API key configured")
@@ -383,16 +403,18 @@ class GeminiLiveService: ObservableObject {
             toolsArray = [["functionDeclarations": declarations]]
         }
 
-        // Say so when the configured model isn't one the Live endpoint serves and we substituted:
-        // a silent swap files the session's usage and latency under a model that never ran it.
-        let resolution = Config.geminiLiveModelResolution
+        // Decided against the account's own model list before connecting (`prepareLiveModel`).
+        // Report a swap: a silent substitution files the session's usage and latency cohorts under
+        // a model that never served it.
+        let resolution = resolvedLiveModel
         if let replaced = resolution.substitutedFor {
-            NSLog("[GeminiLive] %@ is not a Live model — using %@ for this session",
-                  replaced, resolution.model)
+            NSLog("[GeminiLive] %@ cannot open a Live session — using %@%@",
+                  replaced, resolution.model,
+                  resolution.usedOfflineFallback ? " (could not check what this key supports)" : "")
         }
 
         var setupBody = GeminiLiveSetup.body(
-            model: Config.geminiLiveModel,
+            model: "models/\(resolution.model)",
             responseModalities: responseModalities,
             systemInstruction: systemInstruction,
             tools: toolsArray,
@@ -504,7 +526,7 @@ class GeminiLiveService: ObservableObject {
         // Token usage (cumulative) → record the delta for the cost tracker (Plan AU).
         if let cumulative = RealtimeUsage.geminiCumulative(json) {
             let d = usageMeter.delta(tokensIn: cumulative.tokensIn, tokensOut: cumulative.tokensOut)
-            UsageTracker.shared.record(provider: .gemini, model: Config.geminiLiveModel,
+            UsageTracker.shared.record(provider: .gemini, model: resolvedLiveModel.model,
                                        tokensIn: d.tokensIn, tokensOut: d.tokensOut)
         }
 

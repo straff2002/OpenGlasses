@@ -1735,19 +1735,9 @@ struct Config {
         return geminiLiveModelConfig?.apiKey ?? ""
     }
 
-    /// Model id for the Live socket. Routed through `GeminiLiveModelPolicy` because the Live
-    /// endpoint serves a different family from the text API: sending the user's Direct-mode model
-    /// here closes the connection, which presented as "the key doesn't work" on a key that worked
-    /// fine everywhere else (device-traced 2026-08-23).
-    static var geminiLiveModel: String {
-        GeminiLiveModelPolicy.wireModel(configured: geminiLiveModelConfig?.model)
-    }
-
-    /// The substitution, if one happened — so the session can say which model actually served it
-    /// rather than swapping silently.
-    static var geminiLiveModelResolution: GeminiLiveModelPolicy.Resolution {
-        GeminiLiveModelPolicy.resolve(configured: geminiLiveModelConfig?.model)
-    }
+    /// The model id the user configured, if any. What actually goes on the wire is decided at
+    /// connect time against the list the account offers — see `GeminiLiveModelCatalog`.
+    static var geminiLiveConfiguredModel: String? { geminiLiveModelConfig?.model }
 
     static let geminiLiveWebSocketBaseURL =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"

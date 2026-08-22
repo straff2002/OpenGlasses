@@ -2,61 +2,108 @@ import Foundation
 
 /// Which model id to hand the Gemini Live socket.
 ///
-/// Device-traced 2026-08-23: a key that worked perfectly in Direct mode failed to open a Live
-/// session, because the model id we sent was the user's *Direct-mode* model. The Live endpoint
-/// (`BidiGenerateContent`) serves a small, separate family; a general text model like
-/// `gemini-2.5-flash` is not in it and the socket closes. Nothing validated this — the only
-/// live-capable id in the codebase was a fallback reached solely when **no** Gemini model was
-/// saved, i.e. never for a user who had configured Gemini at all.
+/// Device-traced 2026-08-23, twice over. First: we sent the user's *Direct-mode* model, and the
+/// Live endpoint serves a different family, so the socket closed. Then the hard-coded fallback
+/// (`gemini-2.0-flash-exp`) turned out to be **retired upstream** — the endpoint answered
+/// "not found for API version v1beta, or is not supported for bidiGenerateContent". A pinned model
+/// id in a family that renames this often is a time bomb, and it always detonates the same way:
+/// as what looks like a broken API key.
 ///
-/// The rule is deliberately a substitution rather than a refusal. The wearer picked a Gemini model
-/// and a working key; the live family is an implementation detail of the endpoint, not a decision
-/// they should have to make. But the substitution is *reported*, because a silent model swap is its
-/// own kind of lie — the usage tracker and any latency cohort would otherwise be filed under a
-/// model that never served the session.
+/// The first attempt at a fix guessed capability from the id's shape (`live` / `flash-exp`).
+/// Checking that against a real account's model list killed it: `gemini-2.5-flash-native-audio-latest`
+/// and `gemini-robotics-er-2-streaming-preview` are both live-capable and match neither marker.
+/// **Names are not a capability contract.** `ModelService.ListModels` reports
+/// `bidiGenerateContent` per model, so the app asks instead of guessing, and this type is reduced
+/// to what remains a genuine decision: which of the offered models to prefer.
 enum GeminiLiveModelPolicy {
 
-    /// Known-live-capable id used when the configured model is not one. This is the value the app
-    /// already shipped as its no-model-configured default.
-    static let defaultLiveModel = "gemini-2.0-flash-exp"
+    /// Used only when the model list cannot be fetched (offline, or the call failed). A stable
+    /// alias rather than a dated preview: aliases survive the renames that retire the previews.
+    static let offlineFallbackModel = "gemini-2.5-flash-native-audio-latest"
+
+    /// Task-specialised live models. They speak `bidiGenerateContent`, but a translation or
+    /// robotics model is not a general assistant, and silently defaulting a wearer into one would
+    /// be a stranger failure than no session at all. Chosen only if nothing else is offered.
+    static let specialisedMarkers = ["translate", "robotics"]
 
     struct Resolution: Equatable {
         /// Bare model id (no `models/` prefix) to send in the setup message.
         let model: String
         /// The configured id, when it differed and was replaced. `nil` when no swap happened.
         let substitutedFor: String?
+        /// True when the list could not be fetched and the offline fallback was used, so a caller
+        /// can say "couldn't check what your key supports" rather than reporting a clean choice.
+        let usedOfflineFallback: Bool
 
         var didSubstitute: Bool { substitutedFor != nil }
     }
 
-    /// Whether an id names a model the Live endpoint serves.
-    ///
-    /// Matched on shape rather than an allow-list of exact ids: the live family gains and renames
-    /// members faster than we ship, and a stale allow-list would reject a model the user can
-    /// legitimately use. Both markers are load-bearing — the family is named either by carrying
-    /// `live` in the id, or by being one of the experimental `flash-exp` builds.
-    static func isLiveCapable(_ model: String) -> Bool {
-        let id = model.lowercased()
-        return id.contains("live") || id.contains("flash-exp")
+    /// Strip the wire prefix; ids are compared and stored bare.
+    static func bareId(_ model: String) -> String {
+        model.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "models/", with: "")
     }
 
-    /// Resolve the configured model id to one the socket will accept.
-    static func resolve(configured: String?) -> Resolution {
-        let trimmed = (configured ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "models/", with: "")
+    /// Pick the best general-purpose model from what the account actually offers.
+    ///
+    /// Preference order, and each step earns its place:
+    /// 1. general-purpose over task-specialised — a translate model answers questions in the wrong
+    ///    shape entirely;
+    /// 2. stable aliases (`-latest`) over dated previews — a dated preview is exactly the kind of
+    ///    id that gets retired, which is the bug this whole type exists because of;
+    /// 3. otherwise the highest version number, so a new family member wins by default.
+    static func choose(from available: [String]) -> String? {
+        let ids = available.map(bareId).filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return nil }
 
-        guard !trimmed.isEmpty else {
-            return Resolution(model: defaultLiveModel, substitutedFor: nil)
+        let general = ids.filter { id in
+            !specialisedMarkers.contains { id.lowercased().contains($0) }
         }
-        guard !isLiveCapable(trimmed) else {
-            return Resolution(model: trimmed, substitutedFor: nil)
+        let pool = general.isEmpty ? ids : general
+
+        return pool.sorted { lhs, rhs in
+            let lhsAlias = lhs.hasSuffix("-latest"), rhsAlias = rhs.hasSuffix("-latest")
+            if lhsAlias != rhsAlias { return lhsAlias }
+            let lhsVersion = version(of: lhs), rhsVersion = version(of: rhs)
+            if lhsVersion != rhsVersion { return lhsVersion > rhsVersion }
+            return lhs < rhs   // stable, so the choice does not wander between launches
+        }.first
+    }
+
+    /// Leading `<major>.<minor>` version in an id, as a comparable number. Unversioned ids sort
+    /// last rather than first — an id we cannot read a version from is not evidence of newness.
+    static func version(of id: String) -> Double {
+        guard let match = id.range(of: #"\d+\.\d+"#, options: .regularExpression) else { return 0 }
+        return Double(id[match]) ?? 0
+    }
+
+    /// Resolve what to send, given the configured model and the list the account offers.
+    ///
+    /// A configured model that the account actually offers is always honoured — the wearer's
+    /// choice wins whenever it is possible, and only a model the endpoint would refuse is replaced.
+    static func resolve(configured: String?, available: [String]) -> Resolution {
+        let wanted = bareId(configured ?? "")
+        let offered = available.map(bareId)
+
+        guard !offered.isEmpty else {
+            let fallback = Resolution(model: offlineFallbackModel,
+                                      substitutedFor: wanted.isEmpty ? nil : wanted,
+                                      usedOfflineFallback: true)
+            return wanted == offlineFallbackModel
+                ? Resolution(model: offlineFallbackModel, substitutedFor: nil, usedOfflineFallback: true)
+                : fallback
         }
-        return Resolution(model: defaultLiveModel, substitutedFor: trimmed)
+        if !wanted.isEmpty, offered.contains(wanted) {
+            return Resolution(model: wanted, substitutedFor: nil, usedOfflineFallback: false)
+        }
+        let chosen = choose(from: offered) ?? offlineFallbackModel
+        return Resolution(model: chosen,
+                          substitutedFor: wanted.isEmpty ? nil : wanted,
+                          usedOfflineFallback: false)
     }
 
     /// Wire form — what the setup message's `model` field carries.
-    static func wireModel(configured: String?) -> String {
-        "models/\(resolve(configured: configured).model)"
+    static func wireModel(configured: String?, available: [String]) -> String {
+        "models/\(resolve(configured: configured, available: available).model)"
     }
 }
