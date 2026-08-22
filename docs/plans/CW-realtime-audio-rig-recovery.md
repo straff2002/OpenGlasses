@@ -1,6 +1,8 @@
 # Plan CW — Realtime Audio Rig Recovery
 
-**Status: 📝 Drafted 2026-08-22** — no PR yet.
+**Status: 🚧 Core shipped 2026-08-22** — P1 + P2 + two of P3's three items landed; P4 device
+verification is still owed, and one P3 item (drain the playout tail at hang-up) is deferred with a
+reason recorded below.
 
 A realtime reply arrives as a stream of PCM deltas that we schedule onto a player node as they land.
 The rig underneath that player is not stable: `AVAudioSession` re-routes, and **a route settle
@@ -52,7 +54,7 @@ can test headlessly, not a reflex added at one call site.
   CW is downstream of that: it assumes we still own the session and asks only whether the graph
   needs rebuilding.
 
-## P1 — `AudioGraphRecovery` (pure core, lands first)
+## P1 — `AudioGraphRecovery` (pure core, lands first) ✅
 
 A pure decision function, no `AVAudioEngine` in its signature, over an observed graph state:
 
@@ -81,7 +83,7 @@ Testable as a table of `(state) → action` fixtures, which is the whole point o
 current logic is three booleans read inline on the lifecycle queue, where none of these cases can be
 exercised without hardware.
 
-## P2 — Playback carry-over and honest accounting
+## P2 — Playback carry-over and honest accounting ✅
 
 `playerNode.scheduleBuffer` is fire-and-forget; once scheduled we cannot ask the node what it still
 holds. So the carry-over has to be maintained on our side, as a **pending queue that mirrors what
@@ -108,7 +110,7 @@ consumer today (`confirmedPlayedMilliseconds` is read only by the OpenAI manager
 carry-over itself is engine-level and benefits both; the reporting half lands for OpenAI Realtime
 first and Gemini follows when its interrupt path is wired.
 
-## P3 — Teardown hygiene
+## P3 — Teardown hygiene 🚧
 
 Three small ones, each a known way for the *next* session to come up wrong:
 
@@ -125,6 +127,13 @@ Three small ones, each a known way for the *next* session to come up wrong:
   A farewell or an end cue that is followed immediately by session deactivation gets truncated, or
   surfaces from the phone speaker after the route has already switched back. Wait the output
   latency plus a margin before tearing the rig down.
+
+  **Deferred, 2026-08-22.** The only place this belongs is `stopCapture()`, which both session
+  managers call from a synchronous `@MainActor stopSession()`; a bounded wait there blocks the main
+  thread at hang-up, which is a worse defect than the one it fixes. Doing it properly means an
+  `async` teardown signature through both managers — a change with its own blast radius that has no
+  business riding along with a playback-accounting fix. Landing the policy alone was rejected: an
+  unreferenced pure function is not a partial fix, it is dead code that reads as one.
 
 ## Riders
 
@@ -163,9 +172,14 @@ Everything above is decision logic and can be tested headlessly. What cannot:
 
 - Should `.newDeviceAvailable` still map to `.resetGraph` at all once `.restart` exists, or does the
   format check subsume it? Leaning subsume — but it needs P4's restart/rebuild ratio to answer
-  honestly.
-- Does the carry-over mirror belong in `RealtimeAudioEngine` or beside `PlaybackProgressLedger`?
-  The ledger already owns generations; co-locating avoids two sources of truth for "what is
-  outstanding".
+  honestly. **Still open.** The shipped table is deliberately trigger-invariant and a test
+  (`testDecisionIsInvariantAcrossTriggers`) pins that, so adding a per-trigger branch has to be a
+  decision somebody makes rather than one that drifts in.
+- ~~Does the carry-over mirror belong in `RealtimeAudioEngine` or beside `PlaybackProgressLedger`?~~
+  **Answered by building it:** `PendingPlaybackMirror` is its own pure type alongside the ledger and
+  **shares the ledger's generation** rather than minting one. The two are updated at exactly the
+  same three points (scheduled / played / reset), so there is one source of truth for "what is
+  outstanding" without merging two things that answer different questions — the ledger says what
+  was *heard*, the mirror holds what has *not been*.
 - Is there a bounded number of rebuilds after which we should stop trying and surface a real error
   to the wearer, rather than looping a rebuild that keeps failing?
