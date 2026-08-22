@@ -140,6 +140,62 @@ final class VideoBitratePolicyTests: XCTestCase {
                           "8 Mbps fills the disk faster than 1.5 Mbps — the warning must say so")
     }
 
+    // MARK: - Settings preview (tier → size → bitrate)
+
+    func testEncodedSizeMapsEveryResolutionTier() {
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "low").width, low.width)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "low").height, low.height)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "medium").width, medium.width)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "medium").height, medium.height)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "high").width, high.width)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "high").height, high.height)
+    }
+
+    func testEncodedSizeFallsThroughToHighLikeCameraService() {
+        // `CameraService` maps anything unrecognised to `.high`; the Settings preview must not
+        // disagree with what the camera would actually do.
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "garbage").width, high.width)
+        XCTAssertEqual(StreamConfigPolicy.encodedSize(for: "").width, high.width)
+    }
+
+    func testSettingsPreviewMatchesWhatTheRecorderWouldPick() {
+        // The "Automatic (~N Mbps)" label derives from the tier the same way the recorder
+        // derives from a real frame — same tier in, same number out.
+        for tier in ["low", "medium", "high"] {
+            let size = StreamConfigPolicy.encodedSize(for: tier)
+            XCTAssertEqual(
+                VideoBitratePolicy.bitrate(width: size.width, height: size.height,
+                                           frameRate: 30, profile: .disk),
+                disk((width: size.width, height: size.height)))
+        }
+    }
+
+    // MARK: - Settings label formatting
+
+    func testMegabitLabelDropsTrailingZeroOnWholeNumbers() {
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(8_000_000), "8 Mbps")
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(2_000_000), "2 Mbps")
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(12_000_000), "12 Mbps")
+    }
+
+    func testMegabitLabelKeepsOneDecimalWhenItCarriesInformation() {
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(3_100_000), "3.1 Mbps")
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(5_700_000), "5.7 Mbps")
+        XCTAssertEqual(VideoBitratePolicy.megabitLabel(800_000), "0.8 Mbps")
+    }
+
+    func testEveryTierRendersALabelSettingsCanShow() {
+        // What the "Automatic (~N Mbps at Xp)" row reduces to, for each tier at the default
+        // 15 fps: a label that is never empty and never a bare number.
+        let expected = ["low": "1.4 Mbps", "medium": "2.8 Mbps", "high": "5.7 Mbps"]
+        for (tier, label) in expected {
+            let size = StreamConfigPolicy.encodedSize(for: tier)
+            let bps = VideoBitratePolicy.bitrate(width: size.width, height: size.height,
+                                                 frameRate: 15, profile: .disk)
+            XCTAssertEqual(VideoBitratePolicy.megabitLabel(bps), label, "tier \(tier)")
+        }
+    }
+
     // MARK: - CGSize convenience
 
     func testSizeConvenienceMatchesTheIntegerForm() {

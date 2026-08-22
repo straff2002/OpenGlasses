@@ -67,6 +67,15 @@ enum VideoBitratePolicy {
                 frameRate: frameRate, profile: profile, override: override)
     }
 
+    /// Human-readable megabit rendering of a bitrate: "8 Mbps", "3.1 Mbps". Whole numbers lose
+    /// the trailing ".0" — Settings shows this, and "8.0 Mbps" reads like false precision for a
+    /// figure that is already an estimate.
+    static func megabitLabel(_ bitsPerSecond: Int) -> String {
+        let mbps = Double(bitsPerSecond) / 1_000_000
+        let value = mbps.rounded() == mbps ? String(Int(mbps)) : String(format: "%.1f", mbps)
+        return "\(value) Mbps"
+    }
+
     private static func roundedToHundredKilobits(_ bits: Double) -> Int {
         let step = 100_000.0
         // Guard the Int conversion: a nonsense frame size must not trap.

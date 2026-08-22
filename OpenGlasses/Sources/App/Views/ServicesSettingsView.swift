@@ -32,6 +32,8 @@ struct ServicesSettingsView: View {
     // Camera
     @State private var cameraResolution: String = Config.cameraResolution
     @State private var cameraFrameRate: Int = Config.cameraFrameRate
+    /// Recording bitrate override in bits/sec; 0 means "let VideoBitratePolicy derive it".
+    @State private var recordingBitrate: Int = Config.recordingBitrateOverride ?? 0
     @State private var showFolderPicker = false
 
     // Home Assistant
@@ -419,6 +421,18 @@ struct ServicesSettingsView: View {
 
             // MARK: Recording & Transcripts
             Section {
+                Picker("Video Quality", selection: $recordingBitrate) {
+                    Text(automaticBitrateLabel).tag(0)
+                    Text("2 Mbps").tag(2_000_000)
+                    Text("4 Mbps").tag(4_000_000)
+                    Text("8 Mbps").tag(8_000_000)
+                    Text("12 Mbps").tag(12_000_000)
+                    Text("20 Mbps").tag(20_000_000)
+                }
+                .onChange(of: recordingBitrate) { _, value in
+                    Config.setRecordingBitrate(value == 0 ? nil : value)
+                }
+
                 if let folderURL = Config.transcriptFolderURL {
                     HStack {
                         Image(systemName: "folder.fill")
@@ -449,7 +463,7 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Recording & Transcripts")
             } footer: {
-                Text("Choose where transcripts are saved. Videos always save to the Glasses album in Photos. Transcripts are also accessible via the Files app.")
+                Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nChoose where transcripts are saved. Videos always save to the Glasses album in Photos. Transcripts are also accessible via the Files app.")
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result {
@@ -568,6 +582,22 @@ struct ServicesSettingsView: View {
             }
         }
         .navigationTitle("Services")
+    }
+
+    /// "Automatic (~8 Mbps at 720p)" — previews what `VideoBitratePolicy` will pick for the
+    /// resolution and frame rate currently selected above, so the row means something. The
+    /// recorder measures real frames rather than trusting the tier, hence the "~".
+    private var automaticBitrateLabel: String {
+        let size = StreamConfigPolicy.encodedSize(for: cameraResolution)
+        let bps = VideoBitratePolicy.bitrate(
+            width: size.width,
+            height: size.height,
+            frameRate: Double(cameraFrameRate),
+            profile: .disk
+        )
+        // Width is the short edge (the tiers are portrait), so it names the tier the same way
+        // the Resolution picker above does: 360p / 504p / 720p.
+        return "Automatic (~\(VideoBitratePolicy.megabitLabel(bps)) at \(size.width)p)"
     }
 
     private func qualityLabel(_ quality: AVSpeechSynthesisVoiceQuality) -> String {

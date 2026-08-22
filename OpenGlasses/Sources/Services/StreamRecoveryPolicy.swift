@@ -46,6 +46,18 @@ enum StreamConfigPolicy {
         if concurrentGlassesVoice && requested == "low" { return "medium" }
         return requested
     }
+
+    /// Encoded frame size each `StreamingResolution` tier delivers, keyed by the same
+    /// resolution string `Config.cameraResolution` stores. Used to preview the derived encode
+    /// bitrate in Settings before a stream exists; the recorder itself measures real frames.
+    /// Unknown strings fall through to `.high`, matching how `CameraService` maps them.
+    static func encodedSize(for resolution: String) -> (width: Int, height: Int) {
+        switch resolution {
+        case "low": return (360, 640)
+        case "medium": return (504, 896)
+        default: return (720, 1280)
+        }
+    }
 }
 
 /// Maps DAT compatibility signals to actionable user copy — an outdated Meta AI app or
