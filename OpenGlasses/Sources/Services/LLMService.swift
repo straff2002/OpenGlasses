@@ -1302,6 +1302,14 @@ class LLMService: ObservableObject {
         activeModelName = Config.activeModel?.name ?? "No Model"
     }
 
+    func invalidateOnDeviceSession() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            appleSession = nil
+        }
+        #endif
+    }
+
     // MARK: - Anthropic Claude
 
     /// Route a request to the appropriate cloud provider for a given config.

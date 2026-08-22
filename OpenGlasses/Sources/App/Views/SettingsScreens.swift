@@ -91,6 +91,7 @@ struct VoiceTriggersSettingsScreen: View {
 /// Models, personas, system prompt, and behaviour settings (owner-only; hidden in Simple Mode).
 struct AIPersonalitySettingsScreen: View {
     @ObservedObject var appState: AppState
+    @AppStorage("activePromptPresetId") private var activePresetId = "preset-default"
 
     // Model configs editing
     @State private var modelConfigs: [ModelConfig] = Config.savedModels
@@ -182,12 +183,12 @@ struct AIPersonalitySettingsScreen: View {
                 }
 
                 NavigationLink {
-                    PromptPresetsView()
+                    PromptPresetsView(appState: appState)
                 } label: {
                     HStack {
                         Label("System Prompt", systemImage: "text.quote")
                         Spacer()
-                        Text(Config.activePreset?.name ?? "Default")
+                        Text(Config.savedPresets.first { $0.id == activePresetId }?.name ?? "Default")
                             .foregroundStyle(.secondary)
                     }
                 }

@@ -2,8 +2,9 @@ import SwiftUI
 
 /// Manage system prompt presets — select, add, edit, delete.
 struct PromptPresetsView: View {
+    @ObservedObject var appState: AppState
+    @AppStorage("activePromptPresetId") private var activeId = "preset-default"
     @State private var presets: [PromptPreset] = Config.savedPresets
-    @State private var activeId: String = Config.activePresetId
     @State private var showAddSheet = false
     @State private var editingPreset: PromptPreset? = nil
 
@@ -14,8 +15,7 @@ struct PromptPresetsView: View {
                     HStack {
                         // Select radio button
                         Button {
-                            activeId = preset.id
-                            Config.setActivePresetId(preset.id)
+                            appState.applyActivePresetChange(preset.id)
                         } label: {
                             Image(systemName: preset.id == activeId ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(preset.id == activeId ? Color.accentColor : .secondary)
@@ -96,6 +96,9 @@ struct PromptPresetsView: View {
                 if let idx = presets.firstIndex(where: { $0.id == updated.id }) {
                     presets[idx] = updated
                     Config.setSavedPresets(presets)
+                    if updated.id == activeId {
+                        appState.applyActivePresetChange(activeId, clearHistory: false)
+                    }
                 }
             }
         }
@@ -104,8 +107,7 @@ struct PromptPresetsView: View {
     private func deletePreset(_ preset: PromptPreset) {
         presets.removeAll { $0.id == preset.id }
         if activeId == preset.id {
-            activeId = "preset-default"
-            Config.setActivePresetId("preset-default")
+            appState.applyActivePresetChange("preset-default")
         }
         Config.setSavedPresets(presets)
     }

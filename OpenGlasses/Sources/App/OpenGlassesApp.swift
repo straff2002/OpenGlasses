@@ -3855,7 +3855,34 @@ class AppState: ObservableObject, AppStateProtocol {
         if !persona.modelId.isEmpty {
             Config.setActiveModelId(persona.modelId)
         }
-        Config.setActivePresetId(persona.presetId)
+        applyActivePresetChange(persona.presetId, clearHistory: true, clearActivePersona: false)
+    }
+
+    func applyActivePresetChange(_ id: String, clearHistory: Bool = true, clearActivePersona: Bool = true) {
+        let presetChanged = Config.activePresetId != id
+        let refreshRuntime = presetChanged || !clearHistory
+        guard presetChanged || refreshRuntime else { return }
+
+        Config.setActivePresetId(id)
+        if presetChanged && clearActivePersona {
+            activePersona = nil
+        }
+        if presetChanged && clearHistory {
+            llmService.clearHistory()
+        }
+        if refreshRuntime {
+            llmService.invalidateOnDeviceSession()
+            Task {
+                if geminiLiveSession.isActive {
+                    geminiLiveSession.stopSession()
+                    await geminiLiveSession.startSession()
+                }
+                if openAIRealtimeSession.isActive {
+                    openAIRealtimeSession.stopSession()
+                    await openAIRealtimeSession.startSession()
+                }
+            }
+        }
         llmService.refreshActiveModel()
     }
 
