@@ -19,6 +19,10 @@ class CameraService: ObservableObject {
     @Published var lastPhoto: UIImage?
     @Published var isCaptureInProgress: Bool = false
     @Published var isStreaming: Bool = false
+
+    /// Something the wearer can fix right now — currently a stream paused by a doff. Cleared when
+    /// streaming resumes, so a stale notice cannot outlive the condition it describes.
+    @Published var streamingNotice: String?
     @Published var streamingStatus: CameraStreamingStatus = .stopped
 
     /// Kept as a nested name for the call sites that grew up with it.
@@ -111,10 +115,14 @@ class CameraService: ObservableObject {
             streamingStatus = status
         case .streamingChanged(let streaming):
             isStreaming = streaming
+            if streaming { streamingNotice = nil }
         case .debug(let message):
             onDebugEvent?(message)
         case .compatibilityNotice(let notice):
             compatibilityNotice = notice
+        case .transientNotice(let notice):
+            streamingNotice = notice
+            onDebugEvent?(notice)
         case .registrationProgress(let state):
             onRegistrationProgress?(state)
         }

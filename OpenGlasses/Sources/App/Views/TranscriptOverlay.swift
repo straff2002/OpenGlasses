@@ -32,15 +32,20 @@ struct TranscriptOverlay: View {
         return appState.llmService.activeModelName
     }
 
+    /// A camera condition the wearer can clear (a doff pausing the stream). Ranks below a real
+    /// error but above silence — the failure mode it replaces was a UI reading "Streaming" with
+    /// the camera off.
+    private var noticeText: String? { appState.cameraService.streamingNotice }
+
     private var errorText: String? {
         // The session's error is the more specific one, but its *absence* must not hide an
         // app-level failure: the camera button only exists in a live session and reports there,
         // so returning session-only made "start streaming" fail silently (device-traced).
         if isGemini { return SessionErrorCopy.text(sessionError: session.errorMessage,
-                                                   appError: appState.errorMessage) }
+                                                   appError: appState.errorMessage) ?? noticeText }
         if isOpenAI { return SessionErrorCopy.text(sessionError: openAISession.errorMessage,
-                                                   appError: appState.errorMessage) }
-        return appState.errorMessage
+                                                   appError: appState.errorMessage) ?? noticeText }
+        return appState.errorMessage ?? noticeText
     }
 
     var body: some View {

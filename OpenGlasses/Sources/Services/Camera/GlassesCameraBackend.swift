@@ -71,5 +71,9 @@ enum CameraBackendEvent {
     case debug(String)
     /// Actionable compatibility copy ("update the Meta AI app…"), or nil when compatible.
     case compatibilityNotice(String?)
+    /// Transient, actionable condition the wearer can clear right now — a stream paused because
+    /// the glasses were taken off, say. Deliberately not `compatibilityNotice`: telling someone to
+    /// update their firmware when they simply doffed the glasses sends them somewhere useless.
+    case transientNotice(String)
     case registrationProgress(Int)
 }
