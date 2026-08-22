@@ -1,6 +1,6 @@
 # Plan CU — Voice Turn Latency & Instrumentation
 
-**Status: 🚧 P1 shipped 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`. The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 is next** — it is what P1 exists to make measurable.
+**Status: 🚧 P1 shipped, P2 PR1 built 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`. The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 is next** — it is what P1 exists to make measurable.
 
 Every Direct-mode turn pays a fixed floor of dead air before the model is even asked.
 `TranscriptionService` commits a turn on a silence timer whose window is
@@ -151,6 +151,38 @@ speech engine after `generationDone`, so a panel full of positive lead-ins means
 hand-off exists to measure", not "sentence streaming is off".
 
 ## P2 — Acoustic end-of-turn
+
+**Split into two PRs, and the split is the house style rather than a compromise.** PR1 (built
+2026-08-22) is everything that can be decided and tested without a model: `EndOfTurnPolicy`,
+`SpeechActivityGate`, `MicInputGain`, the `SpeechActivityDetecting` seam with
+`NoSpeechActivityDetector` as the shipped default, and `TranscriptionService` rewired so *every*
+end-of-turn deadline comes from the policy. With no detector installed the policy takes rule 1 and
+returns the deadline the old timer used, so "unchanged when unavailable" is a property of the code
+rather than a claim about it — which is what makes it safe to land the arbitration before the
+signal exists. 27 tests.
+
+PR2 is the detector itself: the Silero backend behind the seam, the `AVAudioConverter` resampling
+and hop chunking (drop-oldest, converter rebuilt on route change), and the flag that installs it.
+It was held back deliberately — it is a new pinned dependency whose thresholds cannot be set
+anywhere but on device, and shipping it in the same diff as the arbitration would mean neither
+could be reviewed on its own terms.
+
+Two riders landed with PR1 rather than PR2, on the plan's own reasoning. `MicInputGain` ships
+**with** the thresholds it normalises for, since tuning against an un-normalised level and then
+normalising invalidates the tuning. And `EndOfTurnPolicy.Reason` is recorded onto the P1 timeline
+(`TurnTimeline.endOfTurnReason`, shown as a chip in the Developer panel), so the question "did P2
+work" is answered by comparing `perceivedLatency` across `acoustic` and `silenceTimer` turns on one
+mic route — the measurement loop P1 exists to close.
+
+**One reading resolved.** The plan says to set the threshold *above* the library default (an 8 kHz
+HFP link's noise floor reads as speech at the default, and a detector that believes speech never
+stops is a hot mic). Taken alone that pushes against the stated asymmetry, where the expensive
+mistake is cutting the wearer off. Both hold under hysteresis, which is what shipped:
+`onsetThreshold` sits above the default and a *lower* `releaseThreshold` plus `minSilenceDuration`
+carry the protection against the expensive mistake, at the point where it is actually made.
+`EndOfTurnPolicy` gained a fourth rule for the same hazard — a detector claiming speech forever
+gets a bounded hold, then hands the decision back with a distinct `detectorBackstop` reason, so a
+mis-set threshold shows up as a share in the panel instead of as a hung turn.
 
 ### `EndOfTurnPolicy` (pure core)
 

@@ -102,6 +102,10 @@ enum TurnRecorder {
     /// When the mic last went quiet, waiting for the turn that will answer it.
     private static var pendingSpeechEndAt: Date?
 
+    /// Which signal ended that speech (Plan CU P2). Kept alongside `pendingSpeechEndAt` and cleared
+    /// with it, so a reason can never outlive the utterance it describes and be claimed by the next.
+    private static var pendingEndOfTurnReason: EndOfTurnPolicy.Reason?
+
     /// The utterance parked by `TurnAdmissionPolicy`, and when the replay that should claim it was
     /// announced. Both halves are needed: the park time is what the turn records, while `notedAt` is
     /// what the staleness ceiling is measured against — bounding the *park* would refuse a
@@ -141,6 +145,7 @@ enum TurnRecorder {
     /// and report the intervening minutes as `heldSeconds`.
     static func forgetPendingUtterance() {
         pendingSpeechEndAt = nil
+        pendingEndOfTurnReason = nil
         pendingHeld = nil
     }
 
@@ -176,10 +181,15 @@ enum TurnRecorder {
         } else if let speechEnd = pendingSpeechEndAt,
                   startedAt.timeIntervalSince(speechEnd) <= stampStaleness {
             timeline.mark(.speechEnd, at: speechEnd)
+            // Only on this branch: a held utterance's speech-end is deliberately re-stamped at the
+            // release above, so the reason that ended speech no longer describes the mark it would
+            // sit beside. A held turn reports no endpointing reason rather than a misleading one.
+            timeline.endOfTurnReason = pendingEndOfTurnReason
         }
 
         pendingHeld = nil
         pendingSpeechEndAt = nil
+        pendingEndOfTurnReason = nil
         sawFirstToken = false
         speechHandedOff = false
         currentID = ledger.start(timeline)
@@ -256,6 +266,13 @@ enum TurnRecorder {
             $0.backend = backend
             $0.model = model
         }
+    }
+
+    /// Which signal ended the wearer's speech (Plan CU P2). Recorded against the *pending*
+    /// utterance rather than the turn, because the endpointer decides before `beginTurn()` runs —
+    /// the same reason `noteSpeechEnd` works that way.
+    static func noteEndOfTurnReason(_ reason: EndOfTurnPolicy.Reason) {
+        pendingEndOfTurnReason = reason
     }
 
     /// Seconds spent waiting on a frame from the glasses, timed from `start`.
@@ -375,6 +392,7 @@ enum TurnRecorder {
         sawFirstToken = false
         speechHandedOff = false
         pendingSpeechEndAt = nil
+        pendingEndOfTurnReason = nil
         pendingHeld = nil
     }
 }

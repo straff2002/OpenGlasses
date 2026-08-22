@@ -123,6 +123,15 @@ struct TurnTimeline: Identifiable, Equatable {
     var ttsEngine: TTSEngine?
     var micRoute: MicRoute?
 
+    /// Which signal decided the wearer had finished talking (Plan CU P2). `nil` on turns that were
+    /// not ended by the endpointer at all — a typed message, a realtime session, a tool-initiated
+    /// turn — which is why it is optional rather than defaulted to the timer.
+    ///
+    /// This is a cohort key, not a log line: "did P2 work" is answered by comparing
+    /// `perceivedLatency` across `acoustic` and `silenceTimer` turns on the same mic route, and a
+    /// rising `detectorBackstop` share is how a mis-set threshold announces itself.
+    var endOfTurnReason: EndOfTurnPolicy.Reason?
+
     /// The turn never delivered — a backend error, a supersession, a wearer who walked away.
     var abandoned: Bool
     /// The wearer barged in over playback. Deliberately distinct from `abandoned`: this turn worked
