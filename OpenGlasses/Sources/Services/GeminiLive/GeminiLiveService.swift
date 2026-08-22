@@ -373,8 +373,16 @@ class GeminiLiveService: ObservableObject {
             toolsArray = [["functionDeclarations": declarations]]
         }
 
+        // Say so when the configured model isn't one the Live endpoint serves and we substituted:
+        // a silent swap files the session's usage and latency under a model that never ran it.
+        let resolution = Config.geminiLiveModelResolution
+        if let replaced = resolution.substitutedFor {
+            NSLog("[GeminiLive] %@ is not a Live model — using %@ for this session",
+                  replaced, resolution.model)
+        }
+
         var setupBody: [String: Any] = [
-            "model": Config.geminiLiveModel,
+            "model": Config.geminiLiveModel,   // live family — see GeminiLiveModelPolicy
             "generationConfig": [
                 "responseModalities": responseModalities,
                 "thinkingConfig": [

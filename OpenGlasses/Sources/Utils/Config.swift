@@ -1735,13 +1735,18 @@ struct Config {
         return geminiLiveModelConfig?.apiKey ?? ""
     }
 
+    /// Model id for the Live socket. Routed through `GeminiLiveModelPolicy` because the Live
+    /// endpoint serves a different family from the text API: sending the user's Direct-mode model
+    /// here closes the connection, which presented as "the key doesn't work" on a key that worked
+    /// fine everywhere else (device-traced 2026-08-23).
     static var geminiLiveModel: String {
-        if let geminiConfig = geminiLiveModelConfig {
-            let m = geminiConfig.model
-            if m.hasPrefix("models/") { return m }
-            return "models/\(m)"
-        }
-        return "models/gemini-2.0-flash-exp"
+        GeminiLiveModelPolicy.wireModel(configured: geminiLiveModelConfig?.model)
+    }
+
+    /// The substitution, if one happened — so the session can say which model actually served it
+    /// rather than swapping silently.
+    static var geminiLiveModelResolution: GeminiLiveModelPolicy.Resolution {
+        GeminiLiveModelPolicy.resolve(configured: geminiLiveModelConfig?.model)
     }
 
     static let geminiLiveWebSocketBaseURL =
