@@ -255,7 +255,10 @@ struct BottomControlBar: View {
                 if realtimeSessionActive && !appState.cameraService.isStreaming {
                     Task {
                         do { try await appState.cameraService.startStreaming() }
-                        catch { appState.errorMessage = "Camera: \(error.localizedDescription)" }
+                        catch {
+                            NSLog("[Camera] startStreaming failed: %@", error.localizedDescription)
+                            appState.errorMessage = "Camera: \(error.localizedDescription)"
+                        }
                     }
                 }
             }

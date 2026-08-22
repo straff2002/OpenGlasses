@@ -33,8 +33,13 @@ struct TranscriptOverlay: View {
     }
 
     private var errorText: String? {
-        if isGemini { return session.errorMessage }
-        if isOpenAI { return openAISession.errorMessage }
+        // The session's error is the more specific one, but its *absence* must not hide an
+        // app-level failure: the camera button only exists in a live session and reports there,
+        // so returning session-only made "start streaming" fail silently (device-traced).
+        if isGemini { return SessionErrorCopy.text(sessionError: session.errorMessage,
+                                                   appError: appState.errorMessage) }
+        if isOpenAI { return SessionErrorCopy.text(sessionError: openAISession.errorMessage,
+                                                   appError: appState.errorMessage) }
         return appState.errorMessage
     }
 
