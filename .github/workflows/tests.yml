@@ -30,6 +30,16 @@ on:
       - '**.md'
       - 'docs/**'
 
+# A PR run is obsolete the moment a newer commit lands on the same branch, but without a
+# concurrency group the superseded run still bills a full ~17-minute macOS slot. Twelve August
+# runs (227 macOS minutes) were already stale when they finished; one branch queued eleven.
+#
+# main is deliberately exempt: `cancel-in-progress` is false for push events, because a run on
+# main is the record of what main does and must not be cancelled by the next merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: macos-26
@@ -57,6 +67,23 @@ jobs:
 
       - name: Fetch MediaPipe frameworks
         run: ./Scripts/fetch-mediapipe-frameworks.sh
+
+      # Every run re-clones the full SPM graph — WebRTC, HaishinKit, mlx-swift-lm and the
+      # HuggingFace packages — before a line of app code compiles. The checkouts are identical
+      # between runs unless the pins move, so -clonedSourcePackagesDirPath (set on the xcodebuild
+      # invocation below) puts them at a stable path this can cache.
+      #
+      # DerivedData is deliberately NOT cached. A restored build directory carries absolute paths
+      # and module timestamps from another machine, and this repo has already lost time to
+      # stale-artefact failures that look like source bugs. Caching the inputs is safe; caching
+      # the outputs is not.
+      - name: Cache SPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: .spm-checkouts
+          key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
 
       - name: Skip Watch targets
         run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
@@ -92,6 +119,7 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
             -skipMacroValidation \
+            -clonedSourcePackagesDirPath .spm-checkouts \
             SWIFT_EMIT_LOC_STRINGS=NO \
             2>&1 | tee xcodebuild.log | grep -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
             || { tail -100 xcodebuild.log; exit 1; }
