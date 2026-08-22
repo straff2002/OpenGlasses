@@ -150,19 +150,42 @@ class VideoRecordingService: ObservableObject {
     /// Start recording video + audio.
     /// - Parameters:
     ///   - publisher: Video frame publisher from CameraService
-    ///   - bitrate: Video encoding bitrate (default 1.5 Mbps)
+    ///   - bitrate: Explicit encoding bitrate override. `nil` (the default) derives it from the
+    ///     encoded frame size and frame rate via `VideoBitratePolicy`.
     ///   - outputSize: Encoded video dimensions. Defaults to 720x1280 (glasses native).
+    ///   - frameRate: Frame rate the encoder should expect. Defaults to the configured camera
+    ///     rate; it feeds both the derived bitrate and the encoder's rate controller.
     func startRecording(
         from publisher: PassthroughSubject<UIImage, Never>,
-        bitrate: Int = 1_500_000,
-        outputSize: CGSize? = nil
+        bitrate: Int? = nil,
+        outputSize: CGSize? = nil,
+        frameRate: Double? = nil
     ) throws {
         guard !isRecording else { return }
 
+        let requestedWidth = Int(outputSize?.width ?? 720)
+        let requestedHeight = Int(outputSize?.height ?? 1280)
+        // H.264 requires even dimensions.
+        let encodedWidth = max(2, (requestedWidth / 2) * 2)
+        let encodedHeight = max(2, (requestedHeight / 2) * 2)
+        let encodedFrameRate = frameRate ?? Double(Config.cameraFrameRate)
+
+        // Bitrate follows the picture: derived from what we're about to encode, unless the
+        // caller passed an explicit override.
+        let videoBitrate = VideoBitratePolicy.bitrate(
+            width: encodedWidth,
+            height: encodedHeight,
+            frameRate: encodedFrameRate,
+            profile: .disk,
+            override: bitrate
+        )
+
         // Storage guard: refuse when a write-out would die mid-file; warn when it's just low.
+        // Fed the derived bitrate — the minutes-remaining estimate is only honest at the rate
+        // actually about to be written.
         lowStorageWarning = nil
         if let free = Self.freeDiskBytes() {
-            switch Self.storageVerdict(freeBytes: free, videoBitrate: bitrate) {
+            switch Self.storageVerdict(freeBytes: free, videoBitrate: videoBitrate) {
             case .insufficient:
                 throw InsufficientStorageError()
             case .low(let minutes):
@@ -181,19 +204,14 @@ class VideoRecordingService: ObservableObject {
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
 
-        let requestedWidth = Int(outputSize?.width ?? 720)
-        let requestedHeight = Int(outputSize?.height ?? 1280)
-        // H.264 requires even dimensions.
-        let encodedWidth = max(2, (requestedWidth / 2) * 2)
-        let encodedHeight = max(2, (requestedHeight / 2) * 2)
-
         // Video input — H.264 High profile for best compatibility
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: encodedWidth,
             AVVideoHeightKey: encodedHeight,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: bitrate,
+                AVVideoAverageBitRateKey: videoBitrate,
+                AVVideoExpectedSourceFrameRateKey: Int(encodedFrameRate.rounded()),
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoAllowFrameReorderingKey: true
             ]
@@ -293,8 +311,10 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        NSLog("[Recording] Started (video+audio) → %@ (%dx%d @ %d bps)",
-              url.lastPathComponent, encodedWidth, encodedHeight, bitrate)
+        let bitrateSource = bitrate == nil ? "derived" : "override"
+        NSLog("[Recording] Started (video+audio) → \(url.lastPathComponent) "
+              + "(\(encodedWidth)x\(encodedHeight) @ \(Int(encodedFrameRate.rounded()))fps, "
+              + "\(videoBitrate) bps \(bitrateSource))")
         hipaaService?.log(action: "RECORDING_STARTED", detail: "Video+audio recording started")
     }
 

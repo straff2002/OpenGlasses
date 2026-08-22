@@ -110,10 +110,21 @@ class BroadcastService: ObservableObject {
             let connection = RTMPConnection()
             let stream = RTMPStream(connection: connection)
 
-            // Configure video encoding
+            // Configure video encoding. Bitrate follows the output geometry and the push rate
+            // (see `VideoBitratePolicy`), on the `.rtmp` profile — a live stream is bound by the
+            // phone's uplink, not by disk, so it takes a lower target and a much lower ceiling
+            // than a recording of the same frame.
+            let videoBitrate = VideoBitratePolicy.bitrate(
+                width: outputWidth,
+                height: outputHeight,
+                frameRate: targetFPS,
+                profile: .rtmp
+            )
+            NSLog("[Broadcast] Encoding \(outputWidth)x\(outputHeight) @ "
+                  + "\(Int(targetFPS.rounded()))fps, \(videoBitrate) bps")
             try await stream.setVideoSettings(VideoCodecSettings(
                 videoSize: CGSize(width: outputWidth, height: outputHeight),
-                bitRate: 1_500_000,
+                bitRate: videoBitrate,
                 profileLevel: kVTProfileLevel_H264_Main_AutoLevel as String,
                 maxKeyFrameIntervalDuration: 2
             ))

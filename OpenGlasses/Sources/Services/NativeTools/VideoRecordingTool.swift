@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Allows the AI agent to start/stop video recording from the glasses camera.
@@ -76,9 +77,13 @@ struct VideoRecordingTool: NativeTool {
                 try await MainActor.run {
                     recorder.autoSaveToPhotos = true
                     recorder.autoTranscribe = transcribe
+                    // Encode at the size frames actually arrive in, so the derived bitrate
+                    // matches the picture (the 720x1280 fallback is the glasses' native tier).
+                    let frameSize = camera.latestFrame?.size ?? CGSize(width: 720, height: 1280)
                     try recorder.startRecording(
                         from: camera.framePublisher,
-                        bitrate: Config.recordingBitrate
+                        bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
+                        outputSize: frameSize
                     )
                 }
                 var response = "Recording started with audio from the glasses microphone. The video will be saved to your Photos library when you stop."
