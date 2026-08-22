@@ -20,11 +20,9 @@ struct LLMImageSettingsView: View {
 
             Section {
                 Picker("Preset", selection: $preset) {
-                    Text("Full Quality").tag("full")
-                    Text("Balanced").tag("balanced")
-                    Text("Compact").tag("compact")
-                    Text("Custom").tag("custom")
-                    Text("Original").tag("off")
+                    ForEach(LLMImagePreset.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
                 }
                 .onChange(of: preset) { _, value in
                     Config.setLLMImagePreset(value)
@@ -33,7 +31,7 @@ struct LLMImageSettingsView: View {
                 Text(presetFooter)
             }
 
-            if preset == "custom" {
+            if preset == .custom {
                 Section {
                     VStack(alignment: .leading) {
                         HStack {
@@ -77,12 +75,16 @@ struct LLMImageSettingsView: View {
                 }
             }
 
-            if preset != "off" && preset != "custom" {
+            if preset != .custom {
                 Section {
                     LabeledContent("Long edge", value: "\(Int(activeLimits.maxLongEdge)) px")
                     LabeledContent("Size cap", value: formattedBytes(activeLimits.maxBytes))
                 } header: {
                     Text("Active Limits")
+                } footer: {
+                    Text(preset == .original
+                         ? "Photos are sent as captured unless they exceed the provider's hard limit, which these bounds enforce."
+                         : "")
                 }
             }
         }
@@ -94,22 +96,7 @@ struct LLMImageSettingsView: View {
         LLMImagePreparer.limits
     }
 
-    private var presetFooter: String {
-        switch preset {
-        case "full":
-            return "Best detail for reading labels and instruments. Uses more image tokens."
-        case "balanced":
-            return "Good detail with smaller payloads — a practical default for most vision questions."
-        case "compact":
-            return "Smaller images for quick scene descriptions when fine print is less important."
-        case "custom":
-            return "Tune the resize and compression limits yourself."
-        case "off":
-            return "Send camera photos unchanged. Large iPhone captures may exceed provider limits."
-        default:
-            return ""
-        }
-    }
+    private var presetFooter: String { preset.explanation }
 
     private func formattedBytes(_ bytes: Int) -> String {
         if bytes >= 1_000_000 {

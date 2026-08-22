@@ -1445,7 +1445,7 @@ class LLMService: ObservableObject {
                 // cache on every follow-up turn instead of re-billing full input tokens each time.
                 var body: [String: Any] = [
                     "model": config.model,
-                    "max_tokens": smallContext ? (imageData != nil ? 160 : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
+                    "max_tokens": smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
                     "system": [[
                         "type": "text",
                         "text": systemPrompt,
@@ -1671,7 +1671,7 @@ class LLMService: ObservableObject {
 
                 var body: [String: Any] = [
                     "model": config.model,
-                    "max_tokens": smallContext ? (imageData != nil ? 160 : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
+                    "max_tokens": smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
                     "messages": messages
                 ]
                 Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
@@ -2368,7 +2368,7 @@ class LLMService: ObservableObject {
                     // for the same 1024 tokens and the turn can come back empty with a STOP finish.
                     "generationConfig": GeminiBudgetPolicy.generationConfig(
                         includesTools: includeTools,
-                        configuredMaxTokens: smallContext && imageData != nil ? 160 : Config.maxTokens)
+                        configuredMaxTokens: smallContext && imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
                 ]
 
                 if includeTools {
@@ -2910,15 +2910,30 @@ class LLMService: ObservableObject {
         compressContextWindowIfNeeded()
     }
 
+    /// History for one request.
+    ///
+    /// Small context rewrites aggressively — tool messages dropped, text clipped — because the
+    /// point is to fit inside a few thousand tokens. Groq keeps the plain tail it has always used:
+    /// `compactHistory` would also strip the tool exchange, and with tools *enabled* that changes
+    /// an existing user's tool loop, which is not what a vision-image setting should do.
     private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
         if smallContext {
-            return Self.compactHistory(conversationHistory, keepLast: 4)
+            return Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
         }
-        if provider == .groq {
-            return Self.compactHistory(conversationHistory, keepLast: 6)
-        }
+        // Groq's free tier has tight TPM limits — trim history aggressively.
+        if provider == .groq { return Array(conversationHistory.suffix(6)) }
         return conversationHistory
     }
+
+    /// How many recent messages a small-context request carries.
+    static let smallContextHistoryTurns = 4
+
+    /// Reply ceiling for a small-context *vision* turn. The lean prompt asks for one or two
+    /// spoken sentences, and this is the hard stop that keeps a chatty model from spending the
+    /// budget the setting exists to save. Text-only turns keep `Config.maxTokens`: without an
+    /// image there is no image-token pressure, and truncating prose mid-sentence is worse than a
+    /// slightly larger reply.
+    static let smallContextVisionMaxTokens = 320
 
     static func compactHistory(_ history: [[String: Any]], keepLast: Int) -> [[String: Any]] {
         var out: [[String: Any]] = []

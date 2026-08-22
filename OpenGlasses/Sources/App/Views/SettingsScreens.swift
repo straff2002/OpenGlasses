@@ -244,7 +244,7 @@ struct AIPersonalitySettingsScreen: View {
                     HStack {
                         Label("Vision Images", systemImage: "photo.badge.arrow.down")
                         Spacer()
-                        Text(Config.llmImagePresetDisplayName)
+                        Text(Config.llmImagePreset.displayName)
                             .foregroundStyle(.secondary)
                     }
                 }

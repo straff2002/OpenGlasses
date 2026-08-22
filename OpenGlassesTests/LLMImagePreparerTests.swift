@@ -74,28 +74,81 @@ final class LLMImagePreparerTests: XCTestCase {
         XCTAssertTrue(LLMImagePreparer.isDegenerate(Data()))
     }
 
-    func testTightTPMCapsBytesAndLongEdge() {
-        let size = CGSize(width: 1280, height: 720)
+    // MARK: - Presets (the shrink-further half)
+
+    /// A preset may shrink an image harder than the API requires — that is the whole feature, and
+    /// it is what makes a tight-token provider usable.
+    func testACompactPresetCapsBothBytesAndLongEdge() {
+        let limits = LLMImagePreparer.limits(for: .compact)
+        let big = noisyJPEG(width: 2000, height: 1200)
+        XCTAssertGreaterThan(big.count, limits.maxBytes, "fixture must actually exceed the cap it is testing")
+
+        let out = LLMImagePreparer.prepared(big, limits: limits)
+        XCTAssertLessThanOrEqual(longEdge(of: out), Int(limits.maxLongEdge))
+        XCTAssertLessThanOrEqual(out.count, limits.maxBytes)
+    }
+
+    /// The one a preset may **not** do. "Original" means "do not optimise", not "ignore the
+    /// endpoint" — Anthropic 400s an inline image over 5 MB, and that is a property of the API
+    /// rather than a user preference, so an oversized capture is still brought under the ceiling.
+    func testOriginalIsStillHeldToTheProviderCeiling() {
+        XCTAssertEqual(LLMImagePreparer.limits(for: .original), .apiCeiling)
+
+        let huge = noisyJPEG(width: 4032, height: 3024)
+        let out = LLMImagePreparer.prepared(huge, limits: LLMImagePreparer.limits(for: .original))
+        XCTAssertLessThanOrEqual(out.count, LLMImagePreparer.maxBytes,
+                                 "an image over the hard limit is a guaranteed 400, whatever the user picked")
+    }
+
+    /// A custom preset's sliders are clamped against the same ceiling, so no combination of
+    /// settings can produce a request the endpoint will refuse.
+    func testCustomLimitsCannotExceedTheProviderCeiling() {
+        let limits = LLMImagePreparer.limits(for: .custom)
+        XCTAssertLessThanOrEqual(limits.maxBytes, LLMImagePreparer.maxBytes)
+        XCTAssertLessThanOrEqual(limits.maxLongEdge, LLMImagePreparer.maxLongEdge)
+    }
+
+    /// An image already inside a preset's limits is returned byte-identical — no re-encode, so
+    /// the common glasses path (already-small frames) pays nothing for the feature existing.
+    func testAnImageInsideTheLimitsIsNotReEncoded() {
+        let small = jpeg(width: 640, height: 480)
+        XCTAssertEqual(LLMImagePreparer.prepared(small, limits: LLMImagePreparer.limits(for: .compact)), small)
+    }
+
+    /// The ladder always reaches the shared floor, whatever the slider says — otherwise a high
+    /// custom quality could run out of steps while still over the byte cap.
+    func testQualityLadderDescendsToTheFloor() {
+        for start in [CGFloat(0.95), 0.75, 0.4, 0.2] {
+            let ladder = LLMImagePreparer.qualityLadder(from: start)
+            XCTAssertEqual(ladder.first ?? -1, start, accuracy: 0.001)
+            XCTAssertEqual(ladder.last ?? -1, 0.2, accuracy: 0.001)
+            XCTAssertEqual(ladder, ladder.sorted(by: >), "a ladder that rises would re-inflate the payload")
+        }
+    }
+
+    /// Stored raw values are a migration surface: they are what is already in UserDefaults on
+    /// devices running the build that shipped them.
+    func testPresetRawValuesAreStable() {
+        XCTAssertEqual(LLMImagePreset.original.rawValue, "off")
+        XCTAssertEqual(LLMImagePreset.full.rawValue, "full")
+        XCTAssertNil(LLMImagePreset(rawValue: "nonsense"))
+    }
+
+    /// Noise defeats JPEG's entropy coding, so this actually lands over the byte caps a flat
+    /// colour would sail under.
+    private func noisyJPEG(width: Int, height: Int) -> Data {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
-        let noisy = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
-            for y in stride(from: 0, to: 720, by: 2) {
-                for x in stride(from: 0, to: 1280, by: 2) {
-                    UIColor(
-                        hue: CGFloat((x + y) % 360) / 360,
-                        saturation: 1,
-                        brightness: 1,
-                        alpha: 1
-                    ).setFill()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { ctx in
+            for y in stride(from: 0, to: height, by: 2) {
+                for x in stride(from: 0, to: width, by: 2) {
+                    UIColor(hue: CGFloat((x &* 7 &+ y &* 13) % 360) / 360,
+                            saturation: 1, brightness: 1, alpha: 1).setFill()
                     ctx.fill(CGRect(x: x, y: y, width: 2, height: 2))
                 }
             }
-        }.jpegData(compressionQuality: 0.95)!
-        XCTAssertGreaterThan(noisy.count, LLMImagePreparer.Limits.tightTPM.maxBytes)
-
-        let out = LLMImagePreparer.prepared(noisy, tightTPM: true)
-        XCTAssertLessThanOrEqual(longEdge(of: out), Int(LLMImagePreparer.Limits.tightTPM.maxLongEdge))
-        XCTAssertLessThanOrEqual(out.count, LLMImagePreparer.Limits.tightTPM.maxBytes)
+        }
+        return image.jpegData(compressionQuality: 1.0)!
     }
 
     func testRealFramesAreNotDegenerate() {

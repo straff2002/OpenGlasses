@@ -17,7 +17,7 @@ struct LiveVisionSettingsView: View {
                     HStack {
                         Label("Image Compression", systemImage: "photo.badge.arrow.down")
                         Spacer()
-                        Text(Config.llmImagePresetDisplayName)
+                        Text(Config.llmImagePreset.displayName)
                             .foregroundStyle(.secondary)
                     }
                 }

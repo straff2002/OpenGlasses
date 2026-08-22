@@ -2158,14 +2158,19 @@ struct Config {
 
     // MARK: - LLM Image Compression
 
-    static var llmImagePreset: String {
-        UserDefaults.standard.string(forKey: "llmImagePreset") ?? "full"
+    /// How hard to shrink photos before they go to a vision model. Stored as the preset's raw
+    /// value; an unrecognised string (an older build, a hand-edited default) reads as `.full`,
+    /// which is the pre-preset behaviour.
+    static var llmImagePreset: LLMImagePreset {
+        UserDefaults.standard.string(forKey: "llmImagePreset").flatMap(LLMImagePreset.init(rawValue:)) ?? .full
     }
 
-    static func setLLMImagePreset(_ preset: String) {
-        UserDefaults.standard.set(preset, forKey: "llmImagePreset")
+    static func setLLMImagePreset(_ preset: LLMImagePreset) {
+        UserDefaults.standard.set(preset.rawValue, forKey: "llmImagePreset")
     }
 
+    /// Custom-preset knobs. Each is clamped against the provider ceiling when resolved (see
+    /// `LLMImagePreparer.limits(for:)`) — a slider cannot raise a limit the API sets.
     static var llmImageCustomMaxLongEdge: Int {
         let v = UserDefaults.standard.object(forKey: "llmImageCustomMaxLongEdge") as? Int
         return v ?? 1568
@@ -2193,16 +2198,8 @@ struct Config {
         UserDefaults.standard.set(Double(value), forKey: "llmImageCustomJPEGQuality")
     }
 
-    static var llmImagePresetDisplayName: String {
-        switch llmImagePreset {
-        case "balanced": return "Balanced"
-        case "compact": return "Compact"
-        case "custom": return "Custom"
-        case "off": return "Original"
-        default: return "Full Quality"
-        }
-    }
-
+    /// Send a short spoken-style prompt and a few recent lines instead of the full system prompt
+    /// and tool list. Off by default; for providers with a tight token cap.
     @UserDefaultsBacked("llmImageLightweightPromptEnabled", default: false) static var llmImageLightweightPromptEnabled: Bool
 
     static func setLLMImageLightweightPromptEnabled(_ enabled: Bool) {
