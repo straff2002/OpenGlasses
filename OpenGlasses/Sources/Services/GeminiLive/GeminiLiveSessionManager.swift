@@ -376,12 +376,11 @@ class GeminiLiveSessionManager: ObservableObject {
               String(describing: connectionState), geminiService.videoFramesSent)
 
         if !setupOk {
-            let msg: String
-            if case .error(let err) = geminiService.connectionState {
-                msg = err
-            } else {
-                msg = "Failed to connect to Gemini"
-            }
+            var errorStateMessage: String?
+            if case .error(let err) = geminiService.connectionState { errorStateMessage = err }
+            let msg = GeminiLiveFailureCopy.message(
+                errorStateMessage: errorStateMessage,
+                lastCloseReason: geminiService.lastCloseReason)
             errorMessage = msg
             geminiService.disconnect()
             stateObservation?.cancel()

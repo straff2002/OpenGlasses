@@ -105,7 +105,13 @@ class GeminiLiveService: ObservableObject {
 
     // MARK: - Connect / Disconnect
 
+    /// The most recent close message, retained so a refusal can be explained rather than reported
+    /// as a generic failure. Cleared at the start of each connect so a stale reason cannot describe
+    /// a later attempt.
+    private(set) var lastCloseReason: String?
+
     func connect() async -> Bool {
+        lastCloseReason = nil
         guard let url = Config.geminiLiveWebSocketURL else {
             connectionState = .error("No Gemini API key configured")
             return false
@@ -140,6 +146,10 @@ class GeminiLiveService: ObservableObject {
                     self.connectionState = .disconnected
                     self.isModelSpeaking = false
                     let msg = "Connection closed (code \(code.rawValue): \(reasonStr))"
+                    // Keep it: a *refused* session closes rather than errors, so this is the only
+                    // signal that carries the server's reason, and the state above is deliberately
+                    // not `.error` (a normal end-of-session close lands here too).
+                    self.lastCloseReason = msg
                     self.onDisconnected?(msg)
                     self.scheduleReconnect(reason: msg)
                 }
