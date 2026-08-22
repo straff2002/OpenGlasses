@@ -62,13 +62,18 @@ struct ServicesSettingsView: View {
     @State private var elevenLabsVoicesLoading = false
     @State private var elevenLabsVoicesError: String?
 
-    private var isDiarizationOn: Bool {
-        diarizationEnabled && !Config.deepgramAPIKey.isEmpty && !hipaaMode
-    }
+    // The `@AppStorage` properties above exist to make SwiftUI re-render when a setting changes
+    // elsewhere; the *values* still come from Config. Re-implementing these predicates here would
+    // put a second copy of a HIPAA suppression rule in a view, and two copies is how one of them
+    // later drifts from the services that gate real egress on it.
+    // The `@AppStorage` properties above are why this view re-renders when a setting changes on
+    // another screen — `DynamicProperty` invalidates on the key, not on a read in `body`. The
+    // *values* still come from Config: re-implementing these predicates here would put a second
+    // copy of a HIPAA suppression rule in a view, and two copies is how one of them later drifts
+    // from the services that gate real egress on it.
+    private var isDiarizationOn: Bool { Config.isDiarizationConfigured }
 
-    private var isTranslationOn: Bool {
-        translationCaptionsEnabled && Config.isGeminiLiveConfigured && !hipaaMode
-    }
+    private var isTranslationOn: Bool { Config.isTranslationCloudConfigured }
 
     var body: some View {
         Form {

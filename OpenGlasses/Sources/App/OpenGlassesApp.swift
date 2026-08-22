@@ -3860,8 +3860,10 @@ class AppState: ObservableObject, AppStateProtocol {
 
     func applyActivePresetChange(_ id: String, clearHistory: Bool = true, clearActivePersona: Bool = true) {
         let presetChanged = Config.activePresetId != id
+        // Re-selecting the active preset is a no-op *unless* the caller is telling us its text was
+        // edited (`clearHistory: false`), where the id is unchanged but the runtime is stale.
         let refreshRuntime = presetChanged || !clearHistory
-        guard presetChanged || refreshRuntime else { return }
+        guard refreshRuntime else { return }
 
         Config.setActivePresetId(id)
         if presetChanged && clearActivePersona {
