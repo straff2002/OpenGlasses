@@ -11,6 +11,21 @@ struct LiveVisionSettingsView: View {
     var body: some View {
         Form {
             Section {
+                NavigationLink {
+                    LLMImageSettingsView()
+                } label: {
+                    HStack {
+                        Label("Image Compression", systemImage: "photo.badge.arrow.down")
+                        Spacer()
+                        Text(Config.llmImagePreset.displayName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("Resize and compress photos before they're sent to the AI for description — keeps context smaller while preserving readable detail.")
+            }
+
+            Section {
                 Toggle("Drop near-duplicate frames", isOn: $enabled)
                     .onChange(of: enabled) { _, v in Config.setFrameDedupEnabled(v) }
             } footer: {

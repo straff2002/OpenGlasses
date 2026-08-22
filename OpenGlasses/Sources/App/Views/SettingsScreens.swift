@@ -106,6 +106,7 @@ struct AIPersonalitySettingsScreen: View {
     @State private var memoryNudgesEnabled = Config.memoryNudgesEnabled
     @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
     @State private var autoModelRoutingEnabled = Config.autoModelRoutingEnabled
+    @State private var smallContextEnabled = Config.llmImageLightweightPromptEnabled
 
     var body: some View {
         Form {
@@ -241,6 +242,17 @@ struct AIPersonalitySettingsScreen: View {
                 }
 
                 NavigationLink {
+                    LLMImageSettingsView()
+                } label: {
+                    HStack {
+                        Label("Vision Images", systemImage: "photo.badge.arrow.down")
+                        Spacer()
+                        Text(Config.llmImagePreset.displayName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                NavigationLink {
                     AgenticFeaturesView(agentDocs: appState.agentDocs, localLLM: appState.localLLMService)
                         .environmentObject(appState)
                 } label: {
@@ -257,6 +269,15 @@ struct AIPersonalitySettingsScreen: View {
                 Text("How It Behaves")
             } footer: {
                 Text("Intent Classifier ignores nearby chatter so the AI only responds when you're talking to it. Memory and History let the AI remember who you are across sessions. Smart Routing picks the right model for the task; Agentic Features let the AI take multi-step actions on its own.")
+            }
+
+            Section {
+                Toggle("Small context", isOn: $smallContextEnabled)
+                    .onChange(of: smallContextEnabled) { _, value in
+                        Config.setLLMImageLightweightPromptEnabled(value)
+                    }
+            } footer: {
+                Text("Off by default. When on, each turn sends a short prompt and recent lines only — no tool list or full system prompt. Use this for tight providers like Groq.")
             }
         }
         .navigationTitle("AI & Personality")

@@ -545,8 +545,9 @@ struct Config {
     VISION & CAMERA:
     - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
     - You CAN see images — never say you lack camera or vision access.
+    - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
     - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
-    - For objects, products, landmarks: identify and describe them.
+    - For objects, products, landmarks: identify them briefly — do not catalog every detail.
     - After reading text from an image, offer to copy it to clipboard or translate it.
 
     KNOWLEDGE:
@@ -2153,6 +2154,56 @@ struct Config {
 
     static func setCameraFrameRate(_ fps: Int) {
         UserDefaults.standard.set(fps, forKey: "cameraFrameRate")
+    }
+
+    // MARK: - LLM Image Compression
+
+    /// How hard to shrink photos before they go to a vision model. Stored as the preset's raw
+    /// value; an unrecognised string (an older build, a hand-edited default) reads as `.full`,
+    /// which is the pre-preset behaviour.
+    static var llmImagePreset: LLMImagePreset {
+        UserDefaults.standard.string(forKey: "llmImagePreset").flatMap(LLMImagePreset.init(rawValue:)) ?? .full
+    }
+
+    static func setLLMImagePreset(_ preset: LLMImagePreset) {
+        UserDefaults.standard.set(preset.rawValue, forKey: "llmImagePreset")
+    }
+
+    /// Custom-preset knobs. Each is clamped against the provider ceiling when resolved (see
+    /// `LLMImagePreparer.limits(for:)`) — a slider cannot raise a limit the API sets.
+    static var llmImageCustomMaxLongEdge: Int {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomMaxLongEdge") as? Int
+        return v ?? 1568
+    }
+
+    static func setLLMImageCustomMaxLongEdge(_ value: Int) {
+        UserDefaults.standard.set(value, forKey: "llmImageCustomMaxLongEdge")
+    }
+
+    static var llmImageCustomMaxBytes: Int {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomMaxBytes") as? Int
+        return v ?? 1_500_000
+    }
+
+    static func setLLMImageCustomMaxBytes(_ value: Int) {
+        UserDefaults.standard.set(value, forKey: "llmImageCustomMaxBytes")
+    }
+
+    static var llmImageCustomJPEGQuality: CGFloat {
+        let v = UserDefaults.standard.object(forKey: "llmImageCustomJPEGQuality") as? Double
+        return v.map { CGFloat($0) } ?? 0.75
+    }
+
+    static func setLLMImageCustomJPEGQuality(_ value: CGFloat) {
+        UserDefaults.standard.set(Double(value), forKey: "llmImageCustomJPEGQuality")
+    }
+
+    /// Send a short spoken-style prompt and a few recent lines instead of the full system prompt
+    /// and tool list. Off by default; for providers with a tight token cap.
+    @UserDefaultsBacked("llmImageLightweightPromptEnabled", default: false) static var llmImageLightweightPromptEnabled: Bool
+
+    static func setLLMImageLightweightPromptEnabled(_ enabled: Bool) {
+        llmImageLightweightPromptEnabled = enabled
     }
 
     // MARK: - Perplexity Search

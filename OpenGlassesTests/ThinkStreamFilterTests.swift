@@ -131,4 +131,16 @@ final class StripThinkTagsTemplateOpenedTests: XCTestCase {
         XCTAssertEqual(spoken, "No tags here.")
         XCTAssertNil(reasoning)
     }
+
+    func testUnclosedThinkBlockIsDropped() {
+        let dump = """
+        <think>
+        The user wants a detailed description of the image.
+        I need to synthesize this into 1-2
+        """
+        let (spoken, reasoning) = LLMService.stripThinkTags(dump)
+        XCTAssertEqual(spoken, "")
+        XCTAssertNotNil(reasoning)
+        XCTAssertFalse(reasoning!.contains("<think>"))
+    }
 }

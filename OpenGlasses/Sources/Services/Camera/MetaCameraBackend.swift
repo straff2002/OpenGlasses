@@ -380,8 +380,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private func waitForStreaming(timeout: TimeInterval = 20) async throws {
         guard let session = streamSession else { throw CameraError.captureFailed }
 
-        // Start the session if not already running
-        if session.state == .stopped {
+        // Start the session if it is not already running. `.paused` counts: a stream paused after
+        // a one-off capture (see `pauseStreamAfterCapture`) is idle, not broken.
+        if session.state == .stopped || session.state == .paused {
             session.start()  // DAT 0.8.0+: Stream.start() is synchronous
         }
 
@@ -392,7 +393,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         let deadline = ContinuousClock.now + .seconds(timeout)
         while ContinuousClock.now < deadline {
             if session.state == .streaming { break }
-            if session.state == .stopped {
+            if session.state == .stopped || session.state == .paused {
                 if restartNudges < 3 {
                     restartNudges += 1
                     NSLog("[Camera] Stream stopped while warming up — restart nudge %d/3", restartNudges)
@@ -552,7 +553,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // exists for this device" — while long-lived preview sessions never hit it).
         // Battery is protected by the idle timer: teardown happens after a quiet minute,
         // and back-to-back photos skip the multi-second session cold-start entirely.
-        if !isStreaming {
+        // The *stream* is paused rather than left running, which is the battery half of that
+        // trade without giving up the warm session.
+        if !isStreaming && !continuousStreamingIntent {
+            pauseStreamAfterCapture()
             scheduleIdleTeardown()
         }
 
@@ -571,6 +575,27 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// each capture; cancelled outright when explicit streaming starts).
     private var idleTeardownTask: Task<Void, Never>?
     private static let sessionIdleGrace: Duration = .seconds(60)
+
+    /// Stop the stream but keep the session, after a one-off capture.
+    ///
+    /// `latestFrame` is deliberately **kept**. It is a cached still, not stream state, and three
+    /// things read it after a capture: the photo-capture timeout fallback
+    /// (`latestFrameAsJPEG()`), `waitForStreaming`'s first-frame wait, and — the one that bites
+    /// silently — the recording/broadcast start paths, which derive the encoder's output size and
+    /// therefore its bitrate from `latestFrame?.size`, falling back to a hardcoded 720×1280.
+    /// Clearing it here would send "photo, then record" back to that constant, which is precisely
+    /// what deriving the bitrate from the picture was meant to stop.
+    private func pauseStreamAfterCapture() {
+        guard let session = streamSession else { return }
+        switch session.state {
+        case .stopped, .stopping:
+            return
+        default:
+            session.stop()
+            lastFrameTime = .distantPast
+            NSLog("[Camera] Stream paused after capture (session kept warm)")
+        }
+    }
 
     private func scheduleIdleTeardown() {
         idleTeardownTask?.cancel()
