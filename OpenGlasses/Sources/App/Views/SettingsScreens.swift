@@ -5,13 +5,14 @@ import SwiftUI
 /// Wake word + hands-free trigger settings (always visible, including Simple Mode).
 struct VoiceTriggersSettingsScreen: View {
     @ObservedObject var appState: AppState
+    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
 
     var body: some View {
         Form {
             // MARK: Wake Word
             Section {
                 Picker("Wake Phrase", selection: Binding(
-                    get: { Config.wakePhrase },
+                    get: { wakePhrase.isEmpty ? "openglasses" : wakePhrase },
                     set: { newValue in
                         Config.setWakePhrase(newValue)
                         Config.setAlternativeWakePhrases(Config.defaultAlternativesForPhrase(newValue))
@@ -91,6 +92,8 @@ struct VoiceTriggersSettingsScreen: View {
 /// Models, personas, system prompt, and behaviour settings (owner-only; hidden in Simple Mode).
 struct AIPersonalitySettingsScreen: View {
     @ObservedObject var appState: AppState
+    @AppStorage("activePromptPresetId") private var activePresetId = "preset-default"
+    @AppStorage("savedPersonas") private var savedPersonasData = Data()
 
     // Model configs editing
     @State private var modelConfigs: [ModelConfig] = Config.savedModels
@@ -176,18 +179,18 @@ struct AIPersonalitySettingsScreen: View {
                     HStack {
                         Label("Personas", systemImage: "person.2")
                         Spacer()
-                        Text("\(Config.enabledPersonas.count) active")
+                        Text("\(enabledPersonaCount) active")
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 NavigationLink {
-                    PromptPresetsView()
+                    PromptPresetsView(appState: appState)
                 } label: {
                     HStack {
                         Label("System Prompt", systemImage: "text.quote")
                         Spacer()
-                        Text(Config.activePreset?.name ?? "Default")
+                        Text(Config.savedPresets.first { $0.id == activePresetId }?.name ?? "Default")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -275,6 +278,11 @@ struct AIPersonalitySettingsScreen: View {
         .onDisappear {
             saveSettings()
         }
+    }
+
+    private var enabledPersonaCount: Int {
+        _ = savedPersonasData
+        return Config.enabledPersonas.count
     }
 
     // MARK: - Save Settings
@@ -528,6 +536,7 @@ struct ConnectionsSettingsScreen: View {
 /// Hardware, privacy, and medical compliance (always visible, including Simple Mode).
 struct GlassesPrivacySettingsScreen: View {
     @ObservedObject var appState: AppState
+    @AppStorage("hipaaMode") private var hipaaMode = false
 
     // Privacy filter
     @State private var privacyFilterEnabled = Config.privacyFilterEnabled
@@ -561,7 +570,7 @@ struct GlassesPrivacySettingsScreen: View {
                     HStack {
                         Label("Medical Compliance", systemImage: "cross.case.fill")
                         Spacer()
-                        if StoreKitService.shared.canAccessMedicalCompliance && Config.hipaaMode {
+                        if StoreKitService.shared.canAccessMedicalCompliance && hipaaMode {
                             Image(systemName: "cross.case.fill")
                                 .font(.caption)
                                 .foregroundStyle(AppAccent.aiCoral)
@@ -607,14 +616,12 @@ struct GlassesPrivacySettingsScreen: View {
 /// Theme, accent colour, and languages (always visible, including Simple Mode).
 struct LookFeelSettingsScreen: View {
     @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
+    @AppStorage("appAppearance") private var appearance: String = "dark"
 
     var body: some View {
         Form {
             Section {
-                Picker("Theme", selection: Binding(
-                    get: { UserDefaults.standard.string(forKey: "appAppearance") ?? "dark" },
-                    set: { UserDefaults.standard.set($0, forKey: "appAppearance") }
-                )) {
+                Picker("Theme", selection: $appearance) {
                     Text("Dark").tag("dark")
                     Text("Light").tag("light")
                     Text("System").tag("system")

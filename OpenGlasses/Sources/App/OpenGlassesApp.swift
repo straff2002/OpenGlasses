@@ -3933,7 +3933,42 @@ class AppState: ObservableObject, AppStateProtocol {
         if !persona.modelId.isEmpty {
             Config.setActiveModelId(persona.modelId)
         }
-        Config.setActivePresetId(persona.presetId)
+        applyActivePresetChange(persona.presetId, clearActivePersona: false)
+    }
+
+    /// Switch the active system-prompt preset and make every copy of the old prompt stale.
+    ///
+    /// **Conversation history is deliberately kept.** Nothing needs it cleared: the cloud paths
+    /// rebuild the system prompt on every send (`buildSystemPrompt` runs per turn), so a new preset
+    /// is in force on the very next reply regardless of what history holds. Only two things cache
+    /// instructions — the on-device Apple session, which is invalidated here, and the two realtime
+    /// sessions, which are restarted — and both are handled below. Dropping the conversation would
+    /// be a UX choice wearing correctness clothing, and a surprising one: a wearer mid-conversation
+    /// who says a persona wake phrase ("hey travel") reaches this through `applyPersonaRouting`,
+    /// and losing the thread they were in the middle of is the opposite of what they asked for.
+    /// Starting fresh already has its own affordance; it does not need a second, implicit one.
+    ///
+    /// - Parameter promptTextChanged: the *contents* of the active preset were edited. The id is
+    ///   unchanged, so nothing below would fire, but every cached copy of the prompt is stale.
+    func applyActivePresetChange(_ id: String, promptTextChanged: Bool = false, clearActivePersona: Bool = true) {
+        let presetChanged = Config.activePresetId != id
+        guard presetChanged || promptTextChanged else { return }
+
+        Config.setActivePresetId(id)
+        if presetChanged && clearActivePersona {
+            activePersona = nil
+        }
+        llmService.invalidateOnDeviceSession()
+        Task {
+            if geminiLiveSession.isActive {
+                geminiLiveSession.stopSession()
+                await geminiLiveSession.startSession()
+            }
+            if openAIRealtimeSession.isActive {
+                openAIRealtimeSession.stopSession()
+                await openAIRealtimeSession.startSession()
+            }
+        }
         llmService.refreshActiveModel()
     }
 

@@ -7,6 +7,9 @@ struct SettingsView: View {
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
     @AppStorage("appAppearance") private var appearance: String = "dark"
+    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    @AppStorage("activeModelId") private var activeModelId = ""
+    @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
 
     // Owner gate (BM P10): Simple-Mode exit always asks; Settings entry asks when the flag is on.
     @State private var settingsOwnerGateEnabled = Config.settingsOwnerGateEnabled
@@ -33,7 +36,7 @@ struct SettingsView: View {
                 chips: [
                     ("Camera", appState.isConnected),
                     ("Display", appState.glassesDisplay.hasDisplayCapability),
-                    ("HUD \(Config.glassesDisplayEnabled ? "on" : "off")", Config.glassesDisplayEnabled),
+                    ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
                 ]
             )
 
@@ -42,7 +45,7 @@ struct SettingsView: View {
                     OGRow(
                         "Voice & Triggers", icon: "waveform",
                         subtitle: "Wake phrase, push-to-talk, hands-free triggers",
-                        value: "“\(Config.wakePhrase.capitalized)”"
+                        value: "“\(displayedWakePhrase)”"
                     )
                 }
 
@@ -52,7 +55,7 @@ struct SettingsView: View {
                         OGRow(
                             "AI & Personality", icon: "brain.head.profile",
                             subtitle: "Models, personas, prompt, and behaviour",
-                            value: Config.activeModel?.name
+                            value: displayedActiveModelName
                         )
                     }
                     OGDivider()
@@ -169,6 +172,15 @@ struct SettingsView: View {
         .onAppear {
             if settingsLocked { authenticateSettingsEntry() }
         }
+    }
+
+    private var displayedWakePhrase: String {
+        let phrase = wakePhrase.isEmpty ? Config.wakePhrase : wakePhrase
+        return phrase.capitalized
+    }
+
+    private var displayedActiveModelName: String? {
+        Config.savedModels.first { $0.id == activeModelId }?.name ?? Config.activeModel?.name
     }
 
     // MARK: - Category Row
@@ -556,6 +568,12 @@ struct HardwarePrivacyView: View {
     @Binding var conversationEncryptionEnabled: Bool
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
+    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
+    @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
+
+    private var displayedDisplayBackendName: String {
+        DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
+    }
 
     /// Plan CQ P0: what class of device is connected, resolved from the three things that
     /// actually determine it. Re-read on each render — this view is cheap and the answer
@@ -667,7 +685,7 @@ struct HardwarePrivacyView: View {
                     HStack {
                         Label("Display Backend", systemImage: "display")
                         Spacer()
-                        Text(Config.displayBackend.displayName)
+                        Text(displayedDisplayBackendName)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -677,7 +695,7 @@ struct HardwarePrivacyView: View {
                     HStack {
                         Label("Web HUD Mirror", systemImage: "globe.desk")
                         Spacer()
-                        Text(Config.hudMirrorEnabled ? "On" : "Off")
+                        Text(hudMirrorEnabled ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }

@@ -6,6 +6,10 @@ import UniformTypeIdentifiers
 /// Accessed via NavigationLink from the main SettingsView.
 struct ServicesSettingsView: View {
     @ObservedObject var appState: AppState
+    @AppStorage("digestEnabled") private var digestEnabled = true
+    @AppStorage("diarizationEnabled") private var diarizationEnabled = false
+    @AppStorage("translationCaptionsEnabled") private var translationCaptionsEnabled = false
+    @AppStorage("hipaaMode") private var hipaaMode = false
 
     // Text-to-Speech — self-contained: seeded from Config, persisted on change.
     @State private var elevenLabsKeyInput: String = Config.elevenLabsAPIKey
@@ -59,6 +63,19 @@ struct ServicesSettingsView: View {
     @State private var elevenLabsVoices: [TextToSpeechService.ElevenLabsVoice] = []
     @State private var elevenLabsVoicesLoading = false
     @State private var elevenLabsVoicesError: String?
+
+    // The `@AppStorage` properties above exist to make SwiftUI re-render when a setting changes
+    // elsewhere; the *values* still come from Config. Re-implementing these predicates here would
+    // put a second copy of a HIPAA suppression rule in a view, and two copies is how one of them
+    // later drifts from the services that gate real egress on it.
+    // The `@AppStorage` properties above are why this view re-renders when a setting changes on
+    // another screen — `DynamicProperty` invalidates on the key, not on a read in `body`. The
+    // *values* still come from Config: re-implementing these predicates here would put a second
+    // copy of a HIPAA suppression rule in a view, and two copies is how one of them later drifts
+    // from the services that gate real egress on it.
+    private var isDiarizationOn: Bool { Config.isDiarizationConfigured }
+
+    private var isTranslationOn: Bool { Config.isTranslationCloudConfigured }
 
     var body: some View {
         Form {
@@ -277,7 +294,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Diarization", systemImage: "person.2.wave.2")
                         Spacer()
-                        Text(Config.isDiarizationConfigured ? "On" : "Off")
+                        Text(isDiarizationOn ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -304,7 +321,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Notification Digest", systemImage: "list.bullet.rectangle")
                         Spacer()
-                        Text(Config.digestEnabled ? "On" : "Off")
+                        Text(digestEnabled ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -320,7 +337,7 @@ struct ServicesSettingsView: View {
                     HStack {
                         Label("Translation", systemImage: "globe")
                         Spacer()
-                        Text(Config.isTranslationCloudConfigured ? "On" : "Off")
+                        Text(isTranslationOn ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
                 }
