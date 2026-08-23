@@ -61,7 +61,7 @@ final class DwellCaptureService: ObservableObject {
 
         let captured = Self.crop(frame, to: box) ?? frame
         lastCapture = captured
-        UIImageWriteToSavedPhotosAlbum(captured, nil, nil, nil)
+        GlassesPhotoAlbum.saveImage(captured)
         await announce?("Captured that.")
     }
 

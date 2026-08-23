@@ -59,6 +59,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// BR P2: listener on the DeviceSession's error stream (update-required and terminal
     /// device errors surface here, not on the camera Stream's errorPublisher).
     private var sessionErrorTask: Task<Void, Never>?
+    /// Latest stream error seen while waiting for `.streaming`. Blind `start()` nudges after
+    /// `.videoStreamingError` just replay the same failure; outer callers rebuild instead.
+    private var lastStreamError: StreamError?
 
     /// BR P2: actionable compatibility copy ("update the Meta AI app…") when the DAT layer
     /// reports an update requirement. Nil when compatible. Read by the retry loop to stop
@@ -379,6 +382,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 let message = CameraErrorPolicy.message(for: error)
                 NSLog("[Camera] Error: %@", message)
                 self.debug("Camera error: \(message)")
+                self.lastStreamError = error
 
                 // Device-traced 2026-08-23: this copy already said exactly what was wrong
                 // ("hinges are closed", "too hot", "battery is too low") and went only to the log
@@ -405,6 +409,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// Wait for the session to reach `.streaming` state, starting it if necessary.
     private func waitForStreaming(timeout: TimeInterval = 20) async throws {
         guard let session = streamSession else { throw CameraError.captureFailed }
+        lastStreamError = nil
 
         // Start the session if it is not already running. `.paused` counts: a stream paused after
         // a one-off capture (see `pauseStreamAfterCapture`) is idle, not broken.
@@ -415,10 +420,22 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // Wait for streaming state. During a cold start the stream bounces through .stopped
         // (device-traced: ~15-18s of .stopped/.waitingForDevice churn before .streaming), so a
         // transient .stopped is NOT terminal — nudge start() again a few times before giving up.
+        // Exception: `.videoStreamingError` / `.internalError` mean start already failed — more
+        // nudges only replay the same cycle (field log: waiting→starting→stopping→error×3).
         var restartNudges = 0
         let deadline = ContinuousClock.now + .seconds(timeout)
         while ContinuousClock.now < deadline {
             if session.state == .streaming { break }
+            if let err = lastStreamError,
+               case .videoStreamingError = err {
+                NSLog("[Camera] Aborting warmup after videoStreamingError — needs stream rebuild")
+                throw CameraError.streamNotReady
+            }
+            if let err = lastStreamError,
+               case .internalError = err {
+                NSLog("[Camera] Aborting warmup after internalError — needs stream rebuild")
+                throw CameraError.streamNotReady
+            }
             if session.state == .stopped || session.state == .paused {
                 if restartNudges < 3 {
                     restartNudges += 1
@@ -685,8 +702,32 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         do {
             try await ensurePermission()
-            try await ensureSession()
-            try await waitForStreaming()
+            // Match capturePhoto: after a paused one-off capture, start() can fail with
+            // videoStreamingError. Rebuild stream (then session) rather than fail the smart
+            // camera turn on the first dead start cycle.
+            var lastError: Error?
+            for attempt in 1...2 {
+                do {
+                    try await ensureSession()
+                    try await waitForStreaming(timeout: attempt == 1 ? 10 : 20)
+                    lastError = nil
+                    break
+                } catch {
+                    NSLog("[Camera] startStreaming attempt %d failed: %@",
+                          attempt, error.localizedDescription)
+                    lastError = error
+                    if attempt < 2 {
+                        let action = StreamRecoveryPolicy.action(consecutiveFailures: attempt - 1)
+                        if action == .rebuildStream {
+                            await teardownStreamOnly()
+                        } else {
+                            await resetSession()
+                        }
+                        try await Task.sleep(nanoseconds: 1_000_000_000)
+                    }
+                }
+            }
+            if let error = lastError { throw error }
         } catch {
             continuousStreamingIntent = false
             throw error

@@ -214,35 +214,11 @@ class CameraService: ObservableObject {
 
     // MARK: - Photo Library
 
-    /// Save photo data to the "Glasses" album in the photo library.
     func saveToPhotoLibrary(_ data: Data) {
         guard let image = UIImage(data: data) else { return }
-
-        GlassesPhotoAlbum.ensureAddOnlyAuthorization { status in
-            guard status == .authorized || status == .limited else {
-                NSLog("[Camera] Photo library access denied")
-                return
-            }
-
-            let album = GlassesPhotoAlbum.resolveAlbum()
-
-            PHPhotoLibrary.shared().performChanges {
-                let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
-
-                if let album {
-                    let albumChangeRequest = PHAssetCollectionChangeRequest(for: album)
-                    if let placeholder = creationRequest.placeholderForCreatedAsset {
-                        albumChangeRequest?.addAssets([placeholder] as NSArray)
-                    }
-                }
-            } completionHandler: { success, error in
-                if success {
-                    print("📸 Photo saved to Glasses album")
-                } else if let error {
-                    NSLog("[Camera] Save to album failed: %@", error.localizedDescription)
-                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                    print("📸 Photo saved to camera roll (album unavailable)")
-                }
+        GlassesPhotoAlbum.saveImage(image) { success in
+            if success {
+                print("📸 Photo saved to library")
             }
         }
     }

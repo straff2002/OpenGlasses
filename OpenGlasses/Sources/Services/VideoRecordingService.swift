@@ -446,30 +446,9 @@ class VideoRecordingService: ObservableObject {
 
     // MARK: - Photos Library
 
-    /// Save the video file to the "Glasses" album in the Photos library.
     private func saveVideoToPhotos(_ url: URL) async {
-        let status = await GlassesPhotoAlbum.ensureAddOnlyAuthorization()
-        guard status == .authorized || status == .limited else {
-            NSLog("[Recording] Photo library access denied")
-            return
-        }
-
-        let album = GlassesPhotoAlbum.resolveAlbum()
-
-        do {
-            try await PHPhotoLibrary.shared().performChanges {
-                let creationRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
-
-                if let album {
-                    let albumChangeRequest = PHAssetCollectionChangeRequest(for: album)
-                    if let placeholder = creationRequest?.placeholderForCreatedAsset {
-                        albumChangeRequest?.addAssets([placeholder] as NSArray)
-                    }
-                }
-            }
-            NSLog("[Recording] Video saved to Glasses album")
-        } catch {
-            NSLog("[Recording] Save to Photos failed: %@", error.localizedDescription)
+        if await GlassesPhotoAlbum.saveVideo(at: url) {
+            NSLog("[Recording] Video saved to library")
         }
     }
 

@@ -608,9 +608,8 @@ final class LocalLLMService: ObservableObject {
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Gemma 4 VLM turn (text or photo) through `Gemma4Processor.prepare`. Manual `LMInput`
-    /// token batches crash MLX on first forward; the processor path matches mlx-swift-lm's
-    /// integration tests.
+    /// Gemma 4 VLM turn: photos via `Gemma4Processor.prepare`; text via render + masked
+    /// `LMInput` (processor with no image hits Metal nil `setBytes`).
     private func generateGemma4VLMTurn(
         userMessage: String,
         systemPrompt: String,
@@ -639,10 +638,11 @@ final class LocalLLMService: ObservableObject {
         }
 
         let report = LockedGenerationReport()
-        // Multimodal Gemma 4 prepare is a single unchunked forward (no text-style
-        // chunked prefill). Fat system+tools prompts (~1.7k) + ~280 soft tokens
-        // Jetsam the phone mid-Metal. Photo turns use a short vision-only system
-        // string; text turns keep the full agent prompt (chunked, safe).
+        // Multimodal Gemma 4 prepare is a single unchunked forward. Fat system+tools
+        // (~1.7k) + soft tokens Jetsam mid-Metal — photo turns use a short vision system.
+        // Text-only must NOT use Gemma4Processor.prepare: with no image tensors the
+        // multimodal kernels hit Metal `setBytes` with nil → fatal assertion. Render +
+        // masked LMInput matches the Jinja fallback that already works for text.
         let effectiveSystem: String
         let effectiveHistory: [(role: String, content: String)]
         if imageData != nil {
@@ -658,25 +658,12 @@ final class LocalLLMService: ObservableObject {
         }
 
         let output = try await container.perform { context -> String in
-            var chat: [Chat.Message] = [.system(effectiveSystem)]
-            for turn in effectiveHistory {
-                chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
-            }
-            if let imageData, let ciImage = CIImage(data: imageData) {
-                chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
-            } else {
-                chat.append(.user(userMessage))
-            }
-
-            // Let Gemma4Processor.aspectPreservingTargetSize pick the canvas —
-            // forcing 896² before that path does not shrink soft tokens and
-            // wastes preprocess work on phone photos.
-            let userInput = UserInput(chat: chat)
             let lmInput: LMInput
-            do {
-                lmInput = try await context.processor.prepare(input: userInput)
-            } catch {
-                guard imageData == nil, Gemma4ChatPrompt.isJinjaParserFailure(error) else { throw error }
+            if let imageData, let ciImage = CIImage(data: imageData) {
+                var chat: [Chat.Message] = [.system(effectiveSystem)]
+                chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+                lmInput = try await context.processor.prepare(input: UserInput(chat: chat))
+            } else {
                 let text = Gemma4ChatPrompt.render(
                     system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
                     bosToken: context.tokenizer.bosToken)
