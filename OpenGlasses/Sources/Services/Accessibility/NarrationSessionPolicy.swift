@@ -32,6 +32,13 @@ struct NarrationSessionPolicy: Equatable {
         /// into a reply is worse than no description at all.
         case userTurn
         /// A live realtime voice session — two voices in the ear is chaos.
+        ///
+        /// A **moment**, not a standing condition, and the reason is worth stating because it is
+        /// the one that decides whether narration explains itself: the standing-condition rule
+        /// exists for silence the wearer cannot attribute to anything. During a live session the
+        /// ear is audibly occupied — there is a voice in it — so the silence explains itself, and
+        /// announcing it would interrupt a conversation to say a conversation is happening. That
+        /// is exactly what makes it different from `.ambientCaptions`, where the ear is empty.
         case realtimeSession
         /// Live ambient captions are running (Plan CV, caption/narration arbitration).
         ///

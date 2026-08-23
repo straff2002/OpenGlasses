@@ -591,4 +591,52 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertTrue(rig.spoken.isEmpty, "A description held across the transcript is stale, not owed")
     }
 
+
+    /// A live realtime voice session takes the ear and nothing else. This case shipped declared,
+    /// documented and tested at the policy layer but with **nothing raising it**, so narration
+    /// could speak into a live duplex session — which is why the assertion that matters here is
+    /// the behaviour, and the wiring that feeds it lives in `AppState.setup` (not headlessly
+    /// testable: it needs `Wearables`).
+    func testARealtimeSessionTakesTheEarButNotTheLoop() async {
+        let rig = makeRig(descriptions: [
+            "A kitchen with a table and two chairs.",
+            "A busy street crossing with traffic and a red light.",
+        ])
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.spoken.count, 1)
+
+        rig.service.noteInterruption(.realtimeSession, active: true)
+        XCTAssertTrue(rig.service.isPerceiving, "Grounding survives; only the ear is taken")
+        XCTAssertFalse(rig.service.isSpeakingMode)
+
+        rig.sceneHash = 0xFFFF_FFFF_FFFF_FFFF
+        await tick(rig, to: 20)
+        await tick(rig, to: 22)
+        XCTAssertEqual(rig.service.describedCount, 2)
+        XCTAssertEqual(rig.spoken.count, 1, "Two voices in one ear is the thing being prevented")
+
+        rig.service.noteInterruption(.realtimeSession, active: false)
+        XCTAssertTrue(rig.service.isSpeakingMode, "The requested mode survives the session")
+    }
+
+    /// A moment, not a standing condition: the ear is audibly occupied during a live session, so
+    /// the silence explains itself. Announcing it would interrupt a conversation to report that a
+    /// conversation is happening.
+    func testARealtimeSessionIsNeverAnnounced() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+
+        rig.service.noteInterruption(.realtimeSession, active: true)
+        XCTAssertNil(rig.service.silenceReason)
+        XCTAssertNil(rig.service.haltReason)
+        XCTAssertTrue(rig.service.noticeLog.isEmpty)
+
+        rig.service.noteInterruption(.realtimeSession, active: false)
+        XCTAssertTrue(rig.service.noticeLog.isEmpty, "…and no resume announcement either")
+    }
+
 }
