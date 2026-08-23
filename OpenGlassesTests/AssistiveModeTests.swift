@@ -72,3 +72,50 @@ final class AssistiveModeTests: XCTestCase {
         XCTAssertNotEqual(scene, social)
     }
 }
+
+/// Narration command parsing (Plan CV P2). The ordering is the substance: every "stop" form has to
+/// be matched before every "start" form, because "stop narrating" contains "narrating" and a wearer
+/// asking for quiet getting more speech is the one unacceptable failure in this table.
+final class NarrationCommandTests: XCTestCase {
+
+    func testParsesEachCommand() {
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "start watching"), .start)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "start narrating"), .startNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "stop narrating"), .stopNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "stop watching"), .stop)
+    }
+
+    /// The ordering trap, stated as a test so it can't regress silently.
+    func testStopFormsWinOverTheStartFormsTheyContain() {
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "stop narrating"), .stopNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "please stop describing what you see"), .stopNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "turn off narration"), .stop)
+    }
+
+    func testMatchesInsideALongerUtterance() {
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "hey, start narrating please"), .startNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "okay could you describe what you see"), .startNarrating)
+    }
+
+    func testIgnoresPunctuationAndCase() {
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "Stop  Narrating!"), .stopNarrating)
+        XCTAssertEqual(AssistiveRouter.narrationCommand(in: "START WATCHING."), .start)
+    }
+
+    /// Nil is the common and correct answer — almost nothing the wearer says is one of these.
+    func testOrdinarySpeechIsNotACommand() {
+        XCTAssertNil(AssistiveRouter.narrationCommand(in: nil))
+        XCTAssertNil(AssistiveRouter.narrationCommand(in: ""))
+        XCTAssertNil(AssistiveRouter.narrationCommand(in: "what am I holding?"))
+        XCTAssertNil(AssistiveRouter.narrationCommand(in: "read this sign to me"))
+        XCTAssertNil(AssistiveRouter.narrationCommand(in: "stop"))
+    }
+
+    func testNarrationPromptIsPlainProseNotTheJSONAdviceContract() {
+        let prompt = AssistiveRouter.narrationSystemPrompt
+        XCTAssertFalse(prompt.contains("JSON"),
+                       "JSON scaffolding would be scored as content by NarrationGate")
+        XCTAssertFalse(prompt.contains("urgency"))
+        XCTAssertTrue(prompt.lowercased().contains("one plain sentence"))
+    }
+}

@@ -2367,6 +2367,21 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "emotionAwareTTSEnabled")
     }
 
+    // MARK: - Scene Narration (Plan CV)
+
+    /// Whether continuous scene narration is available. Off by default: it runs the on-device VLM
+    /// continuously, which is the most expensive thing in the app.
+    ///
+    /// This gates *availability*, not speech. The mode itself starts silent — watching and
+    /// accumulating grounding context — and speaking is a separate, explicit request.
+    static var sceneNarrationEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "sceneNarrationEnabled")
+    }
+
+    static func setSceneNarrationEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "sceneNarrationEnabled")
+    }
+
     // MARK: - Accent Color
 
     static var accentColorName: String {
