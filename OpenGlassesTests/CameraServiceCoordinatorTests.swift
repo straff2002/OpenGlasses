@@ -43,8 +43,17 @@ final class CameraServiceCoordinatorTests: XCTestCase {
             return try captureResult.get()
         }
 
-        func startStreaming() async throws { startStreamingCount += 1 }
-        func stopStreaming() async { stopStreamingCount += 1 }
+        /// Opt-in so the tests written before claims existed keep seeing exactly what they saw.
+        var emitsStreamingEvents = false
+
+        func startStreaming() async throws {
+            startStreamingCount += 1
+            if emitsStreamingEvents { events.send(.streamingChanged(true)) }
+        }
+        func stopStreaming() async {
+            stopStreamingCount += 1
+            if emitsStreamingEvents { events.send(.streamingChanged(false)) }
+        }
         func tearDown() async { tearDownCount += 1 }
     }
 
@@ -247,6 +256,91 @@ final class CameraServiceCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(backend.startStreamingCount, 1)
         XCTAssertEqual(backend.stopStreamingCount, 1)
+    }
+
+    // MARK: - Stream claims (Plan CV)
+
+    private func makeClaimService() -> (CameraService, MockCameraBackend) {
+        let backend = MockCameraBackend(capabilities: .meta)
+        backend.emitsStreamingEvents = true
+        return (CameraService(backend: backend), backend)
+    }
+
+    func testAClaimStartsTheStreamAndReleasingItStopsIt() async throws {
+        let (service, backend) = makeClaimService()
+
+        try await service.claimStream(for: .sceneNarration)
+        XCTAssertEqual(backend.startStreamingCount, 1)
+        XCTAssertTrue(service.hasStreamClaims)
+        XCTAssertTrue(service.holdsStreamClaim(.sceneNarration))
+
+        await service.releaseStream(for: .sceneNarration)
+        XCTAssertEqual(backend.stopStreamingCount, 1)
+        XCTAssertFalse(service.hasStreamClaims)
+    }
+
+    func testOneOwnerLeavingDoesNotStopAStreamAnotherStillHolds() async throws {
+        let (service, backend) = makeClaimService()
+
+        try await service.claimStream(for: .sceneNarration)
+        try await service.claimStream(for: .fingerspelling)
+        XCTAssertEqual(backend.startStreamingCount, 1, "The second claim joins rather than restarts")
+
+        await service.releaseStream(for: .fingerspelling)
+        XCTAssertEqual(backend.stopStreamingCount, 0,
+                       "Narration is walking the wearer down a corridor with this stream")
+
+        await service.releaseStream(for: .sceneNarration)
+        XCTAssertEqual(backend.stopStreamingCount, 1)
+    }
+
+    func testAClaimNeverStopsAStreamItDidNotStart() async throws {
+        let (service, backend) = makeClaimService()
+
+        try await service.startStreaming()          // e.g. the manual control, or a live session
+        try await service.claimStream(for: .sceneNarration)
+        XCTAssertEqual(backend.startStreamingCount, 1)
+
+        await service.releaseStream(for: .sceneNarration)
+        XCTAssertEqual(backend.stopStreamingCount, 0,
+                       "Ending narration must not close a stream somebody else opened")
+    }
+
+    func testAnUnclaimedConsumerKeepsTheStreamAlive() async throws {
+        let (service, backend) = makeClaimService()
+        service.otherStreamConsumersActive = { true }   // recording / broadcast / a live session
+
+        try await service.claimStream(for: .sceneNarration)
+        await service.releaseStream(for: .sceneNarration)
+        XCTAssertEqual(backend.stopStreamingCount, 0)
+    }
+
+    func testAFailedClaimLeavesNoClaimBehind() async {
+        let stillsOnly = CameraCapabilities(
+            liveFrames: false,
+            stillCapture: true,
+            stillLatency: .subSecond,
+            concurrentWithMic: true,
+            hardwareEvents: true
+        )
+        let backend = MockCameraBackend(capabilities: stillsOnly)
+        let service = CameraService(backend: backend)
+
+        do {
+            try await service.claimStream(for: .sceneNarration)
+            XCTFail("expected the tier gate to refuse")
+        } catch {
+            // expected
+        }
+        XCTAssertFalse(service.hasStreamClaims,
+                       "A claim on a stream that never came up would make a later release think it had something to give back")
+    }
+
+    func testTearDownForgetsEveryClaim() async throws {
+        let (service, _) = makeClaimService()
+        try await service.claimStream(for: .sceneNarration)
+        await service.tearDown()
+        XCTAssertFalse(service.hasStreamClaims, "No claim describes a camera that no longer exists")
     }
 
     // MARK: - Pass-through

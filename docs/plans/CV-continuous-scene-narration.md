@@ -1,7 +1,8 @@
 # Plan CV — Continuous Scene Narration
 
-**Status: 🚧 P1–P3 shipped 2026-08-23**, and the ambient-captions interaction is
-**resolved and built** (2026-08-23) — the loop is built, wired, and honest about what it can't do.
+**Status: 🚧 P1–P3 shipped 2026-08-23**, with the ambient-captions interaction and
+**camera ownership** both resolved and built (2026-08-23) — the loop is built, wired, honest about
+what it can't do, and it now starts the camera it needs instead of explaining why there isn't one.
 Only P4 (device measurement, incl. an accessibility review with a wearer who would use it) remains,
 and it needs hardware. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
 so is this.
@@ -429,10 +430,108 @@ debt reached from the opposite direction — the world changed under the wearer,
 into a world that had already changed. Same copy, same once-only restraint, kept as a separate
 signal so each can be tested on its own.
 
-What this does **not** decide: narration still never starts the camera. That is a real question —
-the camera is the glasses' largest drain, and [CX](CX-live-session-vision-choice.md) is mid-flight
-on cold-start UX — and it belongs to a plan rather than to a bug fix. Until it is answered, the
-honest behaviour is to say why nothing is happening instead of looking like it is working.
+What this did **not** decide, and the next section does: whether narration should start the
+camera. Raising `.cameraUnavailable` was the right fix and it made the gap loud — a wearer who turns
+narration on without already streaming got a spoken refusal — but the answer belonged to a plan
+rather than to a bug fix.
+
+### Camera ownership — decided 2026-08-23: narration starts the camera ✅ shipped
+
+**Yes. An explicit start takes the camera, under a claim, with the cold start announced, refused
+only at `reserve`.**
+
+The refusal shipped in the correction above was honest and unusable. A wearer flips "watch the
+scene" and hears *"there's no live camera feed from your glasses"* — true, and no help at all, since
+the thing they must now do is find a camera control on a phone screen. That is a hidden second step
+in front of an accessibility feature, and it is the same shape of problem
+[CX](CX-live-session-vision-choice.md) exists to fix for live sessions, landing on the audience
+least able to work around it.
+
+**Why this is not the auto-start CX rejected.** CX lists four reasons not to start the camera with
+every live session, and the reason they hold there is that a live session is *fully useful without
+one*: a voice-only session is a real thing a wearer wants, so a camera that switches itself on rides
+in on a request that never mentioned it. Narration has no camera-less mode. "Watch the scene" is a
+request for the camera in the wearer's own words, and starting it is executing the request rather
+than extending it. What CX rejects is an **implicit** camera start; what this needs is an
+**explicit** one. Checked against CX's four:
+
+- **Cost.** Narration is local-VLM-only by non-goal — no image tokens, no bill.
+- **Consent.** The act that turns the camera on and the act that asks for narration are the same
+  act, so `PrivacyFilterScope`'s "egress must be deliberate" is satisfied by construction rather
+  than bypassed. The Settings copy now states it before the switch is flipped, because a wearer
+  agreeing to the camera has to know that is what they are agreeing to.
+- **Latency.** Real, and paid — see the warm-up notice below.
+- **Power.** Real, and the only one that survives to change the behaviour — see the posture gate.
+
+**The cold start is announced, because twenty seconds of nothing is this plan's own failure mode.**
+CX exists because a wearer pressed a button that said "Camera" for up to 20 s and reported streaming
+as broken. Narration turning the camera on silently would produce exactly that, one second after the
+wearer asked for the feature whose entire purpose is that silence gets explained. So
+`NarrationVoiceNotices.warmingCopy` speaks as the claim begins, and Settings shows a matching line.
+
+Two things about who hears it. It is spoken in `.watching` as well as `.narrating`, which looks like
+a breach of P3's "only speak to someone who was being spoken to" — it isn't. That rule governs
+*ambient* silence; this is a **reply to something the wearer just did**, in the moment they did it,
+which is the category the camera-tier refusal was already in. And when a warm-up and a *resumption*
+notice are owed by the same transition (coming back to the foreground), the warm-up wins and the
+resumption is dropped: "narration is back on" is not true while the camera is still coming up, and
+saying both tells the wearer two contradictory things about one moment.
+
+**Power: `conserve` starts with the cost named, `reserve` refuses.** One step more permissive than
+CX, which defers at both, and the asymmetry is the point — a sighted wearer refused vision mode can
+look at the thing themselves, and a wearer who needs scene narration cannot. `conserve` means
+economise, not stop, and refusing an accessibility feature there would be the app economising on the
+one thing its wearer has no substitute for; the cost is put in the warm-up notice instead, because
+the wearer is the only one who can weigh it. `reserve` is a refusal for a reason that is not thrift:
+at critical battery, starting the glasses' largest drain does not give the wearer narration, it
+gives them a few minutes of narration and then dead glasses — no narration, no captions, no
+assistant. A refusal they can act on beats an outcome they cannot. And the gate only fires when
+narration would actually *start* the camera: with frames already flowing there is no cost to refuse.
+
+**Ownership needed a real mechanism, not a start/stop pair.** Narration is now the longest-lived
+camera consumer in the app — it runs for as long as the wearer is walking — which makes it the one
+most likely to be underneath somebody else's `stopStreaming()`. The rule it needs was already
+written twice by hand: `ReadingCompanionService` spelled it out in prose ("stop only a stream this
+session started, and only when nothing else is consuming it") and `FingerspellingSessionService`
+re-derived it as an `ownsCameraStream` boolean. Two ad-hoc copies of a rule is how the third one
+gets it wrong, so `CameraStreamClaims` is that rule as a pure core, and two facts do all its work:
+**was the stream already running when the first claim arrived** (if so nobody here started it and
+nobody here may stop it), and **is anything left holding it**. Unclaimed consumers — recording,
+broadcast, WebRTC, a live session — are a separate input, because a claim count of zero is not the
+same as nothing using the camera. Fingerspelling is migrated onto it; the reading companion still
+stops the stream itself and is told about claims explicitly, so "I'm done reading" cannot take the
+camera from a wearer being walked down a corridor.
+
+**Backgrounding gives the camera back.** `NarrationSessionPolicy.wantsCamera` is not simply
+`requestedMode != .off`: with glasses connected the app leaves the stream up on background (it only
+stops it when there are no glasses), and on-device MLX cannot run there — so holding the claim would
+spend the glasses' largest drain on a loop that is provably doing nothing. Coming back pays the cold
+start again, and that is the right side of the trade, because the wearer is present for the second
+cold start and was not present for the battery it saves. Every other interruption keeps the claim:
+the ear-only ones leave the loop watching, and a watching loop needs frames, while
+`.cameraUnavailable` *is* the camera already being gone.
+
+**Ordering is where this was actually hard.** The claim is async and the `.cameraUnavailable` edge
+is synchronous, so a naive implementation tells the wearer there is no camera a fraction of a second
+before starting the very camera they were told they lacked. `isStartingCamera` is published
+**synchronously** on the request and folded into that edge as a third term, so the honest window
+opens before the async work begins. The same ordering problem appears twice more and is handled the
+same way: a failed claim lands `.stop` *before* clearing the flag, so the wearer hears the specific
+reason rather than the generic halt copy on top of it; and a stop arriving mid-cold-start defers the
+release until the claim resolves, because handing back a stream that has not started yet gives back
+nothing and the start then completes into nobody's hands.
+
+**Rejected along the way.** *Auto-retry after a camera drop* — a thermal abort would become a
+retry loop fighting the device, and the halt already says what happened; re-asking is one switch.
+*Releasing the claim on every halt* — the ear-only ones keep watching, and `.cameraUnavailable` has
+nothing to release. *A confirmation prompt under `reserve`* — a modal in front of a blind wearer's
+navigation aid is a worse answer than a spoken refusal with a remedy in it. *Refusing under
+`conserve`* — see above; that is the app deciding for the wearer.
+
+One thing folded in on the way past: the spoken commands called the policy directly, so
+`"start narrating"` bypassed the device-tier gate that the Settings switch applies. They now route
+through the same entry points, since those gates belong to *starting narration* rather than to one
+surface that starts it.
 
 ### P4 — Device measurement (deferred)
 
@@ -449,6 +548,13 @@ Gates the thresholds and the defaults, and needs hardware plus a real environmen
   though the ear collision was not.
 - **Accessibility review with a wearer who would use it.** Chatter tolerance is not a number we can
   derive; it needs someone whose judgement is the actual specification.
+- **The background release trade**, now that narration owns the camera: giving the stream back on
+  background saves the glasses' largest drain while the loop cannot run, and costs a second cold
+  start on return. Whether that cold start is tolerable in practice — and whether the warm-up notice
+  makes it tolerable — is a device question, not a desk one.
+- **`reserve` in the field.** The posture that refuses the start is set from thresholds this phase
+  also tunes; a refusal that fires too early is an accessibility feature declining to work on a
+  battery that would have carried it.
 
 ## Non-goals
 

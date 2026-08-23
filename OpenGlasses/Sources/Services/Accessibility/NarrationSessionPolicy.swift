@@ -188,6 +188,24 @@ struct NarrationSessionPolicy: Equatable {
                      silenceReason: nil)
     }
 
+    /// Whether narration should be holding the glasses video stream open (Plan CV, camera
+    /// ownership).
+    ///
+    /// Deliberately **not** just `requestedMode != .off`. `.backgrounded` is the one interruption
+    /// where the loop provably cannot run *and* the camera would otherwise keep streaming: with
+    /// glasses connected the app leaves the stream up on background (it only stops it when there
+    /// are no glasses), so holding the claim there spends the glasses' largest drain on a loop that
+    /// is doing nothing at all. Every other interruption either leaves the loop watching — and a
+    /// watching loop needs frames — or *is* the camera already being gone, where there is nothing
+    /// to release.
+    ///
+    /// The consequence is deliberate too: coming back to the foreground re-takes the camera, which
+    /// means paying the cold start again. That is the right side of the trade, because the wearer
+    /// is present for the second cold start and was not present for the battery it saves.
+    var wantsCamera: Bool {
+        requestedMode != .off && !interruptions.contains(.backgrounded)
+    }
+
     /// The halting interruption to report, picked in `allCases` order so the reason is stable when
     /// two are active at once.
     private var blockingInterruption: Interruption? {

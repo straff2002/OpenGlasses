@@ -1314,13 +1314,22 @@ class AppState: ObservableObject, AppStateProtocol {
         ReadingCompanionService.shared.configure(camera: cameraService, study: StudyService.shared,
                                                  documents: documentStore)
         ReadingCompanionService.shared.glassesDisplay = glassesDisplay
-        // Lets end() give the camera back the way it found it without stopping a stream some
-        // other feature is mid-way through using (same consumer set LivePreviewView checks).
-        ReadingCompanionService.shared.otherStreamConsumersActive = { [weak self] in
+        // The consumers that hold the stream without claiming it — the same set `LivePreviewView`
+        // checks before closing a stream on disappear. `CameraService` needs the same answer for
+        // the claim path, so both read one closure body.
+        let unclaimedStreamConsumers: () -> Bool = { [weak self] in
             guard let self else { return false }
             return self.videoRecorder.isRecording || self.broadcastService.isBroadcasting
                 || self.webRTCStreaming.isStreaming || self.geminiLiveSession.isActive
                 || self.openAIRealtimeSession.isActive
+        }
+        cameraService.otherStreamConsumersActive = unclaimedStreamConsumers
+        // The reading companion still stops the stream itself rather than through a claim, so it
+        // has to be told about claims explicitly — otherwise "I'm done reading" would stop a camera
+        // that continuous narration is walking the wearer down a corridor with.
+        ReadingCompanionService.shared.otherStreamConsumersActive = { [weak self] in
+            guard let self else { return false }
+            return unclaimedStreamConsumers() || self.cameraService.hasStreamClaims
         }
 
         // Skill Self-Evolution (Plan AW) — give the loop its LLM analyzer. The capture hook
@@ -2536,6 +2545,25 @@ class AppState: ObservableObject, AppStateProtocol {
         narration.cameraAvailability = { [weak self] in
             self?.cameraService.availability(of: .sceneNarration) ?? .available
         }
+
+        // Plan CV, camera ownership: narration starts the camera. Through a *claim* rather than a
+        // bare `startStreaming()`/`stopStreaming()` pair, because narration is the longest-lived
+        // camera consumer in the app — it runs for as long as the wearer is walking — and is
+        // therefore the one most likely to be underneath somebody else's stop.
+        narration.claimCamera = { [weak self] in
+            guard let self else { return "The app isn't ready yet." }
+            do {
+                try await self.cameraService.claimStream(for: .sceneNarration)
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }
+        narration.releaseCamera = { [weak self] in
+            await self?.cameraService.releaseStream(for: .sceneNarration)
+        }
+        narration.isCameraStreaming = { [weak self] in self?.cameraService.isStreaming ?? false }
+        narration.powerPosture = { PowerPolicyService.shared.posture }
     }
 
     /// Route a transcription to scene narration if it is one of its commands.
@@ -2960,13 +2988,19 @@ class AppState: ObservableObject, AppStateProtocol {
         // and treating that gap as unavailable would announce a halt and a resume either side of
         // every stream start.
         //
-        // This deliberately does **not** decide whether narration should start the camera itself.
-        // That is a real question — the camera is the glasses' largest drain — and it belongs to a
-        // plan, not to a bug fix. Until then the honest behaviour is to say why nothing is
-        // happening rather than to look like it is working.
-        let cameraNarrationToken = Publishers.CombineLatest(
-            cameraService.$isStreaming, cameraService.$isStartingStream)
-            .map { streaming, starting in !streaming && !starting }
+        // Narration's own claim window is the third input, and it is not a detail either. The
+        // decision that narration *does* start the camera (Plan CV, camera ownership) makes the
+        // interesting moment the one right after the wearer flips the switch: the stream is not up
+        // yet, `isStartingStream` has not been set yet because the claim is async — and without
+        // this term the wearer would be told "there's no live camera feed from your glasses" a
+        // fraction of a second before narration starts the very feed they were told they lacked.
+        // `SceneNarrationService.isStartingCamera` is set synchronously on the request so the
+        // honest window opens before the async work does.
+        let cameraNarrationToken = Publishers.CombineLatest3(
+            cameraService.$isStreaming,
+            cameraService.$isStartingStream,
+            SceneNarrationService.shared.$isStartingCamera)
+            .map { streaming, starting, claiming in !streaming && !starting && !claiming }
             .removeDuplicates()
             .sink { unavailable in
                 SceneNarrationService.shared.noteInterruption(.cameraUnavailable, active: unavailable)
