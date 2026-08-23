@@ -343,4 +343,50 @@ final class NarrationSessionPolicyTests: XCTestCase {
         XCTAssertEqual(t.to.haltReason, .cameraUnavailable)
     }
 
+
+    // MARK: - Camera ownership (Plan CV)
+
+    func testOffWantsNoCamera() {
+        var policy = NarrationSessionPolicy()
+        XCTAssertFalse(policy.wantsCamera)
+        policy.apply(.start)
+        XCTAssertTrue(policy.wantsCamera)
+        policy.apply(.stop)
+        XCTAssertFalse(policy.wantsCamera)
+    }
+
+    func testSilentWatchingStillWantsTheCamera() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.start)
+        XCTAssertTrue(policy.wantsCamera, "The grounding half is silent, not blind")
+    }
+
+    func testBackgroundingGivesTheCameraBack() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.backgrounded, active: true))
+        XCTAssertFalse(policy.wantsCamera,
+                       "On-device inference cannot run there, so the camera would drain for nothing")
+        policy.apply(.interruption(.backgrounded, active: false))
+        XCTAssertTrue(policy.wantsCamera)
+    }
+
+    func testEarOnlyInterruptionsKeepTheCamera() {
+        for interruption in [NarrationSessionPolicy.Interruption.userTurn,
+                             .realtimeSession, .ambientCaptions] {
+            var policy = NarrationSessionPolicy()
+            policy.apply(.startNarrating)
+            policy.apply(.interruption(interruption, active: true))
+            XCTAssertTrue(policy.wantsCamera,
+                          "\(interruption.rawValue) takes the ear; the loop keeps watching and needs frames")
+        }
+    }
+
+    func testAMissingCameraDoesNotReleaseTheClaim() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.cameraUnavailable, active: true))
+        XCTAssertTrue(policy.wantsCamera,
+                      "There is nothing to release, and dropping the claim would forfeit the stream on its way up")
+    }
 }

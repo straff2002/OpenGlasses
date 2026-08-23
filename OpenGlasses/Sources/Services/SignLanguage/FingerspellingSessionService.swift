@@ -108,7 +108,10 @@ final class FingerspellingSessionService: ObservableObject {
         frameContinuation = nil
         if ownsCameraStream, let camera {
             ownsCameraStream = false
-            Task { await camera.stopStreaming() }
+            // Through the claim rather than a bare stop: continuous scene narration may be holding
+            // the same stream open, and ending a fingerspelling session must not take the camera
+            // out from under a wearer who is being narrated to.
+            Task { await camera.releaseStream(for: .fingerspelling) }
         }
         camera = nil
     }
@@ -169,14 +172,12 @@ final class FingerspellingSessionService: ObservableObject {
         frameSubscription = camera.framePublisher.sink { [weak self] image in
             self?.ingest(image: image)
         }
-        if !camera.isStreaming {
-            do {
-                try await camera.startStreaming()
-                ownsCameraStream = true
-            } catch {
-                statusDetail = "Camera unavailable: \(error.localizedDescription)"
-                stop()
-            }
+        do {
+            try await camera.claimStream(for: .fingerspelling)
+            ownsCameraStream = true
+        } catch {
+            statusDetail = "Camera unavailable: \(error.localizedDescription)"
+            stop()
         }
     }
 

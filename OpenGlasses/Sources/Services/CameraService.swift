@@ -213,6 +213,52 @@ class CameraService: ObservableObject {
     func tearDown() async {
         await backend.tearDown()
         latestFrame = nil
+        streamClaims.reset()   // no claim describes a camera that no longer exists
+    }
+
+    // MARK: - Stream claims (Plan CV)
+
+    /// Who is holding the stream open. See `CameraStreamClaims` for why a bare start/stop pair is
+    /// not enough once more than one feature can start the camera.
+    private var streamClaims = CameraStreamClaims()
+
+    /// The consumers that never claim — recording, broadcast, WebRTC, a live realtime session.
+    /// Wired by `AppState`; the neutral default keeps the service constructible in tests.
+    var otherStreamConsumersActive: () -> Bool = { false }
+
+    /// True while any feature holds a claim. The unmigrated ad-hoc owners consult this before
+    /// their own `stopStreaming()`, so a claim is honoured even by code that doesn't make one.
+    var hasStreamClaims: Bool { !streamClaims.isEmpty }
+
+    func holdsStreamClaim(_ owner: CameraStreamClaims.Owner) -> Bool { streamClaims.holds(owner) }
+
+    /// Take a claim on the video stream, starting it if nothing else has.
+    ///
+    /// Throws whatever `startStreaming()` throws, and drops the claim on the way out — a claim on a
+    /// stream that never came up would make every later release think it had something to give
+    /// back.
+    func claimStream(for owner: CameraStreamClaims.Owner) async throws {
+        switch streamClaims.claim(owner, streamRunning: isStreaming) {
+        case .alreadyRunning, .alreadyClaimed:
+            return
+        case .startStream:
+            do {
+                try await startStreaming()
+            } catch {
+                streamClaims.abandon(owner)
+                throw error
+            }
+        }
+    }
+
+    /// Give a claim back, stopping the stream only if this claim started it and nothing else — a
+    /// claim or an unclaimed consumer — still wants it.
+    func releaseStream(for owner: CameraStreamClaims.Owner) async {
+        let outcome = streamClaims.release(owner,
+                                           streamRunning: isStreaming,
+                                           otherConsumersActive: otherStreamConsumersActive())
+        guard outcome == .stopStream else { return }
+        await stopStreaming()
     }
 
     // MARK: - Photo Library

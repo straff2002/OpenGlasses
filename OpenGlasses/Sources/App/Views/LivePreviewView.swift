@@ -197,7 +197,11 @@ struct LivePreviewView: View {
                     appState.webRTCStreaming.isStreaming ||
                     appState.geminiLiveSession.isActive ||
                     appState.openAIRealtimeSession.isActive ||
-                    ReadingCompanionService.shared.isActive
+                    ReadingCompanionService.shared.isActive ||
+                    // Plan CV, camera ownership: continuous narration holds a claim on the stream.
+                    // Closing a preview the wearer opened for ten seconds must not take the camera
+                    // from the feature walking them down a corridor.
+                    appState.cameraService.hasStreamClaims
                 if !shouldKeepStreaming {
                     await appState.cameraService.stopStreaming()
                 }

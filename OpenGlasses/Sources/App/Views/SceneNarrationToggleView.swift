@@ -14,6 +14,10 @@ import SwiftUI
 /// The caption/narration decision added a third status line with the same job: live ambient
 /// captions take the ear while the loop keeps watching, and a wearer who left captions on this
 /// morning must be able to see why narration has gone quiet rather than conclude it is broken.
+///
+/// And a fourth, for the camera the first switch now starts: it comes up in seconds, not instantly,
+/// and a switch that appears to do nothing for twenty seconds is the same failure in yet another
+/// costume.
 @MainActor
 struct SceneNarrationToggleView: View {
     @ObservedObject private var service = SceneNarrationService.shared
@@ -40,7 +44,16 @@ struct SceneNarrationToggleView: View {
 
     @ViewBuilder
     private var status: some View {
-        if let reason = service.unavailableReason {
+        if service.isStartingCamera {
+            // Plan CV, camera ownership: narration turns the glasses camera on, and the cold start
+            // is device-traced at up to ~20 s. An unlabelled wait that long is indistinguishable
+            // from a broken switch — the same observation that produced the "Starting…" state on
+            // the Camera button, arriving here for the same reason.
+            Label("Starting the camera — this takes a few seconds.",
+                  systemImage: "video.badge.ellipsis")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if let reason = service.unavailableReason {
             // Plan CV P3: a start that can't happen says so, rather than a switch that flips back.
             Label(reason, systemImage: "video.slash")
                 .font(.footnote)

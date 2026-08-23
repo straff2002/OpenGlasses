@@ -142,6 +142,52 @@ struct NarrationVoiceNotices: Equatable {
     /// Distinct from `resumeCopy` on purpose: nothing was ever "off". Only the ear was busy.
     static let speakingAgainCopy = "Scene narration is speaking again."
 
+    // MARK: - Starting the camera (Plan CV, camera ownership)
+    //
+    // These three are a different category from everything above, and the difference decides who
+    // hears them. The notices above explain *ambient* silence, so they are governed by the
+    // restraint rules — chiefly "only speak to someone who was being spoken to". These are
+    // **replies to something the wearer just did**, in the moment they did it, and a reply is owed
+    // whichever mode they asked for: a wearer who flips "watch the scene" and then hears nothing
+    // for twenty seconds has been told nothing, and silent watching is not an excuse for that. The
+    // refusal copy below already worked this way; the warm-up joins it.
+
+    /// Spoken as narration takes the camera, when the camera was not already running.
+    ///
+    /// The cold start is device-traced at up to ~20 s (the observation behind
+    /// [CX](CX-live-session-vision-choice.md)), which is long enough that unannounced it becomes
+    /// its own unexplained silence — the exact failure P3 exists to prevent, arriving one second
+    /// after the wearer asked for the feature that prevents it.
+    ///
+    /// Under a conserving posture the same notice carries the cost, because the wearer is the only
+    /// one who can decide whether narration is worth their remaining battery, and they can only
+    /// decide it if they are told.
+    static func warmingCopy(posture: PowerPosture) -> String {
+        let base = "Starting the glasses camera for scene narration. This takes a few seconds."
+        guard posture >= .conserve else { return base }
+        return base + " Battery is getting low, so it won't last long."
+    }
+
+    /// Whether the power posture allows narration to start the camera at all, and what to say when
+    /// it doesn't.
+    ///
+    /// **`conserve` is allowed through and `reserve` is not**, which is one step more permissive
+    /// than [CX](CX-live-session-vision-choice.md)'s vision mode refuses at both. The two features
+    /// are not comparable on this axis: a sighted wearer refused vision mode can look at the thing
+    /// themselves, and a wearer who needs scene narration cannot. `conserve` means economise, not
+    /// stop, and refusing an accessibility feature there would be the app economising on the one
+    /// thing its wearer has no substitute for.
+    ///
+    /// `reserve` is a refusal for a reason that is *not* thrift: at critical battery, starting the
+    /// glasses' largest drain does not give the wearer narration, it gives them a few minutes of
+    /// narration followed by dead glasses — no narration, no captions, no assistant, nothing. A
+    /// refusal they can act on beats an outcome they cannot.
+    static func powerRefusal(posture: PowerPosture) -> String? {
+        guard posture >= .reserve else { return nil }
+        return "Can't start scene narration right now. It keeps the glasses camera running, and "
+            + "they're too low on power or too warm for that. Charge or cool them and try again."
+    }
+
     /// Spoken copy for a start that can't happen at all, so a wearer asking for narration on
     /// hardware that can't provide it hears the reason rather than nothing.
     ///

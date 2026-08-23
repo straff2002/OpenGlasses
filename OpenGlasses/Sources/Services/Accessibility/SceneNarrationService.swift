@@ -64,6 +64,17 @@ final class SceneNarrationService: ObservableObject {
     /// happened, and the wearer must hear why rather than watch a switch flip back.
     @Published private(set) var unavailableReason: String?
 
+    /// True from the instant narration asks for the camera until the stream is live or the ask has
+    /// failed (Plan CV, camera ownership).
+    ///
+    /// Published because `AppState` folds it into the `.cameraUnavailable` edge. Without it the
+    /// wearer is told "there's no live camera feed" a fraction of a second before narration starts
+    /// the very feed they were told they didn't have — a halt announced against a condition that is
+    /// already being fixed, which is worse than the silence P3 replaced. It is set **synchronously**
+    /// on the request for exactly that reason: the claim is async, and the honest window has to
+    /// open before the async work begins, not when it lands.
+    @Published private(set) var isStartingCamera = false
+
     /// The most recent spoken notice, for the Settings surface.
     @Published private(set) var latestNotice: String?
 
@@ -122,6 +133,26 @@ final class SceneNarrationService: ObservableObject {
     /// Defaults to available so headless tests and unwired callers behave as before.
     var cameraAvailability: () -> CameraFeatureAvailability = { .available }
 
+    /// Take a claim on the glasses video stream, starting it if nothing else has. Returns nil on
+    /// success, or the reason it failed — narration owns telling the wearer, not the camera layer.
+    ///
+    /// Unwired (nil) means "somebody else is responsible for the camera", which is what keeps every
+    /// existing headless test behaving exactly as it did before narration learned to do this.
+    var claimCamera: (() async -> String?)?
+
+    /// Give the claim back. Stops the stream only if narration's claim started it and nothing else
+    /// still wants it — see `CameraStreamClaims`.
+    var releaseCamera: (() async -> Void)?
+
+    /// Whether frames are already flowing. Read at claim time, and only to decide what the wearer
+    /// is told: a camera that is already on has no cold start to announce and no power cost to
+    /// refuse.
+    var isCameraStreaming: () -> Bool = { false }
+
+    /// The current power posture (Plan BV). Narration is the app's most expensive continuous
+    /// feature and the camera is its most expensive part, so `reserve` refuses the start.
+    var powerPosture: () -> PowerPosture = { .normal }
+
     /// Injected clock, seconds. No `Date()` inside the loop, so tests drive time directly.
     var clock: () -> TimeInterval = { Date().timeIntervalSinceReferenceDate }
 
@@ -151,6 +182,21 @@ final class SceneNarrationService: ObservableObject {
     /// An utterance is being handed to TTS. Distinct from `isTTSBusy`, which reports the engine.
     private var emitting = false
 
+    /// Whether narration currently holds a camera claim. Tracked here as well as in
+    /// `CameraStreamClaims` so the decision to claim or release can be made synchronously, before
+    /// any `await`, which is what keeps the interruption edges from crossing.
+    private var holdsCameraClaim = false
+
+    /// Re-entrancy guard for `prepareCamera(for:)`. Claiming the camera publishes
+    /// `isStartingCamera`, which drives an interruption edge straight back into `apply` — and that
+    /// nested call must apply its interruption (it is a real fact) without re-deciding the camera,
+    /// or a claim in progress would immediately be released by the notification that it started.
+    private var reconcilingCamera = false
+
+    /// The warm-up notice, held from the moment the claim begins until the transition it
+    /// accompanies has been resolved. See `apply` for why it can't simply be spoken on the spot.
+    private var pendingCameraWarmup: String?
+
     private init() {
         frameGate = FrameGate(hammingThreshold: 4, heartbeat: 30)
     }
@@ -164,12 +210,18 @@ final class SceneNarrationService: ObservableObject {
     // MARK: - Commands
 
     /// Apply a parsed voice command (`AssistiveRouter.narrationCommand(in:)`).
+    ///
+    /// Routed through the same entry points as the Settings switches rather than straight into the
+    /// policy: the gates those entry points apply — device tier, power posture, and taking the
+    /// camera — are properties of *starting narration*, not of starting it from one particular
+    /// surface. Spoken commands previously bypassed all of them, which is exactly the audience
+    /// least able to fall back to the switch.
     func handle(_ command: AssistiveRouter.NarrationCommand) {
         switch command {
-        case .start: apply(.start)
-        case .startNarrating: apply(.startNarrating)
-        case .stopNarrating: apply(.stopNarrating)
-        case .stop: apply(.stop)
+        case .start: start()
+        case .startNarrating: startNarrating()
+        case .stopNarrating: stopNarrating()
+        case .stop: stop()
         }
     }
 
@@ -179,12 +231,12 @@ final class SceneNarrationService: ObservableObject {
     /// itself back with no explanation is the same unexplained-silence failure in a different
     /// costume, and the wearer most likely to hit it is the one least able to see the switch.
     func start() {
-        guard passesCameraGate() else { return }
+        guard passesCameraGate(), passesPowerGate() else { return }
         apply(.start)
     }
 
     func startNarrating() {
-        guard passesCameraGate() else { return }
+        guard passesCameraGate(), passesPowerGate() else { return }
         apply(.startNarrating)
     }
 
@@ -203,6 +255,23 @@ final class SceneNarrationService: ObservableObject {
         return true
     }
 
+    /// Whether the glasses have the power to run narration's camera, and if not, says so.
+    ///
+    /// **Only a refusal when narration would actually have to start the camera.** If frames are
+    /// already flowing for something else, narration adds a VLM but no camera, and refusing it
+    /// would be economising on a cost we are not about to pay. `NarrationVoiceNotices.powerRefusal`
+    /// owns which postures refuse and why `conserve` is not one of them.
+    private func passesPowerGate() -> Bool {
+        guard !isCameraStreaming(),
+              let refusal = NarrationVoiceNotices.powerRefusal(posture: powerPosture()) else {
+            return true
+        }
+        unavailableReason = refusal
+        NSLog("[SceneNarration] Refused on power posture %@", powerPosture().label)
+        announce(refusal)
+        return false
+    }
+
     /// Stop speaking, keep watching. Grounding is the cheap half and there is no reason to lose it.
     func stopNarrating() { apply(.stopNarrating) }
 
@@ -216,6 +285,12 @@ final class SceneNarrationService: ObservableObject {
     }
 
     private func apply(_ event: NarrationSessionPolicy.Event) {
+        // The camera decision is made against the state this event is *about* to produce, and acted
+        // on first. Order is the whole trick: claiming publishes `isStartingCamera`, which clears
+        // the `.cameraUnavailable` edge, so by the time the event lands the wearer is not told
+        // about an absent camera that is already on its way up.
+        prepareCamera(for: event)
+
         let transition = policy.apply(event)
         publish(transition.to)
 
@@ -246,10 +321,117 @@ final class SceneNarrationService: ObservableObject {
         }
 
         // Plan CV P3: say why, to the wearer who was being spoken to. `NarrationVoiceNotices`
-        // owns the restraint — who hears it, and how often.
-        if let copy = notices.notice(for: transition, requestedMode: policy.requestedMode) {
-            announce(copy)
+        // owns the restraint — who hears it, and how often. Called unconditionally, before the
+        // warm-up is considered, because its bookkeeping (which halt has been announced) has to
+        // advance whether or not the copy is the one that gets spoken.
+        let transitionCopy = notices.notice(for: transition, requestedMode: policy.requestedMode)
+
+        // The warm-up goes first when both are owed: it is the reply to what the wearer just did.
+        //
+        // `!reconcilingCamera` is load-bearing rather than defensive. Taking the camera publishes
+        // `isStartingCamera`, whose edge re-enters `apply` *before* the event that queued the
+        // warm-up has been applied — so without this guard the warm-up is spoken by that nested
+        // call, and the real transition, arriving a moment later with the warm-up already consumed,
+        // announces the resumption the warm-up exists to displace.
+        if !reconcilingCamera, let warmup = pendingCameraWarmup {
+            pendingCameraWarmup = nil
+            announce(warmup)
+            // A *resumption* displaced by a warm-up is dropped rather than queued behind it.
+            // "Scene narration is back on" is not true while the camera is still coming up, and
+            // following it with "starting the camera, this takes a few seconds" tells the wearer
+            // two contradictory things about one moment; the warm-up is the honest version of the
+            // same news. A fresh halt or silence is never dropped this way — that is different
+            // news, not the same news early.
+            if let transitionCopy, !isResumption(transition) { announce(transitionCopy) }
+        } else if let transitionCopy {
+            announce(transitionCopy)
         }
+    }
+
+    /// Whether the copy `NarrationVoiceNotices` produced for this transition is a resumption
+    /// ("back on" / "speaking again") rather than a fresh halt or silence. Mirrors that type's own
+    /// precedence, so the two cannot drift into disagreeing about what a transition means.
+    private func isResumption(_ transition: NarrationSessionPolicy.Transition) -> Bool {
+        transition.haltBegan == nil && transition.haltBlockedRequest == nil
+            && transition.silenceBegan == nil
+            && (transition.haltEnded != nil || transition.silenceEnded != nil)
+    }
+
+    // MARK: - Camera ownership (Plan CV)
+
+    /// Take or give back the camera claim for the state `event` is about to produce.
+    ///
+    /// A value-type policy makes this straightforward: apply the event to a copy and ask the copy
+    /// what it wants, without committing anything.
+    private func prepareCamera(for event: NarrationSessionPolicy.Event) {
+        guard claimCamera != nil, !reconcilingCamera else { return }
+        var next = policy
+        next.apply(event)
+        guard next.wantsCamera != holdsCameraClaim else { return }
+
+        reconcilingCamera = true
+        defer { reconcilingCamera = false }
+        if next.wantsCamera {
+            beginCameraClaim()
+        } else {
+            endCameraClaim()
+        }
+    }
+
+    private func beginCameraClaim() {
+        guard let claimCamera else { return }
+        // Set before anything can `await`, and before `isStartingCamera`: the edge that publishing
+        // it triggers comes straight back through `apply`, and a wanted-but-unheld camera seen
+        // there would be claimed a second time.
+        holdsCameraClaim = true
+        // A claim already in flight will land for us — including one the wearer cancelled and
+        // restarted inside the cold start.
+        guard !isStartingCamera else { return }
+
+        if !isCameraStreaming() {
+            pendingCameraWarmup = NarrationVoiceNotices.warmingCopy(posture: powerPosture())
+        }
+        isStartingCamera = true
+
+        Task { [weak self] in
+            let failure = await claimCamera()
+            guard let self else { return }
+            guard let failure else {
+                self.isStartingCamera = false
+                // The wearer may well have turned narration off during the twenty seconds we spent
+                // starting a camera for them. The release was deferred to here precisely because
+                // handing back a stream that had not started yet would have left it running for a
+                // loop that has stopped.
+                if !self.holdsCameraClaim { self.performCameraRelease() }
+                return
+            }
+            // Order matters as much here as on the way in. `.stop` lands first so the requested
+            // mode is `.off` before `isStartingCamera` falls — otherwise the `.cameraUnavailable`
+            // edge fires into a live session and the wearer hears the generic halt copy on top of
+            // the specific reason below.
+            self.pendingCameraWarmup = nil
+            self.apply(.stop)
+            self.isStartingCamera = false
+            self.unavailableReason = failure
+            NSLog("[SceneNarration] Camera claim failed — %@", failure)
+            self.announce(NarrationVoiceNotices.refusalCopy(failure))
+        }
+    }
+
+    private func endCameraClaim() {
+        guard holdsCameraClaim else { return }
+        holdsCameraClaim = false
+        pendingCameraWarmup = nil
+        // Mid-claim, the release waits for the claim to land. Releasing a stream that has not
+        // started yet gives back nothing, and the start then completes into nobody's hands — the
+        // glasses streaming indefinitely for a loop that is no longer running.
+        guard !isStartingCamera else { return }
+        performCameraRelease()
+    }
+
+    private func performCameraRelease() {
+        guard let releaseCamera else { return }
+        Task { await releaseCamera() }
     }
 
     /// Record and speak a notice.

@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 import XCTest
 @testable import OpenGlasses
@@ -39,6 +40,57 @@ final class SceneNarrationServiceTests: XCTestCase {
         var notices: [String] = []
         var cameraVerdict: CameraFeatureAvailability = .available
 
+        // MARK: Camera ownership (Plan CV)
+
+        /// Whether frames are flowing. The claim/release seams move it, as the real camera does,
+        /// and moving it re-raises the `.cameraUnavailable` edge exactly as `AppState` does.
+        var cameraStreaming = false {
+            didSet { reportCameraInterruption(starting: lastStartingCamera) }
+        }
+        /// The last value seen from `$isStartingCamera`. Mirrored here rather than read back off
+        /// the service so this stays a plain nonisolated rig, like the seams around it.
+        private var lastStartingCamera = false
+        /// `removeDuplicates`, by hand, matching the wiring under test.
+        private var lastReportedUnavailable: Bool?
+        var cancellables: Set<AnyCancellable> = []
+
+        /// The production edge, reproduced: `!isStreaming && !isStartingCamera` raises
+        /// `.cameraUnavailable`. Without it these tests would never see the nested `apply` that the
+        /// claim's own publish triggers — which is where this feature's ordering bugs live.
+        ///
+        /// Everything here runs on the main thread — the tests are `@MainActor` and the publish it
+        /// reacts to is main-actor bound — so the isolation is asserted rather than hopped, which
+        /// keeps the edge synchronous. Hopping would reorder exactly what is under test.
+        func reportCameraInterruption(starting: Bool) {
+            lastStartingCamera = starting
+            let unavailable = !cameraStreaming && !starting
+            guard unavailable != lastReportedUnavailable else { return }
+            lastReportedUnavailable = unavailable
+            MainActor.assumeIsolated {
+                service.noteInterruption(.cameraUnavailable, active: unavailable)
+            }
+        }
+        var claimCount = 0
+        var releaseCount = 0
+        /// Non-nil to make the next claim fail with this reason.
+        var claimFailure: String?
+        var posture: PowerPosture = .normal
+        /// Hold the claim open so a test can act *during* the cold start.
+        var blockClaim = false
+        private var claimContinuation: CheckedContinuation<Void, Never>?
+
+        func awaitClaimBarrier() async {
+            guard blockClaim else { return }
+            await withCheckedContinuation { claimContinuation = $0 }
+        }
+
+        /// Let a blocked claim finish.
+        func finishClaim() {
+            blockClaim = false
+            claimContinuation?.resume()
+            claimContinuation = nil
+        }
+
         init(service: SceneNarrationService) {
             self.service = service
         }
@@ -69,6 +121,49 @@ final class SceneNarrationServiceTests: XCTestCase {
         service.speakNotice = { [weak rig] text in rig?.notices.append(text) }
         service.cameraAvailability = { [weak rig] in rig?.cameraVerdict ?? .available }
         return rig
+    }
+
+    /// A rig whose camera seams are wired. Kept separate from `makeRig` so every test written
+    /// before narration owned the camera keeps exercising the loop with nothing attached to it —
+    /// an unwired `claimCamera` means "somebody else is responsible for the camera", which is the
+    /// behaviour those tests were written against.
+    private func makeCameraRig(descriptions: [String] = ["A kitchen with a table and two chairs."]) -> Rig {
+        let rig = makeRig(descriptions: descriptions)
+        let service = rig.service
+        service.isCameraStreaming = { [weak rig] in rig?.cameraStreaming ?? false }
+        service.powerPosture = { [weak rig] in rig?.posture ?? .normal }
+        service.claimCamera = { [weak rig] in
+            guard let rig else { return nil }
+            rig.claimCount += 1
+            await rig.awaitClaimBarrier()
+            if let failure = rig.claimFailure { return failure }
+            rig.cameraStreaming = true
+            return nil
+        }
+        service.releaseCamera = { [weak rig] in
+            rig?.releaseCount += 1
+            rig?.cameraStreaming = false
+        }
+        service.$isStartingCamera
+            .sink { [weak rig] starting in rig?.reportCameraInterruption(starting: starting) }
+            .store(in: &rig.cancellables)
+        return rig
+    }
+
+    /// Let the claim/release tasks run.
+    ///
+    /// They cannot be awaited: a Settings toggle must not block on a twenty-second camera start,
+    /// so the service fires them unstructured and returns. And they cannot merely be *yielded*
+    /// past either — the seams are nonisolated `async` closures, so each one hops off the main
+    /// actor and back, and `Task.yield()` on the main actor does not wait for the other executor.
+    /// Debug happened to win that race and Release did not, which is the whole reason this spends
+    /// a little real time instead. The bound is tens of milliseconds against hops measured in
+    /// microseconds.
+    private func settle() async {
+        for _ in 0..<30 {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 500_000)
+        }
     }
 
     /// Advance the clock and run one pass.
@@ -682,4 +777,178 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertEqual(rig.service.haltReason, .cameraUnavailable)
     }
 
+
+    // MARK: - Camera ownership (Plan CV)
+
+    func testStartingNarrationTakesTheCamera() async {
+        let rig = makeCameraRig()
+        rig.service.start()
+        XCTAssertTrue(rig.service.isStartingCamera,
+                      "Set synchronously, so the `.cameraUnavailable` edge closes before the claim awaits")
+        await settle()
+        XCTAssertEqual(rig.claimCount, 1)
+        XCTAssertTrue(rig.cameraStreaming)
+        XCTAssertFalse(rig.service.isStartingCamera)
+        XCTAssertTrue(rig.service.isPerceiving)
+    }
+
+    func testStartingAnnouncesTheColdStart() async {
+        let rig = makeCameraRig()
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.notices, [NarrationVoiceNotices.warmingCopy(posture: .normal)],
+                       "Twenty seconds of unexplained silence is the failure this feature exists to prevent")
+    }
+
+    func testWarmUpIsNotAnnouncedWhenTheCameraIsAlreadyRunning() async {
+        let rig = makeCameraRig()
+        rig.cameraStreaming = true
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.notices, [], "There is no wait to explain")
+        XCTAssertEqual(rig.claimCount, 1, "Still claimed — the claim is what stops somebody else stopping it")
+    }
+
+    func testConservingPostureNamesTheCostInTheWarmUp() async {
+        let rig = makeCameraRig()
+        rig.posture = .conserve
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.notices, [NarrationVoiceNotices.warmingCopy(posture: .conserve)])
+        XCTAssertTrue(rig.cameraStreaming, "Conserve means economise, not refuse an accessibility feature")
+    }
+
+    func testReservePostureRefusesTheStart() async {
+        let rig = makeCameraRig()
+        rig.posture = .reserve
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.service.mode, .off)
+        XCTAssertEqual(rig.claimCount, 0)
+        XCTAssertEqual(rig.notices, [NarrationVoiceNotices.powerRefusal(posture: .reserve)])
+        XCTAssertNotNil(rig.service.unavailableReason)
+    }
+
+    func testReservePostureDoesNotRefuseACameraThatIsAlreadyOn() async {
+        let rig = makeCameraRig()
+        rig.posture = .reserve
+        rig.cameraStreaming = true
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.service.mode, .watching,
+                       "Nothing is being economised by refusing a camera we were not about to start")
+        XCTAssertEqual(rig.notices, [])
+    }
+
+    func testStoppingGivesTheCameraBack() async {
+        let rig = makeCameraRig()
+        rig.service.start()
+        await settle()
+        rig.service.stop()
+        await settle()
+        XCTAssertEqual(rig.releaseCount, 1)
+        XCTAssertFalse(rig.cameraStreaming)
+    }
+
+    func testStoppingSpeechKeepsTheCamera() async {
+        let rig = makeCameraRig()
+        rig.service.startNarrating()
+        await settle()
+        rig.service.stopNarrating()
+        await settle()
+        XCTAssertEqual(rig.service.mode, .watching)
+        XCTAssertEqual(rig.releaseCount, 0, "The silent half still needs frames")
+        XCTAssertTrue(rig.cameraStreaming)
+    }
+
+    func testBackgroundingGivesTheCameraBackAndForegroundingRetakesIt() async {
+        let rig = makeCameraRig()
+        rig.service.startNarrating()
+        await settle()
+
+        rig.service.noteInterruption(.backgrounded, active: true)
+        await settle()
+        XCTAssertEqual(rig.releaseCount, 1,
+                       "On-device inference cannot run backgrounded, so the camera would drain for nothing")
+        XCTAssertFalse(rig.cameraStreaming)
+
+        rig.service.noteInterruption(.backgrounded, active: false)
+        await settle()
+        XCTAssertEqual(rig.claimCount, 2)
+        XCTAssertTrue(rig.cameraStreaming)
+    }
+
+    func testTheWarmUpDisplacesTheResumeNoticeOnReturn() async {
+        let rig = makeCameraRig()
+        rig.service.startNarrating()
+        await settle()
+        rig.notices.removeAll()
+
+        rig.service.noteInterruption(.backgrounded, active: true)
+        await settle()
+        rig.service.noteInterruption(.backgrounded, active: false)
+        await settle()
+
+        XCTAssertEqual(rig.notices, [
+            NarrationVoiceNotices.haltCopy(.backgrounded),
+            NarrationVoiceNotices.warmingCopy(posture: .normal),
+        ], "Narration is not \"back on\" while the camera is still coming up — the warm-up is the honest version")
+        XCTAssertFalse(rig.notices.contains(NarrationVoiceNotices.resumeCopy))
+    }
+
+    func testAFailedClaimEndsTheModeAndSaysWhy() async {
+        let rig = makeCameraRig()
+        rig.claimFailure = "Glasses hinges are closed — open them to use the camera."
+        rig.service.start()
+        await settle()
+
+        XCTAssertEqual(rig.service.mode, .off, "A mode that cannot see must not sit there claiming to watch")
+        XCTAssertFalse(rig.service.isStartingCamera)
+        XCTAssertEqual(rig.service.unavailableReason, rig.claimFailure)
+        XCTAssertEqual(rig.notices.last,
+                       NarrationVoiceNotices.refusalCopy("Glasses hinges are closed — open them to use the camera."))
+    }
+
+    func testStoppingDuringTheColdStartStillGivesTheCameraBack() async {
+        let rig = makeCameraRig()
+        rig.blockClaim = true
+        rig.service.start()
+        await settle()
+        XCTAssertTrue(rig.service.isStartingCamera)
+
+        rig.service.stop()
+        await settle()
+        XCTAssertEqual(rig.releaseCount, 0, "Nothing to give back yet — the stream has not started")
+
+        rig.finishClaim()
+        await settle()
+        XCTAssertEqual(rig.releaseCount, 1,
+                       "Otherwise the stream completes into nobody's hands and runs for a stopped loop")
+        XCTAssertFalse(rig.cameraStreaming)
+    }
+
+    func testSpokenCommandsGoThroughTheSameGates() async {
+        let rig = makeCameraRig()
+        rig.posture = .reserve
+        rig.service.handle(.startNarrating)
+        await settle()
+        XCTAssertEqual(rig.service.mode, .off,
+                       "The gates belong to starting narration, not to one surface that starts it")
+        XCTAssertEqual(rig.claimCount, 0)
+
+        rig.posture = .normal
+        rig.service.handle(.startNarrating)
+        await settle()
+        XCTAssertEqual(rig.service.mode, .narrating)
+        XCTAssertEqual(rig.claimCount, 1)
+    }
+
+    func testAnUnwiredCameraSeamLeavesTheLoopExactlyAsItWas() async {
+        let rig = makeRig()   // no claim/release seams
+        rig.service.start()
+        await settle()
+        XCTAssertEqual(rig.service.mode, .watching)
+        XCTAssertFalse(rig.service.isStartingCamera)
+        XCTAssertEqual(rig.notices, [])
+    }
 }

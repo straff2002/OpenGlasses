@@ -297,4 +297,32 @@ final class NarrationVoiceNoticesTests: XCTestCase {
         XCTAssertNil(notices.notice(for: again, requestedMode: policy.requestedMode))
     }
 
+
+    // MARK: - Starting the camera (Plan CV, camera ownership)
+
+    func testWarmUpNamesTheWait() {
+        let copy = NarrationVoiceNotices.warmingCopy(posture: .normal)
+        XCTAssertTrue(copy.contains("few seconds"),
+                      "A ~20 s cold start unannounced is its own unexplained silence")
+    }
+
+    func testWarmUpCarriesTheCostWhenConserving() {
+        let normal = NarrationVoiceNotices.warmingCopy(posture: .normal)
+        let conserve = NarrationVoiceNotices.warmingCopy(posture: .conserve)
+        XCTAssertNotEqual(normal, conserve)
+        XCTAssertTrue(conserve.hasPrefix(normal), "Same news, plus the cost the wearer has to weigh")
+    }
+
+    func testConservingDoesNotRefuse() {
+        XCTAssertNil(NarrationVoiceNotices.powerRefusal(posture: .normal))
+        XCTAssertNil(NarrationVoiceNotices.powerRefusal(posture: .conserve),
+                     "A wearer who needs narration has no substitute for it; conserve means economise, not stop")
+    }
+
+    func testReserveRefusesAndSaysWhatToDo() {
+        let refusal = NarrationVoiceNotices.powerRefusal(posture: .reserve)
+        XCTAssertNotNil(refusal)
+        XCTAssertTrue(refusal?.contains("Charge") == true,
+                      "A refusal the wearer can act on beats a few minutes of narration and then dead glasses")
+    }
 }
