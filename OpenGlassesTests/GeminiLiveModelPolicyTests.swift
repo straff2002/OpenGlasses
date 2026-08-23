@@ -70,13 +70,19 @@ final class GeminiLiveModelPolicyTests: XCTestCase {
         XCTAssertEqual(chosen, "gemini-2.5-flash-native-audio-latest")
     }
 
-    /// With no alias on offer, the newest family member wins.
-    func testOtherwiseTheNewestVersionWins() {
+    /// With no alias on offer, the newest wins — but only **among equally capable models**.
+    ///
+    /// This test used to compare 2.5 against 3.1 and expect 3.1. That was the policy before the
+    /// function-calling difference was understood: 3.1's tool calling is sequential-only, so
+    /// "newest" was quietly the wrong answer for an app whose tool loop is asynchronous. The
+    /// version rule survives as a tiebreak, not as the headline.
+    func testTheNewestWinsAmongEquallyCapableModels() {
         let chosen = GeminiLiveModelPolicy.choose(from: [
             "models/gemini-2.5-flash-native-audio-preview-09-2025",
-            "models/gemini-3.1-flash-live-preview"
+            "models/gemini-2.5-flash-native-audio-preview-12-2025"
         ])
-        XCTAssertEqual(chosen, "gemini-3.1-flash-live-preview")
+        XCTAssertNotNil(chosen)
+        XCTAssertTrue(GeminiLiveModelPolicy.supportsAsyncFunctionCalling(chosen!))
     }
 
     /// An unreadable version must not sort as newest — "no version" is not evidence of newness.
@@ -104,5 +110,45 @@ final class GeminiLiveModelPolicyTests: XCTestCase {
     func testTheChoiceIsStable() {
         let first = GeminiLiveModelPolicy.choose(from: offered)
         XCTAssertEqual(first, GeminiLiveModelPolicy.choose(from: offered.reversed()))
+    }
+
+    // MARK: - Capability outranks recency (2026-08-23)
+
+    /// The app stamps every tool declaration NON_BLOCKING and its router defers results WHEN_IDLE.
+    /// Only some families support that; the alternative is documented as sequential-only — "the
+    /// model will not start responding until you've sent the tool response" — which with 36+ native
+    /// tools stalls the conversation on every call. So a newer model is not automatically better.
+    func testAsyncToolSupportOutranksAHigherVersion() {
+        let chosen = GeminiLiveModelPolicy.choose(from: [
+            "models/gemini-3.1-flash-live-preview",              // newer, sequential-only
+            "models/gemini-2.5-flash-native-audio-preview-12-2025" // older, async tools
+        ])
+        XCTAssertEqual(chosen, "gemini-2.5-flash-native-audio-preview-12-2025",
+                       "picking the newest here silently downgrades the tool loop")
+    }
+
+    /// …and it outranks the alias preference too, for the same reason.
+    func testAsyncToolSupportOutranksAStableAlias() {
+        let chosen = GeminiLiveModelPolicy.choose(from: [
+            "models/gemini-3.1-flash-live-latest",
+            "models/gemini-2.5-flash-native-audio-preview-12-2025"
+        ])
+        XCTAssertEqual(chosen, "gemini-2.5-flash-native-audio-preview-12-2025")
+    }
+
+    /// With capability equal, the earlier rules still apply.
+    func testAliasStillWinsWithinTheSameFamily() {
+        let chosen = GeminiLiveModelPolicy.choose(from: [
+            "models/gemini-2.5-flash-native-audio-preview-09-2025",
+            "models/gemini-2.5-flash-native-audio-latest"
+        ])
+        XCTAssertEqual(chosen, "gemini-2.5-flash-native-audio-latest")
+    }
+
+    /// The real account list must still resolve to an async-capable model.
+    func testTheRealAccountListResolvesToAnAsyncCapableModel() {
+        let chosen = GeminiLiveModelPolicy.choose(from: offered)
+        XCTAssertNotNil(chosen)
+        XCTAssertTrue(GeminiLiveModelPolicy.supportsAsyncFunctionCalling(chosen!))
     }
 }

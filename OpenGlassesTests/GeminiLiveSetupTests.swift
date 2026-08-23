@@ -69,4 +69,29 @@ final class GeminiLiveSetupTests: XCTestCase {
         let generation = body(modalities: ["TEXT"])["generationConfig"] as? [String: Any]
         XCTAssertEqual(generation?["responseModalities"] as? [String], ["TEXT"])
     }
+
+    // MARK: - thinkingConfig is family-specific (2026-08-23)
+
+    /// The 2.5 family takes a token budget; 3.x takes a level. We hard-coded the 2.5 form back when
+    /// the model was hard-coded too — it is now chosen at runtime from whatever the account offers.
+    func testThinkingConfigMatchesTheModelFamily() {
+        XCTAssertEqual(
+            GeminiLiveThinkingConfig.forModel("gemini-2.5-flash-native-audio-latest")?["thinkingBudget"] as? Int, 0)
+        XCTAssertEqual(
+            GeminiLiveThinkingConfig.forModel("gemini-3.1-flash-live-preview")?["thinkingLevel"] as? String, "minimal")
+    }
+
+    /// An unknown family sends nothing at all. This endpoint refuses a whole setup over one
+    /// unrecognised field — the 1007 that made every session fail identically — so the server's
+    /// default beats a guessed shape.
+    func testAnUnknownFamilySendsNoThinkingConfigAtAll() {
+        XCTAssertNil(GeminiLiveThinkingConfig.forModel("gemini-robotics-er-2-streaming-preview"))
+
+        let setup = GeminiLiveSetup.body(model: "models/gemini-robotics-er-2-streaming-preview",
+                                         responseModalities: ["AUDIO"], systemInstruction: "hi",
+                                         tools: [], sessionResumption: [:])
+        let generation = setup["generationConfig"] as? [String: Any]
+        XCTAssertNil(generation?["thinkingConfig"])
+        XCTAssertNotNil(generation?["responseModalities"], "the rest of the config still goes")
+    }
 }

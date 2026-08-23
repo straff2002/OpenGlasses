@@ -21,12 +21,16 @@ enum GeminiLiveSetup {
                      systemInstruction: String,
                      tools: [[String: Any]],
                      sessionResumption: [String: Any]) -> [String: Any] {
-        [
+        var generationConfig: [String: Any] = ["responseModalities": responseModalities]
+        // Family-specific, and omitted when unknown — see `GeminiLiveThinkingConfig`. A guessed
+        // field here closes the socket rather than being ignored.
+        if let thinking = GeminiLiveThinkingConfig.forModel(model) {
+            generationConfig["thinkingConfig"] = thinking
+        }
+
+        return [
             "model": model,
-            "generationConfig": [
-                "responseModalities": responseModalities,
-                "thinkingConfig": ["thinkingBudget": 0]
-            ],
+            "generationConfig": generationConfig,
             "systemInstruction": ["parts": [["text": systemInstruction]]],
             "tools": tools,
             "realtimeInputConfig": [

@@ -26,6 +26,19 @@ enum GeminiLiveModelPolicy {
     /// be a stranger failure than no session at all. Chosen only if nothing else is offered.
     static let specialisedMarkers = ["translate", "robotics"]
 
+    /// Families documented to support **asynchronous** function calling — the model keeps talking
+    /// while a tool runs (`behavior: NON_BLOCKING`).
+    ///
+    /// This app is built on that behaviour: every declaration is stamped `NON_BLOCKING` and the
+    /// tool router acks slow calls and defers results `WHEN_IDLE`. The alternative is documented as
+    /// *sequential only* — "the model will not start responding until you've sent the tool
+    /// response" — which with 36+ native tools stalls the conversation on every call.
+    ///
+    /// So capability outranks recency here. Picking the newest model would quietly downgrade the
+    /// tool loop, and it would present as the assistant going mute mid-sentence rather than as a
+    /// model choice.
+    static let asyncToolFamilyMarkers = ["2.5"]
+
     struct Resolution: Equatable {
         /// Bare model id (no `models/` prefix) to send in the setup message.
         let model: String
@@ -46,12 +59,23 @@ enum GeminiLiveModelPolicy {
 
     /// Pick the best general-purpose model from what the account actually offers.
     ///
+    /// Whether a model's family is documented to support asynchronous function calling.
+    static func supportsAsyncFunctionCalling(_ id: String) -> Bool {
+        asyncToolFamilyMarkers.contains { id.contains($0) }
+    }
+
     /// Preference order, and each step earns its place:
     /// 1. general-purpose over task-specialised — a translate model answers questions in the wrong
     ///    shape entirely;
-    /// 2. stable aliases (`-latest`) over dated previews — a dated preview is exactly the kind of
+    /// 2. **async function calling over sequential** — this app's tool loop depends on it, and the
+    ///    downgrade is invisible until the assistant stalls mid-sentence on a tool call;
+    /// 3. stable aliases (`-latest`) over dated previews — a dated preview is exactly the kind of
     ///    id that gets retired, which is the bug this whole type exists because of;
-    /// 3. otherwise the highest version number, so a new family member wins by default.
+    /// 4. otherwise the highest version number.
+    ///
+    /// Note the order of 2 and 4: **newest is not best here.** Ranking by version alone would pick
+    /// a newer family whose function calling is sequential, which is a worse assistant on this
+    /// device however new the model is.
     static func choose(from available: [String]) -> String? {
         let ids = available.map(bareId).filter { !$0.isEmpty }
         guard !ids.isEmpty else { return nil }
@@ -62,6 +86,8 @@ enum GeminiLiveModelPolicy {
         let pool = general.isEmpty ? ids : general
 
         return pool.sorted { lhs, rhs in
+            let lhsAsync = supportsAsyncFunctionCalling(lhs), rhsAsync = supportsAsyncFunctionCalling(rhs)
+            if lhsAsync != rhsAsync { return lhsAsync }
             let lhsAlias = lhs.hasSuffix("-latest"), rhsAlias = rhs.hasSuffix("-latest")
             if lhsAlias != rhsAlias { return lhsAlias }
             let lhsVersion = version(of: lhs), rhsVersion = version(of: rhs)
