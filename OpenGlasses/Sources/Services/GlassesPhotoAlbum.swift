@@ -6,58 +6,70 @@ enum GlassesPhotoAlbum {
     private static let albumIDKey = "GlassesPhotoAlbumLocalIdentifier"
 
     static func saveImage(_ image: UIImage, completion: ((Bool) -> Void)? = nil) {
-        ensureCanSave { canSave, canUseAlbum in
+        ensureCanSave { canSave in
             guard canSave else {
                 NSLog("[GlassesPhotoAlbum] Photo library access denied")
                 completion?(false)
                 return
             }
-            performSave(image: image, useAlbum: canUseAlbum, completion: completion)
+            performSave(image: image, completion: completion)
         }
     }
 
     static func saveVideo(at url: URL) async -> Bool {
-        let (canSave, canUseAlbum) = await ensureCanSave()
-        guard canSave else { return false }
-        return await performSave(videoURL: url, useAlbum: canUseAlbum)
+        guard await ensureCanSave() else { return false }
+        return await performSave(videoURL: url)
     }
 
-    private static func ensureCanSave() async -> (canSave: Bool, canUseAlbum: Bool) {
+    private static func ensureCanSave() async -> Bool {
         await withCheckedContinuation { continuation in
-            ensureCanSave { canSave, canUseAlbum in
-                continuation.resume(returning: (canSave, canUseAlbum))
-            }
+            ensureCanSave { continuation.resume(returning: $0) }
         }
     }
 
-    private static func ensureCanSave(completion: @escaping (_ canSave: Bool, _ canUseAlbum: Bool) -> Void) {
-        // We only ever ADD new assets here — we never browse or read the user's existing
-        // library — so request .addOnly, not .readWrite. .readWrite is what puts the user into
-        // the "Select Photos / Allow Full Access" flow, and once they pick "Select Photos" iOS
-        // periodically re-shows that picker as a reminder on later library access — that's the
-        // repeated prompt on every capture. .addOnly is a plain yes/no grant with no limited-
-        // selection state, so it's asked once and never nags again, and it still lets us create
-        // the "Glasses" album and add photos to it.
+    private static func ensureCanSave(completion: @escaping (Bool) -> Void) {
         let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         switch status {
-        case .authorized, .limited:
-            completion(true, true)
+        case .authorized:
+            completion(true)
         case .notDetermined:
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
-                let granted = newStatus == .authorized || newStatus == .limited
-                completion(granted, granted)
+                completion(newStatus == .authorized)
             }
         default:
-            completion(false, false)
+            completion(false)
         }
     }
 
     private static func resolveAlbum() -> PHAssetCollection? {
-        if let cachedID = UserDefaults.standard.string(forKey: albumIDKey),
-           let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [cachedID], options: nil).firstObject {
-            return album
+        if let cachedID = UserDefaults.standard.string(forKey: albumIDKey) {
+            if let album = fetchAlbum(localIdentifier: cachedID) {
+                return album
+            }
+            UserDefaults.standard.removeObject(forKey: albumIDKey)
         }
 
+        if let existing = findAlbumByTitle() {
+            cacheAlbumID(existing.localIdentifier)
+            return existing
+        }
+
+        return createAlbum()
+    }
+
+    private static func fetchAlbum(localIdentifier: String) -> PHAssetCollection? {
+        PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
+    }
+
+    private static func findAlbumByTitle() -> PHAssetCollection? {
+        let readWriteStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard readWriteStatus == .authorized || readWriteStatus == .limited else { return nil }
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.predicate = NSPredicate(format: "title = %@", albumName)
+        return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions).firstObject
+    }
+
+    private static func createAlbum() -> PHAssetCollection? {
         var localIdentifier: String?
         do {
             try PHPhotoLibrary.shared().performChangesAndWait {
@@ -65,17 +77,30 @@ enum GlassesPhotoAlbum {
                 localIdentifier = createRequest.placeholderForCreatedAssetCollection.localIdentifier
             }
         } catch {
+            if isAlbumAlreadyExistsError(error), let existing = findAlbumByTitle() {
+                cacheAlbumID(existing.localIdentifier)
+                return existing
+            }
             NSLog("[GlassesPhotoAlbum] Failed to create album: %@", error.localizedDescription)
             return nil
         }
 
         guard let localIdentifier else { return nil }
-        UserDefaults.standard.set(localIdentifier, forKey: albumIDKey)
-        return PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
+        cacheAlbumID(localIdentifier)
+        return fetchAlbum(localIdentifier: localIdentifier)
     }
 
-    private static func performSave(image: UIImage, useAlbum: Bool, completion: ((Bool) -> Void)?) {
-        let album = useAlbum ? resolveAlbum() : nil
+    private static func cacheAlbumID(_ localIdentifier: String) {
+        UserDefaults.standard.set(localIdentifier, forKey: albumIDKey)
+    }
+
+    private static func isAlbumAlreadyExistsError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == PHPhotosErrorDomain && nsError.code == 3311
+    }
+
+    private static func performSave(image: UIImage, completion: ((Bool) -> Void)?) {
+        let album = resolveAlbum()
         PHPhotoLibrary.shared().performChanges {
             let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
             if let album, let placeholder = creationRequest.placeholderForCreatedAsset {
@@ -89,8 +114,8 @@ enum GlassesPhotoAlbum {
         }
     }
 
-    private static func performSave(videoURL: URL, useAlbum: Bool) async -> Bool {
-        let album = useAlbum ? resolveAlbum() : nil
+    private static func performSave(videoURL: URL) async -> Bool {
+        let album = resolveAlbum()
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 guard let creationRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL) else { return }
