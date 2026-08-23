@@ -12,7 +12,7 @@ let package = Package(
         // HaishinKit — RTMP live streaming
         .package(url: "https://github.com/shogo4405/HaishinKit.swift.git", from: "2.2.5"),
         // MLX Swift LM — on-device LLM inference
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", revision: "14414441fa44f45eee35a61e9fa0bab577cf9734"),
         // WebRTC — real peer-to-peer expert transport (Plan L)
         .package(url: "https://github.com/stasel/WebRTC.git", from: "120.0.0"),
     ],

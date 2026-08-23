@@ -80,18 +80,18 @@ final class LocalLLMService: ObservableObject {
             id: "mlx-community/gemma-4-e2b-it-4bit",
             name: "Gemma 4 E2B (Agent)",
             estimatedSize: "3.6 GB",
-            hasVision: true,
+            hasVision: false,
             hasToolCalling: true,
-            notes: "Best on-device agent — tool calling, 140+ languages. Vision-ready architecture, but this build's vision weights don't load in the current MLX runtime (device-verified 2026-07-16) — photo questions answer text-only until a fixed build lands, then vision enables automatically. Uses ~4 GB while running.",
+            notes: "Best on-device agent — tool calling, 140+ languages. Uses ~4 GB while running.",
             minimumRAMGB: 8
         ),
         RecommendedModel(
             id: "mlx-community/gemma-4-e4b-it-4bit",
             name: "Gemma 4 E4B (Agent+)",
             estimatedSize: "5.1 GB",
-            hasVision: true,
+            hasVision: false,
             hasToolCalling: true,
-            notes: "Bigger Gemma 4 — highest-quality on-device agent. Same vision caveat as E2B (text-only until an MLX runtime fix). Needs a high-memory device (12 GB).",
+            notes: "Bigger Gemma 4 — highest-quality on-device agent. Needs a high-memory device (12 GB).",
             minimumRAMGB: 12
         ),
         // Vision models (can see photos from glasses)
@@ -143,22 +143,9 @@ final class LocalLLMService: ObservableObject {
         ),
     ]
 
-    /// Model IDs whose checkpoints declare a vision tree, attempted through `VLMModelFactory`.
-    ///
-    /// Gemma 4 history: the VLM factory used to fatally trap on 1-D tokens (talk-button
-    /// crash); mlx-swift-lm 3.31.4 made that catchable — but a device test (2026-07-15)
-    /// showed the e2b 4-bit quant failing VLM weight mapping (`keyNotFound(language_model…
-    /// k_norm.weight, Gemma4RMSNormZeroShift)`). The hub configs for all three Gemma 4
-    /// checkpoints declare `Gemma4ForConditionalGeneration` with a `vision_config`
-    /// (verified 2026-07-16), so vision is *attempted* — and a mapping failure now demotes
-    /// gracefully to the text factory (`loadModel`), with image turns refused honestly by
-    /// the vision guard in LLMService. Nothing regresses if a checkpoint doesn't cooperate.
     nonisolated static let visionModelIds: Set<String> = [
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
         "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
-        "mlx-community/gemma-4-e2b-it-4bit",
-        "mlx-community/gemma-4-E2B-it-4bit",
-        "mlx-community/gemma-4-e4b-it-4bit",
     ]
 
     /// Models whose VLM load failed weight mapping this run and were demoted to the text
@@ -322,7 +309,7 @@ final class LocalLLMService: ObservableObject {
         // own iOS guidance; set here (not init) so simulator unit tests never touch Metal.
         Memory.cacheLimit = 20 * 1024 * 1024
 
-        let config = ModelConfiguration(id: modelId)
+        let config = Self.modelConfiguration(for: modelId)
         func load(with factory: any ModelFactory) async throws -> ModelContainer {
             try await factory.loadContainer(
                 from: #hubDownloader(hub),
@@ -342,11 +329,8 @@ final class LocalLLMService: ObservableObject {
                 modelContainer = try await load(with: VLMModelFactory.shared)
                 loadedViaVLMFactory = true
             } catch {
-                // The known shape of this failure is a quant whose weight tree doesn't
-                // match the VLM export (keyNotFound …k_norm.weight — device trace
-                // 2026-07-15). Whatever the cause, the model is still a perfectly good
-                // text model: demote for this run and load through the text factory.
-                // Image turns then get the honest refusal instead of a broken load.
+                // Weight-tree mismatch (pre-#390: KV-shared tail declared v_proj/k_norm).
+                // Model still loads as text; image turns get the honest refusal.
                 NSLog("[LocalLLM] VLM load failed for %@ — demoting to text factory: %@",
                       modelId, error.localizedDescription)
                 visionDemotedModelIds.insert(modelId)
@@ -439,15 +423,24 @@ final class LocalLLMService: ObservableObject {
         // candidates and to produce the final token ids.
         let tokenizer = await container.tokenizer
         func tokenize(_ hist: [(role: String, content: String)]) throws -> [Int] {
+            if Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+                let text = Gemma4ChatPrompt.render(
+                    system: systemPrompt, history: hist, userMessage: userMessage,
+                    bosToken: tokenizer.bosToken)
+                return tokenizer.encode(text: text, addSpecialTokens: false)
+            }
             var messages: [[String: String]] = [["role": "system", "content": systemPrompt]]
             for turn in hist { messages.append(["role": turn.role, "content": turn.content]) }
             messages.append(["role": "user", "content": userMessage])
             do {
                 return try tokenizer.applyChatTemplate(messages: messages)
             } catch {
-                // Merge the system prompt into the user turn for models without a system role.
-                // No "User:" transcript label — a small model reads a speaker-labelled dialogue
-                // and can flip roles, replying *as* the user addressed to the persona name.
+                if Gemma4ChatPrompt.isJinjaParserFailure(error) {
+                    let text = Gemma4ChatPrompt.render(
+                        system: systemPrompt, history: hist, userMessage: userMessage,
+                        bosToken: tokenizer.bosToken)
+                    return tokenizer.encode(text: text, addSpecialTokens: false)
+                }
                 var fallback: [[String: String]] = []
                 for turn in hist { fallback.append(["role": turn.role, "content": turn.content]) }
                 fallback.append(["role": "user", "content": systemPrompt + "\n\n" + userMessage])
@@ -678,6 +671,13 @@ final class LocalLLMService: ObservableObject {
             temperature: 0.7,
             topP: 0.9
         )
+    }
+
+    nonisolated static func modelConfiguration(for modelId: String) -> ModelConfiguration {
+        if Gemma4ChatPrompt.matches(modelId: modelId) {
+            return ModelConfiguration(id: modelId, extraEOSTokens: ["<turn|>"])
+        }
+        return ModelConfiguration(id: modelId)
     }
 
     /// Shape token ids for the loaded model (see the call site in `generate` for why):
@@ -953,5 +953,44 @@ final class LockedGenerationReport: @unchecked Sendable {
     var completion: GenerateCompletionInfo? {
         lock.lock(); defer { lock.unlock() }
         return info
+    }
+}
+
+enum Gemma4ChatPrompt {
+    static func matches(modelId: String?) -> Bool {
+        guard let id = modelId?.lowercased() else { return false }
+        return id.contains("gemma-4") || id.contains("gemma4")
+    }
+
+    static func isJinjaParserFailure(_ error: Error) -> Bool {
+        let text = String(describing: error)
+        return text.contains("modulo")
+            || text.contains("Unexpected token")
+            || text.contains("parser(")
+    }
+
+    static func render(
+        system: String,
+        history: [(role: String, content: String)],
+        userMessage: String,
+        bosToken: String?
+    ) -> String {
+        var out = bosToken ?? ""
+        let sys = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sys.isEmpty {
+            appendTurn(&out, role: "system", body: sys)
+        }
+        for turn in history {
+            let role = turn.role == "assistant" ? "model" : turn.role
+            appendTurn(&out, role: role, body: turn.content)
+        }
+        appendTurn(&out, role: "user", body: userMessage)
+        out += "<|turn>model\n"
+        return out
+    }
+
+    private static func appendTurn(_ out: inout String, role: String, body: String) {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        out += "<|turn>\(role)\n\(trimmed)<turn|>\n"
     }
 }

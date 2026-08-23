@@ -8,16 +8,9 @@ import XCTest
 @MainActor
 final class LocalModelRoutingTests: XCTestCase {
 
-    /// Attempt-and-demote (2026-07-16): Gemma 4 models ATTEMPT the VLM factory (they are
-    /// architecturally VLMs) and demote to the text factory at runtime if the checkpoint's
-    /// vision weights fail mapping. The old crash this test feared (wrong token shape through
-    /// the VLM forward pass) is prevented by keying the shape off `loadedViaVLMFactory` — the
-    /// factory that ACTUALLY loaded — not off nominal membership in `visionModelIds`.
-    func testGemma4AttemptsVisionFactoryWithRuntimeDemotion() {
-        XCTAssertTrue(LocalLLMService.visionModelIds.contains { $0.contains("gemma-4") },
-                      "Gemma 4 must attempt the VLM factory so vision self-enables on a fixed runtime")
-        XCTAssertTrue(LocalLLMService.visionModelIds.contains { $0.contains("SmolVLM") },
-                      "the proven vision models stay on the VLM route")
+    func testGemma4StaysOnTextFactory() {
+        XCTAssertFalse(LocalLLMService.visionModelIds.contains { $0.contains("gemma-4") })
+        XCTAssertTrue(LocalLLMService.visionModelIds.contains { $0.contains("SmolVLM") })
     }
 
     /// The on-device prompt budget (BK P2) must sit below the observed OOM point (an ~8.2k-token

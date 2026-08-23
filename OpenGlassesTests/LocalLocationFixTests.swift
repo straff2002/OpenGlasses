@@ -111,11 +111,7 @@ final class LocalLocationFixTests: XCTestCase {
 
     func testVisionCapabilityByModelId() {
         XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: "mlx-community/SmolVLM2-2.2B-Instruct-mlx"))
-        // Attempt-and-demote (2026-07-16): Gemma 4 is nominally vision-capable and ATTEMPTS the
-        // VLM factory; if this build's weights fail VLM mapping it demotes to text at runtime
-        // (`isVisionUsable` is the demotion-aware truth, and image turns refuse honestly).
-        XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: "mlx-community/gemma-4-e2b-it-4bit"),
-                      "nominal capability — runtime demotion (visionDemotedModelIds) handles load failure")
+        XCTAssertFalse(LocalLLMService.isVisionCapable(modelId: "mlx-community/gemma-4-e2b-it-4bit"))
     }
 
     func testCurrentDateTimeLineFormat() {

@@ -3311,11 +3311,8 @@ struct Config {
 
     /// Whether fast-tier queries may run on the *on-device* MLX agent model.
     ///
-    /// Historically default-off because the gemma-4 agent model fatally crashed during
-    /// inference: it was mis-routed through `VLMModelFactory` (see
-    /// `LocalLLMService.visionModelIds`) into the uncatchable `MLXVLM.Gemma4` trap. That
-    /// routing is fixed — the model now loads as text — but the default stays off pending
-    /// on-device confirmation that the text path generates cleanly. Cloud agents are unaffected.
+    /// Default-off pending on-device confirmation that Gemma 4 generates cleanly
+    /// through the VLM factory (mlx-swift-lm#390). Cloud agents are unaffected.
     @UserDefaultsBacked("localAgentEnabled", default: false) static var localAgentEnabled: Bool
 
     static func setLocalAgentEnabled(_ value: Bool) { localAgentEnabled = value }
