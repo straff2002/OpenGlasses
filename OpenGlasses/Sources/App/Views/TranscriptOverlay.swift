@@ -4,6 +4,9 @@ import SwiftUI
 /// Positioned above the bottom control bar, fading in/out as content arrives.
 /// Tap any card to see the full response in a detail sheet.
 struct TranscriptOverlay: View {
+    /// The single surface every subsystem posts to — see `AppNotice` for why it exists.
+    @ObservedObject private var notices = NoticeCenter.shared
+
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
@@ -35,7 +38,7 @@ struct TranscriptOverlay: View {
     /// A camera condition the wearer can clear (a doff pausing the stream). Ranks below a real
     /// error but above silence — the failure mode it replaces was a UI reading "Streaming" with
     /// the camera off.
-    private var noticeText: String? { appState.cameraService.streamingNotice }
+    private var noticeText: String? { notices.current?.text }
 
     private var errorText: String? {
         // The session's error is the more specific one, but its *absence* must not hide an

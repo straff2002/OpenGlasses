@@ -382,6 +382,7 @@ class GeminiLiveSessionManager: ObservableObject {
                 errorStateMessage: errorStateMessage,
                 lastCloseReason: geminiService.lastCloseReason)
             errorMessage = msg
+            NoticeCenter.shared.post(msg, severity: .error, source: .liveSession)
             geminiService.disconnect()
             stateObservation?.cancel()
             stateObservation = nil

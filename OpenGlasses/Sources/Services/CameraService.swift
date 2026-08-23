@@ -23,6 +23,12 @@ class CameraService: ObservableObject {
     /// Something the wearer can fix right now — currently a stream paused by a doff. Cleared when
     /// streaming resumes, so a stale notice cannot outlive the condition it describes.
     @Published var streamingNotice: String?
+
+    /// True while `startStreaming()` is in flight. The glasses camera cold-starts in seconds — a
+    /// session, then a stream, then the first frame — and device-traced 2026-08-23 that was up to
+    /// 20 s of a button that said "Camera" and looked broken, so the wearer pressed it repeatedly.
+    /// Work that takes that long has to say it is working.
+    @Published var isStartingStream: Bool = false
     @Published var streamingStatus: CameraStreamingStatus = .stopped
 
     /// Kept as a nested name for the call sites that grew up with it.
@@ -115,14 +121,23 @@ class CameraService: ObservableObject {
             streamingStatus = status
         case .streamingChanged(let streaming):
             isStreaming = streaming
-            if streaming { streamingNotice = nil }
+            if streaming {
+                streamingNotice = nil
+                NoticeCenter.shared.clear(source: .camera)   // the condition has cleared
+            }
         case .debug(let message):
             onDebugEvent?(message)
         case .compatibilityNotice(let notice):
             compatibilityNotice = notice
+            if let notice {
+                NoticeCenter.shared.post(notice, severity: .warning, source: .glasses)
+            } else {
+                NoticeCenter.shared.clear(source: .glasses)
+            }
         case .transientNotice(let notice):
             streamingNotice = notice
             onDebugEvent?(notice)
+            NoticeCenter.shared.post(notice, severity: .advisory, source: .camera)
         case .registrationProgress(let state):
             onRegistrationProgress?(state)
         }
@@ -184,6 +199,8 @@ class CameraService: ObservableObject {
         if case .unavailable(let reason) = availability(of: .livePreview) {
             throw CameraError.unsupported(reason)
         }
+        isStartingStream = true
+        defer { isStartingStream = false }
         try await backend.startStreaming()
     }
 

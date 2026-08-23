@@ -380,6 +380,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 NSLog("[Camera] Error: %@", message)
                 self.debug("Camera error: \(message)")
 
+                // Device-traced 2026-08-23: this copy already said exactly what was wrong
+                // ("hinges are closed", "too hot", "battery is too low") and went only to the log
+                // unless a photo capture happened to be pending. During streaming the wearer saw
+                // the glasses flash amber and the app say nothing. The message is the whole point
+                // of mapping the error — surface it.
+                self.events.send(.transientNotice(message))
+
                 // Fail a pending capture fast on a terminal error (hinges closed, thermal/battery
                 // shutdown, device gone) instead of waiting out the 5s timeout below.
                 if CameraErrorPolicy.abortsCapture(error), let cont = self.photoContinuation {

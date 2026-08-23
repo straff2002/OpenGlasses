@@ -101,10 +101,14 @@ class GlassesConnectionService: ObservableObject {
             connectionStatus = RegistrationFlow.status(stateRaw: stateAfter.rawValue)
         } catch let error as RegistrationError {
             print("❌ startRegistration() failed: \(error)")
-            connectionStatus = RegistrationFlow.registrationErrorMessage(error)
+            let message = RegistrationFlow.registrationErrorMessage(error)
+            connectionStatus = message
+            NoticeCenter.shared.post(message, severity: .error, source: .glasses)
         } catch {
             print("❌ startRegistration() failed: \(error)")
             connectionStatus = "Connection failed: \(error.localizedDescription)"
+            NoticeCenter.shared.post("Connection failed: \(error.localizedDescription)",
+                                     severity: .error, source: .glasses)
         }
     }
 

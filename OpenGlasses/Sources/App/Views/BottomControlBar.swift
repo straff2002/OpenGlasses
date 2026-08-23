@@ -248,16 +248,22 @@ struct BottomControlBar: View {
         } else if isRealtime {
             BarButton(
                 icon: "video.fill",
-                label: appState.cameraService.isStreaming ? "Streaming" : "Camera",
-                isActive: appState.cameraService.isStreaming,
-                isDisabled: !realtimeSessionActive
+                label: appState.cameraService.isStreaming ? "Streaming"
+                     : (appState.cameraService.isStartingStream ? "Starting…" : "Camera"),
+                isActive: appState.cameraService.isStreaming || appState.cameraService.isStartingStream,
+                // Disabled while starting: the cold start takes seconds, and a second tap during it
+                // did nothing visible, which read as the first tap having failed.
+                isDisabled: !realtimeSessionActive || appState.cameraService.isStartingStream
             ) {
-                if realtimeSessionActive && !appState.cameraService.isStreaming {
+                if realtimeSessionActive && !appState.cameraService.isStreaming
+                    && !appState.cameraService.isStartingStream {
                     Task {
                         do { try await appState.cameraService.startStreaming() }
                         catch {
                             NSLog("[Camera] startStreaming failed: %@", error.localizedDescription)
                             appState.errorMessage = "Camera: \(error.localizedDescription)"
+                            NoticeCenter.shared.post("Camera: \(error.localizedDescription)",
+                                                     severity: .error, source: .camera)
                         }
                     }
                 }
