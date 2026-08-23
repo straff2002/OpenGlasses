@@ -1317,10 +1317,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Lets end() give the camera back the way it found it without stopping a stream some
         // other feature is mid-way through using (same consumer set LivePreviewView checks).
         ReadingCompanionService.shared.otherStreamConsumersActive = { [weak self] in
-            guard let self else { return false }
-            return self.videoRecorder.isRecording || self.broadcastService.isBroadcasting
-                || self.webRTCStreaming.isStreaming || self.geminiLiveSession.isActive
-                || self.openAIRealtimeSession.isActive
+            self?.otherStreamConsumersActive() ?? false
         }
 
         // Skill Self-Evolution (Plan AW) — give the loop its LLM analyzer. The capture hook
@@ -3427,6 +3424,24 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // MARK: - Smart Camera Activation
 
+    /// True when some other feature legitimately owns the glasses camera stream.
+    private func otherStreamConsumersActive() -> Bool {
+        videoRecorder.isRecording || broadcastService.isBroadcasting
+            || webRTCStreaming.isStreaming || geminiLiveSession.isActive
+            || openAIRealtimeSession.isActive || ReadingCompanionService.shared.isActive
+            || SceneNarrationService.shared.isPerceiving
+            || FingerspellingSessionService.shared.isActive
+    }
+
+    /// Stop the glasses camera stream when nothing else needs it. Preserves intentional
+    /// always-on presets and streams another feature is mid-way through using.
+    private func stopStreamUnlessShared() async {
+        guard cameraService.isStreaming else { return }
+        guard Config.activePresetCameraBehavior != "always" else { return }
+        guard !otherStreamConsumersActive() else { return }
+        await cameraService.stopStreaming()
+    }
+
     /// Timestamp of the last smart camera activation (for cooldown window).
     private var lastSmartCameraActivation: Date?
 
@@ -3484,6 +3499,8 @@ class AppState: ObservableObject, AppStateProtocol {
             return data
         }
 
+        let startedForCapture = !cameraService.isStreaming
+
         // Plan CU P1: the grab sits between commit and first token, so a vision turn's raw TTFT
         // contains it — uncorrected, the Bluetooth stream's wait reads as model latency. Timed from
         // here rather than from the top of the function: the already-streaming path above returns a
@@ -3500,15 +3517,18 @@ class AppState: ObservableObject, AppStateProtocol {
                let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
                !LLMImagePreparer.isDegenerate(data) {
                 print("📷 Smart Camera: captured frame")
+                if startedForCapture { await stopStreamUnlessShared() }
                 return data
             }
             // Try photo capture as fallback
             let photoData = try await cameraService.capturePhoto()
             cameraService.restoreAudioForWakeWord()
             print("📷 Smart Camera: captured photo")
+            if startedForCapture { await stopStreamUnlessShared() }
             return photoData
         } catch {
             print("📷 Smart Camera: capture failed — \(error.localizedDescription)")
+            if startedForCapture { await stopStreamUnlessShared() }
             return nil
         }
     }
@@ -4552,6 +4572,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // If the user was actively talking, always restart wake word — even in
         // silent mode (silent mode only suppresses the *initial* auto-start).
         let wasInConversation = inConversation
+
+        await stopStreamUnlessShared()
 
         isListening = false
         inConversation = false

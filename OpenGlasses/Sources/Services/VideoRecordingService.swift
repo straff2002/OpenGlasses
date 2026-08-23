@@ -62,7 +62,6 @@ class VideoRecordingService: ObservableObject {
     private nonisolated(unsafe) var poolHeight: Int = 0
 
     /// Name of the Photos album where recordings are saved.
-    private nonisolated static let albumName = "Glasses"
 
     /// Transcript accumulated during recording (from ambient captions).
     @Published private(set) var recordingTranscript: String = ""
@@ -449,13 +448,13 @@ class VideoRecordingService: ObservableObject {
 
     /// Save the video file to the "Glasses" album in the Photos library.
     private func saveVideoToPhotos(_ url: URL) async {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        let status = await GlassesPhotoAlbum.ensureAddOnlyAuthorization()
         guard status == .authorized || status == .limited else {
             NSLog("[Recording] Photo library access denied")
             return
         }
 
-        let album = fetchGlassesAlbum()
+        let album = GlassesPhotoAlbum.resolveAlbum()
 
         do {
             try await PHPhotoLibrary.shared().performChanges {
@@ -472,32 +471,6 @@ class VideoRecordingService: ObservableObject {
         } catch {
             NSLog("[Recording] Save to Photos failed: %@", error.localizedDescription)
         }
-    }
-
-    /// Fetch the "Glasses" album, creating it if it doesn't exist.
-    private nonisolated func fetchGlassesAlbum() -> PHAssetCollection? {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", VideoRecordingService.albumName)
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-
-        if let existing = collections.firstObject {
-            return existing
-        }
-
-        var localIdentifier: String?
-        do {
-            try PHPhotoLibrary.shared().performChangesAndWait {
-                let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(
-                    withTitle: VideoRecordingService.albumName)
-                localIdentifier = createRequest.placeholderForCreatedAssetCollection.localIdentifier
-            }
-        } catch {
-            NSLog("[Recording] Failed to create Glasses album: %@", error.localizedDescription)
-            return nil
-        }
-
-        guard let identifier = localIdentifier else { return nil }
-        return PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil).firstObject
     }
 
     // MARK: - Transcript Persistence

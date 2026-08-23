@@ -71,9 +71,6 @@ class CameraService: ObservableObject {
     /// a simulator with an unresolved camera privacy decision, hangs waiting for a prompt.
     private let phoneSource: PhoneCameraCapturing
 
-    /// Name of the Photos album where glasses photos are saved.
-    private nonisolated static let albumName = "Glasses"
-
     /// `nil` means the default Meta/DAT backend and the real iPhone camera. The backend is built
     /// here rather than as a default argument because a default argument expression is evaluated
     /// nonisolated, and the backend is main-actor bound; the phone source takes the same shape so
@@ -221,14 +218,13 @@ class CameraService: ObservableObject {
     func saveToPhotoLibrary(_ data: Data) {
         guard let image = UIImage(data: data) else { return }
 
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+        GlassesPhotoAlbum.ensureAddOnlyAuthorization { status in
             guard status == .authorized || status == .limited else {
                 NSLog("[Camera] Photo library access denied")
                 return
             }
 
-            // Fetch/create album BEFORE performChanges to avoid nested change block deadlock
-            let album = self.fetchGlassesAlbum()
+            let album = GlassesPhotoAlbum.resolveAlbum()
 
             PHPhotoLibrary.shared().performChanges {
                 let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
@@ -244,39 +240,11 @@ class CameraService: ObservableObject {
                     print("📸 Photo saved to Glasses album")
                 } else if let error {
                     NSLog("[Camera] Save to album failed: %@", error.localizedDescription)
-                    // Fallback: save without album
                     UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
                     print("📸 Photo saved to camera roll (album unavailable)")
                 }
             }
         }
-    }
-
-    /// Fetch the "Glasses" album, creating it if it doesn't exist.
-    private nonisolated func fetchGlassesAlbum() -> PHAssetCollection? {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", CameraService.albumName)
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-
-        if let existing = collections.firstObject {
-            return existing
-        }
-
-        // Create the album synchronously
-        var localIdentifier: String?
-        do {
-            try PHPhotoLibrary.shared().performChangesAndWait {
-                let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: CameraService.albumName)
-                localIdentifier = createRequest.placeholderForCreatedAssetCollection.localIdentifier
-            }
-        } catch {
-            NSLog("[Camera] Failed to create Glasses album: %@", error.localizedDescription)
-            return nil
-        }
-
-        guard let identifier = localIdentifier else { return nil }
-        let result = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil)
-        return result.firstObject
     }
 
     // MARK: - Audio Session Helpers
