@@ -195,6 +195,10 @@ class GeminiLiveSessionManager: ObservableObject {
                 self.aiTranscript = ""
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
+                // The wearer is asking about what is in front of them *now*. With the content gate
+                // on, a still scene forwards nothing between heartbeats, so the answer could be
+                // built on a frame up to twelve seconds old. Force one through.
+                self.frameThrottler.requestFreshFrame()
             }
         }
 

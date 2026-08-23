@@ -1,6 +1,6 @@
 # Plan CX — Vision as a spoken mode
 
-**Status: 📝 Drafted 2026-08-23** — from a device session, not a review. No PR yet.
+**Status: 🚧 P1 built 2026-08-23** — pure core only: `VisionModePolicy` (state machine, entry refusals against device tier and power posture, exit reasons that each announce themselves) and `VisionModeGrammar` (whole-utterance matching). 16 tests. P2 wiring and P3 device work are untouched — nothing is reachable from the UI yet.
 
 ## The problem, as observed
 
