@@ -639,9 +639,27 @@ final class LocalLLMService: ObservableObject {
         }
 
         let report = LockedGenerationReport()
+        // Multimodal Gemma 4 prepare is a single unchunked forward (no text-style
+        // chunked prefill). Fat system+tools prompts (~1.7k) + ~280 soft tokens
+        // Jetsam the phone mid-Metal. Photo turns use a short vision-only system
+        // string; text turns keep the full agent prompt (chunked, safe).
+        let effectiveSystem: String
+        let effectiveHistory: [(role: String, content: String)]
+        if imageData != nil {
+            effectiveSystem = """
+                You are OpenGlasses, a voice assistant on smart glasses. A photo from the glasses camera is attached. You CAN see it — never deny vision.
+                Answer in 1–2 short spoken sentences. Name the main subject and anything asked. Skip background, lighting, and composition unless asked.
+                If asked to read text: quote it verbatim; translate only if asked.
+                """
+            effectiveHistory = []
+        } else {
+            effectiveSystem = systemPrompt
+            effectiveHistory = history
+        }
+
         let output = try await container.perform { context -> String in
-            var chat: [Chat.Message] = [.system(systemPrompt)]
-            for turn in history.suffix(4) {
+            var chat: [Chat.Message] = [.system(effectiveSystem)]
+            for turn in effectiveHistory {
                 chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
             }
             if let imageData, let ciImage = CIImage(data: imageData) {
@@ -650,22 +668,17 @@ final class LocalLLMService: ObservableObject {
                 chat.append(.user(userMessage))
             }
 
-            let userInput: UserInput
-            if imageData != nil {
-                userInput = UserInput(
-                    chat: chat,
-                    processing: .init(resize: CGSize(width: 896, height: 896)))
-            } else {
-                userInput = UserInput(chat: chat)
-            }
+            // Let Gemma4Processor.aspectPreservingTargetSize pick the canvas —
+            // forcing 896² before that path does not shrink soft tokens and
+            // wastes preprocess work on phone photos.
+            let userInput = UserInput(chat: chat)
             let lmInput: LMInput
             do {
                 lmInput = try await context.processor.prepare(input: userInput)
             } catch {
                 guard imageData == nil, Gemma4ChatPrompt.isJinjaParserFailure(error) else { throw error }
-                let recent = Array(history.suffix(4))
                 let text = Gemma4ChatPrompt.render(
-                    system: systemPrompt, history: recent, userMessage: userMessage,
+                    system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
                     bosToken: context.tokenizer.bosToken)
                 let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
                 let promptArray = MLXArray(tokens).expandedDimensions(axis: 0)

@@ -2674,17 +2674,22 @@ class LLMService: ObservableObject {
             try await localService.loadModel(config.model)
         }
 
-        // Build tool instructions — use minimal set for local models
+        // Build tool instructions — use minimal set for local models.
+        // Skip tools on photo turns: Gemma 4 multimodal prefill is one unchunked
+        // forward, and the tool block alone pushes the prompt past phone memory.
         var fullPrompt = systemPrompt
-        if includeTools, let router = nativeToolRouter {
+        if includeTools, imageData == nil, let router = nativeToolRouter {
             let toolNames = router.registry.toolNames.filter { Self.localSafeTools.contains($0) }
             fullPrompt += Self.localToolInstructions(toolNames: toolNames)
         }
 
         // Build history — last 3 exchanges for local models (context is precious; the
         // LocalModelBudget cap still guards the ceiling). Was 2 — too short for a
-        // follow-up that references the answer before last.
-        let history = recentTupleHistory(6, stripToolMarkup: true)
+        // follow-up that references the answer before last. Photo turns drop history:
+        // multimodal forward is unchunked and history tokens compete with soft tokens.
+        let history = imageData == nil
+            ? recentTupleHistory(6, stripToolMarkup: true)
+            : []
 
         // Add user message to history
         conversationHistory.append(["role": "user", "content": text])
