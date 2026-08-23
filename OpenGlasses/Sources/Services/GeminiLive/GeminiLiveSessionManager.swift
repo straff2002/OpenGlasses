@@ -195,6 +195,10 @@ class GeminiLiveSessionManager: ObservableObject {
                 self.aiTranscript = ""
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
+                // The wearer is asking about what is in front of them *now*. With the content gate
+                // on, a still scene forwards nothing between heartbeats, so the answer could be
+                // built on a frame up to twelve seconds old. Force one through.
+                self.frameThrottler.requestFreshFrame()
             }
         }
 
@@ -376,13 +380,13 @@ class GeminiLiveSessionManager: ObservableObject {
               String(describing: connectionState), geminiService.videoFramesSent)
 
         if !setupOk {
-            let msg: String
-            if case .error(let err) = geminiService.connectionState {
-                msg = err
-            } else {
-                msg = "Failed to connect to Gemini"
-            }
+            var errorStateMessage: String?
+            if case .error(let err) = geminiService.connectionState { errorStateMessage = err }
+            let msg = GeminiLiveFailureCopy.message(
+                errorStateMessage: errorStateMessage,
+                lastCloseReason: geminiService.lastCloseReason)
             errorMessage = msg
+            NoticeCenter.shared.post(msg, severity: .error, source: .liveSession)
             geminiService.disconnect()
             stateObservation?.cancel()
             stateObservation = nil

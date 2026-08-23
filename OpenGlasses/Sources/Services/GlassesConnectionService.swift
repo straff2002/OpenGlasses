@@ -73,7 +73,17 @@ class GlassesConnectionService: ObservableObject {
         print("📋 Registration state before: \(stateBefore)")
 
         do {
-            try await Wearables.shared.startRegistration()
+            do {
+                try await Wearables.shared.startRegistration()
+            } catch RegistrationError.alreadyRegistered {
+                // Not a failure — it is the precondition for success, and it is the *normal* state
+                // on every connect after the first. Treating it as an error skipped the whole path
+                // below, so a wearer whose glasses dropped mid-session could press Connect forever
+                // and get "Connection failed: User is already registered" each time: the one state
+                // from which reconnecting is guaranteed possible was the one state we refused to
+                // reconnect from. Device-traced 2026-08-23, after a glasses disconnect mid-reply.
+                print("📋 Already registered — continuing to connect")
+            }
 
             // Poll registration state. `startRegistration()` returns before the user approves the
             // app in the Meta AI companion app, and that approval has been seen to take ~25s — so
@@ -89,9 +99,16 @@ class GlassesConnectionService: ObservableObject {
 
             print("✅ startRegistration() succeeded, state: \(stateAfter)")
             connectionStatus = RegistrationFlow.status(stateRaw: stateAfter.rawValue)
+        } catch let error as RegistrationError {
+            print("❌ startRegistration() failed: \(error)")
+            let message = RegistrationFlow.registrationErrorMessage(error)
+            connectionStatus = message
+            NoticeCenter.shared.post(message, severity: .error, source: .glasses)
         } catch {
             print("❌ startRegistration() failed: \(error)")
             connectionStatus = "Connection failed: \(error.localizedDescription)"
+            NoticeCenter.shared.post("Connection failed: \(error.localizedDescription)",
+                                     severity: .error, source: .glasses)
         }
     }
 

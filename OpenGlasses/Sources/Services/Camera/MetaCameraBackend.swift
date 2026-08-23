@@ -313,19 +313,38 @@ final class MetaCameraBackend: GlassesCameraBackend {
             Task { @MainActor in
                 guard let self else { return }
                 NSLog("[Camera] State changed: %@", String(describing: state))
+                let mapped: CameraStreamStatePolicy.StreamState?
                 switch state {
+                case .streaming:        mapped = .streaming
+                case .paused:           mapped = .paused
+                case .stopped:          mapped = .stopped
+                case .starting:         mapped = .starting
+                case .stopping:         mapped = .stopping
+                case .waitingForDevice: mapped = .waitingForDevice
+                @unknown default:       mapped = nil
+                }
+                guard let mapped else { return }
+
+                switch CameraStreamStatePolicy.decide(state: mapped,
+                                                      streamingIntended: self.continuousStreamingIntent) {
                 case .streaming:
                     self.events.send(.status(.streaming))
-                case .waitingForDevice:
+                case .waiting:
                     self.events.send(.status(.waiting))
                 case .stopped:
                     self.events.send(.status(.stopped))
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
-                case .stopping, .starting, .paused:
+                case .pausedWhileWanted(let notice):
+                    // A paused stream is not streaming, whatever the button says. Since DAT 0.9 a
+                    // doff lands here, so this is the state a wearer can actually fix — say so,
+                    // stop claiming to stream, and nudge it back up.
+                    NSLog("[Camera] Stream paused while streaming was wanted — %@", notice)
+                    self.isStreaming = false
+                    self.events.send(.streamingChanged(false))
                     self.events.send(.status(.waiting))
-                @unknown default:
-                    break
+                    self.events.send(.transientNotice(notice))
+                    self.streamSession?.start()
                 }
             }
         }.store(in: streamListenerBag)
@@ -360,6 +379,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 let message = CameraErrorPolicy.message(for: error)
                 NSLog("[Camera] Error: %@", message)
                 self.debug("Camera error: \(message)")
+
+                // Device-traced 2026-08-23: this copy already said exactly what was wrong
+                // ("hinges are closed", "too hot", "battery is too low") and went only to the log
+                // unless a photo capture happened to be pending. During streaming the wearer saw
+                // the glasses flash amber and the app say nothing. The message is the whole point
+                // of mapping the error — surface it.
+                self.events.send(.transientNotice(message))
 
                 // Fail a pending capture fast on a terminal error (hinges closed, thermal/battery
                 // shutdown, device gone) instead of waiting out the 5s timeout below.

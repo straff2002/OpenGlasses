@@ -28,7 +28,7 @@ struct TurnTimelineDebugView: View {
     var body: some View {
         OGScrollPage {
             OGNotice(
-                text: "On-device only, per Plan CU P1 item 5 — no sink, no push. Perceived latency is speech end → first audio, the number this plan exists to move.",
+                text: "Measured on this device only — no telemetry is sent anywhere. Perceived latency is speech end → first audio: the dead air you actually hear.",
                 systemImage: "gauge"
             )
 
@@ -360,7 +360,7 @@ struct TurnTimelineDebugView: View {
         let text = ledger.debugExport()
         return OGSection(
             header: "Export",
-            footer: "Plain text — turn history plus per-cohort latency stats (Plan CU P1 item 5: no sink, no push, this is the entire surface)."
+            footer: "Plain text — turn history plus per-cohort latency stats. Copying it is the only way these numbers leave the device."
         ) {
             Button {
                 UIPasteboard.general.string = text

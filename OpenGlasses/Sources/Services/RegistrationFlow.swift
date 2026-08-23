@@ -1,4 +1,5 @@
 import Foundation
+import MWDATCore
 
 /// Pure policy for the Meta registration wait — the setup step that most often blocks users
 /// (the DAT permission gate is *the* onboarding blocker).
@@ -21,6 +22,37 @@ enum RegistrationFlow {
         isRegistered(stateRaw: stateRaw)
             ? "Waiting for device…"
             : "Approve OpenGlasses in the Meta AI app to continue…"
+    }
+
+    /// Short, actionable copy for a registration failure.
+    ///
+    /// Two reasons this exists rather than `error.localizedDescription`. The SDK's own text
+    /// describes the SDK's state ("User is already registered"), not what the wearer should do —
+    /// and it is rendered in the status capsule, which is sized for "Glasses Idle", so a sentence
+    /// is truncated to its first few words. Device-traced 2026-08-23: the truncation cut exactly
+    /// the word that would have shown the error was benign.
+    ///
+    /// `alreadyRegistered` is not in the failure set — `connect()` treats it as success, because
+    /// it is the normal state on every connect after the first.
+    static func registrationErrorMessage(_ error: RegistrationError) -> String {
+        switch error {
+        case .alreadyRegistered:
+            // Unreachable from `connect()`, which handles this as success. Mapped anyway so a
+            // future caller cannot turn it back into a scary string by accident.
+            return "Already registered — connecting…"
+        case .metaAINotInstalled:
+            return "Install the Meta AI app and pair your glasses there first."
+        case .networkUnavailable:
+            return "No network. Registration needs a connection — reconnect and try again."
+        case .timeout:
+            return "Registration timed out. Check the glasses are on and nearby, then try again."
+        case .configurationInvalid:
+            return MWDATConfigCheck.message(for: .ok) ?? "This build's Meta SDK configuration is invalid."
+        case .unknown:
+            return "Registration failed. Restart the glasses and try again."
+        @unknown default:
+            return "Registration failed. Restart the glasses and try again."
+        }
     }
 
     /// Diagnostic failure message for a connect that gave up — names the stalled layer instead of

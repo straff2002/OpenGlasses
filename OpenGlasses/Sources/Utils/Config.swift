@@ -1735,14 +1735,9 @@ struct Config {
         return geminiLiveModelConfig?.apiKey ?? ""
     }
 
-    static var geminiLiveModel: String {
-        if let geminiConfig = geminiLiveModelConfig {
-            let m = geminiConfig.model
-            if m.hasPrefix("models/") { return m }
-            return "models/\(m)"
-        }
-        return "models/gemini-2.0-flash-exp"
-    }
+    /// The model id the user configured, if any. What actually goes on the wire is decided at
+    /// connect time against the list the account offers — see `GeminiLiveModelCatalog`.
+    static var geminiLiveConfiguredModel: String? { geminiLiveModelConfig?.model }
 
     static let geminiLiveWebSocketBaseURL =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"

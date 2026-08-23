@@ -105,7 +105,33 @@ class GeminiLiveService: ObservableObject {
 
     // MARK: - Connect / Disconnect
 
+    /// The most recent close message, retained so a refusal can be explained rather than reported
+    /// as a generic failure. Cleared at the start of each connect so a stale reason cannot describe
+    /// a later attempt.
+    private(set) var lastCloseReason: String?
+
+    /// Model this session will use, decided before the socket opens. Defaults to the offline
+    /// fallback so a session that somehow skips `prepareLiveModel` still names something real.
+    private(set) var resolvedLiveModel = GeminiLiveModelPolicy.Resolution(
+        model: GeminiLiveModelPolicy.offlineFallbackModel,
+        substitutedFor: nil,
+        usedOfflineFallback: true)
+
+    /// Ask the account which models can open a Live session, and pick one.
+    ///
+    /// Runs before connecting rather than at setup time because it may make a network call, and a
+    /// setup message must go out promptly once the socket is open. Failure is not fatal: an empty
+    /// list resolves to the offline fallback and the attempt proceeds.
+    private func prepareLiveModel() async {
+        let key = Config.geminiLiveAPIKey
+        let available = await GeminiLiveModelCatalog.shared.liveModels(apiKey: key)
+        resolvedLiveModel = GeminiLiveModelPolicy.resolve(
+            configured: Config.geminiLiveConfiguredModel, available: available)
+    }
+
     func connect() async -> Bool {
+        await prepareLiveModel()
+        lastCloseReason = nil
         guard let url = Config.geminiLiveWebSocketURL else {
             connectionState = .error("No Gemini API key configured")
             return false
@@ -140,6 +166,10 @@ class GeminiLiveService: ObservableObject {
                     self.connectionState = .disconnected
                     self.isModelSpeaking = false
                     let msg = "Connection closed (code \(code.rawValue): \(reasonStr))"
+                    // Keep it: a *refused* session closes rather than errors, so this is the only
+                    // signal that carries the server's reason, and the state above is deliberately
+                    // not `.error` (a normal end-of-session close lands here too).
+                    self.lastCloseReason = msg
                     self.onDisconnected?(msg)
                     self.scheduleReconnect(reason: msg)
                 }
@@ -373,41 +403,22 @@ class GeminiLiveService: ObservableObject {
             toolsArray = [["functionDeclarations": declarations]]
         }
 
-        var setupBody: [String: Any] = [
-            "model": Config.geminiLiveModel,
-            "generationConfig": [
-                "responseModalities": responseModalities,
-                "thinkingConfig": [
-                    "thinkingBudget": 0
-                ]
-            ],
-            "systemInstruction": [
-                "parts": [
-                    ["text": systemInstruction]
-                ]
-            ],
-            "tools": toolsArray,
-            "realtimeInputConfig": [
-                "automaticActivityDetection": [
-                    "disabled": false,
-                    "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
-                    "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
-                    "silenceDurationMs": 500,
-                    "prefixPaddingMs": 40
-                ],
-                "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
-                "turnCoverage": "TURN_INCLUDES_ALL_INPUT",
-                "contextWindowCompression": [
-                    "slidingWindow": [
-                        "targetTokens": 80000
-                    ]
-                ]
-            ],
-            "inputAudioTranscription": [:] as [String: Any],
-            // Plan CJ item 7: always request resumption updates; with a stored handle this
-            // resumes the prior session (goAway rotation / network drop) instead of cold-starting.
-            "sessionResumption": GeminiSessionResumption.setupValue(handle: resumptionHandle)
-        ]
+        // Decided against the account's own model list before connecting (`prepareLiveModel`).
+        // Report a swap: a silent substitution files the session's usage and latency cohorts under
+        // a model that never served it.
+        let resolution = resolvedLiveModel
+        if let replaced = resolution.substitutedFor {
+            NSLog("[GeminiLive] %@ cannot open a Live session — using %@%@",
+                  replaced, resolution.model,
+                  resolution.usedOfflineFallback ? " (could not check what this key supports)" : "")
+        }
+
+        var setupBody = GeminiLiveSetup.body(
+            model: "models/\(resolution.model)",
+            responseModalities: responseModalities,
+            systemInstruction: systemInstruction,
+            tools: toolsArray,
+            sessionResumption: GeminiSessionResumption.setupValue(handle: resumptionHandle))
         // Only a voice session has model audio to transcribe.
         if responseModalities.contains("AUDIO") {
             setupBody["outputAudioTranscription"] = [:] as [String: Any]
@@ -515,7 +526,7 @@ class GeminiLiveService: ObservableObject {
         // Token usage (cumulative) → record the delta for the cost tracker (Plan AU).
         if let cumulative = RealtimeUsage.geminiCumulative(json) {
             let d = usageMeter.delta(tokensIn: cumulative.tokensIn, tokensOut: cumulative.tokensOut)
-            UsageTracker.shared.record(provider: .gemini, model: Config.geminiLiveModel,
+            UsageTracker.shared.record(provider: .gemini, model: resolvedLiveModel.model,
                                        tokensIn: d.tokensIn, tokensOut: d.tokensOut)
         }
 

@@ -4,6 +4,9 @@ import SwiftUI
 /// Positioned above the bottom control bar, fading in/out as content arrives.
 /// Tap any card to see the full response in a detail sheet.
 struct TranscriptOverlay: View {
+    /// The single surface every subsystem posts to — see `AppNotice` for why it exists.
+    @ObservedObject private var notices = NoticeCenter.shared
+
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
@@ -32,10 +35,20 @@ struct TranscriptOverlay: View {
         return appState.llmService.activeModelName
     }
 
+    /// A camera condition the wearer can clear (a doff pausing the stream). Ranks below a real
+    /// error but above silence — the failure mode it replaces was a UI reading "Streaming" with
+    /// the camera off.
+    private var noticeText: String? { notices.current?.text }
+
     private var errorText: String? {
-        if isGemini { return session.errorMessage }
-        if isOpenAI { return openAISession.errorMessage }
-        return appState.errorMessage
+        // The session's error is the more specific one, but its *absence* must not hide an
+        // app-level failure: the camera button only exists in a live session and reports there,
+        // so returning session-only made "start streaming" fail silently (device-traced).
+        if isGemini { return SessionErrorCopy.text(sessionError: session.errorMessage,
+                                                   appError: appState.errorMessage) ?? noticeText }
+        if isOpenAI { return SessionErrorCopy.text(sessionError: openAISession.errorMessage,
+                                                   appError: appState.errorMessage) ?? noticeText }
+        return appState.errorMessage ?? noticeText
     }
 
     var body: some View {

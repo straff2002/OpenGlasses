@@ -32,6 +32,16 @@ class FrameThrottler {
     /// Content gate; non-nil only when `Config.frameDedupEnabled` was set at init.
     private var frameGate: FrameGate?
 
+    /// Set when something needs the model to have a *current* view — the wearer has started
+    /// speaking, and whatever they are about to ask is about what is in front of them now.
+    ///
+    /// Device-traced 2026-08-23: with the content gate on, a still scene forwards nothing between
+    /// heartbeats, so a question could be answered against a frame up to `heartbeat` seconds old
+    /// (12 by default). That number is right for its own job — keeping a background view from going
+    /// stale — and wrong as the wait behind a question. Rather than shorten it for everyone, a turn
+    /// asks for one frame that skips both gates.
+    private var freshFrameWanted = false
+
     /// Injected clock, so the interval/power-multiplier gate is deterministic under test. The live
     /// app leaves the default `Date()`.
     private let now: () -> Date
@@ -71,14 +81,23 @@ class FrameThrottler {
         receivedCount += 1
         guard !isPaused else { return }
         let now = self.now()
+
+        // A turn is starting: send this one whatever the gates say, then resume normal throttling.
+        let forced = freshFrameWanted
+        freshFrameWanted = false
+
         let effectiveInterval = interval * max(1.0, powerIntervalMultiplier)
-        guard now.timeIntervalSince(lastFrameTime) >= effectiveInterval else { return }
+        if !forced {
+            guard now.timeIntervalSince(lastFrameTime) >= effectiveInterval else { return }
+        }
 
         // Content gate runs after the time gate. dhash failure → fail open (send).
         var isKeyframe = false
-        if frameGate != nil, let hash = PerceptualHash.dhash(image) {
+        if !forced, frameGate != nil, let hash = PerceptualHash.dhash(image) {
             let decision = frameGate!.evaluate(hash: hash, now: now.timeIntervalSinceReferenceDate)
             guard decision == .send else { return }
+            // A heartbeat re-send is not evidence of a new scene, and neither is a forced one —
+            // keyframe consumers describe what changed, and nothing did.
             isKeyframe = frameGate!.lastSendReason != .heartbeat
         }
 
@@ -92,11 +111,19 @@ class FrameThrottler {
         if isKeyframe { onKeyframe?(image) }
     }
 
+    /// The wearer has started speaking: make sure the next frame reaches the model, bypassing both
+    /// the rate limit and the content gate. Idempotent — several partial transcripts in one turn
+    /// still force exactly one frame.
+    func requestFreshFrame() {
+        freshFrameWanted = true
+    }
+
     /// Reset the throttle timer (e.g. on session restart).
     func reset() {
         lastFrameTime = .distantPast
         receivedCount = 0
         forwardedCount = 0
+        freshFrameWanted = false
         frameGate?.reset()
     }
 }

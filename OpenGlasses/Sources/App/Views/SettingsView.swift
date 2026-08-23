@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import MWDATCore
 
 struct SettingsView: View {
     @ObservedObject var appState: AppState
@@ -568,8 +569,34 @@ struct HardwarePrivacyView: View {
     @Binding var conversationEncryptionEnabled: Bool
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
+    @State private var glassesUpdateError: String?
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
+
+    /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
+    /// swallowed: the whole point is that the user could not find this screen on their own, so a
+    /// button that silently does nothing is worse than the copy it replaced.
+    @MainActor
+    private func openGlassesAppUpdate() async {
+        glassesUpdateError = nil
+        guard WearablesBootstrap.ensureConfigured() else {
+            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
+            return
+        }
+        do { try await Wearables.shared.openDATGlassesAppUpdate() }
+        catch { glassesUpdateError = "Couldn't open the update screen: \(error.localizedDescription)" }
+    }
+
+    @MainActor
+    private func openGlassesFirmwareUpdate() async {
+        glassesUpdateError = nil
+        guard WearablesBootstrap.ensureConfigured() else {
+            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
+            return
+        }
+        do { try await Wearables.shared.openFirmwareUpdate() }
+        catch { glassesUpdateError = "Couldn't open the firmware screen: \(error.localizedDescription)" }
+    }
 
     private var displayedDisplayBackendName: String {
         DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
@@ -592,7 +619,7 @@ struct HardwarePrivacyView: View {
             // Any glasses that pair as a Bluetooth headset already run the whole voice loop, so
             // say what the connected pair CAN do rather than letting the user find the limits
             // one failed feature at a time.
-            Section("Connected Glasses") {
+            Section {
                 if let tier = connectedTier {
                     LabeledContent("Device class", value: tier.label)
                     Text(tier.summary)
@@ -617,6 +644,24 @@ struct HardwarePrivacyView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                // Device-traced 2026-08-23: streaming was refused with
+                // `datAppOnTheGlassesUpdateRequired`, and our copy said "install the pending
+                // update" — but Meta AI's update screen showed none, because the glasses-side DAT
+                // app is not the same artefact as the firmware or the phone app. The SDK has
+                // deep links straight to both flows; we were telling people to go looking instead
+                // of taking them there.
+                Button("Update Glasses App") { Task { await openGlassesAppUpdate() } }
+                Button("Update Glasses Firmware") { Task { await openGlassesFirmwareUpdate() } }
+                if let glassesUpdateError {
+                    Text(glassesUpdateError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Connected Glasses")
+            } footer: {
+                Text("The glasses run their own companion app for developer access, updated separately from the firmware and from the Meta AI app on your phone. If streaming is refused as needing an update, this is usually the one to open.")
             }
 
             // Plan CL P3: unified capture route. Headset mode exists because the
