@@ -47,6 +47,21 @@ final class SceneNarrationService: ObservableObject {
     /// it, and P3 owes the copy and the announcement.
     @Published private(set) var haltReason: NarrationSessionPolicy.Interruption?
 
+    /// Non-nil when narration cannot run on the connected glasses at all (Plan CV P3). Distinct
+    /// from `haltReason`, which is a running session interrupted; this is a start that never
+    /// happened, and the wearer must hear why rather than watch a switch flip back.
+    @Published private(set) var unavailableReason: String?
+
+    /// The most recent spoken notice, for the Settings surface.
+    @Published private(set) var latestNotice: String?
+
+    /// Every notice the loop has decided the wearer is owed, in order.
+    ///
+    /// The speech itself is fired as an unstructured task — TTS is async and a mode transition
+    /// must not block a Settings toggle on it — so this is the deterministic record of the
+    /// *decision*, and what tests assert against.
+    private(set) var noticeLog: [String] = []
+
     @Published private(set) var latestDescription: String?
     @Published private(set) var describedCount = 0
     @Published private(set) var spokenCount = 0
@@ -83,6 +98,18 @@ final class SceneNarrationService: ObservableObject {
     /// Whether TTS currently owns the floor.
     var isTTSBusy: () -> Bool = { false }
 
+    /// Speak a system notice — a halt explanation or a refusal (Plan CV P3).
+    ///
+    /// Deliberately **not** routed through `AmbientSpeechArbiter`: the arbiter exists to keep
+    /// ambient descriptions from crowding the ear, and it flushes its queue on exactly the
+    /// transitions these notices explain. A notice queued there would be dropped by the very halt
+    /// it was announcing.
+    var speakNotice: ((String) async -> Void)?
+
+    /// Whether the connected glasses can support narration, and if not, what to tell the wearer.
+    /// Defaults to available so headless tests and unwired callers behave as before.
+    var cameraAvailability: () -> CameraFeatureAvailability = { .available }
+
     /// Injected clock, seconds. No `Date()` inside the loop, so tests drive time directly.
     var clock: () -> TimeInterval = { Date().timeIntervalSinceReferenceDate }
 
@@ -100,6 +127,7 @@ final class SceneNarrationService: ObservableObject {
     private var gate = NarrationGate()
     private var frameGate: FrameGate
     private var arbiter = AmbientSpeechArbiter<String>(rules: .narration)
+    private var notices = NarrationVoiceNotices()
     private(set) var context = NarrationContext()
 
     // MARK: - Loop state
@@ -134,9 +162,34 @@ final class SceneNarrationService: ObservableObject {
     }
 
     /// Start watching — silently. Entering the mode never starts speaking on its own.
-    func start() { apply(.start) }
+    ///
+    /// Refuses out loud on glasses that can't provide live frames (Plan CV P3): a switch that flips
+    /// itself back with no explanation is the same unexplained-silence failure in a different
+    /// costume, and the wearer most likely to hit it is the one least able to see the switch.
+    func start() {
+        guard passesCameraGate() else { return }
+        apply(.start)
+    }
 
-    func startNarrating() { apply(.startNarrating) }
+    func startNarrating() {
+        guard passesCameraGate() else { return }
+        apply(.startNarrating)
+    }
+
+    /// True when narration can run at all. On `.unavailable` this records and speaks the reason.
+    ///
+    /// `.degraded` is allowed through: it means the camera works differently, not that it can't
+    /// feed this loop, and the gate's own copy already carries the caveat.
+    private func passesCameraGate() -> Bool {
+        if case let .unavailable(reason) = cameraAvailability() {
+            unavailableReason = reason
+            NSLog("[SceneNarration] Refused — %@", reason)
+            announce(NarrationVoiceNotices.refusalCopy(reason))
+            return false
+        }
+        unavailableReason = nil
+        return true
+    }
 
     /// Stop speaking, keep watching. Grounding is the cheap half and there is no reason to lose it.
     func stopNarrating() { apply(.stopNarrating) }
@@ -173,6 +226,21 @@ final class SceneNarrationService: ObservableObject {
         if let ended = transition.haltEnded {
             NSLog("[SceneNarration] Resumed after %@", ended.rawValue)
         }
+
+        // Plan CV P3: say why, to the wearer who was being spoken to. `NarrationVoiceNotices`
+        // owns the restraint — who hears it, and how often.
+        if let copy = notices.notice(for: transition, requestedMode: policy.requestedMode) {
+            announce(copy)
+        }
+    }
+
+    /// Record and speak a notice.
+    private func announce(_ copy: String) {
+        noticeLog.append(copy)
+        latestNotice = copy
+        if let speakNotice {
+            Task { await speakNotice(copy) }
+        }
     }
 
     private func publish(_ state: NarrationSessionPolicy.State) {
@@ -188,6 +256,9 @@ final class SceneNarrationService: ObservableObject {
         frameGate.reset()
         arbiter.reset()
         context.reset()
+        notices.reset()
+        noticeLog.removeAll()
+        latestNotice = nil
         latestDescription = nil
         describedCount = 0
         spokenCount = 0

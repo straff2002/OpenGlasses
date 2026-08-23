@@ -75,7 +75,7 @@ struct AccessibilitySettingsView: View {
             } header: {
                 Text("Scene Narration")
             } footer: {
-                Text("Describes the space around you as it changes, for moving through somewhere unfamiliar. Watching is silent — descriptions build up so questions about what you're looking at are answered instantly. Speaking them aloud is a separate switch. Runs entirely on-device, so it pauses when the app is in the background.")
+                Text("Describes the space around you as it changes, for moving through somewhere unfamiliar. Watching is silent — descriptions build up so questions about what you're looking at are answered instantly. Speaking them aloud is a separate switch.\n\nNot continuous coverage: descriptions are generated on this device, which can't run while the app is in the background or the phone is locked. Narration stops there and says so out loud. It also needs glasses that stream live video — on glasses that only take photos it can't run at all.")
             }
 
             Section {
