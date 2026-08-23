@@ -2510,6 +2510,16 @@ class AppState: ObservableObject, AppStateProtocol {
             await self?.speechService.speak(text)
         }
         narration.isTTSBusy = { [weak self] in self?.speechService.isSpeaking ?? false }
+
+        // Plan CV P3: the halt explanation and the camera-tier refusal. A notice is spoken with
+        // `.medium` urgency — it is not an emergency, but it must not be read in the same flat
+        // register as the descriptions whose absence it is explaining.
+        narration.speakNotice = { [weak self] text in
+            await self?.speechService.speak(text, urgency: .medium)
+        }
+        narration.cameraAvailability = { [weak self] in
+            self?.cameraService.availability(of: .sceneNarration) ?? .available
+        }
     }
 
     /// Route a transcription to scene narration if it is one of its commands.

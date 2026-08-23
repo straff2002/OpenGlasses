@@ -7,6 +7,9 @@ import SwiftUI
 /// accumulate as grounding, so a later question is answered against a scene the model has already
 /// looked at), and **narrating** puts those descriptions in the wearer's ear. Turning the feature on
 /// must not start talking.
+///
+/// P3 adds the honest half: a halt says why here *and* aloud, and hardware that can't run narration
+/// at all says so instead of offering a switch that flips itself back.
 @MainActor
 struct SceneNarrationToggleView: View {
     @ObservedObject private var service = SceneNarrationService.shared
@@ -33,7 +36,12 @@ struct SceneNarrationToggleView: View {
 
     @ViewBuilder
     private var status: some View {
-        if let halt = service.haltReason {
+        if let reason = service.unavailableReason {
+            // Plan CV P3: a start that can't happen says so, rather than a switch that flips back.
+            Label(reason, systemImage: "video.slash")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if let halt = service.haltReason {
             // Plan CV P3 owns the full treatment — announcing the stop aloud and saying why. This
             // is the Settings half of the same debt: for a wearer relying on narration, silence
             // that isn't explained is indistinguishable from silence because nothing changed.

@@ -34,6 +34,10 @@ final class SceneNarrationServiceTests: XCTestCase {
         var spoken: [String] = []
         var ttsBusy = false
         var describeCallCount = 0
+        /// Spoken system notices (Plan CV P3) — halt explanations and refusals, kept apart from
+        /// `spoken` because they travel a different path and must not be arbitrated.
+        var notices: [String] = []
+        var cameraVerdict: CameraFeatureAvailability = .available
 
         init(service: SceneNarrationService) {
             self.service = service
@@ -62,6 +66,8 @@ final class SceneNarrationServiceTests: XCTestCase {
         }
         service.speakUtterance = { [weak rig] text in rig?.spoken.append(text) }
         service.isTTSBusy = { [weak rig] in rig?.ttsBusy ?? false }
+        service.speakNotice = { [weak rig] text in rig?.notices.append(text) }
+        service.cameraAvailability = { [weak rig] in rig?.cameraVerdict ?? .available }
         return rig
     }
 
@@ -390,5 +396,109 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertEqual(rig.describeCallCount, 1)
         XCTAssertEqual(rig.service.describedCount, 0)
         XCTAssertTrue(rig.spoken.isEmpty)
+    }
+
+    // MARK: - Honest limits (Plan CV P3)
+
+    /// The phase's whole reason for existing: a wearer relying on narration cannot tell an
+    /// unexplained silence from "nothing changed", and those mean opposite things.
+    func testBackgroundingIsExplainedAloud() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+
+        rig.service.noteInterruption(.backgrounded, active: true)
+
+        XCTAssertEqual(rig.service.noticeLog.count, 1)
+        XCTAssertTrue(rig.service.noticeLog[0].contains("background"), "It must say why: \(rig.service.noticeLog)")
+    }
+
+    func testWatchingHaltsQuietly() async {
+        let rig = makeRig()
+        rig.service.start()                     // silent watching
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+
+        rig.service.noteInterruption(.backgrounded, active: true)
+
+        XCTAssertTrue(rig.service.noticeLog.isEmpty,
+                      "Nobody was waiting to hear anything, so there is no silence to explain")
+    }
+
+    func testResumeIsAnnouncedAfterAnAnnouncedHalt() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        rig.service.noteInterruption(.backgrounded, active: true)
+        rig.service.noteInterruption(.backgrounded, active: false)
+
+        XCTAssertEqual(rig.service.noticeLog.count, 2)
+        XCTAssertEqual(rig.service.noticeLog[1], NarrationVoiceNotices.resumeCopy)
+    }
+
+    /// A notice must not be queued behind the arbiter, which flushes on exactly the transitions
+    /// these notices explain — it would be dropped by the very halt it was announcing.
+    func testNoticesBypassTheSpeechArbiter() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        rig.ttsBusy = true                      // the arbiter would hold anything given to it
+
+        rig.service.noteInterruption(.cameraUnavailable, active: true)
+
+        XCTAssertEqual(rig.service.noticeLog.count, 1, "The explanation is not ambient narration")
+        XCTAssertTrue(rig.spoken.isEmpty)
+    }
+
+    /// The decision record above is deterministic; this is the one test that the notice actually
+    /// reaches the speech seam. Bounded yields rather than a single one, so it can't go flaky on a
+    /// scheduling detail.
+    func testANoticeReachesTheSpeechSeam() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        rig.service.noteInterruption(.backgrounded, active: true)
+
+        for _ in 0..<50 where rig.notices.isEmpty { await Task.yield() }
+        XCTAssertEqual(rig.notices, rig.service.noticeLog)
+    }
+
+    // MARK: - Camera tier
+
+    func testRefusesToStartWithoutLiveFramesAndSaysWhy() async {
+        let rig = makeRig()
+        rig.cameraVerdict = .unavailable("Scene Narration needs a live camera feed from the glasses.")
+
+        rig.service.startNarrating()
+
+        XCTAssertEqual(rig.service.mode, .off, "A switch that flips itself back explains nothing")
+        XCTAssertNotNil(rig.service.unavailableReason)
+        XCTAssertEqual(rig.service.noticeLog.count, 1)
+        XCTAssertTrue(rig.service.noticeLog[0].contains("live camera feed"))
+
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.describeCallCount, 0)
+    }
+
+    /// `.degraded` means the camera works differently, not that it can't feed this loop.
+    func testDegradedCameraStillStarts() {
+        let rig = makeRig()
+        rig.cameraVerdict = .degraded("Captures take several seconds.")
+
+        rig.service.start()
+        XCTAssertEqual(rig.service.mode, .watching)
+        XCTAssertNil(rig.service.unavailableReason)
+        XCTAssertTrue(rig.service.noticeLog.isEmpty)
+    }
+
+    func testUnavailableReasonClearsOnceTheHardwareCan() {
+        let rig = makeRig()
+        rig.cameraVerdict = .unavailable("No live feed.")
+        rig.service.start()
+        XCTAssertNotNil(rig.service.unavailableReason)
+
+        rig.cameraVerdict = .available
+        rig.service.start()
+        XCTAssertNil(rig.service.unavailableReason)
+        XCTAssertEqual(rig.service.mode, .watching)
     }
 }

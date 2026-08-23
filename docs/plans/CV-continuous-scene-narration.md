@@ -1,7 +1,8 @@
 # Plan CV — Continuous Scene Narration
 
-**Status: 🚧 P1 shipped 2026-08-23** — the three pure cores landed; nothing is wired yet, which is
-P2. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
+**Status: 🚧 P1–P3 shipped 2026-08-23** — the loop is built, wired, and honest about
+what it can't do. Only P4 (device measurement, incl. an accessibility review with a wearer who
+would use it) remains, and it needs hardware. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
 so is this.
 
 Plan A shipped assistive scene and social modes as **on-demand**: the wearer asks, a frame is
@@ -216,7 +217,7 @@ case for the camera-tier gate, and a case named after a deleted service is worse
 after the feature that will use it. The persisted `UserDefaults` keys are left unread rather than
 migrated; nothing ever wrote them.
 
-### P3 — Honest limits in the UI
+### P3 — Honest limits ✅ shipped 2026-08-23
 
 **On-device MLX cannot run while backgrounded** (`project_local_model_background`), so narration
 stops when the phone locks or the app backgrounds. For a wearer who is *relying* on it, silence that
@@ -227,6 +228,39 @@ limitation rather than implying continuous coverage.
 Same treatment for the camera-tier gate: on glasses without live frames
 ([CQ](CQ-third-party-glasses-backends.md)'s tiers) narration is unavailable, and must say so with a
 reason rather than silently doing nothing.
+
+**Landed 2026-08-23.** `NarrationVoiceNotices` is the new core, and the interesting rules in it are
+about **restraint**, not copy — announcing too little is the failure this phase exists to fix, and
+announcing too much turns an accessibility feature into one that interrupts the wearer to talk about
+itself:
+
+- **Only announce to someone who was being spoken to.** Silence reads as a failure only if the
+  wearer expected sound; in `.watching` the loop was silent by design, so a spoken "narration
+  paused" would be the app talking to someone who never asked it to. Watching halts surface in
+  Settings and nowhere else.
+- **Key the rule on the *requested* mode, not on whether speech was live at that instant.** A wearer
+  who asked for narration and is momentarily quiet because they asked a question is still relying on
+  it, and a halt landing in that gap is still owed an explanation.
+- **Only announce a resume if the halt was announced**, or "narration is back on" arrives out of
+  nowhere explaining a silence the wearer never noticed. And never announce the same halt twice — a
+  phone locking and unlocking repeatedly must not produce a running commentary about it.
+- **Notices bypass `AmbientSpeechArbiter` entirely.** The arbiter flushes its queue on precisely the
+  transitions these notices explain, so a notice routed through it would be dropped by the very halt
+  it was announcing. There is a test for that.
+
+The camera-tier gate uses `CameraDependentFeature.sceneNarration` — the case renamed out of the
+deleted `SceneWatcherService`, which is what it was kept for. `.unavailable` refuses the start and
+speaks the gate's own reason; `.degraded` is allowed through, since it means the camera works
+differently rather than that it can't feed this loop. **A switch that flips itself back explains
+nothing, and the wearer most likely to hit that case is the one least able to see the switch.**
+
+Settings copy now states the limitation rather than implying continuous coverage: not continuous,
+stops when backgrounded or locked, and needs glasses that stream live video.
+
+One implementation note worth keeping: the notice *decision* is recorded synchronously
+(`noticeLog`) while the speech is fired as an unstructured task, because a mode transition must not
+block a Settings toggle on TTS. That split is also what makes the rules above testable without
+racing the scheduler.
 
 ### P4 — Device measurement (deferred)
 
