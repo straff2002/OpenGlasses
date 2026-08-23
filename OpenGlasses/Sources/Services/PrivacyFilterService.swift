@@ -21,6 +21,13 @@ import Combine
 /// So v1 covers egress to third-party models — the highest-stakes path, and the throttled one.
 /// Recording, broadcast and expert streams are **not yet covered**, which the Settings copy now
 /// says out loud rather than implying otherwise.
+///
+/// A third constraint arrived with Plan CV: **not every model-facing consumer is an egress.** A
+/// frame handed to an on-device VLM never leaves the device, so there is nothing to filter, and
+/// constraint 1 applies to it unchanged — the blur would degrade exactly the descriptions the
+/// feature exists to produce. That decision is stated as a case below rather than left implicit,
+/// because CO exists in the first place because an unstated scope decision became a toggle that
+/// did nothing.
 enum PrivacyFilterScope: String, CaseIterable {
     /// Frames pushed or polled into a live realtime session (Gemini Live, OpenAI Realtime).
     case liveSession
@@ -32,6 +39,13 @@ enum PrivacyFilterScope: String, CaseIterable {
     case agentAttachment
     /// Face enrolment and matching. Never filtered — see constraint 1.
     case faceRecognition
+    /// Continuous scene narration on the **on-device** VLM (Plan CV). Never filtered, and the
+    /// reason is the same as constraint 1 rather than an oversight: frames never leave the device,
+    /// so there is no egress to filter, and the blur is indiscriminate — it would degrade exactly
+    /// the descriptions a blind wearer depends on ("someone is standing near the door" is the
+    /// *point*). Narration pointed at a **cloud** model is an egress like any other and belongs on
+    /// `directModelTurn`, filtered; it is not covered by this case.
+    case sceneNarration
     /// Video recording to disk. Covered as of Plan CP, via `OutboundFrameRelay`.
     case recording
     /// RTMP broadcast and WebRTC browser streaming. Covered as of Plan CP.
@@ -45,7 +59,7 @@ enum PrivacyFilterScope: String, CaseIterable {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
              .recording, .broadcast, .expertStream:
             return true
-        case .faceRecognition:
+        case .faceRecognition, .sceneNarration:
             return false
         }
     }
@@ -56,7 +70,8 @@ enum PrivacyFilterScope: String, CaseIterable {
     var usesOutboundRelay: Bool {
         switch self {
         case .recording, .broadcast, .expertStream: return true
-        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition: return false
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
+             .sceneNarration: return false
         }
     }
 }

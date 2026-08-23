@@ -163,11 +163,15 @@ final class OutboundFramePrivacyTests: XCTestCase {
         XCTAssertTrue(PrivacyFilterScope.expertStream.isFiltered)
     }
 
-    /// Face recognition remains the one exemption, for the same reason as before: the blur is
-    /// indiscriminate, so filtering ahead of it would blur the enrolled faces.
-    func testFaceRecognitionIsStillTheOnlyExemption() {
+    /// The exemptions are exactly two, and both are exempt for the same reason: the blur is
+    /// indiscriminate and would break the feature it was applied to. Face recognition would lose
+    /// the enrolled faces; on-device scene narration (Plan CV) would lose the people a blind
+    /// wearer is being told about — and it is not an egress in the first place, since those frames
+    /// never leave the device. Pinning the whole set means a third exemption has to be argued for
+    /// here rather than added quietly.
+    func testExemptionsAreExactlyTheTwoNonEgressConsumers() {
         let exempt = PrivacyFilterScope.allCases.filter { !$0.isFiltered }
-        XCTAssertEqual(exempt, [.faceRecognition])
+        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration])
     }
 
     /// Camera-rate consumers share one pass; the ~1 fps model paths filter at their own chokepoint.

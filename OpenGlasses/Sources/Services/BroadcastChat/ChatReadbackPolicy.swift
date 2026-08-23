@@ -26,6 +26,14 @@ struct ChatReadbackRules: Equatable {
     var mentionsOnly: Bool = false
     /// The streamer's handle for mention detection (matched with or without `@`, any case).
     var streamerHandle: String = ""
+
+    /// The subset the shared `AmbientSpeechArbiter` owns. The remaining fields above are chat
+    /// taste (burst rendering, length cap, mention matching) and stay here.
+    var arbitration: AmbientSpeechRules {
+        AmbientSpeechRules(rateCapPerMinute: rateCapPerMinute,
+                           queueCap: queueCap,
+                           dedupWindow: dedupWindow)
+    }
 }
 
 /// The taste layer of broadcast chat readback (Plan CI): decides which chat messages get spoken
@@ -38,9 +46,24 @@ struct ChatReadbackRules: Equatable {
 /// jump the queue; names are spoken once per burst ("Sam says: great view" … "And: where is
 /// this?"); nothing is spoken while TTS is busy; while a realtime session is live, readback is
 /// suppressed entirely (the queue flushes — two voices in the ear is chaos).
+///
+/// The rate cap, bounded queue, dedup window, TTS-busy hold and realtime suppression moved into
+/// `AmbientSpeechArbiter` (Plan CV P1) so continuous scene narration shares one arbiter rather
+/// than growing a second copy of them. Everything above the arbiter — filters, normalisation,
+/// mention detection, "times N", burst rendering — is chat-specific and stayed here.
 struct ChatReadbackPolicy {
 
-    var rules: ChatReadbackRules
+    var rules: ChatReadbackRules {
+        didSet { arbiter.rules = rules.arbitration }
+    }
+
+    /// What the arbiter hands back when a message finally gets the floor.
+    private struct Line: Equatable {
+        let user: String
+        /// Normalised, TTS-safe text — also the arbiter's dedup key.
+        let text: String
+        let isMention: Bool
+    }
 
     /// A queued message awaiting speech. `duplicates` counts identical texts merged into it.
     struct PendingItem: Equatable {
@@ -51,13 +74,20 @@ struct ChatReadbackPolicy {
         let queuedAt: TimeInterval
     }
 
-    private(set) var queue: [PendingItem] = []
-    private var spokenAt: [TimeInterval] = []                       // rolling rate-cap window
-    private var recentlySpoken: [(text: String, at: TimeInterval)] = []
+    private var arbiter: AmbientSpeechArbiter<Line>
     private var lastSpoken: (user: String, at: TimeInterval)?
+
+    /// The pending queue, projected back into chat terms.
+    var queue: [PendingItem] {
+        arbiter.queue.map {
+            PendingItem(user: $0.payload.user, text: $0.payload.text, duplicates: $0.duplicates,
+                        isMention: $0.payload.isMention, queuedAt: $0.queuedAt)
+        }
+    }
 
     init(rules: ChatReadbackRules = ChatReadbackRules()) {
         self.rules = rules
+        self.arbiter = AmbientSpeechArbiter(rules: rules.arbitration)
     }
 
     // MARK: - Ingest
@@ -67,9 +97,6 @@ struct ChatReadbackPolicy {
     @discardableResult
     mutating func ingest(_ message: ChatMessage, at now: TimeInterval,
                          realtimeSessionActive: Bool = false) -> Bool {
-        // Realtime session live → suppressed entirely: nothing accumulates for later.
-        guard !realtimeSessionActive else { return false }
-
         // Emote-only messages have nothing worth speaking.
         guard !message.textWithoutEmotes.isEmpty else { return false }
 
@@ -82,32 +109,10 @@ struct ChatReadbackPolicy {
         let isMention = Self.mentions(handle: rules.streamerHandle, in: message.text)
         if rules.mentionsOnly && !isMention { return false }
 
-        // Identical text already waiting → merge ("times N"), don't queue again.
-        if let i = queue.firstIndex(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) {
-            queue[i].duplicates += 1
-            return true
-        }
-        // Identical text spoken within the dedup window → already read once, drop.
-        recentlySpoken.removeAll { now - $0.at > rules.dedupWindow }
-        if recentlySpoken.contains(where: { $0.text.caseInsensitiveCompare(text) == .orderedSame }) {
-            return false
-        }
-
-        let item = PendingItem(user: message.user, text: text, duplicates: 1,
-                               isMention: isMention, queuedAt: now)
-        if isMention {
-            // Jump the queue: behind any earlier mentions, ahead of everything else.
-            let insertAt = queue.firstIndex(where: { !$0.isMention }) ?? queue.endIndex
-            queue.insert(item, at: insertAt)
-        } else {
-            queue.append(item)
-        }
-        // Bounded queue: drop the oldest non-mention first, then the oldest outright.
-        while queue.count > rules.queueCap {
-            let dropAt = queue.firstIndex(where: { !$0.isMention }) ?? queue.startIndex
-            queue.remove(at: dropAt)
-        }
-        return true
+        // Realtime session live → the arbiter suppresses entirely: nothing accumulates for later.
+        let line = Line(user: message.user, text: text, isMention: isMention)
+        return arbiter.enqueue(line, dedupKey: text, isPriority: isMention, at: now,
+                               suppressed: realtimeSessionActive).isAccepted
     }
 
     // MARK: - Drain
@@ -116,39 +121,29 @@ struct ChatReadbackPolicy {
     /// `nil` while TTS is busy, the rate cap is spent, or nothing is queued.
     mutating func nextItem(at now: TimeInterval, ttsBusy: Bool,
                            realtimeSessionActive: Bool) -> SpokenChatItem? {
-        if realtimeSessionActive {
-            queue.removeAll()   // suppressed entirely — stale chat must not replay later
-            return nil
-        }
-        guard !ttsBusy, !queue.isEmpty else { return nil }
+        guard let item = arbiter.next(at: now, ttsBusy: ttsBusy,
+                                      suppressed: realtimeSessionActive) else { return nil }
 
-        spokenAt.removeAll { now - $0 > 60 }
-        guard spokenAt.count < rules.rateCapPerMinute else { return nil }
-
-        let item = queue.removeFirst()
-        var body = item.text
+        var body = item.payload.text
         if item.duplicates > 1 { body += " — times \(item.duplicates)" }
 
         // Names once per burst: consecutive items by the same user inside the burst window
         // render as a continuation.
+        let user = item.payload.user
         let rendered: String
-        if let last = lastSpoken, last.user == item.user, now - last.at <= rules.burstWindow {
+        if let last = lastSpoken, last.user == user, now - last.at <= rules.burstWindow {
             rendered = "And: \(body)"
         } else {
-            rendered = "\(item.user) says: \(body)"
+            rendered = "\(user) says: \(body)"
         }
 
-        spokenAt.append(now)
-        recentlySpoken.append((text: item.text, at: now))
-        lastSpoken = (user: item.user, at: now)
-        return SpokenChatItem(user: item.user, text: rendered, isMention: item.isMention)
+        lastSpoken = (user: user, at: now)
+        return SpokenChatItem(user: user, text: rendered, isMention: item.payload.isMention)
     }
 
     /// Drop all pending state (call when a broadcast ends).
     mutating func reset() {
-        queue.removeAll()
-        spokenAt.removeAll()
-        recentlySpoken.removeAll()
+        arbiter.reset()
         lastSpoken = nil
     }
 
