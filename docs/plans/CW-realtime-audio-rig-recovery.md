@@ -146,7 +146,19 @@ Three small ones, each a known way for the *next* session to come up wrong:
   calibrated against that level. A clamped per-`MicRoute` gain belongs with CU P2's threshold work,
   not here; noted so the two don't get tuned against each other.
 
-## P4 — Device verification (deferred, gates the defaults)
+## P4 — Device verification (**partly done 2026-08-23**)
+
+**Verified on device:** first-reply survival on glasses HFP is **10/10** over ten cold sessions —
+the symptom this plan exists for ("it didn't speak the first time, then worked every time after")
+did not recur. Teardown is clean: mic released immediately after hang-up, no lingering indicator.
+
+**Still open:** route-change mid-reply — audio stopped when the glasses were disconnected mid-reply,
+and the session ended before it was established whether `PendingPlaybackMirror` carried the
+remainder or the loss was correctly reported into the truncate-on-loss path. Those are opposite
+verdicts (a P2 defect vs working as designed) and the discriminator is whether the turn reached
+`Playback done`. Also still open: the restart-vs-rebuild ratio in the field.
+
+## P4 — original checklist
 
 Everything above is decision logic and can be tested headlessly. What cannot:
 
