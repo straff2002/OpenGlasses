@@ -265,4 +265,36 @@ final class NarrationVoiceNoticesTests: XCTestCase {
                        NarrationVoiceNotices.silenceCopy(.ambientCaptions))
     }
 
+
+    // MARK: - Asking into a halt already in force
+
+    /// The two-switch Settings flow. The wearer was silent by design while watching, so nothing
+    /// was owed then; the moment they ask to be spoken to, the reason is owed in full.
+    func testAskingToNarrateIntoAStandingHaltIsAnnounced() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.interruption(.cameraUnavailable, active: true))
+
+        let watching = policy.apply(.start)
+        XCTAssertNil(notices.notice(for: watching, requestedMode: policy.requestedMode),
+                     "Watching was silent by design; nobody is waiting on it")
+
+        let narrating = policy.apply(.startNarrating)
+        XCTAssertEqual(notices.notice(for: narrating, requestedMode: policy.requestedMode),
+                       NarrationVoiceNotices.haltCopy(.cameraUnavailable))
+    }
+
+    /// Same restraint as every other halt: toggling the switch must not produce a running
+    /// commentary about a camera that has been off the whole time.
+    func testAStandingHaltIsStillOnlyAnnouncedOnce() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.interruption(.cameraUnavailable, active: true))
+        policy.apply(.start)
+        _ = notices.notice(for: policy.apply(.startNarrating), requestedMode: policy.requestedMode)
+
+        let again = policy.apply(.startNarrating)
+        XCTAssertNil(notices.notice(for: again, requestedMode: policy.requestedMode))
+    }
+
 }

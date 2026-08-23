@@ -639,4 +639,47 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertTrue(rig.service.noticeLog.isEmpty, "…and no resume announcement either")
     }
 
+
+    /// The camera going away mid-session. Before this was wired, the loop kept ticking against a
+    /// nil or frozen frame, described nothing, and Settings kept saying "Watching…" — silence the
+    /// wearer had nothing to attribute to anything, which is the failure the halt copy exists for.
+    func testLosingTheCameraHaltsTheLoopAndSaysWhy() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.service.describedCount, 1)
+
+        rig.service.noteInterruption(.cameraUnavailable, active: true)
+        XCTAssertFalse(rig.service.isPerceiving)
+        XCTAssertEqual(rig.service.haltReason, .cameraUnavailable)
+        XCTAssertEqual(rig.service.noticeLog.count, 1)
+        XCTAssertTrue(rig.service.noticeLog[0].contains("camera"), "It must say why, not just that it stopped")
+
+        let before = rig.describeCallCount
+        rig.sceneHash = 0xFFFF_FFFF_FFFF_FFFF
+        await tick(rig, to: 20)
+        XCTAssertEqual(rig.describeCallCount, before, "No frames means nothing to describe")
+
+        rig.service.noteInterruption(.cameraUnavailable, active: false)
+        XCTAssertTrue(rig.service.isPerceiving)
+        XCTAssertEqual(rig.service.mode, .narrating, "Recovery restores what the wearer asked for")
+    }
+
+    /// The two-switch Settings flow into a camera that was never streaming. Nothing *begins* on
+    /// the second switch, so this is the path that would otherwise explain itself least — and it
+    /// is the most likely one.
+    func testAskingToSpeakWithNoCameraSaysWhyRatherThanNothing() async {
+        let rig = makeRig()
+        rig.service.noteInterruption(.cameraUnavailable, active: true)
+
+        rig.service.start()
+        XCTAssertTrue(rig.service.noticeLog.isEmpty, "Watching is silent by design")
+
+        rig.service.startNarrating()
+        XCTAssertEqual(rig.service.noticeLog.count, 1)
+        XCTAssertTrue(rig.service.noticeLog[0].contains("camera"))
+        XCTAssertEqual(rig.service.haltReason, .cameraUnavailable)
+    }
+
 }
