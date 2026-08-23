@@ -2367,29 +2367,6 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "emotionAwareTTSEnabled")
     }
 
-    // MARK: - Scene Watcher
-
-    /// Whether the proactive scene watcher is enabled.
-    static var sceneWatcherEnabled: Bool {
-        let key = "sceneWatcherEnabled"
-        if UserDefaults.standard.object(forKey: key) == nil { return false }
-        return UserDefaults.standard.bool(forKey: key)
-    }
-
-    static func setSceneWatcherEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "sceneWatcherEnabled")
-    }
-
-    /// Scene watcher check interval in seconds. Default 15.
-    static var sceneWatcherInterval: Int {
-        let val = UserDefaults.standard.integer(forKey: "sceneWatcherInterval")
-        return val > 0 ? val : 15
-    }
-
-    static func setSceneWatcherInterval(_ seconds: Int) {
-        UserDefaults.standard.set(seconds, forKey: "sceneWatcherInterval")
-    }
-
     // MARK: - Accent Color
 
     static var accentColorName: String {
