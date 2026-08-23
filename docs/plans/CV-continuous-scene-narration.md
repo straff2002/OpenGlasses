@@ -1,8 +1,9 @@
 # Plan CV — Continuous Scene Narration
 
-**Status: 🚧 P1–P3 shipped 2026-08-23** — the loop is built, wired, and honest about
-what it can't do. Only P4 (device measurement, incl. an accessibility review with a wearer who
-would use it) remains, and it needs hardware. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
+**Status: 🚧 P1–P3 shipped 2026-08-23**, and the ambient-captions interaction is
+**resolved and built** (2026-08-23) — the loop is built, wired, and honest about what it can't do.
+Only P4 (device measurement, incl. an accessibility review with a wearer who would use it) remains,
+and it needs hardware. Extends [A](A-accessibility-tier.md) (A3 assistive modes), which is **free and never an IAP** —
 so is this.
 
 Plan A shipped assistive scene and social modes as **on-demand**: the wearer asks, a frame is
@@ -103,6 +104,136 @@ door" is the *point*). If narration is ever pointed at a cloud model, that path 
 any other and goes through `PrivacyFilterScope` unchanged. This must be stated in the scope type
 itself, next to the existing cases, rather than left implicit — CO exists because an unstated scope
 decision turned into a toggle that did nothing.
+
+## Ambient captions and narration — resolved 2026-08-23
+
+**The question as posed had a false premise, and finding that out changed the answer.** It assumed
+two ambient streams competing for one ear. `AmbientCaptionService` **never speaks.** Its two outputs
+are the phone overlay and `glassesDisplay.showText` — the in-lens HUD. Captions are an eye stream;
+narration is an ear stream. Nothing about the ear was ever in contention.
+
+It follows that the wearer at risk is also not the one we assumed. A deaf-blind wearer can use
+neither surface — a lens they can't read, a voice they can't hear — so they are not the person
+running both. The realistic wearer of both is **low-vision in a room with more than one talker**:
+they can read a large caption line and still need the space described. Designing for the wrong
+person is how you optimise the wrong resource, and we nearly did.
+
+Once the ear is off the table, three shared resources are left. Two were being contended already.
+
+### 1. The lens — a live collision, and nobody had decided it
+
+`TextToSpeechService.speak(_:urgency:mirrorToHUD:)` defaults `mirrorToHUD: true`, and `showText`
+**replaces** the lens line persistently. Narration's speech seam was wired as `speak(text)` — the
+default — so every description already overwrote whatever captions had put on the lens, mid-sentence.
+
+This is worse than the interleaving the question worried about, for the same reason P3 exists: the
+wearer **cannot tell it happened**. A spoken stream that gets interrupted is audibly interrupted; a
+caption line that is replaced simply isn't there any more, and a deaf wearer reading it loses the
+rest of the sentence with no evidence that a sentence was lost. Unexplained silence, in the visual
+channel.
+
+And note what produced it: the plan lists *"should the HUD show the current description on the
+lens?"* as an **open question**, and a TTS default answered it yes. That is CO's failure mode in a
+different costume — an unstated decision becoming behaviour. Narration now passes
+`mirrorToHUD: false` for descriptions and notices alike. This does **not** decide the open question;
+it removes an accidental yes so the question is still there to be decided, and whatever decides it
+inherits the precedence below.
+
+### 2. The microphone — narration writing itself into the wearer's transcript
+
+Narration speaks over the same shared audio engine the caption recognizer listens on, and that path
+runs `.playAndRecord`/`.default` with **no voice processing** (`setVoiceProcessingEnabled` is only
+ever set on `RealtimeAudioEngine`, a different engine for realtime sessions). So narration's own
+synthesized voice is transcribed as if a person in the room had said it, and flows on into meeting
+summaries, the Spotlight index and Brain.
+
+This is the worst of the three, because it is **silent corruption of a record** rather than noise,
+and `TranscriptGuard` cannot catch it: that filter exists for silence-decode artifacts, and a fluent
+English sentence about a kitchen is exactly what it is built to let through.
+
+### 3. Compute — real, and deferred to P4 rather than guessed at
+
+Captions on the on-device translation tier run an ASR model and Apple Translation; narration runs a
+VLM and, offline, Kokoro. All of it wants the same silicon, and the duty-cycle floor was set against
+narration alone. That is a measurement, not a policy, and it belongs to P4 with the rest.
+
+### The decision
+
+**Separate the channels; don't rank the streams. Narration owns the ear, captions own the lens, and
+while a transcript is live narration keeps watching and stops speaking.**
+
+Both switches on is supported, and deliberately so: forcing an either/or between eyes and ears would
+be a strange thing for an accessibility feature to do to someone who needs both. What must not
+happen — and what the question rightly worried about — is both switches on while one silently loses.
+Channel separation is how that is avoided without a modal choice.
+
+Where they genuinely cannot be separated, **captions win, statically**:
+
+- A caption is **another person talking** — time-critical and unrepeatable. A description of a room
+  is neither. If the room changes, `FrameGate` notices and describes the new one. **Narration is the
+  self-healing half of the pair**, which is what makes it the one that yields.
+- The channels are separate; the wearer's language faculty is not. Nobody reads one sentence while
+  hearing a different one, and two simultaneous language streams from one device is not a thing a
+  person parses.
+- It costs narration nothing it was ever guaranteeing. It is already rate-capped to four utterances
+  a minute behind a two-slot drop-oldest queue, a duty-cycle floor and a similarity gate — it drops
+  descriptions constantly and by design.
+
+**The objection this has to answer: doesn't "captions always win" bury a safety-critical
+description?** The prompt does ask for obstacles, so the worry is not imaginary — but narration was
+never a warning channel and cannot be made into one by leaving it switched on. Four per minute
+behind a drop-oldest queue is not something anyone can be warned with, and the plan already decided
+narration drops rather than delays. If a hazard utterance must land, it needs the alert path, which
+does not go through the arbiter at all — the same conclusion P3 reached for halt notices.
+
+**Rejected: contextual precedence** ("captions win unless the description is urgent"). It requires
+narration to classify its own output, which means asking a VLM whether what it just described is
+dangerous — and a model asked to find a hazard will find one. P2 already rejected asking the model
+what *changed* for exactly this reason.
+
+**Rejected: a priority field on `AmbientSpeechArbiter`.** A rank between consumers implies a shared
+queue, and a shared queue is a way for narration to **hold** an utterance until the floor frees —
+i.e. to deliver a stale description late, which `AmbientSpeechRules.narration`'s two-slot queue
+exists specifically to prevent. It would also be arbitration machinery whose only job is to order
+two things that never contend.
+
+**Rejected: making the switches mutually exclusive.** It answers "should both be on?" by refusing to
+answer it, and it takes the choice off a wearer who has a real use for both.
+
+**Rejected: a third arbitration path.** Nothing here needed new arbitration. Yielding the ear is
+already `NarrationSessionPolicy.Interruption` — the model P1 built for exactly "something overrides
+what the wearer asked for" — and the queue flush the plan requires falls out of it unchanged.
+
+### What it took to build, and the one thing the existing model was missing
+
+`Interruption.ambientCaptions`, `haltsPerception == false`. Watching continues, speech stops, the
+queue flushes: no stale description survives the transcript.
+
+The gap was that `Interruption` had **one** axis, and this case needs two. `.userTurn` is a *moment*
+the wearer created and hears end; a spoken "narration paused" there would be the app narrating its
+own bookkeeping, which is why P3 correctly says nothing for it. Captions running is a **standing
+condition** the wearer may have switched on hours ago — it can silence narration for an entire walk
+with nothing to attribute the silence to. That is P3's failure exactly, in a case P3's machinery
+could not see, because it only ever reported *halts*.
+
+So `Interruption` gained `isStandingCondition` alongside `haltsPerception`, `State` gained
+`silenceReason` as `haltReason`'s quieter sibling, and `Transition` gained `silenceBegan` /
+`silenceEnded`. `NarrationVoiceNotices` applies its three restraint rules to the new grade
+unchanged — only a wearer who asked to be narrated to hears it, never twice, and a resume only if
+the silence was announced — with two additions the interaction forced:
+
+- **A halt supersedes an announced silence**, and clears it. The wearer must not be told two
+  different stories about one quiet.
+- **A halt clearing into a still-live transcript is not a resume.** "Narration is back on" would be
+  a lie the wearer then spends the next minute disproving; it says why it is still quiet instead.
+
+Settings shows the same thing in a third status line, with a different symbol on purpose: this is
+not something broken, it is two features being polite, and the copy names the switch that undoes it.
+
+**Where the collisions surfaced, and why that is the interesting part:** the ear — the resource the
+question was about — needed a rule but was never actually contended. The lens was being overwritten
+in shipped code. The transcript was being contaminated in shipped code. Neither was in the open
+question, because the question was written from the plan rather than from the wiring.
 
 ## Phases
 
@@ -271,6 +402,10 @@ Gates the thresholds and the defaults, and needs hardware plus a real environmen
 - Sustained thermal and battery over a session long enough to matter (this runs the VLM
   continuously — it is the most expensive thing in the app).
 - Measured decode-vs-synthesis contention on our actual chain, to set the duty-cycle floor.
+- The same measurement **with live captions running**, since the floor was set against narration
+  alone and the on-device caption tier adds an ASR model and Apple Translation to the same silicon.
+  Narration yields the ear to captions, but it keeps watching — so the contention is real even
+  though the ear collision was not.
 - **Accessibility review with a wearer who would use it.** Chatter tolerance is not a number we can
   derive; it needs someone whose judgement is the actual specification.
 
@@ -292,6 +427,3 @@ Gates the thresholds and the defaults, and needs hardware plus a real environmen
   loop writing continuously is a volume question the store hasn't faced yet.
 - Should the HUD show the current description on the lens as well as speaking it? Free for a sighted
   wearer in a noisy room, meaningless for the primary audience — probably a separate toggle.
-- Interaction with `AmbientCaptionService`: both running means two ambient streams competing for the
-  same ear. The shared arbiter handles the mechanics, but the *policy* (which yields to which) is
-  undecided.

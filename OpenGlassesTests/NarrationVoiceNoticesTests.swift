@@ -138,4 +138,131 @@ final class NarrationVoiceNoticesTests: XCTestCase {
         XCTAssertTrue(copy.contains(reason))
         XCTAssertTrue(copy.hasPrefix("Can't start scene narration."))
     }
+
+    // MARK: - Standing conditions (ambient captions)
+
+    /// The reason this needs announcing at all: a wearer who switched captions on hours ago has
+    /// nothing to attribute the silence to, and "narration is broken" is the conclusion they will
+    /// reach. The copy has to name the cause *and* the switch that undoes it.
+    func testAnnouncesACaptionSilenceAndNamesTheCause() {
+        var notices = NarrationVoiceNotices()
+        let (policy, t) = transition([.startNarrating, .interruption(.ambientCaptions, active: true)])
+
+        let copy = notices.notice(for: t, requestedMode: policy.requestedMode)
+        XCTAssertNotNil(copy)
+        XCTAssertTrue(copy!.contains("captions"), "It must say what took the ear")
+        XCTAssertTrue(copy!.contains("watching"),
+                      "…and that the loop is still watching, so questions still get grounded answers")
+        XCTAssertEqual(notices.announcedSilence, .ambientCaptions)
+    }
+
+    /// Same restraint rule as a halt: a watching wearer was silent by design.
+    func testSaysNothingAboutCaptionsToAWearerWhoWasOnlyWatching() {
+        var notices = NarrationVoiceNotices()
+        let (policy, t) = transition([.start, .interruption(.ambientCaptions, active: true)])
+
+        XCTAssertNil(notices.notice(for: t, requestedMode: policy.requestedMode))
+        XCTAssertNil(notices.announcedSilence)
+    }
+
+    /// Captions restarting between utterances must not produce a running commentary about them.
+    func testNeverAnnouncesTheSameCaptionSilenceTwice() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+
+        let first = policy.apply(.interruption(.ambientCaptions, active: true))
+        XCTAssertNotNil(notices.notice(for: first, requestedMode: policy.requestedMode))
+        let again = policy.apply(.interruption(.ambientCaptions, active: true))
+        XCTAssertNil(notices.notice(for: again, requestedMode: policy.requestedMode))
+    }
+
+    /// A resume is only owed to someone who heard the silence explained.
+    func testAnnouncesSpeakingAgainOnlyIfTheSilenceWasAnnounced() {
+        var announced = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        let began = policy.apply(.interruption(.ambientCaptions, active: true))
+        _ = announced.notice(for: began, requestedMode: policy.requestedMode)
+        let ended = policy.apply(.interruption(.ambientCaptions, active: false))
+        XCTAssertEqual(announced.notice(for: ended, requestedMode: policy.requestedMode),
+                       NarrationVoiceNotices.speakingAgainCopy)
+
+        var silent = NarrationVoiceNotices()
+        var quiet = NarrationSessionPolicy()
+        quiet.apply(.start)                                  // watching: the silence went unannounced
+        quiet.apply(.interruption(.ambientCaptions, active: true))
+        let clearing = quiet.apply(.interruption(.ambientCaptions, active: false))
+        XCTAssertNil(silent.notice(for: clearing, requestedMode: quiet.requestedMode))
+    }
+
+    /// Distinct copy on purpose: nothing was ever off, so "back on" would describe a state the
+    /// loop was never in.
+    func testSpeakingAgainIsNotTheHaltResumeCopy() {
+        XCTAssertNotEqual(NarrationVoiceNotices.speakingAgainCopy, NarrationVoiceNotices.resumeCopy)
+    }
+
+    /// A moment the wearer created explains itself. Announcing it would make the app interrupt
+    /// someone to tell them it is not interrupting them.
+    func testAUserTurnIsNeverAnnounced() {
+        var notices = NarrationVoiceNotices()
+        let (policy, t) = transition([.startNarrating, .interruption(.userTurn, active: true)])
+        XCTAssertNil(notices.notice(for: t, requestedMode: policy.requestedMode))
+    }
+
+    // MARK: - The two grades of silence interacting
+
+    /// Backgrounding while already quiet for captions: the halt is the bigger fact and is the one
+    /// spoken, and the caption silence is forgotten so it can be announced afresh if it outlives
+    /// the halt.
+    func testAHaltIsAnnouncedOverAnAlreadyAnnouncedCaptionSilence() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        let silence = policy.apply(.interruption(.ambientCaptions, active: true))
+        _ = notices.notice(for: silence, requestedMode: policy.requestedMode)
+
+        let halt = policy.apply(.interruption(.backgrounded, active: true))
+        XCTAssertEqual(notices.notice(for: halt, requestedMode: policy.requestedMode),
+                       NarrationVoiceNotices.haltCopy(.backgrounded))
+        XCTAssertNil(notices.announcedSilence)
+    }
+
+    /// Coming back from the background into a still-live transcript. "Narration is back on" would
+    /// be a lie the wearer then spends the next minute disproving — say why it is still quiet.
+    func testUnhaltingIntoLiveCaptionsExplainsTheRemainingSilence() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.ambientCaptions, active: true))
+        let halt = policy.apply(.interruption(.backgrounded, active: true))
+        _ = notices.notice(for: halt, requestedMode: policy.requestedMode)
+
+        let back = policy.apply(.interruption(.backgrounded, active: false))
+        let copy = notices.notice(for: back, requestedMode: policy.requestedMode)
+        XCTAssertNotEqual(copy, NarrationVoiceNotices.resumeCopy)
+        XCTAssertEqual(copy, NarrationVoiceNotices.silenceCopy(.ambientCaptions))
+
+        // …and the halt bookkeeping cleared, so a second backgrounding is still announced.
+        XCTAssertNil(notices.announcedHalt)
+    }
+
+    /// Turning speech off and back on with captions still running must announce again — the wearer
+    /// asked a fresh question of the feature and deserves the same answer.
+    func testStopAndStartNarratingReAnnouncesTheCaptionSilence() {
+        var notices = NarrationVoiceNotices()
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        let began = policy.apply(.interruption(.ambientCaptions, active: true))
+        _ = notices.notice(for: began, requestedMode: policy.requestedMode)
+
+        let stopped = policy.apply(.stopNarrating)
+        _ = notices.notice(for: stopped, requestedMode: policy.requestedMode)
+        XCTAssertNil(notices.announcedSilence, "A stopped wearer is no longer owed this explanation")
+
+        let restarted = policy.apply(.startNarrating)
+        XCTAssertEqual(notices.notice(for: restarted, requestedMode: policy.requestedMode),
+                       NarrationVoiceNotices.silenceCopy(.ambientCaptions))
+    }
+
 }
