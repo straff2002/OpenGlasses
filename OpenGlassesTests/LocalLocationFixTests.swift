@@ -111,7 +111,7 @@ final class LocalLocationFixTests: XCTestCase {
 
     func testVisionCapabilityByModelId() {
         XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: "mlx-community/SmolVLM2-2.2B-Instruct-mlx"))
-        XCTAssertFalse(LocalLLMService.isVisionCapable(modelId: "mlx-community/gemma-4-e2b-it-4bit"))
+        XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: "mlx-community/gemma-4-e2b-it-4bit"))
     }
 
     func testCurrentDateTimeLineFormat() {

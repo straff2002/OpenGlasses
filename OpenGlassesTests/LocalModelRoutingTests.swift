@@ -1,21 +1,17 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Regression guard for the talk-button / Field-Assist crash: the on-device agent model must
-/// load through the TEXT factory, not the vision factory. `visionModelIds` decides that in
-/// `LocalLLMService.loadModel`, so the agent model landing in that set silently routes inference
-/// into mlx-swift-lm's crashing `MLXVLM.Gemma4` (an uncatchable MLX assertion).
+/// Regression guard for on-device model routing. Gemma 4 loads through the VLM factory
+/// (vision + tools) and generates via `Gemma4Processor.prepare` — not hand-built tokens.
 @MainActor
 final class LocalModelRoutingTests: XCTestCase {
 
-    func testGemma4StaysOnTextFactory() {
-        XCTAssertFalse(LocalLLMService.visionModelIds.contains { $0.contains("gemma-4") })
+    func testGemma4AttemptsVisionFactoryWithRuntimeDemotion() {
+        XCTAssertTrue(LocalLLMService.visionModelIds.contains { $0.contains("gemma-4") },
+                      "Gemma 4 must load through the VLM factory for vision")
         XCTAssertTrue(LocalLLMService.visionModelIds.contains { $0.contains("SmolVLM") })
     }
 
-    /// The on-device prompt budget (BK P2) must sit below the observed OOM point (an ~8.2k-token
-    /// prompt Jetsam-killed the app) yet leave headroom for a normal lean prompt + some history —
-    /// for every recommended model and for an unknown/user-typed id.
     func testOnDevicePromptBudgetIsBelowTheObservedOOMPoint() {
         let ids = LocalLLMService.recommendedModels.map(\.id) + [nil, "some/unknown-model"]
         for id in ids {

@@ -81,6 +81,9 @@ packages:
   swift-transformers:
     url: https://github.com/huggingface/swift-transformers.git
     from: "1.0.0"
+  swift-jinja:
+    url: https://github.com/huggingface/swift-jinja.git
+    version: "2.4.2"
   SystemNotification:
     url: https://github.com/danielsaidi/SystemNotification.git
     from: "1.0.0"
@@ -201,6 +204,8 @@ targets:
         product: HuggingFace
       - package: swift-transformers
         product: Tokenizers
+      - package: swift-jinja
+        product: Jinja
       - package: SystemNotification
         product: SystemNotification
       - package: WebRTC

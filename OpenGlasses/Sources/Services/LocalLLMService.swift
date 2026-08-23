@@ -80,18 +80,18 @@ final class LocalLLMService: ObservableObject {
             id: "mlx-community/gemma-4-e2b-it-4bit",
             name: "Gemma 4 E2B (Agent)",
             estimatedSize: "3.6 GB",
-            hasVision: false,
+            hasVision: true,
             hasToolCalling: true,
-            notes: "Best on-device agent — tool calling, 140+ languages. Uses ~4 GB while running.",
+            notes: "Best on-device agent — tool calling, 140+ languages, vision. Uses ~4 GB while running.",
             minimumRAMGB: 8
         ),
         RecommendedModel(
             id: "mlx-community/gemma-4-e4b-it-4bit",
             name: "Gemma 4 E4B (Agent+)",
             estimatedSize: "5.1 GB",
-            hasVision: false,
+            hasVision: true,
             hasToolCalling: true,
-            notes: "Bigger Gemma 4 — highest-quality on-device agent. Needs a high-memory device (12 GB).",
+            notes: "Bigger Gemma 4 — highest-quality on-device agent, with vision. Needs a high-memory device (12 GB).",
             minimumRAMGB: 12
         ),
         // Vision models (can see photos from glasses)
@@ -143,9 +143,14 @@ final class LocalLLMService: ObservableObject {
         ),
     ]
 
+    /// Model IDs loaded through `VLMModelFactory`. Gemma 4 text turns MUST go through
+    /// `Gemma4Processor.prepare` — hand-built `LMInput` tokens crash MLX on first forward.
     nonisolated static let visionModelIds: Set<String> = [
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
         "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
+        "mlx-community/gemma-4-e2b-it-4bit",
+        "mlx-community/gemma-4-E2B-it-4bit",
+        "mlx-community/gemma-4-e4b-it-4bit",
     ]
 
     /// Models whose VLM load failed weight mapping this run and were demoted to the text
@@ -404,6 +409,12 @@ final class LocalLLMService: ObservableObject {
         // has no way to interleave image tokens.
         if let imageData {
             if loadedViaVLMFactory {
+                if Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+                    return try await generateGemma4VLMTurn(
+                        userMessage: userMessage, systemPrompt: systemPrompt,
+                        history: history, imageData: imageData,
+                        container: container, onToken: onToken)
+                }
                 return try await generateVisionTurn(
                     userMessage: userMessage, systemPrompt: systemPrompt,
                     history: history, imageData: imageData,
@@ -416,6 +427,27 @@ final class LocalLLMService: ObservableObject {
             NSLog("[LocalLLM] Image supplied to a text-factory model (%@) — refusing honestly",
                   loadedModelId ?? "?")
             return Self.visionWeightsUnavailableMessage
+        }
+
+        if loadedViaVLMFactory && Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+            let budget = LocalModelBudget.promptBudget(for: loadedModelId)
+            let tokenizer = await container.tokenizer
+            let trimmedHistory = try LocalModelBudget.historyFittingBudget(
+                history: history, budget: budget
+            ) { hist in
+                let text = Gemma4ChatPrompt.render(
+                    system: systemPrompt, history: hist, userMessage: userMessage,
+                    bosToken: tokenizer.bosToken)
+                return tokenizer.encode(text: text, addSpecialTokens: false).count
+            }
+            if trimmedHistory.count < history.count {
+                NSLog("🔬 LocalLLM.generate trimmed history %d→%d turns to fit budget %d",
+                      history.count, trimmedHistory.count, budget)
+            }
+            return try await generateGemma4VLMTurn(
+                userMessage: userMessage, systemPrompt: systemPrompt,
+                history: trimmedHistory, imageData: nil,
+                container: container, onToken: onToken)
         }
 
         // Tokenize a candidate history exactly as the model will — chat template, with the
@@ -574,6 +606,101 @@ final class LocalLLMService: ObservableObject {
         }
         lastReasoning = nil
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Gemma 4 VLM turn (text or photo) through `Gemma4Processor.prepare`. Manual `LMInput`
+    /// token batches crash MLX on first forward; the processor path matches mlx-swift-lm's
+    /// integration tests.
+    private func generateGemma4VLMTurn(
+        userMessage: String,
+        systemPrompt: String,
+        history: [(role: String, content: String)],
+        imageData: Data?,
+        container: ModelContainer,
+        onToken: ((String) -> Void)?
+    ) async throws -> String {
+        let parameters = Self.generateParameters(for: loadedModelId)
+
+        let backgroundedFlag = LockedFlag()
+        let bgObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            backgroundedFlag.set()
+        }
+        defer { NotificationCenter.default.removeObserver(bgObserver) }
+
+        if let imageData {
+            NSLog("🔬 LocalLLM.generateGemma4VLMTurn model=%@ image=%dKB",
+                  loadedModelId ?? "?", imageData.count / 1024)
+        } else {
+            NSLog("🔬 LocalLLM.generateGemma4VLMTurn model=%@ text-only", loadedModelId ?? "?")
+        }
+
+        let report = LockedGenerationReport()
+        let output = try await container.perform { context -> String in
+            var chat: [Chat.Message] = [.system(systemPrompt)]
+            for turn in history.suffix(4) {
+                chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
+            }
+            if let imageData, let ciImage = CIImage(data: imageData) {
+                chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+            } else {
+                chat.append(.user(userMessage))
+            }
+
+            let userInput: UserInput
+            if imageData != nil {
+                userInput = UserInput(
+                    chat: chat,
+                    processing: .init(resize: CGSize(width: 896, height: 896)))
+            } else {
+                userInput = UserInput(chat: chat)
+            }
+            let lmInput: LMInput
+            do {
+                lmInput = try await context.processor.prepare(input: userInput)
+            } catch {
+                guard imageData == nil, Gemma4ChatPrompt.isJinjaParserFailure(error) else { throw error }
+                let recent = Array(history.suffix(4))
+                let text = Gemma4ChatPrompt.render(
+                    system: systemPrompt, history: recent, userMessage: userMessage,
+                    bosToken: context.tokenizer.bosToken)
+                let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
+                let promptArray = MLXArray(tokens).expandedDimensions(axis: 0)
+                let mask = ones(like: promptArray).asType(.int8)
+                lmInput = LMInput(text: .init(tokens: promptArray, mask: mask))
+            }
+
+            NSLog("🔬 LocalLLM.generateGemma4VLMTurn tokenIDs.shape=%@ count=%d",
+                  "\(lmInput.text.tokens.shape)", lmInput.text.tokens.size)
+
+            let stream = try MLXLMCommon.generate(
+                input: lmInput, parameters: parameters, context: context)
+            var iterator = stream.makeAsyncIterator()
+            return try await Self.drainTokenStream(
+                nextChunk: {
+                    while let generation = await iterator.next() {
+                        if case .chunk(let text) = generation { return text }
+                        if case .info(let info) = generation { report.note(info) }
+                    }
+                    return nil
+                },
+                isBackgrounded: { backgroundedFlag.isSet },
+                onToken: { chunk in
+                    report.noteToken(at: Date())
+                    onToken?(chunk)
+                }
+            )
+        }
+        if let firstTokenAt = report.firstTokenAt { TurnRecorder.mark(.firstToken, at: firstTokenAt) }
+        if let completion = report.completion {
+            TurnRecorder.addGeneration(tokens: completion.generationTokenCount, seconds: completion.generateTime)
+        }
+        NSLog("🔬 LocalLLM.generateGemma4VLMTurn done — mlx active=%dMB cache=%dMB",
+              Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
+        return output.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
     }
 
     /// One image turn through a VLM-factory model. The processor owns the chat template and
