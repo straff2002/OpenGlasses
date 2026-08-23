@@ -2934,6 +2934,44 @@ class AppState: ObservableObject, AppStateProtocol {
         // can start the loop directly, and a loop with no camera or model seam attached watches
         // nothing while reporting that it is watching.
         configureSceneNarration()
+        // Plan CV: a live realtime voice session takes the ear from narration — two voices in the
+        // ear is chaos. `.realtimeSession` shipped in P1 declared, documented and tested, but
+        // nothing ever raised it, so narration could speak into a live duplex session: the exact
+        // failure the case was written to prevent. This is the edge that was missing.
+        //
+        // `CombineLatest` rather than a sink per manager reading the other one: `@Published` fires
+        // on `willSet`, so a sink that re-read its *own* service's `isActive` would see the value
+        // it is being notified about as the old one, and the first session start would not raise.
+        let realtimeNarrationToken = Publishers.CombineLatest(
+            geminiLiveSession.$isActive, openAIRealtimeSession.$isActive)
+            .map { $0 || $1 }
+            .removeDuplicates()
+            .sink { active in
+                SceneNarrationService.shared.noteInterruption(.realtimeSession, active: active)
+            }
+        cancellables.append(realtimeNarrationToken)
+        // …and the same omission again: `.cameraUnavailable` shipped with halt copy, a Settings
+        // line and tests, and nothing raised it either. Narration reads `cameraService.latestFrame`
+        // and never starts the camera, so with no stream the loop ticked against a nil or frozen
+        // frame, described nothing, and kept reporting "Watching…" — unexplained silence, which is
+        // the failure P3 exists to prevent, with the explanation already written and never spoken.
+        //
+        // `isStartingStream` is part of the condition, not a detail: a cold start can take ~20s,
+        // and treating that gap as unavailable would announce a halt and a resume either side of
+        // every stream start.
+        //
+        // This deliberately does **not** decide whether narration should start the camera itself.
+        // That is a real question — the camera is the glasses' largest drain — and it belongs to a
+        // plan, not to a bug fix. Until then the honest behaviour is to say why nothing is
+        // happening rather than to look like it is working.
+        let cameraNarrationToken = Publishers.CombineLatest(
+            cameraService.$isStreaming, cameraService.$isStartingStream)
+            .map { streaming, starting in !streaming && !starting }
+            .removeDuplicates()
+            .sink { unavailable in
+                SceneNarrationService.shared.noteInterruption(.cameraUnavailable, active: unavailable)
+            }
+        cancellables.append(cameraNarrationToken)
         // Reading is the same shape as captions, not a tick loop: a reader is motionless and silent
         // (so, `.idle`) but very much engaged, and it checks the same `.away`-only gate internally.
         ReadingCompanionService.shared.presence = presenceMonitor

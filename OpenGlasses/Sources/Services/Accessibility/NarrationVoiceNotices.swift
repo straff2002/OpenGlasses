@@ -45,7 +45,11 @@ struct NarrationVoiceNotices: Equatable {
     /// relying on narration, and a halt landing during that moment is still owed an explanation.
     mutating func notice(for transition: NarrationSessionPolicy.Transition,
                          requestedMode: NarrationMode) -> String? {
-        if let began = transition.haltBegan {
+        // A halt beginning, and the wearer asking for narration into one already in force, are
+        // the same debt reached from opposite directions — the world changed under them, or they
+        // walked into a world that had already changed. Either way they asked for descriptions
+        // and are getting none, so the copy is the same.
+        if let began = transition.haltBegan ?? transition.haltBlockedRequest {
             // A halt supersedes a silence we already announced: its copy explains everything the
             // silence copy did and more, and the wearer must not be told twice about one quiet.
             announcedSilence = nil

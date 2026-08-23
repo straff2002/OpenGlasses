@@ -393,6 +393,37 @@ One implementation note worth keeping: the notice *decision* is recorded synchro
 block a Settings toggle on TTS. That split is also what makes the rules above testable without
 racing the scheduler.
 
+**Correction, 2026-08-23 — two of P3's interruptions were never raised.** Found while wiring the
+captions decision above. `.realtimeSession` and `.cameraUnavailable` shipped declared, documented,
+tested at the policy layer, and handled in `NarrationVoiceNotices` and the Settings view — and
+nothing in the app ever called `noteInterruption` for either. The only ones raised were
+`.backgrounded` and `.userTurn`.
+
+So narration could speak into a live duplex session, and — worse, because it is the silent one —
+the loop went on ticking against a nil or frozen frame when the camera wasn't streaming,
+describing nothing while Settings said *"Watching…"*. That is the unexplained silence this phase
+exists to prevent, with the explanation already written and never spoken.
+
+**The tests were green throughout.** The gap was in the wiring, and nothing at the layer under test
+could see it — which is the honest lesson: a pure core tested exhaustively tells you the decision
+is right, never that anything asks it. Both are now raised on edges (`removeDuplicates` over the
+session and streaming publishers), and the `.cameraUnavailable` condition includes
+`isStartingStream`, because a ~20 s cold start otherwise announces a halt and a resume either side
+of every stream start.
+
+Wiring `.cameraUnavailable` exposed a real gap in the notice rules rather than just a missing call.
+The primary Settings flow is two switches — watch, then speak — so when the halt is *already in
+force* nothing **begins** on the second switch, `haltBegan` is nil, and the wearer asked to be
+spoken to and heard nothing. `Transition` gained `haltBlockedRequest` for exactly that: the same
+debt reached from the opposite direction — the world changed under the wearer, or the wearer walked
+into a world that had already changed. Same copy, same once-only restraint, kept as a separate
+signal so each can be tested on its own.
+
+What this does **not** decide: narration still never starts the camera. That is a real question —
+the camera is the glasses' largest drain, and [CX](CX-live-session-vision-choice.md) is mid-flight
+on cold-start UX — and it belongs to a plan rather than to a bug fix. Until it is answered, the
+honest behaviour is to say why nothing is happening instead of looking like it is working.
+
 ### P4 — Device measurement (deferred)
 
 Gates the thresholds and the defaults, and needs hardware plus a real environment:

@@ -301,4 +301,46 @@ final class NarrationSessionPolicyTests: XCTestCase {
         XCTAssertTrue(NarrationSessionPolicy.Interruption.backgrounded.isStandingCondition)
     }
 
+
+    // MARK: - Asking for narration into a halt that is already in force
+
+    /// The primary Settings flow: "Watch the scene", then "Speak descriptions aloud". If the halt
+    /// was already in force, nothing *begins* on the second switch — so without this the most
+    /// likely path into a halted loop is the one that explains itself least, and the wearer asks
+    /// for descriptions and hears nothing at all.
+    func testAskingToNarrateIntoAStandingHaltIsReported() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.interruption(.cameraUnavailable, active: true))
+        policy.apply(.start)                      // watching, halted, silent by design
+        let t = policy.apply(.startNarrating)
+
+        XCTAssertNil(t.haltBegan, "Nothing began — the halt was already in force")
+        XCTAssertEqual(t.haltBlockedRequest, .cameraUnavailable)
+        XCTAssertEqual(t.to.haltReason, .cameraUnavailable)
+    }
+
+    /// Starting straight into a standing halt reports it the ordinary way, and must not report it
+    /// twice over.
+    func testStartingStraightIntoAStandingHaltReportsHaltBeganOnly() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.interruption(.backgrounded, active: true))
+        let t = policy.apply(.startNarrating)
+
+        XCTAssertEqual(t.haltBegan, .backgrounded)
+        XCTAssertNil(t.haltBlockedRequest, "One debt, reported once")
+    }
+
+    /// An interruption clearing into a *different* still-active halt is the world changing, not
+    /// the wearer asking for anything.
+    func testClearingOneHaltIntoAnotherIsNotABlockedRequest() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.backgrounded, active: true))
+        policy.apply(.interruption(.cameraUnavailable, active: true))
+        let t = policy.apply(.interruption(.backgrounded, active: false))
+
+        XCTAssertNil(t.haltBlockedRequest)
+        XCTAssertEqual(t.to.haltReason, .cameraUnavailable)
+    }
+
 }

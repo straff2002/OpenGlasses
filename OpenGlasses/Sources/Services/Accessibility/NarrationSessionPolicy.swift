@@ -32,6 +32,13 @@ struct NarrationSessionPolicy: Equatable {
         /// into a reply is worse than no description at all.
         case userTurn
         /// A live realtime voice session — two voices in the ear is chaos.
+        ///
+        /// A **moment**, not a standing condition, and the reason is worth stating because it is
+        /// the one that decides whether narration explains itself: the standing-condition rule
+        /// exists for silence the wearer cannot attribute to anything. During a live session the
+        /// ear is audibly occupied — there is a voice in it — so the silence explains itself, and
+        /// announcing it would interrupt a conversation to say a conversation is happening. That
+        /// is exactly what makes it different from `.ambientCaptions`, where the ear is empty.
         case realtimeSession
         /// Live ambient captions are running (Plan CV, caption/narration arbitration).
         ///
@@ -137,6 +144,13 @@ struct NarrationSessionPolicy: Equatable {
         let haltBegan: Interruption?
         /// Perception just resumed after such a halt.
         let haltEnded: Interruption?
+        /// The wearer just asked for narration into a halt that was **already in force**.
+        ///
+        /// `haltBegan` is nil here — nothing began — but the debt is identical and the moment is
+        /// the one that matters: they asked for descriptions and are about to get none. This is
+        /// the primary Settings flow (watch first, then speak), so without it the most likely
+        /// path into a halted loop is the one that explains itself least.
+        let haltBlockedRequest: Interruption?
         /// A standing condition just took the ear while the loop kept watching. Same debt as
         /// `haltBegan`, smaller in scope: the wearer asked for descriptions and stopped getting
         /// them, and nothing they did in that moment explains it.
@@ -214,14 +228,28 @@ struct NarrationSessionPolicy: Equatable {
         }
 
         let to = state
+        let haltBeganValue: Interruption? =
+            to.haltReason != nil && to.haltReason != from.haltReason ? to.haltReason : nil
+        // Only the two "I want this now" events. An interruption clearing into a still-halted
+        // state is not the wearer asking for anything.
+        let askedIntoHalt: Bool = {
+            switch event {
+            case .start, .startNarrating: return to.haltReason != nil
+            case .stop, .stopNarrating, .interruption: return false
+            }
+        }()
         return Transition(
             from: from,
             to: to,
             flushSpeechQueue: from.isSpeaking && !to.isSpeaking,
-            haltBegan: to.haltReason != nil && to.haltReason != from.haltReason ? to.haltReason : nil,
+            haltBegan: haltBeganValue,
             // Not a resumption when the wearer is the one who stopped it.
             haltEnded: from.haltReason != nil && to.haltReason == nil && to.mode != .off
                 ? from.haltReason : nil,
+            // Not also `haltBegan`: that one means the world changed under the wearer, this one
+            // means the wearer walked into a world that had already changed. The copy is the same;
+            // keeping them apart is what lets each be tested for on its own.
+            haltBlockedRequest: askedIntoHalt && haltBeganValue == nil ? to.haltReason : nil,
             silenceBegan: to.silenceReason != nil && to.silenceReason != from.silenceReason
                 ? to.silenceReason : nil,
             // Keyed on the *requested* mode rather than `to.mode != .off`, because the wearer
