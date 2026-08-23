@@ -151,6 +151,8 @@
 	<string>OpenGlasses reads your step count and walking distance to report daily activity.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>OpenGlasses saves photos taken with your Ray-Ban Meta glasses to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>OpenGlasses saves glasses photos into a dedicated Glasses album in your photo library.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>OpenGlasses creates and manages reminders so you can set them hands-free through your glasses.</string>
 	<key>NSRemindersUsageDescription</key>
