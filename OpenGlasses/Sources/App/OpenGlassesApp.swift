@@ -321,11 +321,15 @@ struct OpenGlassesApp: App {
                     Task { await appState.cameraService.stopStreaming() }
                 }
                 appState.conversationStore.lock()
+                // Plan CV P3 owes the wearer an explanation for this one: on-device MLX cannot run
+                // backgrounded, so narration genuinely stops rather than merely going quiet.
+                SceneNarrationService.shared.noteInterruption(.backgrounded, active: true)
                 // Re-lock for HIPAA — requires biometric to re-enter
                 if Config.hipaaMode { isHipaaLocked = true }
             case .active:
                 print("📱 App became active")
                 appState.restoreFromBackground()
+                SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
@@ -1848,6 +1852,14 @@ class AppState: ObservableObject, AppStateProtocol {
                     AssistiveModeService.shared.noteTranscription(text)
                     return
                 }
+                // Plan CV P2: "start narrating" / "stop narrating" drive the narration mode rather
+                // than becoming a turn of their own.
+                if self.handleNarrationCommand(text) { return }
+                // The wearer's answer owns the floor from here — a scene description cutting into a
+                // reply is worse than no description at all. Perception keeps running; only the ear
+                // is taken, so grounding continues accumulating through the turn.
+                SceneNarrationService.shared.noteInterruption(.userTurn, active: true)
+                defer { SceneNarrationService.shared.noteInterruption(.userTurn, active: false) }
                 // CO Item 3: a turn already in flight used to mean the utterance was dropped behind
                 // a debug print — no tone, no HUD, nothing the wearer could perceive. Now it is
                 // either held for the turn that is finishing or refused audibly.
@@ -2462,6 +2474,55 @@ class AppState: ObservableObject, AppStateProtocol {
         AssistiveModeService.shared.toggle(camera: cameraService, llm: llmService, tts: speechService)
     }
 
+    // MARK: - Scene Narration (Plan CV P2)
+
+    /// Wire continuous scene narration to this AppState's services.
+    ///
+    /// Local inference only, deliberately: Plan CV makes cloud narration a v1 non-goal, because a
+    /// continuously-running loop becomes a continuous egress *and* a continuous bill, and both
+    /// deserve their own decision rather than riding in on an accessibility feature. There is no
+    /// cloud fallback here on purpose — when the on-device VLM isn't usable the loop describes
+    /// nothing, which P3 turns into an explanation the wearer can hear.
+    func configureSceneNarration() {
+        let narration = SceneNarrationService.shared
+
+        narration.currentFrame = { [weak self] in self?.cameraService.latestFrame }
+
+        narration.describeFrame = { [weak self] data in
+            guard let self else { return nil }
+            let local = self.localLLMService
+            guard local.isModelLoaded, let modelId = local.loadedModelId,
+                  local.isVisionUsable(modelId: modelId) else { return nil }
+            do {
+                return try await local.generate(
+                    userMessage: AssistiveRouter.narrationUserText,
+                    systemPrompt: AssistiveRouter.narrationSystemPrompt,
+                    imageData: data)
+            } catch {
+                // Backgrounded, already generating, or the model went away mid-loop. All of these
+                // mean "no description this tick", not an error worth putting in the wearer's ear.
+                NSLog("[SceneNarration] Description failed: %@", error.localizedDescription)
+                return nil
+            }
+        }
+
+        narration.speakUtterance = { [weak self] text in
+            await self?.speechService.speak(text)
+        }
+        narration.isTTSBusy = { [weak self] in self?.speechService.isSpeaking ?? false }
+    }
+
+    /// Route a transcription to scene narration if it is one of its commands.
+    ///
+    /// Returns true when the utterance was a narration command and has been handled, so the caller
+    /// does not also start a normal turn with it.
+    func handleNarrationCommand(_ text: String) -> Bool {
+        guard Config.sceneNarrationEnabled,
+              let command = AssistiveRouter.narrationCommand(in: text) else { return false }
+        SceneNarrationService.shared.handle(command)
+        return true
+    }
+
     /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.
     func startMCPServer() {
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
@@ -2843,6 +2904,10 @@ class AppState: ObservableObject, AppStateProtocol {
         LiveCoachService.shared.presence = presenceMonitor
         proactiveAlerts.presence = presenceMonitor
         AssistiveModeService.shared.presence = presenceMonitor
+        // Plan CV P2: wire the narration seams at setup, not on first command. The Settings switch
+        // can start the loop directly, and a loop with no camera or model seam attached watches
+        // nothing while reporting that it is watching.
+        configureSceneNarration()
         // Reading is the same shape as captions, not a tick loop: a reader is motionless and silent
         // (so, `.idle`) but very much engaged, and it checks the same `.away`-only gate internally.
         ReadingCompanionService.shared.presence = presenceMonitor

@@ -3,11 +3,13 @@ import SwiftUI
 /// Settings UI for the Accessibility Tier: master toggle, default reading level, and
 /// preferred translation language for A1 Reading Accessibility (these defaults feed the
 /// `reading_assist` tool when the user doesn't specify them per request), plus the
-/// independent fingerspelling recognition feature (Plan CK).
+/// independent fingerspelling recognition feature (Plan CK) and continuous scene narration
+/// (Plan CV), both of which stand on their own rather than under the reading toggle.
 @MainActor
 struct AccessibilitySettingsView: View {
     @AppStorage("accessibilityModeEnabled") private var enabled: Bool = false
     @AppStorage("fingerspellingEnabled") private var fingerspellingEnabled: Bool = false
+    @AppStorage("sceneNarrationEnabled") private var sceneNarrationEnabled: Bool = false
     @AppStorage("accessibilityReadingLevel") private var readingLevel: Int = ReadingProfile.Level.adult.rawValue
     @AppStorage("accessibilityReadingLanguage") private var language: String = ReadingProfile.preferredLanguage
 
@@ -62,6 +64,18 @@ struct AccessibilitySettingsView: View {
                 } footer: {
                     Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (e.g. someone in distress) speaks faster. Pauses the normal wake-word assistant while active.")
                 }
+            }
+
+            Section {
+                Toggle("Enable Scene Narration", isOn: $sceneNarrationEnabled)
+                    .tint(AppAccent.color)
+                if sceneNarrationEnabled {
+                    SceneNarrationToggleView()
+                }
+            } header: {
+                Text("Scene Narration")
+            } footer: {
+                Text("Describes the space around you as it changes, for moving through somewhere unfamiliar. Watching is silent — descriptions build up so questions about what you're looking at are answered instantly. Speaking them aloud is a separate switch. Runs entirely on-device, so it pauses when the app is in the background.")
             }
 
             Section {

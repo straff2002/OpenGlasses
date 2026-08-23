@@ -147,7 +147,7 @@ decision turned into a toggle that did nothing.
   itself. `OutboundFramePrivacyTests` now pins the exemption set as exactly the two non-egress
   consumers rather than "face recognition only", so a third has to be argued for rather than added.
 
-### P2 — The loop
+### P2 — The loop ✅ shipped 2026-08-23
 
 `SceneNarrationService` wiring `FrameGate` (`.distinct` only — **ignore `.heartbeat`**, since a
 forced re-send of an unchanged scene is exactly what must not produce a fresh announcement) →
@@ -159,6 +159,39 @@ The cores are all P2 has to call: `NarrationGate.noteSceneChange(at:)` on `.dist
 `evaluateGeneration(at:)` before spending an inference, `evaluateSpeech(_:)` on what comes back,
 `AmbientSpeechArbiter(rules: .narration)` for the floor, and `NarrationSessionPolicy` deciding
 whether any of it should be running at all.
+
+**Landed 2026-08-23.** `SceneNarrationService` is the loop and nothing else — every decision it
+makes belongs to a P1 core, so the service is wiring plus the three things the phase actually owed:
+
+- **`NarrationContext`** (`Services/Vision/NarrationContext.swift`) — the rolling grounding context,
+  bounded on **three** axes rather than the obvious one: count, rendered characters, and **age**.
+  Age is the one that matters and the one a count cap doesn't give you — a description of a room the
+  wearer walked out of four minutes ago is not grounding, it is a wrong answer with evidence
+  attached. Redundancy is scored with `NarrationGate`'s word overlap rather than a second
+  implementation, and deliberately only against the **most recent** observation: a scene the wearer
+  walks back into is where they are *now*. The prompt fragment trims from the **oldest** end, so
+  under budget pressure the wearer's current surroundings survive and the room they started in is
+  what goes.
+- **`.firstFrame` is taken alongside `.distinct`.** The plan said "`.distinct` only, ignore
+  `.heartbeat`" and the heartbeat exclusion is exactly right, but `.firstFrame` was unstated and
+  excluding it would have meant a wearer who turns narration on while standing still is told
+  nothing at all until something moves — the failure mode this feature exists to prevent.
+- **The speech gate is scored only when the loop may actually speak.** Not an optimisation: scoring
+  `evaluateSpeech` during silent watching would move the spoken baseline against something nobody
+  heard, and the first description after "start narrating" would then be suppressed as a rephrase
+  of a silence. There is a test named for that.
+- **Narration gets its own prompt**, not `systemPrompt(for: .scene)` — that one returns JSON advice
+  with an urgency field, and JSON scaffolding would be scored as content by `NarrationGate` and
+  inflate the similarity between two genuinely different scenes. It also does not ask the model what
+  *changed*: a model asked what changed will invent a change to report.
+- **Commands** parse in `AssistiveRouter.narrationCommand(in:)` with every "stop" form matched
+  before every "start" form, because *"stop narrating"* contains *"narrating"* and a wearer asking
+  for quiet getting more speech is the one unacceptable failure in that table. Pinned by a test.
+- **Wiring**: local VLM only (no cloud fallback, per the non-goal), `.userTurn` raised around every
+  transcription turn, `.backgrounded` raised on scene-phase change, and a two-switch Settings
+  control — watching and speaking are separate, so turning the feature on never starts talking.
+
+P2 publishes `haltReason` but does **not** render it aloud; that debt is P3's and is listed there.
 
 **`SceneWatcherService` — resolved by deletion, 2026-08-23.** Found while building P1: a proactive
 scene-observation loop already in the tree with **no call sites anywhere** — its two `Config`
