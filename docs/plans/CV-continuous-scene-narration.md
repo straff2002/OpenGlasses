@@ -160,13 +160,28 @@ The cores are all P2 has to call: `NarrationGate.noteSceneChange(at:)` on `.dist
 `AmbientSpeechArbiter(rules: .narration)` for the floor, and `NarrationSessionPolicy` deciding
 whether any of it should be running at all.
 
-**Found while building P1, and P2 has to resolve it:** `SceneWatcherService` is a proactive
+**`SceneWatcherService` — resolved by deletion, 2026-08-23.** Found while building P1: a proactive
 scene-observation loop already in the tree with **no call sites anywhere** — its two `Config`
-accessors are read by nothing and it has no Settings UI — and its `isDuplicate` compares
-*characters* rather than words, so it suppresses nearly everything once one observation lands. It
-is the same shape `PrivacyFilterService`'s own comments call out. Either `SceneNarrationService`
-subsumes it and it is deleted, or it is rebuilt on `NarrationGate`; shipping two proactive scene
-loops, one of them broken and dormant, is not an option.
+accessors were read by nothing and it had no Settings UI — whose `isDuplicate` compared
+*characters* rather than words, so any two English sentences scored ~1.0 and one recorded
+observation suppressed nearly every one after it. It was the same shape `PrivacyFilterService`'s
+own comments call out: a config surface that does nothing.
+
+`SceneNarrationService` **subsumes it**, so it was deleted rather than rebuilt. Rebuilding it on
+the P1 cores would have meant writing this phase's loop under a name chosen before the design
+existed, and would have left the codebase with two proactive scene loops competing for one camera
+and one ear — the thing this plan's non-goals rule out for detectors and arbiters alike. Everything
+it reached for, P2 owns and does properly: its `isDuplicate` is `NarrationGate.evaluateSpeech`
+(word overlap, fixture-measured), its fixed 15-second tick is the duty-cycle floor plus dwell
+driven by `FrameGate.distinct`, its unconditional `onObservation` callback is
+`AmbientSpeechArbiter(rules: .narration)`, and its "speak up only when notable" prompt is the
+silent-by-default mode split in `NarrationSessionPolicy`.
+
+Deleted with it: `Config.sceneWatcherEnabled` / `Config.sceneWatcherInterval` and their setters.
+Kept, renamed: `CameraDependentFeature.sceneWatcher` → `.sceneNarration` — P3 needs exactly this
+case for the camera-tier gate, and a case named after a deleted service is worse than one named
+after the feature that will use it. The persisted `UserDefaults` keys are left unread rather than
+migrated; nothing ever wrote them.
 
 ### P3 — Honest limits in the UI
 

@@ -79,7 +79,8 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
     case faceRecognition
     case signLanguage
     case readingCompanion
-    case sceneWatcher
+    /// Continuous scene narration — the assistive loop that describes a space as it changes.
+    case sceneNarration
     case framePinning
     case videoRecording
     case broadcast
@@ -92,7 +93,7 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
         switch self {
         case .photoCapture:
             return false
-        case .livePreview, .faceRecognition, .signLanguage, .readingCompanion, .sceneWatcher,
+        case .livePreview, .faceRecognition, .signLanguage, .readingCompanion, .sceneNarration,
              .framePinning, .videoRecording, .broadcast, .expertStream, .offlineLiveSession,
              .ambientCameraCaptions:
             return true
@@ -107,7 +108,7 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
         case .faceRecognition: return "Face Recognition"
         case .signLanguage: return "Sign Language"
         case .readingCompanion: return "Reading Companion"
-        case .sceneWatcher: return "Scene Watcher"
+        case .sceneNarration: return "Scene Narration"
         case .framePinning: return "Frame Pinning"
         case .videoRecording: return "Video Recording"
         case .broadcast: return "Broadcast"
