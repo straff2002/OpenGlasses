@@ -67,6 +67,26 @@ class AmbientCaptionService: ObservableObject {
     /// triggered by mere idle — a user reading captions silently is still engaged.
     private(set) var presenceSuspended = false
 
+    /// Whether a live recognition session is actually running: user-`isActive` minus the presence
+    /// suspension, which tears the session down without the wearer switching anything off.
+    var isTranscribing: Bool { isActive && !presenceSuspended }
+
+    /// Fired when `isTranscribing` changes. Set by AppState so continuous scene narration knows
+    /// the ear is spoken for (Plan CV).
+    ///
+    /// Captions never speak, so this is not two voices competing — it is two things narration
+    /// must not do while a transcript is being made: put its own synthesized voice into the
+    /// wearer's caption history (this path runs `.playAndRecord`/`.default` with no voice
+    /// processing, so narration's output is transcribed as if a person had said it, and flows on
+    /// into summaries, Spotlight and Brain), and speak one sentence at a wearer who is reading a
+    /// different one. Captions win because a caption is another person talking and cannot be
+    /// repeated; a description of a room can wait, and `FrameGate` will describe the room again
+    /// if it changes meanwhile.
+    var onTranscribingChanged: ((Bool) -> Void)?
+
+    /// Last value handed to `onTranscribingChanged`, so it fires on genuine edges only.
+    private var lastTranscribing = false
+
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
@@ -120,6 +140,7 @@ class AmbientCaptionService: ObservableObject {
         isActive = true
         currentCaption = ""
         startRecognitionSession()
+        syncTranscribing()
         print("🎙️ Ambient captions started")
     }
 
@@ -129,6 +150,7 @@ class AmbientCaptionService: ObservableObject {
         stopRecognitionSession()
         currentCaption = ""
         glassesDisplay?.clear()
+        syncTranscribing()
         print("🎙️ Ambient captions stopped")
     }
 
@@ -141,6 +163,7 @@ class AmbientCaptionService: ObservableObject {
         stopRecognitionSession()
         currentCaption = ""
         glassesDisplay?.clear()
+        syncTranscribing()
         print("🎙️ Ambient captions suspended (presence away)")
     }
 
@@ -149,7 +172,18 @@ class AmbientCaptionService: ObservableObject {
         guard isActive, presenceSuspended else { return }
         presenceSuspended = false
         startRecognitionSession()
+        syncTranscribing()
         print("🎙️ Ambient captions resumed (presence)")
+    }
+
+    /// Fire `onTranscribingChanged` if the live-session state actually changed. Called from every
+    /// path that starts or tears one down, rather than from the recognizer callbacks: a session
+    /// restarting for continuous recognition is not a gap anyone downstream should react to.
+    private func syncTranscribing() {
+        let now = isTranscribing
+        guard now != lastTranscribing else { return }
+        lastTranscribing = now
+        onTranscribingChanged?(now)
     }
 
     /// Re-pick the transcription backend after a mode/config change (e.g. HIPAA toggled). If a

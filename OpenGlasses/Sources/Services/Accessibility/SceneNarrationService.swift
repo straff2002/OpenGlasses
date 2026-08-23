@@ -47,6 +47,18 @@ final class SceneNarrationService: ObservableObject {
     /// it, and P3 owes the copy and the announcement.
     @Published private(set) var haltReason: NarrationSessionPolicy.Interruption?
 
+    /// Non-nil when the loop is still watching but a standing condition has taken the ear —
+    /// today, live ambient captions.
+    ///
+    /// Captions and narration are not two streams fighting for one ear (`AmbientCaptionService`
+    /// never speaks — it writes the phone overlay and the lens). Narration yields anyway: it
+    /// speaks over the same shared audio engine the caption recognizer listens on, with no voice
+    /// processing on that path, so its own voice lands in the wearer's transcript as if a person
+    /// had said it; and two simultaneous language streams are not something one person parses.
+    /// Captions win because a caption is another person talking — unrepeatable — while the room
+    /// will still be there in four seconds, and `FrameGate` will notice if it isn't.
+    @Published private(set) var silenceReason: NarrationSessionPolicy.Interruption?
+
     /// Non-nil when narration cannot run on the connected glasses at all (Plan CV P3). Distinct
     /// from `haltReason`, which is a running session interrupted; this is a start that never
     /// happened, and the wearer must hear why rather than watch a switch flip back.
@@ -226,6 +238,12 @@ final class SceneNarrationService: ObservableObject {
         if let ended = transition.haltEnded {
             NSLog("[SceneNarration] Resumed after %@", ended.rawValue)
         }
+        if let began = transition.silenceBegan {
+            NSLog("[SceneNarration] Quiet (still watching) — %@", began.rawValue)
+        }
+        if let ended = transition.silenceEnded {
+            NSLog("[SceneNarration] Speaking again after %@", ended.rawValue)
+        }
 
         // Plan CV P3: say why, to the wearer who was being spoken to. `NarrationVoiceNotices`
         // owns the restraint — who hears it, and how often.
@@ -248,6 +266,7 @@ final class SceneNarrationService: ObservableObject {
         isPerceiving = state.isPerceiving
         isSpeakingMode = state.isSpeaking
         haltReason = state.haltReason
+        silenceReason = state.silenceReason
     }
 
     private func teardown() {

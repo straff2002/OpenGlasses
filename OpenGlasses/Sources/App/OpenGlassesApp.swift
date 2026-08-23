@@ -906,6 +906,14 @@ class AppState: ObservableObject, AppStateProtocol {
         // root (`TranslationEngineHost`); reachability drives the offline → on-device tier rule.
         ambientCaptions.translationEngine = translationEngine
         ambientCaptions.reachability = reachability
+        // Plan CV: a live transcript takes the ear from continuous scene narration. Captions never
+        // speak, so this is not two voices — it is narration's own synthesized voice being
+        // transcribed into the wearer's caption history (no voice processing on this capture path)
+        // and then flowing into summaries, Spotlight and Brain, plus the plain fact that nobody
+        // reads one sentence while hearing another. Narration keeps watching; only the ear yields.
+        ambientCaptions.onTranscribingChanged = { active in
+            SceneNarrationService.shared.noteInterruption(.ambientCaptions, active: active)
+        }
         // Toggling HIPAA mid-session must tear down any live cloud diarization at once (Plan BM
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.
         hipaaService.onModeChanged = { [weak ambientCaptions, weak self] in
@@ -2506,8 +2514,16 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        // `mirrorToHUD: false`, and this is the whole caption/narration boundary in one argument.
+        // `speak()` defaults to mirroring, and `showText` *replaces* the lens line persistently —
+        // so with the default, every description silently overwrote whatever ambient captions had
+        // put there, mid-sentence, with no way for the wearer to know a sentence was lost. That is
+        // the same unexplained-silence failure P3 exists to fix, in the visual channel. Narration
+        // owns the ear; captions own the lens. This is *not* an answer to the plan's open question
+        // about narration on the lens — it removes an accidental yes so the question stays open,
+        // and whenever it is answered it inherits the same precedence.
         narration.speakUtterance = { [weak self] text in
-            await self?.speechService.speak(text)
+            await self?.speechService.speak(text, mirrorToHUD: false)
         }
         narration.isTTSBusy = { [weak self] in self?.speechService.isSpeaking ?? false }
 
@@ -2515,7 +2531,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // `.medium` urgency — it is not an emergency, but it must not be read in the same flat
         // register as the descriptions whose absence it is explaining.
         narration.speakNotice = { [weak self] text in
-            await self?.speechService.speak(text, urgency: .medium)
+            await self?.speechService.speak(text, urgency: .medium, mirrorToHUD: false)
         }
         narration.cameraAvailability = { [weak self] in
             self?.cameraService.availability(of: .sceneNarration) ?? .available

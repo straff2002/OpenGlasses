@@ -8,8 +8,12 @@ import SwiftUI
 /// looked at), and **narrating** puts those descriptions in the wearer's ear. Turning the feature on
 /// must not start talking.
 ///
-/// P3 adds the honest half: a halt says why here *and* aloud, and hardware that can't run narration
-/// at all says so instead of offering a switch that flips itself back.
+/// P3 added the honest half: a halt says why here *and* aloud, and hardware that can't run
+/// narration at all says so instead of offering a switch that flips itself back.
+///
+/// The caption/narration decision added a third status line with the same job: live ambient
+/// captions take the ear while the loop keeps watching, and a wearer who left captions on this
+/// morning must be able to see why narration has gone quiet rather than conclude it is broken.
 @MainActor
 struct SceneNarrationToggleView: View {
     @ObservedObject private var service = SceneNarrationService.shared
@@ -42,10 +46,18 @@ struct SceneNarrationToggleView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if let halt = service.haltReason {
-            // Plan CV P3 owns the full treatment — announcing the stop aloud and saying why. This
-            // is the Settings half of the same debt: for a wearer relying on narration, silence
-            // that isn't explained is indistinguishable from silence because nothing changed.
+            // The Settings half of a debt narration also pays aloud: for a wearer relying on it,
+            // silence that isn't explained is indistinguishable from silence because nothing
+            // changed. The spoken announcement happens too — `NarrationVoiceNotices` decides who
+            // hears it — and this line is what remains visible after it has been said.
             Label(Self.haltCopy(halt), systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if let silence = service.silenceReason {
+            // Still watching, just not talking. A different symbol from the halt on purpose: this
+            // is not something being broken, it is two features being polite to each other, and
+            // the copy has to name the switch that undoes it.
+            Label(Self.silenceCopy(silence), systemImage: "speaker.slash")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if let description = service.latestDescription {
@@ -66,10 +78,24 @@ struct SceneNarrationToggleView: View {
             return "Paused — on-device descriptions can't run while the app is in the background."
         case .cameraUnavailable:
             return "Paused — no live camera feed from the glasses."
-        case .userTurn, .realtimeSession:
+        case .userTurn, .realtimeSession, .ambientCaptions:
             // Not halts; the policy never reports these as a halt reason. Kept exhaustive so a new
             // interruption has to decide what the wearer is told.
             return "Paused."
+        }
+    }
+
+    /// Copy for a standing condition that takes the ear without stopping the loop. Shorter than
+    /// the spoken version because the switch it names is a few rows away on this screen.
+    static func silenceCopy(_ interruption: NarrationSessionPolicy.Interruption) -> String {
+        switch interruption {
+        case .ambientCaptions:
+            return "Quiet while live captions are running — still watching, so questions are still answered."
+        case .userTurn, .realtimeSession:
+            // Moments, not standing conditions; the policy never reports these here.
+            return "Quiet for a moment."
+        case .backgrounded, .cameraUnavailable:
+            return Self.haltCopy(interruption)
         }
     }
 }

@@ -197,4 +197,108 @@ final class NarrationSessionPolicyTests: XCTestCase {
         XCTAssertFalse(policy.apply(.stopNarrating).didChange, "Already not narrating.")
         XCTAssertTrue(policy.apply(.startNarrating).didChange)
     }
+
+    // MARK: - Ambient captions (caption/narration arbitration)
+
+    /// The decision this models: a live transcript takes the ear and nothing else. Perception
+    /// keeps running, so a question asked mid-captions is still answered against a scene the model
+    /// has already looked at — the cheap half was never the thing in contention.
+    func testAmbientCaptionsTakeTheEarAndNotTheLoop() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        let t = policy.apply(.interruption(.ambientCaptions, active: true))
+
+        XCTAssertTrue(t.to.isPerceiving, "Grounding is not what captions contend for")
+        XCTAssertFalse(t.to.isSpeaking)
+        XCTAssertNil(t.to.haltReason, "Captions do not stop the loop, so nothing was halted")
+        XCTAssertEqual(t.to.silenceReason, .ambientCaptions)
+        XCTAssertEqual(t.silenceBegan, .ambientCaptions)
+        XCTAssertTrue(t.flushSpeechQueue,
+                      "Anything queued is stale by the time the transcript ends; late delivery is worse")
+    }
+
+    func testClearingCaptionsRestoresSpeech() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.ambientCaptions, active: true))
+        let t = policy.apply(.interruption(.ambientCaptions, active: false))
+
+        XCTAssertTrue(t.to.isSpeaking, "The requested mode survives the interruption")
+        XCTAssertNil(t.to.silenceReason)
+        XCTAssertEqual(t.silenceEnded, .ambientCaptions)
+    }
+
+    /// The axis that makes the caption case different from a user turn. A user turn is a moment the
+    /// wearer created and hears end; captions are a standing condition they may have switched on
+    /// hours ago, and silence they cannot attribute to anything is the failure P3 exists to fix.
+    func testAUserTurnIsAMomentAndReportsNoSilence() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        let t = policy.apply(.interruption(.userTurn, active: true))
+
+        XCTAssertFalse(t.to.isSpeaking)
+        XCTAssertNil(t.to.silenceReason, "A moment the wearer created needs no explaining")
+        XCTAssertNil(t.silenceBegan)
+    }
+
+    /// A watching wearer was silent by design. Reporting them as *silenced* would invent a
+    /// grievance they don't have, and the UI would then owe them an explanation for nothing.
+    func testAWatchingWearerIsNeverReportedAsSilenced() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.start)
+        let t = policy.apply(.interruption(.ambientCaptions, active: true))
+
+        XCTAssertTrue(t.to.isPerceiving)
+        XCTAssertNil(t.to.silenceReason)
+        XCTAssertNil(t.silenceBegan)
+    }
+
+    /// "Stop narrating" also ends the silence, but the wearer chose that — reporting it as a
+    /// resume would have narration announce itself coming back at the moment it was switched off.
+    func testStopNarratingDuringCaptionsIsNotAResume() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.ambientCaptions, active: true))
+        let t = policy.apply(.stopNarrating)
+
+        XCTAssertNil(t.silenceEnded)
+        XCTAssertNil(t.to.silenceReason)
+    }
+
+    /// A halt is the bigger fact and supersedes the silence: the loop is not merely quiet, it has
+    /// stopped, and the wearer must not be told two different stories about one silence.
+    func testAHaltSupersedesACaptionSilence() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.ambientCaptions, active: true))
+        let t = policy.apply(.interruption(.backgrounded, active: true))
+
+        XCTAssertEqual(t.to.haltReason, .backgrounded)
+        XCTAssertNil(t.to.silenceReason)
+        XCTAssertEqual(t.haltBegan, .backgrounded)
+    }
+
+    /// Coming back from the background into a still-live transcript is not narration resuming.
+    /// The transition has to say so, or the wearer is told it is back and then hears nothing.
+    func testUnhaltingIntoLiveCaptionsIsStillSilenced() {
+        var policy = NarrationSessionPolicy()
+        policy.apply(.startNarrating)
+        policy.apply(.interruption(.ambientCaptions, active: true))
+        policy.apply(.interruption(.backgrounded, active: true))
+        let t = policy.apply(.interruption(.backgrounded, active: false))
+
+        XCTAssertEqual(t.haltEnded, .backgrounded)
+        XCTAssertTrue(t.to.isPerceiving, "The loop is watching again")
+        XCTAssertFalse(t.to.isSpeaking, "…but the transcript still owns the ear")
+        XCTAssertEqual(t.silenceBegan, .ambientCaptions)
+    }
+
+    /// The two axes are independent, and a future interruption has to answer both.
+    func testInterruptionAxesAreIndependent() {
+        XCTAssertFalse(NarrationSessionPolicy.Interruption.ambientCaptions.haltsPerception)
+        XCTAssertTrue(NarrationSessionPolicy.Interruption.ambientCaptions.isStandingCondition)
+        XCTAssertFalse(NarrationSessionPolicy.Interruption.userTurn.isStandingCondition)
+        XCTAssertTrue(NarrationSessionPolicy.Interruption.backgrounded.isStandingCondition)
+    }
+
 }

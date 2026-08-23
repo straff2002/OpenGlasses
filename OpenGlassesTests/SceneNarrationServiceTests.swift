@@ -501,4 +501,94 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertNil(rig.service.unavailableReason)
         XCTAssertEqual(rig.service.mode, .watching)
     }
+
+    // MARK: - Live captions take the ear
+
+    /// The caption/narration decision, end to end. Captions never speak — they write the phone
+    /// overlay and the lens — so this is not two voices in one ear. Narration yields because its
+    /// own synthesized voice would be transcribed into the wearer's caption history as if a person
+    /// had said it, and because nobody reads one sentence while hearing a different one. What it
+    /// does *not* do is stop watching: the grounding half was never in contention.
+    func testLiveCaptionsSilenceNarrationButNotWatching() async {
+        let rig = makeRig(descriptions: [
+            "A kitchen with a table and two chairs.",
+            "A busy street crossing with traffic and a red light.",
+        ])
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.spoken.count, 1)
+
+        rig.service.noteInterruption(.ambientCaptions, active: true)
+        XCTAssertTrue(rig.service.isPerceiving, "A transcript takes the ear, not the camera")
+        XCTAssertFalse(rig.service.isSpeakingMode)
+        XCTAssertNil(rig.service.haltReason, "Nothing halted — this is a quiet loop, not a stopped one")
+        XCTAssertEqual(rig.service.silenceReason, .ambientCaptions)
+
+        rig.sceneHash = 0xFFFF_FFFF_FFFF_FFFF
+        await tick(rig, to: 20)
+        await tick(rig, to: 22)
+        XCTAssertEqual(rig.service.describedCount, 2, "Still watching, so a later question is grounded")
+        XCTAssertEqual(rig.spoken.count, 1, "Still quiet")
+        XCTAssertNotNil(rig.service.groundingFragment())
+
+        rig.service.noteInterruption(.ambientCaptions, active: false)
+        XCTAssertTrue(rig.service.isSpeakingMode, "The requested mode survives the transcript")
+        XCTAssertNil(rig.service.silenceReason)
+    }
+
+    /// Unexplained silence is what P3 exists to prevent, and a wearer who left captions on this
+    /// morning has nothing to attribute this one to. It travels the notice path, not the arbiter —
+    /// the arbiter flushes on exactly this transition and would drop the explanation for it.
+    func testTheCaptionSilenceIsAnnouncedAndTheResumeIsToo() async {
+        let rig = makeRig()
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+
+        rig.service.noteInterruption(.ambientCaptions, active: true)
+        XCTAssertEqual(rig.service.noticeLog.count, 1)
+        XCTAssertTrue(rig.service.noticeLog[0].contains("captions"))
+
+        rig.service.noteInterruption(.ambientCaptions, active: false)
+        XCTAssertEqual(rig.service.noticeLog.last, NarrationVoiceNotices.speakingAgainCopy)
+    }
+
+    /// A watching wearer was silent by design, so captions change nothing they can hear and the
+    /// app must not announce itself to someone who never asked it to speak.
+    func testAWatchingWearerHearsNothingAboutCaptions() async {
+        let rig = makeRig()
+        rig.service.start()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+
+        rig.service.noteInterruption(.ambientCaptions, active: true)
+        XCTAssertTrue(rig.service.noticeLog.isEmpty)
+        XCTAssertNil(rig.service.silenceReason)
+        XCTAssertTrue(rig.service.isPerceiving)
+    }
+
+    /// The constraint the narration preset exists for: `AmbientSpeechRules.narration` keeps a
+    /// deliberately tiny queue because a description of a room the wearer has already left is
+    /// worse than silence. Yielding to captions must not quietly turn that into a queue that
+    /// delivers stale descriptions once the transcript ends.
+    func testDescriptionsQueuedBeforeCaptionsAreDroppedNotDeliveredLate() async {
+        let rig = makeRig()
+        rig.ttsBusy = true                       // the floor is busy, so the description queues
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.service.describedCount, 1)
+        XCTAssertTrue(rig.spoken.isEmpty, "Held, not spoken — TTS owns the floor")
+
+        rig.service.noteInterruption(.ambientCaptions, active: true)
+        rig.service.noteInterruption(.ambientCaptions, active: false)
+        rig.ttsBusy = false
+
+        // Inside the duty-cycle floor, so nothing new is generated either: anything spoken here
+        // could only be the description held from before the transcript.
+        await tick(rig, to: 3)
+        XCTAssertTrue(rig.spoken.isEmpty, "A description held across the transcript is stale, not owed")
+    }
+
 }
