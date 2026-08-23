@@ -406,7 +406,17 @@ exists to prevent, with the explanation already written and never spoken.
 
 **The tests were green throughout.** The gap was in the wiring, and nothing at the layer under test
 could see it — which is the honest lesson: a pure core tested exhaustively tells you the decision
-is right, never that anything asks it. Both are now raised on edges (`removeDuplicates` over the
+is right, never that anything asks it. Worse, the unit tests call `noteInterruption` *themselves*,
+so the seam is exercised identically whether or not the app ever calls it: the coverage actively
+disguised the hole.
+
+**`NarrationInterruptionWiringTests` now closes it**, because twice is a pattern rather than bad
+luck. It scans `OpenGlasses/Sources` and fails when an `Interruption` case has no raise site,
+anchored on `#filePath` so it resolves the same locally and in CI. Exhaustive switches already
+force a new case to decide *what the wearer is told*; this is what forces something to actually
+tell them. It carries its own guard too — a check that the scan is really reading the app sources,
+because a source scan that quietly resolves nothing passes vacuously, and a silently disabled test
+is worse than no test: the green tick still reads as a promise. Both are now raised on edges (`removeDuplicates` over the
 session and streaming publishers), and the `.cameraUnavailable` condition includes
 `isStartingStream`, because a ~20 s cold start otherwise announces a halt and a resume either side
 of every stream start.
