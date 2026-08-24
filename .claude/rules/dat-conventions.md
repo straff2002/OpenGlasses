@@ -106,6 +106,14 @@ Notes from the field:
 - **WiFi transport** is transparent — no app-facing API; the SDK negotiates it.
 - The DAT App Model (DAM) is always enabled as of 0.9.0 — the `MWDAT.DAMEnabled` Info.plist opt-out
   key is ignored. Crash-reporting opt-out: `MWDAT > CrashReporting > OptOut` (Bool, default `false`).
+- **Data collection is opt-out, and this app opts out.** `MWDATCore` POSTs `ar_wearables_sdk_*`
+  event batches (session, stream, permission, display, crash) to a hard-coded
+  `api2.ar.meta.com/mwsdk/telemetry`. Both `MWDAT > Analytics > OptOut` and
+  `MWDAT > CrashReporting > OptOut` are `YES` in `OpenGlasses/Info.plist` and must stay that way —
+  absent or `NO` means opted **in**. `MetaTelemetryBlock` is the backstop: it registers a
+  `URLProtocol` before `Wearables.configure()` that answers that endpoint locally and counts what
+  it stopped. Attestation (`/wearables/attestation/challenge`) shares the host and is deliberately
+  **not** blocked — it gates device access.
 
 ## Links
 
