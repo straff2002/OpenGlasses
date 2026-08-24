@@ -1,6 +1,7 @@
 # Plan CY — Broadcast Resilience & Stream Quality
 
-**Status: 🚧 Core shipped 2026-08-24** — P1 (pure policy cores), P2 (edge wiring: status
+**Status: 🚧 Core shipped 2026-08-24**
+([#337](https://github.com/straff2002/OpenGlasses/pull/337)) — P1 (pure policy cores), P2 (edge wiring: status
 observation, reconnection, adaptive bitrate, configurable encoding) and P3 (Settings + live health
 readout) landed. P4 — device/network smoke against a real ingest — is deferred: it needs glasses,
 an uplink that can be made to fail on demand, and a streaming account, none of which exist at a
