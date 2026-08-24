@@ -841,10 +841,15 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Off by default. When on, the fitness coach may read your Apple Health workout history and send it to your configured AI provider (Anthropic, OpenAI, Google, etc.) so it can discuss your progress. Your Health data leaves the device only while this is enabled. On-device workout tracking, form analysis, and saving workouts to Apple Health work either way."
                 )
+                InfoStatusRow(
+                    title: "Glasses Analytics",
+                    status: MetaTelemetryBlock.disclosureState.summary,
+                    info: "The glasses SDK collects its own usage analytics — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out, and additionally blocks those uploads from leaving your phone. There is nothing to turn on: it is off in every build. Pairing your glasses still contacts Meta once to verify the app is allowed to talk to them, which is what makes the connection work and carries no usage data."
+                )
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on.")
+                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. The glasses SDK's own analytics are disabled and blocked.")
             }
 
             Section {
@@ -893,6 +898,41 @@ struct HardwarePrivacyView: View {
             }
         }
         .navigationTitle("Hardware & Privacy")
+    }
+}
+
+// MARK: - Info Status Row
+
+/// A read-only counterpart to ``InfoToggle``: states a privacy fact and explains it, with
+/// nothing for the user to switch. For guarantees that are compiled in rather than configured —
+/// presenting one as a toggle would imply an "on" state the app does not offer.
+struct InfoStatusRow: View {
+    let title: String
+    let status: String
+    let info: String
+
+    @State private var showInfo = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+            Button {
+                showInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Text(status)
+                .foregroundStyle(.secondary)
+        }
+        .alert(title, isPresented: $showInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(info)
+        }
     }
 }
 
