@@ -500,25 +500,37 @@ struct Config {
             }
         }
 
-        // If nothing was migrated, create a blank Anthropic default
-        if models.isEmpty {
-            models.append(ModelConfig.defaultConfig(for: .anthropic))
-        }
-
-        // Defensive check - should never happen, but prevent crash
-        guard let firstModel = models.first else {
-            print("⚠️ Migration failed - no models created")
-            // Create emergency default
-            let emergency = ModelConfig.defaultConfig(for: .anthropic)
-            models = [emergency]
+        // Nothing migrated ⇒ fresh install, which is the mainline first-run path off the App Store.
+        // A blank-key config must never become the active model — the user's first question would
+        // fail on a missing key. Start on whatever runs without one; keys can be added any time.
+        let downloadedLocalModels = LocalLLMService.downloadedModelIdsOnDisk()
+        switch FirstRunDefaults.resolve(hasLegacyKey: !models.isEmpty,
+                                        appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable,
+                                        localModelDownloaded: !downloadedLocalModels.isEmpty) {
+        case .migratedLegacyKey:
             setSavedModels(models)
-            setActiveModelId(emergency.id)
-            return models
-        }
+            if let firstModel = models.first { setActiveModelId(firstModel.id) }
 
-        // Save the migration
-        setSavedModels(models)
-        setActiveModelId(firstModel.id)
+        case .keyless(let provider):
+            // The on-device entry is always listed (the non-migration path adds it too), so the
+            // saved list is never empty and the picker always offers the keyless option.
+            models.append(appleIntelligenceDefault)
+            var active = appleIntelligenceDefault
+            if provider == .local {
+                var localConfig = ModelConfig.defaultConfig(for: .local)
+                localConfig.model = downloadedLocalModels.first ?? LLMProvider.local.defaultModel
+                models.append(localConfig)
+                active = localConfig
+            }
+            setSavedModels(models)
+            setActiveModelId(active.id)
+
+        case .unconfigured:
+            // Nothing keyless can run on this device. Leave the active model unset rather than
+            // fabricating a keyed one — the send path's error copy points at Settings.
+            models.append(appleIntelligenceDefault)
+            setSavedModels(models)
+        }
 
         return models
     }
