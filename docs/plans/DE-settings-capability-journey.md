@@ -27,7 +27,8 @@ ever inaccessible.
 
 - **Tiers are by user intent, not complexity:**
   - **Everyday** — voice & wake phrase, camera, captions/translation, **accessibility**,
-    look & feel, glasses & privacy, diagnostics & support (Plan DC's surface).
+    **Apple app integrations** (Home, Calendar, Reminders, Contacts, Music, Maps directions,
+    Alarms), look & feel, glasses & privacy, diagnostics & support (Plan DC's surface).
   - **Creator** — streaming, recording, chat readback (the CY/CZ/DA surface).
   - **Power** — models & personas, tools & actions, automations, HUD.
   - **Pro & Org** — Field Assist, medical compliance, connections (MCP servers, gateways),
@@ -38,6 +39,13 @@ ever inaccessible.
   CT's rule that no org profile may withhold assistive features — no journey state may hide it
   either. This is enforced structurally: the catalog type marks the accessibility category
   un-foldable, with a test.
+- **Apple-app integrations are Everyday — decided 2026-08-24.** "Turn off the lights",
+  "what's on my calendar", "remind me to…" are day-one voice-assistant expectations, and the
+  Apple set needs zero configuration — iOS's own permission prompts are the gate, and the
+  high-impact-tool confirmation policy already covers the destructive cases. The Everyday hub
+  gets a "Works with your iPhone" surface presenting these; third-party and self-hosted
+  integrations (Home Assistant, MCP, gateways) stay in their later tiers. Note the tiers fold
+  *settings visibility* only — voice capabilities themselves are unaffected by journey state.
 - **Folded, not locked.** Non-Everyday categories render as **Discover cards** in the hub: icon,
   name, one-line pitch ("Stream what your glasses see, live"). Tapping unfolds the category into
   a permanent full row. No gate of any kind — the pitch *is* the journey. Agent mode keeps its
