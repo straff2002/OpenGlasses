@@ -37,9 +37,10 @@ class BroadcastService: ObservableObject {
     nonisolated(unsafe) private var frameCount: Int = 0
     private let targetFPS: Double = 15
 
-    // BS P2: mic audio rides the shared wake-word tap (same source the video recorder
-    // uses) — no second AVAudioEngine, no audio-session churn. Streams are silent while
-    // listening is disabled (the tap isn't running); documented limitation.
+    // BS P2 / Plan CZ: mic audio comes from `CaptureAudioRouter` (the same source the video
+    // recorder uses). The router rides the always-on listener's shared tap while it is running and
+    // swaps to its own engine when listening is off, so a stream no longer goes video-only because
+    // the wearer turned the wake word off mid-session.
     weak var audioProvider: BroadcastAudioProviding?
     nonisolated(unsafe) private var audioClock = BroadcastAudioClock()
     private static let audioConsumerId = "broadcast_audio"
@@ -189,12 +190,13 @@ class BroadcastService: ObservableObject {
         // BS P3: phone camera runs when it's the active source or dual capture wants it.
         startPhoneSourceIfNeeded()
 
-        // BS P2: attach mic audio from the shared tap.
+        // BS P2 / Plan CZ: attach mic audio. Registering with the router is also what tells it a
+        // capture is live, so it brings up whichever source is available.
         if let provider = audioProvider {
             provider.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
                 self?.appendAudio(buffer)
             }
-            NSLog("[Broadcast] Mic audio attached via shared tap")
+            NSLog("[Broadcast] Mic audio attached")
         } else {
             NSLog("[Broadcast] No audio provider — stream is video-only")
         }
@@ -244,7 +246,7 @@ class BroadcastService: ObservableObject {
         }
     }
 
-    /// BS P2: shared-tap mic buffer → the mixer's audio track (PTS from a running
+    /// BS P2: routed mic buffer → the mixer's audio track (PTS from a running
     /// sample-count clock; MediaMixer routes AVAudioPCMBuffer appends to the audio IO).
     private nonisolated func appendAudio(_ buffer: AVAudioPCMBuffer) {
         let sampleTime = audioClock.take(frames: buffer.frameLength)
@@ -432,12 +434,13 @@ enum BroadcastError: LocalizedError {
 }
 
 
-/// BS P2: seam for the shared mic tap (adopted by WakeWordService — the same fan-out the
-/// video recorder uses). Kept minimal so tests can inject a fake.
+/// BS P2: seam for a mic buffer source. Adopted by `WakeWordService` (the shared tap), by
+/// `StandaloneMicTapService`, and by `CaptureAudioRouter`, which is what capture consumers actually
+/// talk to (Plan CZ). Kept minimal so tests can inject a fake.
 ///
-/// `@MainActor` because both the adopter (`WakeWordService`) and both call sites
-/// (`startBroadcast`/`stopBroadcast`) are main-actor: the consumer *registry* is main-actor
-/// state, even though the handlers themselves are `@Sendable` and run on the audio thread.
+/// `@MainActor` because the adopters and the call sites (`startBroadcast`/`stopBroadcast`, and the
+/// recorder's equivalents) are main-actor: the consumer *registry* is main-actor state, even though
+/// the handlers themselves are `@Sendable` and run on the audio thread.
 @MainActor
 protocol BroadcastAudioProviding: AnyObject {
     func addAudioBufferConsumer(id: String, handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void)
