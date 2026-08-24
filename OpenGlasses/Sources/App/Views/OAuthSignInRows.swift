@@ -11,14 +11,49 @@ protocol OAuthSignInService: ObservableObject {
     @discardableResult
     func completeSignIn(pastedCode: String) async -> Bool
     func signOut()
+
+    /// The redirect registered for this provider's OAuth client (Plan DD). A loopback redirect
+    /// is one the app can answer itself while the sign-in sheet is up — that's the zero-paste
+    /// path; anything else still ends with a code coming back by hand.
+    var signInRedirect: OAuthRedirect? { get }
+    /// The `state` minted by the most recent `beginSignIn()`, so a captured callback can be
+    /// authenticated before its code is used.
+    var pendingSignInState: String? { get }
+    /// Complete a sign-in with a code the loopback listener captured (already state-validated).
+    @discardableResult
+    func completeSignIn(capturedCode: String) async -> Bool
 }
 
-extension ClaudeOAuthService: OAuthSignInService {}
-extension ChatGPTOAuthService: OAuthSignInService {}
+extension OAuthSignInService {
+    /// Providers that haven't declared a redirect get the paste path, as before.
+    var signInRedirect: OAuthRedirect? { nil }
+    var pendingSignInState: String? { nil }
+
+    @discardableResult
+    func completeSignIn(capturedCode: String) async -> Bool {
+        await completeSignIn(pastedCode: capturedCode)
+    }
+}
+
+extension ClaudeOAuthService: OAuthSignInService {
+    /// This client's registered redirect is a provider-hosted page that displays the code, not a
+    /// loopback URL — so there is nothing for a local listener to catch and the flow keeps its
+    /// paste step. Derived from the constant so it follows if the redirect ever changes.
+    var signInRedirect: OAuthRedirect? { OAuthRedirect(ClaudeOAuth.redirectURI) }
+}
+
+extension ChatGPTOAuthService: OAuthSignInService {
+    /// A loopback redirect — the app answers it itself, so this flow is zero-paste.
+    var signInRedirect: OAuthRedirect? { OAuthRedirect(ChatGPTOAuth.redirectURI) }
+}
 
 /// Dark full-screen-styled account sign-in section for the onboarding flow: same behaviour as
 /// `OAuthSignInRows`, restyled for the black onboarding pages. Generalized from the original
 /// Claude-only onboarding section so ChatGPT reuses it (BW P4).
+///
+/// Sign-in happens in an in-app sheet (Plan DD P2): when the provider's redirect points back at
+/// this device the code is captured straight off it and the user never pastes anything. The
+/// paste field and the open-in-browser route stay as fallbacks for every other case.
 struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
     @ObservedObject var service: Service
     let signInLabel: String
@@ -31,9 +66,8 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
     var onConnected: () -> Void = {}
     var onSignedOut: () -> Void = {}
 
-    @State private var showCodeField = false
+    @StateObject private var flow = SignInSheetModel()
     @State private var code = ""
-    @State private var isExchanging = false
 
     var body: some View {
         if service.isConnected {
@@ -51,6 +85,8 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                 Spacer()
                 Button("Sign out") {
                     service.signOut()
+                    flow.reset()
+                    code = ""
                     onSignedOut()
                 }
                 .font(.caption)
@@ -66,14 +102,16 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
         } else {
             VStack(spacing: 10) {
                 Button {
-                    if let url = service.beginSignIn() {
-                        UIApplication.shared.open(url)
-                        showCodeField = true
-                    }
+                    startSignIn()
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "person.crop.circle.badge.checkmark")
-                        Text(signInLabel)
+                        if flow.state.isBusy {
+                            ProgressView().scaleEffect(0.8).tint(.white)
+                            Text("Connecting…")
+                        } else {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                            Text(signInLabel)
+                        }
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
@@ -81,12 +119,13 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                     .padding(.vertical, 14)
                     .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 }
+                .disabled(flow.state.isBusy)
 
                 Text(caption)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
 
-                if showCodeField {
+                if flow.showsPasteFallback {
                     TextField("Paste authorization code", text: $code)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -96,19 +135,10 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
 
                     Button {
-                        Task {
-                            isExchanging = true
-                            let ok = await service.completeSignIn(pastedCode: code)
-                            isExchanging = false
-                            if ok {
-                                code = ""
-                                showCodeField = false
-                                onConnected()
-                            }
-                        }
+                        submitPastedCode()
                     } label: {
                         HStack(spacing: 6) {
-                            if isExchanging {
+                            if flow.state.isBusy {
                                 ProgressView().scaleEffect(0.8)
                                 Text("Connecting…")
                             } else {
@@ -122,7 +152,13 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                         .padding(.vertical, 12)
                         .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     }
-                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isExchanging)
+                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
+
+                    Button("Open in the browser instead") {
+                        flow.openExternally()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.55))
 
                     Text(pasteInstructions)
                         .font(.caption2)
@@ -149,13 +185,33 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                 }
             }
             .padding(.horizontal, 28)
+            .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
+                SignInSheetView(url: request.url)
+                    .ignoresSafeArea()
+            }
         }
+    }
+
+    private func startSignIn() {
+        guard let url = service.beginSignIn() else { return }
+        flow.present(url: url,
+                     redirect: service.signInRedirect,
+                     expectedState: service.pendingSignInState,
+                     exchange: { await service.completeSignIn(capturedCode: $0) },
+                     onConnected: { code = ""; onConnected() })
+    }
+
+    private func submitPastedCode() {
+        flow.completePaste(code,
+                           exchange: { await service.completeSignIn(pastedCode: $0) },
+                           onConnected: { code = ""; onConnected() })
     }
 }
 
 /// Form-styled account sign-in rows: connected card with sign-out, or a sign-in button that
-/// opens the browser and reveals a paste-the-code field. Generalized from the original
-/// Claude-only rows in the model editor.
+/// opens the login page in an in-app sheet and — when the provider's redirect can't be captured
+/// locally — reveals a paste-the-code field. Generalized from the original Claude-only rows in
+/// the model editor; shares the sheet + loopback capture with the onboarding section (Plan DD).
 struct OAuthSignInRows<Service: OAuthSignInService>: View {
     @ObservedObject var service: Service
     let signInLabel: String
@@ -166,9 +222,8 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
     /// can invalidate anything derived from the credential (e.g. a fetched model list).
     var onChange: () -> Void = {}
 
-    @State private var showCodeField = false
+    @StateObject private var flow = SignInSheetModel()
     @State private var code = ""
-    @State private var isExchanging = false
 
     var body: some View {
         if service.isConnected {
@@ -184,40 +239,42 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
                 Spacer()
                 Button("Sign out", role: .destructive) {
                     service.signOut()
+                    flow.reset()
+                    code = ""
                     onChange()
                 }
                 .buttonStyle(.borderless)
             }
         } else {
             Button {
-                if let url = service.beginSignIn() {
-                    UIApplication.shared.open(url)
-                    showCodeField = true
-                }
+                startSignIn()
             } label: {
-                Label(signInLabel, systemImage: "person.crop.circle.badge.checkmark")
+                if flow.state.isBusy {
+                    HStack {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Connecting…")
+                    }
+                } else {
+                    Label(signInLabel, systemImage: "person.crop.circle.badge.checkmark")
+                }
+            }
+            .disabled(flow.state.isBusy)
+            .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
+                SignInSheetView(url: request.url)
+                    .ignoresSafeArea()
             }
 
-            if showCodeField {
+            if flow.showsPasteFallback {
                 TextField("Paste authorization code", text: $code)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .font(.footnote.monospaced())
 
                 Button {
-                    Task {
-                        isExchanging = true
-                        let ok = await service.completeSignIn(pastedCode: code)
-                        isExchanging = false
-                        if ok {
-                            code = ""
-                            showCodeField = false
-                            onChange()
-                        }
-                    }
+                    submitPastedCode()
                 } label: {
                     HStack {
-                        if isExchanging {
+                        if flow.state.isBusy {
                             ProgressView().scaleEffect(0.8)
                             Text("Connecting…")
                         } else {
@@ -226,7 +283,12 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
                         }
                     }
                 }
-                .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isExchanging)
+                .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
+
+                Button("Open in the browser instead") {
+                    flow.openExternally()
+                }
+                .font(.caption)
 
                 Text(pasteInstructions)
                     .font(.caption)
@@ -239,5 +301,20 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
                     .foregroundStyle(.red)
             }
         }
+    }
+
+    private func startSignIn() {
+        guard let url = service.beginSignIn() else { return }
+        flow.present(url: url,
+                     redirect: service.signInRedirect,
+                     expectedState: service.pendingSignInState,
+                     exchange: { await service.completeSignIn(capturedCode: $0) },
+                     onConnected: { code = ""; onChange() })
+    }
+
+    private func submitPastedCode() {
+        flow.completePaste(code,
+                           exchange: { await service.completeSignIn(pastedCode: $0) },
+                           onConnected: { code = ""; onChange() })
     }
 }
