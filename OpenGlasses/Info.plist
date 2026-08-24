@@ -91,6 +91,21 @@
 	<true/>
 	<key>MWDAT</key>
 	<dict>
+		<!-- Opt out of Meta's SDK data collection. Both dictionaries are read by
+		     MWDATCore at configure() time: Analytics/OptOut suppresses the event
+		     uploader that posts to api2.ar.meta.com/mwsdk/telemetry, and
+		     CrashReporting/OptOut suppresses the SDK's own crash reporter. Absent
+		     or NO means opted in, so these must stay explicitly YES. -->
+		<key>Analytics</key>
+		<dict>
+			<key>OptOut</key>
+			<true/>
+		</dict>
+		<key>CrashReporting</key>
+		<dict>
+			<key>OptOut</key>
+			<true/>
+		</dict>
 		<key>AppLinkURLScheme</key>
 		<string>openglasses://</string>
 		<key>ClientToken</key>

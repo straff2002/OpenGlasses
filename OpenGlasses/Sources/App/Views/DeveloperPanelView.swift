@@ -192,6 +192,22 @@ struct DeveloperPanelView: View {
                 await appState.speechService.speak("Test okay", urgency: .low, mirrorToHUD: false)
                 return .pass("Spoken")
             },
+            SubsystemTest(id: "telemetry", name: "SDK Telemetry", icon: "antenna.radiowaves.left.and.right.slash") { @MainActor in
+                // Verifies on-device what only a packet capture could otherwise tell us: that the
+                // glasses SDK's data collection is off in the *shipped* bundle, and that nothing
+                // has had to be blocked at the network layer to keep it that way.
+                let optOut = MetaTelemetryBlock.bundleOptOut
+                let blocked = MetaTelemetryBlock.blockedCount
+                if !optOut.analytics || !optOut.crashReporting {
+                    let missing = [optOut.analytics ? nil : "Analytics",
+                                   optOut.crashReporting ? nil : "CrashReporting"].compactMap { $0 }
+                    return .fail("Opt-out missing from Info.plist: \(missing.joined(separator: ", "))")
+                }
+                if blocked > 0 {
+                    return .fail("Opt-out set but ignored — \(blocked) upload(s) blocked at the network layer")
+                }
+                return .pass("Opt-out set · no uploads attempted")
+            },
             SubsystemTest(id: "wakeword", name: "Wake Word", icon: "waveform.badge.mic") { @MainActor in
                 appState.wakeWordService.isListening
                     ? .pass("Listening for “\(Config.wakePhrase.capitalized)”")
