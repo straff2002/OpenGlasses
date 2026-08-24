@@ -2040,6 +2040,76 @@ struct Config {
         !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
     }
 
+    // MARK: - Broadcast Encoding (Plan CY)
+
+    /// Frame rate the RTMP encoder targets, in fps.
+    ///
+    /// Deliberately separate from `cameraFrameRate`: the glasses link and the uplink are different
+    /// budgets. The camera tier may be dialled down to save the glasses' battery while the
+    /// broadcast still wants every frame that arrives, and the broadcaster used to ignore both and
+    /// hardcode 15 — a number that produced visibly juddery motion on an ingest that would happily
+    /// have taken 30.
+    static var broadcastFrameRate: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastFrameRate")
+        return broadcastFrameRateChoices.contains(value) ? value : 30
+    }
+
+    /// The rates the picker offers (and the only ones accepted).
+    static let broadcastFrameRateChoices = [15, 24, 30]
+
+    static func setBroadcastFrameRate(_ fps: Int) {
+        UserDefaults.standard.set(fps, forKey: "broadcastFrameRate")
+    }
+
+    /// Explicit user override for the broadcast video bitrate, or `nil` to let
+    /// `VideoBitratePolicy` derive it from the output geometry and frame rate. Same shape as
+    /// `recordingBitrateOverride`, and for the same reason — one constant cannot be right for both
+    /// a portrait 720×1280 stream and a landscape one at half the frame rate.
+    ///
+    /// Note this sets the *ceiling*: adaptation may step below it on a struggling link, and never
+    /// climbs above it.
+    static var broadcastBitrateOverride: Int? {
+        let value = UserDefaults.standard.integer(forKey: "broadcastBitrate")
+        return value > 0 ? value : nil
+    }
+
+    static func setBroadcastBitrate(_ bitrate: Int?) {
+        if let bitrate, bitrate > 0 {
+            UserDefaults.standard.set(bitrate, forKey: "broadcastBitrate")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "broadcastBitrate")
+        }
+    }
+
+    /// Seconds between forced keyframes. Every ingest cuts its HLS/DASH segments on keyframes, so
+    /// this is what decides how long a new viewer waits for a picture and how coarse a seek is.
+    /// Two seconds is the interval the common ingests ask for; longer saves bits, shorter costs
+    /// them.
+    static var broadcastKeyframeIntervalSeconds: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastKeyframeIntervalSeconds")
+        return broadcastKeyframeIntervalChoices.contains(value) ? value : 2
+    }
+
+    static let broadcastKeyframeIntervalChoices = [1, 2, 4]
+
+    static func setBroadcastKeyframeIntervalSeconds(_ seconds: Int) {
+        UserDefaults.standard.set(seconds, forKey: "broadcastKeyframeIntervalSeconds")
+    }
+
+    /// AAC bitrate for the broadcast's audio track, bits/sec. The encoder default is 64 kbps,
+    /// which is audibly thin for anything but speech in a quiet room; 128 kbps is the usual live
+    /// figure and costs a rounding error against the video.
+    static var broadcastAudioBitrate: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastAudioBitrate")
+        return broadcastAudioBitrateChoices.contains(value) ? value : 128_000
+    }
+
+    static let broadcastAudioBitrateChoices = [64_000, 96_000, 128_000, 192_000]
+
+    static func setBroadcastAudioBitrate(_ bitrate: Int) {
+        UserDefaults.standard.set(bitrate, forKey: "broadcastAudioBitrate")
+    }
+
     // MARK: - Broadcast Chat Read-Aloud (Plan CI)
 
     /// Read the stream's chat to the wearer over TTS while broadcasting. Off by default.
