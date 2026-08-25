@@ -137,18 +137,32 @@ enum GlassesPhotoAlbum {
 
     private static func commit(album: PHAssetCollection?,
                                makeRequest: @escaping () -> PHAssetChangeRequest?) async -> Bool {
+        // PhotoKit reports an empty change block as a *successful* set of changes, so a request it
+        // declined to build (an unreadable file, an asset type it won't take) would otherwise be
+        // reported to the caller as a save that landed.
+        let built = RequestFlag()
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 guard let request = makeRequest() else { return }
+                built.value = true
                 if let album, let placeholder = request.placeholderForCreatedAsset {
                     PHAssetCollectionChangeRequest(for: album)?.addAssets([placeholder] as NSArray)
                 }
             }
-            return true
         } catch {
             NSLog("[PhotoAlbum] Save failed: %@", error.localizedDescription)
             return false
         }
+        if !built.value {
+            NSLog("[PhotoAlbum] No change request could be built for that asset")
+        }
+        return built.value
+    }
+
+    /// Carries the "did we actually build a request" answer out of the change block, which runs
+    /// on PhotoKit's own queue.
+    private final class RequestFlag: @unchecked Sendable {
+        var value = false
     }
 
     // MARK: - Album resolution
