@@ -16,7 +16,8 @@ for the RTMP broadcast vertical.
   to fill). Audio rides the shared wake-word tap (`BroadcastAudioProviding` seam — the
   same fan-out the video recorder uses; no second engine, no session churn); documented
   limitation: the stream is silent while listening is disabled, because the tap isn't
-  running.
+  running. **Closed by [CZ](CZ-independent-capture-audio.md)** — the seam now points at
+  `CaptureAudioRouter`, which swaps to its own engine in that gap.
 - P3: `PhoneCameraSource` is still-capture only, so a new `PhoneVideoSource`
   (`AVCaptureVideoDataOutput` → UIImage frames, audio-session non-configuring) feeds the
   phone sources. Mid-stream switching via a debounced `BroadcastSourceSelector` and a

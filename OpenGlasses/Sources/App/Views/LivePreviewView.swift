@@ -155,6 +155,17 @@ struct LivePreviewView: View {
                 appState.releaseFramePin(trigger: .explicitUnpin)
             }
 
+            // CY: broadcast health while live — state, throughput, achieved frame rate and the
+            // frames that never made the wire. A LIVE badge alone cannot tell "streaming fine"
+            // from "reconnecting into a hole", and those are the two things worth knowing.
+            if appState.broadcastService.isBroadcasting {
+                VStack {
+                    Spacer()
+                    BroadcastHealthBar(service: appState.broadcastService)
+                        .padding(.bottom, 110)
+                }
+            }
+
             // Recording duration overlay
             if appState.videoRecorder.isRecording {
                 VStack {
@@ -222,6 +233,41 @@ struct LivePreviewView: View {
                 streamError = "Couldn't start the camera. Make sure your glasses are connected and try again."
             }
         }
+    }
+}
+
+/// Compact broadcast health readout over the live preview (Plan CY). Separate view for the same
+/// reason as `PinnedFrameCard` below — `AppState` doesn't forward a nested object's changes, and
+/// this one refreshes every second.
+private struct BroadcastHealthBar: View {
+    @ObservedObject var service: BroadcastService
+
+    var body: some View {
+        let health = service.health
+        HStack(spacing: 10) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(health.state.isLive ? .red : .orange)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text(health.stateLabel)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            Text(health.bitrateLabel)
+            Text(health.frameRateLabel)
+            if health.droppedFrameCount > 0 {
+                Text("\(health.droppedFrameCount) dropped")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.system(size: 11, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.85))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(.black.opacity(0.6)))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Broadcast \(health.stateLabel), \(health.bitrateLabel), "
+                            + "\(health.frameRateLabel), \(health.droppedFrameCount) frames dropped")
     }
 }
 

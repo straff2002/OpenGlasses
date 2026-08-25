@@ -28,10 +28,18 @@ struct ServicesSettingsView: View {
     @State private var broadcastOrientation: String = Config.broadcastOrientation
     @State private var broadcastSource: String = Config.broadcastDefaultSource
     @State private var broadcastDualCapture: Bool = Config.broadcastDualCapture
+    @State private var captureIncludesAssistantVoice: Bool = Config.captureIncludesAssistantVoice
     @State private var chatReadbackEnabled: Bool = Config.broadcastChatReadbackEnabled
     @State private var chatChannel: String = Config.broadcastChatChannel
     @State private var chatRateCap: Double = Double(Config.broadcastChatRateCap)
     @State private var chatMentionsOnly: Bool = Config.broadcastChatMentionsOnly
+    // CY: encoding controls, folded away behind a disclosure.
+    @State private var showAdvancedBroadcast = false
+    @State private var broadcastFrameRate: Int = Config.broadcastFrameRate
+    /// Broadcast bitrate override in bits/sec; 0 means "let VideoBitratePolicy derive it".
+    @State private var broadcastBitrate: Int = Config.broadcastBitrateOverride ?? 0
+    @State private var broadcastKeyframeInterval: Int = Config.broadcastKeyframeIntervalSeconds
+    @State private var broadcastAudioBitrate: Int = Config.broadcastAudioBitrate
 
     // Camera
     @State private var cameraResolution: String = Config.cameraResolution
@@ -39,6 +47,12 @@ struct ServicesSettingsView: View {
     /// Recording bitrate override in bits/sec; 0 means "let VideoBitratePolicy derive it".
     @State private var recordingBitrate: Int = Config.recordingBitrateOverride ?? 0
     @State private var showFolderPicker = false
+    @State private var showRecordingFolderPicker = false
+    @State private var recordingSaveToPhotos: Bool = Config.recordingSaveToPhotos
+    /// Held in state rather than read from `Config` inside the body, so choosing or resetting a
+    /// folder redraws the row that names it.
+    @State private var transcriptFolderName: String? = Config.transcriptFolderURL?.lastPathComponent
+    @State private var recordingFolderName: String? = Config.recordingFolderURL?.lastPathComponent
 
     // Home Assistant
     @State private var haURL: String = Config.homeAssistantURL
@@ -450,41 +464,45 @@ struct ServicesSettingsView: View {
                     Config.setRecordingBitrate(value == 0 ? nil : value)
                 }
 
-                if let folderURL = Config.transcriptFolderURL {
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(.secondary)
-                        Text(folderURL.lastPathComponent)
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Change") {
-                            showFolderPicker = true
-                        }
-                        .font(.caption)
+                Toggle("Also Save to Photos", isOn: $recordingSaveToPhotos)
+                    .onChange(of: recordingSaveToPhotos) { _, value in
+                        Config.setRecordingSaveToPhotos(value)
                     }
-                    Button("Reset to Default", role: .destructive) {
-                        Config.clearTranscriptFolder()
-                    }
-                } else {
-                    Button {
-                        showFolderPicker = true
-                    } label: {
-                        HStack {
-                            Text("Transcript Save Location")
-                            Spacer()
-                            Text("Documents/Transcripts")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+
+                folderRow(title: "Video Copy Location",
+                          defaultLabel: "None",
+                          folderName: recordingFolderName,
+                          resetTitle: "Stop Copying to Folder") {
+                    showRecordingFolderPicker = true
+                } onReset: {
+                    Config.clearRecordingFolder()
+                    recordingFolderName = nil
+                }
+
+                folderRow(title: "Transcript Save Location",
+                          defaultLabel: "Documents/Transcripts",
+                          folderName: transcriptFolderName,
+                          resetTitle: "Reset to Default") {
+                    showFolderPicker = true
+                } onReset: {
+                    Config.clearTranscriptFolder()
+                    transcriptFolderName = nil
                 }
             } header: {
                 Text("Recording & Transcripts")
             } footer: {
-                Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nChoose where transcripts are saved. Videos always save to the Glasses album in Photos. Transcripts are also accessible via the Files app.")
+                Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nEvery finished recording is kept in the app's own Recordings folder — that copy always happens, so nothing is lost if you dismiss the share sheet. On top of that it goes to the Glasses album in Photos unless you switch that off. Pick a video or transcript folder below to also keep copies somewhere you can browse in the Files app.")
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result {
                     Config.setTranscriptFolderURL(url)
+                    transcriptFolderName = url.lastPathComponent
+                }
+            }
+            .fileImporter(isPresented: $showRecordingFolderPicker, allowedContentTypes: [.folder]) { result in
+                if case .success(let url) = result {
+                    Config.setRecordingFolderURL(url)
+                    recordingFolderName = url.lastPathComponent
                 }
             }
 
@@ -544,6 +562,13 @@ struct ServicesSettingsView: View {
                         Config.setBroadcastDualCapture(value)
                     }
 
+                // Plan CZ: assistant replies played through the phone speaker are audible to the
+                // mic and would otherwise be muxed into every stream and recording.
+                Toggle("Include Assistant Voice", isOn: $captureIncludesAssistantVoice)
+                    .onChange(of: captureIncludesAssistantVoice) { _, value in
+                        Config.setCaptureIncludesAssistantVoice(value)
+                    }
+
                 // Plan CI: chat read-aloud — read-only Twitch chat spoken to the wearer.
                 Toggle("Chat Read-Aloud (Twitch)", isOn: $chatReadbackEnabled)
                     .onChange(of: chatReadbackEnabled) { _, value in
@@ -568,13 +593,65 @@ struct ServicesSettingsView: View {
                             Config.setBroadcastChatMentionsOnly(value)
                         }
                 }
+
+                // CY: encoding controls. Folded away because the defaults are the right answer
+                // for almost everyone — these exist for the wearer whose ingest or uplink has an
+                // opinion, not as a decision the rest have to make on the way to going live.
+                DisclosureGroup("Advanced Encoding", isExpanded: $showAdvancedBroadcast) {
+                    Picker("Frame Rate", selection: $broadcastFrameRate) {
+                        Text("15 FPS").tag(15)
+                        Text("24 FPS").tag(24)
+                        Text("30 FPS").tag(30)
+                    }
+                    .onChange(of: broadcastFrameRate) { _, value in
+                        Config.setBroadcastFrameRate(value)
+                    }
+
+                    Picker("Video Bitrate", selection: $broadcastBitrate) {
+                        Text(automaticBroadcastBitrateLabel).tag(0)
+                        Text(VideoBitratePolicy.megabitLabel(1_000_000)).tag(1_000_000)
+                        Text(VideoBitratePolicy.megabitLabel(2_000_000)).tag(2_000_000)
+                        Text(VideoBitratePolicy.megabitLabel(3_000_000)).tag(3_000_000)
+                        Text(VideoBitratePolicy.megabitLabel(4_500_000)).tag(4_500_000)
+                        Text(VideoBitratePolicy.megabitLabel(6_000_000)).tag(6_000_000)
+                    }
+                    .onChange(of: broadcastBitrate) { _, value in
+                        Config.setBroadcastBitrate(value == 0 ? nil : value)
+                    }
+
+                    Picker("Keyframe Interval", selection: $broadcastKeyframeInterval) {
+                        Text("1 second").tag(1)
+                        Text("2 seconds").tag(2)
+                        Text("4 seconds").tag(4)
+                    }
+                    .onChange(of: broadcastKeyframeInterval) { _, value in
+                        Config.setBroadcastKeyframeIntervalSeconds(value)
+                    }
+
+                    Picker("Audio Bitrate", selection: $broadcastAudioBitrate) {
+                        Text("64 kbps").tag(64_000)
+                        Text("96 kbps").tag(96_000)
+                        Text("128 kbps").tag(128_000)
+                        Text("192 kbps").tag(192_000)
+                    }
+                    .onChange(of: broadcastAudioBitrate) { _, value in
+                        Config.setBroadcastAudioBitrate(value)
+                    }
+
+                    Text("The video bitrate is a ceiling, not a promise: a struggling uplink is met by stepping down and recovering slowly, which keeps the stream alive where holding the number would drop it. A dropped connection reconnects on its own and resumes the same broadcast.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } header: {
                 Text("Live Streaming")
             } footer: {
-                if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
-                    Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
-                } else {
-                    Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
+                VStack(alignment: .leading, spacing: 6) {
+                    if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
+                        Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
+                    } else {
+                        Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
+                    }
+                    Text("Microphone audio keeps flowing to streams and recordings whether or not wake-word listening is on. Spoken replies coming out of the phone speaker are muted from the capture — turn this on to let your audience hear them too.")
                 }
             }
 
@@ -601,6 +678,39 @@ struct ServicesSettingsView: View {
         .navigationTitle("Services")
     }
 
+    /// One folder-picker row: names the chosen folder with a Change/Reset pair, or offers the
+    /// picker with the default destination shown alongside. Shared by the recording-copy and
+    /// transcript rows, which differ only in their words.
+    @ViewBuilder
+    private func folderRow(title: String,
+                           defaultLabel: String,
+                           folderName: String?,
+                           resetTitle: String,
+                           onChoose: @escaping () -> Void,
+                           onReset: @escaping () -> Void) -> some View {
+        if let folderName {
+            HStack {
+                Image(systemName: "folder.fill")
+                    .foregroundStyle(.secondary)
+                Text(folderName)
+                    .lineLimit(1)
+                Spacer()
+                Button("Change", action: onChoose)
+                    .font(.caption)
+            }
+            Button(resetTitle, role: .destructive, action: onReset)
+        } else {
+            Button(action: onChoose) {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    Text(defaultLabel)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     /// "Automatic (~8 Mbps at 720p)" — previews what `VideoBitratePolicy` will pick for the
     /// resolution and frame rate currently selected above, so the row means something. The
     /// recorder measures real frames rather than trusting the tier, hence the "~".
@@ -615,6 +725,20 @@ struct ServicesSettingsView: View {
         // Width is the short edge (the tiers are portrait), so it names the tier the same way
         // the Resolution picker above does: 360p / 504p / 720p.
         return "Automatic (~\(VideoBitratePolicy.megabitLabel(bps)) at \(size.width)p)"
+    }
+
+    /// CY: the same preview for the broadcast, on the `.rtmp` profile and the broadcast's own
+    /// geometry and frame rate — so the "Automatic" row names the number it will actually pick
+    /// rather than leaving the wearer to guess against the recording one above.
+    private var automaticBroadcastBitrateLabel: String {
+        let size = BroadcastGeometry.outputSize(orientation: broadcastOrientation)
+        let bps = VideoBitratePolicy.bitrate(
+            width: size.width,
+            height: size.height,
+            frameRate: Double(broadcastFrameRate),
+            profile: .rtmp
+        )
+        return "Automatic (~\(VideoBitratePolicy.megabitLabel(bps)))"
     }
 
     private func qualityLabel(_ quality: AVSpeechSynthesisVoiceQuality) -> String {

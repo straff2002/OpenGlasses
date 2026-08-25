@@ -50,6 +50,10 @@ enum WearablesBootstrap {
     static func ensureConfigured() -> Bool {
         if didAttempt { return isConfigured }
         didAttempt = true
+        // Before configure(), so the SDK's analytics uploader can never win a race with it.
+        // The Info.plist opt-out is what should stop those uploads; this is the backstop that
+        // makes it true in code we own. See MetaTelemetryBlock.
+        MetaTelemetryBlock.install()
         do {
             try Wearables.configure()
             isConfigured = true

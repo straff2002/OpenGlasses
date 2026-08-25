@@ -3,13 +3,13 @@ import Foundation
 
 /// Allows the AI agent to start/stop video recording from the glasses camera.
 /// Records video + audio from the glasses microphone with optional live transcription.
-/// Recordings are saved locally to the Photos library with no time limit —
-/// ideal for clinical interviews, meetings, or any long-form capture.
+/// Recordings are saved locally with no time limit — ideal for clinical interviews,
+/// meetings, or any long-form capture.
 struct VideoRecordingTool: NativeTool {
     let name = "video_recording"
     let description = """
         Start or stop video recording from the smart glasses camera with audio. \
-        Recordings include the glasses microphone audio and are saved to the local Photos library (Glasses album) with no time limit. \
+        Recordings include the glasses microphone audio, have no time limit, and are always saved on stop — to the app's Recordings folder, and to the Photos library (Glasses album) unless the user has turned that off. \
         Optionally transcribes speech in real-time alongside the recording. \
         Use when the user says 'start recording', 'record this', 'film this', \
         'watch what I'm doing', 'stop recording', or 'save the video'. \
@@ -22,7 +22,7 @@ struct VideoRecordingTool: NativeTool {
             "action": [
                 "type": "string",
                 "enum": ["start", "stop", "status"],
-                "description": "Action to perform: start recording, stop recording (saves to Photos), or check status"
+                "description": "Action to perform: start recording, stop recording (saves the file), or check status"
             ],
             "transcribe": [
                 "type": "boolean",
@@ -72,10 +72,10 @@ struct VideoRecordingTool: NativeTool {
             // Default to transcription enabled
             let transcribe = args["transcribe"] as? Bool ?? true
 
-            // Start recording with auto-save and optional transcription
+            // Start recording with optional transcription. Saving is not opt-in any more —
+            // every finished recording is filed on stop, whatever started it.
             do {
                 try await MainActor.run {
-                    recorder.autoSaveToPhotos = true
                     recorder.autoTranscribe = transcribe
                     // Encode at the size frames actually arrive in, so the derived bitrate
                     // matches the picture (the 720x1280 fallback is the glasses' native tier).
@@ -86,7 +86,7 @@ struct VideoRecordingTool: NativeTool {
                         outputSize: frameSize
                     )
                 }
-                var response = "Recording started with audio from the glasses microphone. The video will be saved to your Photos library when you stop."
+                var response = "Recording started with audio from the glasses microphone. The video is saved automatically when you stop."
                 if transcribe {
                     response += " Live transcription is running — a text transcript will be saved alongside the video."
                 }
@@ -109,10 +109,16 @@ struct VideoRecordingTool: NativeTool {
             let duration = await MainActor.run { recorder.formattedDuration }
             let url = await recorder.stopRecording()
             let transcript = await MainActor.run { recorder.recordingTranscript }
+            let saveSummary = await MainActor.run { recorder.lastSaveSummary }
 
             var response: String
             if url != nil {
-                response = "Recording stopped (\(duration)). Video with audio saved to your Photos library in the Glasses album."
+                // Name the destinations that actually took, rather than the ones we hoped for.
+                // `summary` is a whole sentence either way, including the one that has to admit
+                // nothing landed — so it is appended rather than folded into a lead-in that
+                // would only make sense for the happy case.
+                response = "Recording stopped (\(duration)). "
+                         + (saveSummary ?? "The video with audio was saved.")
             } else {
                 response = "Recording stopped (\(duration)) but the file could not be saved."
             }
