@@ -1,6 +1,7 @@
 # Plan DE — Settings Capability Journey
 
-**Status:** 📝 Drafted 2026-08-24 · build queued behind the CY–DC wave (touches the Settings hub, which Plan DC is editing)
+**Status:** ✅ **Shipped 2026-08-26** — P1 (pure core + invariants), P2 (hub + Discover) and P3
+(four contextual moments) landed in one PR, carrying DG P3's settings remainder with them.
 
 ## Why
 
@@ -87,6 +88,96 @@ content/screens are unchanged — this plan moves visibility, not settings.
 Wire the ≤4 unlock events through `UnlockSuggestionPolicy` into a subtle hub-badge/highlight
 (no interstitials, no TTS).
 
+## What shipped
+
+### The tier layout, as built
+
+`CapabilityCatalog` is the whole layout as data. Twelve categories, in hub order:
+
+| Category | Tier | Screen |
+|---|---|---|
+| Voice & Triggers | Everyday | existing |
+| **Works with your iPhone** | Everyday | **new** — presents the existing Apple-tool switches |
+| **Accessibility** | Everyday, **pinned** | existing screen, promoted to the hub |
+| Glasses & Privacy | Everyday | existing |
+| Look & Feel | Everyday | existing |
+| Diagnostics & Support | Everyday | existing |
+| **Capture & Streaming** | Creator | **new** — curated doors to recordings, meetings, streaming |
+| **Display & HUD** | Power | **new** — the display switches and everything that draws on it |
+| AI & Personality | Power | existing |
+| Tools & Actions | Power | existing |
+| Advanced | Power | existing |
+| Connections | Pro & Org | existing |
+
+The three new screens are *presentation*, not capability: every switch on them writes the same
+`Config` value through the same setter, and "Works with your iPhone" asks iOS for permission
+through the same code path the full tool list uses — `ToolPermissionGate`, lifted out of
+`ToolsSettingsView` unchanged so two screens offering one switch cannot disagree about what it
+means.
+
+**The accessibility pin is structural, not a convention.** `FoldableTier` has no `everyday` case,
+so `CategoryPlacement.discover(.everyday)` is not a representable state; and the assistive
+category is built by `CapabilityCategory.pinnedAssistive`, which takes no placement parameter and
+no Simple Mode parameter. A test walks every combination of show-all × unfolded-set × Simple Mode
+and asserts the row is present in all of them. Accessibility also *moved up*: it used to be
+reachable only through Tools & Actions — a category Simple Mode hides outright — so a wearer
+handed the device in Simple Mode could not reach the assistive settings at all. It is now a hub
+row, always visible, and the duplicate link inside Tools & Actions is gone.
+
+### Migration
+
+`SettingsJourneyMigration.initialState` is pure; `SettingsJourneySignals` is the `Config`-reading
+measurement beside it. It runs once, in `OpenGlassesApp.init()` **before onboarding** — which is
+the whole trick: a first-time user has not completed onboarding at launch, and after they finish
+it they look exactly like an upgrader. A prior install unfolds everything; a fresh install gets
+Everyday only; and anything configured is unfolded either way, which is the belt to that brace.
+
+Two probes had to be written against what a fresh install actually *contains* rather than what it
+sounds like it should: the model list is seeded (several models, on-device among them) and exactly
+one persona is seeded, so "has models" and "has a persona" are both true on first launch. Verified
+on a clean iOS 27 container: fresh install migrates to `unfolded: []`, and the same container with
+`glassesDisplayEnabled` set and no journey state migrates to `unfolded: ["display"]` — the Display
+& HUD row present with its "On" summary, everything else still a card.
+
+### The four contextual moments
+
+Capped at four, phone-screen only, at most once ever, dismissal persists, and suppressed entirely
+once the target category is visible.
+
+| Moment | Suggests | Where it is recorded |
+|---|---|---|
+| First photo saved | Capture & Streaming | `GlassesPhotoAlbum.saveImage` — every route into the album passes through it |
+| Display-capable glasses connected | Display & HUD | the hub itself, from `glassesDisplay.hasDisplayCapability` — no service has to report it |
+| A broadcast starts | Capture & Streaming (chat read-aloud) | `BroadcastService.startBroadcast` |
+| The assistant asks before acting | Tools & Actions | `ToolConfirmationCoordinator.requestConfirmation` |
+
+The fourth is this build's own choice: the confirmation prompt is the moment a user learns the
+assistant *acts*, and the tool surface is where they decide what it may act on. The two Creator
+moments deliberately share a card — they are independent routes to it, and whichever arrives first
+spends the other.
+
+The highlight is a sentence on the card with a dismiss control, not a dot: colour carries none of
+the meaning and VoiceOver reads the same thing the eye does.
+
+### Resolved open items
+
+- **HUD → Power.** Drafted as Power and it stays Power, but it needed a home: the HUD switches
+  live three levels down inside Hardware & Privacy, which is Everyday. Rather than relocate them
+  (a non-goal), the new **Display & HUD** category presents them — same `Config` values, second
+  door — which is also what makes the display-capable-glasses moment able to point somewhere.
+- **Translation → Everyday**, as drafted, and no new category for it: live translation and
+  captions are already reachable from Everyday surfaces (Look & Feel → Languages, and the
+  Accessibility screen), and inventing a category to hold a setting that has not moved would have
+  been structure for its own sake.
+
+### Deliberate deviations
+
+- Simple Mode's hidden set is unchanged in substance — it still hides the owner-configuration
+  surface — but Accessibility is now always visible, and the three new categories are marked
+  Simple-Mode-hidden so the caretaker view gains nothing it did not have.
+- A Simple-Mode-hidden category is never pitched as a Discover card either: offering a card that
+  leads nowhere is worse than saying nothing.
+
 ## Non-goals
 
 - Any gate, biometric or otherwise, on seeing settings (that's Simple Mode's job).
@@ -99,5 +190,11 @@ Wire the ≤4 unlock events through `UnlockSuggestionPolicy` into a subtle hub-b
 
 - Rename Simple Mode (e.g. "Handoff Mode") so "simple" is free for the default experience —
   leaning yes; needs Greig's call, and it's a rendered-string change so it rides its own commit.
-- Exact tier placement of HUD (drafted: Power) and translation (drafted: Everyday, with
-  captions) — cheap to move; decide during P2 review.
+  Deliberately **not** taken in this build.
+- ~~Exact tier placement of HUD and translation~~ — **resolved above**: HUD is Power (with a
+  Display & HUD category to hold it), translation is Everyday with captions and gains no category
+  of its own.
+- `advanced` is the one folded category with no configuration probe of its own — it is a set of
+  inspectors, not settings — so an upgrader reaches it through the prior-install marker and a
+  fresh install meets it as a card. Worth revisiting only if a developer surface ever grows a
+  setting worth detecting.

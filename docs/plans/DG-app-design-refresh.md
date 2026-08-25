@@ -1,7 +1,8 @@
 # Plan DG — App-Wide Design Language Refresh
 
 **Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2 (onboarding) shipped 2026-08-25 ·
-**P3's model-selection slice shipped 2026-08-26** · the rest of P3 rides with DE; P4–P5 planned
+**P3 shipped 2026-08-26** — its model-selection slice first, then the hub + category screens with
+the DE build · P4–P5 planned
 
 ## Why
 
@@ -112,7 +113,39 @@ opens with. The Settings side now matches by construction rather than by resembl
   fallbacks, and active-model switching all take the same paths as before.
 - Owed to the DE build: `AIPersonalitySettingsScreen`'s own model rows (the entry point into the
   editor) and onboarding's private twins of `selectionCheck`, which should collapse into
-  `OGSelectionCheck` when that file is next opened.
+  `OGSelectionCheck` when that file is next opened. — **both paid, see below.**
+
+### Hub + category screens ✅ shipped (2026-08-26, with DE)
+
+DE decided what is visible and in what order; this is what it looks like.
+
+- **`OGDiscoverCard` is the first component designed for this language rather than adapted into
+  it.** A card, not a row, because the two mean different things: a row is a destination, a card
+  is an offer, and tapping it doesn't navigate — it turns itself into the row. It carries the
+  icon tile, the pitch, and (when one is raised) the contextual note as a *sentence* with its own
+  dismiss control, so the highlight survives a monochrome reading and reaches VoiceOver as the
+  same thing the eye gets. Its spoken label is a pure function, covered headlessly.
+- **The hub stopped hard-coding its own contents.** Rows and cards are both rendered from
+  `CapabilityCatalog`, with the value summaries (wake phrase, active model, appearance, HUD
+  state) resolved per category — so a layout change is a data change, and there is one place that
+  decides what a hub row looks like.
+- **Raw status colour left the category screens.** `AIPersonalitySettingsScreen`'s model rows
+  (the `.green` tick / `.orange` warning pair) are now `OGStatusLabel`, with "Vision" as a word
+  rather than an `eye` glyph and the spoken row extracted to a pure function; the medical
+  compliance row's stacked `.green`/coral glyph pair became one `OGStatusLabel` plus the word
+  "Subscription"; the recording indicator and the Simple-Mode auth failure moved onto the audited
+  `errorLabel` family.
+- **The accent swatches were the one place a selection was invisible.** The ring was white drawn
+  *on top of* the swatch, which vanished on the pale presets in light mode; it is now drawn
+  outside the swatch in the label colour, the swatch scales with Dynamic Type, and the target is
+  a full 44pt square carrying `.isSelected`.
+- **Onboarding's private `selectionCheck` is gone**, collapsed onto `OGSelectionCheck` at both
+  call sites — the smallest possible diff in that file, and the last copy of that treatment.
+- The three new DE screens are built in the same idiom as the existing category screens: stock
+  `Form` under `.ogFormStyle()`, so they land on the warm canvas rather than flashing cool grey.
+- Rider, decided 2026-08-26: **the appearance default is now `system`** in all three
+  `@AppStorage("appAppearance")` declarations, and the Theme picker leads with System. An app
+  that arrives following the phone's own appearance is the one that feels like it belongs on it.
 
 ## P4 — The session surface
 

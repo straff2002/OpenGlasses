@@ -99,6 +99,7 @@ struct AIPersonalitySettingsScreen: View {
     @State private var modelConfigs: [ModelConfig] = Config.savedModels
     @State private var editingModel: ModelConfig? = nil
     @State private var showAddModel = false
+    @ScaledMetric(relativeTo: .body) private var modelRowMinHeight: CGFloat = 44
 
     // Intelligence settings
     @State private var intentClassifierEnabled = Config.intentClassifierEnabled
@@ -116,45 +117,17 @@ struct AIPersonalitySettingsScreen: View {
                     Button {
                         editingModel = model
                     } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(model.name)
-                                    .foregroundStyle(Color(.label))
-                                    .lineLimit(1)
-                                HStack(spacing: 4) {
-                                    Text(model.llmProvider.displayName)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                    if model.visionEnabled {
-                                        Image(systemName: "eye")
-                                            .font(.caption2)
-                                            .foregroundStyle(Color(.label))
-                                            .accessibilityLabel("Vision enabled")
-                                    }
-                                    if !model.apiKey.isEmpty {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.caption2)
-                                            .foregroundStyle(.green)
-                                            .accessibilityLabel("API key set")
-                                    } else {
-                                        Image(systemName: "exclamationmark.circle")
-                                            .font(.caption2)
-                                            .foregroundStyle(.orange)
-                                            .accessibilityLabel("API key missing")
-                                    }
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
+                        modelRow(model)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(model.name), \(model.llmProvider.displayName)\(!model.apiKey.isEmpty ? "" : ", API key missing")\(model.visionEnabled ? ", vision enabled" : "")")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Self.spokenModelRow(
+                        name: model.name,
+                        provider: model.llmProvider.displayName,
+                        hasKey: !model.apiKey.isEmpty,
+                        vision: model.visionEnabled
+                    ))
+                    .accessibilityAddTraits(.isButton)
                     .accessibilityHint("Double-tap to edit")
                 }
                 .onDelete { indexSet in
@@ -306,6 +279,56 @@ struct AIPersonalitySettingsScreen: View {
         return Config.enabledPersonas.count
     }
 
+    // MARK: - Model Row
+
+    /// The entry point into the model editor, in the same language as the editor
+    /// itself (Plan DG P3): the key state is an `OGStatusLabel` on an audited
+    /// token rather than a bare `.green`/`.orange` glyph, and vision is a word,
+    /// so neither survives only as colour.
+    @ViewBuilder
+    private func modelRow(_ model: ModelConfig) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                HStack(spacing: 8) {
+                    Text(model.llmProvider.displayName)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if model.visionEnabled {
+                        Text("Vision")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                if model.apiKey.isEmpty {
+                    OGStatusLabel("No API key", kind: .warn)
+                } else {
+                    OGStatusLabel("Key set", kind: .ok)
+                }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .frame(minHeight: modelRowMinHeight)
+        .contentShape(Rectangle())
+    }
+
+    /// Pure, so the spoken wording is covered headlessly.
+    static func spokenModelRow(name: String, provider: String, hasKey: Bool, vision: Bool) -> String {
+        var parts = [name, provider]
+        if vision { parts.append("vision enabled") }
+        parts.append(hasKey ? "API key set" : "no API key")
+        return parts.joined(separator: ", ")
+    }
+
     // MARK: - Save Settings
 
     private func saveSettings() {
@@ -396,18 +419,10 @@ struct ToolsActionsSettingsScreen: View {
                     }
                 }
 
-                NavigationLink {
-                    AccessibilitySettingsView()
-                        .environmentObject(appState)
-                } label: {
-                    HStack {
-                        Label("Accessibility", systemImage: "accessibility")
-                        Spacer()
-                        if Config.accessibilityModeEnabled {
-                            Text("On").foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                // Accessibility used to live here. It is now a pinned Everyday row on the
+                // hub itself (Plan DE): assistive features are free forever and must never
+                // be reachable only through a category that folds — or, as here, one that
+                // Simple Mode hides outright.
 
                 NavigationLink {
                     CustomToolsView()
@@ -592,19 +607,11 @@ struct GlassesPrivacySettingsScreen: View {
                         Label("Medical Compliance", systemImage: "cross.case.fill")
                         Spacer()
                         if StoreKitService.shared.canAccessMedicalCompliance && hipaaMode {
-                            Image(systemName: "cross.case.fill")
-                                .font(.caption)
-                                .foregroundStyle(AppAccent.aiCoral)
-                                .accessibilityHidden(true)
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                                .accessibilityLabel("Active")
+                            OGStatusLabel("Active", kind: .ok)
                         } else if !StoreKitService.shared.canAccessMedicalCompliance {
-                            Image(systemName: "cross.case.fill")
-                                .font(.caption)
+                            Text("Subscription")
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
                         }
                     }
                 }
@@ -637,37 +644,53 @@ struct GlassesPrivacySettingsScreen: View {
 /// Theme, accent colour, and languages (always visible, including Simple Mode).
 struct LookFeelSettingsScreen: View {
     @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
-    @AppStorage("appAppearance") private var appearance: String = "dark"
+    // Default is "system": an app that arrives following the phone's own appearance is the
+    // one that feels like it belongs on it. Kept in sync with `MainView` and `SettingsView`.
+    @AppStorage("appAppearance") private var appearance: String = "system"
+    @ScaledMetric(relativeTo: .body) private var swatch: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var swatchTarget: CGFloat = 44
 
     var body: some View {
         Form {
             Section {
                 Picker("Theme", selection: $appearance) {
-                    Text("Dark").tag("dark")
-                    Text("Light").tag("light")
                     Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
                 }
                 .pickerStyle(.segmented)
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Accent Colour")
                         .font(.subheadline)
-                    HStack(spacing: 12) {
+                    // The ring is drawn *outside* the swatch in the label colour, not
+                    // in white on top of it: a white stroke vanished on the pale presets
+                    // in light mode, which made the selected accent a guess. The target
+                    // is a full 44pt square around a swatch that scales with Dynamic Type.
+                    HStack(spacing: 8) {
                         ForEach(AppAccent.presets) { preset in
+                            let selected = accentColorName == preset.id
                             Button {
                                 accentColorName = preset.id
                                 Config.setAccentColorName(preset.id)
                             } label: {
                                 Circle()
                                     .fill(preset.color)
-                                    .frame(width: 30, height: 30)
-                                    .overlay(
+                                    .frame(width: swatch, height: swatch)
+                                    .padding(4)
+                                    .overlay {
                                         Circle()
-                                            .strokeBorder(.white, lineWidth: accentColorName == preset.id ? 2.5 : 0)
-                                    )
+                                            .strokeBorder(
+                                                selected ? Color.primary : Color.clear,
+                                                lineWidth: 2
+                                            )
+                                    }
+                                    .frame(width: swatchTarget, height: swatchTarget)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(preset.name) accent colour\(accentColorName == preset.id ? ", selected" : "")")
+                            .accessibilityLabel("\(preset.name) accent colour")
+                            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                         }
                     }
                 }

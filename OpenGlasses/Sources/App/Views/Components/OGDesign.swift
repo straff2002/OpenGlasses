@@ -455,6 +455,116 @@ struct OGStatTile: View {
     }
 }
 
+// MARK: - Discover
+
+/// A capability the hub is offering rather than listing (Plan DE).
+///
+/// A *card*, not a row, because the two mean different things: a row is a
+/// destination, a card is an offer. Tapping it does not navigate — it turns the
+/// card into the row, permanently, with no gate of any kind. Nothing here locks,
+/// prices, or asks; the pitch is the whole mechanism.
+///
+/// `suggestion` is the quiet contextual highlight: at most a handful of them
+/// ever, phone-screen only, and dismissible. It is a sentence rather than a dot,
+/// so it carries its meaning without colour and reads the same to VoiceOver.
+struct OGDiscoverCard: View {
+    let title: String
+    /// The one-line pitch: what this is for, in the user's terms.
+    let pitch: String
+    let icon: String
+    /// A contextual note explaining why this is being offered now, or nil.
+    var suggestion: String? = nil
+    let unfold: () -> Void
+    var dismissSuggestion: (() -> Void)? = nil
+
+    @Environment(\.appAccent) private var accent
+    @ScaledMetric(relativeTo: .body) private var minHeight: CGFloat = 56
+    @ScaledMetric(relativeTo: .body) private var dismissTarget: CGFloat = 44
+
+    /// The card as one spoken thought. Pure, so the wording is covered headlessly.
+    static func spokenLabel(title: String, pitch: String, suggestion: String?) -> String {
+        [title, pitch, suggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ". ")
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: unfold) {
+                HStack(spacing: OGMetrics.rowSpacing) {
+                    OGIconTile(systemName: icon)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(pitch)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: minHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                Self.spokenLabel(title: title, pitch: pitch, suggestion: suggestion)
+            )
+            .accessibilityHint("Shows \(title) in Settings")
+            .accessibilityAddTraits(.isButton)
+
+            if let suggestion, let dismissSuggestion {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(suggestion)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(action: dismissSuggestion) {
+                        Image(systemName: "xmark")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: dismissTarget, height: dismissTarget)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss this suggestion")
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 2)
+                .padding(.vertical, 2)
+                .background(
+                    accent.opacity(OGTheme.Opacity.accentNoticeFill),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+            }
+        }
+        .padding(.horizontal, OGMetrics.rowHorizontalPadding)
+        .padding(.vertical, 12)
+        .background(OGTheme.card, in: shape)
+        .overlay {
+            if suggestion != nil {
+                shape.strokeBorder(
+                    accent.opacity(OGTheme.Opacity.accentFill),
+                    lineWidth: 1
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Hero device card
 
 /// Dark hero atop the Settings hub: device identity, live status, and

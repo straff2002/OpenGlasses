@@ -176,6 +176,10 @@ class BroadcastService: ObservableObject {
         }
 
         isBroadcasting = true
+        // Plan DE: going live is one of the four unlock moments — chat read-aloud is
+        // the thing a first-time streamer doesn't know exists. Suggestion only; it
+        // changes nothing about the broadcast.
+        SettingsJourneyStore.note(.broadcastStarted)
         broadcastError = nil
         frameCount = 0
         pushedFrameCount = 0

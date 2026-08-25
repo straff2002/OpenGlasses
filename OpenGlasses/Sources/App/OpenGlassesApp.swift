@@ -139,6 +139,14 @@ struct OpenGlassesApp: App {
         // Move any plaintext provider secrets out of UserDefaults and into the
         // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
         Config.migrateSecretsToKeychainIfNeeded()
+        // Establish the settings-journey state before anything can change it, and in
+        // particular before onboarding runs (Plan DE): "has this app been used before"
+        // is only answerable at launch — once a first-time user finishes onboarding they
+        // look exactly like an upgrader, and an upgrader must never lose a visible
+        // setting. Runs once per install; a migrated device does no work here.
+        MainActor.assumeIsolated {
+            SettingsJourneyStore.shared.migrateIfNeeded(signals: SettingsJourneySignals.detect())
+        }
         // Mint the deep-link trust token before any URL can be delivered, so a first-party link
         // is never rejected because the app hadn't got round to creating one.
         DeepLinkTrust.ensureToken()

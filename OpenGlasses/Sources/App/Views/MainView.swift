@@ -8,7 +8,9 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedTab = 0
     @State private var showOnboarding = Config.needsOnboarding
-    @AppStorage("appAppearance") private var appearance: String = "dark"
+    // Default is "system" — the app follows the phone's appearance unless the user has
+    // said otherwise. Kept in sync with `SettingsView` and `LookFeelSettingsScreen`.
+    @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
 
     private var colorScheme: ColorScheme? {

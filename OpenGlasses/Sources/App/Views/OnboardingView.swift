@@ -522,7 +522,7 @@ struct OnboardingView: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        selectionCheck(selectedModelId == model.id)
+                        OGSelectionCheck(selectedModelId == model.id)
                     }
                     .frame(minHeight: rowMinHeight)
                     .contentShape(Rectangle())
@@ -1011,17 +1011,6 @@ struct OnboardingView: View {
         .buttonStyle(.ogQuiet)
     }
 
-    /// The trailing check on a selectable row. Kept in the layout at all times
-    /// so selecting doesn't reflow the row; the state itself is spoken by the
-    /// row's `.isSelected` trait rather than by the glyph.
-    private func selectionCheck(_ selected: Bool) -> some View {
-        Image(systemName: "checkmark")
-            .font(.body.weight(.semibold))
-            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-            .opacity(selected ? 1 : 0)
-            .accessibilityHidden(true)
-    }
-
     private func providerRow(
         _ provider: LLMProvider,
         name: String,
@@ -1052,7 +1041,7 @@ struct OnboardingView: View {
 
                 Spacer(minLength: 8)
 
-                selectionCheck(selected)
+                OGSelectionCheck(selected)
             }
             .frame(minHeight: rowMinHeight)
             .contentShape(Rectangle())
