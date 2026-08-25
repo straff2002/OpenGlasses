@@ -41,11 +41,12 @@ class VideoRecordingService: ObservableObject {
     // Accessed from background audio callback — must be nonisolated(unsafe)
     private nonisolated(unsafe) var audioInput: AVAssetWriterInput?
 
-    /// ID used to register as an audio buffer consumer on WakeWordService.
+    /// ID used to register as an audio buffer consumer on the capture audio router.
     private static let audioConsumerId = "video_recording_audio"
 
-    /// Reference to WakeWordService for audio buffer access.
-    weak var wakeWordService: WakeWordService?
+    /// Mic source for recording audio (Plan CZ: `CaptureAudioRouter`, which rides the always-on
+    /// listener's shared tap while it runs and its own engine when it doesn't).
+    weak var audioProvider: (any BroadcastAudioProviding)?
 
     /// Reference to AmbientCaptionService for auto-transcription.
     weak var ambientCaptionService: AmbientCaptionService?
@@ -283,8 +284,9 @@ class VideoRecordingService: ObservableObject {
                 self?.appendFrame(image)
             }
 
-        // Subscribe to audio buffers from the shared audio engine
-        wakeWordService?.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
+        // Subscribe to mic audio. Registering is also what tells the router a capture is live, so
+        // it brings up a source even when the always-on listener is off (Plan CZ).
+        audioProvider?.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
             self?.appendAudioBuffer(buffer)
         }
 
@@ -359,7 +361,7 @@ class VideoRecordingService: ObservableObject {
         isRecording = false
 
         // Stop audio consumer
-        wakeWordService?.removeAudioBufferConsumer(id: Self.audioConsumerId)
+        audioProvider?.removeAudioBufferConsumer(id: Self.audioConsumerId)
 
         // Stop meeting assistant
         meetingAssistant?.stop()

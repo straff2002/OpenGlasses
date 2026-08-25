@@ -42,6 +42,18 @@ struct Config {
         "customAgentHarness", // CustomHarnessConfig.authValue (Plan N)
     ]
 
+    /// Every credential currently configured on this device, as literal values.
+    ///
+    /// Only for *scrubbing* — the diagnostics report redactor matches these literally so a
+    /// key that leaked into a log line is masked even when it has no recognisable shape
+    /// (`SecretPatterns` can only spot the ones that announce themselves). Never format,
+    /// log, or transmit the result.
+    static var knownSecretValues: [String] {
+        var values = migratableStringSecretKeys.compactMap { KeychainService.string(for: $0) }
+        values.append(contentsOf: savedModels.map(\.apiKey))
+        return values.filter { !$0.isEmpty }
+    }
+
     /// One-time migration of plaintext secrets from UserDefaults into the Keychain.
     ///
     /// Copies any existing values into the Keychain, then removes the plaintext copy
@@ -500,25 +512,37 @@ struct Config {
             }
         }
 
-        // If nothing was migrated, create a blank Anthropic default
-        if models.isEmpty {
-            models.append(ModelConfig.defaultConfig(for: .anthropic))
-        }
-
-        // Defensive check - should never happen, but prevent crash
-        guard let firstModel = models.first else {
-            print("⚠️ Migration failed - no models created")
-            // Create emergency default
-            let emergency = ModelConfig.defaultConfig(for: .anthropic)
-            models = [emergency]
+        // Nothing migrated ⇒ fresh install, which is the mainline first-run path off the App Store.
+        // A blank-key config must never become the active model — the user's first question would
+        // fail on a missing key. Start on whatever runs without one; keys can be added any time.
+        let downloadedLocalModels = LocalLLMService.downloadedModelIdsOnDisk()
+        switch FirstRunDefaults.resolve(hasLegacyKey: !models.isEmpty,
+                                        appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable,
+                                        localModelDownloaded: !downloadedLocalModels.isEmpty) {
+        case .migratedLegacyKey:
             setSavedModels(models)
-            setActiveModelId(emergency.id)
-            return models
-        }
+            if let firstModel = models.first { setActiveModelId(firstModel.id) }
 
-        // Save the migration
-        setSavedModels(models)
-        setActiveModelId(firstModel.id)
+        case .keyless(let provider):
+            // The on-device entry is always listed (the non-migration path adds it too), so the
+            // saved list is never empty and the picker always offers the keyless option.
+            models.append(appleIntelligenceDefault)
+            var active = appleIntelligenceDefault
+            if provider == .local {
+                var localConfig = ModelConfig.defaultConfig(for: .local)
+                localConfig.model = downloadedLocalModels.first ?? LLMProvider.local.defaultModel
+                models.append(localConfig)
+                active = localConfig
+            }
+            setSavedModels(models)
+            setActiveModelId(active.id)
+
+        case .unconfigured:
+            // Nothing keyless can run on this device. Leave the active model unset rather than
+            // fabricating a keyed one — the send path's error copy points at Settings.
+            models.append(appleIntelligenceDefault)
+            setSavedModels(models)
+        }
 
         return models
     }
@@ -2053,6 +2077,17 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "broadcastDefaultSource")
     }
 
+    /// Plan CZ: let the assistant's spoken replies into stream and recording audio when they play
+    /// out of the phone speaker. Off by default — a clean capture is what almost everyone wants,
+    /// and the wearer already hears the reply. A streamer whose audience is following the
+    /// conversation turns it on.
+    static var captureIncludesAssistantVoice: Bool {
+        UserDefaults.standard.bool(forKey: "captureIncludesAssistantVoice")
+    }
+    static func setCaptureIncludesAssistantVoice(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "captureIncludesAssistantVoice")
+    }
+
     /// BS P3: picture-in-picture dual capture (phone inset over the main source).
     static var broadcastDualCapture: Bool {
         UserDefaults.standard.bool(forKey: "broadcastDualCapture")
@@ -2080,6 +2115,76 @@ struct Config {
 
     static var isBroadcastConfigured: Bool {
         !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
+    }
+
+    // MARK: - Broadcast Encoding (Plan CY)
+
+    /// Frame rate the RTMP encoder targets, in fps.
+    ///
+    /// Deliberately separate from `cameraFrameRate`: the glasses link and the uplink are different
+    /// budgets. The camera tier may be dialled down to save the glasses' battery while the
+    /// broadcast still wants every frame that arrives, and the broadcaster used to ignore both and
+    /// hardcode 15 — a number that produced visibly juddery motion on an ingest that would happily
+    /// have taken 30.
+    static var broadcastFrameRate: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastFrameRate")
+        return broadcastFrameRateChoices.contains(value) ? value : 30
+    }
+
+    /// The rates the picker offers (and the only ones accepted).
+    static let broadcastFrameRateChoices = [15, 24, 30]
+
+    static func setBroadcastFrameRate(_ fps: Int) {
+        UserDefaults.standard.set(fps, forKey: "broadcastFrameRate")
+    }
+
+    /// Explicit user override for the broadcast video bitrate, or `nil` to let
+    /// `VideoBitratePolicy` derive it from the output geometry and frame rate. Same shape as
+    /// `recordingBitrateOverride`, and for the same reason — one constant cannot be right for both
+    /// a portrait 720×1280 stream and a landscape one at half the frame rate.
+    ///
+    /// Note this sets the *ceiling*: adaptation may step below it on a struggling link, and never
+    /// climbs above it.
+    static var broadcastBitrateOverride: Int? {
+        let value = UserDefaults.standard.integer(forKey: "broadcastBitrate")
+        return value > 0 ? value : nil
+    }
+
+    static func setBroadcastBitrate(_ bitrate: Int?) {
+        if let bitrate, bitrate > 0 {
+            UserDefaults.standard.set(bitrate, forKey: "broadcastBitrate")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "broadcastBitrate")
+        }
+    }
+
+    /// Seconds between forced keyframes. Every ingest cuts its HLS/DASH segments on keyframes, so
+    /// this is what decides how long a new viewer waits for a picture and how coarse a seek is.
+    /// Two seconds is the interval the common ingests ask for; longer saves bits, shorter costs
+    /// them.
+    static var broadcastKeyframeIntervalSeconds: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastKeyframeIntervalSeconds")
+        return broadcastKeyframeIntervalChoices.contains(value) ? value : 2
+    }
+
+    static let broadcastKeyframeIntervalChoices = [1, 2, 4]
+
+    static func setBroadcastKeyframeIntervalSeconds(_ seconds: Int) {
+        UserDefaults.standard.set(seconds, forKey: "broadcastKeyframeIntervalSeconds")
+    }
+
+    /// AAC bitrate for the broadcast's audio track, bits/sec. The encoder default is 64 kbps,
+    /// which is audibly thin for anything but speech in a quiet room; 128 kbps is the usual live
+    /// figure and costs a rounding error against the video.
+    static var broadcastAudioBitrate: Int {
+        let value = UserDefaults.standard.integer(forKey: "broadcastAudioBitrate")
+        return broadcastAudioBitrateChoices.contains(value) ? value : 128_000
+    }
+
+    static let broadcastAudioBitrateChoices = [64_000, 96_000, 128_000, 192_000]
+
+    static func setBroadcastAudioBitrate(_ bitrate: Int) {
+        UserDefaults.standard.set(bitrate, forKey: "broadcastAudioBitrate")
     }
 
     // MARK: - Broadcast Chat Read-Aloud (Plan CI)

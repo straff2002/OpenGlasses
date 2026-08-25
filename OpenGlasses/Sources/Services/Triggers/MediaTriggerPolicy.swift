@@ -68,11 +68,13 @@ enum MediaTriggerPolicy {
     ///
     /// The ambient owners are fine to coexist with: `wakeWord` holds the lease whenever the
     /// always-on listener runs (its `mixWithOthers` session is exactly what our silent player
-    /// rides on), `textToSpeech` is a coexisting rider, and `mediaTrigger` is ourselves. Every
-    /// mode that captures or duplexes audio for a conversation blocks the claim.
+    /// rides on), `textToSpeech` is a coexisting rider, `mediaTrigger` is ourselves, and
+    /// `captureAudio` is the standalone capture tap — the listener's session by another name, and
+    /// blocking on it would disable the temple tap for the whole of any recording. Every mode that
+    /// captures or duplexes audio for a conversation blocks the claim.
     static func ownerBlocksClaim(_ owner: AudioSessionOwner?) -> Bool {
         switch owner {
-        case nil, .wakeWord, .textToSpeech, .mediaTrigger:
+        case nil, .wakeWord, .textToSpeech, .mediaTrigger, .captureAudio:
             return false
         case .transcription, .liveTranslation, .geminiLive, .openAIRealtime, .expertCall:
             return true
