@@ -70,6 +70,12 @@ enum OGTheme {
         /// The shipped default accent (the Coral preset). Other presets are the
         /// user's choice; `tintedAccentLabel` is what keeps *those* legible.
         static let accent = OGColorToken(light: 0xB05426, dark: 0xF08A4B)
+        /// Success hue, as painted by a status dot or a small glyph.
+        static let ok = OGColorToken(fixed: 0x34C759)
+        /// Attention hue — the system orange `OGTheme.warn` renders as.
+        static let warn = OGColorToken(light: 0xFF9500, dark: 0xFF9F0A)
+        /// Failure hue, likewise.
+        static let error = OGColorToken(fixed: 0xE03026)
     }
 
     /// Opacity roles. Named because the contrast audit asserts against them —
@@ -107,10 +113,11 @@ enum OGTheme {
     static let onInk = Token.onInk.color
     static let hairline = Token.hairlineBase.color.opacity(Opacity.hairline)
 
-    // Status dots only — never row-icon tints.
-    static let ok = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
+    // Status dots only — never row-icon tints. As *text* they are far too light
+    // (the green measures ~2.2:1 on a white card); use `okLabel` / `errorLabel`.
+    static let ok = Token.ok.color
     static let warn = Color.orange
-    static let error = Color(red: 0xE0 / 255, green: 0x30 / 255, blue: 0x26 / 255)
+    static let error = Token.error.color
 }
 
 // MARK: - Derived accent colours
@@ -162,6 +169,56 @@ extension OGTheme {
         ]
         return ContrastRatio.readable(darkAccent, on: grounds)
     }
+
+    /// A filled-accent control's label — the accent is the *ground* here rather
+    /// than the text, so the label is whichever pole reads better on it: white
+    /// on the light coral, near-black on the brighter dark one. One of the two
+    /// always clears AA against any single colour (the worst case a solid ground
+    /// can produce is 4.58:1), so this needs no blending.
+    static func onAccentLabel(_ accent: Color) -> Color {
+        derived(from: accent) { value, _ in onAccentLabelValue(value) }
+    }
+
+    /// `onAccentLabel`'s choice, on plain values — the tests measure this for
+    /// every accent preset.
+    static func onAccentLabelValue(_ accent: SRGBColor) -> SRGBColor {
+        ContrastRatio.ratio(.white, accent) >= ContrastRatio.ratio(.black, accent)
+            ? .white
+            : .black
+    }
+
+    /// A status hue as *text* — "Key valid", a validation error, "Granted".
+    ///
+    /// The dot colours are picked to read as a 7pt dot on any surface; as a
+    /// label the green in particular measures barely 2:1. Corrected the same way
+    /// the accent is (toward the reachable pole, by the least amount that clears
+    /// AA on both surfaces), so the hue still says success or failure.
+    static func statusLabelValue(_ status: SRGBColor, in scheme: OGColorScheme) -> SRGBColor {
+        ContrastRatio.readable(
+            status,
+            on: [Token.card.value(for: scheme), Token.canvas.value(for: scheme)]
+        )
+    }
+
+    static let okLabelToken = OGColorToken(
+        light: statusLabelValue(Token.ok.light, in: .light).hex,
+        dark: statusLabelValue(Token.ok.dark, in: .dark).hex
+    )
+
+    static let warnLabelToken = OGColorToken(
+        light: statusLabelValue(Token.warn.light, in: .light).hex,
+        dark: statusLabelValue(Token.warn.dark, in: .dark).hex
+    )
+
+    static let errorLabelToken = OGColorToken(
+        light: statusLabelValue(Token.error.light, in: .light).hex,
+        dark: statusLabelValue(Token.error.dark, in: .dark).hex
+    )
+
+    /// Success / attention / failure text and the glyphs that sit beside it.
+    static let okLabel = okLabelToken.color
+    static let warnLabel = warnLabelToken.color
+    static let errorLabel = errorLabelToken.color
 
     /// Build an adaptive `Color` whose value in each scheme is computed from the
     /// accent resolved for that scheme.
@@ -273,5 +330,20 @@ extension OGTheme {
               wash: (Token.accent, Opacity.accentPillFill)),
         .init("notice on canvas", foreground: accentLabelToken, on: Token.canvas,
               wash: (Token.accent, Opacity.accentNoticeFill)),
+        .init("filled button label on accent", foreground: onAccentLabelToken, on: Token.accent),
+        .init("success label on card", foreground: okLabelToken, on: Token.card),
+        .init("success label on canvas", foreground: okLabelToken, on: Token.canvas),
+        .init("attention label on card", foreground: warnLabelToken, on: Token.card),
+        .init("attention label on canvas", foreground: warnLabelToken, on: Token.canvas),
+        .init("error label on card", foreground: errorLabelToken, on: Token.card),
+        .init("error label on canvas", foreground: errorLabelToken, on: Token.canvas),
     ]
+
+    /// The label a filled accent button paints with the shipped Coral preset.
+    /// Every other preset is held to the same bar at render time by
+    /// `onAccentLabel`, which the suite exercises across the whole set.
+    static let onAccentLabelToken = OGColorToken(
+        light: onAccentLabelValue(Token.accent.light).hex,
+        dark: onAccentLabelValue(Token.accent.dark).hex
+    )
 }

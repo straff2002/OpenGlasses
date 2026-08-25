@@ -12,12 +12,22 @@ import Speech
 ///   3. Access Key — paste key, link to get one, inline validation
 ///   4. Ready — success, get started
 ///
-/// Design: dark background, system typography, white/monochrome highlights.
+/// Design: the system's own language, on the OGDesign foundation — warm canvas,
+/// grouped lists for anything list-shaped, standard field affordances, Dynamic
+/// Type text styles throughout (no fixed point sizes), and the app accent as the
+/// single call-to-action colour. Colour is never the only carrier of meaning:
+/// selection, permission state and validation all say what they are in words.
 /// Follows Apple Generative AI HIG — discloses AI use, sets expectations,
 /// communicates that responses may contain errors.
 struct OnboardingView: View {
     @Binding var isVisible: Bool
     @EnvironmentObject var appState: AppState
+    @Environment(\.appAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Moves VoiceOver to the new page's title on every page change, so the flow
+    /// reads from the top instead of leaving focus wherever the last button was.
+    @AccessibilityFocusState private var focusedPage: Int?
 
     @State private var page = 0
     @State private var selectedProvider: LLMProvider?
@@ -53,47 +63,20 @@ struct OnboardingView: View {
     @State private var registrationStatus = ""
     @State private var isRegistering = false
 
+    // Metrics that sit beside type and have to scale with it.
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var iconTile: CGFloat = OGMetrics.iconTile
+    @ScaledMetric(relativeTo: .largeTitle) private var logoSize: CGFloat = 76
+    @ScaledMetric(relativeTo: .largeTitle) private var successGlyph: CGFloat = 56
+
     private let totalPages = 7
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            OGTheme.canvas.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Page indicator, with Back overlaid on the leading edge so the flow can be
-                // walked in both directions (the page index used to only ever increment).
-                ZStack {
-                    HStack(spacing: 8) {
-                        ForEach(0..<totalPages, id: \.self) { i in
-                            Capsule()
-                                .fill(i == page ? Color.white : Color.white.opacity(0.2))
-                                .frame(width: i == page ? 24 : 8, height: 4)
-                                .animation(.easeInOut(duration: 0.25), value: page)
-                        }
-                    }
-                    .accessibilityElement()
-                    .accessibilityLabel("Page \(page + 1) of \(totalPages)")
-
-                    if page > 0 {
-                        HStack {
-                            Button {
-                                withAnimation { page -= 1 }
-                            } label: {
-                                Image(systemName: "chevron.left")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.white.opacity(0.6))
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Back")
-                            Spacer()
-                        }
-                        .padding(.leading, 8)
-                    }
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 24)
+                header
 
                 // Content — uses conditional views instead of paged TabView
                 // so text fields on the API key page respond to taps immediately
@@ -111,171 +94,248 @@ struct OnboardingView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.easeInOut(duration: 0.3), value: page)
+                .animation(pageChange, value: page)
             }
         }
-        .preferredColorScheme(.dark)
+        .onChange(of: page) { _, newPage in focusedPage = newPage }
+    }
+
+    /// One animation for every page transition — nil under Reduce Motion, which
+    /// also stops the page indicator sliding.
+    private var pageChange: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.3)
+    }
+
+    private func go(to next: Int) {
+        withAnimation(pageChange) { page = next }
+    }
+
+    // MARK: - Header
+
+    /// Page indicator, with Back overlaid on the leading edge so the flow can be
+    /// walked in both directions (the page index used to only ever increment).
+    private var header: some View {
+        ZStack {
+            HStack(spacing: 8) {
+                ForEach(0..<totalPages, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? accent : Color(.tertiarySystemFill))
+                        .frame(width: i == page ? 24 : 8, height: 4)
+                        .animation(pageChange, value: page)
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Page \(page + 1) of \(totalPages)")
+            .accessibilitySortPriority(1)
+
+            if page > 0 {
+                HStack {
+                    Button {
+                        go(to: page - 1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back")
+                    .accessibilitySortPriority(2)
+                    Spacer()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
+
+    /// The title block every page opens with — the VoiceOver landing point.
+    private func pageTitle(_ title: String, _ subtitle: String? = nil, page index: Int) -> some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.title2.weight(.bold))
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($focusedPage, equals: index)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Page 1: Welcome
 
     private var welcomePage: some View {
         VStack(spacing: 0) {
-            Spacer()
+            centeredScroll {
+                VStack(spacing: 14) {
+                    LogoIcon(size: logoSize)
+                        .foregroundStyle(accent)
+                        .accessibilityHidden(true)
 
-            VStack(spacing: 20) {
-                LogoIcon(size: 80)
-                    .foregroundStyle(.white)
+                    Text("OpenGlasses")
+                        .font(.largeTitle.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($focusedPage, equals: 0)
 
-                Text("OpenGlasses")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(.white)
+                    Text("AI assistant for your smart glasses")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
 
-                Text("AI assistant for your smart glasses")
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.7))
+                // AI transparency disclosure (Apple Generative AI HIG)
+                OGCard {
+                    OGRow(
+                        "Powered by AI",
+                        icon: "brain.head.profile",
+                        subtitle: "Conversations are processed by the AI provider you choose. Responses are generated by AI and may not always be accurate.",
+                        showsChevron: false
+                    )
+                    OGDivider()
+                    OGRow(
+                        "Your keys, your data",
+                        icon: "lock.shield",
+                        subtitle: "Your access key connects directly to your provider. We never see or store your conversations.",
+                        showsChevron: false
+                    )
+                    OGDivider()
+                    OGRow(
+                        "Microphone access",
+                        icon: "mic.badge.xmark",
+                        subtitle: "Voice input is processed on-device for wake word detection and sent to your provider for transcription.",
+                        showsChevron: false
+                    )
+                }
             }
 
-            Spacer()
-
-            // AI transparency disclosure (Apple Generative AI HIG)
-            VStack(alignment: .leading, spacing: 12) {
-                featureRow(
-                    icon: "brain.head.profile",
-                    title: "Powered by AI",
-                    detail: "Conversations are processed by the AI provider you choose. Responses are generated by AI and may not always be accurate."
-                )
-                featureRow(
-                    icon: "lock.shield",
-                    title: "Your keys, your data",
-                    detail: "Your access key connects directly to your provider. We never see or store your conversations."
-                )
-                featureRow(
-                    icon: "mic.badge.xmark",
-                    title: "Microphone access",
-                    detail: "Voice input is processed on-device for wake word detection and sent to your provider for transcription."
-                )
+            pageFooter {
+                primaryButton("Get Started") { go(to: 1) }
+                skipButton()
             }
-            .padding(.horizontal, 28)
-
-            Spacer()
-
-            primaryButton("Get Started") {
-                withAnimation { page = 1 }
-            }
-            skipButton()
         }
-        .padding(.bottom, 20)
+    }
+
+    /// A scroll view whose content sits centred while it fits and scrolls once
+    /// it doesn't — which is what keeps the two hero pages composed at default
+    /// sizes without truncating them at AX5.
+    private func centeredScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        let body = VStack(spacing: 26, content: content)
+        return GeometryReader { proxy in
+            ScrollView {
+                body
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
+            }
+        }
     }
 
     // MARK: - Page 2: Choose Provider
 
     private var providerPage: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Choose your AI")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("Pick a provider. You can add more later in Settings.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 28)
+            pageTitle("Choose your AI", "Pick a provider. You can add more later in Settings.", page: 1)
 
-            ScrollView {
-                VStack(spacing: 12) {
+            List {
+                Section {
                     // The keyless path, first because it is the one that needs nothing. Hidden on
                     // devices that can't run the on-device model — offering it there is a dead end.
                     if FirstRunDefaults.appleIntelligenceAvailable {
-                        providerCard(
-                            provider: .appleOnDevice,
+                        providerRow(
+                            .appleOnDevice,
                             name: "Start without an API key",
                             model: "Apple Intelligence",
                             detail: "Runs on this iPhone. Add a provider key later in Settings.",
                             icon: "iphone"
                         )
                     }
-                    providerCard(
-                        provider: .anthropic,
+                    providerRow(
+                        .anthropic,
                         name: "Anthropic",
                         model: "Claude",
                         detail: "Best for reasoning and conversation",
                         icon: "brain"
                     )
-                    providerCard(
-                        provider: .gemini,
+                    providerRow(
+                        .gemini,
                         name: "Google",
                         model: "Gemini",
                         detail: "Free tier available, vision capable",
                         icon: "sparkles"
                     )
-                    providerCard(
-                        provider: .openai,
+                    providerRow(
+                        .openai,
                         name: "OpenAI",
                         model: "GPT-4o",
                         detail: "Realtime voice mode available",
                         icon: "waveform"
                     )
-                    providerCard(
-                        provider: .chatgpt,
+                    providerRow(
+                        .chatgpt,
                         name: "ChatGPT",
                         model: "Codex",
                         detail: "Use your ChatGPT subscription — no API key",
                         icon: "person.crop.circle.badge.checkmark"
                     )
-                    providerCard(
-                        provider: .groq,
+                    providerRow(
+                        .groq,
                         name: "Groq",
                         model: "Llama / Mixtral",
                         detail: "Ultra-fast inference, free tier",
                         icon: "bolt"
                     )
-                    providerCard(
-                        provider: .qwen,
+                    providerRow(
+                        .qwen,
                         name: "Qwen",
                         model: "Qwen3.5 Plus",
                         detail: "Vision capable, bring your own key",
                         icon: "globe.asia.australia"
                     )
-                    providerCard(
-                        provider: .zai,
+                    providerRow(
+                        .zai,
                         name: "Z.ai",
                         model: "GLM-4.5",
                         detail: "Bring your own key",
                         icon: "bolt.circle"
                     )
+                }
 
-                    // Collapsed section for other providers
+                // Collapsed section for other providers
+                Section {
                     DisclosureGroup {
-                        VStack(spacing: 12) {
-                            providerCard(
-                                provider: .openrouter,
-                                name: "OpenRouter",
-                                model: "500+ models",
-                                detail: "Access many providers through one key",
-                                icon: "arrow.triangle.branch"
-                            )
-                        }
+                        providerRow(
+                            .openrouter,
+                            name: "OpenRouter",
+                            model: "500+ models",
+                            detail: "Access many providers through one key",
+                            icon: "arrow.triangle.branch"
+                        )
                     } label: {
                         Text("More providers")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.6))
+                            .font(.body)
                     }
-                    .tint(.white.opacity(0.4))
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 32)
             }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
 
             if selectedProvider != nil {
-                primaryButton("Continue") {
-                    configureDefaults()
-                    withAnimation { page = 2 }
+                pageFooter {
+                    primaryButton("Continue") {
+                        configureDefaults()
+                        go(to: 2)
+                    }
                 }
-                .padding(.bottom, 20)
             }
         }
     }
@@ -286,289 +346,207 @@ struct OnboardingView: View {
         let provider = selectedProvider ?? .anthropic
         let needsKey = provider.requiresAPIKey
         let needsAccount = provider == .chatgpt   // no key at all — sign-in is the credential
+        let claudeConnected = provider == .anthropic && claudeOAuth.isConnected
 
         return VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text(needsAccount ? "Connect ChatGPT"
-                     : needsKey ? (provider == .anthropic ? "Connect Claude" : "Add your access key")
-                     : "You're all set")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                if needsAccount {
-                    Text("Sign in with your ChatGPT account — no API key needed")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                } else if needsKey {
-                    Text(provider == .anthropic
-                         ? "Sign in with your Claude account, or paste an API key"
-                         : "Paste your \(provider.displayName) access key below")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 28)
+            pageTitle(keyPageTitle(provider), keyPageSubtitle(provider), page: 2)
 
-            Spacer()
-
-            if needsKey {
-                VStack(spacing: 16) {
+            List {
+                if needsKey {
                     // Sign in with Claude — the subscription path; hides the key field once connected.
                     if provider == .anthropic {
                         claudeSignInSection
                     }
 
-                    if !(provider == .anthropic && claudeOAuth.isConnected) {
-                    // Access Key input
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Access Key")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.5))
-
-                        HStack {
-                            SecretInputField(placeholder: "sk-...", text: $apiKey)
-                                .foregroundStyle(.white)
-                                .onChange(of: apiKey) { _, _ in
-                                    validationError = nil
-                                    keyValid = false
-                                    availableModels = []
-                                    selectedModelId = nil
-                                }
-
-                            if !apiKey.isEmpty {
-                                Button {
-                                    apiKey = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.white.opacity(0.3))
-                                }
-                            }
-                        }
-                        .padding(14)
-                        .contentShape(Rectangle())
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(
-                                    validationError != nil ? Color.red.opacity(0.6) :
-                                    keyValid ? Color.green.opacity(0.6) :
-                                    Color.white.opacity(0.1),
-                                    lineWidth: 1
-                                )
-                        )
-
-                        if let error = validationError {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.red.opacity(0.8))
-                        }
-                        if keyValid {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                Text(availableModels.isEmpty ? "Key valid" : "Key valid — \(availableModels.count) models available")
-                                    .foregroundStyle(.green.opacity(0.8))
-                            }
-                            .font(.caption)
-                        }
+                    if !claudeConnected {
+                        accessKeySection(provider)
                     }
-                    .padding(.horizontal, 28)
-
-                    // "Get API Key" deep link
-                    if apiKey.isEmpty, let url = provider.consoleURL {
-                        Link(destination: url) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.right.square")
-                                Text("Get your API key from \(url.host ?? provider.displayName)")
-                            }
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                        }
-                        .padding(.horizontal, 28)
-                    }
-                    }   // end key-input block (hidden when a Claude account is connected)
 
                     // Model picker (shown after successful validation)
                     if keyValid && !availableModels.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Select Model")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.5))
-
-                            ScrollView {
-                                VStack(spacing: 6) {
-                                    ForEach(availableModels) { model in
-                                        Button {
-                                            selectedModelId = model.id
-                                        } label: {
-                                            HStack {
-                                                Text(model.name)
-                                                    .font(.subheadline)
-                                                    .foregroundStyle(.white)
-                                                    .lineLimit(1)
-                                                Spacer()
-                                                if selectedModelId == model.id {
-                                                    Image(systemName: "checkmark")
-                                                        .font(.caption.weight(.semibold))
-                                                        .foregroundStyle(.white)
-                                                }
-                                            }
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 10)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 10)
-                                                    .fill(selectedModelId == model.id
-                                                          ? Color.white.opacity(0.1)
-                                                          : Color.white.opacity(0.05))
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                            .frame(maxHeight: 200)
-                        }
-                        .padding(.horizontal, 28)
+                        modelSection
                     }
-
-                    // Link to get a key
-                    if !(provider == .anthropic && claudeOAuth.isConnected) {
-                        Button {
-                            openAPIKeyURL(for: provider)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.caption)
-                                Text(apiKeyURLLabel(for: provider))
-                                    .font(.subheadline)
-                            }
-                            .foregroundStyle(.white.opacity(0.7))
-                        }
-                    }
-                }
-            } else if needsAccount {
-                // ChatGPT — account sign-in is the credential; model picker fills from the catalog.
-                VStack(spacing: 16) {
+                } else if needsAccount {
+                    // ChatGPT — account sign-in is the credential; model picker fills from the catalog.
                     chatgptSignInSection
 
                     if chatgptOAuth.isConnected && !availableModels.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Select Model")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.5))
-                            ScrollView {
-                                VStack(spacing: 6) {
-                                    ForEach(availableModels) { model in
-                                        Button {
-                                            selectedModelId = model.id
-                                        } label: {
-                                            HStack {
-                                                Text(model.name)
-                                                    .font(.subheadline)
-                                                    .foregroundStyle(.white)
-                                                    .lineLimit(1)
-                                                Spacer()
-                                                if selectedModelId == model.id {
-                                                    Image(systemName: "checkmark")
-                                                        .font(.caption.weight(.semibold))
-                                                        .foregroundStyle(.white)
-                                                }
-                                            }
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 10)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 10)
-                                                    .fill(selectedModelId == model.id
-                                                          ? Color.white.opacity(0.1)
-                                                          : Color.white.opacity(0.05))
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                            .frame(maxHeight: 200)
-                        }
-                        .padding(.horizontal, 28)
-                    }
-                }
-            } else {
-                // Subscription providers — no key needed
-                VStack(spacing: 16) {
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 48, weight: .regular))
-                        .foregroundStyle(.green)
-                    Text("\(provider.displayName) doesn't require an access key.")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                }
-            }
-
-            Spacer()
-
-            if needsAccount {
-                primaryButton("Continue") {
-                    saveModel()
-                    withAnimation { page = 3 }
-                }
-                if !chatgptOAuth.isConnected {
-                    Button {
-                        saveModel()
-                        withAnimation { page = 3 }
-                    } label: {
-                        Text("I'll sign in later")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.4))
-                    }
-                    .padding(.top, 4)
-                }
-                Color.clear.frame(height: 20)
-            } else if needsKey {
-                if keyValid || (provider == .anthropic && claudeOAuth.isConnected) {
-                    primaryButton("Continue") {
-                        saveModel()
-                        withAnimation { page = 3 }
+                        modelSection
                     }
                 } else {
-                    primaryButton(isValidating ? "Validating..." : "Validate Key") {
-                        validateKey()
+                    // Subscription providers — no key needed
+                    Section {
+                        Label {
+                            Text("\(provider.displayName) doesn't require an access key.")
+                                .font(.body)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(OGTheme.okLabel)
+                        }
+                        .frame(minHeight: rowMinHeight)
                     }
-                    .disabled(apiKey.trimmingCharacters(in: .whitespaces).isEmpty || isValidating)
                 }
+            }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
 
-                Button {
-                    if !apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
+            pageFooter {
+                if needsAccount {
+                    primaryButton("Continue") {
                         saveModel()
+                        go(to: 3)
                     }
-                    withAnimation { page = 3 }
-                } label: {
-                    Text(keyValid ? "Skip model selection" : "I'll add it later")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.4))
+                    if !chatgptOAuth.isConnected {
+                        Button("I'll sign in later") {
+                            saveModel()
+                            go(to: 3)
+                        }
+                        .buttonStyle(.ogQuiet)
+                    }
+                } else if needsKey {
+                    if keyValid || claudeConnected {
+                        primaryButton("Continue") {
+                            saveModel()
+                            go(to: 3)
+                        }
+                    } else {
+                        primaryButton(isValidating ? "Validating..." : "Validate Key") {
+                            validateKey()
+                        }
+                        .disabled(apiKey.trimmingCharacters(in: .whitespaces).isEmpty || isValidating)
+                    }
+
+                    Button(keyValid ? "Skip model selection" : "I'll add it later") {
+                        if !apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
+                            saveModel()
+                        }
+                        go(to: 3)
+                    }
+                    .buttonStyle(.ogQuiet)
+                } else {
+                    primaryButton("Continue") {
+                        saveModel()
+                        go(to: 3)
+                    }
                 }
-                .padding(.top, 4)
-                .padding(.bottom, 20)
-            } else {
-                primaryButton("Continue") {
-                    saveModel()
-                    withAnimation { page = 3 }
-                }
-                .padding(.bottom, 20)
             }
         }
     }
 
-    // MARK: - Account sign-in sections (shared DarkAccountSignInSection, BW P4)
+    private func keyPageTitle(_ provider: LLMProvider) -> String {
+        if provider == .chatgpt { return "Connect ChatGPT" }
+        if provider.requiresAPIKey {
+            return provider == .anthropic ? "Connect Claude" : "Add your access key"
+        }
+        return "You're all set"
+    }
+
+    private func keyPageSubtitle(_ provider: LLMProvider) -> String? {
+        if provider == .chatgpt {
+            return "Sign in with your ChatGPT account — no API key needed"
+        }
+        guard provider.requiresAPIKey else { return nil }
+        return provider == .anthropic
+            ? "Sign in with your Claude account, or paste an API key"
+            : "Paste your \(provider.displayName) access key below"
+    }
+
+    /// The key field, its "get a key" link, and the validation state — a stock
+    /// grouped section, so the field behaves like every other field on iOS.
+    private func accessKeySection(_ provider: LLMProvider) -> some View {
+        Section {
+            HStack(spacing: 8) {
+                SecretInputField(placeholder: "sk-...", text: $apiKey)
+                    .onChange(of: apiKey) { _, _ in
+                        validationError = nil
+                        keyValid = false
+                        availableModels = []
+                        selectedModelId = nil
+                    }
+
+                if !apiKey.isEmpty {
+                    Button {
+                        apiKey = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Clear access key")
+                }
+            }
+            .frame(minHeight: rowMinHeight)
+
+            Button {
+                openAPIKeyURL(for: provider)
+            } label: {
+                Label(apiKeyURLLabel(for: provider), systemImage: "arrow.up.right.square")
+                    .font(.subheadline)
+                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                    .frame(minHeight: rowMinHeight)
+            }
+        } header: {
+            Text("Access Key")
+        } footer: {
+            keyValidationFooter
+        }
+    }
+
+    @ViewBuilder
+    private var keyValidationFooter: some View {
+        if let error = validationError {
+            Label(error, systemImage: "exclamationmark.circle.fill")
+                .foregroundStyle(OGTheme.errorLabel)
+        } else if keyValid {
+            Label(
+                availableModels.isEmpty
+                    ? "Key valid"
+                    : "Key valid — \(availableModels.count) models available",
+                systemImage: "checkmark.circle.fill"
+            )
+            .foregroundStyle(OGTheme.okLabel)
+        }
+    }
+
+    /// The model list a validated credential unlocks — a native grouped
+    /// selection list, the same shape the Settings model editor offers.
+    private var modelSection: some View {
+        Section {
+            ForEach(availableModels) { model in
+                Button {
+                    selectedModelId = model.id
+                } label: {
+                    HStack(spacing: OGMetrics.rowSpacing) {
+                        Text(model.name)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        selectionCheck(selectedModelId == model.id)
+                    }
+                    .frame(minHeight: rowMinHeight)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(model.name)
+                .accessibilityAddTraits(
+                    selectedModelId == model.id ? [.isButton, .isSelected] : .isButton
+                )
+            }
+        } header: {
+            Text("Select Model")
+        }
+    }
+
+    // MARK: - Account sign-in sections (shared OnboardingAccountSignInSection, BW P4)
 
     private var claudeSignInSection: some View {
-        DarkAccountSignInSection(
+        OnboardingAccountSignInSection(
             service: claudeOAuth,
             signInLabel: "Sign in with Claude",
             caption: "Use your Claude subscription — no API key required.",
             connectedCaption: "Requests use your Claude subscription — no API key needed.",
             pasteInstructions: "Sign in in the browser, copy the code from the callback page, then paste it here.",
-            showKeyDivider: true,
             onConnected: { validateViaClaudeAccount() },
             onSignedOut: {
                 keyValid = false
@@ -579,7 +557,7 @@ struct OnboardingView: View {
     }
 
     private var chatgptSignInSection: some View {
-        DarkAccountSignInSection(
+        OnboardingAccountSignInSection(
             service: chatgptOAuth,
             signInLabel: "Sign in with ChatGPT",
             caption: "Use your ChatGPT subscription — no API key required.",
@@ -598,140 +576,82 @@ struct OnboardingView: View {
 
     private var servicesPage: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Enhance your experience")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("Optional — add these later in Settings if you prefer.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 28)
+            pageTitle(
+                "Enhance your experience",
+                "Optional — add these later in Settings if you prefer.",
+                page: 3
+            )
 
-            Spacer()
-
-            VStack(spacing: 20) {
-                // ElevenLabs
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "waveform")
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 24)
-                        Text("ElevenLabs Voice")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white)
-                    }
-
+            List {
+                Section {
                     SecretInputField(placeholder: "ElevenLabs API Key", text: $elevenLabsKey)
-                        .foregroundStyle(.white)
-                        .padding(14)
-                        .contentShape(Rectangle())
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(elevenLabsKey.isEmpty ? Color.white.opacity(0.1) : Color.green.opacity(0.6), lineWidth: 1)
-                        )
+                        .frame(minHeight: rowMinHeight)
 
                     if elevenLabsKey.isEmpty {
                         Link(destination: URL(string: "https://elevenlabs.io/app/settings/api-keys")!) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.caption)
-                                Text("Get key from elevenlabs.io")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.5))
+                            Label("Get key from elevenlabs.io", systemImage: "arrow.up.right.square")
+                                .font(.subheadline)
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                .frame(minHeight: rowMinHeight)
                         }
                     }
-
+                } header: {
+                    Label("ElevenLabs Voice", systemImage: "waveform")
+                } footer: {
                     Text("Natural-sounding voice. Without this, the built-in iOS voice is used.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
                 }
 
-                // Perplexity
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 24)
-                        Text("Perplexity Search")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.white)
-                    }
-
+                Section {
                     SecretInputField(placeholder: "Perplexity API Key", text: $perplexityKey)
-                        .foregroundStyle(.white)
-                        .padding(14)
-                        .contentShape(Rectangle())
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(perplexityKey.isEmpty ? Color.white.opacity(0.1) : Color.green.opacity(0.6), lineWidth: 1)
-                        )
+                        .frame(minHeight: rowMinHeight)
 
                     if perplexityKey.isEmpty {
                         Link(destination: URL(string: "https://www.perplexity.ai/settings/api")!) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.caption)
-                                Text("Get key from perplexity.ai")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.5))
+                            Label("Get key from perplexity.ai", systemImage: "arrow.up.right.square")
+                                .font(.subheadline)
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                .frame(minHeight: rowMinHeight)
                         }
                     }
-
+                } header: {
+                    Label("Perplexity Search", systemImage: "magnifyingglass")
+                } footer: {
                     Text("AI-powered web search with cited sources. Without this, DuckDuckGo is used.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-            }
-            .padding(.horizontal, 28)
-
-            // iOS Voice tip
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "speaker.wave.2")
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 24)
-                    Text("iOS Fallback Voice")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white)
                 }
 
-                if hasPremiumVoiceInstalled {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Premium voice detected")
-                            .foregroundStyle(.white.opacity(0.6))
+                Section {
+                    if hasPremiumVoiceInstalled {
+                        Label("Premium voice detected", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(OGTheme.okLabel)
+                            .frame(minHeight: rowMinHeight)
+                    } else {
+                        Text("Go to Settings → Accessibility → Spoken Content → Voices to download a premium voice.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: rowMinHeight)
                     }
-                    .font(.caption)
-                } else {
-                    Text("Go to Settings → Accessibility → Spoken Content → Voices to download a premium voice.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
+                } header: {
+                    Label("iOS Fallback Voice", systemImage: "speaker.wave.2")
                 }
             }
-            .padding(.horizontal, 28)
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
 
-            Spacer()
-
-            primaryButton("Continue") {
-                // Save any keys the user entered
-                if !elevenLabsKey.isEmpty {
-                    Config.setElevenLabsAPIKey(elevenLabsKey)
+            pageFooter {
+                primaryButton("Continue") {
+                    // Save any keys the user entered
+                    if !elevenLabsKey.isEmpty {
+                        Config.setElevenLabsAPIKey(elevenLabsKey)
+                    }
+                    if !perplexityKey.isEmpty {
+                        Config.setPerplexityAPIKey(perplexityKey)
+                    }
+                    go(to: 4)
                 }
-                if !perplexityKey.isEmpty {
-                    Config.setPerplexityAPIKey(perplexityKey)
-                }
-                withAnimation { page = 4 }
+                skipButton()
             }
-            .padding(.bottom, 4)
-
-            skipButton()
         }
     }
 
@@ -746,88 +666,71 @@ struct OnboardingView: View {
 
     private var permissionsPage: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Permissions")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("OpenGlasses needs a few permissions to work.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 28)
+            pageTitle("Permissions", "OpenGlasses needs a few permissions to work.", page: 4)
 
-            Spacer()
+            List {
+                Section {
+                    permissionRow(
+                        icon: "mic.fill",
+                        title: "Microphone",
+                        detail: "For wake word detection and voice commands",
+                        granted: micGranted
+                    ) {
+                        await requestMicPermission()
+                    }
 
-            VStack(spacing: 16) {
-                // Microphone
-                permissionRow(
-                    icon: "mic.fill",
-                    title: "Microphone",
-                    detail: "For wake word detection and voice commands",
-                    granted: micGranted
-                ) {
-                    await requestMicPermission()
-                }
+                    permissionRow(
+                        icon: "waveform",
+                        title: "Speech Recognition",
+                        detail: "To understand what you say",
+                        granted: speechGranted
+                    ) {
+                        await requestSpeechPermission()
+                    }
 
-                // Speech Recognition
-                permissionRow(
-                    icon: "waveform",
-                    title: "Speech Recognition",
-                    detail: "To understand what you say",
-                    granted: speechGranted
-                ) {
-                    await requestSpeechPermission()
-                }
+                    permissionRow(
+                        icon: "location.fill",
+                        title: "Location",
+                        detail: "For weather, nearby places, and context",
+                        granted: locationGranted
+                    ) {
+                        requestLocationPermission()
+                    }
 
-                // Location
-                permissionRow(
-                    icon: "location.fill",
-                    title: "Location",
-                    detail: "For weather, nearby places, and context",
-                    granted: locationGranted
-                ) {
-                    requestLocationPermission()
-                }
+                    permissionRow(
+                        icon: "antenna.radiowaves.left.and.right",
+                        title: "Bluetooth",
+                        detail: "To connect to your Ray-Ban Meta glasses",
+                        granted: bluetoothConfigured
+                    ) {
+                        configureWearablesSDK()
+                    }
 
-                // Bluetooth / Wearables SDK
-                permissionRow(
-                    icon: "antenna.radiowaves.left.and.right",
-                    title: "Bluetooth",
-                    detail: "To connect to your Ray-Ban Meta glasses",
-                    granted: bluetoothConfigured
-                ) {
-                    configureWearablesSDK()
-                }
-
-                // HomeKit
-                permissionRow(
-                    icon: "house.fill",
-                    title: "Home Data",
-                    detail: "To control lights, locks, and smart home devices",
-                    granted: homeKitGranted
-                ) {
-                    await requestHomeKitPermission()
+                    permissionRow(
+                        icon: "house.fill",
+                        title: "Home Data",
+                        detail: "To control lights, locks, and smart home devices",
+                        granted: homeKitGranted
+                    ) {
+                        await requestHomeKitPermission()
+                    }
                 }
             }
-            .padding(.horizontal, 28)
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
 
-            Spacer()
+            pageFooter {
+                primaryButton("Continue") { go(to: 5) }
+                    .disabled(!micGranted)
 
-            primaryButton("Continue") {
-                withAnimation { page = 5 }
-            }
-            .opacity(micGranted ? 1 : 0.4)
-            .disabled(!micGranted)
-            .padding(.bottom, 4)
-
-            if !micGranted {
-                Text("Microphone permission is required")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.35))
-                    .padding(.bottom, 8)
-            } else {
-                skipButton()
+                if micGranted {
+                    skipButton()
+                } else {
+                    Text("Microphone permission is required")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 6)
+                }
             }
         }
         .onAppear { checkExistingPermissions() }
@@ -840,52 +743,53 @@ struct OnboardingView: View {
         granted: Bool,
         action: @escaping () async -> Void
     ) -> some View {
-        HStack(spacing: 14) {
-            Group {
-                if icon == "OpenGlassesLogo" {
-                    LogoIcon(size: 22)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .medium))
-                }
-            }
-            .foregroundStyle(granted ? .green : .white.opacity(0.7))
-            .frame(width: 32)
+        HStack(spacing: OGMetrics.rowSpacing) {
+            permissionIcon(icon)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
+                    .font(.body)
                 Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            // Title and detail are one thought, not two stops.
+            .accessibilityElement(children: .combine)
 
-            Spacer()
+            Spacer(minLength: 8)
 
             if granted {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.green)
+                // Said in words, not just carried by the green — the state has
+                // to survive a screen reader and a colour-blind reader alike.
+                Label("Granted", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(OGTheme.okLabel)
             } else {
-                Button {
+                Button("Grant") {
                     Task { await action() }
-                } label: {
-                    Text("Grant")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.white, in: Capsule())
                 }
+                .buttonStyle(.ogProminentCompact)
+                .accessibilityLabel("Grant \(title) access")
             }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(granted ? Color.green.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .frame(minHeight: rowMinHeight)
+    }
+
+    @ViewBuilder
+    private func permissionIcon(_ icon: String) -> some View {
+        if icon == "OpenGlassesLogo" {
+            RoundedRectangle(cornerRadius: iconTile * 0.28, style: .continuous)
+                .fill(accent.opacity(OGTheme.Opacity.accentFill))
+                .frame(width: iconTile, height: iconTile)
+                .overlay {
+                    LogoIcon(size: iconTile * 0.6)
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                }
+                .accessibilityHidden(true)
+        } else {
+            OGIconTile(systemName: icon)
+        }
     }
 
     private func checkExistingPermissions() {
@@ -945,33 +849,25 @@ struct OnboardingView: View {
 
     private var connectGlassesPage: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("Connect Your Glasses")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("Authorize camera access and link OpenGlasses to the Meta AI app.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 28)
+            pageTitle(
+                "Connect Your Glasses",
+                "Authorize camera access and link OpenGlasses to the Meta AI app.",
+                page: 5
+            )
 
-            Spacer()
+            List {
+                Section {
+                    // iOS Camera permission
+                    permissionRow(
+                        icon: "camera.fill",
+                        title: "Camera",
+                        detail: "Required to stream video from your Ray-Ban Meta glasses",
+                        granted: cameraGranted
+                    ) {
+                        await requestCameraPermission()
+                    }
 
-            VStack(spacing: 16) {
-                // iOS Camera permission
-                permissionRow(
-                    icon: "camera.fill",
-                    title: "Camera",
-                    detail: "Required to stream video from your Ray-Ban Meta glasses",
-                    granted: cameraGranted
-                ) {
-                    await requestCameraPermission()
-                }
-
-                // Meta AI integration
-                VStack(alignment: .leading, spacing: 0) {
+                    // Meta AI integration
                     permissionRow(
                         icon: "OpenGlassesLogo",
                         title: "Meta AI Integration",
@@ -980,47 +876,35 @@ struct OnboardingView: View {
                     ) {
                         await connectToMetaAI()
                     }
-
-                    if isRegistering {
-                        HStack(spacing: 8) {
-                            ProgressView().scaleEffect(0.75)
-                            Text(registrationStatus.isEmpty ? "Connecting…" : registrationStatus)
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 8)
-                    } else if !registrationStatus.isEmpty && !metaRegistered {
-                        Text(registrationStatus)
-                            .font(.caption)
-                            .foregroundStyle(.orange.opacity(0.9))
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 8)
-                    }
+                } footer: {
+                    registrationFooter
                 }
             }
-            .padding(.horizontal, 28)
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
 
-            Spacer()
-
-            primaryButton("Continue") {
-                withAnimation { page = 6 }
+            pageFooter {
+                primaryButton("Continue") { go(to: 6) }
+                Button("Skip — no glasses yet") { go(to: 6) }
+                    .buttonStyle(.ogQuiet)
             }
-            .padding(.bottom, 4)
-
-            Button {
-                withAnimation { page = 6 }
-            } label: {
-                Text("Skip — no glasses yet")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .padding(.top, 4)
-            .padding(.bottom, 8)
         }
         .onAppear {
             cameraGranted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
             metaRegistered = bluetoothConfigured && Wearables.shared.registrationState.rawValue >= 3
+        }
+    }
+
+    @ViewBuilder
+    private var registrationFooter: some View {
+        if isRegistering {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(registrationStatus.isEmpty ? "Connecting…" : registrationStatus)
+            }
+        } else if !registrationStatus.isEmpty && !metaRegistered {
+            Text(registrationStatus)
+                .foregroundStyle(OGTheme.warnLabel)
         }
     }
 
@@ -1051,88 +935,95 @@ struct OnboardingView: View {
 
     private var readyPage: some View {
         VStack(spacing: 0) {
-            Spacer()
+            centeredScroll {
+                VStack(spacing: 14) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: successGlyph, weight: .regular))
+                        .foregroundStyle(OGTheme.okLabel)
+                        .accessibilityHidden(true)
 
-            VStack(spacing: 20) {
-                Image(systemName: "checkmark.circle")
-                    .font(.system(size: 56, weight: .regular))
-                    .foregroundStyle(.green)
+                    Text("You're ready")
+                        .font(.title.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($focusedPage, equals: 6)
 
-                Text("You're ready")
-                    .font(.title.weight(.bold))
-                    .foregroundStyle(.white)
+                    Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
 
-                Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
+                // What you can do
+                OGCard {
+                    OGRow("Voice-first — talk naturally, get spoken answers",
+                          icon: "mic.fill", showsChevron: false)
+                    OGDivider()
+                    OGRow("Show things to the camera for visual AI",
+                          icon: "camera.fill", showsChevron: false)
+                    OGDivider()
+                    OGRow("Switch personas for different AI personalities",
+                          icon: "person.2.fill", showsChevron: false)
+                    OGDivider()
+                    OGRow("Add more models or tweak settings anytime",
+                          icon: "gearshape", showsChevron: false)
+                }
+
+                // AI disclosure reminder
+                Text("AI responses may contain errors. Verify important information independently.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, 12)
             }
 
-            Spacer()
-
-            // What you can do
-            VStack(alignment: .leading, spacing: 14) {
-                tipRow(icon: "mic.fill", text: "Voice-first — talk naturally, get spoken answers")
-                tipRow(icon: "camera.fill", text: "Show things to the camera for visual AI")
-                tipRow(icon: "person.2.fill", text: "Switch personas for different AI personalities")
-                tipRow(icon: "gearshape", text: "Add more models or tweak settings anytime")
+            pageFooter {
+                primaryButton("Start Using OpenGlasses") {
+                    completeOnboarding()
+                }
             }
-            .padding(.horizontal, 28)
-
-            Spacer()
-
-            // AI disclosure reminder
-            Text("AI responses may contain errors. Verify important information independently.")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.35))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            primaryButton("Start Using OpenGlasses") {
-                completeOnboarding()
-            }
-            .padding(.top, 12)
-            .padding(.bottom, 20)
         }
     }
 
     // MARK: - Components
 
-    private func featureRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 32, alignment: .center)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    /// The action block every page ends with: one filled accent button, and at
+    /// most one quiet escape hatch under it.
+    private func pageFooter<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 2) {
+            content()
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
     }
 
-    private func tipRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
-                .frame(width: 24)
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.7))
-        }
+    private func primaryButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(label, action: action)
+            .buttonStyle(.ogProminent)
+            .frame(maxWidth: 340)
     }
 
-    private func providerCard(
-        provider: LLMProvider,
+    private func skipButton() -> some View {
+        Button("Skip setup") {
+            completeOnboarding()
+        }
+        .buttonStyle(.ogQuiet)
+    }
+
+    /// The trailing check on a selectable row. Kept in the layout at all times
+    /// so selecting doesn't reflow the row; the state itself is spoken by the
+    /// row's `.isSelected` trait rather than by the glyph.
+    private func selectionCheck(_ selected: Bool) -> some View {
+        Image(systemName: "checkmark")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+            .opacity(selected ? 1 : 0)
+            .accessibilityHidden(true)
+    }
+
+    private func providerRow(
+        _ provider: LLMProvider,
         name: String,
         model: String,
         detail: String,
@@ -1141,73 +1032,34 @@ struct OnboardingView: View {
         let selected = selectedProvider == provider
 
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                 selectedProvider = provider
                 modelName = model
             }
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(selected ? .white : .white.opacity(0.6))
-                    .frame(width: 36)
+            HStack(spacing: OGMetrics.rowSpacing) {
+                OGIconTile(systemName: icon)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .font(.body)
+                        .foregroundStyle(.primary)
                     Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                }
+                selectionCheck(selected)
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(
-                        selected ? Color.white.opacity(0.3) : Color.white.opacity(0.08),
-                        lineWidth: 1
-                    )
-            )
+            .frame(minHeight: rowMinHeight)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(name) — \(detail)")
-    }
-
-    private func primaryButton(_ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.headline)
-                .foregroundStyle(.black)
-                .frame(maxWidth: 340)
-                .padding(.vertical, 16)
-                .background(.white, in: RoundedRectangle(cornerRadius: 14))
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func skipButton() -> some View {
-        Button {
-            completeOnboarding()
-        } label: {
-            Text("Skip setup")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.4))
-        }
-        .padding(.top, 4)
-        .padding(.bottom, 8)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Logic
@@ -1341,7 +1193,7 @@ struct OnboardingView: View {
         // Start all services that depend on Wearables.shared + permissions
         appState.startPermissionRequiringServices()
 
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) {
             isVisible = false
         }
     }

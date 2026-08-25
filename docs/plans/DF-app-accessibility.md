@@ -1,6 +1,8 @@
 # Plan DF — App Accessibility: VoiceOver, Dynamic Type & Contrast
 
-**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · P2's onboarding slice lands with/after Plan DD (same screens)
+**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · **P2's onboarding slice shipped
+2026-08-25** with DG P2 (the screens converted, so the semantics landed with the look) ·
+the rest of P2 (session surface, captions overlay, hub) and P3–P4 planned
 
 ## Why
 
@@ -60,7 +62,7 @@ converts each screen, since a screen's semantics change when its idiom does.
 
 | Rank | Screen | Phase | State after P1 |
 |---|---|---|---|
-| 1 | Onboarding (`OnboardingView`, sign-in sheet) | P2 | — hand-rolled, no OGDesign contact, so P1 reached none of it. The critical failure if it stands. |
+| 1 | Onboarding (`OnboardingView`, sign-in sheet) | ✅ P2 | Converted with DG P2: pages built from OGDesign rows and stock grouped lists, so P1's semantics apply; each page's title is a header and takes VoiceOver focus on page change; selection carries `.isSelected`; permission state is said in words; decoration hidden; Reduce Motion honoured; hero pages scroll at AX5. All text on contrast-asserted token pairs (`onAccentLabel`, `okLabel`/`errorLabel` added for this screen). Owed: the running-UI audit, which is P4's target. |
 | 2 | Main session surface (`VoiceTab`, `BottomControlBar`, capsule) | P2 | Controls already carry labels, selected traits and hints; decorative waveline/ambience hidden. Outstanding: mode/state changes **announced**, not just re-rendered. |
 | 3 | Status card (`StatusIndicator`) | P2 | Already grouped with a composed label. Re-audit when P4 restyles it. |
 | 4 | Settings hub (`SettingsView`) | ✅ P1 | Built from OGDesign, so it inherits everything above: hero card summarised, rows composed, both switches named. |

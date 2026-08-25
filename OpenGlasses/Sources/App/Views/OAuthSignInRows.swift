@@ -47,155 +47,135 @@ extension ChatGPTOAuthService: OAuthSignInService {
     var signInRedirect: OAuthRedirect? { OAuthRedirect(ChatGPTOAuth.redirectURI) }
 }
 
-/// Dark full-screen-styled account sign-in section for the onboarding flow: same behaviour as
-/// `OAuthSignInRows`, restyled for the black onboarding pages. Generalized from the original
-/// Claude-only onboarding section so ChatGPT reuses it (BW P4).
+/// The onboarding flow's account sign-in section: same behaviour as `OAuthSignInRows`, shaped as
+/// a grouped `Section` so it sits in onboarding's list pages like any other iOS setting.
+/// Generalized from the original Claude-only onboarding section so ChatGPT reuses it (BW P4).
 ///
 /// Sign-in happens in an in-app sheet (Plan DD P2): when the provider's redirect points back at
 /// this device the code is captured straight off it and the user never pastes anything. The
 /// paste field and the open-in-browser route stay as fallbacks for every other case.
-struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
+struct OnboardingAccountSignInSection<Service: OAuthSignInService>: View {
     @ObservedObject var service: Service
     let signInLabel: String
     let caption: String
     let connectedCaption: String
     let pasteInstructions: String
-    /// Show the "or paste an API key" divider under the sign-in button (providers that also
-    /// accept a key; ChatGPT has no key so it hides it).
-    var showKeyDivider: Bool = false
     var onConnected: () -> Void = {}
     var onSignedOut: () -> Void = {}
 
+    @Environment(\.appAccent) private var accent
     @StateObject private var flow = SignInSheetModel()
     @State private var code = ""
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
 
     var body: some View {
-        if service.isConnected {
-            HStack(spacing: 10) {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Account connected")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white)
-                    Text(connectedCaption)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                Spacer()
-                Button("Sign out") {
-                    service.signOut()
-                    flow.reset()
-                    code = ""
-                    onSignedOut()
-                }
-                .font(.caption)
-                .foregroundStyle(.red.opacity(0.8))
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.green.opacity(0.4), lineWidth: 1)
-            )
-            .padding(.horizontal, 28)
-        } else {
-            VStack(spacing: 10) {
-                Button {
-                    startSignIn()
-                } label: {
-                    HStack(spacing: 8) {
-                        if flow.state.isBusy {
-                            ProgressView().scaleEffect(0.8).tint(.white)
-                            Text("Connecting…")
-                        } else {
-                            Image(systemName: "person.crop.circle.badge.checkmark")
-                            Text(signInLabel)
-                        }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .disabled(flow.state.isBusy)
-
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
-
-                if flow.showsPasteFallback {
-                    if let reason = flow.fallbackReason {
-                        Text(reason)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.6))
-                            .multilineTextAlignment(.center)
-                    }
-
-                    TextField("Paste authorization code", text: $code)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .font(.footnote.monospaced())
-                        .foregroundStyle(.white)
-                        .padding(12)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-
-                    Button {
-                        submitPastedCode()
-                    } label: {
-                        HStack(spacing: 6) {
-                            if flow.state.isBusy {
-                                ProgressView().scaleEffect(0.8)
-                                Text("Connecting…")
-                            } else {
-                                Image(systemName: "link")
-                                Text("Connect")
-                            }
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
-
-                    Button("Open in the browser instead") {
-                        flow.openExternally()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.55))
-
-                    Text(pasteInstructions)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                }
-
+        Section {
+            if service.isConnected {
+                connectedRow
+            } else {
+                signInRow
+                pasteFallbackRows
                 if let error = service.lastError {
                     Label(error, systemImage: "xmark.circle")
                         .font(.footnote)
-                        .foregroundStyle(.red.opacity(0.8))
+                        .foregroundStyle(OGTheme.errorLabel)
                 }
+            }
+        } header: {
+            Text("Account")
+        } footer: {
+            Text(service.isConnected ? connectedCaption : caption)
+        }
+    }
 
-                if showKeyDivider {
-                    HStack(spacing: 12) {
-                        Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
-                        Text("or paste an API key")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.4))
-                            .fixedSize()
-                        Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
-                    }
-                    .padding(.top, 6)
+    private var connectedRow: some View {
+        HStack(spacing: OGMetrics.rowSpacing) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(OGTheme.okLabel)
+                .accessibilityHidden(true)
+            Text("Account connected")
+                .font(.body)
+            Spacer(minLength: 8)
+            Button("Sign out", role: .destructive) {
+                service.signOut()
+                flow.reset()
+                code = ""
+                onSignedOut()
+            }
+            .buttonStyle(.borderless)
+        }
+        .frame(minHeight: rowMinHeight)
+    }
+
+    private var signInRow: some View {
+        Button {
+            startSignIn()
+        } label: {
+            HStack(spacing: 8) {
+                if flow.state.isBusy {
+                    ProgressView().controlSize(.small)
+                    Text("Connecting…")
+                } else {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                    Text(signInLabel)
                 }
             }
-            .padding(.horizontal, 28)
-            .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
-                SignInSheetView(url: request.url)
-                    .ignoresSafeArea()
+        }
+        .buttonStyle(.ogProminent)
+        .disabled(flow.state.isBusy)
+        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+        .listRowBackground(Color.clear)
+        .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
+            SignInSheetView(url: request.url)
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private var pasteFallbackRows: some View {
+        if flow.showsPasteFallback {
+            if let reason = flow.fallbackReason {
+                Text(reason)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            TextField("Paste authorization code", text: $code)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .font(.footnote.monospaced())
+                .frame(minHeight: rowMinHeight)
+
+            Button {
+                submitPastedCode()
+            } label: {
+                HStack(spacing: 8) {
+                    if flow.state.isBusy {
+                        ProgressView().controlSize(.small)
+                        Text("Connecting…")
+                    } else {
+                        Image(systemName: "link")
+                        Text("Connect")
+                    }
+                }
+                .font(.body)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                .frame(minHeight: rowMinHeight)
+            }
+            .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
+
+            Button("Open in the browser instead") {
+                flow.openExternally()
+            }
+            .font(.body)
+            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+            .frame(minHeight: rowMinHeight)
+
+            Text(pasteInstructions)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

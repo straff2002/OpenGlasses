@@ -77,7 +77,9 @@ final class OGDesignContrastTests: XCTestCase {
         for expected in ["row title on card", "row subtitle on card",
                          "section header on canvas", "hero title on ink",
                          "hero status on ink", "hero unavailable chip",
-                         "chip label on card", "notice on canvas"] {
+                         "chip label on card", "notice on canvas",
+                         "filled button label on accent",
+                         "success label on card", "error label on canvas"] {
             XCTAssertTrue(names.contains(expected), "audit lost the \"\(expected)\" pair")
         }
     }
@@ -139,6 +141,57 @@ final class OGDesignContrastTests: XCTestCase {
         let light = OGTheme.tintedAccentLabelValue(OGTheme.Token.accent.light, in: .light)
         let shift = ContrastRatio.ratio(light, OGTheme.Token.accent.light)
         XCTAssertLessThan(shift, 1.3, "light-mode coral moved further than a nudge")
+    }
+
+    /// A filled accent button paints the accent as *ground*, so the guarantee
+    /// is about the label on top of it — and it has to hold for every preset,
+    /// light and dark (the shipped coral wants white in one and near-black in
+    /// the other).
+    func testFilledButtonLabelClearsAAForEveryPreset() {
+        for preset in AppAccent.presets {
+            for scheme in OGColorScheme.allCases {
+                let accent = OGTheme.resolved(preset.color, for: scheme)
+                let label = OGTheme.onAccentLabelValue(accent)
+                let ratio = ContrastRatio.ratio(label, accent)
+                XCTAssertTrue(
+                    ContrastRatio.meetsAA(ratio, size: .normal),
+                    """
+                    \(preset.name) in \(scheme) measures \
+                    \(String(format: "%.2f", ratio)):1 as a filled button label.
+                    """
+                )
+            }
+        }
+        // The choice is one pole or the other, never a tint of the accent.
+        for preset in AppAccent.presets {
+            let label = OGTheme.onAccentLabelValue(OGTheme.resolved(preset.color, for: .light))
+            XCTAssertTrue(label == .white || label == .black)
+        }
+    }
+
+    /// The status hues stay what a 7pt dot needs; the *labels* beside them are
+    /// the corrected version — the raw green is unreadable as text on a card.
+    func testStatusLabelsAreCorrectedWhileTheDotsAreNot() {
+        XCTAssertEqual(OGTheme.Token.ok.light.hex, 0x34C759, "the success dot must not move")
+        XCTAssertFalse(
+            ContrastRatio.meetsAA(
+                ContrastRatio.ratio(OGTheme.Token.ok.light, OGTheme.Token.card.light),
+                size: .normal
+            ),
+            "if the raw green ever passes as text, the correction has stopped being needed"
+        )
+        for token in [OGTheme.okLabelToken, OGTheme.warnLabelToken, OGTheme.errorLabelToken] {
+            for scheme in OGColorScheme.allCases {
+                for surface in [OGTheme.Token.card, OGTheme.Token.canvas] {
+                    XCTAssertTrue(
+                        ContrastRatio.meetsAA(
+                            ContrastRatio.ratio(token.value(for: scheme), surface.value(for: scheme)),
+                            size: .normal
+                        )
+                    )
+                }
+            }
+        }
     }
 
     func testReadableLeavesAPassingColourAlone() {
