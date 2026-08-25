@@ -10,45 +10,19 @@ import SwiftUI
 //   * Warm neutrals. A slightly warm canvas and card fill in both schemes,
 //     not stark systemGroupedBackground grey.
 //   * Grouped cards: 22pt continuous corners, hairline dividers, 52pt rows.
-//   * Semantic type only (.body / .footnote / …) so Dynamic Type works.
+//   * Semantic type only (.body / .footnote / …) so Dynamic Type works, and
+//     the metrics that sit *beside* type (row height, icon tile, divider
+//     inset) scale with it via `@ScaledMetric`.
+//   * Neutral washes come from the system fill colours, so a chip's "off"
+//     ground is the same grey the rest of iOS uses.
 //   * Liquid Glass is reserved for chrome (hero card, floating bars) —
 //     scrolling list content uses flat card fills so it stays calm.
+//   * Every primitive carries its own VoiceOver semantics: decoration is
+//     hidden, text composes into one element, controls keep their name.
 //
-// Everything here is presentation only — no view models, no state.
-
-// MARK: - Palette
-
-enum OGTheme {
-    /// Adaptive pair helper: most tokens carry explicit light/dark values
-    /// rather than relying on system semantic colours (which are cool-grey).
-    static func adaptive(light: UInt32, dark: UInt32) -> Color {
-        Color(UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(
-                red: CGFloat((hex >> 16) & 0xFF) / 255,
-                green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255,
-                alpha: 1
-            )
-        })
-    }
-
-    /// Screen background — warm off-white in light, warm near-black in dark.
-    static let canvas = adaptive(light: 0xF5F3F0, dark: 0x151413)
-    /// Card / row fill, one step above the canvas.
-    static let card = adaptive(light: 0xFFFFFF, dark: 0x201E1C)
-    /// Hero-card chrome, always dark — the accent glow carries the warmth.
-    static let ink = Color(red: 0x1C / 255, green: 0x1B / 255, blue: 0x1A / 255)
-    /// Text on ink.
-    static let onInk = Color(red: 0xF5 / 255, green: 0xF2 / 255, blue: 0xEE / 255)
-    /// Hairline between rows inside a card.
-    static let hairline = adaptive(light: 0x3C3C43, dark: 0xF5F2EE).opacity(0.12)
-
-    // Status dots only — never row-icon tints.
-    static let ok = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
-    static let warn = Color.orange
-    static let error = Color(red: 0xE0 / 255, green: 0x30 / 255, blue: 0x26 / 255)
-}
+// The palette, opacity roles and derived accent colours live in
+// `OGDesignTokens.swift`. Everything here is presentation only — no view
+// models, no state.
 
 // MARK: - Containers
 
@@ -69,12 +43,27 @@ struct OGCard<Content: View>: View {
 
 /// Hairline between rows inside a card.
 struct OGDivider: View {
+    /// The icon tile, at the same scale `OGIconTile` draws it — the inset is
+    /// the row's leading padding plus the tile plus the row's gutter, so the
+    /// hairline keeps meeting the text edge at every Dynamic Type size rather
+    /// than drifting past it.
+    @ScaledMetric(relativeTo: .body) private var tile: CGFloat = OGMetrics.iconTile
+
     var body: some View {
         Rectangle()
             .fill(OGTheme.hairline)
             .frame(height: 0.5)
-            .padding(.leading, 57)   // clears the icon tile so text edges align
+            .padding(.leading, OGMetrics.rowHorizontalPadding + tile + OGMetrics.rowSpacing)
+            .accessibilityHidden(true)
     }
+}
+
+/// The fixed metrics `OGRow` and `OGDivider` share, so the hairline's inset is
+/// derived from the row's own geometry instead of a copied constant.
+enum OGMetrics {
+    static let iconTile: CGFloat = 30
+    static let rowSpacing: CGFloat = 12
+    static let rowHorizontalPadding: CGFloat = 16
 }
 
 /// Section = uppercase caption + card + optional footer, the unit hub
@@ -91,6 +80,10 @@ struct OGSection<Content: View>: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 20)
+                    // Read the header as written; VoiceOver spells some
+                    // all-caps words out letter by letter.
+                    .accessibilityLabel(header)
+                    .accessibilityAddTraits(.isHeader)
             }
             OGCard(content: content)
             if let footer {
@@ -128,33 +121,45 @@ struct OGIconTile: View {
     let systemName: String
     var muted: Bool = false
     @Environment(\.appAccent) private var accent
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = OGMetrics.iconTile
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(muted ? Color.primary.opacity(0.08) : accent.opacity(0.14))
+            .fill(muted ? Color(.quaternarySystemFill) : accent.opacity(OGTheme.Opacity.accentFill))
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: systemName)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(muted ? AnyShapeStyle(Color.secondary) : AnyShapeStyle(accent))
+                    .foregroundStyle(
+                        muted
+                            ? AnyShapeStyle(Color.secondary)
+                            : AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
+                    )
             }
+            // The row title says what the row is; the glyph repeats it.
+            .accessibilityHidden(true)
     }
 }
 
 /// A card row: icon tile, title (+ optional subtitle), trailing value,
 /// chevron. 52pt floor so one-line rows are uniform and wrapped
-/// subtitles still breathe.
+/// subtitles still breathe — and comfortably past the 44pt touch minimum.
 struct OGRow<Trailing: View>: View {
     let title: String
     var icon: String? = nil
     var mutedIcon: Bool = false
     var subtitle: String? = nil
     var showsChevron: Bool = true
+    /// Fold the trailing view into the row's single VoiceOver element. True for
+    /// a plain value ("Model — Claude Sonnet" is one thought); false when the
+    /// trailing view is a control, which has to stay its own focusable element.
+    var combinesTrailing: Bool = false
     @ViewBuilder var trailing: () -> Trailing
 
+    @ScaledMetric(relativeTo: .body) private var minRowHeight: CGFloat = 52
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: OGMetrics.rowSpacing) {
             if let icon {
                 OGIconTile(systemName: icon, muted: mutedIcon)
             }
@@ -169,18 +174,40 @@ struct OGRow<Trailing: View>: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            // Title and subtitle are one thought, not two stops.
+            .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
             trailing()
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, OGMetrics.rowHorizontalPadding)
         .padding(.vertical, 10)
-        .frame(minHeight: 52)
+        .frame(minHeight: minRowHeight)
         .contentShape(Rectangle())
+        .modifier(OGRowAccessibility(combines: combinesTrailing, navigates: showsChevron))
+    }
+}
+
+/// Applied as a modifier so the two shapes stay one code path: a value row
+/// becomes a single element (and, when it carries the chevron affordance, a
+/// button); a control row keeps its children focusable.
+private struct OGRowAccessibility: ViewModifier {
+    let combines: Bool
+    let navigates: Bool
+
+    func body(content: Content) -> some View {
+        if combines {
+            content
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(navigates ? .isButton : [])
+        } else {
+            content
+        }
     }
 }
 
@@ -197,7 +224,7 @@ extension OGRow {
     ) {
         self.init(
             title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
-            showsChevron: showsChevron, trailing: trailing
+            showsChevron: showsChevron, combinesTrailing: false, trailing: trailing
         )
     }
 }
@@ -213,9 +240,41 @@ extension OGRow where Trailing == OGRowValue {
     ) {
         self.init(
             title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
-            showsChevron: showsChevron,
+            showsChevron: showsChevron, combinesTrailing: true,
             trailing: { OGRowValue(value: value) }
         )
+    }
+}
+
+extension OGRow where Trailing == OGToggle {
+    /// Switch row. Use this rather than dropping a bare `Toggle("")` into the
+    /// trailing closure: an empty title plus `.labelsHidden()` reaches VoiceOver
+    /// as an unnamed switch, and the row title never gets attached to it.
+    init(
+        _ title: String,
+        isOn: Binding<Bool>,
+        icon: String? = nil,
+        mutedIcon: Bool = false,
+        subtitle: String? = nil
+    ) {
+        self.init(
+            title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
+            showsChevron: false, combinesTrailing: false,
+            trailing: { OGToggle(label: title, isOn: isOn) }
+        )
+    }
+}
+
+/// A row-hosted switch that keeps its name. `.labelsHidden()` hides the label
+/// visually but leaves it in the accessibility tree — which is exactly what a
+/// row-titled switch wants, provided the label was ever set.
+struct OGToggle: View {
+    let label: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(label, isOn: $isOn)
+            .labelsHidden()
     }
 }
 
@@ -241,16 +300,29 @@ struct OGChip: View {
     var available: Bool = true
     @Environment(\.appAccent) private var accent
 
+    /// Availability is carried by colour alone on screen; VoiceOver gets it in
+    /// words. Pure, so the wording is covered by the suite.
+    static func spokenLabel(text: String, available: Bool) -> String {
+        available ? text : "\(text), unavailable"
+    }
+
     var body: some View {
         Text(text)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(available ? AnyShapeStyle(accent) : AnyShapeStyle(Color.secondary))
+            .foregroundStyle(
+                available
+                    ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
+                    : AnyShapeStyle(Color.secondary)
+            )
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                available ? accent.opacity(0.14) : Color.secondary.opacity(0.12),
+                available
+                    ? accent.opacity(OGTheme.Opacity.accentFill)
+                    : Color(.quaternarySystemFill),
                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
             )
+            .accessibilityLabel(Self.spokenLabel(text: text, available: available))
     }
 }
 
@@ -264,13 +336,21 @@ struct OGBadge: View {
         Text(text.uppercased())
             .font(.caption2.weight(.bold))
             .kerning(0.4)
-            .foregroundStyle(prominent ? AnyShapeStyle(accent) : AnyShapeStyle(Color.secondary))
+            .foregroundStyle(
+                prominent
+                    ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
+                    : AnyShapeStyle(Color.secondary)
+            )
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                prominent ? accent.opacity(0.14) : Color.secondary.opacity(0.12),
+                prominent
+                    ? accent.opacity(OGTheme.Opacity.accentFill)
+                    : Color(.quaternarySystemFill),
                 in: RoundedRectangle(cornerRadius: 5, style: .continuous)
             )
+            // As written, not as displayed — short all-caps words get spelled out.
+            .accessibilityLabel(text)
     }
 }
 
@@ -280,24 +360,42 @@ struct OGStatusPill: View {
     var dot: Color? = nil
     var tinted: Bool = true
     @Environment(\.appAccent) private var accent
+    @ScaledMetric(relativeTo: .caption) private var dotSize: CGFloat = 7
+
+    /// VoiceOver reads the middot as "middle dot"; the pill means it as a
+    /// separator. Pure, so the suite covers it.
+    static func spokenLabel(_ text: String) -> String {
+        text.replacingOccurrences(of: " · ", with: ", ")
+    }
 
     var body: some View {
         HStack(spacing: 5) {
             if let dot {
-                Circle().fill(dot).frame(width: 7, height: 7)
+                Circle()
+                    .fill(dot)
+                    .frame(width: dotSize, height: dotSize)
+                    .accessibilityHidden(true)
             }
             Text(text)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(tinted ? AnyShapeStyle(accent) : AnyShapeStyle(Color.secondary))
+                .foregroundStyle(
+                    tinted
+                        ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
+                        : AnyShapeStyle(Color.secondary)
+                )
                 .lineLimit(1)
                 .fixedSize()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(
-            tinted ? accent.opacity(0.12) : Color.secondary.opacity(0.12),
+            tinted
+                ? accent.opacity(OGTheme.Opacity.accentPillFill)
+                : Color(.quaternarySystemFill),
             in: Capsule()
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.spokenLabel(text))
     }
 }
 
@@ -311,16 +409,20 @@ struct OGNotice: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: systemImage)
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(accent)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                .accessibilityHidden(true)
             Text(text)
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(accent)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            accent.opacity(OGTheme.Opacity.accentNoticeFill),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
     }
 }
 
@@ -346,6 +448,10 @@ struct OGStatTile: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(OGTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // "Sessions, 12" rather than "12" then "Sessions" as separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(caption)
+        .accessibilityValue(value)
     }
 }
 
@@ -353,6 +459,10 @@ struct OGStatTile: View {
 
 /// Dark hero atop the Settings hub: device identity, live status, and
 /// capability chips, under a soft accent glow. Chrome, so it earns glass.
+///
+/// The card is ink in both schemes, so every accent it uses comes from the
+/// accent's *dark* side (`OGTheme.inkAccent…`) — an adaptive accent's
+/// light-mode value is picked to sit on white and measures well under AA here.
 struct OGHeroDeviceCard: View {
     let title: String
     let status: String
@@ -361,17 +471,45 @@ struct OGHeroDeviceCard: View {
     var batteryPercent: Int? = nil
     var chips: [(label: String, available: Bool)] = []
     @Environment(\.appAccent) private var accent
+    @ScaledMetric(relativeTo: .body) private var glyphTile: CGFloat = 50
+    @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
+
+    /// The whole card as one spoken sentence — identity, state, power, then
+    /// what the device can and can't do. Pure, so the suite covers the wording.
+    static func spokenSummary(
+        title: String,
+        status: String,
+        batteryPercent: Int?,
+        chips: [(label: String, available: Bool)]
+    ) -> String {
+        var parts = [title, status]
+        if let batteryPercent {
+            parts.append("Battery \(batteryPercent) percent")
+        }
+        let available = chips.filter { $0.available }.map { $0.label }
+        let unavailable = chips.filter { !$0.available }.map { $0.label }
+        if !available.isEmpty {
+            parts.append("Available: " + available.joined(separator: ", "))
+        }
+        if !unavailable.isEmpty {
+            parts.append("Unavailable: " + unavailable.joined(separator: ", "))
+        }
+        return parts.joined(separator: ". ")
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let inkAccent = OGTheme.inkAccent(accent)
+        let inkAccentLabel = OGTheme.inkAccentLabel(accent)
+
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(accent.opacity(0.2))
-                    .frame(width: 50, height: 50)
+                RoundedRectangle(cornerRadius: glyphTile * 0.26, style: .continuous)
+                    .fill(inkAccent.opacity(0.2))
+                    .frame(width: glyphTile, height: glyphTile)
                     .overlay {
                         Image(systemName: "eyeglasses")
                             .font(.title3)
-                            .foregroundStyle(accent)
+                            .foregroundStyle(inkAccentLabel)
                     }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -379,10 +517,10 @@ struct OGHeroDeviceCard: View {
                         .font(.body.weight(.semibold))
                         .foregroundStyle(OGTheme.onInk)
                     HStack(spacing: 6) {
-                        Circle().fill(dot).frame(width: 7, height: 7)
+                        Circle().fill(dot).frame(width: dotSize, height: dotSize)
                         Text(status)
                             .font(.footnote)
-                            .foregroundStyle(OGTheme.onInk.opacity(0.6))
+                            .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary))
                             .lineLimit(1)
                     }
                 }
@@ -396,7 +534,7 @@ struct OGHeroDeviceCard: View {
                         Text("\(batteryPercent)%")
                             .font(.footnote.weight(.semibold))
                     }
-                    .foregroundStyle(OGTheme.onInk.opacity(0.75))
+                    .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkSecondary))
                 }
             }
 
@@ -405,13 +543,17 @@ struct OGHeroDeviceCard: View {
                     ForEach(chips, id: \.label) { chip in
                         Text(chip.label)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(chip.available ? accent : OGTheme.onInk.opacity(0.4))
+                            .foregroundStyle(
+                                chip.available
+                                    ? inkAccentLabel
+                                    : OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary)
+                            )
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
                                 chip.available
-                                    ? accent.opacity(0.22)
-                                    : OGTheme.onInk.opacity(0.1),
+                                    ? inkAccent.opacity(OGTheme.Opacity.accentInkFill)
+                                    : OGTheme.onInk.opacity(OGTheme.Opacity.onInkFill),
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                             )
                     }
@@ -428,12 +570,19 @@ struct OGHeroDeviceCard: View {
                 .fill(OGTheme.ink)
                 .overlay {
                     RadialGradient(
-                        colors: [accent.opacity(0.28), .clear],
+                        colors: [inkAccent.opacity(0.28), .clear],
                         center: .topLeading, startRadius: 0, endRadius: 240
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Self.spokenSummary(
+                title: title, status: status,
+                batteryPercent: batteryPercent, chips: chips
+            )
+        )
     }
 
     private func batterySymbol(_ percent: Int) -> String {

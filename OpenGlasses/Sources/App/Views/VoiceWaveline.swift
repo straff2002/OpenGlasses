@@ -18,6 +18,11 @@ struct VoiceWaveline: View {
     var state: VoiceVisualState = .idle
     var height: CGFloat = 76
     @Environment(\.appAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The frame the still fallback draws. Any constant does — it's picked so
+    /// the strands are visibly separated rather than momentarily stacked.
+    static let stillTime: Double = 0.7
 
     /// A spectrum around the SELECTED accent — the primary strand is the accent itself and the
     /// companions are hue-rotated variants, spread far enough apart to stay clearly distinct
@@ -67,24 +72,19 @@ struct VoiceWaveline: View {
 
     var body: some View {
         let strands = Self.strands(around: accent)
-        // Capped at 60fps: the glow's 6px blur is an offscreen Gaussian pass per frame, and on
-        // ProMotion an uncapped .animation runs it at 120Hz — twice the GPU/battery for motion
-        // this slow-moving, with no visible difference.
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            Canvas { context, size in
-                // Soft glow underlay traces the primary strand, then the ribbon on top.
-                if let primary = strands.last {
-                    var glow = context
-                    glow.addFilter(.blur(radius: 6))
-                    glow.stroke(strandPath(primary, time: t, size: size),
-                                with: shading(for: primary, opacityScale: 0.30, width: size.width),
-                                style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                }
-                for strand in strands {
-                    context.stroke(strandPath(strand, time: t, size: size),
-                                   with: shading(for: strand, width: size.width),
-                                   style: StrokeStyle(lineWidth: strand.lineWidth, lineCap: .round))
+        Group {
+            if reduceMotion {
+                // Reduce Motion: the same ribbon, held still. The state change
+                // still lands — the wave's shape is what distinguishes the four
+                // states — it just cross-fades in rather than travelling.
+                ribbon(strands, time: Self.stillTime)
+                    .transition(.opacity)
+            } else {
+                // Capped at 60fps: the glow's 6px blur is an offscreen Gaussian pass per frame,
+                // and on ProMotion an uncapped .animation runs it at 120Hz — twice the
+                // GPU/battery for motion this slow-moving, with no visible difference.
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+                    ribbon(strands, time: timeline.date.timeIntervalSinceReferenceDate)
                 }
             }
         }
@@ -97,6 +97,25 @@ struct VoiceWaveline: View {
         .onAppear { amplitudes = WavelineParams.params(for: state) }
         .accessibilityHidden(true)   // decorative; state is announced elsewhere
         .animation(.easeInOut(duration: 0.6), value: amplitudes)
+    }
+
+    /// One frame of the ribbon: soft glow underlay tracing the primary strand,
+    /// then the strands on top.
+    private func ribbon(_ strands: [WavelineStrand], time: Double) -> some View {
+        Canvas { context, size in
+            if let primary = strands.last {
+                var glow = context
+                glow.addFilter(.blur(radius: 6))
+                glow.stroke(strandPath(primary, time: time, size: size),
+                            with: shading(for: primary, opacityScale: 0.30, width: size.width),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
+            }
+            for strand in strands {
+                context.stroke(strandPath(strand, time: time, size: size),
+                               with: shading(for: strand, width: size.width),
+                               style: StrokeStyle(lineWidth: strand.lineWidth, lineCap: .round))
+            }
+        }
     }
 
     private func strandPath(_ strand: WavelineStrand, time: Double, size: CGSize) -> Path {
@@ -149,8 +168,14 @@ struct WavelineStrand {
 struct VoiceAmbience: View {
     var state: VoiceVisualState = .idle
     @Environment(\.appAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var glow: Double {
+    /// Radiance for a state. Under Reduce Motion the glow holds steady rather
+    /// than breathing with the session — the waveline's shape and the status
+    /// card already carry the state, so nothing is lost but the pulse.
+    /// Pure, so the fallback is covered headlessly.
+    static func glow(for state: VoiceVisualState, reduceMotion: Bool) -> Double {
+        guard !reduceMotion else { return 0.06 }
         switch state {
         case .idle: return 0.04
         case .listening: return 0.06
@@ -158,6 +183,8 @@ struct VoiceAmbience: View {
         case .speaking: return 0.11
         }
     }
+
+    private var glow: Double { Self.glow(for: state, reduceMotion: reduceMotion) }
 
     var body: some View {
         ZStack {

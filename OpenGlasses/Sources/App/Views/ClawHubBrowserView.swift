@@ -101,7 +101,10 @@ struct ClawHubBrowserView: View {
 
                             Spacer()
 
-                            Toggle("", isOn: Binding(
+                            // Named, not `Toggle("")` — `.labelsHidden()` only hides
+                            // the label visually, so an empty one reaches VoiceOver
+                            // as an unnamed switch.
+                            Toggle(skill.name, isOn: Binding(
                                 get: { skill.enabled },
                                 set: { skillStore.setEnabled(skill.slug, enabled: $0) }
                             ))

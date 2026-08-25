@@ -106,19 +106,17 @@ struct SettingsView: View {
 
             // MARK: Simple Mode (always visible so the owner can leave it — behind the owner gate)
             OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
-                OGRow("Simple Mode", icon: "dial.low", showsChevron: false) {
-                    Toggle("", isOn: Binding(
+                OGRow(
+                    "Simple Mode",
+                    isOn: Binding(
                         get: { simpleModeEnabled },
                         set: { requestSimpleModeChange(to: $0) }
-                    ))
-                    .labelsHidden()
-                }
+                    ),
+                    icon: "dial.low"
+                )
                 OGDivider()
-                OGRow("Lock Settings", icon: "faceid", showsChevron: false) {
-                    Toggle("", isOn: $settingsOwnerGateEnabled)
-                        .labelsHidden()
-                        .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
-                }
+                OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
+                    .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
                 if exitGate.lastFailed {
                     OGDivider()
                     Label("Couldn't verify it's you — Simple Mode stays on.", systemImage: "exclamationmark.triangle")

@@ -3,6 +3,7 @@ import SwiftUI
 struct LaunchScreen: View {
     @State private var isAnimating = false
     @State private var glowPulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -28,8 +29,12 @@ struct LaunchScreen: View {
                             )
                         )
                         .frame(width: 420, height: 420)
+                        // Reduce Motion: the glow fades up once and stays put
+                        // instead of breathing for as long as the screen is up.
                         .animation(
-                            .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                            reduceMotion
+                                ? .easeOut(duration: 0.8)
+                                : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
                             value: glowPulse
                         )
 
@@ -40,7 +45,8 @@ struct LaunchScreen: View {
                         .aspectRatio(contentMode: .fit)
                         .foregroundStyle(AppAccent.aiCoral)
                         .frame(maxWidth: 240)
-                        .scaleEffect(isAnimating ? 1.0 : 0.85)
+                        // Reduce Motion turns the entrance into a plain fade.
+                        .scaleEffect(reduceMotion || isAnimating ? 1.0 : 0.85)
                         .opacity(isAnimating ? 1.0 : 0)
                 }
 
