@@ -722,10 +722,14 @@ final class LocalLLMService: ObservableObject {
     // MARK: - Storage Info
 
     /// Persistent model storage directory (Application Support, never purged by iOS).
-    var modelDirectory: URL {
+    /// `nonisolated static` so callers outside the main actor (first-run defaults) can ask what
+    /// is on disk without touching the service.
+    nonisolated static var modelCacheDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return appSupport.appendingPathComponent("LocalModels", isDirectory: true)
     }
+
+    var modelDirectory: URL { Self.modelCacheDirectory }
 
     /// Get the on-disk path for a model. swift-huggingface uses a Python-compatible
     /// cache layout: <cacheDir>/models--{org}--{name}/
@@ -791,10 +795,13 @@ final class LocalLLMService: ObservableObject {
     }
 
     /// List all downloaded model IDs by scanning the cache directory.
-    func downloadedModelIds() -> [String] {
+    func downloadedModelIds() -> [String] { Self.downloadedModelIdsOnDisk() }
+
+    /// Filesystem-only view of the same list — usable before the service exists.
+    nonisolated static func downloadedModelIdsOnDisk() -> [String] {
         // swift-huggingface stores as: <cacheDir>/models--{org}--{modelName}
         guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: modelDirectory, includingPropertiesForKeys: [.isDirectoryKey]
+            at: modelCacheDirectory, includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
         var ids: [String] = []
