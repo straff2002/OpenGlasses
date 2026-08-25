@@ -61,7 +61,11 @@ final class DwellCaptureService: ObservableObject {
 
         let captured = Self.crop(frame, to: box) ?? frame
         lastCapture = captured
-        UIImageWriteToSavedPhotosAlbum(captured, nil, nil, nil)
+        // Same album, same one prompt, as every other capture — a dwell capture used to land
+        // loose in the camera roll and ask for the library on its own. Not awaited: the very
+        // first save can sit on a permission prompt, and the wearer should hear the confirmation
+        // when the capture happened, not when they answer it.
+        Task { await GlassesPhotoAlbum.saveImage(captured) }
         await announce?("Captured that.")
     }
 

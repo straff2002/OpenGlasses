@@ -34,6 +34,33 @@ final class CameraErrorPolicyTests: XCTestCase {
         }
     }
 
+    /// A warmup wait aborts on exactly the errors that mean `start()` already failed — more nudges
+    /// replay the same cycle, and only the caller can rebuild the stream. This is deliberately the
+    /// inverse of the capture decision for these two cases.
+    func testStartFailuresAbortAWarmupWait() {
+        for error in transient {
+            XCTAssertTrue(CameraErrorPolicy.abortsWarmup(error), "\(error) should abort a warmup wait")
+            XCTAssertFalse(CameraErrorPolicy.abortsCapture(error), "\(error) should not abort a pending capture")
+        }
+    }
+
+    /// Terminal conditions stay bounded by the timeout rather than aborting warmup: whether they
+    /// also arrive transiently during the cold-start churn is unverified, and an over-eager abort
+    /// would break the healthy slow start the full window exists to protect.
+    func testTerminalErrorsDoNotAbortAWarmupWait() {
+        for error in terminal {
+            XCTAssertFalse(CameraErrorPolicy.abortsWarmup(error), "\(error) should not abort a warmup wait")
+        }
+    }
+
+    /// Regression guard for the whole point of the abort: a warmup window shorter than the longest
+    /// healthy cold start makes every healthy cold start fail its first attempt and rebuild.
+    func testWarmupWindowClearsTheObservedColdStart() {
+        XCTAssertGreaterThanOrEqual(StreamRecoveryPolicy.warmupTimeout,
+                                    StreamRecoveryPolicy.observedColdStart,
+                                    "a healthy cold start must fit inside a single warmup attempt")
+    }
+
     func testMessagesAreSpecificForKeyConditions() {
         XCTAssertTrue(CameraErrorPolicy.message(for: .hingesClosed).localizedCaseInsensitiveContains("hinge"))
         XCTAssertTrue(CameraErrorPolicy.message(for: .thermalCritical).localizedCaseInsensitiveContains("hot"))

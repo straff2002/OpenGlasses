@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import Combine
-import Photos
 import UIKit
 
 /// Records video + audio from a stream of UIImage frames and the shared audio engine.
@@ -69,9 +68,6 @@ class VideoRecordingService: ObservableObject {
     private nonisolated(unsafe) var pixelBufferPool: CVPixelBufferPool?
     private nonisolated(unsafe) var poolWidth: Int = 0
     private nonisolated(unsafe) var poolHeight: Int = 0
-
-    /// Name of the Photos album where recordings are saved.
-    private nonisolated static let albumName = "Glasses"
 
     /// Transcript accumulated during recording (from ambient captions).
     @Published private(set) var recordingTranscript: String = ""
@@ -507,59 +503,16 @@ class VideoRecordingService: ObservableObject {
     /// Save the video file to the "Glasses" album in the Photos library.
     /// Returns whether the save landed — a denied library or a failed change request is a normal
     /// outcome here, not an error, because the on-disk copy has already been written.
+    ///
+    /// The album resolution and the single authorization prompt behind it live in
+    /// `GlassesPhotoAlbum`; this used to be one of two private copies of both.
     @discardableResult
     private func saveVideoToPhotos(_ url: URL) async -> Bool {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        guard status == .authorized || status == .limited else {
-            NSLog("[Recording] Photo library access denied")
-            return false
+        let saved = await GlassesPhotoAlbum.saveVideo(at: url)
+        if saved {
+            NSLog("[Recording] Video saved to %@ album", GlassesPhotoAlbum.albumName)
         }
-
-        let album = fetchGlassesAlbum()
-
-        do {
-            try await PHPhotoLibrary.shared().performChanges {
-                let creationRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
-
-                if let album {
-                    let albumChangeRequest = PHAssetCollectionChangeRequest(for: album)
-                    if let placeholder = creationRequest?.placeholderForCreatedAsset {
-                        albumChangeRequest?.addAssets([placeholder] as NSArray)
-                    }
-                }
-            }
-            NSLog("[Recording] Video saved to Glasses album")
-            return true
-        } catch {
-            NSLog("[Recording] Save to Photos failed: %@", error.localizedDescription)
-            return false
-        }
-    }
-
-    /// Fetch the "Glasses" album, creating it if it doesn't exist.
-    private nonisolated func fetchGlassesAlbum() -> PHAssetCollection? {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", VideoRecordingService.albumName)
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-
-        if let existing = collections.firstObject {
-            return existing
-        }
-
-        var localIdentifier: String?
-        do {
-            try PHPhotoLibrary.shared().performChangesAndWait {
-                let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(
-                    withTitle: VideoRecordingService.albumName)
-                localIdentifier = createRequest.placeholderForCreatedAssetCollection.localIdentifier
-            }
-        } catch {
-            NSLog("[Recording] Failed to create Glasses album: %@", error.localizedDescription)
-            return nil
-        }
-
-        guard let identifier = localIdentifier else { return nil }
-        return PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil).firstObject
+        return saved
     }
 
     // MARK: - Transcript Persistence

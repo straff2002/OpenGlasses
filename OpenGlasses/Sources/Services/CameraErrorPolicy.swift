@@ -58,4 +58,26 @@ enum CameraErrorPolicy {
             return false
         }
     }
+
+    /// Whether a *warmup wait* (waiting for the stream to reach `.streaming`) should abort now
+    /// rather than keep nudging `start()` until the timeout.
+    ///
+    /// Deliberately the inverse of `abortsCapture` for these two: a pending capture may still be
+    /// rescued by its own timeout backstop, but these errors mean `start()` itself already failed,
+    /// and every further nudge just replays the same cycle (field log: waiting → starting →
+    /// stopping → error, three times, then a 20 s timeout that was never going to be reached).
+    /// The stream has to be rebuilt, which only the caller can do.
+    ///
+    /// The terminal conditions (`hingesClosed`, thermal, battery, device gone) are *not* listed:
+    /// whether they also arrive transiently during the ~15–18 s cold-start churn is unverified, and
+    /// an over-eager abort would break exactly the healthy slow start the full timeout protects.
+    /// They are still bounded by the timeout, as they are today.
+    static func abortsWarmup(_ error: StreamError) -> Bool {
+        switch error {
+        case .internalError, .videoStreamingError:
+            return true
+        default:
+            return false
+        }
+    }
 }
