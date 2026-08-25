@@ -34,6 +34,7 @@ struct AddModelView: View {
                     resetModelOnProviderChange: true
                 )
             }
+            .ogFormStyle()
             .navigationTitle("Add Model")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {

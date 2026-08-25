@@ -12,16 +12,19 @@ struct GoogleSignInRows: View {
     @State private var projectID = Config.vertexProjectID
     @State private var region = Config.vertexRegion
     @State private var signingIn = false
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
 
     var body: some View {
         TextField("GCP OAuth Client ID (…apps.googleusercontent.com)", text: $clientID)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
+            .frame(minHeight: rowMinHeight)
             .onChange(of: clientID) { _, value in Config.setGoogleOAuthClientID(value) }
 
         TextField("GCP Project ID", text: $projectID)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
+            .frame(minHeight: rowMinHeight)
             .onChange(of: projectID) { _, value in
                 Config.setVertexProjectID(value)
                 onChange()
@@ -36,19 +39,21 @@ struct GoogleSignInRows: View {
         }
 
         if google.isConnected {
-            HStack {
-                Label("Google account connected", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Spacer()
-                Button("Sign Out") {
+            HStack(spacing: OGMetrics.rowSpacing) {
+                OGStatusLabel("Google account connected", kind: .ok)
+                Spacer(minLength: 8)
+                Button("Sign Out", role: .destructive) {
                     google.signOut()
                     onChange()
                 }
-                .foregroundStyle(.red)
+                .buttonStyle(.borderless)
             }
+            .frame(minHeight: rowMinHeight)
+
             Text("Requests authenticate with OAuth on your GCP project — no API key.")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             Button {
                 Task {
@@ -58,24 +63,31 @@ struct GoogleSignInRows: View {
                     onChange()
                 }
             } label: {
-                if signingIn {
-                    ProgressView()
-                } else {
-                    Label("Sign in with Google", systemImage: "person.crop.circle.badge.checkmark")
+                HStack(spacing: 8) {
+                    if signingIn {
+                        ProgressView().controlSize(.small)
+                        Text("Connecting…")
+                    } else {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .accessibilityHidden(true)
+                        Text("Sign in with Google")
+                    }
                 }
+                .frame(minHeight: rowMinHeight)
             }
             .disabled(signingIn || GoogleOAuth.callbackScheme(clientID: clientID) == nil)
+            .accessibilityLabel(signingIn ? "Connecting" : "Sign in with Google")
+
             if GoogleOAuth.callbackScheme(clientID: clientID) == nil {
                 Text("Create an iOS OAuth client in your GCP project (APIs & Services → Credentials) and paste its client ID above to enable sign-in.")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
 
         if let error = google.lastError {
-            Text(error)
-                .font(.caption)
-                .foregroundStyle(.red)
+            OGStatusLabel(error, kind: .error)
         }
     }
 }

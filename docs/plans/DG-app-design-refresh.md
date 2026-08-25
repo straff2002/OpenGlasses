@@ -1,7 +1,7 @@
 # Plan DG — App-Wide Design Language Refresh
 
 **Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2 (onboarding) shipped 2026-08-25 ·
-P3–P5 planned — they ride with DE and then sweep the rest
+**P3's model-selection slice shipped 2026-08-26** · the rest of P3 rides with DE; P4–P5 planned
 
 ## Why
 
@@ -80,6 +80,39 @@ this is the visual half). Landed immediately after the DD build.
 
 The hub and category screens, landing with DE's reorg — DE decides what's visible and in what
 order; DG decides what it looks like. Discover cards are the first natively-DG component.
+
+### Model selection ✅ shipped (2026-08-26)
+
+Taken ahead of the rest of P3 because it is the one settings surface with a *twin*: onboarding
+already rebuilt the same job — pick a provider, prove a credential, choose a model — in P2's
+language, and two screens doing the same thing in two idioms is the exact complaint this plan
+opens with. The Settings side now matches by construction rather than by resemblance.
+
+- **The shared pieces are components, not copies.** `OGSelectionRow` (title, supporting line,
+  trailing check, whole row as the target, `.isSelected` on the row) and `OGSelectionCheck` are
+  the selection-list treatment P2 arrived at, lifted into `Components/` so the model editor and
+  the model switcher render the same row type. `OGStatusLabel` does the same for the one-line
+  outcome beside a control — "Key valid · 12 models", a validation failure, "Reachable — 40 ms" —
+  which is where the raw `.green`/`.red`/`.orange` survived longest.
+- **The model list is a grouped selection list.** The editor offered a `.menu` picker *and* a
+  free-text model-ID field, which read as two different answers to one question; the list is now
+  the same post-validation section onboarding shows, with the ID field kept below it for the
+  models a fetch doesn't return.
+- **Colour is token-driven and no longer load-bearing.** Every status hue in these screens goes
+  through the corrected `okLabel`/`warnLabel`/`errorLabel` family; the three kinds also differ in
+  glyph, so the state survives a monochrome reading. The model switcher's `eye` glyph became the
+  word "Vision" in both the visible subtitle and the spoken label.
+- **The sheets stop flashing cool grey.** `Add Model` and `Edit Model` adopt `.ogFormStyle()`, so
+  a sheet raised from the warm canvas lands on it too.
+- **DF P1 criteria in the same change**: 44pt-clearing scaled row heights on every field, button
+  and menu row; decorative glyphs hidden; the validate row, sign-in rows and the deep link named
+  rather than left to be read as their glyph plus text; spoken model-row wording extracted to a
+  pure function so it is covered headlessly.
+- Behaviour is frozen: model CRUD, fetch/validation, the loopback sign-in machinery and its paste
+  fallbacks, and active-model switching all take the same paths as before.
+- Owed to the DE build: `AIPersonalitySettingsScreen`'s own model rows (the entry point into the
+  editor) and onboarding's private twins of `selectionCheck`, which should collapse into
+  `OGSelectionCheck` when that file is next opened.
 
 ## P4 — The session surface
 

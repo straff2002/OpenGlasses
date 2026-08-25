@@ -21,6 +21,39 @@ final class OGDesignAccessibilityTests: XCTestCase {
         )
     }
 
+    // MARK: - Saved-model rows
+
+    /// Vision used to be an `eye` glyph beside the provider name. A row that
+    /// supports images has to say so in both the visible line and the spoken one.
+    func testModelRowSaysVisionInWords() {
+        XCTAssertEqual(
+            ModelRowSummary.subtitle(provider: "Anthropic", modelId: "claude-sonnet-4", visionEnabled: true),
+            "Anthropic · claude-sonnet-4 · Vision"
+        )
+        XCTAssertEqual(
+            ModelRowSummary.subtitle(provider: "Groq", modelId: "llama-3.3-70b", visionEnabled: false),
+            "Groq · llama-3.3-70b"
+        )
+    }
+
+    /// Identity, then capability, then whether this is the model in use — and
+    /// the active state is a word, not just a tick.
+    func testModelRowSpokenLabelOrdersIdentityThenCapabilityThenState() {
+        XCTAssertEqual(
+            ModelRowSummary.spoken(name: "Claude Sonnet", provider: "Anthropic",
+                                   visionEnabled: true, isActive: true),
+            "Claude Sonnet, Anthropic, vision enabled, active"
+        )
+    }
+
+    func testModelRowSpokenLabelOmitsWhatIsNotTrue() {
+        XCTAssertEqual(
+            ModelRowSummary.spoken(name: "GPT-4o mini", provider: "OpenAI",
+                                   visionEnabled: false, isActive: false),
+            "GPT-4o mini, OpenAI"
+        )
+    }
+
     // MARK: - Status pills
 
     func testStatusPillTurnsItsSeparatorIntoAPause() {

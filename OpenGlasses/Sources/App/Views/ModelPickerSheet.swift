@@ -1,5 +1,28 @@
 import SwiftUI
 
+/// What a saved-model row says, in words.
+///
+/// Vision used to be an `eye` glyph beside the provider name — meaning carried
+/// by a symbol alone, which a monochrome or magnified reading loses. It is a
+/// word now, in both the visible subtitle and the spoken label. Pure functions,
+/// so the wording is covered headlessly rather than only in a running UI.
+enum ModelRowSummary {
+    /// The supporting line under the model's display name.
+    static func subtitle(provider: String, modelId: String, visionEnabled: Bool) -> String {
+        let base = "\(provider) · \(modelId)"
+        return visionEnabled ? "\(base) · Vision" : base
+    }
+
+    /// The row's VoiceOver label — identity, then capability, then whether this
+    /// is the model the session is currently using.
+    static func spoken(name: String, provider: String, visionEnabled: Bool, isActive: Bool) -> String {
+        var parts = [name, provider]
+        if visionEnabled { parts.append("vision enabled") }
+        if isActive { parts.append("active") }
+        return parts.joined(separator: ", ")
+    }
+}
+
 struct ModelPickerSheet: View {
     @ObservedObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -81,46 +104,37 @@ struct ModelPickerSheet: View {
                     }
                 }
 
-                modelRows(savedModels)
+                Section {
+                    modelRows(savedModels)
+                } header: {
+                    Text("Model")
+                }
             }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
         }
     }
 
     private func modelRows(_ models: [ModelConfig]) -> some View {
         let activeId = Config.activeModelId
         return ForEach(Array(models), id: \.id) { (model: ModelConfig) in
-            Button {
+            OGSelectionRow(
+                title: model.name,
+                subtitle: ModelRowSummary.subtitle(
+                    provider: model.llmProvider.displayName,
+                    modelId: model.model,
+                    visionEnabled: model.visionEnabled
+                ),
+                isSelected: model.id == activeId,
+                accessibilityText: ModelRowSummary.spoken(
+                    name: model.name,
+                    provider: model.llmProvider.displayName,
+                    visionEnabled: model.visionEnabled,
+                    isActive: model.id == activeId
+                )
+            ) {
                 selectModel(model)
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.name)
-                            .foregroundStyle(Color(.label))
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            Text("\(model.llmProvider.displayName) · \(model.model)")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            if model.visionEnabled {
-                                Image(systemName: "eye")
-                                    .font(.caption2)
-                                    .foregroundStyle(Color(.label))
-                                    .accessibilityLabel("Vision enabled")
-                            }
-                        }
-                    }
-                    Spacer()
-                    if model.id == activeId {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(Color(.label))
-                            .accessibilityLabel("Active model")
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(model.name), \(model.llmProvider.displayName)\(model.id == activeId ? ", active" : "")")
             }
-            .buttonStyle(.plain)
         }
     }
 

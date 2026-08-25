@@ -209,91 +209,120 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
     /// can invalidate anything derived from the credential (e.g. a fetched model list).
     var onChange: () -> Void = {}
 
+    @Environment(\.appAccent) private var accent
     @StateObject private var flow = SignInSheetModel()
     @State private var code = ""
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
 
     var body: some View {
         if service.isConnected {
-            HStack {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(connectedLabel)
-                    Text(connectedCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Sign out", role: .destructive) {
-                    service.signOut()
-                    flow.reset()
-                    code = ""
-                    onChange()
-                }
-                .buttonStyle(.borderless)
-            }
+            connectedRow
         } else {
-            Button {
-                startSignIn()
-            } label: {
-                if flow.state.isBusy {
-                    HStack {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Connecting…")
-                    }
-                } else {
-                    Label(signInLabel, systemImage: "person.crop.circle.badge.checkmark")
-                }
-            }
-            .disabled(flow.state.isBusy)
-            .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
-                SignInSheetView(url: request.url)
-                    .ignoresSafeArea()
-            }
+            signInRow
 
             if flow.showsPasteFallback {
-                if let reason = flow.fallbackReason {
-                    Text(reason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                TextField("Paste authorization code", text: $code)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .font(.footnote.monospaced())
-
-                Button {
-                    submitPastedCode()
-                } label: {
-                    HStack {
-                        if flow.state.isBusy {
-                            ProgressView().scaleEffect(0.8)
-                            Text("Connecting…")
-                        } else {
-                            Image(systemName: "link")
-                            Text("Connect")
-                        }
-                    }
-                }
-                .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
-
-                Button("Open in the browser instead") {
-                    flow.openExternally()
-                }
-                .font(.caption)
-
-                Text(pasteInstructions)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                pasteFallbackRows
             }
 
             if let error = service.lastError {
-                Label(error, systemImage: "xmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                OGStatusLabel(error, kind: .error)
             }
         }
+    }
+
+    private var connectedRow: some View {
+        HStack(spacing: OGMetrics.rowSpacing) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(OGTheme.okLabel)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(connectedLabel)
+                    .font(.body)
+                Text(connectedCaption)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 8)
+            Button("Sign out", role: .destructive) {
+                service.signOut()
+                flow.reset()
+                code = ""
+                onChange()
+            }
+            .buttonStyle(.borderless)
+        }
+        .frame(minHeight: rowMinHeight)
+    }
+
+    private var signInRow: some View {
+        Button {
+            startSignIn()
+        } label: {
+            HStack(spacing: 8) {
+                if flow.state.isBusy {
+                    ProgressView().controlSize(.small)
+                    Text("Connecting…")
+                } else {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .accessibilityHidden(true)
+                    Text(signInLabel)
+                }
+            }
+            .frame(minHeight: rowMinHeight)
+        }
+        .disabled(flow.state.isBusy)
+        .accessibilityLabel(flow.state.isBusy ? "Connecting" : signInLabel)
+        .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
+            SignInSheetView(url: request.url)
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private var pasteFallbackRows: some View {
+        if let reason = flow.fallbackReason {
+            Text(reason)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        TextField("Paste authorization code", text: $code)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .font(.footnote.monospaced())
+            .frame(minHeight: rowMinHeight)
+
+        Button {
+            submitPastedCode()
+        } label: {
+            HStack(spacing: 8) {
+                if flow.state.isBusy {
+                    ProgressView().controlSize(.small)
+                    Text("Connecting…")
+                } else {
+                    Image(systemName: "link")
+                        .accessibilityHidden(true)
+                    Text("Connect")
+                }
+            }
+            .frame(minHeight: rowMinHeight)
+        }
+        .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
+
+        Button("Open in the browser instead") {
+            flow.openExternally()
+        }
+        .font(.body)
+        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+        .frame(minHeight: rowMinHeight)
+
+        Text(pasteInstructions)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func startSignIn() {

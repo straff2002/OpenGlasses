@@ -194,6 +194,45 @@ final class OGDesignContrastTests: XCTestCase {
         }
     }
 
+    /// `OGStatusLabel` is the one component that paints a status hue as text, so
+    /// the thing worth asserting is its *mapping*: each kind must reach for the
+    /// corrected label token, not the raw dot colour it sits next to.
+    func testStatusLabelKindsPaintTheAuditedTokens() {
+        XCTAssertEqual(OGStatusLabel.Kind.ok.token.light.hex, OGTheme.okLabelToken.light.hex)
+        XCTAssertEqual(OGStatusLabel.Kind.ok.token.dark.hex, OGTheme.okLabelToken.dark.hex)
+        XCTAssertEqual(OGStatusLabel.Kind.warn.token.light.hex, OGTheme.warnLabelToken.light.hex)
+        XCTAssertEqual(OGStatusLabel.Kind.warn.token.dark.hex, OGTheme.warnLabelToken.dark.hex)
+        XCTAssertEqual(OGStatusLabel.Kind.error.token.light.hex, OGTheme.errorLabelToken.light.hex)
+        XCTAssertEqual(OGStatusLabel.Kind.error.token.dark.hex, OGTheme.errorLabelToken.dark.hex)
+
+        // A kind reaching for the dot colour by mistake would still be a valid
+        // token, so measure the consequence too.
+        for kind in [OGStatusLabel.Kind.ok, .warn, .error] {
+            for scheme in OGColorScheme.allCases {
+                for surface in [OGTheme.Token.card, OGTheme.Token.canvas] {
+                    let ratio = ContrastRatio.ratio(
+                        kind.token.value(for: scheme),
+                        surface.value(for: scheme)
+                    )
+                    XCTAssertTrue(
+                        ContrastRatio.meetsAA(ratio, size: .normal),
+                        """
+                        \(kind) measures \(String(format: "%.2f", ratio)):1 in \(scheme) — \
+                        a status label has to be readable, not just tinted.
+                        """
+                    )
+                }
+            }
+        }
+    }
+
+    /// The three kinds differ in shape as well as hue, so the state survives a
+    /// monochrome reading.
+    func testStatusLabelKindsUseDistinctGlyphs() {
+        let glyphs = [OGStatusLabel.Kind.ok, .warn, .error].map(\.systemImage)
+        XCTAssertEqual(Set(glyphs).count, glyphs.count, "two status kinds share a glyph")
+    }
+
     func testReadableLeavesAPassingColourAlone() {
         let onInk = OGTheme.Token.onInk.light
         XCTAssertEqual(
