@@ -61,7 +61,9 @@ struct SiriExposureView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Toggle("", isOn: userActionBinding(action.id))
+                            // Named so VoiceOver doesn't reach an unnamed switch;
+                            // `.labelsHidden()` only hides it visually.
+                            Toggle(action.displayName, isOn: userActionBinding(action.id))
                                 .labelsHidden()
                         }
                     }

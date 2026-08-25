@@ -19,7 +19,9 @@ struct ShortcutTemplatesView: View {
                             withAnimation { expandedId = expandedId == template.id ? nil : template.id }
                         } label: {
                             HStack(spacing: 12) {
-                                Toggle("", isOn: $template.selected)
+                                // Named so VoiceOver doesn't reach an unnamed switch;
+                                // `.labelsHidden()` only hides it visually.
+                                Toggle(template.name, isOn: $template.selected)
                                     .labelsHidden()
                                     .tint(.accentColor)
 

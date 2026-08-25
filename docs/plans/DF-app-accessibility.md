@@ -1,6 +1,6 @@
 # Plan DF — App Accessibility: VoiceOver, Dynamic Type & Contrast
 
-**Status:** 📝 Drafted 2026-08-24 · P1 can start any time; P2's onboarding slice lands with/after Plan DD (same screens)
+**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · P2's onboarding slice lands with/after Plan DD (same screens)
 
 ## Why
 
@@ -17,7 +17,7 @@ Reference standard: **WCAG 2.2 AA**, mapped to iOS: complete VoiceOver semantics
 values, grouping, focus order, announcements), Dynamic Type without truncation, contrast ≥ 4.5:1
 for text, touch targets ≥ 44 pt, Reduce Motion respected, no meaning carried by colour alone.
 
-## P1 — Audit + component-level fixes
+## P1 — Audit + component-level fixes ✅ shipped
 
 - Fix at the **OGDesign component layer first** so it propagates: `OGRow` (label + value + trait
   composition, chevron/toggle semantics), toggles (`.accessibilityLabel` from the row title, not
@@ -28,6 +28,45 @@ for text, touch targets ≥ 44 pt, Reduce Motion respected, no meaning carried b
   surface/capsule → settings hub → accessibility settings themselves → ambient captions overlay →
   everything else. The checklist is the audit artefact; each screen gets pass/fail per WCAG
   criterion.
+
+### What P1 landed
+
+- **`OGRow`** composes title and subtitle into one thought; a *value* row becomes one element
+  carrying the button trait its chevron already promised, while a *control* row keeps its
+  children focusable, because a switch has to stay reachable.
+- **`OGRow(_:isOn:)` / `OGToggle`.** `Toggle("", isOn:)` plus `.labelsHidden()` reaches
+  VoiceOver as an *unnamed* switch — the modifier only hides the label visually, so the row
+  title was never attached to it. Every bare-`Toggle("")` site in the app is now named.
+- **`OGHeroDeviceCard`** reads as one sentence — identity, state, power, then what the device
+  can and can't do, chips grouped by availability instead of spilling as loose stops.
+- **No meaning by colour alone**: an unavailable chip says "unavailable" rather than merely
+  going grey. Pills turn their middot separator into a pause (VoiceOver reads it as "middle
+  dot"); badges are read as written, not as displayed (short all-caps gets spelled out).
+- **Decoration hidden**: icon tiles, chevrons, status dots, hairlines. The waveline and
+  ambience were already hidden and stay so.
+- **Touch targets**: the 52pt row floor now scales with Dynamic Type, so it clears 44pt at
+  every size rather than only at default.
+- **Reduce Motion**: the waveline holds a still frame (its *shape*, not its travel, is what
+  distinguishes the four states), the ambience stops breathing, and the launch glow fades up
+  once instead of pulsing for as long as the screen is up.
+- The spoken strings are **pure functions**, so the wording is covered headlessly — traits,
+  grouping and hidden decoration only exist in a running UI and belong to P4's audit target.
+
+### Ranked screen checklist
+
+Ranked by how much a blind user's first session depends on the screen. `—` means not yet
+audited: P1 fixed the component layer and left the per-screen pass/fail to the phase that
+converts each screen, since a screen's semantics change when its idiom does.
+
+| Rank | Screen | Phase | State after P1 |
+|---|---|---|---|
+| 1 | Onboarding (`OnboardingView`, sign-in sheet) | P2 | — hand-rolled, no OGDesign contact, so P1 reached none of it. The critical failure if it stands. |
+| 2 | Main session surface (`VoiceTab`, `BottomControlBar`, capsule) | P2 | Controls already carry labels, selected traits and hints; decorative waveline/ambience hidden. Outstanding: mode/state changes **announced**, not just re-rendered. |
+| 3 | Status card (`StatusIndicator`) | P2 | Already grouped with a composed label. Re-audit when P4 restyles it. |
+| 4 | Settings hub (`SettingsView`) | ✅ P1 | Built from OGDesign, so it inherits everything above: hero card summarised, rows composed, both switches named. |
+| 5 | Accessibility settings (`AccessibilitySettingsView`) | P2 | — stock `Form`; stock controls are natively labelled, but never audited. Free forever per Plan A, so it must not be the weak screen. |
+| 6 | Ambient captions overlay | P2 | — Dynamic Type and the live-region question are open (see below). |
+| 7 | The other ~90 screens | P3/P5 | — see [the DG screen inventory](DG-screen-inventory.md) for which idiom each is in and which phase converts it. |
 
 ## P2 — Critical-path conformance
 
@@ -43,6 +82,14 @@ accessibility category.
 Dynamic Type across OGDesign (no fixed sizes; test at AX5), contrast pass over the theme tokens
 (including the accent-on-dark pairs), Reduce Motion variants for the ambience/waveline animations,
 touch-target audit.
+
+Pulled forward into P1, because they were properties of the components rather than of the
+screens: the OGDesign token contrast pass (now `OGTheme.contrastAudit`, asserted in both schemes
+for every accent preset — the accent-on-dark pairs are exactly what forced `inkAccentLabel`),
+the ambience/waveline Reduce Motion variants, and the OGDesign side of the Dynamic Type and
+touch-target work. What P3 still owes is the **screens**: fixed point sizes outside OGDesign
+(`LaunchScreen`'s `.system(size:)` among them), an AX5 truncation pass per screen, and the
+accent painted straight onto a surface without going through the tinted-label path.
 
 ## P4 — Automated regression gate
 

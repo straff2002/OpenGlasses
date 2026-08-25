@@ -205,7 +205,7 @@ struct CustomToolEditorView: View {
                                 TextField("Name", text: $param.name)
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
-                                Picker("", selection: $param.type) {
+                                Picker("Parameter type", selection: $param.type) {
                                     Text("String").tag("string")
                                     Text("Number").tag("number")
                                 }

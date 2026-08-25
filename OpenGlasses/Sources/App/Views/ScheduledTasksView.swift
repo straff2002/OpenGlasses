@@ -102,7 +102,9 @@ struct ScheduledTasksView: View {
             .environmentObject(appState)
         } label: {
             HStack(spacing: 10) {
-                Toggle("", isOn: bindEnabled(for: task.id))
+                // Named so VoiceOver doesn't reach an unnamed switch;
+                // `.labelsHidden()` only hides it visually.
+                Toggle(task.name, isOn: bindEnabled(for: task.id))
                     .labelsHidden()
                     .tint(accent)
 
