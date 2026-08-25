@@ -60,19 +60,40 @@ struct OnboardingView: View {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Page indicator
-                HStack(spacing: 8) {
-                    ForEach(0..<totalPages, id: \.self) { i in
-                        Capsule()
-                            .fill(i == page ? Color.white : Color.white.opacity(0.2))
-                            .frame(width: i == page ? 24 : 8, height: 4)
-                            .animation(.easeInOut(duration: 0.25), value: page)
+                // Page indicator, with Back overlaid on the leading edge so the flow can be
+                // walked in both directions (the page index used to only ever increment).
+                ZStack {
+                    HStack(spacing: 8) {
+                        ForEach(0..<totalPages, id: \.self) { i in
+                            Capsule()
+                                .fill(i == page ? Color.white : Color.white.opacity(0.2))
+                                .frame(width: i == page ? 24 : 8, height: 4)
+                                .animation(.easeInOut(duration: 0.25), value: page)
+                        }
+                    }
+                    .accessibilityElement()
+                    .accessibilityLabel("Page \(page + 1) of \(totalPages)")
+
+                    if page > 0 {
+                        HStack {
+                            Button {
+                                withAnimation { page -= 1 }
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.6))
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Back")
+                            Spacer()
+                        }
+                        .padding(.leading, 8)
                     }
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 24)
-                .accessibilityElement()
-                .accessibilityLabel("Page \(page + 1) of \(totalPages)")
 
                 // Content — uses conditional views instead of paged TabView
                 // so text fields on the API key page respond to taps immediately
@@ -165,6 +186,17 @@ struct OnboardingView: View {
 
             ScrollView {
                 VStack(spacing: 12) {
+                    // The keyless path, first because it is the one that needs nothing. Hidden on
+                    // devices that can't run the on-device model — offering it there is a dead end.
+                    if FirstRunDefaults.appleIntelligenceAvailable {
+                        providerCard(
+                            provider: .appleOnDevice,
+                            name: "Start without an API key",
+                            model: "Apple Intelligence",
+                            detail: "Runs on this iPhone. Add a provider key later in Settings.",
+                            icon: "iphone"
+                        )
+                    }
                     providerCard(
                         provider: .anthropic,
                         name: "Anthropic",

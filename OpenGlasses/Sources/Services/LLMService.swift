@@ -120,6 +120,17 @@ enum LLMProvider: String, CaseIterable {
         }
     }
 
+    /// Spoken/shown when a request reaches a provider with no credential. A fresh install can
+    /// legitimately be here, so the copy always names both ways out rather than just failing.
+    var missingCredentialMessage: String {
+        switch self {
+        case .anthropic:
+            return "Anthropic API key not configured — add a key in Settings → AI Models, sign in with Claude, or switch to on-device intelligence"
+        default:
+            return "\(displayName) API key not configured — add a key in Settings → AI Models, or switch to on-device intelligence"
+        }
+    }
+
     /// Whether this provider supports listing models via API
     var supportsModelListing: Bool {
         switch self {
@@ -1396,7 +1407,7 @@ class LLMService: ObservableObject {
         // An explicit API key wins; otherwise fall back to a connected Claude account (OAuth).
         let apiKey = await AnthropicAuth.resolveCredential(apiKey: config.apiKey)
         guard !apiKey.isEmpty else {
-            throw LLMError.missingAPIKey("Anthropic API key not configured — add a key or sign in with Claude")
+            throw LLMError.missingAPIKey(LLMProvider.anthropic.missingCredentialMessage)
         }
 
         // Add user message to history
@@ -1583,7 +1594,7 @@ class LLMService: ObservableObject {
     nonisolated static func openAICompatibleAuthorization(provider: LLMProvider, apiKey: String) throws -> String? {
         guard apiKey.isEmpty else { return "Bearer \(apiKey)" }
         guard provider == .custom else {
-            throw LLMError.missingAPIKey("\(provider.displayName) API key not configured")
+            throw LLMError.missingAPIKey(provider.missingCredentialMessage)
         }
         return nil
     }
@@ -2303,7 +2314,7 @@ class LLMService: ObservableObject {
             VertexAI.apply(accessToken: token, to: &request)
         default:
             guard !config.apiKey.isEmpty else {
-                throw LLMError.missingAPIKey("Gemini API key not configured")
+                throw LLMError.missingAPIKey(LLMProvider.gemini.missingCredentialMessage)
             }
             guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(config.model):generateContent?key=\(config.apiKey)") else {
                 throw LLMError.invalidConfiguration("Invalid Gemini URL")
@@ -2495,7 +2506,8 @@ class LLMService: ObservableObject {
             case .unavailable(let reason):
                 switch reason {
                 case .deviceNotEligible:
-                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence")
+                    // The keyless first-run default can land here, so name the way out.
+                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence — add an API key in Settings → AI Models to use a cloud model")
                 case .appleIntelligenceNotEnabled:
                     throw LLMError.missingAPIKey("Enable Apple Intelligence in Settings > Apple Intelligence & Siri")
                 case .modelNotReady:
