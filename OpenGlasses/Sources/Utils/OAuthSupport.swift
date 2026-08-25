@@ -31,6 +31,33 @@ enum PKCE {
     }
 }
 
+/// The redirect a provider registered for its public OAuth client, as a value (Plan DD P1).
+///
+/// This is what decides whether a sign-in can be zero-paste: a loopback redirect points back at
+/// the device, so the app can answer it itself while the sign-in sheet is up. Anything else — a
+/// provider-hosted page that displays a code, say — still ends with the user pasting. Derived
+/// from the registered redirect constant rather than hard-coded per provider, so a provider that
+/// changes its redirect changes paths here too.
+struct OAuthRedirect: Equatable {
+    let host: String
+    let port: UInt16
+    let path: String
+
+    /// True when the redirect resolves to this device — the only case a local listener can serve.
+    var isLoopback: Bool {
+        host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+
+    init?(_ uriString: String) {
+        guard let components = URLComponents(string: uriString),
+              let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = components.host, !host.isEmpty else { return nil }
+        self.host = host.lowercased()
+        self.path = components.path.isEmpty ? "/" : components.path
+        self.port = components.port.flatMap(UInt16.init(exactly:)) ?? (scheme == "https" ? 443 : 80)
+    }
+}
+
 /// Parses whatever the user pastes back from a browser sign-in: `code#state`, a bare code, or a
 /// full callback URL (including one copied out of the address bar when a localhost redirect
 /// couldn't connect). Shared by both sign-in flows.

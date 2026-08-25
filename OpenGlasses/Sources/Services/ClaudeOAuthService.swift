@@ -41,6 +41,10 @@ final class ClaudeOAuthService: ObservableObject {
         return ClaudeOAuth.authorizeURL(verifier: verifier, state: state)
     }
 
+    /// The `state` minted for the sign-in currently in progress. Unused by this provider's
+    /// redirect (a hosted page, not a loopback URL), but part of the shared sign-in contract.
+    var pendingSignInState: String? { pendingState }
+
     /// Complete sign-in with the code the user pasted from the callback page.
     /// Returns true on success.
     @discardableResult

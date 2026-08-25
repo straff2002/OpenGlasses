@@ -45,6 +45,10 @@ final class ChatGPTOAuthService: ObservableObject {
         return ChatGPTOAuth.authorizeURL(verifier: verifier, state: state)
     }
 
+    /// The `state` minted for the sign-in currently in progress. The loopback listener validates
+    /// the browser's callback against it before the code is ever handed back here (Plan DD).
+    var pendingSignInState: String? { pendingState }
+
     /// Complete sign-in with what the user pasted back — on iOS that's usually the full
     /// localhost callback URL copied from the browser's address bar. Returns true on success.
     @discardableResult
