@@ -20,7 +20,8 @@ final class FrameThrottlerTests: XCTestCase {
     }
 
     func testFrameWithinIntervalIsDropped() {
-        let throttler = FrameThrottler(interval: 1.0)
+        var now = Date(timeIntervalSince1970: 100)
+        let throttler = FrameThrottler(interval: 1.0, now: { now })
         var forwardedCount = 0
 
         throttler.onThrottledFrame = { _ in
@@ -29,17 +30,19 @@ final class FrameThrottlerTests: XCTestCase {
 
         // First frame — forwarded
         throttler.submit(UIImage())
-        // Second frame immediately after — should be dropped
+        // Second frame inside the interval — should be dropped
+        now = now.addingTimeInterval(0.4)
         throttler.submit(UIImage())
-        // Third frame immediately after — should be dropped
+        // Third frame just shy of the interval — should be dropped
+        now = now.addingTimeInterval(0.5)
         throttler.submit(UIImage())
 
         XCTAssertEqual(forwardedCount, 1, "Only the first frame should be forwarded within the interval")
     }
 
     func testFrameAfterIntervalIsForwarded() {
-        // Use a very short interval so the test doesn't take long
-        let throttler = FrameThrottler(interval: 0.05)
+        var now = Date(timeIntervalSince1970: 200)
+        let throttler = FrameThrottler(interval: 0.05, now: { now })
         var forwardedCount = 0
 
         throttler.onThrottledFrame = { _ in
@@ -50,20 +53,15 @@ final class FrameThrottlerTests: XCTestCase {
         throttler.submit(UIImage())
         XCTAssertEqual(forwardedCount, 1)
 
-        // Wait for the interval to pass
-        let expectation = expectation(description: "wait for interval")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // Second frame after interval
-            throttler.submit(UIImage())
-            XCTAssertEqual(forwardedCount, 2, "Frame should be forwarded after interval")
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 1.0)
+        // Second frame after the interval has passed
+        now = now.addingTimeInterval(0.1)
+        throttler.submit(UIImage())
+        XCTAssertEqual(forwardedCount, 2, "Frame should be forwarded after interval")
     }
 
     func testResetAllowsImmediateFrame() {
-        let throttler = FrameThrottler(interval: 10.0) // Very long interval
+        let now = Date(timeIntervalSince1970: 300)
+        let throttler = FrameThrottler(interval: 10.0, now: { now }) // Very long interval
         var forwardedCount = 0
 
         throttler.onThrottledFrame = { _ in
@@ -91,7 +89,8 @@ final class FrameThrottlerTests: XCTestCase {
     }
 
     func testCustomInterval() {
-        let throttler = FrameThrottler(interval: 0.5)
+        var now = Date(timeIntervalSince1970: 400)
+        let throttler = FrameThrottler(interval: 0.5, now: { now })
         var forwardedCount = 0
 
         throttler.onThrottledFrame = { _ in
@@ -102,22 +101,25 @@ final class FrameThrottlerTests: XCTestCase {
         throttler.submit(UIImage())
         XCTAssertEqual(forwardedCount, 1)
 
-        // Submit immediately — dropped
+        // Submit inside the custom interval — dropped
+        now = now.addingTimeInterval(0.4)
         throttler.submit(UIImage())
         XCTAssertEqual(forwardedCount, 1)
     }
 
     func testRapidFireOnlyForwardsAtRate() {
-        let throttler = FrameThrottler(interval: 0.1)
+        var now = Date(timeIntervalSince1970: 500)
+        let throttler = FrameThrottler(interval: 0.1, now: { now })
         var forwardedCount = 0
 
         throttler.onThrottledFrame = { _ in
             forwardedCount += 1
         }
 
-        // Fire 100 frames rapidly
+        // Fire 100 frames 1ms apart — all after the first land inside the 100ms interval
         for _ in 0..<100 {
             throttler.submit(UIImage())
+            now = now.addingTimeInterval(0.001)
         }
 
         // Only the first should have been forwarded
