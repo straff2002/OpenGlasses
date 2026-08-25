@@ -537,6 +537,13 @@ class AppState: ObservableObject, AppStateProtocol {
     let audioRecorder = AudioRecordingService()
     let recordedSessionStore = RecordedSessionStore()
     let recordingTranscriber = RecordingTranscriber()
+    /// Plan CZ: the mic source streams and recordings talk to. Rides the wake-word tap while the
+    /// listener runs and its own engine when it doesn't, so capture audio no longer depends on
+    /// always-on listening being enabled. Lazy because it needs `wakeWordService` above.
+    lazy var captureAudioRouter = CaptureAudioRouter(
+        wakeTap: wakeWordService,
+        standalone: StandaloneMicTapService()
+    )
     /// Lazy: depends on the services above; first touched from the Recordings UI.
     lazy var sessionRecorder = SessionRecorderController(
         audioRecorder: audioRecorder,
@@ -933,7 +940,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Phase 4: glasses camera for OCR script capture (OCR uses the default OCRService seam).
         teleprompterService.camera = cameraService
         memoryRewind.wakeWordService = wakeWordService
-        videoRecorder.wakeWordService = wakeWordService
+        videoRecorder.audioProvider = captureAudioRouter
         videoRecorder.ambientCaptionService = ambientCaptions
         // Stream-death auto-stop: announce it — the user can't tell from inside a pocket that
         // the glasses died and the recording was ended and saved.
@@ -1611,8 +1618,24 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     private func setupServiceCallbacks() {
-        // BS P2: broadcast mic audio rides the wake-word shared tap.
-        broadcastService.audioProvider = wakeWordService
+        // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
+        // which picks its own source. Turning listening off mid-stream hands the capture over to a
+        // standalone engine instead of silently going video-only.
+        broadcastService.audioProvider = captureAudioRouter
+        let captureListeningToken = wakeWordService.$isListening
+            .removeDuplicates()
+            .sink { [weak self] listening in
+                self?.captureAudioRouter.setWakeListening(listening)
+            }
+        cancellables.append(captureListeningToken)
+        // Plan CZ: the mic hears replies played out of the phone speaker, and without this they
+        // are muxed straight back into the stream. Silenced (not dropped) while speaking.
+        let captureSpeakingToken = speechService.$isSpeaking
+            .removeDuplicates()
+            .sink { [weak self] speaking in
+                self?.captureAudioRouter.setAssistantSpeaking(speaking)
+            }
+        cancellables.append(captureSpeakingToken)
 
         // CY: the broadcast health readout counts frames that never reached the wire, which
         // includes the ones the privacy relay dropped to keep up. The relay is the only thing

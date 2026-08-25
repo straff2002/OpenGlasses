@@ -2035,6 +2035,17 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "broadcastDefaultSource")
     }
 
+    /// Plan CZ: let the assistant's spoken replies into stream and recording audio when they play
+    /// out of the phone speaker. Off by default — a clean capture is what almost everyone wants,
+    /// and the wearer already hears the reply. A streamer whose audience is following the
+    /// conversation turns it on.
+    static var captureIncludesAssistantVoice: Bool {
+        UserDefaults.standard.bool(forKey: "captureIncludesAssistantVoice")
+    }
+    static func setCaptureIncludesAssistantVoice(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "captureIncludesAssistantVoice")
+    }
+
     /// BS P3: picture-in-picture dual capture (phone inset over the main source).
     static var broadcastDualCapture: Bool {
         UserDefaults.standard.bool(forKey: "broadcastDualCapture")

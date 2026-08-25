@@ -28,6 +28,7 @@ struct ServicesSettingsView: View {
     @State private var broadcastOrientation: String = Config.broadcastOrientation
     @State private var broadcastSource: String = Config.broadcastDefaultSource
     @State private var broadcastDualCapture: Bool = Config.broadcastDualCapture
+    @State private var captureIncludesAssistantVoice: Bool = Config.captureIncludesAssistantVoice
     @State private var chatReadbackEnabled: Bool = Config.broadcastChatReadbackEnabled
     @State private var chatChannel: String = Config.broadcastChatChannel
     @State private var chatRateCap: Double = Double(Config.broadcastChatRateCap)
@@ -551,6 +552,13 @@ struct ServicesSettingsView: View {
                         Config.setBroadcastDualCapture(value)
                     }
 
+                // Plan CZ: assistant replies played through the phone speaker are audible to the
+                // mic and would otherwise be muxed into every stream and recording.
+                Toggle("Include Assistant Voice", isOn: $captureIncludesAssistantVoice)
+                    .onChange(of: captureIncludesAssistantVoice) { _, value in
+                        Config.setCaptureIncludesAssistantVoice(value)
+                    }
+
                 // Plan CI: chat read-aloud — read-only Twitch chat spoken to the wearer.
                 Toggle("Chat Read-Aloud (Twitch)", isOn: $chatReadbackEnabled)
                     .onChange(of: chatReadbackEnabled) { _, value in
@@ -627,10 +635,13 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Live Streaming")
             } footer: {
-                if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
-                    Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
-                } else {
-                    Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
+                VStack(alignment: .leading, spacing: 6) {
+                    if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
+                        Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
+                    } else {
+                        Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
+                    }
+                    Text("Microphone audio keeps flowing to streams and recordings whether or not wake-word listening is on. Spoken replies coming out of the phone speaker are muted from the capture — turn this on to let your audience hear them too.")
                 }
             }
 
