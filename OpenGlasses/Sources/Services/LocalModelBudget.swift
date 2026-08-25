@@ -85,6 +85,49 @@ enum LocalModelBudget {
     /// Floor so a tiny/misconfigured window still admits the minimal system + turn prompt.
     static let minimumBudget = 512
 
+    // MARK: - Multimodal (image) turns
+
+    /// What survives a multimodal turn on this device.
+    ///
+    /// A text prefill is chunked, so a fat prompt costs time rather than a memory spike. A
+    /// *multimodal* prefill is one unchunked forward: the whole prompt plus the image's soft
+    /// tokens are resident together, and that is what Jetsam-kills a small-RAM phone mid-Metal.
+    /// The mitigation is real, but it is a small-device mitigation — a 12 GB phone has the
+    /// headroom and should keep its configured prompt, its tools and its history.
+    struct MultimodalTurnPlan: Equatable {
+        /// Keep prior turns in the prompt. Off on the constrained tier: history tokens compete
+        /// with the image's soft tokens in the same unchunked pass.
+        let keepsHistory: Bool
+        /// Keep the wearer's full configured system prompt (persona, tool block, house style).
+        /// Off on the constrained tier, which falls back to `Config.compactVisionTurnPrompt`.
+        let keepsFullSystemPrompt: Bool
+        /// Tokenized-prompt ceiling for the turn.
+        let promptBudget: Int
+    }
+
+    /// Marketing RAM (GB) at or above which a phone carries a full multimodal turn. Below it,
+    /// the turn is trimmed. 12 GB is the same tier line the model catalog already draws for the
+    /// larger Gemma 4 checkpoint, so there is one notion of "roomy device", not two.
+    static let multimodalFullPromptRAMGB: Double = 12
+
+    /// Fraction of the text budget a constrained device allows a multimodal prompt. The image's
+    /// soft tokens are not in our token count but are in the model's, so the prompt has to leave
+    /// room for them.
+    static let constrainedMultimodalBudgetFraction = 0.25
+
+    /// Per-device plan for an image turn. Pure — the caller supplies the device's RAM, so this
+    /// is exercised headlessly at both tiers.
+    static func multimodalTurnPlan(for modelId: String?, marketingRAMGB: Double) -> MultimodalTurnPlan {
+        let full = promptBudget(for: modelId)
+        guard marketingRAMGB < multimodalFullPromptRAMGB else {
+            return MultimodalTurnPlan(keepsHistory: true, keepsFullSystemPrompt: true, promptBudget: full)
+        }
+        return MultimodalTurnPlan(
+            keepsHistory: false,
+            keepsFullSystemPrompt: false,
+            promptBudget: max(minimumBudget, Int(Double(full) * constrainedMultimodalBudgetFraction)))
+    }
+
     /// Trim conversation history so the tokenized prompt fits `budget`, dropping the **oldest**
     /// turns first (the current user turn and system prompt are never dropped). Pure: the caller
     /// injects `tokenCount`, which tokenizes a candidate history the same way the model will.

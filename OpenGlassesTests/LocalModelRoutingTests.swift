@@ -1,10 +1,13 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Regression guard for the talk-button / Field-Assist crash: the on-device agent model must
-/// load through the TEXT factory, not the vision factory. `visionModelIds` decides that in
-/// `LocalLLMService.loadModel`, so the agent model landing in that set silently routes inference
-/// into mlx-swift-lm's crashing `MLXVLM.Gemma4` (an uncatchable MLX assertion).
+/// Regression guard for on-device model routing, and for the prompt budget that keeps a turn
+/// under the observed OOM point.
+///
+/// `visionModelIds` decides which factory `LocalLLMService.loadModel` tries first. Gemma 4 is in
+/// that set because it *is* a VLM; what used to make that dangerous — a wrong token shape through
+/// the VLM forward pass — is now keyed off `loadedViaVLMFactory`, the factory that actually
+/// loaded, so a checkpoint that fails VLM weight mapping demotes to text without a shape mismatch.
 @MainActor
 final class LocalModelRoutingTests: XCTestCase {
 

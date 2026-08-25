@@ -82,7 +82,7 @@ final class LocalLLMService: ObservableObject {
             estimatedSize: "3.6 GB",
             hasVision: true,
             hasToolCalling: true,
-            notes: "Best on-device agent — tool calling, 140+ languages. Vision-ready architecture, but this build's vision weights don't load in the current MLX runtime (device-verified 2026-07-16) — photo questions answer text-only until a fixed build lands, then vision enables automatically. Uses ~4 GB while running.",
+            notes: "Best on-device agent — tool calling, 140+ languages, vision. Uses ~4 GB while running.",
             minimumRAMGB: 8
         ),
         RecommendedModel(
@@ -91,7 +91,7 @@ final class LocalLLMService: ObservableObject {
             estimatedSize: "5.1 GB",
             hasVision: true,
             hasToolCalling: true,
-            notes: "Bigger Gemma 4 — highest-quality on-device agent. Same vision caveat as E2B (text-only until an MLX runtime fix). Needs a high-memory device (12 GB).",
+            notes: "Bigger Gemma 4 — highest-quality on-device agent, with vision. Needs a high-memory device (12 GB).",
             minimumRAMGB: 12
         ),
         // Vision models (can see photos from glasses)
@@ -148,11 +148,13 @@ final class LocalLLMService: ObservableObject {
     /// Gemma 4 history: the VLM factory used to fatally trap on 1-D tokens (talk-button
     /// crash); mlx-swift-lm 3.31.4 made that catchable — but a device test (2026-07-15)
     /// showed the e2b 4-bit quant failing VLM weight mapping (`keyNotFound(language_model…
-    /// k_norm.weight, Gemma4RMSNormZeroShift)`). The hub configs for all three Gemma 4
-    /// checkpoints declare `Gemma4ForConditionalGeneration` with a `vision_config`
-    /// (verified 2026-07-16), so vision is *attempted* — and a mapping failure now demotes
-    /// gracefully to the text factory (`loadModel`), with image turns refused honestly by
-    /// the vision guard in LLMService. Nothing regresses if a checkpoint doesn't cooperate.
+    /// k_norm.weight, Gemma4RMSNormZeroShift)`). That is fixed upstream — KV-shared layers
+    /// must not declare `k_proj`/`v_proj` — and the fix is pinned in `project.base.yml`, so
+    /// the Gemma 4 checkpoints load as the VLMs they are and vision works.
+    ///
+    /// The demotion path in `loadModel` stays as the safety net: a checkpoint that still
+    /// fails weight mapping loads as a perfectly good text model, and image turns are refused
+    /// honestly by the vision guard in LLMService rather than answered blind.
     nonisolated static let visionModelIds: Set<String> = [
         "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
         "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
@@ -322,7 +324,7 @@ final class LocalLLMService: ObservableObject {
         // own iOS guidance; set here (not init) so simulator unit tests never touch Metal.
         Memory.cacheLimit = 20 * 1024 * 1024
 
-        let config = ModelConfiguration(id: modelId)
+        let config = Self.modelConfiguration(for: modelId)
         func load(with factory: any ModelFactory) async throws -> ModelContainer {
             try await factory.loadContainer(
                 from: #hubDownloader(hub),
@@ -342,11 +344,12 @@ final class LocalLLMService: ObservableObject {
                 modelContainer = try await load(with: VLMModelFactory.shared)
                 loadedViaVLMFactory = true
             } catch {
-                // The known shape of this failure is a quant whose weight tree doesn't
-                // match the VLM export (keyNotFound …k_norm.weight — device trace
-                // 2026-07-15). Whatever the cause, the model is still a perfectly good
-                // text model: demote for this run and load through the text factory.
-                // Image turns then get the honest refusal instead of a broken load.
+                // The known shape of this failure was a quant whose weight tree didn't match
+                // the VLM export (keyNotFound …k_norm.weight — device trace 2026-07-15),
+                // fixed upstream and pinned. Whatever the cause, a model that fails VLM
+                // mapping is still a perfectly good text model: demote for this run and load
+                // through the text factory. Image turns then get the honest refusal instead
+                // of a broken load.
                 NSLog("[LocalLLM] VLM load failed for %@ — demoting to text factory: %@",
                       modelId, error.localizedDescription)
                 visionDemotedModelIds.insert(modelId)
@@ -420,6 +423,12 @@ final class LocalLLMService: ObservableObject {
         // has no way to interleave image tokens.
         if let imageData {
             if loadedViaVLMFactory {
+                if Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+                    return try await generateGemma4Turn(
+                        userMessage: userMessage, systemPrompt: systemPrompt,
+                        history: history, imageData: imageData,
+                        container: container, onToken: onToken)
+                }
                 return try await generateVisionTurn(
                     userMessage: userMessage, systemPrompt: systemPrompt,
                     history: history, imageData: imageData,
@@ -434,10 +443,36 @@ final class LocalLLMService: ObservableObject {
             return Self.visionWeightsUnavailableMessage
         }
 
+        let tokenizer = await container.tokenizer
+
+        // A Gemma 4 that loaded through the VLM factory takes its own path even for a text
+        // turn: the VLM processor owns the model's chat template and the `LMInput` shape it
+        // expects, and hand-assembling either is how the old crashes happened. History is
+        // still budgeted first — measured with the same render the processor's template
+        // produces, so the count matches what the model will actually see.
+        if loadedViaVLMFactory && Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+            let budget = LocalModelBudget.promptBudget(for: loadedModelId)
+            let trimmedHistory = try LocalModelBudget.historyFittingBudget(
+                history: history, budget: budget
+            ) { hist in
+                let text = Gemma4ChatPrompt.render(
+                    system: systemPrompt, history: hist, userMessage: userMessage,
+                    bosToken: tokenizer.bosToken)
+                return tokenizer.encode(text: text, addSpecialTokens: false).count
+            }
+            if trimmedHistory.count < history.count {
+                NSLog("🔬 LocalLLM.generate trimmed history %d→%d turns to fit budget %d",
+                      history.count, trimmedHistory.count, budget)
+            }
+            return try await generateGemma4Turn(
+                userMessage: userMessage, systemPrompt: systemPrompt,
+                history: trimmedHistory, imageData: nil,
+                container: container, onToken: onToken)
+        }
+
         // Tokenize a candidate history exactly as the model will — chat template, with the
         // no-system-role fallback some small models need. Used both to measure truncation
         // candidates and to produce the final token ids.
-        let tokenizer = await container.tokenizer
         func tokenize(_ hist: [(role: String, content: String)]) throws -> [Int] {
             var messages: [[String: String]] = [["role": "system", "content": systemPrompt]]
             for turn in hist { messages.append(["role": turn.role, "content": turn.content]) }
@@ -445,6 +480,17 @@ final class LocalLLMService: ObservableObject {
             do {
                 return try tokenizer.applyChatTemplate(messages: messages)
             } catch {
+                // Gemma 4's `chat_template.jinja` uses constructs swift-jinja's parser rejects.
+                // That is a *template* failure, not a "no system role" one, and the role-merging
+                // fallback below would be the wrong repair: render Gemma's turn format directly
+                // instead, which keeps the genuine system turn the template emits.
+                if Gemma4ChatPrompt.isTemplateParseFailure(error),
+                   Gemma4ChatPrompt.matches(modelId: loadedModelId) {
+                    let text = Gemma4ChatPrompt.render(
+                        system: systemPrompt, history: hist, userMessage: userMessage,
+                        bosToken: tokenizer.bosToken)
+                    return tokenizer.encode(text: text, addSpecialTokens: false)
+                }
                 // Merge the system prompt into the user turn for models without a system role.
                 // No "User:" transcript label — a small model reads a speaker-labelled dialogue
                 // and can flip roles, replying *as* the user addressed to the persona name.
@@ -583,6 +629,126 @@ final class LocalLLMService: ObservableObject {
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// One turn — text or photo — on a Gemma 4 that loaded through the VLM factory.
+    ///
+    /// Everything goes through `context.processor.prepare`, which owns Gemma's chat template
+    /// and (for a photo) the interleaving of image soft tokens. Hand-assembling the `LMInput`
+    /// is the fallback, not the plan: it happens only when swift-jinja cannot parse Gemma's
+    /// template, and then the hand-render mirrors what the template emits — a genuine system
+    /// turn, `<|turn>`/`<turn|>` delimiters, `assistant` mapped to `model`.
+    ///
+    /// A photo turn's prefill is one unchunked forward pass, so how much prompt it can afford
+    /// is a property of the device, not of the model: `LocalModelBudget.multimodalTurnPlan`
+    /// decides, and a roomy phone keeps its configured prompt and history.
+    private func generateGemma4Turn(
+        userMessage: String,
+        systemPrompt: String,
+        history: [(role: String, content: String)],
+        imageData: Data?,
+        container: ModelContainer,
+        onToken: ((String) -> Void)?
+    ) async throws -> String {
+        let parameters = Self.generateParameters(for: loadedModelId)
+
+        // Same mid-generation backgrounding watch as the other paths, via a lock-guarded box
+        // because the drain runs off the main actor inside `container.perform`.
+        let backgroundedFlag = LockedFlag()
+        let bgObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            backgroundedFlag.set()
+        }
+        defer { NotificationCenter.default.removeObserver(bgObserver) }
+
+        let effectiveSystem: String
+        let effectiveHistory: [(role: String, content: String)]
+        if let photo = imageData {
+            let plan = LocalModelBudget.multimodalTurnPlan(
+                for: loadedModelId, marketingRAMGB: Self.marketingRAMGB)
+            effectiveSystem = plan.keepsFullSystemPrompt
+                ? systemPrompt
+                : Config.compactVisionTurnPrompt(from: systemPrompt)
+            effectiveHistory = plan.keepsHistory ? Array(history.suffix(4)) : []
+            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ image=%dKB ram=%.0fGB fullPrompt=%@ history=%d",
+                  loadedModelId ?? "?", photo.count / 1024, Self.marketingRAMGB,
+                  plan.keepsFullSystemPrompt ? "yes" : "no", effectiveHistory.count)
+        } else {
+            effectiveSystem = systemPrompt
+            effectiveHistory = history
+            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ text-only", loadedModelId ?? "?")
+        }
+
+        let report = LockedGenerationReport()
+        // `UserInput` (and any `CIImage` in it) isn't `Sendable`, so it is built inside the
+        // `@Sendable` closure from Sendable ingredients only.
+        let output = try await container.perform { context -> String in
+            var chat: [Chat.Message] = [.system(effectiveSystem)]
+            for turn in effectiveHistory {
+                chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
+            }
+            if let imageData {
+                guard let ciImage = CIImage(data: imageData) else {
+                    throw LocalLLMError.generationFailed("Couldn't decode the photo.")
+                }
+                chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+            } else {
+                chat.append(.user(userMessage))
+            }
+
+            // No forced resize: Gemma's processor picks an aspect-preserving canvas and its own
+            // per-image token count, and pre-squashing to 896² neither shrinks that count nor
+            // improves the crop — it just spends preprocessing on a phone photo twice.
+            let userInput = UserInput(chat: chat)
+            let lmInput: LMInput
+            do {
+                lmInput = try await context.processor.prepare(input: userInput)
+            } catch {
+                // Only the text turn can be rescued by hand: a photo turn's soft tokens can
+                // only be produced by the processor, so a failure there has to surface.
+                guard imageData == nil, Gemma4ChatPrompt.isTemplateParseFailure(error) else { throw error }
+                let text = Gemma4ChatPrompt.render(
+                    system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
+                    bosToken: context.tokenizer.bosToken)
+                let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
+                // VLM-factory shape: (1, L). The mask must be explicit — a nil mask reaches
+                // Metal as a null buffer.
+                let promptArray = Self.tokenBatch(tokens, isVisionModel: true)
+                lmInput = LMInput(text: .init(tokens: promptArray,
+                                              mask: ones(like: promptArray).asType(.int8)))
+            }
+
+            NSLog("🔬 LocalLLM.generateGemma4Turn tokenIDs.shape=%@ count=%d",
+                  "\(lmInput.text.tokens.shape)", lmInput.text.tokens.size)
+
+            let stream = try MLXLMCommon.generate(
+                input: lmInput, parameters: parameters, context: context)
+            var iterator = stream.makeAsyncIterator()
+            return try await Self.drainTokenStream(
+                nextChunk: {
+                    while let generation = await iterator.next() {
+                        if case .chunk(let text) = generation { return text }
+                        if case .info(let info) = generation { report.note(info) }
+                    }
+                    return nil
+                },
+                isBackgrounded: { backgroundedFlag.isSet },
+                onToken: { chunk in
+                    report.noteToken(at: Date())
+                    onToken?(chunk)
+                }
+            )
+        }
+        if let firstTokenAt = report.firstTokenAt { TurnRecorder.mark(.firstToken, at: firstTokenAt) }
+        if let completion = report.completion {
+            TurnRecorder.addGeneration(tokens: completion.generationTokenCount, seconds: completion.generateTime)
+        }
+        NSLog("🔬 LocalLLM.generateGemma4Turn done — mlx active=%dMB cache=%dMB",
+              Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// One image turn through a VLM-factory model. The processor owns the chat template and
     /// image tokenization; history is kept short (image tokens are big) and un-budgeted — the
     /// processor's own encoding is the authority on how many tokens the image costs.
@@ -678,6 +844,19 @@ final class LocalLLMService: ObservableObject {
             temperature: 0.7,
             topP: 0.9
         )
+    }
+
+    /// Load configuration for a model id.
+    ///
+    /// Gemma 4 needs `<turn|>` declared as an extra stop token: its `tokenizer_config.json`
+    /// sets `eos_token` to `<eos>` while the chat template ends every turn with the separate
+    /// `eot_token` `<turn|>`. Without it the model runs straight through the end of its answer
+    /// into a hallucinated next turn.
+    nonisolated static func modelConfiguration(for modelId: String) -> ModelConfiguration {
+        if Gemma4ChatPrompt.matches(modelId: modelId) {
+            return ModelConfiguration(id: modelId, extraEOSTokens: [Gemma4ChatPrompt.endOfTurnToken])
+        }
+        return ModelConfiguration(id: modelId)
     }
 
     /// Shape token ids for the loaded model (see the call site in `generate` for why):
@@ -960,5 +1139,74 @@ final class LockedGenerationReport: @unchecked Sendable {
     var completion: GenerateCompletionInfo? {
         lock.lock(); defer { lock.unlock() }
         return info
+    }
+}
+
+/// Gemma 4's turn format, rendered by hand.
+///
+/// The model's real chat template lives in `chat_template.jinja` (not `tokenizer_config.json`)
+/// and swift-jinja's parser rejects some of what it uses. This is the fallback for that case,
+/// and it is a faithful transcription of the template rather than a generic "chat transcript":
+///
+///  - `<|turn>` opens a turn and `<turn|>` closes it — `sot_token`/`eot_token` in the
+///    checkpoint's `tokenizer_config.json`, distinct from its `eos_token` (`<eos>`).
+///  - The system prompt is a **genuine system turn**, not merged into the first user turn. The
+///    template emits `<|turn>system\n…<turn|>` whenever message 0 is a system/developer message.
+///  - `assistant` is renamed to `model`, and every body is trimmed.
+///  - The generation prompt is a bare `<|turn>model\n`.
+///
+/// No speaker labels ("User:", "Assistant:") appear anywhere — a small model reading a
+/// labelled dialogue can flip roles and answer *as* the wearer.
+enum Gemma4ChatPrompt {
+    /// Start-of-turn marker (`sot_token`).
+    static let startOfTurnToken = "<|turn>"
+    /// End-of-turn marker (`eot_token`) — must also be declared as an extra EOS token, since
+    /// the checkpoint's `eos_token` is the different `<eos>`.
+    static let endOfTurnToken = "<turn|>"
+
+    /// Whether a model id is a Gemma 4 checkpoint. Matched on the id (both hub casings of the
+    /// E-series appear in the wild) rather than a fixed list, so a user-typed Gemma 4 id gets
+    /// the same handling as a catalog one.
+    static func matches(modelId: String?) -> Bool {
+        guard let id = modelId?.lowercased() else { return false }
+        return id.contains("gemma-4") || id.contains("gemma4")
+    }
+
+    /// Whether an error is the template failing to *parse*, as opposed to any other failure
+    /// from `applyChatTemplate` / `processor.prepare`.
+    ///
+    /// Matched on the error's description because the Jinja error type is not part of this
+    /// target's dependency surface; both observed shapes are covered — the wrapped
+    /// `parser("…")` case and a bare `Unexpected token …` message.
+    static func isTemplateParseFailure(_ error: Error) -> Bool {
+        let text = String(describing: error)
+        return text.contains("parser(") || text.contains("Unexpected token")
+    }
+
+    /// Render a turn in Gemma 4's format. `bosToken` is prepended when the tokenizer has one,
+    /// because the caller encodes with `addSpecialTokens: false` (the template emits
+    /// `bos_token` itself, and letting both add it would double it).
+    static func render(
+        system: String,
+        history: [(role: String, content: String)],
+        userMessage: String,
+        bosToken: String?
+    ) -> String {
+        var out = bosToken ?? ""
+        let sys = system.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sys.isEmpty {
+            appendTurn(&out, role: "system", body: sys)
+        }
+        for turn in history {
+            appendTurn(&out, role: turn.role == "assistant" ? "model" : turn.role, body: turn.content)
+        }
+        appendTurn(&out, role: "user", body: userMessage)
+        out += "\(startOfTurnToken)model\n"
+        return out
+    }
+
+    private static func appendTurn(_ out: inout String, role: String, body: String) {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        out += "\(startOfTurnToken)\(role)\n\(trimmed)\(endOfTurnToken)\n"
     }
 }
