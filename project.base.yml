@@ -69,7 +69,18 @@ packages:
     from: "2.2.5"
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm.git
-    version: "3.31.3"
+    # Pinned to a revision, not a tag, and deliberately: the Gemma 4 VLM load failure
+    # (`keyNotFound(…k_norm.weight, Gemma4RMSNormZeroShift)` — KV-shared layers must not
+    # declare k_proj/v_proj) is fixed upstream in 09deb8c, and no released tag contains it —
+    # the newest, 3.31.4, predates it. Go back to `version:` as soon as a tag ships that does.
+    #
+    # Why *this* revision and not upstream's tip: the next commit after it (14414441) retargets
+    # MLXFoundationModels at the Xcode 27 beta 5 SDK (27A5237l), and MLXHuggingFace — which we
+    # link for `#hubDownloader` — pulls that module in through a default-on package trait. On an
+    # earlier 27.0 beta the retarget does not compile (`updateMetadata` takes
+    # `[String: any Sendable & Codable & Equatable]` there, not `ConvertibleToGeneratedContent`).
+    # So: on beta 5 or later, move to 14414441 or newer; before it, stay here.
+    revision: d6614025fa1f6133e34c4fe0cea2815d672d8742
   swift-huggingface:
     # Same 0.x exposure as the DAT SDK, and it already drifted: the spec said `from: "0.1.0"` while
     # Package.resolved had walked to 0.9.0 — eight minor versions of a pre-1.0 package, adopted
