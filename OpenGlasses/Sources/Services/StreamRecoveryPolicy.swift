@@ -23,6 +23,20 @@ enum StreamRecoveryPolicy {
         consecutiveFailures < 2 ? .rebuildStream : .resetSession
     }
 
+    /// The longest healthy cold start observed on device — ~15–18 s of `.stopped` /
+    /// `.waitingForDevice` churn before the stream reaches `.streaming`.
+    static let observedColdStart: TimeInterval = 18
+
+    /// How long one warmup attempt gives the stream to reach `.streaming`.
+    ///
+    /// Every attempt gets the full window, including the first. A shortened first attempt looks
+    /// like it makes a broken camera fail faster, but it sits *below* `observedColdStart`, so what
+    /// it actually does is make every HEALTHY cold start fail attempt one, tear the stream down,
+    /// sleep and rebuild — a slow start turned into a much slower one. Failing a dead start fast
+    /// is `CameraErrorPolicy.abortsWarmup`'s job, which does it in a second or two without
+    /// guessing from the clock.
+    static let warmupTimeout: TimeInterval = 20
+
     /// Whether a frame-flow stall should trigger recovery at all, given the stream's
     /// current state. `.paused` is the temple-tap system hold: frames stopping is the
     /// EXPECTED behavior, there is no app-callable resume, and tearing the stream down

@@ -1,7 +1,6 @@
 import AVFoundation
 import Combine
 import Foundation
-import Photos
 import UIKit
 
 /// Backend-neutral camera coordinator.
@@ -70,9 +69,6 @@ class CameraService: ObservableObject {
     /// serve a capture, so a test of *that* decision otherwise reaches real AVFoundation and, on
     /// a simulator with an unresolved camera privacy decision, hangs waiting for a prompt.
     private let phoneSource: PhoneCameraCapturing
-
-    /// Name of the Photos album where glasses photos are saved.
-    private nonisolated static let albumName = "Glasses"
 
     /// `nil` means the default Meta/DAT backend and the real iPhone camera. The backend is built
     /// here rather than as a default argument because a default argument expression is evaluated
@@ -264,65 +260,16 @@ class CameraService: ObservableObject {
     // MARK: - Photo Library
 
     /// Save photo data to the "Glasses" album in the photo library.
+    ///
+    /// The album work, and the one authorization prompt behind it, live in `GlassesPhotoAlbum` —
+    /// this used to be one of two private copies.
     func saveToPhotoLibrary(_ data: Data) {
         guard let image = UIImage(data: data) else { return }
-
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            guard status == .authorized || status == .limited else {
-                NSLog("[Camera] Photo library access denied")
-                return
-            }
-
-            // Fetch/create album BEFORE performChanges to avoid nested change block deadlock
-            let album = self.fetchGlassesAlbum()
-
-            PHPhotoLibrary.shared().performChanges {
-                let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
-
-                if let album {
-                    let albumChangeRequest = PHAssetCollectionChangeRequest(for: album)
-                    if let placeholder = creationRequest.placeholderForCreatedAsset {
-                        albumChangeRequest?.addAssets([placeholder] as NSArray)
-                    }
-                }
-            } completionHandler: { success, error in
-                if success {
-                    print("📸 Photo saved to Glasses album")
-                } else if let error {
-                    NSLog("[Camera] Save to album failed: %@", error.localizedDescription)
-                    // Fallback: save without album
-                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                    print("📸 Photo saved to camera roll (album unavailable)")
-                }
+        Task {
+            if await GlassesPhotoAlbum.saveImage(image) {
+                print("📸 Photo saved to \(GlassesPhotoAlbum.albumName) album")
             }
         }
-    }
-
-    /// Fetch the "Glasses" album, creating it if it doesn't exist.
-    private nonisolated func fetchGlassesAlbum() -> PHAssetCollection? {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", CameraService.albumName)
-        let collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-
-        if let existing = collections.firstObject {
-            return existing
-        }
-
-        // Create the album synchronously
-        var localIdentifier: String?
-        do {
-            try PHPhotoLibrary.shared().performChangesAndWait {
-                let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: CameraService.albumName)
-                localIdentifier = createRequest.placeholderForCreatedAssetCollection.localIdentifier
-            }
-        } catch {
-            NSLog("[Camera] Failed to create Glasses album: %@", error.localizedDescription)
-            return nil
-        }
-
-        guard let identifier = localIdentifier else { return nil }
-        let result = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [identifier], options: nil)
-        return result.firstObject
     }
 
     // MARK: - Audio Session Helpers

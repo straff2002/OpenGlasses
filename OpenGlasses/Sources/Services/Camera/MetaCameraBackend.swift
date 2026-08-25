@@ -59,6 +59,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// BR P2: listener on the DeviceSession's error stream (update-required and terminal
     /// device errors surface here, not on the camera Stream's errorPublisher).
     private var sessionErrorTask: Task<Void, Never>?
+    /// The most recent stream error seen while waiting for `.streaming`. Cleared at the top of
+    /// each warmup wait, so it only ever describes the attempt in progress.
+    private var lastStreamError: StreamError?
 
     /// BR P2: actionable compatibility copy ("update the Meta AI app…") when the DAT layer
     /// reports an update requirement. Nil when compatible. Read by the retry loop to stop
@@ -379,6 +382,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 let message = CameraErrorPolicy.message(for: error)
                 NSLog("[Camera] Error: %@", message)
                 self.debug("Camera error: \(message)")
+                self.lastStreamError = error
 
                 // Device-traced 2026-08-23: this copy already said exactly what was wrong
                 // ("hinges are closed", "too hot", "battery is too low") and went only to the log
@@ -403,8 +407,12 @@ final class MetaCameraBackend: GlassesCameraBackend {
     }
 
     /// Wait for the session to reach `.streaming` state, starting it if necessary.
-    private func waitForStreaming(timeout: TimeInterval = 20) async throws {
+    private func waitForStreaming(
+        timeout: TimeInterval = StreamRecoveryPolicy.warmupTimeout
+    ) async throws {
         guard let session = streamSession else { throw CameraError.captureFailed }
+        // Only errors from THIS attempt may abort it.
+        lastStreamError = nil
 
         // Start the session if it is not already running. `.paused` counts: a stream paused after
         // a one-off capture (see `pauseStreamAfterCapture`) is idle, not broken.
@@ -419,6 +427,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
         let deadline = ContinuousClock.now + .seconds(timeout)
         while ContinuousClock.now < deadline {
             if session.state == .streaming { break }
+            // A start that already failed will not be rescued by more nudges or more waiting —
+            // the stream needs rebuilding, and only the caller can do that. Without this, a dead
+            // start spends the whole timeout going through the motions.
+            if let error = lastStreamError, CameraErrorPolicy.abortsWarmup(error) {
+                NSLog("[Camera] Aborting warmup — %@ needs a stream rebuild", String(describing: error))
+                throw CameraError.streamNotReady
+            }
             if session.state == .stopped || session.state == .paused {
                 if restartNudges < 3 {
                     restartNudges += 1
@@ -518,11 +533,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
             throw rootError
         }
 
-        // Wait for stream to be ready (start if needed)
+        // Wait for stream to be ready (start if needed). Both attempts get the full warmup window
+        // — see `StreamRecoveryPolicy.warmupTimeout` for why a shortened first attempt punished
+        // healthy cold starts instead of broken ones.
         var lastError: Error?
         for attempt in 1...2 {
             do {
-                try await waitForStreaming(timeout: attempt == 1 ? 10 : 20)
+                try await waitForStreaming()
                 lastError = nil
                 break
             } catch {
@@ -685,8 +702,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         do {
             try await ensurePermission()
-            try await ensureSession()
-            try await waitForStreaming()
+            try await warmUpStream()
         } catch {
             continuousStreamingIntent = false
             throw error
@@ -696,6 +712,43 @@ final class MetaCameraBackend: GlassesCameraBackend {
         events.send(.streamingChanged(true))
         startStallDetection()
         NSLog("[Camera] Streaming started")
+    }
+
+    /// Bring the session up and wait for frames, retrying once through the recovery ladder.
+    ///
+    /// The retry exists because a stream left `.paused` by a one-off capture can fail its next
+    /// `start()` outright — the warmup aborts on that error rather than sitting out the timeout,
+    /// and what it needs is a rebuilt stream, which is exactly what this does before trying again.
+    ///
+    /// Which teardown the retry uses comes from `StreamRecoveryPolicy` on the same
+    /// `consecutiveRecoveryFailures` counter stall recovery uses. That is what makes the
+    /// escalation real: counting only *this call's* attempts, the count could never exceed one and
+    /// the session-reset tier would be unreachable, so a camera failing every warmup would rebuild
+    /// the cheap half forever. The count resets on the first success.
+    private func warmUpStream() async throws {
+        var lastError: Error?
+        for attempt in 1...2 {
+            do {
+                try await ensureSession()
+                try await waitForStreaming()
+                consecutiveRecoveryFailures = 0
+                return
+            } catch {
+                NSLog("[Camera] Stream warmup attempt %d/2 failed: %@",
+                      attempt, error.localizedDescription)
+                lastError = error
+                let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
+                consecutiveRecoveryFailures += 1
+                guard attempt < 2 else { break }
+                NSLog("[Camera] Stream warmup retry (%@)", String(describing: action))
+                switch action {
+                case .rebuildStream: await teardownStreamOnly()
+                case .resetSession: await resetSession()
+                }
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+        throw lastError ?? CameraError.streamNotReady
     }
 
     /// Stop continuous video streaming. Session is kept alive for reuse.
