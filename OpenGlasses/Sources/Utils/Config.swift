@@ -602,6 +602,42 @@ struct Config {
     - If you hit a dead end, offer the next best option instead of giving up.
     """
 
+    /// Compact system prompt for an on-device photo turn on a memory-constrained device.
+    ///
+    /// A multimodal prefill is one unchunked forward pass — the whole prompt plus the image's
+    /// soft tokens are resident at once — so on a small-RAM phone the full agent prompt is what
+    /// tips the turn into a Jetsam kill. Roomier devices keep their configured prompt; this is
+    /// only what the constrained tier falls back to (`LocalModelBudget.multimodalTurnPlan`).
+    ///
+    /// It is *derived*, not hardcoded: the configured prompt's opening line carries the
+    /// assistant's identity in every preset, so the persona survives the trim, and the wearer's
+    /// language is stated explicitly rather than implied by an English literal.
+    static func compactVisionTurnPrompt(
+        from systemPrompt: String,
+        languageCode: String = preferredLanguageCode
+    ) -> String {
+        var lines: [String] = []
+        let identity = systemPrompt
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        if !identity.isEmpty { lines.append(identity) }
+        lines.append("A photo from the glasses camera is attached. You CAN see it — never say you lack vision.")
+        lines.append("Answer in 1–2 short spoken sentences. Name the main subject and anything asked. Skip background, lighting, and composition unless asked.")
+        lines.append("If asked to read text: quote it verbatim; translate only if asked.")
+        if let language = spokenLanguageName(for: languageCode) {
+            lines.append("Answer in \(language).")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The wearer's language, named in English for a prompt — `nil` when it is already English
+    /// (the surrounding instructions are English, so the line would only spend tokens).
+    static func spokenLanguageName(for languageCode: String) -> String? {
+        guard languageCode != "en" else { return nil }
+        return Locale(identifier: "en").localizedString(forLanguageCode: languageCode) ?? languageCode
+    }
+
     /// Returns the active preset's prompt, falling back to default.
     static var systemPrompt: String {
         if let preset = activePreset {
@@ -3459,10 +3495,10 @@ struct Config {
     /// Whether fast-tier queries may run on the *on-device* MLX agent model.
     ///
     /// Historically default-off because the gemma-4 agent model fatally crashed during
-    /// inference: it was mis-routed through `VLMModelFactory` (see
-    /// `LocalLLMService.visionModelIds`) into the uncatchable `MLXVLM.Gemma4` trap. That
-    /// routing is fixed — the model now loads as text — but the default stays off pending
-    /// on-device confirmation that the text path generates cleanly. Cloud agents are unaffected.
+    /// inference: the VLM factory could not map its weights, and the fallbacks around that
+    /// failure were where the crashes lived. The upstream load fix is now pinned (see
+    /// `project.base.yml`), but the default stays off pending on-device confirmation that a
+    /// full turn generates cleanly. Cloud agents are unaffected.
     @UserDefaultsBacked("localAgentEnabled", default: false) static var localAgentEnabled: Bool
 
     static func setLocalAgentEnabled(_ value: Bool) { localAgentEnabled = value }
