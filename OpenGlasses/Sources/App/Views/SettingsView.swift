@@ -92,6 +92,16 @@ struct SettingsView: View {
                     )
                 }
 
+                // Stays visible in Simple Mode on purpose: the wearers who most need a
+                // self-test and a way to report a problem are the ones who never see Advanced.
+                OGDivider()
+                categoryLink(destination: DiagnosticsSupportView(appState: appState)) {
+                    OGRow(
+                        "Diagnostics & Support", icon: "stethoscope",
+                        subtitle: "Test the glasses, camera, and AI — or report a problem"
+                    )
+                }
+
                 if !simpleModeEnabled {
                     OGDivider()
                     categoryLink(destination: AdvancedSettingsScreen(appState: appState)) {

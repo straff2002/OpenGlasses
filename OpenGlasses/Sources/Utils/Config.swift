@@ -42,6 +42,18 @@ struct Config {
         "customAgentHarness", // CustomHarnessConfig.authValue (Plan N)
     ]
 
+    /// Every credential currently configured on this device, as literal values.
+    ///
+    /// Only for *scrubbing* — the diagnostics report redactor matches these literally so a
+    /// key that leaked into a log line is masked even when it has no recognisable shape
+    /// (`SecretPatterns` can only spot the ones that announce themselves). Never format,
+    /// log, or transmit the result.
+    static var knownSecretValues: [String] {
+        var values = migratableStringSecretKeys.compactMap { KeychainService.string(for: $0) }
+        values.append(contentsOf: savedModels.map(\.apiKey))
+        return values.filter { !$0.isEmpty }
+    }
+
     /// One-time migration of plaintext secrets from UserDefaults into the Keychain.
     ///
     /// Copies any existing values into the Keychain, then removes the plaintext copy
