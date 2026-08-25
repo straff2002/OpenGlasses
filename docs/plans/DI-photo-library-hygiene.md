@@ -1,6 +1,6 @@
 # Plan DI — Photo Library & Camera Warmup Hygiene
 
-**Status:** 📝 Drafted 2026-08-25 · companion to [DH](DH-local-gemma-keyless-tier.md); together they take everything of value from external PR #331, so it can close with the contributor fully credited
+**Status:** 🚧 P1 shipped 2026-08-25 (readWrite-once, not add-only — see Close-out); P2 audit complete below · companion to [DH](DH-local-gemma-keyless-tier.md); together they take everything of value from external PR #331, so it can close with the contributor fully credited
 
 ## Why
 
@@ -62,6 +62,25 @@ taken, what was superseded, and by what.
 
 ## Close-out
 
+**P2 audit — every #331 hunk this plan owns, walked against main (2026-08-25).**
+
+| #331 hunk | Verdict | Detail |
+|---|---|---|
+| `GlassesPhotoAlbum.swift` (new) | **Taken in P1** | Ported with the album resolution, title fallback and the 3311 race intact. Split into `GlassesPhotoAlbumPolicy` (pure, tested) + a PhotoKit edge; `.limited` restored to the savable set; a failed album-targeted save now retries untargeted instead of losing the asset. |
+| `CameraService.saveToPhotoLibrary` + `fetchGlassesAlbum` | **Taken in P1** | Both deleted; the call routes through the shared album. `import Photos` went with them. |
+| `VideoRecordingService.saveVideoToPhotos` + `fetchGlassesAlbum` | **Taken in P1** | Same, with DA's `RecordingFiler` ordering untouched — the filer still writes Documents first and the Photos step is still last and still non-fatal. #331's orphaned `albumName` doc comment is not reproduced. |
+| `DwellCaptureService` → album | **Taken in P1** | Was `UIImageWriteToSavedPhotosAlbum`, i.e. loose in the camera roll behind its own prompt. Not awaited, so the spoken confirmation can't queue behind a permission sheet. |
+| Add-only authorization | **Re-designed** | Ships as readWrite-once. Add-only blinds `fetchAssetCollections`, so every save takes the create path — one "Glasses" album per capture. Recorded as a policy test rather than only as prose. |
+| `Info.plist` usage string | **No change needed** | Both keys are already present and accurate for readWrite-once; #331's rewording suited add-only. Verified against the *built* app's plist and its `ProcessInfoPlistFile` input, not just the committed file. |
+| `MetaCameraBackend.lastStreamError` + warmup abort | **Taken in P1** | Re-expressed as `CameraErrorPolicy.abortsWarmup` (pure, tested) — deliberately the inverse of `abortsCapture` for the two start-failure errors, terminal conditions left bounded by the timeout. |
+| `waitForStreaming(timeout: attempt == 1 ? 10 : 20)` | **Rejected, and reverted where main already had it** | 10 s sits under the device-traced ~15–18 s cold start, so it fails *healthy* starts. Both warmup loops now use `StreamRecoveryPolicy.warmupTimeout`; a test asserts it clears `observedColdStart`. This also removes the same shortened attempt from `capturePhoto`, which predates #331. |
+| `action(consecutiveFailures: attempt - 1)` dead branch | **Taken in P1, fixed** | Escalation now runs on the shared `consecutiveRecoveryFailures` counter, so the `resetSession` tier is reachable across calls; a single call's attempt count never could reach it. |
+| `AppState.otherStreamConsumersActive()` | **Covered by main** | `CameraStreamClaims` plus the `unclaimedStreamConsumers` closure in `AppState` already give one answer to two readers, and `hasStreamClaims` covers the scene-narration and fingerspelling owners that #331 listed by hand. |
+| `stopStreamUnlessShared()` in `returnToWakeWord()` | **Not taken** | Fires after every turn, not at end of session, and doesn't consult claims — with the 15–18 s cold start that is a full cold start per photo question, and it can stop a stream Live Preview or continuous narration is holding. |
+| `stopStreamUnlessShared()` after a smart-camera capture | **Follow-up, not built** | The underlying question — how long a stream started *for one capture* should outlive it — is real, but the answer is a `CameraStreamClaims.Owner` for the smart-camera grab with `claimStream`/`releaseStream`, not a fourth hand-rolled consumer check. |
+| `Localizable.xcstrings` | **Dropped** | Build extraction only; catalog updates go in their own commit. |
+| `Config.swift`, `LLMService`, `LocalLLMService`, `Package*`, `project.base.yml`, the Gemma tests | **Out of scope** | DH owns them. |
+
 When DH P1 and DI P1 are merged, close PR #331 with thanks: what was ported (with commit
 links), what the upstream dependency fix made unnecessary, and what main had already solved.
 
@@ -70,4 +89,6 @@ links), what the upstream dependency fix made unnecessary, and what main had alr
 - The camera/stream refactors themselves (superseded; P2 only audits).
 - Any change to recording persistence semantics (DA owns them; this plan only swaps the Photos
   step's authorization and album plumbing).
-- Read access to the photo library.
+- Read access to the photo library — **superseded by P1**: album targeting needs it, so the
+  shipped default reads the library it writes to. The narrower ask is preserved as an open
+  follow-up rather than as a requirement.
