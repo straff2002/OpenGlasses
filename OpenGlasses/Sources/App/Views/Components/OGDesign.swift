@@ -596,6 +596,80 @@ struct OGHeroDeviceCard: View {
     }
 }
 
+// MARK: - Buttons
+
+/// The filled accent button — one call to action per page, in the app's accent
+/// rather than a hand-rolled white slab.
+///
+/// The label goes through `OGTheme.onAccentLabel`, because the accent is the
+/// *ground* here: a bright preset needs dark text and a deep one needs light,
+/// and picking one and hoping is how a filled button loses its contrast. The
+/// height is a scaled metric so the target clears 44pt at every Dynamic Type
+/// size, and a disabled button drops to the system's own inactive fill rather
+/// than a washed-out accent that still claims to be tappable.
+struct OGProminentButtonStyle: ButtonStyle {
+    enum Size {
+        /// Full-width page action.
+        case full
+        /// Inline capsule beside a row ("Grant").
+        case compact
+    }
+
+    var size: Size = .full
+
+    @Environment(\.appAccent) private var accent
+    @Environment(\.isEnabled) private var isEnabled
+    @ScaledMetric(relativeTo: .body) private var fullHeight: CGFloat = 50
+    @ScaledMetric(relativeTo: .subheadline) private var compactHeight: CGFloat = 44
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape: AnyShape = size == .full
+            ? AnyShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            : AnyShape(Capsule())
+        return configuration.label
+            .font(size == .full ? .headline : .subheadline.weight(.semibold))
+            .foregroundStyle(
+                isEnabled
+                    ? AnyShapeStyle(OGTheme.onAccentLabel(accent))
+                    : AnyShapeStyle(Color.secondary)
+            )
+            .padding(.horizontal, size == .full ? 16 : 18)
+            .frame(maxWidth: size == .full ? .infinity : nil)
+            .frame(minHeight: size == .full ? fullHeight : compactHeight)
+            .background(
+                isEnabled ? AnyShapeStyle(accent) : AnyShapeStyle(Color(.quaternarySystemFill)),
+                in: shape
+            )
+            .contentShape(shape)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
+/// The quiet companion to the filled button — "Skip setup", "I'll add it
+/// later". Plain text, but padded to a full 44pt row so it is a real target.
+struct OGQuietButtonStyle: ButtonStyle {
+    @ScaledMetric(relativeTo: .subheadline) private var minHeight: CGFloat = 44
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: minHeight)
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.6 : 1)
+    }
+}
+
+extension ButtonStyle where Self == OGProminentButtonStyle {
+    static var ogProminent: OGProminentButtonStyle { .init() }
+    static var ogProminentCompact: OGProminentButtonStyle { .init(size: .compact) }
+}
+
+extension ButtonStyle where Self == OGQuietButtonStyle {
+    static var ogQuiet: OGQuietButtonStyle { .init() }
+}
+
 // MARK: - Form adoption
 
 private struct OGFormStyle: ViewModifier {

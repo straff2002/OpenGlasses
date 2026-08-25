@@ -23,9 +23,9 @@ file references); the phase assignment is not.
 
 | View | Idiom | Note |
 |---|---|---|
-| `OnboardingView.swift` | custom | The 1.3k-line hand-rolled white-on-black flow. DD owns the mechanics; DG P2 owns the look. |
+| `OnboardingView.swift` | ✅ OGDesign + stock grouped lists | Converted in DG P2 (2026-08-25): grouped `List` pages on the warm canvas, `OGCard`/`OGRow` hero pages, accent buttons. |
 | `OnboardingOverlay.swift` | custom | In-app coach marks over the session surface. |
-| `OAuthSignInRows.swift` | custom | Sign-in row cluster; shared with Settings, so it converts once and lands in both. |
+| `OAuthSignInRows.swift` | ✅ / stock | The onboarding half converted in DG P2 (`OnboardingAccountSignInSection`, now a grouped `Section`); `OAuthSignInRows` is a stock form cluster and converts with Settings in P3. |
 | `GoogleSignInRows.swift` | custom | As above. |
 | `BiometricLockView.swift` | custom | First screen after a cold launch when the owner gate is on — reads as onboarding to the user even though it isn't. |
 

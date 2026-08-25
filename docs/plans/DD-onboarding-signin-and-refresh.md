@@ -1,6 +1,7 @@
 # Plan DD — Onboarding Sign-In & Design Refresh
 
-**Status:** 📝 Drafted 2026-08-24 · build queued behind Plan DB (both edit `OnboardingView.swift`)
+**Status:** ✅ P1–P3 shipped — P1+P2 (loopback capture + in-app sheet) 2026-08-25; P3, the
+design-language half, landed 2026-08-25 as **DG P2**
 
 ## Why
 
@@ -70,7 +71,7 @@ keyless default, and lands first).
   `OAuthSignInRows` grow the seamless path rather than being replaced — the model editor in
   Settings gets the same improvement for free.
 
-## P3 — Design-language refresh
+## P3 — Design-language refresh ✅ shipped (as DG P2)
 
 > **Scope note (2026-08-24):** the visual refresh is no longer onboarding-only — Plan DG owns an
 > app-wide design language, and this phase is its onboarding slice (DG P2). DG P1's tokens and
@@ -84,6 +85,13 @@ keyless default, and lands first).
 - The model picker that appears after a credential validates becomes a proper selection list
   (current custom ScrollView → native grouped list), consistent between onboarding and the
   Settings model editor.
+
+**Landed** (see DG P2 for the full note): the flow lost `preferredColorScheme(.dark)` and now
+answers the user's appearance setting; every list-shaped page is a real grouped `List` on the
+warm canvas; the hand-rolled white slab button became the accent button, with its label picked
+by measurement (`onAccentLabel`); `DarkAccountSignInSection` became
+`OnboardingAccountSignInSection`, a grouped `Section` rather than a dark card — its sign-in
+mechanics, sheet, capture and paste fallbacks untouched.
 
 ## Non-goals
 

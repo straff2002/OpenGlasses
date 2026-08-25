@@ -1,6 +1,7 @@
 # Plan DG — App-Wide Design Language Refresh
 
-**Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2–P5 planned — they ride with DD/DE and then sweep the rest
+**Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2 (onboarding) shipped 2026-08-25 ·
+P3–P5 planned — they ride with DE and then sweep the rest
 
 ## Why
 
@@ -34,10 +35,46 @@ One PR over the OGDesign layer, shared with DF P1 since it touches the same file
 - **Inventory**: the artefact that scopes the rest — every screen listed with its current idiom
   (OGDesign / custom / stock) and its target phase below.
 
-## P2 — Onboarding
+## P2 — Onboarding ✅ shipped
 
 Executes DD's design-refresh phase on P1's foundation (DD's sign-in mechanics are unchanged;
-this is the visual half). Lands with or immediately after the DD build.
+this is the visual half). Landed immediately after the DD build.
+
+### What P2 landed
+
+- **The flow stopped forcing dark.** `preferredColorScheme(.dark)` and a `Color.black` ground
+  were the root of the old look; the pages now paint `OGTheme.canvas` and follow the user's
+  appearance setting, which is why every page needed measuring in both schemes rather than one.
+- **Every list-shaped page is a list.** Provider selection, credentials, optional services,
+  permissions and the glasses hookup are grouped `List`s with `.ogFormStyle()` — system row
+  materials, standard separators, a real `Section` header/footer for the labels and captions the
+  old layout hand-placed. The two hero pages (welcome, ready) stay centred compositions, but
+  their content moved into `OGCard` + `OGRow`, so they inherit P1's semantics and metrics
+  instead of restating them.
+- **The model picker** is a grouped selection list with a trailing check, the same shape the
+  Settings model editor offers, replacing a 200pt nested `ScrollView` of custom pills.
+- **Two token additions, both forced by measurement rather than taste.** `onAccentLabel` — a
+  filled accent button treats the accent as *ground*, and the shipped coral needs white text in
+  light and near-black in dark; picking one and hoping is how a filled button loses its
+  contrast. And `okLabel`/`warnLabel`/`errorLabel` — the status hues are picked to read as a 7pt
+  dot; the green measures ~2.2:1 as text on a white card, so "Key valid" and "Granted" go
+  through the same `readable(_:on:)` correction the accent does. Both are in
+  `OGTheme.contrastAudit`, asserted in both schemes; `onAccentLabel` is asserted across every
+  accent preset.
+- **`OGProminentButtonStyle` / `OGQuietButtonStyle`** replace the hand-rolled white slab and the
+  0.4-opacity text link: accent-tinted, scaled-metric heights that clear 44pt at every Dynamic
+  Type size, and a disabled state that drops to the system's inactive fill rather than a washed
+  accent that still looks tappable.
+- **Accessibility (DF P1 criteria) as part of the change, not after it:** the page title is a
+  header and takes VoiceOver focus on every page change; selection rows carry `.isSelected`
+  rather than relying on a coral tick; permission state says "Granted" in words; every icon tile,
+  logo and tick is hidden from the tree; the "Grant" buttons name their permission; page
+  transitions and the indicator animate only when Reduce Motion is off; the hero pages scroll so
+  AX5 doesn't truncate them.
+- Behaviour is untouched: seven pages in the same order, the Back chevron, the keyless
+  "Start without an API key" card, the sign-in flows and their paste fallbacks, and every
+  validation and save path. The one deletion is a duplicate "get your API key" row that rendered
+  twice, with the same destination, whenever the field was empty.
 
 ## P3 — Settings
 
