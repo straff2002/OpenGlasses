@@ -1,4 +1,4 @@
-# Plan DI — Photo Library Hygiene
+# Plan DI — Photo Library & Camera Warmup Hygiene
 
 **Status:** 📝 Drafted 2026-08-25 · companion to [DH](DH-local-gemma-keyless-tier.md); together they take everything of value from external PR #331, so it can close with the contributor fully credited
 
@@ -21,19 +21,34 @@ rebuilt exactly the save paths it touches — and it bundles shared-camera-strea
 `CameraStreamClaims` ownership mechanism. So: port the photo-library half onto current main
 **with credit**, and verify-then-drop the stream half.
 
-## P1 — Add-only saving, ported onto current main
+## P1 — Prompt once via consolidation, ported onto current main
 
-- Bring over `GlassesPhotoAlbum` (add-only authorization, cached-identifier album resolution,
-  3311 handling, image + video save) re-composed against today's save paths: `RecordingFiler`'s
-  ordering is law — Documents first, Photos last, nothing deleted until a persistent copy
-  exists — and the Photos step goes through the new album API. Replace both private
-  `fetchGlassesAlbum()` copies. Photo capture and dwell-capture save paths route the same way.
-- Plist: the add-only usage string; verify against the personal-plist-override gotcha (the
-  committed plist is not always the one shipped — check the ProcessInfoPlistFile input).
-- **Existing-install caveat, stated in UI copy**: a user who previously granted or denied the
-  broader permission must change it in Settings — the PR body itself notes this. Detect the
-  limbo states (`denied`, `limited`, legacy readWrite grants) and point at Settings honestly
-  rather than silently failing to file.
+Scope follows the review on #331, which separated the universal fix from the tested-device
+workaround:
+
+- **The consolidation is the fix.** Bring over `GlassesPhotoAlbum` (cached-identifier album
+  resolution with title fallback, 3311 race handling, image + video save) re-composed against
+  today's save paths: `RecordingFiler`'s ordering is law — Documents first, Photos last,
+  nothing deleted until a persistent copy exists — and the Photos step goes through the new
+  album API. Replace both private `fetchGlassesAlbum()` copies; photo capture and dwell-capture
+  save paths route the same way. The double prompt dies because the request now happens in
+  exactly one place.
+- **Authorization stays `readWrite`, requested once — NOT add-only** unless the review's
+  album-churn analysis is disproven on a fresh install: under `.addOnly`,
+  `PHAssetCollection.fetchAssetCollections` returns empty (it needs read access), so the cached
+  identifier is discarded on every save, title lookup fails, and `createAlbum()` runs again —
+  an empty "Glasses" album per photo, or none. If an add-only design that keeps stable album
+  targeting exists, it may be adopted with that repro test as the gate; otherwise readWrite
+  once is the honest trade and the doc records why.
+- **Camera warmup, the half worth keeping**: port the `lastStreamError` early-abort (turns a
+  20 s hang into a fast fail — good for everyone) while **restoring the full 20 s attempt-1
+  timeout** (the PR's shortened `attempt == 1 ? 10 : 20` sits below the recorded ~15–18 s
+  healthy cold-start window, so it made every healthy cold start fail its first attempt); and
+  fix the dead branch (`action(consecutiveFailures: attempt - 1)` can only see 0, so
+  `resetSession()` was unreachable).
+- Plist usage-string changes only as the chosen authorization requires; verify against the
+  personal-plist-override gotcha (check the ProcessInfoPlistFile input, not just the committed
+  plist).
 - Credit the contributor in commit and PR text.
 
 ## P2 — Verify the superseded half, take nothing blindly
