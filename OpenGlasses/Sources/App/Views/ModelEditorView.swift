@@ -46,6 +46,7 @@ struct ModelEditorView: View {
                     resetModelOnProviderChange: false
                 )
             }
+            .ogFormStyle()
             .navigationTitle("Edit Model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

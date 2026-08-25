@@ -596,6 +596,142 @@ struct OGHeroDeviceCard: View {
     }
 }
 
+// MARK: - Selection & status
+
+/// The trailing check on a row in a grouped selection list.
+///
+/// Kept in the layout at all times and merely faded, so choosing a different row
+/// doesn't reflow the list under the user's finger. The glyph is decoration: the
+/// state itself is spoken by the row's `.isSelected` trait, which is why this is
+/// hidden from the accessibility tree rather than labelled "selected".
+struct OGSelectionCheck: View {
+    let isSelected: Bool
+
+    @Environment(\.appAccent) private var accent
+
+    init(_ isSelected: Bool) {
+        self.isSelected = isSelected
+    }
+
+    var body: some View {
+        Image(systemName: "checkmark")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+            .opacity(isSelected ? 1 : 0)
+            .accessibilityHidden(true)
+    }
+}
+
+/// One row of a grouped selection list: a title, an optional supporting line,
+/// and a trailing check.
+///
+/// This is the shape the credential pages settled on — a stock list row rather
+/// than a custom pill, so it inherits the system's row material, separators and
+/// highlight. The whole row is the target (`contentShape`) at a height that
+/// scales past 44pt with Dynamic Type, and the selection reaches VoiceOver as
+/// the `.isSelected` trait rather than as a coral tick.
+struct OGSelectionRow: View {
+    let title: String
+    var subtitle: String? = nil
+    let isSelected: Bool
+    /// What VoiceOver reads. Defaults to the visible text; pass a fuller
+    /// sentence where the row's meaning needs more than its label ("Claude
+    /// Sonnet, Anthropic, active").
+    var accessibilityText: String? = nil
+    let action: () -> Void
+
+    @ScaledMetric(relativeTo: .body) private var minHeight: CGFloat = 44
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: OGMetrics.rowSpacing) {
+                VStack(alignment: .leading, spacing: 2) {
+                    // Two lines rather than one: model names are long, and at
+                    // AX5 a single line truncates the part that distinguishes
+                    // one entry from the next.
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 8)
+                OGSelectionCheck(isSelected)
+            }
+            .frame(minHeight: minHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText ?? [title, subtitle].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A one-line outcome beside a control: "Key valid — 12 models", a validation
+/// failure, "Reachable — 40 ms".
+///
+/// The colour comes from the corrected `okLabel`/`warnLabel`/`errorLabel`
+/// family rather than the raw status hues, which are picked to read as a 7pt dot
+/// and measure ~2:1 as text. Colour is never the only carrier: the glyph differs
+/// per kind and the sentence says what happened, so the meaning survives both a
+/// monochrome display and a screen reader.
+struct OGStatusLabel: View {
+    enum Kind {
+        case ok, warn, error
+
+        /// The audited token this kind paints its text in. Exposed so the
+        /// contrast suite can measure the mapping rather than the rendering.
+        var token: OGColorToken {
+            switch self {
+            case .ok: return OGTheme.okLabelToken
+            case .warn: return OGTheme.warnLabelToken
+            case .error: return OGTheme.errorLabelToken
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .ok: return OGTheme.okLabel
+            case .warn: return OGTheme.warnLabel
+            case .error: return OGTheme.errorLabel
+            }
+        }
+
+        /// The default glyph, so the three states differ in shape and not only
+        /// in hue.
+        var systemImage: String {
+            switch self {
+            case .ok: return "checkmark.circle.fill"
+            case .warn: return "exclamationmark.triangle"
+            case .error: return "exclamationmark.circle.fill"
+            }
+        }
+    }
+
+    let text: String
+    let kind: Kind
+    var systemImage: String? = nil
+
+    init(_ text: String, kind: Kind, systemImage: String? = nil) {
+        self.text = text
+        self.kind = kind
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        Label(text, systemImage: systemImage ?? kind.systemImage)
+            .font(.footnote)
+            .foregroundStyle(kind.color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 // MARK: - Buttons
 
 /// The filled accent button — one call to action per page, in the app's accent

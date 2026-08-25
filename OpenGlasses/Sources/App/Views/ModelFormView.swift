@@ -32,6 +32,11 @@ struct ModelFormView: View {
     @ObservedObject private var claudeOAuth = ClaudeOAuthService.shared
     @ObservedObject private var chatgptOAuth = ChatGPTOAuthService.shared
 
+    @Environment(\.appAccent) private var accent
+    /// Row heights that have to grow with the type beside them, so every
+    /// tappable row clears 44pt at any Dynamic Type size.
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
+
     var body: some View {
         Section {
             TextField("e.g. Claude Sonnet, GPT-4o", text: $name)
@@ -73,9 +78,7 @@ struct ModelFormView: View {
                 let downloaded = localDownloadedModels
 
                 if downloaded.isEmpty {
-                    Label("No models downloaded yet", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    OGStatusLabel("No models downloaded yet", kind: .warn)
                 } else {
                     Picker("Model", selection: $model) {
                         ForEach(downloaded, id: \.self) { modelId in
@@ -89,6 +92,7 @@ struct ModelFormView: View {
                     LocalModelManagerView()
                 } label: {
                     Label("Download & Manage Models", systemImage: "arrow.down.circle")
+                        .frame(minHeight: rowMinHeight)
                 }
 
                 Toggle("Vision (Image Input)", isOn: $supportsVision)
@@ -132,6 +136,7 @@ struct ModelFormView: View {
                 // Account-sign-in providers have no key to paste.
                 if selectedProvider != .chatgpt && selectedProvider != .geminiVertex {
                     SecretInputField(placeholder: anthropicKeyPlaceholder, text: $apiKey)
+                        .frame(minHeight: rowMinHeight)
                         .onChange(of: apiKey) { _, _ in resetModelList() }
                 }
 
@@ -139,119 +144,29 @@ struct ModelFormView: View {
                     Link(destination: url) {
                         HStack {
                             Label("Get API Key", systemImage: "arrow.up.right.square")
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                             Spacer()
                             Text(url.host ?? "")
-                                .font(.caption)
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                        .frame(minHeight: rowMinHeight)
                     }
+                    .accessibilityLabel("Get API Key from \(url.host ?? selectedProvider.displayName)")
                 }
 
                 if selectedProvider.showBaseURL {
-                    Menu {
-                        ForEach(LocalServerPreset.allCases) { preset in
-                            Button(preset.displayName) {
-                                baseURL = preset.baseURL
-                                resetModelList()
-                                connectionStatus = nil
-                            }
-                        }
-                    } label: {
-                        Label("Local server preset", systemImage: "server.rack")
-                    }
-
-                    TextField("Base URL", text: $baseURL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onChange(of: baseURL) { _, _ in resetModelList(); connectionStatus = nil }
+                    localServerRows
                 }
 
-                Button {
-                    Task { await fetchModels() }
-                } label: {
-                    HStack {
-                        if isFetchingModels {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Validating…")
-                        } else if keyValidated {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("Key valid · \(availableModels.count) models")
-                            Spacer()
-                            Image(systemName: "arrow.clockwise")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                            Text(selectedProvider == .custom ? "Fetch models" : "Validate key & fetch models")
-                        }
-                    }
-                }
-                .disabled((apiKey.isEmpty && selectedProvider != .custom && !accountOAuthReady) || isFetchingModels)
+                validateButton
 
                 if let error = fetchError {
-                    Label(error, systemImage: "xmark.circle")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    OGStatusLabel(error, kind: .error)
                 }
 
                 if selectedProvider.showBaseURL {
-                    Button {
-                        Task { await testConnection() }
-                    } label: {
-                        HStack {
-                            if isTestingConnection {
-                                ProgressView().scaleEffect(0.8)
-                                Text("Testing…")
-                            } else {
-                                Image(systemName: "bolt.horizontal.circle")
-                                Text("Test Connection")
-                            }
-                        }
-                    }
-                    .disabled(baseURL.isEmpty || isTestingConnection)
-
-                    if let connectionStatus {
-                        Label(connectionStatus, systemImage: connectionOK ? "checkmark.circle.fill" : "xmark.circle")
-                            .font(.footnote)
-                            .foregroundStyle(connectionOK ? .green : .red)
-                    }
-
-                    // Experimental LAN auto-detect (Plan AF #6).
-                    Button {
-                        Task { await scanLAN() }
-                    } label: {
-                        HStack {
-                            if isScanning {
-                                ProgressView().scaleEffect(0.8)
-                                Text("Scanning…")
-                            } else {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                Text("Scan local network")
-                            }
-                            Spacer()
-                            Text("Experimental").font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    .disabled(isScanning)
-
-                    if let scanMessage {
-                        Text(scanMessage).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    ForEach(discoveredServers) { server in
-                        Button {
-                            baseURL = server.baseURL
-                            resetModelList()
-                            connectionStatus = nil
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(server.preset.displayName) · \(server.host)").font(.subheadline)
-                                Text("\(server.baseURL) — \(server.modelCount) models, \(server.latencyMs) ms")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+                    connectionRows
                 }
             } header: {
                 Text("API Key")
@@ -259,19 +174,30 @@ struct ModelFormView: View {
                 Text(providerHelpText)
             }
 
-            Section {
-                if !availableModels.isEmpty {
-                    Picker("Select Model", selection: $model) {
-                        ForEach(availableModels) { m in
-                            Text(m.name).tag(m.id)
+            // The list a validated credential unlocks — a native grouped
+            // selection list, the same shape the credentials step offers.
+            if !availableModels.isEmpty {
+                Section {
+                    ForEach(availableModels) { candidate in
+                        OGSelectionRow(
+                            title: candidate.name,
+                            subtitle: candidate.id == candidate.name ? nil : candidate.id,
+                            isSelected: model == candidate.id,
+                            accessibilityText: modelRowLabel(candidate)
+                        ) {
+                            model = candidate.id
                         }
                     }
-                    .pickerStyle(.menu)
+                } header: {
+                    Text("Select Model")
                 }
+            }
 
+            Section {
                 TextField("Model ID", text: $model)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .frame(minHeight: rowMinHeight)
 
                 Toggle("Vision (Image Input)", isOn: $supportsVision)
             } header: {
@@ -284,6 +210,152 @@ struct ModelFormView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Key section rows
+
+    /// Validate-and-fetch. Once a key has checked out the row becomes its own
+    /// result plus a refresh affordance, so the outcome sits where the action
+    /// was rather than in a separate banner.
+    private var validateButton: some View {
+        Button {
+            Task { await fetchModels() }
+        } label: {
+            HStack(spacing: 8) {
+                if isFetchingModels {
+                    ProgressView().controlSize(.small)
+                    Text("Validating…")
+                } else if keyValidated {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(OGTheme.okLabel)
+                        .accessibilityHidden(true)
+                    Text("Key valid · \(availableModels.count) models")
+                    Spacer()
+                    Image(systemName: "arrow.clockwise")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .accessibilityHidden(true)
+                    Text(selectedProvider == .custom ? "Fetch models" : "Validate key & fetch models")
+                }
+            }
+            .frame(minHeight: rowMinHeight)
+        }
+        .disabled((apiKey.isEmpty && selectedProvider != .custom && !accountOAuthReady) || isFetchingModels)
+        .accessibilityLabel(
+            keyValidated
+                ? "Key valid, \(availableModels.count) models. Check again"
+                : (selectedProvider == .custom ? "Fetch models" : "Validate key and fetch models")
+        )
+    }
+
+    /// Preset menu + base URL, for the providers that point at a server the user
+    /// runs themselves.
+    @ViewBuilder
+    private var localServerRows: some View {
+        Menu {
+            ForEach(LocalServerPreset.allCases) { preset in
+                Button(preset.displayName) {
+                    baseURL = preset.baseURL
+                    resetModelList()
+                    connectionStatus = nil
+                }
+            }
+        } label: {
+            Label("Local server preset", systemImage: "server.rack")
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                .frame(minHeight: rowMinHeight)
+        }
+
+        TextField("Base URL", text: $baseURL)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .frame(minHeight: rowMinHeight)
+            .onChange(of: baseURL) { _, _ in resetModelList(); connectionStatus = nil }
+    }
+
+    /// Reachability test and the experimental LAN sweep (Plan AF #6).
+    @ViewBuilder
+    private var connectionRows: some View {
+        Button {
+            Task { await testConnection() }
+        } label: {
+            HStack(spacing: 8) {
+                if isTestingConnection {
+                    ProgressView().controlSize(.small)
+                    Text("Testing…")
+                } else {
+                    Image(systemName: "bolt.horizontal.circle")
+                        .accessibilityHidden(true)
+                    Text("Test Connection")
+                }
+            }
+            .frame(minHeight: rowMinHeight)
+        }
+        .disabled(baseURL.isEmpty || isTestingConnection)
+
+        if let connectionStatus {
+            OGStatusLabel(connectionStatus, kind: connectionOK ? .ok : .error)
+        }
+
+        Button {
+            Task { await scanLAN() }
+        } label: {
+            HStack(spacing: 8) {
+                if isScanning {
+                    ProgressView().controlSize(.small)
+                    Text("Scanning…")
+                } else {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .accessibilityHidden(true)
+                    Text("Scan local network")
+                }
+                Spacer()
+                Text("Experimental")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minHeight: rowMinHeight)
+        }
+        .disabled(isScanning)
+
+        if let scanMessage {
+            Text(scanMessage)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        ForEach(discoveredServers) { server in
+            Button {
+                baseURL = server.baseURL
+                resetModelList()
+                connectionStatus = nil
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(server.preset.displayName) · \(server.host)")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    Text("\(server.baseURL) — \(server.modelCount) models, \(server.latencyMs) ms")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minHeight: rowMinHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Double-tap to use this server")
+        }
+    }
+
+    /// What VoiceOver reads for a fetched-model row. The id is only worth
+    /// speaking when it differs from the display name.
+    private func modelRowLabel(_ candidate: ModelFetcher.RemoteModel) -> String {
+        candidate.id == candidate.name ? candidate.name : "\(candidate.name), \(candidate.id)"
     }
 
     // MARK: - Private
