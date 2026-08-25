@@ -4,10 +4,15 @@ import MWDATCore
 
 struct SettingsView: View {
     @ObservedObject var appState: AppState
+    /// The journey state (Plan DE): which categories are unfolded, and which
+    /// Discover card — if any — is currently being suggested. Visibility only:
+    /// nothing here gates a capability or changes a setting.
+    @ObservedObject private var journey = SettingsJourneyStore.shared
     @Environment(\.appAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
-    @AppStorage("appAppearance") private var appearance: String = "dark"
+    @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
     @AppStorage("activeModelId") private var activeModelId = ""
     @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
@@ -18,16 +23,30 @@ struct SettingsView: View {
     @State private var exitGate = OwnerGateMachine()
     @State private var entryGate = OwnerGateMachine()
 
-    // The individual settings sections live in per-category screens (SettingsScreens.swift);
-    // this view is the hub: a short list of categories plus the always-visible
-    // Simple Mode and About sections.
+    // The individual settings sections live in per-category screens (SettingsScreens.swift
+    // and SettingsJourneyScreens.swift); this view is the hub: the categories the user
+    // has, the ones they haven't met yet, plus the always-visible Simple Mode and About
+    // sections.
+    //
+    // Which categories are rows and which are Discover cards is decided entirely by
+    // `CapabilityCatalog` + `SettingsJourneyState` (Plan DE) — folded is never locked,
+    // there is no gate of any kind, and the accessibility surface is structurally
+    // incapable of being folded away. Simple Mode is orthogonal and untouched: it hides
+    // the owner-only configuration surface for handing the device to someone else, and
+    // unfolding a card never changes what it hides.
+
+    private var visibleCategories: [CapabilityCategory] {
+        journey.state.visibleCategories(simpleMode: simpleModeEnabled)
+    }
+
+    private var discoverCards: [CapabilityCategory] {
+        journey.state.discoverCards(simpleMode: simpleModeEnabled)
+    }
 
     var body: some View {
         // The hub is an OGDesign page (Plan CL): hero device card, then one
-        // grouped card of category rows, each with a live value summary.
-        // Simple Mode hides the owner-only configuration surface (models, personas,
-        // behavior, tools, integrations, advanced) — the device keeps working exactly
-        // as configured; those categories just stop being visible/editable.
+        // grouped card of category rows, each with a live value summary, then the
+        // Discover section for everything still folded.
         OGScrollPage {
             OGHeroDeviceCard(
                 title: appState.glassesService.deviceName ?? "Meta Glasses",
@@ -42,77 +61,21 @@ struct SettingsView: View {
             )
 
             OGSection {
-                categoryLink(destination: VoiceTriggersSettingsScreen(appState: appState)) {
-                    OGRow(
-                        "Voice & Triggers", icon: "waveform",
-                        subtitle: "Wake phrase, push-to-talk, hands-free triggers",
-                        value: "“\(displayedWakePhrase)”"
-                    )
-                }
-
-                if !simpleModeEnabled {
-                    OGDivider()
-                    categoryLink(destination: AIPersonalitySettingsScreen(appState: appState)) {
+                ForEach(Array(visibleCategories.enumerated()), id: \.element.id) { index, category in
+                    if index > 0 { OGDivider() }
+                    categoryLink(destination: destination(for: category)) {
                         OGRow(
-                            "AI & Personality", icon: "brain.head.profile",
-                            subtitle: "Models, personas, prompt, and behaviour",
-                            value: displayedActiveModelName
-                        )
-                    }
-                    OGDivider()
-                    categoryLink(destination: ToolsActionsSettingsScreen(appState: appState)) {
-                        OGRow(
-                            "Tools & Actions", icon: "wrench.and.screwdriver",
-                            subtitle: "Quick actions, tools, skills, and playbooks"
-                        )
-                    }
-                    OGDivider()
-                    categoryLink(destination: ConnectionsSettingsScreen(appState: appState)) {
-                        OGRow(
-                            "Connections", icon: "point.3.connected.trianglepath.dotted",
-                            subtitle: "Services, gateways, and MCP servers"
-                        )
-                    }
-                }
-
-                OGDivider()
-                categoryLink(destination: GlassesPrivacySettingsScreen(appState: appState)) {
-                    OGRow(
-                        "Glasses & Privacy", icon: "lock.shield",
-                        subtitle: "Hardware, privacy, and medical compliance",
-                        value: appState.isConnected ? "Connected" : nil
-                    )
-                }
-                OGDivider()
-                categoryLink(destination: LookFeelSettingsScreen()) {
-                    OGRow(
-                        "Look & Feel", icon: "paintbrush",
-                        subtitle: "Theme, accent colour, and languages",
-                        value: appearance.capitalized
-                    )
-                }
-
-                // Stays visible in Simple Mode on purpose: the wearers who most need a
-                // self-test and a way to report a problem are the ones who never see Advanced.
-                OGDivider()
-                categoryLink(destination: DiagnosticsSupportView(appState: appState)) {
-                    OGRow(
-                        "Diagnostics & Support", icon: "stethoscope",
-                        subtitle: "Test the glasses, camera, and AI — or report a problem"
-                    )
-                }
-
-                if !simpleModeEnabled {
-                    OGDivider()
-                    categoryLink(destination: AdvancedSettingsScreen(appState: appState)) {
-                        OGRow(
-                            "Advanced", icon: "gearshape.2", mutedIcon: true,
-                            subtitle: "Diagnostics and power-user tools",
-                            value: "Test panel"
+                            category.title,
+                            icon: category.icon,
+                            mutedIcon: category.mutedIcon,
+                            subtitle: category.subtitle,
+                            value: summary(for: category)
                         )
                     }
                 }
             }
+
+            discoverSection
 
             // MARK: Simple Mode (always visible so the owner can leave it — behind the owner gate)
             OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
@@ -129,9 +92,7 @@ struct SettingsView: View {
                     .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
                 if exitGate.lastFailed {
                     OGDivider()
-                    Label("Couldn't verify it's you — Simple Mode stays on.", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                 }
@@ -180,6 +141,126 @@ struct SettingsView: View {
         }
         .onAppear {
             if settingsLocked { authenticateSettingsEntry() }
+            // One of the four unlock moments is answerable from the hub itself:
+            // whether the connected glasses have a display. No service needs to
+            // report it, and the policy still spends the moment exactly once.
+            if appState.glassesDisplay.hasDisplayCapability {
+                journey.record(.displayGlassesConnected)
+            }
+        }
+    }
+
+    // MARK: - Discover (Plan DE)
+
+    /// Folded capabilities, pitched rather than listed, plus the one switch that
+    /// opens the lot. Absent entirely once there is nothing left to discover.
+    @ViewBuilder
+    private var discoverSection: some View {
+        if !discoverCards.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("DISCOVER")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
+                    .accessibilityLabel("Discover")
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(discoverCards) { category in
+                    let suggestion = journey.pendingSuggestion(forCategory: category.id)
+                    OGDiscoverCard(
+                        title: category.title,
+                        pitch: category.pitch,
+                        icon: category.icon,
+                        suggestion: suggestion?.note,
+                        unfold: { unfold(category) },
+                        dismissSuggestion: suggestion.map { s in { journey.dismiss(s.moment) } }
+                    )
+                }
+
+                Text("Tap one to add it to Settings for good. Nothing here is locked — this only decides what the list shows.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 2)
+            }
+        }
+
+        if !discoverCards.isEmpty || journey.state.showsEverything {
+            OGSection(
+                footer: "Shows every category at once, including the ones you haven't opened yet."
+            ) {
+                OGRow(
+                    "Show everything",
+                    isOn: Binding(
+                        get: { journey.state.showsEverything },
+                        set: { on in
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                                journey.setShowsEverything(on)
+                            }
+                        }
+                    ),
+                    icon: "square.grid.2x2"
+                )
+            }
+        }
+    }
+
+    /// One tap, permanent, no gate. The announcement matters because the change
+    /// is a card *becoming* a row further up the page — a sighted user sees the
+    /// list grow, and VoiceOver otherwise would not.
+    private func unfold(_ category: CapabilityCategory) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            journey.unfold(category.id)
+        }
+        AccessibilityNotification.Announcement("\(category.title) added to Settings").post()
+    }
+
+    // MARK: - Category rendering
+
+    /// The live value summary beside a category row, where one is worth showing.
+    private func summary(for category: CapabilityCategory) -> String? {
+        switch category.id {
+        case CapabilityCatalog.voice: return "“\(displayedWakePhrase)”"
+        case CapabilityCatalog.intelligence: return displayedActiveModelName
+        case CapabilityCatalog.glasses: return appState.isConnected ? "Connected" : nil
+        case CapabilityCatalog.lookAndFeel: return appearance.capitalized
+        case CapabilityCatalog.accessibility: return Config.accessibilityModeEnabled ? "On" : nil
+        case CapabilityCatalog.display: return glassesDisplayEnabled ? "On" : nil
+        case CapabilityCatalog.advanced: return "Test panel"
+        default: return nil
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for category: CapabilityCategory) -> some View {
+        switch category.id {
+        case CapabilityCatalog.voice:
+            VoiceTriggersSettingsScreen(appState: appState)
+        case CapabilityCatalog.appleIntegrations:
+            AppleIntegrationsSettingsScreen()
+        case CapabilityCatalog.accessibility:
+            AccessibilitySettingsView().environmentObject(appState)
+        case CapabilityCatalog.glasses:
+            GlassesPrivacySettingsScreen(appState: appState)
+        case CapabilityCatalog.lookAndFeel:
+            LookFeelSettingsScreen()
+        case CapabilityCatalog.diagnostics:
+            DiagnosticsSupportView(appState: appState)
+        case CapabilityCatalog.capture:
+            CaptureStreamingSettingsScreen(appState: appState)
+        case CapabilityCatalog.display:
+            DisplayHUDSettingsScreen(appState: appState)
+        case CapabilityCatalog.intelligence:
+            AIPersonalitySettingsScreen(appState: appState)
+        case CapabilityCatalog.tools:
+            ToolsActionsSettingsScreen(appState: appState)
+        case CapabilityCatalog.advanced:
+            AdvancedSettingsScreen(appState: appState)
+        case CapabilityCatalog.connections:
+            ConnectionsSettingsScreen(appState: appState)
+        default:
+            EmptyView()
         }
     }
 
@@ -810,7 +891,7 @@ struct HardwarePrivacyView: View {
                         Label("Recordings", systemImage: "waveform")
                         Spacer()
                         if appState.sessionRecorder.isRecording {
-                            Text("Recording").foregroundStyle(.red)
+                            OGStatusLabel("Recording", kind: .error, systemImage: "record.circle")
                         }
                     }
                 }

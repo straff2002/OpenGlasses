@@ -1,8 +1,4 @@
 import SwiftUI
-import EventKit
-import Contacts
-import UserNotifications
-import HealthKit
 
 /// Lists all registered native tools with toggle, description, and parameter info.
 /// Transparency surface — users can see and control what the AI can do.
@@ -12,15 +8,6 @@ struct ToolsSettingsView: View {
     @State private var offlineMode: Bool = Config.offlineModeEnabled
     @State private var searchText = ""
     @State private var permissionDeniedTool: String?
-
-    /// Tools that require a system permission when enabled.
-    private static let permissionTools: [String: String] = [
-        "calendar": "Calendar access",
-        "reminder": "Reminders access",
-        "lookup_contact": "Contacts access",
-        "set_alarm": "Notification permission",
-        "fitness_coach": "HealthKit access",
-    ]
 
     private var allTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         appState.nativeToolRouter.registry.allTools
@@ -205,14 +192,14 @@ struct ToolsSettingsView: View {
                                 set: { enabled in
                                     if enabled {
                                         // Request permission if this tool needs one
-                                        if Self.permissionTools[tool.name] != nil {
+                                        if let permission = ToolPermissionGate.permissionName(for: tool.name) {
                                             Task {
-                                                let granted = await requestPermission(for: tool.name)
+                                                let granted = await ToolPermissionGate.requestPermission(for: tool.name)
                                                 if granted {
                                                     disabledTools.remove(tool.name)
                                                     Config.setDisabledTools(disabledTools)
                                                 } else {
-                                                    permissionDeniedTool = Self.permissionTools[tool.name]
+                                                    permissionDeniedTool = permission
                                                 }
                                             }
                                         } else {
@@ -279,57 +266,6 @@ struct ToolsSettingsView: View {
             Button("Cancel", role: .cancel) { permissionDeniedTool = nil }
         } message: {
             Text("\(permissionDeniedTool ?? "Permission") was denied. You can grant it in Settings.")
-        }
-    }
-
-    // MARK: - Permission Requests
-
-    /// Request the appropriate system permission for a tool. Returns true if granted.
-    private func requestPermission(for toolName: String) async -> Bool {
-        switch toolName {
-        case "calendar":
-            let store = EKEventStore()
-            do {
-                return try await store.requestFullAccessToEvents()
-            } catch {
-                return false
-            }
-        case "reminder":
-            let store = EKEventStore()
-            do {
-                return try await store.requestFullAccessToReminders()
-            } catch {
-                return false
-            }
-        case "lookup_contact":
-            let store = CNContactStore()
-            do {
-                return try await store.requestAccess(for: .contacts)
-            } catch {
-                return false
-            }
-        case "set_alarm":
-            let center = UNUserNotificationCenter.current()
-            do {
-                return try await center.requestAuthorization(options: [.alert, .sound])
-            } catch {
-                return false
-            }
-        case "fitness_coach":
-            let healthStore = HKHealthStore()
-            guard HKHealthStore.isHealthDataAvailable() else { return false }
-            let readTypes: Set<HKObjectType> = [
-                HKObjectType.quantityType(forIdentifier: .stepCount)!,
-                HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-            ]
-            do {
-                try await healthStore.requestAuthorization(toShare: [], read: readTypes)
-                return true
-            } catch {
-                return false
-            }
-        default:
-            return true
         }
     }
 }

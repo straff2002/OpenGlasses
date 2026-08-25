@@ -91,9 +91,14 @@ enum GlassesPhotoAlbum {
             NSLog("[PhotoAlbum] Photo library access denied — image not saved")
             return false
         }
-        return await saveTargetingAlbum {
+        let saved = await saveTargetingAlbum {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         }
+        // Plan DE: the first photo is one of the four moments the hub may quietly
+        // point at the next capability. Recorded here rather than at any one call
+        // site because every route into the album passes through this function.
+        if saved { SettingsJourneyStore.note(.firstPhotoCaptured) }
+        return saved
     }
 
     /// Save a video file into the Glasses album. Returns whether the asset landed; callers keep
