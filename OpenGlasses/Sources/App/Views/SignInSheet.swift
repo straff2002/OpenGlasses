@@ -40,12 +40,31 @@ final class SignInSheetModel: ObservableObject {
     /// Whether to offer the paste field and the open-in-browser route.
     @Published private(set) var showsPasteFallback = false
 
+    /// Shown when the seamless capture couldn't run, so the paste field doesn't appear unexplained.
+    static let captureUnavailableMessage = String(
+        localized: "Couldn't finish the sign-in automatically. Copy the address the page ends on and paste it below.")
+
+    /// The reason the seamless path gave up, if it did. Exchange failures carry no reason of
+    /// their own — the service publishes those — so an empty one reads as nothing to say.
+    var fallbackReason: String? {
+        guard let reason = state.failureReason, !reason.isEmpty else { return nil }
+        return reason
+    }
+
     /// The authorize URL of the current attempt, kept so the user can reopen it externally.
     private(set) var authURL: URL?
 
     private var server: LoopbackCallbackServer?
     private var captureTask: Task<Void, Never>?
     private var exchangeTask: Task<Void, Never>?
+
+    /// The socket must not outlive the view that owns this model. Sheet dismissal normally stops
+    /// it, but a screen torn down while the sheet is up never delivers that callback — without
+    /// this, a listener would stay bound until the capture window expired.
+    deinit {
+        captureTask?.cancel()
+        server?.stop()
+    }
 
     // MARK: - Presenting
 
@@ -140,7 +159,9 @@ final class SignInSheetModel: ObservableObject {
 
         case .portUnavailable, .listenerFailed, .timedOut:
             // The redirect will land on a page that can't load; the code is still in the address
-            // bar, so surface the paste route and leave the sheet up.
+            // bar, so surface the paste route and leave the sheet up. Say so, rather than making
+            // a paste field appear for no visible reason.
+            state.apply(.fail(reason: Self.captureUnavailableMessage))
             showsPasteFallback = true
 
         case .cancelled:

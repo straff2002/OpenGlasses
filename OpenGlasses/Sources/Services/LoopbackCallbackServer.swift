@@ -104,7 +104,7 @@ final class LoopbackCallbackServer {
         let requestPath = target.split(separator: "?", maxSplits: 1).first.map(String.init) ?? target
         guard method == "GET", requestPath == callbackPath else { return (.reject, notFoundResponse) }
         // Reuse the shared parser by rebuilding the absolute URL the browser asked for.
-        guard let parsed = ChatGPTOAuth.parseAuthorizationInput("http://127.0.0.1" + target) else {
+        guard let parsed = OAuthCodeInput.parse("http://127.0.0.1" + target) else {
             return (.reject, notFoundResponse)
         }
         guard let expectedState, let state = parsed.state,

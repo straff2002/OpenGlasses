@@ -126,6 +126,13 @@ struct DarkAccountSignInSection<Service: OAuthSignInService>: View {
                     .foregroundStyle(.white.opacity(0.5))
 
                 if flow.showsPasteFallback {
+                    if let reason = flow.fallbackReason {
+                        Text(reason)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                    }
+
                     TextField("Paste authorization code", text: $code)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -265,6 +272,12 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
             }
 
             if flow.showsPasteFallback {
+                if let reason = flow.fallbackReason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 TextField("Paste authorization code", text: $code)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
