@@ -2856,8 +2856,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Toggle video recording on/off.
     func toggleRecording() async {
         if videoRecorder.isRecording {
+            // The recorder has already filed the recording by the time this returns, so the
+            // share sheet is an offer rather than the only chance to keep it — dismissing it
+            // no longer throws the footage away.
             if let url = await videoRecorder.stopRecording() {
                 pendingShareItem = ShareItem(items: [url])
+            }
+            if let note = videoRecorder.lastSaveNote {
+                errorMessage = note
             }
         } else {
             do {

@@ -9,7 +9,7 @@ import UIKit
 /// Optimized for long-form recording (clinical interviews, meetings, etc.):
 /// - No time limit — records until explicitly stopped
 /// - Muxes glasses microphone audio into the MP4 alongside video
-/// - Auto-save to Photos library ("Glasses" album) when enabled
+/// - Every finished recording is filed out of `tmp/` by `RecordingFiler`, whatever started it
 /// - Efficient pixel buffer pooling to minimize allocations during long sessions
 /// - Background audio session keeps the app alive in the pocket
 @MainActor
@@ -17,8 +17,16 @@ class VideoRecordingService: ObservableObject {
     @Published var isRecording = false
     @Published private(set) var recordingDuration: TimeInterval = 0
 
-    /// When true, the finished recording is automatically saved to the Photos library.
-    var autoSaveToPhotos = false
+    /// Where finished recordings are filed. Injectable so a caller (or a test) can point the
+    /// recorder somewhere other than Documents/Recordings.
+    var recordingsDirectory: URL = RecordingFiler.defaultRecordingsDirectory
+
+    /// Set by `stopRecording` when a destination the user asked for did not land — a plain-words
+    /// note naming where the recording actually is. Nil when everything went where it should.
+    private(set) var lastSaveNote: String?
+
+    /// Set by `stopRecording` to where the finished recording ended up, in plain words.
+    private(set) var lastSaveSummary: String?
 
     /// When true, ambient captions are started alongside recording for live transcription.
     var autoTranscribe = false
@@ -326,14 +334,23 @@ class VideoRecordingService: ObservableObject {
         let duration = formattedDuration
         NSLog("[Recording] No frames for %.0fs — auto-stopping (glasses stream died)", Self.frameStallSeconds)
         let url = await stopRecording()
-        let saved = url != nil
-        onAutoStopped?(saved
-            ? "The glasses stopped sending video, so I've ended the recording and saved the \(duration) captured so far."
-            : "The glasses stopped sending video and the recording could not be saved.")
+        guard url != nil else {
+            onAutoStopped?("The glasses stopped sending video and the recording could not be saved.")
+            return
+        }
+        var message = "The glasses stopped sending video, so I've ended the recording and saved "
+                    + "the \(duration) captured so far."
+        // A destination that didn't take is worth saying out loud — the wearer has no screen.
+        if let note = lastSaveNote { message += " " + note }
+        onAutoStopped?(message)
     }
 
-    /// Stop recording and return the URL of the finished .mp4.
-    /// If `autoSaveToPhotos` is true, the video is saved to the Glasses album.
+    /// Stop recording and return the URL of the finished .mp4 in its **filed** location.
+    ///
+    /// Every path through here persists: the file is moved out of the temporary directory into
+    /// Documents/Recordings, copied to the user's chosen folder when they have set one, and saved
+    /// to the Glasses album in Photos unless they have turned that off. Anything that didn't land
+    /// is reported on `lastSaveNote` rather than passing silently.
     func stopRecording() async -> URL? {
         guard isRecording else { return nil }
 
@@ -360,9 +377,14 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        let url = outputURL
+        let temporaryURL = outputURL
         NSLog("[Recording] Finished → %@ (%.1fs, %lld frames)",
-              url?.lastPathComponent ?? "nil", recordingDuration, frameCount)
+              temporaryURL?.lastPathComponent ?? "nil", recordingDuration, frameCount)
+
+        // Get the file out of tmp/ before anything else can go wrong with it. Everything below
+        // — the transcript sidecar, file protection, the URL handed back for sharing — works
+        // against the filed location, not the temporary one.
+        let url = await fileFinishedRecording(temporaryURL)
 
         // Final caption collection
         if autoTranscribe {
@@ -394,12 +416,6 @@ class VideoRecordingService: ObservableObject {
 
             // Also save to Documents for Files app access and agent sharing
             saveTranscriptToDocuments(fullTranscript, date: recordingStartDate ?? Date())
-        }
-
-        // Auto-save to Photos if enabled
-        if autoSaveToPhotos, let videoURL = url {
-            await saveVideoToPhotos(videoURL)
-            autoSaveToPhotos = false
         }
 
         // HIPAA: protect files and log the recording event
@@ -447,14 +463,56 @@ class VideoRecordingService: ObservableObject {
         recordingTranscript = transcriptEntries.joined(separator: "\n")
     }
 
+    // MARK: - Persistence
+
+    /// File a finished recording out of the temporary directory and into everywhere it belongs,
+    /// returning the location it should be referred to by from now on.
+    ///
+    /// The destination decisions and the moves themselves live in `RecordingFiler`; this is the
+    /// thin edge that resolves the user's settings, holds the security scope on a chosen folder,
+    /// and performs the one step the filer deliberately leaves out — the Photos save.
+    private func fileFinishedRecording(_ temporaryURL: URL?) async -> URL? {
+        lastSaveNote = nil
+        lastSaveSummary = nil
+        guard let temporaryURL else { return nil }
+
+        let folderURL = Config.recordingFolderURL
+        if let folderURL { _ = folderURL.startAccessingSecurityScopedResource() }
+        defer { folderURL?.stopAccessingSecurityScopedResource() }
+
+        let filer = RecordingFiler(recordingsDirectory: recordingsDirectory, folderURL: folderURL)
+        let wantsPhotos = Config.recordingSaveToPhotos
+        var outcome = filer.file(temporaryURL,
+                                 date: recordingStartDate ?? Date(),
+                                 saveToPhotos: wantsPhotos)
+
+        if wantsPhotos {
+            outcome.savedToPhotos = await saveVideoToPhotos(outcome.primaryURL)
+        }
+
+        if let copyURL = outcome.folderCopyURL {
+            hipaaService?.protectFile(at: copyURL)
+        }
+        lastSaveNote = outcome.message
+        lastSaveSummary = outcome.summary
+        NSLog("[Recording] Filed → %@ (photos: %@, folder copy: %@)",
+              outcome.primaryURL.path,
+              outcome.savedToPhotos ? "yes" : (wantsPhotos ? "failed" : "off"),
+              outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")
+        return outcome.primaryURL
+    }
+
     // MARK: - Photos Library
 
     /// Save the video file to the "Glasses" album in the Photos library.
-    private func saveVideoToPhotos(_ url: URL) async {
+    /// Returns whether the save landed — a denied library or a failed change request is a normal
+    /// outcome here, not an error, because the on-disk copy has already been written.
+    @discardableResult
+    private func saveVideoToPhotos(_ url: URL) async -> Bool {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else {
             NSLog("[Recording] Photo library access denied")
-            return
+            return false
         }
 
         let album = fetchGlassesAlbum()
@@ -471,8 +529,10 @@ class VideoRecordingService: ObservableObject {
                 }
             }
             NSLog("[Recording] Video saved to Glasses album")
+            return true
         } catch {
             NSLog("[Recording] Save to Photos failed: %@", error.localizedDescription)
+            return false
         }
     }
 
