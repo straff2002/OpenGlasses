@@ -39,6 +39,12 @@ struct ServicesSettingsView: View {
     /// Recording bitrate override in bits/sec; 0 means "let VideoBitratePolicy derive it".
     @State private var recordingBitrate: Int = Config.recordingBitrateOverride ?? 0
     @State private var showFolderPicker = false
+    @State private var showRecordingFolderPicker = false
+    @State private var recordingSaveToPhotos: Bool = Config.recordingSaveToPhotos
+    /// Held in state rather than read from `Config` inside the body, so choosing or resetting a
+    /// folder redraws the row that names it.
+    @State private var transcriptFolderName: String? = Config.transcriptFolderURL?.lastPathComponent
+    @State private var recordingFolderName: String? = Config.recordingFolderURL?.lastPathComponent
 
     // Home Assistant
     @State private var haURL: String = Config.homeAssistantURL
@@ -450,41 +456,45 @@ struct ServicesSettingsView: View {
                     Config.setRecordingBitrate(value == 0 ? nil : value)
                 }
 
-                if let folderURL = Config.transcriptFolderURL {
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(.secondary)
-                        Text(folderURL.lastPathComponent)
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Change") {
-                            showFolderPicker = true
-                        }
-                        .font(.caption)
+                Toggle("Also Save to Photos", isOn: $recordingSaveToPhotos)
+                    .onChange(of: recordingSaveToPhotos) { _, value in
+                        Config.setRecordingSaveToPhotos(value)
                     }
-                    Button("Reset to Default", role: .destructive) {
-                        Config.clearTranscriptFolder()
-                    }
-                } else {
-                    Button {
-                        showFolderPicker = true
-                    } label: {
-                        HStack {
-                            Text("Transcript Save Location")
-                            Spacer()
-                            Text("Documents/Transcripts")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+
+                folderRow(title: "Video Copy Location",
+                          defaultLabel: "None",
+                          folderName: recordingFolderName,
+                          resetTitle: "Stop Copying to Folder") {
+                    showRecordingFolderPicker = true
+                } onReset: {
+                    Config.clearRecordingFolder()
+                    recordingFolderName = nil
+                }
+
+                folderRow(title: "Transcript Save Location",
+                          defaultLabel: "Documents/Transcripts",
+                          folderName: transcriptFolderName,
+                          resetTitle: "Reset to Default") {
+                    showFolderPicker = true
+                } onReset: {
+                    Config.clearTranscriptFolder()
+                    transcriptFolderName = nil
                 }
             } header: {
                 Text("Recording & Transcripts")
             } footer: {
-                Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nChoose where transcripts are saved. Videos always save to the Glasses album in Photos. Transcripts are also accessible via the Files app.")
+                Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nEvery finished recording is kept in the app's own Recordings folder — that copy always happens, so nothing is lost if you dismiss the share sheet. On top of that it goes to the Glasses album in Photos unless you switch that off. Pick a video or transcript folder below to also keep copies somewhere you can browse in the Files app.")
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result {
                     Config.setTranscriptFolderURL(url)
+                    transcriptFolderName = url.lastPathComponent
+                }
+            }
+            .fileImporter(isPresented: $showRecordingFolderPicker, allowedContentTypes: [.folder]) { result in
+                if case .success(let url) = result {
+                    Config.setRecordingFolderURL(url)
+                    recordingFolderName = url.lastPathComponent
                 }
             }
 
@@ -599,6 +609,39 @@ struct ServicesSettingsView: View {
             }
         }
         .navigationTitle("Services")
+    }
+
+    /// One folder-picker row: names the chosen folder with a Change/Reset pair, or offers the
+    /// picker with the default destination shown alongside. Shared by the recording-copy and
+    /// transcript rows, which differ only in their words.
+    @ViewBuilder
+    private func folderRow(title: String,
+                           defaultLabel: String,
+                           folderName: String?,
+                           resetTitle: String,
+                           onChoose: @escaping () -> Void,
+                           onReset: @escaping () -> Void) -> some View {
+        if let folderName {
+            HStack {
+                Image(systemName: "folder.fill")
+                    .foregroundStyle(.secondary)
+                Text(folderName)
+                    .lineLimit(1)
+                Spacer()
+                Button("Change", action: onChoose)
+                    .font(.caption)
+            }
+            Button(resetTitle, role: .destructive, action: onReset)
+        } else {
+            Button(action: onChoose) {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    Text(defaultLabel)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     /// "Automatic (~8 Mbps at 720p)" — previews what `VideoBitratePolicy` will pick for the

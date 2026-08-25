@@ -1893,6 +1893,48 @@ struct Config {
         transcriptFolderBookmark = nil
     }
 
+    /// Whether a finished recording is also saved to the Photos "Glasses" album. Default on.
+    /// Switching it off does not risk the recording: the copy in Documents/Recordings is written
+    /// first and unconditionally.
+    static var recordingSaveToPhotos: Bool {
+        if UserDefaults.standard.object(forKey: "recordingSaveToPhotos") == nil { return true }
+        return UserDefaults.standard.bool(forKey: "recordingSaveToPhotos")
+    }
+
+    static func setRecordingSaveToPhotos(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "recordingSaveToPhotos")
+    }
+
+    /// User-selected folder bookmark for an extra copy of every finished recording.
+    /// If nil, recordings live in Documents/Recordings (plus Photos, when that is on).
+    static var recordingFolderBookmark: Data? {
+        get { UserDefaults.standard.data(forKey: "recordingFolderBookmark") }
+        set { UserDefaults.standard.set(newValue, forKey: "recordingFolderBookmark") }
+    }
+
+    /// Resolve the recording folder bookmark to a URL. Returns nil if the bookmark is stale.
+    static var recordingFolderURL: URL? {
+        guard let bookmark = recordingFolderBookmark else { return nil }
+        var isStale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &isStale) else { return nil }
+        if isStale {
+            if let fresh = try? url.bookmarkData() {
+                recordingFolderBookmark = fresh
+            }
+        }
+        return url
+    }
+
+    static func setRecordingFolderURL(_ url: URL) {
+        if let bookmark = try? url.bookmarkData() {
+            recordingFolderBookmark = bookmark
+        }
+    }
+
+    static func clearRecordingFolder() {
+        recordingFolderBookmark = nil
+    }
+
     // MARK: - HIPAA Compliance
 
     /// Master toggle for HIPAA-compliant mode.
