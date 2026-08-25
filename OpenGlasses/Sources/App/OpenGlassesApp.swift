@@ -1614,6 +1614,13 @@ class AppState: ObservableObject, AppStateProtocol {
         // BS P2: broadcast mic audio rides the wake-word shared tap.
         broadcastService.audioProvider = wakeWordService
 
+        // CY: the broadcast health readout counts frames that never reached the wire, which
+        // includes the ones the privacy relay dropped to keep up. The relay is the only thing
+        // that knows about those, so it hands the count over rather than the service reaching in.
+        broadcastService.droppedFrameSource = { [weak self] in
+            self?.outboundFrames.droppedFrameCount ?? 0
+        }
+
         // Wire camera debug events to the on-screen debug log
         cameraService.onDebugEvent = { [weak self] message in
             Task { @MainActor in
