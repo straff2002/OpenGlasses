@@ -1,6 +1,6 @@
 # Plan DG — App-Wide Design Language Refresh
 
-**Status:** 📝 Drafted 2026-08-24 · P1 launchable now (pairs with DF P1 — same component files, one PR); later phases ride with DD/DE and then sweep the rest
+**Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2–P5 planned — they ride with DD/DE and then sweep the rest
 
 ## Why
 
@@ -21,7 +21,7 @@ treatment are approved signatures; the AI accent stays in the approved coral fam
 violet/cyan). DE owns settings *structure*; DF owns accessibility *criteria* — DG owns the
 look, and every DG phase must meet DF's component criteria as it lands, not retrofitted.
 
-## P1 — Foundation: tokens + components (launchable now)
+## P1 — Foundation: tokens + components ✅ shipped
 
 One PR over the OGDesign layer, shared with DF P1 since it touches the same files once:
 
@@ -63,7 +63,41 @@ components exist.
 - Reopening approved signatures (capsule primacy, status card, coral accent family).
 - Accessibility criteria themselves — DF defines them; DG conforms.
 
+## What P1 actually landed
+
+- The palette moved out of `OGDesign.swift` into `OGDesignTokens.swift` as **explicit
+  light/dark values** rather than system semantic colours — a semantic colour can't be
+  inspected headlessly, so a measured palette has to carry its own numbers.
+- `ContrastRatio` (pure: WCAG 2.2 relative luminance, alpha compositing, and a
+  `readable(_:on:)` correction that blends toward black or white by the least amount that
+  clears a threshold, so the hue family survives). `OGTheme.contrastAudit` names every
+  text-on-surface pair the components paint, wash included, and the suite walks it in both
+  schemes. Opacity roles are named for the same reason — a bare `0.4` in a component is a
+  number nothing can assert against.
+- Two derived accents fell out of the measurement rather than being designed up front:
+  **`tintedAccentLabel`** (the accent as small text on its own faint tint — the raw accent
+  is picked to read on a plain surface, and a wash of itself behind it eats the margin;
+  the White preset vanishes outright), and **`inkAccentLabel`/`inkAccent`** (the hero card
+  is ink in both schemes, so an adaptive accent's light-mode value — chosen to sit on white
+  — measures well under AA there; both resolve against *dark* traits whatever the screen is
+  doing, so the hero's tint and its label can't drift apart in light mode).
+- The shipped Coral is barely moved by the correction (nil in dark), asserted, so the
+  approved signature can't be repainted by a future token edit.
+- Dynamic Type: the metrics that sit *beside* type scale with it — row height, icon tile,
+  divider inset, status dot. `OGMetrics` derives the divider's inset from the row's own
+  geometry so the hairline keeps meeting the text edge at AX5.
+- Materials: hand-rolled neutral washes became `quaternarySystemFill`. This is the one
+  visible delta — in dark mode the system fill is more present than the 0.072-white it
+  replaced, which is the point (it is what the rest of iOS paints an inactive chip with).
+  The accent family, the capsule and the status card are untouched.
+
 ## Open
 
-- Whether P5 batches by navigation area or by component usage (decide from P1's inventory).
+- ~~Whether P5 batches by navigation area or by component usage~~ — **decided from the
+  inventory**: the navigation areas are also component-usage clusters, so P5 batches by area.
 - How far the watch and CarPlay surfaces participate (leaning: tokens yes, layout untouched).
+  The inventory found no view files to convert — CarPlay renders through templates and the
+  watch app is its own target — so this reduces to whether the tokens travel.
+- The accent used as *text on a plain surface* is only guaranteed for the tinted-label path;
+  a screen painting `accent` straight onto a card without going through OGDesign is not
+  covered. Fold into P3.
