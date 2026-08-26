@@ -95,7 +95,7 @@ struct TranslationSettingsView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     Label("Add a Gemini API key in AI Models to enable translation", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OGTheme.warnLabel)
                 }
             } header: {
                 Text("Provider")

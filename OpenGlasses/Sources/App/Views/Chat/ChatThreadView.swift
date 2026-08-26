@@ -11,6 +11,7 @@ struct ChatThreadView: View {
 
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var didResume = false
     @State private var speakReplies = false
@@ -295,7 +296,9 @@ struct ChatThreadView: View {
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         if animated {
-            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(bottomAnchor, anchor: .bottom) }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            }
         } else {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
         }
@@ -332,6 +335,7 @@ private struct StreamingBubble: View {
 /// Three-dot "assistant is thinking" indicator shown while a reply is in flight.
 private struct TypingIndicator: View {
     @State private var phase = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let timer = Timer.publish(every: 0.35, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -340,13 +344,18 @@ private struct TypingIndicator: View {
                 Circle()
                     .fill(Color(.tertiaryLabel))
                     .frame(width: 7, height: 7)
-                    .opacity(phase == i ? 1 : 0.3)
+                    // Reduce Motion holds the three dots still: what they say is
+                    // "a reply is coming", and the travelling dot isn't carrying it.
+                    .opacity(reduceMotion ? 0.6 : (phase == i ? 1 : 0.3))
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-        .onReceive(timer) { _ in phase = (phase + 1) % 3 }
+        .onReceive(timer) { _ in
+            guard !reduceMotion else { return }
+            phase = (phase + 1) % 3
+        }
         .accessibilityLabel("Assistant is typing")
     }
 }

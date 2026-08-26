@@ -54,12 +54,12 @@ struct LaunchScreen: View {
                     .frame(height: 32)
 
                 Text("OpenGlasses")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.primary)
                     .opacity(isAnimating ? 1.0 : 0)
 
                 Text("Voice-Powered AI Assistant")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.top, 8)
                     .opacity(isAnimating ? 1.0 : 0)

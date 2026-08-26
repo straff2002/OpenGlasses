@@ -50,7 +50,7 @@ struct DeveloperPanelView: View {
             } label: {
                 HStack(spacing: 8) {
                     if runner.isRunning {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(Color.primary)
                     } else {
                         Image(systemName: "checklist")
                             .font(.subheadline.weight(.semibold))
@@ -58,7 +58,11 @@ struct DeveloperPanelView: View {
                     Text(runner.isRunning ? "Running…" : "Run All")
                         .font(.body.weight(.semibold))
                 }
-                .foregroundStyle(.white)
+                // The accent is the *ground* here, so the label is whichever pole
+                // reads on it — a hard-coded white loses a bright preset.
+                .foregroundStyle(runner.isRunning
+                    ? AnyShapeStyle(Color.primary)
+                    : AnyShapeStyle(OGTheme.onAccentLabel(accent)))
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
                 .background(runner.isRunning ? AnyShapeStyle(Color.secondary.opacity(0.4)) : AnyShapeStyle(accent), in: Capsule())

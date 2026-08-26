@@ -20,6 +20,7 @@ struct AmbientCaptionOverlay: View {
     @State private var registryVersion = 0
     @State private var renameSpeakerId: Int?
     @State private var renameText = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Captions are the one surface in the app whose *entire* job is to be read, so the type has
     /// to grow with the reader. Fixed point sizes held the caption at 16pt however large the
@@ -55,16 +56,17 @@ struct AmbientCaptionOverlay: View {
             if !captionService.currentCaption.isEmpty {
                 Text(captionService.currentCaption)
                     .font(.system(size: captionSize, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OGTheme.onMedia)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.black.opacity(0.7))
+                            .fill(OGTheme.media.opacity(0.7))
                     )
-                    .animation(.easeOut(duration: 0.15), value: captionService.currentCaption)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15),
+                               value: captionService.currentCaption)
                     .accessibilityLabel("Now: \(captionService.currentCaption)")
                     // `.updatesFrequently` is deliberately as far as this goes: it re-reads the
                     // line while a user holds focus here, and says nothing when they don't.
@@ -106,14 +108,14 @@ struct AmbientCaptionOverlay: View {
         VStack(spacing: 2) {
             Text("→ \(TranslationLanguages.displayName(for: legLanguage))")
                 .font(.system(size: legLabelSize, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
                 // The arrow is drawn punctuation; VoiceOver reads it as "right arrow".
                 .accessibilityLabel("Translated into \(TranslationLanguages.displayName(for: legLanguage))")
                 .accessibilityAddTraits(.isHeader)
             if entries.isEmpty {
                 Text("…")
                     .font(.system(size: legPlaceholderSize))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaQuiet))
                     .accessibilityLabel("Nothing said yet")
             } else {
                 ForEach(entries.suffix(2)) { entry in
@@ -135,14 +137,14 @@ struct AmbientCaptionOverlay: View {
             VStack(spacing: 1) {
                 Text(entry.text)
                     .font(.system(size: historySize, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                 // Show-original ribbon (BY P2): the source-language words under the translation.
                 if Config.translationShowOriginal, let original = entry.original {
                     Text(original)
                         .font(.system(size: originalSize, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaQuiet))
                         .lineLimit(1)
                         .multilineTextAlignment(.center)
                 }
@@ -177,16 +179,20 @@ private struct SpeakerChipView: View {
     let chip: SpeakerChip
     let onTap: () -> Void
 
+    private var chipColor: Color { Self.palette[chip.colorIndex % Self.palette.count] }
+
     @ScaledMetric(relativeTo: .caption) private var chipSize: CGFloat = 11
 
     var body: some View {
         Button(action: onTap) {
             Text(chip.label)
                 .font(.system(size: chipSize, weight: .semibold))
-                .foregroundStyle(.white)
+                // The chip's hue is the *ground*, so the label is whichever pole
+                // reads on it — always-white lost the pale slots outright.
+                .foregroundStyle(OGTheme.onAccentLabel(chipColor))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(Self.palette[chip.colorIndex % Self.palette.count].opacity(0.85)))
+                .background(Capsule().fill(chipColor))
         }
         .buttonStyle(.plain)
         // The gesture instruction belongs in the hint, and the gesture is a double-tap.

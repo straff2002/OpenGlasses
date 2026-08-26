@@ -24,7 +24,7 @@ struct PhoneCameraView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            OGTheme.media.ignoresSafeArea()
 
             if camera.isReady {
                 CameraPreview(session: camera.session)
@@ -49,10 +49,10 @@ struct PhoneCameraView: View {
                     Spacer()
                     Text(PhoneZoomPolicy.readoutLabel(factor: camera.zoomFactor))
                         .font(.callout.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OGTheme.onMedia)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(.black.opacity(0.5), in: Capsule())
+                        .background(OGTheme.media.opacity(0.5), in: Capsule())
                         .padding(.bottom, 140)
                 }
             }
@@ -65,9 +65,9 @@ struct PhoneCameraView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(OGTheme.onMedia)
                             .padding(12)
-                            .background(.black.opacity(0.4), in: Circle())
+                            .background(OGTheme.media.opacity(0.4), in: Circle())
                     }
                     Spacer()
                 }
@@ -78,13 +78,15 @@ struct PhoneCameraView: View {
                 if let error = camera.error {
                     Text(error)
                         .font(.callout)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OGTheme.onMedia)
                         .multilineTextAlignment(.center)
                         .padding()
-                        .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+                        .background(
+                            OGTheme.media.opacity(0.5), in: RoundedRectangle(cornerRadius: 12)
+                        )
                         .padding(.bottom, 24)
                 } else if !camera.isReady {
-                    ProgressView().tint(.white).padding(.bottom, 24)
+                    ProgressView().tint(OGTheme.onMedia).padding(.bottom, 24)
                 }
 
                 // Shutter
@@ -95,9 +97,13 @@ struct PhoneCameraView: View {
                     }
                 } label: {
                     Circle()
-                        .fill(.white)
+                        .fill(OGTheme.onMedia)
                         .frame(width: 72, height: 72)
-                        .overlay(Circle().strokeBorder(.white.opacity(0.6), lineWidth: 4).frame(width: 84, height: 84))
+                        .overlay(
+                            Circle()
+                                .strokeBorder(OGTheme.onMedia.opacity(0.6), lineWidth: 4)
+                                .frame(width: 84, height: 84)
+                        )
                 }
                 .disabled(!camera.isReady || camera.isCapturing)
                 .opacity(camera.isReady ? 1 : 0.4)

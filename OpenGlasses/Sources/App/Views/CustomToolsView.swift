@@ -158,7 +158,7 @@ struct CustomToolEditorView: View {
                     if let error = nameError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(OGTheme.warnLabel)
                     }
 
                     TextField("Description for the AI", text: $description)

@@ -13,6 +13,7 @@ struct ClawHubBrowserView: View {
     @State private var installingSlug: String?
     @State private var selectedSort: SkillSort = .trending
     @State private var canLoadMore = true
+    @ScaledMetric(relativeTo: .subheadline) private var sortTabTapTarget: CGFloat = 44
 
     // Library export / import (Plan Q — gated behind agent mode).
     @State private var shareItem: ShareItem?
@@ -71,6 +72,8 @@ struct ClawHubBrowserView: View {
                                             : Color.clear,
                                         in: Capsule()
                                     )
+                                    .frame(minWidth: sortTabTapTarget, minHeight: sortTabTapTarget)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -352,9 +355,9 @@ struct ClawHubBrowserView: View {
                     if let compat = skill.compatibility {
                         HStack(spacing: 3) {
                             Image(systemName: compat.icon)
-                                .font(.system(size: 9))
+                                .font(.caption2)
                             Text(compat.label)
-                                .font(.system(size: 10))
+                                .font(.caption2)
                         }
                         .foregroundStyle(compatibilityColor(compat))
                     }
@@ -362,16 +365,16 @@ struct ClawHubBrowserView: View {
                     if let downloads = skill.downloads, downloads > 0 {
                         HStack(spacing: 2) {
                             Image(systemName: "arrow.down.circle")
-                                .font(.system(size: 9))
+                                .font(.caption2)
                             Text("\(downloads)")
-                                .font(.system(size: 10))
+                                .font(.caption2)
                         }
                         .foregroundStyle(.secondary)
                     }
 
                     if let owner = skill.owner {
                         Text(owner)
-                            .font(.system(size: 10))
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -480,8 +483,8 @@ struct ClawHubBrowserView: View {
 
     private func compatibilityColor(_ compat: SkillCompatibility) -> Color {
         switch compat {
-        case .compatible: return .green
-        case .partiallyCompatible: return .orange
+        case .compatible: return OGTheme.okLabel
+        case .partiallyCompatible: return OGTheme.warnLabel
         case .openclawRequired: return AppAccent.aiCoral
         }
     }
@@ -601,7 +604,7 @@ struct SkillDetailSheet: View {
                     if let error = installError {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                     }
 
                     if isInstalled {
@@ -673,8 +676,8 @@ struct SkillDetailSheet: View {
 
     private func compatColor(_ compat: SkillCompatibility) -> Color {
         switch compat {
-        case .compatible: return .green
-        case .partiallyCompatible: return .orange
+        case .compatible: return OGTheme.okLabel
+        case .partiallyCompatible: return OGTheme.warnLabel
         case .openclawRequired: return AppAccent.aiCoral
         }
     }

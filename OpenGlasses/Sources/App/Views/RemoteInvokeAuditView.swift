@@ -32,7 +32,7 @@ struct RemoteInvokeAuditView: View {
                                 .background(Capsule().fill(.quaternary))
                             Text(entry.disposition)
                                 .font(.caption)
-                                .foregroundStyle(entry.disposition == "allowed" ? .green : .orange)
+                                .foregroundStyle(entry.disposition == "allowed" ? OGTheme.okLabel : OGTheme.warnLabel)
                         }
                     }
                     .padding(.vertical, 2)

@@ -55,12 +55,12 @@ struct SkillPacksSettingsView: View {
             if !pack.signatureVerified {
                 Label("Unsigned — developer install", systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OGTheme.warnLabel)
             }
             if pack.decodeSummary != "clean" {
                 Label(pack.decodeSummary, systemImage: "exclamationmark.circle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OGTheme.warnLabel)
             }
             if let manifest = manifest(for: pack), !manifest.settings.isEmpty {
                 NavigationLink {
@@ -146,7 +146,7 @@ struct SkillPacksSettingsView: View {
             if case .failed(let reason)? = viewModel.installStates[entry.id] {
                 Label(reason, systemImage: "xmark.circle")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(OGTheme.errorLabel)
             }
         }
     }

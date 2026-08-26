@@ -49,7 +49,7 @@ struct VaultManagerView: View {
             }
 
             if let successMessage {
-                Section { Text(successMessage).font(.caption).foregroundStyle(.green) }
+                Section { Text(successMessage).font(.caption).foregroundStyle(OGTheme.okLabel) }
             }
         }
         .navigationTitle("Custom Vaults")

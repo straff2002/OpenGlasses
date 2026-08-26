@@ -1,12 +1,24 @@
 import SwiftUI
 
 /// Shared control-status colour for HECA views.
+///
+/// Two variants, for the same reason `OGTheme` splits the status hues: `color`
+/// is the hue as an evidence box or a capsule wash, `labelColor` is the same
+/// meaning as *text*, corrected until it clears AA on the app's surfaces.
 enum SafetyControlColor {
     static func color(for status: ControlStatus) -> Color {
         switch status {
-        case .direct: return .green
-        case .indirect: return .orange
-        case .none: return .red
+        case .direct: return OGTheme.ok
+        case .indirect: return OGTheme.warn
+        case .none: return OGTheme.error
+        }
+    }
+
+    static func labelColor(for status: ControlStatus) -> Color {
+        switch status {
+        case .direct: return OGTheme.okLabel
+        case .indirect: return OGTheme.warnLabel
+        case .none: return OGTheme.errorLabel
         }
     }
 }

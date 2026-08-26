@@ -166,7 +166,7 @@ struct ServicesSettingsView: View {
                     if let elevenLabsVoicesError {
                         Text(elevenLabsVoicesError)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                     }
                 }
 
@@ -235,7 +235,7 @@ struct ServicesSettingsView: View {
                         ProgressView()
                     }
                 case .failed(let reason):
-                    Text(reason).font(.caption).foregroundStyle(.red)
+                    Text(reason).font(.caption).foregroundStyle(OGTheme.errorLabel)
                     Button("Download Model (~185 MB)") {
                         Task { await kokoroDownloader.download() }
                     }
@@ -284,7 +284,7 @@ struct ServicesSettingsView: View {
                         ProgressView()
                     }
                 case .failed(let reason):
-                    Text(reason).font(.caption).foregroundStyle(.red)
+                    Text(reason).font(.caption).foregroundStyle(OGTheme.errorLabel)
                     Button("Download Model (~240 MB)") {
                         Task { await asrDownloader.download() }
                     }

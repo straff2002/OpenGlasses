@@ -22,12 +22,12 @@ struct SyncStatusView: View {
                     Spacer()
                     Label(reachability.isOnline ? "Online" : "Offline",
                           systemImage: reachability.isOnline ? "wifi" : "wifi.slash")
-                        .foregroundStyle(reachability.isOnline ? .green : .orange)
+                        .foregroundStyle(reachability.isOnline ? OGTheme.okLabel : OGTheme.warnLabel)
                         .labelStyle(.titleAndIcon)
                 }
                 HStack { Text("Pending"); Spacer(); Text("\(appState.offlineQueue.pendingCount)").foregroundStyle(.secondary) }
                 if appState.offlineQueue.conflictCount > 0 {
-                    HStack { Text("Conflicts"); Spacer(); Text("\(appState.offlineQueue.conflictCount)").foregroundStyle(.orange) }
+                    HStack { Text("Conflicts"); Spacer(); Text("\(appState.offlineQueue.conflictCount)").foregroundStyle(OGTheme.warnLabel) }
                 }
                 Button {
                     Task { await engine.flush(); reload() }
@@ -79,9 +79,9 @@ struct SyncStatusView: View {
         switch state {
         case .pending:  badge("Pending", "clock", .gray)
         case .inFlight: badge("Sending", "arrow.up.circle", .blue)
-        case .done:     badge("Synced", "checkmark.circle", .green)
-        case .conflict: badge("Conflict", "exclamationmark.triangle", .orange)
-        case .failed:   badge("Failed", "xmark.circle", .red)
+        case .done:     badge("Synced", "checkmark.circle", OGTheme.okLabel)
+        case .conflict: badge("Conflict", "exclamationmark.triangle", OGTheme.warnLabel)
+        case .failed:   badge("Failed", "xmark.circle", OGTheme.errorLabel)
         }
     }
 

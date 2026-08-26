@@ -7,6 +7,8 @@ struct SafetyAssessmentReportView: View {
     var image: UIImage? = nil
     var onDismiss: (() -> Void)? = nil
 
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -43,6 +45,8 @@ struct SafetyAssessmentReportView: View {
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark.circle.fill").font(.title3).foregroundStyle(.secondary)
+                        .frame(minWidth: tapTarget, minHeight: tapTarget)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityLabel("Dismiss")
             }
@@ -53,8 +57,8 @@ struct SafetyAssessmentReportView: View {
         HStack(spacing: 12) {
             if let score = report.score {
                 Text("\(Int((score * 100).rounded()))%")
-                    .font(.system(size: 34, weight: .bold, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(score >= 1.0 ? .green : (report.uncontrolled.contains { $0.controlStatus == .none } ? .red : .orange))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(score >= 1.0 ? OGTheme.okLabel : (report.uncontrolled.contains { $0.controlStatus == .none } ? OGTheme.errorLabel : OGTheme.warnLabel))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("HECA score").font(.caption).foregroundStyle(.secondary)
                     Text("\(report.present.filter { $0.controlStatus == .direct }.count)/\(report.present.count) present hazards directly controlled")
@@ -80,11 +84,14 @@ struct SafetyAssessmentReportView: View {
     }
 
     private func findingRow(_ f: HazardFinding) -> some View {
+        // `color` (from the shared, uncorrected enum) is the wash; `label` is the
+        // WCAG-AA-audited variant for the glyph and badge text beside it.
         let color = SafetyControlColor.color(for: f.controlStatus)
+        let label = SafetyControlColor.labelColor(for: f.controlStatus)
         let control = f.controlStatus == .direct ? f.directControl
             : (f.controlStatus == .indirect ? f.indirectControl : "")
         return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: f.hazard.systemImage).foregroundStyle(color).frame(width: 24)
+            Image(systemName: f.hazard.systemImage).foregroundStyle(label).frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(f.hazard.displayName).font(.subheadline.weight(.semibold))
@@ -93,7 +100,7 @@ struct SafetyAssessmentReportView: View {
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(color.opacity(0.18), in: Capsule())
-                        .foregroundStyle(color)
+                        .foregroundStyle(label)
                 }
                 if !control.isEmpty { Text(control).font(.caption).foregroundStyle(.secondary) }
                 if !f.comments.isEmpty { Text(f.comments).font(.caption2).foregroundStyle(.secondary) }

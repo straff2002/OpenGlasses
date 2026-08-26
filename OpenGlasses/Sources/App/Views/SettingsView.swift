@@ -10,6 +10,9 @@ struct SettingsView: View {
     @ObservedObject private var journey = SettingsJourneyStore.shared
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The locked-settings lock glyph is decorative and drawn well past body size — scale it
+    /// with Dynamic Type rather than pinning it to a literal point size.
+    @ScaledMetric(relativeTo: .largeTitle) private var lockGlyphSize: CGFloat = 44
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
     @AppStorage("appAppearance") private var appearance: String = "system"
@@ -321,14 +324,14 @@ struct SettingsView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 16) {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 44))
+                    .font(.system(size: lockGlyphSize))
                     .foregroundStyle(.secondary)
                 Text("Settings are locked")
                     .font(.headline)
                 if entryGate.lastFailed {
                     Text("Authentication failed. Try again.")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                 }
                 Button {
                     authenticateSettingsEntry()
@@ -345,7 +348,7 @@ struct SettingsView: View {
         OwnerGateAuth.authenticate(reason: "Unlock OpenGlasses Settings") { granted in
             entryGate.finish(success: granted)
             if entryGate.consume() {
-                withAnimation(.easeOut(duration: 0.2)) { settingsLocked = false }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { settingsLocked = false }
             }
         }
     }
@@ -499,7 +502,7 @@ struct TierModelDetailPicker: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(OGTheme.okLabel)
                 }
             }
         }
@@ -591,7 +594,7 @@ private struct TierProviderSection: View {
                 Spacer()
                 if isSelected(id, configId: configId) {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(OGTheme.okLabel)
                 }
             }
         }

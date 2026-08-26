@@ -58,7 +58,7 @@ private struct MCPServersList: View {
                                             .foregroundStyle(Color(.label))
                                             .lineLimit(1)
                                         Circle()
-                                            .fill(server.enabled ? .green : .gray)
+                                            .fill(server.enabled ? OGTheme.ok : .gray)
                                             .frame(width: 8, height: 8)
                                             .accessibilityHidden(true)
                                     }

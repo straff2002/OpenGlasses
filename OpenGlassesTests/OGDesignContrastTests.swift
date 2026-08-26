@@ -79,8 +79,56 @@ final class OGDesignContrastTests: XCTestCase {
                          "hero status on ink", "hero unavailable chip",
                          "chip label on card", "notice on canvas",
                          "filled button label on accent",
-                         "success label on card", "error label on canvas"] {
+                         "success label on card", "error label on canvas",
+                         "media label on black", "media secondary on black",
+                         "media tertiary on black", "media attention label on black",
+                         "media error label on black", "badge label on badge"] {
             XCTAssertTrue(names.contains(expected), "audit lost the \"\(expected)\" pair")
+        }
+    }
+
+    // MARK: - Media chrome
+
+    /// The camera preview, the HUD mirror and the caption scrim put chrome on
+    /// black rather than on the canvas, so they carry their own corrected hues.
+    func testMediaChromeClearsAAOnTheMediaGround() {
+        let black = OGTheme.Token.media.dark
+        for opacity in [1.0, OGTheme.Opacity.onMediaSecondary, OGTheme.Opacity.onMediaTertiary] {
+            let text = OGTheme.Token.onInk.dark.composited(alpha: opacity, over: black)
+            let ratio = ContrastRatio.ratio(text, black)
+            XCTAssertTrue(
+                ContrastRatio.meetsAA(ratio, size: .normal),
+                "media chrome at \(opacity) measures \(String(format: "%.2f", ratio)):1 on black"
+            )
+        }
+        for token in [OGTheme.mediaOkLabelToken,
+                      OGTheme.mediaWarnLabelToken,
+                      OGTheme.mediaErrorLabelToken] {
+            let ratio = ContrastRatio.ratio(token.dark, black)
+            XCTAssertTrue(
+                ContrastRatio.meetsAA(ratio, size: .normal),
+                "a media status label measures \(String(format: "%.2f", ratio)):1 on black"
+            )
+        }
+    }
+
+    /// The correction is per-*surface*, which is the whole reason the media
+    /// family exists: the failure hue needs lightening to read on a dark card
+    /// and needs nothing at all on black, so the two tokens must not be equal.
+    func testMediaStatusLabelsAreCorrectedForBlackRatherThanForACard() {
+        XCTAssertEqual(
+            OGTheme.mediaErrorLabelToken.dark.hex, OGTheme.Token.error.dark.hex,
+            "the failure hue already clears on black and should be left alone there"
+        )
+        XCTAssertNotEqual(
+            OGTheme.mediaErrorLabelToken.dark.hex, OGTheme.errorLabelToken.dark.hex,
+            "if the two corrections agree, one of the surfaces is being measured wrongly"
+        )
+        // Media tokens don't adapt — a video frame looks the same in both schemes.
+        for token in [OGTheme.mediaOkLabelToken,
+                      OGTheme.mediaWarnLabelToken,
+                      OGTheme.mediaErrorLabelToken] {
+            XCTAssertEqual(token.light.hex, token.dark.hex)
         }
     }
 
@@ -231,6 +279,44 @@ final class OGDesignContrastTests: XCTestCase {
     func testStatusLabelKindsUseDistinctGlyphs() {
         let glyphs = [OGStatusLabel.Kind.ok, .warn, .error].map(\.systemImage)
         XCTAssertEqual(Set(glyphs).count, glyphs.count, "two status kinds share a glyph")
+    }
+
+    /// The badge exists because the convention it inherits fails: white on the
+    /// system notification red measures ~3.6:1, which is under AA at the size a
+    /// count badge is drawn in. Assert the gap, so the deepened red can't quietly
+    /// drift back toward the colour that didn't work.
+    func testTheBadgeGroundIsDeeperThanTheSystemRedItReplaces() {
+        let systemRed = SRGBColor(hex: 0xFF3B30)
+        XCTAssertFalse(
+            ContrastRatio.meetsAA(ContrastRatio.ratio(.white, systemRed), size: .normal),
+            "if the system red ever clears AA under white, the badge token is unnecessary"
+        )
+        XCTAssertTrue(
+            ContrastRatio.meetsAA(
+                ContrastRatio.ratio(OGTheme.Token.onInk.dark, OGTheme.Token.badge.dark),
+                size: .normal
+            )
+        )
+    }
+
+    /// The safety report paints its own status vocabulary, and it is the one
+    /// place outside OGDesign with a shared hue-per-state mapping. It has to
+    /// reach the audited label tokens rather than the raw hues it draws boxes in.
+    func testSafetyControlLabelsPaintTheAuditedTokens() {
+        let expected: [(ControlStatus, OGColorToken)] = [
+            (.direct, OGTheme.okLabelToken),
+            (.indirect, OGTheme.warnLabelToken),
+            (ControlStatus.none, OGTheme.errorLabelToken),
+        ]
+        for (status, token) in expected {
+            for scheme in OGColorScheme.allCases {
+                XCTAssertEqual(
+                    OGTheme.resolved(SafetyControlColor.labelColor(for: status), for: scheme).hex,
+                    token.value(for: scheme).hex,
+                    "\(status) label drifted off the audited token in \(scheme)"
+                )
+            }
+        }
     }
 
     func testReadableLeavesAPassingColourAlone() {

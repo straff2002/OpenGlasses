@@ -65,7 +65,7 @@ struct FingerspellingSettingsView: View {
                     ProgressView()
                 }
             case .failed(let reason):
-                Text(reason).foregroundStyle(.red).font(.footnote)
+                Text(reason).foregroundStyle(OGTheme.errorLabel).font(.footnote)
                 downloadButton
             case .notDownloaded:
                 downloadButton
@@ -124,7 +124,7 @@ struct FingerspellingSettingsView: View {
             }
 
             if let detail = session.statusDetail {
-                Text(detail).font(.footnote).foregroundStyle(.orange)
+                Text(detail).font(.footnote).foregroundStyle(OGTheme.warnLabel)
             }
         } header: {
             Text("Live Recognition")

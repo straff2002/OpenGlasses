@@ -120,7 +120,7 @@ struct AgenticFeaturesView: View {
                                 .frame(width: 36)
                             Button("Cancel") { localLLM.cancelDownload() }
                                 .font(.caption)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(OGTheme.errorLabel)
                         }
                     }
 
@@ -132,7 +132,7 @@ struct AgenticFeaturesView: View {
                                 Spacer()
                                 Text("Needs 8 GB RAM")
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(OGTheme.warnLabel)
                             }
                             .foregroundStyle(.secondary)
                         } else if !localLLM.isDownloading {
@@ -156,7 +156,7 @@ struct AgenticFeaturesView: View {
                     if let error = agentDownloadError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                     }
 
                     InfoToggle(

@@ -6,6 +6,7 @@ import SwiftUI
 struct AssistiveModeToggleView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var service = AssistiveModeService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 6) {
@@ -36,7 +37,7 @@ struct AssistiveModeToggleView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: service.latestAdvice)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: service.latestAdvice)
     }
 }
 

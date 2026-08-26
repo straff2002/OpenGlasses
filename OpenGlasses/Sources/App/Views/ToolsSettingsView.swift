@@ -242,7 +242,7 @@ struct ToolsSettingsView: View {
                         }
                     } icon: {
                         Image(systemName: "network")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(OGTheme.okLabel)
                     }
                 } header: {
                     Text("External Tools")

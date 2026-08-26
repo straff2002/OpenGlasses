@@ -12,9 +12,13 @@ struct LivePreviewView: View {
     @State private var streamError: String?
     @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
 
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
+    @ScaledMetric(relativeTo: .title2) private var controlCircle: CGFloat = 56
+    @ScaledMetric(relativeTo: .title) private var recordGlyph: CGFloat = 32
+
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            OGTheme.media.ignoresSafeArea()
 
             if let frame = currentFrame {
                 Image(uiImage: frame)
@@ -33,24 +37,24 @@ struct LivePreviewView: View {
             } else if isStartingStream {
                 VStack(spacing: 12) {
                     ProgressView()
-                        .tint(.white)
+                        .tint(OGTheme.onMedia)
                     Text("Connecting to camera…")
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
                 }
             } else if let error = streamError {
                 VStack(spacing: 12) {
                     Image(systemName: "camera.badge.ellipsis")
                         .font(.largeTitle)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OGTheme.mediaWarnLabel)
                     Text(error)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OGTheme.onMedia)
                         .multilineTextAlignment(.center)
                         .lineLimit(4)
                     Button("Try Again") {
                         startStreamIfNeeded()
                     }
                     .buttonStyle(.bordered)
-                    .tint(.white)
+                    .tint(OGTheme.onMedia)
                 }
                 .padding()
             }
@@ -64,7 +68,13 @@ struct LivePreviewView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title)
-                            .foregroundStyle(.white.opacity(0.8))
+                            .foregroundStyle(
+                                OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary)
+                            )
+                            // The surrounding `.padding()` is outside the button's
+                            // hit region, so the target has to be claimed here.
+                            .frame(minWidth: tapTarget, minHeight: tapTarget)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Close Preview")
                     .padding()
@@ -79,8 +89,8 @@ struct LivePreviewView: View {
                     } label: {
                         Image(systemName: "camera.fill")
                             .font(.title2)
-                            .foregroundStyle(.white)
-                            .frame(width: 56, height: 56)
+                            .foregroundStyle(OGTheme.onMedia)
+                            .frame(width: controlCircle, height: controlCircle)
                             .glassEffect(in: .circle)
                     }
                     .disabled(appState.cameraService.isCaptureInProgress)
@@ -91,9 +101,11 @@ struct LivePreviewView: View {
                         Task { await appState.toggleRecording() }
                     } label: {
                         Image(systemName: appState.videoRecorder.isRecording ? "stop.circle.fill" : "record.circle")
-                            .font(.system(size: 32))
-                            .foregroundStyle(appState.videoRecorder.isRecording ? .red : .white)
-                            .frame(width: 56, height: 56)
+                            .font(.system(size: recordGlyph))
+                            .foregroundStyle(
+                                appState.videoRecorder.isRecording ? .red : OGTheme.onMedia
+                            )
+                            .frame(width: controlCircle, height: controlCircle)
                             .glassEffect(in: .circle)
                     }
                     .accessibilityLabel(appState.videoRecorder.isRecording ? "Stop Recording" : "Start Recording")
@@ -105,17 +117,21 @@ struct LivePreviewView: View {
                         ZStack {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.title2)
-                                .foregroundStyle(appState.broadcastService.isBroadcasting ? .red : .white)
-                                .frame(width: 56, height: 56)
+                                .foregroundStyle(
+                                    appState.broadcastService.isBroadcasting ? .red : OGTheme.onMedia
+                                )
+                                .frame(width: controlCircle, height: controlCircle)
                                 .glassEffect(in: .circle)
                             if appState.broadcastService.isBroadcasting {
                                 Text("LIVE")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.white)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(OGTheme.onBadge)
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
-                                    .background(Capsule().fill(.red))
-                                    .offset(y: 20)
+                                    .background(Capsule().fill(OGTheme.badge))
+                                    // Rides the circle's edge, so it stays put as
+                                    // the control scales with the text size.
+                                    .offset(y: controlCircle / 2 - 8)
                             }
                         }
                     }
@@ -139,8 +155,8 @@ struct LivePreviewView: View {
                         } label: {
                             Image(systemName: "arrow.triangle.2.circlepath.camera")
                                 .font(.title2)
-                                .foregroundStyle(.white)
-                                .frame(width: 56, height: 56)
+                                .foregroundStyle(OGTheme.onMedia)
+                                .frame(width: controlCircle, height: controlCircle)
                                 .glassEffect(in: .circle)
                         }
                         .accessibilityLabel("Switch Broadcast Camera")
@@ -176,11 +192,13 @@ struct LivePreviewView: View {
                             .accessibilityHidden(true)
                         Text(appState.videoRecorder.formattedDuration)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(OGTheme.onMedia)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(.black.opacity(0.6)))
+                    // The ground here is arbitrary video, not a token — the scrim
+                    // is what makes the pair measurable, so it stays opaque enough.
+                    .background(Capsule().fill(OGTheme.media.opacity(0.6)))
                     .padding(.top, 60)
                     .accessibilityLabel("Recording: \(appState.videoRecorder.formattedDuration)")
                     Spacer()
@@ -247,24 +265,24 @@ private struct BroadcastHealthBar: View {
         HStack(spacing: 10) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(health.state.isLive ? .red : .orange)
+                    .fill(health.state.isLive ? .red : OGTheme.warn)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
                 Text(health.stateLabel)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
             }
             Text(health.bitrateLabel)
             Text(health.frameRateLabel)
             if health.droppedFrameCount > 0 {
                 Text("\(health.droppedFrameCount) dropped")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OGTheme.mediaWarnLabel)
             }
         }
-        .font(.system(size: 11, design: .monospaced))
-        .foregroundStyle(.white.opacity(0.85))
+        .font(.system(.caption2, design: .monospaced))
+        .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Capsule().fill(.black.opacity(0.6)))
+        .background(Capsule().fill(OGTheme.media.opacity(0.6)))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Broadcast \(health.stateLabel), \(health.bitrateLabel), "
                             + "\(health.frameRateLabel), \(health.droppedFrameCount) frames dropped")
@@ -277,6 +295,7 @@ private struct BroadcastHealthBar: View {
 private struct PinnedFrameCard: View {
     @ObservedObject var pin: FramePin
     let onRelease: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let pinned = pin.pinnedFrame {
@@ -286,14 +305,14 @@ private struct PinnedFrameCard: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 4) {
                                 Image(systemName: "pin.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                 Text("PINNED")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                                 Spacer(minLength: 0)
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.caption2.weight(.bold))
                             }
-                            .foregroundStyle(.white)
+                            .foregroundStyle(OGTheme.onMedia)
                             Image(uiImage: pinned)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -301,8 +320,15 @@ private struct PinnedFrameCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.65)))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.yellow.opacity(0.8), lineWidth: 1.5))
+                        .background(
+                            RoundedRectangle(cornerRadius: 12).fill(OGTheme.media.opacity(0.65))
+                        )
+                        // The border reinforces the "PINNED" line beside it rather
+                        // than carrying the state on its own.
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(.yellow.opacity(0.8), lineWidth: 1.5)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Pinned frame — the assistant sees this. Tap to release.")
@@ -312,7 +338,7 @@ private struct PinnedFrameCard: View {
             }
             .padding(.top, 60)
             .padding(.leading, 16)
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
         }
     }
 }

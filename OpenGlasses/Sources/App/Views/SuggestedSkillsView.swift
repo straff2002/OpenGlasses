@@ -33,7 +33,7 @@ struct SuggestedSkillsView: View {
                             } label: {
                                 Label("Approve", systemImage: "checkmark.circle.fill")
                             }
-                            .tint(.green)
+                            .tint(OGTheme.okLabel)
                             Spacer()
                             Button(role: .destructive) {
                                 SkillEvolutionService.shared.dismiss(id: item.id)

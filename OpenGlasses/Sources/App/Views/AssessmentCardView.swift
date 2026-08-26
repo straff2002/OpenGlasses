@@ -9,6 +9,8 @@ struct AssessmentCardView: View {
     /// Optional "View full report" affordance for cards backed by a rich detail view (e.g. HECA).
     var onDetails: (() -> Void)? = nil
 
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
@@ -32,7 +34,7 @@ struct AssessmentCardView: View {
             if let action = card.recommendedAction, !action.isEmpty {
                 Label(action, systemImage: "arrow.right.circle.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(tierColor)
+                    .foregroundStyle(tierLabelColor)
             }
 
             if !card.stillNeeded.isEmpty {
@@ -68,7 +70,7 @@ struct AssessmentCardView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: card.tier.systemImage).foregroundStyle(tierColor)
+            Image(systemName: card.tier.systemImage).foregroundStyle(tierLabelColor)
             VStack(alignment: .leading, spacing: 1) {
                 Text(card.title).font(.headline)
                 Text("AI vision · \(card.tier.displayLabel)")
@@ -79,6 +81,8 @@ struct AssessmentCardView: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3).foregroundStyle(.secondary)
+                    .frame(minWidth: tapTarget, minHeight: tapTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
@@ -127,12 +131,23 @@ struct AssessmentCardView: View {
     // MARK: - Helpers
 
     private var tierColor: Color { color(for: card.tier) }
+    private var tierLabelColor: Color { labelColor(for: card.tier) }
 
+    /// Border wash / status-dot fill — the uncorrected hue.
     private func color(for tier: AssessmentTier) -> Color {
         switch tier {
-        case .ok: return .green
-        case .caution: return .orange
-        case .critical: return .red
+        case .ok: return OGTheme.ok
+        case .caution: return OGTheme.warn
+        case .critical: return OGTheme.error
+        }
+    }
+
+    /// Text / glyph colour — the WCAG-AA-audited label variant.
+    private func labelColor(for tier: AssessmentTier) -> Color {
+        switch tier {
+        case .ok: return OGTheme.okLabel
+        case .caution: return OGTheme.warnLabel
+        case .critical: return OGTheme.errorLabel
         }
     }
 
@@ -144,6 +159,7 @@ struct AssessmentCardOverlay: View {
     @ObservedObject private var vision = StructuredVisionService.shared
     @ObservedObject private var safety = SafetyAssessmentService.shared
     @State private var showingReport = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let card = vision.latest {
@@ -157,7 +173,7 @@ struct AssessmentCardOverlay: View {
                     .padding(.bottom, 24)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: vision.latest)
+            .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.85), value: vision.latest)
             .sheet(isPresented: $showingReport) {
                 if let report = safety.latest {
                     SafetyAssessmentReportView(report: report, image: safety.lastImage) {

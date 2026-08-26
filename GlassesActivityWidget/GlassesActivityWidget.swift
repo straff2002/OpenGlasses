@@ -67,6 +67,10 @@ struct GlassesActivityWidget: Widget {
                     LogoIcon(size: 14)
                         .foregroundStyle(context.state.isConnected ? AccentColors.aiCoral : .gray)
                     if let battery = context.state.batteryLevel {
+                        // Fixed size on purpose: the Dynamic Island's compact leading
+                        // slot is a hard geometry, and text that grows is text that
+                        // gets truncated away entirely. The expanded and Lock Screen
+                        // presentations below carry the same number at Dynamic Type.
                         Text("\(battery)")
                             .font(.system(size: 9))
                             .foregroundStyle(battery < 20 ? .red : .secondary)
@@ -114,10 +118,14 @@ struct GlassesActivityWidget: Widget {
                         // Power button to disable listening from Lock Screen
                         Button(intent: DisableListeningIntent()) {
                             Image(systemName: "power")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.5))
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.6))
                                 .padding(5)
                                 .background(Circle().fill(.white.opacity(0.15)))
+                                // The drawn circle keeps its size; the target
+                                // around it clears 44pt.
+                                .frame(width: 44, height: 44)
+                                .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
                         statusIcon(for: context.state)

@@ -8,6 +8,7 @@ struct PersonaPickerSheet: View {
 
     @State private var showModeStore = false
     @State private var detailPersona: Persona? = nil
+    @ScaledMetric(relativeTo: .body) private var infoTapTarget: CGFloat = 44
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,7 @@ struct PersonaPickerSheet: View {
                                         .font(.body)
                                         .foregroundStyle(.secondary)
                                         .padding(.leading, 8)
+                                        .frame(minWidth: infoTapTarget, minHeight: infoTapTarget)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
@@ -136,6 +138,7 @@ struct PersonaPickerTab: View {
     @AppStorage("fieldAssistDefaultVaultId") private var faVaultId: String = "refrigeration"
     @State private var pendingProcedure: Procedure?   // scenario tapped, awaiting confirm
     @State private var sessionError: String?
+    @ScaledMetric(relativeTo: .body) private var infoTapTarget: CGFloat = 44
 
     var body: some View {
         List {
@@ -173,6 +176,7 @@ struct PersonaPickerTab: View {
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                                     .padding(.leading, 8)
+                                    .frame(minWidth: infoTapTarget, minHeight: infoTapTarget)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -681,7 +685,7 @@ struct PersonaRow: View {
             Spacer()
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(OGTheme.okLabel)
                     .accessibilityHidden(true)
             }
         }
