@@ -36,7 +36,7 @@ struct HUDPreviewView: View {
             .padding(20)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.black)
+                    .fill(OGTheme.media)
                     .overlay(
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .strokeBorder(AppAccent.aiCoral.opacity(0.25), lineWidth: 1)
@@ -236,7 +236,7 @@ private struct ComponentView: View {
             if let img = phase.image {
                 img.resizable().aspectRatio(contentMode: .fit)
             } else if phase.error != nil {
-                Color.white.opacity(0.12)
+                OGTheme.onMedia.opacity(0.12)
             } else {
                 ProgressView()
             }
@@ -249,6 +249,10 @@ private struct ComponentView: View {
 
 // MARK: - Style mapping (Display enums → SwiftUI, OpenGlasses brand)
 
+/// Deliberately *fixed* point sizes, and the one place in the app they are right:
+/// this view is a fidelity mirror of a fixed-geometry lens display, so it has to
+/// reproduce what the wearer sees rather than what the phone's text size asks for.
+/// Growing these with Dynamic Type would make the preview misreport the HUD.
 private func displayFont(for style: MWDATDisplay.TextStyle) -> Font {
     switch style {
     case .heading: return .system(size: 22, weight: .bold)
@@ -259,8 +263,8 @@ private func displayFont(for style: MWDATDisplay.TextStyle) -> Font {
 
 private func displayColor(for color: MWDATDisplay.TextColor) -> Color {
     switch color {
-    case .secondary: return .white.opacity(0.6)
-    default: return .white  // .primary
+    case .secondary: return OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary)
+    default: return OGTheme.onMedia  // .primary
     }
 }
 
@@ -268,16 +272,18 @@ private func displayColor(for color: MWDATDisplay.TextColor) -> Color {
 private func buttonBackground(_ style: MWDATDisplay.ButtonStyle) -> Color {
     switch style {
     case .primary: return AppAccent.aiCoral
-    case .secondary: return .white.opacity(0.16)
+    case .secondary: return OGTheme.onMedia.opacity(0.16)
     default: return .clear  // .outline
     }
 }
 
 private func buttonForeground(_ style: MWDATDisplay.ButtonStyle) -> Color {
     switch style {
-    case .primary: return .white
-    case .outline: return AppAccent.aiCoral
-    default: return .white  // .secondary
+    // The accent is the *ground* on a filled button, so the label is whichever
+    // pole reads on it rather than an assumed white.
+    case .primary: return OGTheme.onAccentLabel(AppAccent.aiCoral)
+    case .outline: return OGTheme.inkAccentLabel(AppAccent.aiCoral)
+    default: return OGTheme.onMedia  // .secondary
     }
 }
 
