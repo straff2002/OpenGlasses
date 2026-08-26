@@ -359,13 +359,20 @@ private struct ActionCapsule: View {
             .frame(height: 50)
             .background(isActive ? color.opacity(0.15) : Color.clear)
             .glassEffect(in: .capsule)
+            .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        // `children: .ignore` is what makes the element *be* the capsule. Left to itself, SwiftUI
+        // took the union of the label's children — a 17pt glyph and a line of 15pt text — so the
+        // element VoiceOver focused, and the target an audit measures, was 18pt tall inside a
+        // 50pt control the whole screen is built around.
+        .accessibilityElement(children: .ignore)
         // The mute badge is a 9pt glyph tucked behind the icon — the only thing distinguishing a
         // muted session from a live one, so it has to be spoken, not just drawn. As a *value*
         // rather than glued to the label, so it is re-read when it changes under a held focus.
         .accessibilityLabel(spokenLabel ?? label)
         .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

@@ -287,6 +287,12 @@ struct OGRowValue: View {
             Text(value)
                 .font(.body)
                 .foregroundStyle(.secondary)
+                // The audit reports this as text that may clip, and it is right — at large sizes
+                // `“Openglasses”` and `System` are both cut. Removing the cap was tried and
+                // rejected: the row is title + subtitle + value competing for one width, so a
+                // wrapping value takes its second line straight out of the subtitle, and then out
+                // of the title. Which of the three yields is a layout decision for the phase that
+                // owns this component; the cap stays until then. See the plan's deferrals.
                 .lineLimit(1)
         }
     }
@@ -631,7 +637,12 @@ struct OGHeroDeviceCard: View {
                         Text(status)
                             .font(.footnote)
                             .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary))
-                            .lineLimit(1)
+                            // No line cap at all: `lineLimit(1)` truncated "Not connected"
+                            // outright at accessibility sizes — the state of the device, on the
+                            // card that exists to report it — and any cap is a size at which the
+                            // text can still be cut. These statuses are two words; letting them
+                            // wrap costs nothing at the sizes they already fit.
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 

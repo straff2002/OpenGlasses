@@ -51,6 +51,12 @@ struct MainView: View {
             .tabViewStyle(.tabBarOnly)
             .tabBarMinimizeBehavior(.onScrollDown)
             .tint(accent)
+            // Onboarding is drawn *over* the tabs, not instead of them, so without this the whole
+            // session surface stays in the accessibility tree behind it: a VoiceOver user on the
+            // welcome page swipes straight out of the flow and into a status card and a capsule
+            // for an app they have not set up yet. Sighted users never see it, which is why it
+            // survived three phases of this plan and only a running-UI audit found it.
+            .accessibilityHidden(showOnboarding)
 
             if showOnboarding {
                 OnboardingView(isVisible: $showOnboarding)

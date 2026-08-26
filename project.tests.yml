@@ -21,6 +21,31 @@ targets:
     dependencies:
       - target: OpenGlasses
 
+  # The app's first UI-test target (Plan DF P4): the accessibility regression gate.
+  #
+  # It is a separate target rather than more cases in OpenGlassesTests because the thing being
+  # asserted — traits, grouping, focus order, hit regions, contrast as rendered — exists only in
+  # a running UI. A unit test cannot reach it: it has no app process to audit, and this app's
+  # services fatal headless (`Wearables`).
+  #
+  # Kept out of the `OpenGlasses` scheme on purpose. That scheme is what CI runs per PR, and a
+  # UI-test run boots a simulator and launches the app once per case — minutes, against seconds
+  # for the unit suite. `OpenGlassesUITests` is its own scheme so each can be run alone.
+  OpenGlassesUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: OpenGlassesUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.uitests
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: OpenGlasses
+    dependencies:
+      - target: OpenGlasses
+
 schemes:
   OpenGlasses:
     test:
@@ -29,3 +54,15 @@ schemes:
         - OpenGlassesTests
       commandLineArguments:
         "-ApplePersistenceIgnoreState": "YES"
+
+  OpenGlassesUITests:
+    build:
+      targets:
+        OpenGlasses: [run, test, profile, analyze, archive]
+        OpenGlassesUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - OpenGlassesUITests

@@ -1,0 +1,117 @@
+name: Accessibility Audit
+
+# Runs OpenGlassesUITests — the accessibility regression gate (Plan DF P4).
+#
+# Force-added past the `.github/` gitignore, same as tests.yml: the ignore keeps *personal*
+# workflows local, but a gate has to travel with the repo.
+#
+# Why this is not part of tests.yml
+# --------------------------------
+# The unit workflow is the per-PR gate and is kept cheap on purpose. This one is not cheap: a UI
+# test launches the app into a simulator once per case and walks it, and the audit itself has to
+# render every screen before it can measure contrast and hit regions. Measured against an iOS 27
+# simulator, the fifteen cases take about 13 minutes of test time (~16½ wall with an incremental
+# build) — well past the point where adding it to every PR would multiply the cost of the tracked
+# gate for a class of failure that changes far less often than app code does.
+#
+# So: nightly, plus a manual dispatch, plus a label. Label it `accessibility` on a PR that touches
+# the accessibility surface and the audit runs against that PR before it merges.
+#
+# The runner notes from tests.yml all apply here (macos-26 for the SDK, XcodeGen from brew,
+# MediaPipe fetched and cached, SPM checkouts cached, watch targets skipped,
+# SWIFT_EMIT_LOC_STRINGS=NO so the tracked string catalog cannot churn).
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 14:00 UTC — early evening in NZ, so a failure is waiting at the start of the next day here.
+    - cron: '0 14 * * *'
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  audit:
+    # On a PR this runs only when the `accessibility` label is on it. Deliberately a label test
+    # rather than a paths filter: `paths-ignore` negation re-*includes* rather than excludes, and
+    # the surface this gate covers is most of the app's view layer — a path list broad enough to
+    # be correct would fire on nearly every PR anyway.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'accessibility')
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache MediaPipe frameworks
+        uses: actions/cache@v6
+        with:
+          path: Vendor/MediaPipeTasks/Frameworks
+          key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
+
+      - name: Fetch MediaPipe frameworks
+        run: ./Scripts/fetch-mediapipe-frameworks.sh
+
+      - name: Cache SPM checkouts
+        uses: actions/cache@v6
+        with:
+          path: .spm-checkouts
+          key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Skip Watch targets
+        run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
+
+      - name: Generate Xcode project
+        run: ./Scripts/generate-xcodeproj.sh
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          phones = [d for devs in data.values() for d in devs if "iPhone" in d["name"]]
+          if not phones:
+              sys.exit("no available iPhone simulator on this image")
+          print(phones[-1]["udid"])')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+
+      - name: Run accessibility audits
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project OpenGlasses.xcodeproj \
+            -scheme OpenGlassesUITests \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath AccessibilityResults.xcresult \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -clonedSourcePackagesDirPath .spm-checkouts \
+            SWIFT_EMIT_LOC_STRINGS=NO \
+            2>&1 | tee xcodebuild.log \
+            | grep -E "Test Suite|Test Case.*(passed|failed)|a11y-audit|error:|\*\* TEST" \
+            || { tail -200 xcodebuild.log; exit 1; }
+
+      - name: Upload result bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: AccessibilityResults
+          path: AccessibilityResults.xcresult
+          retention-days: 7
