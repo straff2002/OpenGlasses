@@ -2,7 +2,8 @@
 
 **Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2 (onboarding) shipped 2026-08-25 ·
 **P3 shipped 2026-08-26** — its model-selection slice first, then the hub + category screens with
-the DE build · P4–P5 planned
+the DE build · **P4 shipped 2026-08-27** — the session surface, and with it every accessibility
+row DF had deferred to this phase · P5 planned
 
 ## Why
 
@@ -147,11 +148,232 @@ DE decided what is visible and in what order; this is what it looks like.
   `@AppStorage("appAppearance")` declarations, and the Theme picker leads with System. An app
   that arrives following the phone's own appearance is the one that feels like it belongs on it.
 
-## P4 — The session surface
+## P4 — The session surface ✅ shipped (2026-08-27)
 
 Main screen, capsule, status card, live-session controls. Highest-traffic surface, done after
 the language is proven on P2/P3. The approved signatures (capsule, status card, waveline) are
 polished within the language, not replaced.
+
+### What P4 landed
+
+**The signatures are the same shapes with measured numbers under them.** The status card still
+opens with a tinted tile and a status line beside it, still merges the connection pills into its
+footer, and the capsule is still the one large control on the screen. What changed is that none of it is
+drawn in literals any more: eighteen fixed point sizes became text styles, the geometry that sits
+*beside* type (the status tile, the pill glyph, the dock tile's glyph box, every status dot)
+became `@ScaledMetric`, and every colour reads from the palette. The one place the drawn shape
+moved at all is the status card's footer, and only because of the target work below.
+
+**A hue on a wash of itself is one problem, and it now has one answer.** The status tile, the hero
+capsule and the dock tiles all paint a colour on a faint tint of that same colour — the accent when
+a session is live, the attention hue while it connects, the failure hue when it breaks, a grey when
+nothing is happening. That is exactly the case `tintedAccentLabel` was built for in P1 and had only
+ever been asked to solve for the accent presets; all four hues now go through it, and the suite
+asserts the guarantee for the status hues as well. It also forced the one genuinely new token:
+`Token.inactive`, a measured warm grey, because `.gray` is a value the palette cannot correct or
+assert against and this surface tints a wash from whatever it is handed.
+
+**The surface did not survive its own Dynamic Type, and that is the finding of the phase.** The
+shipped layout is a fixed `VStack` — status card, waveline on two `Spacer`s, captions, transcript,
+dock — and it fitted only because almost nothing in it grew: the status line, the mode line and the
+dock captions were fixed point sizes, so at AX5 they rendered at exactly the size they do at
+the default. Putting them on
+Dynamic Type is the job of this phase, and doing it made the screen overflow at both ends at once:
+the status card ran off the top, the dock off the bottom, and neither could be reached, because
+`Spacer`s cannot absorb an overflow — they are already at zero. Measured on the simulator rather
+than reasoned about; the before-and-after screenshots are what settled it.
+
+Two layout adaptations, both scoped to accessibility sizes and neither touching the shipped
+composition below that threshold:
+
+- **The conversation zone scrolls and the dock stays pinned** — the same trade onboarding's hero
+  pages make. The waveline does not come with it: it is decoration, it is already hidden from the
+  accessibility tree, the status card is the source of truth for everything it expresses, and a
+  reader who has asked for larger text has asked for more of the *content*, not for 76 points of
+  ribbon to scroll past on the way to it. The signature is untouched everywhere it is visible.
+- **A dock tile lays its glyph beside its label instead of above it.** Stacked, a tile at AX5 is
+  around 130pt tall, and a row of them above the capsule leaves no screen for the conversation.
+  Side by side the same tile is about one line high, and the row already scrolls horizontally — so
+  the space it needs is the axis it has. Nothing is dropped or renamed; the parts change places.
+
+**A 44pt target is a fingertip, not a type size.** The first cut of the pill and chip targets used
+`@ScaledMetric`, following the row-height convention P1 established — which is right for a floor
+under text that grows and wrong for a floor under a thumb: scaled by the body ratio, 44 reaches
+about 130pt at AX5, a third of the screen for a control that draws at 25. `OGMetrics.minTouchTarget`
+is a plain constant for that reason, and the same correction applies to the hero capsule, whose
+fixed 50pt height became fixed *padding* around content that sets its own height — 22pt of glyph
+plus 28pt of padding is the same 50pt at the default size, and grows only as far as the label does
+rather than to the 155pt a scaled height would have produced.
+
+**A disabled dock tile was rendering at about a quarter of its ink.** `.opacity(0.4)` sat on the
+whole button, so it multiplied the label's own secondary weight — on a control whose entire job in
+that state is to explain why it can't be used ("Start the live session first"). The blanket opacity
+is gone and the dimming lives in the foreground colour, which is an audited value. This is the
+find that most justifies doing the surface rather than only its checklist rows: nothing was
+deferred about it, it simply had never been measured.
+
+**Two touch targets that three phases declined to grow.** Both were deferred for the same honest
+reason — the fix reflows a surface nobody was authorised to reflow — and both are made here, the
+same way: the *target* grows, the drawn artwork does not.
+
+- **The status card's connection pills** were drawn at about 33×25. They now carry a full scaled
+  44pt target around a capsule that still looks the size it always did, and the card's footer row
+  gave up its bottom padding to pay for most of it, so the card grows by single digits rather than
+  by twenty points. A pill that *looked* 44pt would have been a different status card; this is the
+  same card with a control a finger can land on.
+- **The captions overlay's speaker chip** was about 20pt, and the reason it stayed there was that
+  a 44pt floor pushes the caption rows apart. It does, and the cost is now paid — but only by the
+  rows that cause it. A row grows to fit the chip only when it *has* a chip, so a single-speaker
+  stack (the default, with diarization off) keeps exactly the density it ships with today. Two
+  alternatives were considered and rejected: an overhanging target that takes no layout space puts
+  44pt of tappable area on rows sitting 20pt apart, so three chips overlap and a tap near a
+  boundary names the wrong speaker; and making the whole caption row the rename control gives the
+  target for free but turns reading text into a rename gesture, which is new behaviour.
+
+**The captions overlay got a ground, which is what made it measurable at all.** Only the live line
+had a backing; the history rows and the two-way translation legs sat directly on whatever the
+session surface was drawing, so their contrast was not *thin* — DF P3 was precise about this — it
+was undefined. One opaque panel now sits behind the whole stack, and the roles each stepped up one
+notch (full → secondary → tertiary) so the stack keeps a three-step hierarchy without reaching for
+the quiet floor. Visually it also fixes something that was never quite right: one block behind the
+whole stack reads as a caption panel, where before it was three floating lines with the fourth one
+boxed.
+
+**Opaque, and that was the second answer rather than the first.** The panel began as a 0.8 scrim,
+with a `captionScrimToken` measuring the worst case (the scrim over the palest backdrop the app can
+produce) and three new `contrastAudit` pairs against it. The arithmetic was fine and so were the
+pixels — sampled on the simulator, the stack measured **8.8:1** on the history rows, **11.5:1** on
+the live line and **6.0–6.4:1** on the speaker chips, over a ground at luminance 0.032, within
+rounding of the token's prediction. The audit reported it as failing contrast anyway, and stopped
+when the panel became opaque, which is what identified the mechanism (see below). So the scrim
+token, its opacity role and its three pairs are gone: an opaque panel is the **media** ground the
+palette already measures, the caption roles are covered by the `media …` pairs P3 established, and
+at this darkness the two grounds differ by about 0.03 in luminance — nothing was traded for the
+simplification.
+
+**`OGRow`'s three-way width contest, decided by rejecting the premise — and it needed both halves.**
+A settings row is a title, a subtitle and a value sharing one width, and DF P4's audit caught the
+value being clipped. Capping it clips it; uncapping it takes the second line out of the subtitle;
+giving the title priority takes it out of the title — all three were tried in that phase and all
+three moved the clipping rather than removed it. They move it because three strings do not fit on
+one line at AX5.
+
+So the fix is two changes that only work together. Above the accessibility threshold the value
+sits **under** the title with the row's full width, where it is no longer *beside* anything and has
+no line to steal; and with that true, the line cap comes off **at every size**. The earlier attempt
+failed precisely because it was the second change without the first. At everyday sizes there was
+room all along — the cap was truncating values that would have fitted on a second line of a row
+that grows anyway. Only *value* rows stack: a control row's trailing view is a switch, and a switch
+under the title is a different control rather than a wrapped one.
+
+The settings hub audits are the evidence, at AX5 and at the default size, with the filter gone.
+
+**Behaviour is frozen.** Every control does what it did — the capsule's five states and their
+actions, the long-press mute and its custom action, the pills' connect/disconnect, the dock's
+ordering and contextual gating, the caption rename alert, the transcript sheet. The one deliberate
+non-visual change is in the UI-test seed, not the app: two of the three seeded captions now carry
+a diarized speaker, because without one the speaker chip never renders and the target this phase
+spent its argument on was gated by nothing.
+
+**DF P2's announcement wiring is untouched** — `SessionAnnouncer`, the policy, the capsule and
+pill accessibility elements from P4's audit target all survive the restyle, and the audit suite is
+what proves it.
+
+### The audit deferrals this phase deleted
+
+Not relaxed — deleted, with the underlying issue fixed. `SessionSurfaceAccessibilityTests` now
+runs the audit's Dynamic Type, clipping, hit-region, trait and description checks **unfiltered** on
+the highest-traffic screen in the app, and a new AX5 case audits the same surface at the top of the
+accessibility range. Its contrast check is the exception, and it has its own section below.
+
+| Deferral | How it closed |
+|---|---|
+| `sessionSurfaceVisuals` (contrast, Dynamic Type, clipping) | The surface's type scale and colour pairs are set: text styles throughout, every hue from the palette. Dynamic Type and clipping now run unfiltered here; contrast has its own, narrower filter for a reason about the tool (below). |
+| `sessionSurfaceTargets` (the ~33×25 pills) | A 44pt target around the drawn capsule; the footer row's padding pays for it. |
+| `captionsOverlayGround` (no ground, ~20pt chip) | An opaque media panel under the stack; a 44pt chip target, paid for only by rows that have a chip. |
+| `rowValueWidth` (`OGRow`'s three strings) | The value stacks under the title at accessibility sizes, and the line cap comes off at every size. |
+
+**Two deferrals were added**, and neither is about the surface's quality. The first is
+`contrastThroughGlass`, which has its own section below. The second:
+`focusableCaptionHistory` excuses the 44pt *target* check on a caption-history line: DF P2 made
+each past line its own accessibility element so a VoiceOver user can swipe back through what was
+said, and the audit sees an element and asks whether a finger could hit it — but the line has no
+action, and the 44pt floor is a pointer-target criterion. Growing every caption row to 44pt would
+push the stack apart to satisfy a check on something that is not a target. It is scoped to
+**non-button** elements, which is a real scope rather than a formality: the speaker chip beside
+those lines *is* a button, it is the control this phase grew, and it still fails the audit if it
+ever shrinks back.
+
+### The audit cannot measure contrast through translucency, and this is how that was established
+
+The audit reported the hero capsule's label ("Connect & Talk", `Color(.label)` on the capsule's
+glass) as failing contrast. Sampled from the simulator's own screenshot, that text measures
+**20.5:1** — black on near-white. Two measurements disagreeing is not a conclusion, so the
+mechanism was pinned down rather than assumed:
+
+- The caption panel tripped the same check while it was a **0.8 wash**, on a stack whose pixels
+  measure 8.8-11.5:1, and stopped tripping it when the panel became **opaque**. The panel is not
+  glass, so "glass" was never the common factor.
+- What the two share is a *translucent* ground. The check reads the declared background rather
+  than the composite, so any partly-transparent ground looks to it like no ground at all. That is
+  the same property DF P4 recorded for content scrolled under the translucent tab bar - and the
+  reason that deferral exists too.
+
+The caption panel is fixed rather than filtered, because opaque was the better answer anyway. The
+capsule, the dock and the status card cannot be: Liquid Glass chrome *is* this surface. So
+`contrastThroughGlass` defers `.contrast` here and nothing else - Dynamic Type, clipping, hit
+regions, traits and descriptions stay live on this screen, which is where a real regression shows
+up, and the colour work is asserted twice over without it: every pair the palette paints is walked
+by `OGDesignContrastTests` in both schemes, and after this phase nothing on this surface is
+hand-painted, so there is no colour here the headless suite does not already measure.
+
+It is worth being plain that this is the one deferral in the change that covers a criterion the
+phase was asked to close. The criterion is met - measured, twice - by a method the audit cannot
+reproduce.
+
+`appBehindTheOverlay` **stays**, with its reason rewritten. It survives for a reason that has
+nothing to do with this surface's quality: contrast measured *through* a full-screen cover is
+contrast against the wrong ground, and the audit walks the render tree rather than the VoiceOver
+tree. Those same elements are now audited properly, and unfiltered, on the Voice tab — which is
+the argument for keeping the deferral scoped to the cover rather than widening it.
+
+### What P4 took from DF P4's app-wide catalogue, and what it left
+
+Three of the five catalogued findings were app-wide rather than session-surface, and the phase took
+the part it was already standing in:
+
+- **`.secondary` at small sizes** — *partly paid.* `OGTheme.secondaryLabel` is the audited
+  expression of that grey (the palette already measures it as "row subtitle on card"), and the
+  session surface plus `OGRow`'s subtitle and value now read from it instead of from the system's
+  semantic colour, which is a value the suite cannot inspect. `OGQuietButtonStyle` and the long
+  tail of screens still use `.secondary`, so the deferral stays in the settings and onboarding
+  audits. Genuinely partial, and recorded as such rather than claimed.
+- **System `Form` chrome** — left. No `Form` on the session surface; nothing here to fix.
+- **The hero card's chip row** — left. It is a settings-hub component, and DG P5 owns it.
+- **Single-line text entry** and **content under the translucent tab bar** — left. Both are
+  properties of the platform and of the audit rather than of the app, as P4 recorded.
+
+### The scope call, recorded
+
+P1's inventory lists fifteen files under P4, and this PR restyles nine of them: `MainView`,
+`VoiceTab`, `StatusIndicator`, `BottomControlBar`, `TranscriptOverlay`, `AmbientCaptionOverlay`,
+`VoiceWaveline` (which needed nothing — it is a `Canvas`, hidden from the accessibility tree, and
+was already Reduce-Motion-aware as of P1), `QuickActionsOverlay` and `CircleButton`.
+
+The six that moved to P5 are the **sheets and full-screen surfaces reached *from* the session
+surface** rather than the surface itself — `LivePreviewView`, `PhoneCameraView`,
+`SafetyAssessmentOverlay`, `AssistiveModeToggleView`, `ModelPickerSheet` and `PersonaPickerSheet`
+(~800 lines on its own). The plan's P4 prose has always said "main screen, capsule, status card,
+live-session controls"; each of these is a screen of its own with its own composition, four of
+them were already property-swept by DF P3, and none of them is on the tab the audit gate stands in
+front of. Batching them with the long tail keeps this PR reviewable and puts them with the other
+sheet-shaped work.
+
+`QuickActionsOverlay` and `CircleButton` are both **currently unreferenced** — the control dock
+absorbed their call sites into its one tile idiom. They are restyled rather than deleted because
+Plan Y cites the former as its phone-mirror reference and the inventory assigned the latter to
+this phase; leaving an un-audited idiom in the tree for someone to reach for is the failure mode
+worth avoiding. Whether they survive at all is a P5 question.
 
 ## P5 — The long tail
 

@@ -57,11 +57,15 @@ struct TranscriptOverlay: View {
             if appState.openClawBridge.sessionCompacted {
                 HStack(spacing: 6) {
                     Image(systemName: "scissors")
-                        .font(.system(size: 10))
+                        .font(.caption2)
+                        .accessibilityHidden(true)
                     Text("Context trimmed by gateway")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption.weight(.medium))
                 }
-                .foregroundStyle(accent.opacity(0.8))
+                // The accent as text on a surface, which is only guaranteed
+                // through the tinted-label path — a bare `accent.opacity(0.8)`
+                // is the pale-preset failure the correction exists to stop.
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .glassEffect(in: .capsule)
@@ -71,7 +75,7 @@ struct TranscriptOverlay: View {
             }
 
             if let error = errorText, !error.isEmpty {
-                transcriptCard(label: "Error", text: error, accent: .red, style: .error)
+                transcriptCard(label: "Error", text: error, accent: OGTheme.error, style: .error)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -107,10 +111,22 @@ struct TranscriptOverlay: View {
             }
         }
 
-        var textOpacity: Double {
+        /// The transcript's own ink. The reply and the error are the thing on
+        /// the card worth reading, so they get the full label colour rather
+        /// than an 0.85 wash of it; the echo of what the user just said is
+        /// support, and takes the audited secondary weight.
+        var textColor: Color {
             switch self {
-            case .ai, .error: return 0.85
-            case .user: return 0.7
+            case .ai, .error: return Color(.label)
+            case .user: return OGTheme.secondaryLabel
+            }
+        }
+
+        /// The body size: the reply is read, the echo is glanced at.
+        var textStyle: Font {
+            switch self {
+            case .ai: return .body
+            case .user, .error: return .callout
             }
         }
 
@@ -135,18 +151,19 @@ struct TranscriptOverlay: View {
             HStack(spacing: 5) {
                 if style == .ai {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(accent.opacity(0.7))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                        .accessibilityHidden(true)
                 }
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(accent.opacity(0.7))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                     .textCase(.uppercase)
                     .tracking(0.5)
                 if style == .ai {
                     Text("AI")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(OGTheme.secondaryLabel)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(.quaternary, in: Capsule())
@@ -154,8 +171,8 @@ struct TranscriptOverlay: View {
             }
 
             Text(text)
-                .font(.system(size: style == .ai ? 15 : 14, weight: .regular))
-                .foregroundStyle(.primary.opacity(style.textOpacity))
+                .font(style.textStyle)
+                .foregroundStyle(style.textColor)
                 .lineLimit(4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -202,30 +219,31 @@ private struct TranscriptDetailView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(accent.opacity(0.7))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                            .accessibilityHidden(true)
                         Text(label)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(accent.opacity(0.7))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                             .textCase(.uppercase)
                             .tracking(0.5)
                         Text("AI-generated")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(OGTheme.secondaryLabel)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
                     }
 
                     Text(text)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.primary.opacity(0.9))
+                        .font(.body)
+                        .foregroundStyle(Color(.label))
                         .textSelection(.enabled)
 
                     // AI disclosure (Apple Generative AI HIG)
                     Text("This response was generated by AI and may contain errors.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .foregroundStyle(OGTheme.secondaryLabel)
                         .padding(.top, 8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

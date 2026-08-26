@@ -49,8 +49,43 @@ final class DynamicTypeAccessibilityTests: AccessibilityAuditCase {
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub at AX5")
         audit(app, screen: "Settings hub — AX5",
-              deferring: [.secondaryCopyContrast, .heroCardChipRow, .rowValueWidth,
+              deferring: [.secondaryCopyContrast, .heroCardChipRow,
                           .contentUnderTheTabBar(of: app)])
+    }
+
+    /// The session surface at AX5 — the screen the checklist recorded as "Dynamic Type: deferred
+    /// to DG P4" for three of its rows, now that the phase that owed the numbers has set them.
+    ///
+    /// It earns its place beside the settings hub for the opposite reason: settings is a long
+    /// scroll of one row shape, and this is a three-zone composition — status card, waveline,
+    /// control dock — that used not to scroll at all. That is what this case caught the first time
+    /// it was run: at AX5 the card ran off the top of the screen and the dock off the bottom, with
+    /// no way to reach either, because the shipped layout only ever fitted while its text was a
+    /// fixed size. So this measures the adaptation as much as the palette — and the Dynamic Type
+    /// and clipping checks, which are the ones that caught it, run here unfiltered.
+    func testSessionSurfacePassesAccessibilityAuditAtAX5() {
+        let app = launch([.configured], contentSizeCategory: Self.ax5)
+
+        // Open the tab rather than merely waiting for it, even though it is the tab the app starts
+        // on. Waiting alone was tried twice and the audit refused to run at all — "invalid target
+        // app", an infrastructure error rather than a finding — while the settings sweep below,
+        // which is identical except that it *taps* its way to the screen, has never seen it. A tap
+        // makes the automation session attach to the process the audit is about to walk; a
+        // successful query apparently does not. The tap is a no-op for the app: the Voice tab is
+        // already selected.
+        openTab("Voice", in: app)
+
+        // And wait for the *surface*, not just the shell around it: at AX5 this screen's first
+        // layout pass is not cheap, and the capsule is the last part of it to resolve.
+        let capsule = app.buttons.matching(
+            NSPredicate(format: "label IN %@",
+                        ["Connect & Talk", "Start talking", "End voice session",
+                         "Stop speaking", "Cancel"])
+        ).firstMatch
+        awaitScreen(capsule, named: "The session capsule at AX5")
+
+        audit(app, screen: "Session surface — AX5",
+              deferring: [.contrastThroughGlass])
     }
 
     // MARK: - Helpers

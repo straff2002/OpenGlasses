@@ -64,6 +64,15 @@ enum OGMetrics {
     static let iconTile: CGFloat = 30
     static let rowSpacing: CGFloat = 12
     static let rowHorizontalPadding: CGFloat = 16
+    /// The absolute floor for anything a finger has to hit.
+    ///
+    /// Not a `@ScaledMetric`: this is a fingertip, not type. A reader who turns
+    /// the text size up has not grown their thumb, and scaling 44 by the body
+    /// text ratio reaches roughly 130pt at AX5 — a third of the screen for a
+    /// control that draws at 25. Where a control's *drawn* size grows with the
+    /// type it carries, it outgrows this on its own and the floor stops
+    /// applying; where it doesn't, the floor is the whole point.
+    static let minTouchTarget: CGFloat = 44
 }
 
 /// Section = uppercase caption + card + optional footer, the unit hub
@@ -157,6 +166,24 @@ struct OGRow<Trailing: View>: View {
     @ViewBuilder var trailing: () -> Trailing
 
     @ScaledMetric(relativeTo: .body) private var minRowHeight: CGFloat = 52
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// At accessibility sizes a *value* row stops competing with itself.
+    ///
+    /// Title, subtitle and value share one width, and past a certain size they
+    /// cannot all have it: capping the value clips it, uncapping it takes the
+    /// second line out of the subtitle, and giving the title priority takes it
+    /// out of the title. All three were tried, and all three move the clipping
+    /// rather than remove it — because the premise is wrong. Three strings do
+    /// not fit on one line at AX5, so above the accessibility threshold the
+    /// value moves *under* the title instead of beside it, where it has the
+    /// row's full width and nothing to take a second line from. That is what
+    /// lets `OGRowValue` drop its line cap at every size; below the threshold
+    /// the shipped side-by-side row is otherwise unchanged.
+    ///
+    /// Only value rows stack: a *control* row's trailing view is a switch, and
+    /// a switch under the title is a different control, not a wrapped one.
+    private var stacksTrailing: Bool { combinesTrailing && typeSize.isAccessibilitySize }
 
     var body: some View {
         HStack(spacing: OGMetrics.rowSpacing) {
@@ -170,14 +197,19 @@ struct OGRow<Trailing: View>: View {
                 if let subtitle {
                     Text(subtitle)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OGTheme.secondaryLabel)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if stacksTrailing {
+                    trailing()
                 }
             }
             // Title and subtitle are one thought, not two stops.
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
-            trailing()
+            if !stacksTrailing {
+                trailing()
+            }
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
@@ -281,19 +313,23 @@ struct OGToggle: View {
 /// Trailing summary on a row ("Claude Sonnet", "On", "iPhone").
 struct OGRowValue: View {
     let value: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let value {
             Text(value)
                 .font(.body)
-                .foregroundStyle(.secondary)
-                // The audit reports this as text that may clip, and it is right — at large sizes
-                // `“Openglasses”` and `System` are both cut. Removing the cap was tried and
-                // rejected: the row is title + subtitle + value competing for one width, so a
-                // wrapping value takes its second line straight out of the subtitle, and then out
-                // of the title. Which of the three yields is a layout decision for the phase that
-                // owns this component; the cap stays until then. See the plan's deferrals.
-                .lineLimit(1)
+                .foregroundStyle(OGTheme.secondaryLabel)
+                // **No cap at all**, which is only safe because of the other half of the fix.
+                // Removing it was tried on its own once and rejected: an uncapped value beside a
+                // title takes its second line straight out of the subtitle, so the audit reported
+                // a different clipped string rather than none. What makes it work now is that at
+                // accessibility sizes the value is no longer *beside* anything — `OGRow` stacks it
+                // under the title with the row's full width — so there is no line for it to steal.
+                // At everyday sizes there was room all along; the cap was truncating values that
+                // would have fitted on a second line of a row that grows anyway.
+                .multilineTextAlignment(typeSize.isAccessibilitySize ? .leading : .trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

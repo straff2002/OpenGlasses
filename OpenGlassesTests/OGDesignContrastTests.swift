@@ -159,6 +159,47 @@ final class OGDesignContrastTests: XCTestCase {
         }
     }
 
+    /// The session surface's status tile and hero capsule paint a *hue* on a faint wash of that
+    /// same hue — the accent while a session runs, the attention hue while it connects, the
+    /// failure hue when it breaks, the inactive grey when nothing is happening. All four go
+    /// through `tintedAccentLabel`, which was written for the accent presets, so the guarantee has
+    /// to be checked for the status hues it is now also asked to correct.
+    func testTintedLabelClearsAAForTheSessionSurfaceHues() {
+        let hues: [(String, OGColorToken)] = [
+            ("attention", OGTheme.Token.warn),
+            ("failure", OGTheme.Token.error),
+            ("success", OGTheme.Token.ok),
+            ("inactive", OGTheme.Token.inactive),
+        ]
+        for (name, token) in hues {
+            for scheme in OGColorScheme.allCases {
+                let hue = token.value(for: scheme)
+                let label = OGTheme.tintedAccentLabelValue(hue, in: scheme)
+                for surface in [OGTheme.Token.canvas, OGTheme.Token.card] {
+                    let ground = hue.composited(
+                        alpha: OGTheme.Opacity.accentFill,
+                        over: surface.value(for: scheme)
+                    )
+                    let ratio = ContrastRatio.ratio(label, ground)
+                    XCTAssertTrue(
+                        ContrastRatio.meetsAA(ratio, size: .normal),
+                        """
+                        the \(name) hue in \(scheme) measures \
+                        \(String(format: "%.2f", ratio)):1 on a wash of itself.
+                        """
+                    )
+                }
+            }
+        }
+    }
+
+    /// The tile's wash is drawn at the *pill* opacity while the correction is computed against the
+    /// stronger chip wash. That is deliberate — correcting against the darker ground covers the
+    /// lighter one — and it only holds while the pill fill really is the lighter of the two.
+    func testThePillWashIsLighterThanTheWashTheCorrectionAssumes() {
+        XCTAssertLessThan(OGTheme.Opacity.accentPillFill, OGTheme.Opacity.accentFill)
+    }
+
     func testInkAccentLabelClearsAAForEveryPreset() {
         for preset in AppAccent.presets {
             let accent = OGTheme.resolved(preset.color, for: .dark)

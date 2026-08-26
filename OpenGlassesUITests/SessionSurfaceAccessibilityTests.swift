@@ -1,18 +1,25 @@
 import XCTest
 
-/// The main session surface and the captions overlay that sits on it (Plan DF P4).
+/// The main session surface and the captions overlay that sits on it (Plan DF P4, completed by
+/// DG P4).
 ///
-/// Ranks 2, 3 and 6 on the plan's checklist. The visual criteria on this screen belong to the
-/// phase that restyles it — see `AuditDeferral.sessionSurfaceVisuals` — so what this file gates is
-/// the half DF P2 landed: that every control on the surface has a name, a value where its state
-/// changes, the trait its affordance promises, and a target a finger can find.
+/// Ranks 2, 3 and 6 on the plan's checklist. This file used to gate only the half DF P2 landed —
+/// names, values, traits — because the surface's type scale, colour pairs and metrics were the
+/// design phase's to set. They are set, and the four deferrals that stood in for them are deleted.
+///
+/// What is left here is two filters, and neither is about the surface's quality: the audit cannot
+/// measure contrast through translucent chrome (`contrastThroughGlass`, with the pixel
+/// measurements that settle it), and it asks a pointer-target question of focusable text
+/// (`focusableCaptionHistory`, scoped to non-buttons so the speaker chip is still held to the
+/// floor). Dynamic Type, clipping, hit regions, traits and descriptions run unfiltered on the
+/// busiest screen in the app.
 final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
 
     func testVoiceTabPassesAccessibilityAudit() {
         let app = launch([.configured])
         awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
         audit(app, screen: "Session surface — Voice tab",
-              deferring: [.sessionSurfaceVisuals, .sessionSurfaceTargets])
+              deferring: [.contrastThroughGlass])
     }
 
     func testTabBarDestinationsAreNamed() {
@@ -51,9 +58,9 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     }
 
     /// Rank 6: the captions overlay, seeded with the history and live line a real session would
-    /// have produced. Its ground and its speaker chip are deferred with the surface's layout; its
-    /// semantics — a contained, individually focusable history, and a live line that names itself
-    /// — are gated here.
+    /// have produced — two of them diarized, so the speaker chip is on screen to be measured. Its
+    /// ground and its chip's target were the two findings this surface carried; both are fixed —
+    /// the panel is opaque now, and the chip has a real 44pt target.
     func testCaptionsOverlayPassesAccessibilityAudit() {
         let app = launch([.configured, .seedCaptions])
         awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
@@ -64,7 +71,22 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
                       "The live caption line does not name itself as the current line")
 
         audit(app, screen: "Session surface — captions overlay",
-              deferring: [.sessionSurfaceVisuals, .sessionSurfaceTargets, .captionsOverlayGround])
+              deferring: [.contrastThroughGlass, .focusableCaptionHistory])
+    }
+
+    /// The speaker chip is the control the plan deferred twice for being about 20pt. It is on
+    /// screen whenever a caption is diarized, and it is now a real target — which is only true
+    /// while the seeded history actually carries a speaker, so this asserts the chip is there at
+    /// all. Without it the audit above would pass by measuring a control that never rendered.
+    func testTheSpeakerChipIsOnScreenToBeAudited() {
+        let app = launch([.configured, .seedCaptions])
+        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+
+        let chip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH 'Speaker '")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 60),
+                      "No speaker chip in the caption stack — the diarized seed has been lost, "
+                      + "and with it the only coverage of that control's touch target")
     }
 
     /// Captions are speech that already happened in the room, so the history has to be swipeable

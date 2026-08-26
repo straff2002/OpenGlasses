@@ -13,6 +13,15 @@ struct StatusIndicator: View {
     @Environment(\.appAccent) private var accent
     @State private var showDisconnectConfirm = false
 
+    /// The status tile, and the glyph inside it. Scaled rather than fixed so the
+    /// tile keeps its proportion to the two lines of text beside it at every
+    /// Dynamic Type size instead of shrinking against them.
+    @ScaledMetric(relativeTo: .body) private var statusTile: CGFloat = 48
+    @ScaledMetric(relativeTo: .title2) private var statusGlyph: CGFloat = 26
+    /// The connection pills' logo, which scales with the type beside it.
+    @ScaledMetric(relativeTo: .caption) private var pillGlyph: CGFloat = 13
+    @ScaledMetric(relativeTo: .caption2) private var statusDot: CGFloat = 5
+
     private var isGemini: Bool { appState.currentMode == .geminiLive }
     private var isOpenAI: Bool { appState.currentMode == .openaiRealtime }
     private var isRealtime: Bool { appState.currentMode.isRealtime }
@@ -23,39 +32,54 @@ struct StatusIndicator: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(ringColor.opacity(0.12))
-                        .frame(width: 48, height: 48)
+                        .fill(ringColor.opacity(OGTheme.Opacity.accentPillFill))
+                        .frame(width: statusTile, height: statusTile)
 
                     Group {
                         if iconName == "OpenGlassesLogo" {
-                            LogoIcon(size: 26)
+                            LogoIcon(size: statusGlyph)
                         } else {
                             Image(systemName: iconName)
-                                .font(.system(size: 22, weight: .regular))
+                                .font(.title2)
                         }
                     }
-                    .foregroundStyle(ringColor)
+                    // The tile paints a hue on a wash of itself, which is the
+                    // case `tintedAccentLabel` exists for: it nudges any hue to
+                    // the nearest value that clears AA on its own tint, against
+                    // the *stronger* wash, so the 0.12 pill fill is covered too.
+                    .foregroundStyle(OGTheme.tintedAccentLabel(ringColor))
                 }
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusLabel)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
                         .foregroundStyle(Color(.label))
-                        .lineLimit(1)
+                        // Uncapped. The state of the session is the one thing
+                        // this card exists to report, the line can be a whole
+                        // error message, and the card is free to grow — it is a
+                        // card on a screen, not a row in a list. A cap here only
+                        // ever buys a card that doesn't change height, and pays
+                        // for it by dropping the words.
+                        .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 6) {
                         Text(modeLabel)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.secondaryLabel)
+                            // Wrap rather than truncate: this line shares its
+                            // row with the camera chip and its width with a
+                            // model name nobody chose for its length.
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if isRealtime && appState.cameraService.isStreaming {
                             HStack(spacing: 3) {
-                                Circle().fill(.green).frame(width: 5, height: 5)
+                                Circle().fill(OGTheme.ok)
+                                    .frame(width: statusDot, height: statusDot)
                                     .accessibilityHidden(true)
                                 Text("CAM")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.green.opacity(0.8))
+                                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                                    .foregroundStyle(OGTheme.okLabel)
                             }
                             .accessibilityLabel("Camera streaming")
                         }
@@ -66,7 +90,7 @@ struct StatusIndicator: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
-            .padding(.bottom, 14)
+            .padding(.bottom, 10)
             // One stop, one sentence. Split across three Texts it read as "Listening…",
             // "Voice middle dot Claude", "Camera streaming" — three swipes to assemble a fact
             // that is one glance for a sighted user. `.updatesFrequently` is the non-intrusive
@@ -104,7 +128,11 @@ struct StatusIndicator: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+            // The pills now carry a full 44pt target, which is taller than the
+            // capsules they draw — so the row's own bottom padding comes off to
+            // pay for most of it and the card grows by a few points rather than
+            // by twenty.
+            .padding(.bottom, 4)
         }
         .glassEffect(in: .rect(cornerRadius: 16))
         .padding(.horizontal, 20)
@@ -119,7 +147,7 @@ struct StatusIndicator: View {
 
     private var glassesPill: some View {
         let connected = appState.isConnected
-        let color: Color = connected ? .green : .red.opacity(0.7)
+        let color: Color = connected ? OGTheme.okLabel : OGTheme.errorLabel
         let label = connected ? (appState.glassesService.deviceName ?? "Glasses") : "Disconnected"
 
         return Button {
@@ -130,15 +158,30 @@ struct StatusIndicator: View {
             }
         } label: {
             HStack(spacing: 5) {
-                LogoIcon(size: 13)
+                LogoIcon(size: pillGlyph)
                     .foregroundStyle(color)
                 if connected {
-                    Circle().fill(color).frame(width: 5, height: 5)
+                    Circle().fill(OGTheme.ok).frame(width: statusDot, height: statusDot)
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .glassEffect(in: .capsule)
+            // The drawn capsule stays the size the signature draws it; what
+            // grows is the target around it. A pill that *looked* 44pt would be
+            // a different status card — this is the same card with a control a
+            // finger can actually land on, and it is the reason the footer row
+            // gave up its bottom padding above.
+            //
+            // A *floor*, and deliberately not a `@ScaledMetric` one. 44pt is an
+            // absolute minimum for a fingertip, not a type-relative measure: a
+            // reader who turns the text up has not grown their thumb, and a
+            // scaled 44 reaches about 130pt at AX5, which is a third of the
+            // screen for a status dot. The drawn pill still grows on its own,
+            // and when it outgrows 44 this stops applying.
+            .frame(minWidth: OGMetrics.minTouchTarget,
+                   minHeight: OGMetrics.minTouchTarget)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .confirmationDialog("Disconnect Glasses", isPresented: $showDisconnectConfirm) {
@@ -162,24 +205,28 @@ struct StatusIndicator: View {
     }
 
     private var openClawPill: some View {
+        // A 5pt dot reads from the uncorrected hue; the word beside it is what
+        // carries the state, so the colour is reinforcement rather than signal.
         let (color, label): (Color, String) = {
             switch openClawBridge.connectionState {
-            case .connected: return (.green, "Connected")
-            case .checking: return (.orange, "Checking")
-            case .unreachable: return (.red, "Unreachable")
-            case .notConfigured: return (.gray, "Not Set Up")
+            case .connected: return (OGTheme.ok, "Connected")
+            case .checking: return (OGTheme.warn, "Checking")
+            case .unreachable: return (OGTheme.error, "Unreachable")
+            case .notConfigured: return (OGTheme.secondaryLabel, "Not Set Up")
             }
         }()
 
         return HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 5, height: 5)
+            Circle().fill(color).frame(width: statusDot, height: statusDot)
+                .accessibilityHidden(true)
             Text("OpenClaw")
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(Color(.label))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .glassEffect(in: .capsule)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("OpenClaw: \(label)")
     }
 
@@ -190,29 +237,38 @@ struct StatusIndicator: View {
         let name = persona?.name ?? "OpenGlasses"
         let icon = persona?.icon ?? "sparkles"
         let connected = appState.isConnected
-        let badgeColor: Color = connected ? .green : .gray
+        // The dot is a fill and the name beside it is text — the same state, two
+        // roles, and the raw success hue is unreadable as the second one.
+        let dotColor: Color = connected ? OGTheme.ok : OGTheme.secondaryLabel
+        let nameColor: Color = connected ? OGTheme.okLabel : OGTheme.secondaryLabel
 
         return HStack(spacing: 6) {
             Circle()
-                .fill(badgeColor)
-                .frame(width: 6, height: 6)
+                .fill(dotColor)
+                .frame(width: statusDot, height: statusDot)
                 .accessibilityHidden(true)
             Group {
                 if icon == "OpenGlassesLogo" {
-                    LogoIcon(size: 11)
+                    LogoIcon(size: pillGlyph)
                 } else {
                     Image(systemName: icon)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption.weight(.medium))
                 }
             }
-            .foregroundStyle(badgeColor)
+            .foregroundStyle(nameColor)
             .accessibilityHidden(true)
             Text(connected ? "Active mode:" : "Mode:")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(OGTheme.secondaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
             Text(name)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(badgeColor)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(nameColor)
+                // The badge shares the footer row with the connection pills, and
+                // a persona name is user-supplied. Wrapping is the only honest
+                // option: truncating loses the one word that says which mode is
+                // running.
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
         // Disconnected, the interpolation used to open with an empty string, so the line began
@@ -254,30 +310,33 @@ struct StatusIndicator: View {
         }
     }
 
+    /// The hue the status tile is built from — the wash is this at the pill-fill
+    /// opacity and the glyph is this corrected to read on that wash. Every value
+    /// is a palette token so both halves are measurable.
     private var ringColor: Color {
-        if !appState.isConnected { return .gray }
-        if appState.glassesIdle { return .gray }
+        if !appState.isConnected { return OGTheme.inactive }
+        if appState.glassesIdle { return OGTheme.inactive }
 
         if isGemini {
             switch session.connectionState {
-            case .ready where session.isModelSpeaking: return .orange
+            case .ready where session.isModelSpeaking: return OGTheme.warn
             case .ready: return accent
-            case .connecting, .settingUp: return .orange
-            case .error: return .red
-            case .disconnected: return .gray
+            case .connecting, .settingUp: return OGTheme.warn
+            case .error: return OGTheme.error
+            case .disconnected: return OGTheme.inactive
             }
         } else if isOpenAI {
             switch openAISession.connectionState {
-            case .ready where openAISession.isModelSpeaking: return .orange
+            case .ready where openAISession.isModelSpeaking: return OGTheme.warn
             case .ready: return accent
-            case .connecting, .settingUp: return .orange
-            case .error: return .red
-            case .disconnected: return .gray
+            case .connecting, .settingUp: return OGTheme.warn
+            case .error: return OGTheme.error
+            case .disconnected: return OGTheme.inactive
             }
         } else {
             if appState.isListening { return accent }
-            if appState.speechService.isSpeaking { return .orange }
-            return .gray
+            if appState.speechService.isSpeaking { return OGTheme.warn }
+            return OGTheme.inactive
         }
     }
 
@@ -353,8 +412,8 @@ struct StatusIndicator: View {
 
     private var reconnectingLabel: some View {
         Text("Reconnecting...")
-            .font(.system(size: 12))
-            .foregroundStyle(.orange.opacity(0.8))
+            .font(.caption)
+            .foregroundStyle(OGTheme.warnLabel)
     }
 
     private func toolCallPill(_ text: String, color: Color) -> some View {
@@ -362,13 +421,14 @@ struct StatusIndicator: View {
             ProgressView().scaleEffect(0.7).tint(.primary)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(Color(.label))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(color.opacity(0.15))
+        .background(color.opacity(OGTheme.Opacity.accentFill))
         .glassEffect(in: .capsule)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Running: \(text)")
     }
 

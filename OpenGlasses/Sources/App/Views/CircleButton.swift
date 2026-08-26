@@ -1,6 +1,11 @@
 import SwiftUI
 
-/// A translucent glass-morphism circular button. OpenGlasses' own take — no VisionClaw clones.
+/// A translucent glass-morphism circular button — the session surface's round control primitive,
+/// drawn for chrome laid over a media ground rather than over the canvas.
+///
+/// Currently unreferenced: the control dock absorbed its call sites into `BarButton`. Brought onto
+/// the tokens with the rest of the surface (DG P4) rather than left as an un-audited idiom for
+/// someone to reach for; whether it survives at all is a question for the long-tail pass.
 struct CircleButton: View {
     let icon: String
     var size: CGFloat = 52
@@ -10,10 +15,14 @@ struct CircleButton: View {
     var label: String? = nil
     let action: () -> Void
 
+    @Environment(\.appAccent) private var accent
+
     private var foreground: Color {
-        if isDisabled { return .white.opacity(0.25) }
-        if isActive { return .white }
-        return .white.opacity(0.85)
+        // The disabled state is the audited quiet role, not a quarter-opacity
+        // white — the same correction the dock's tiles took.
+        if isDisabled { return OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaQuiet) }
+        if isActive { return OGTheme.onMedia }
+        return OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary)
     }
 
     var body: some View {
@@ -25,20 +34,19 @@ struct CircleButton: View {
 
                 if let badge {
                     Text(badge)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(OGTheme.onAccentLabel(accent))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Color.accentColor, in: Capsule())
+                        .background(accent, in: Capsule())
                         .offset(x: size * 0.3, y: -size * 0.3)
                 }
             }
             .frame(width: size, height: size)
-            .background(isActive ? Color.accentColor.opacity(0.15) : Color.clear)
+            .background(isActive ? accent.opacity(OGTheme.Opacity.accentFill) : Color.clear)
             .glassEffect(in: .circle)
         }
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.4 : 1)
         .accessibilityLabel(label ?? icon.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " "))
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }

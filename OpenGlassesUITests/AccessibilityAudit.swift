@@ -36,37 +36,64 @@ struct AuditDeferral {
         self.matches = matches
     }
 
-    /// The session surface's type scale, colour pairs and metrics are set by the design phase
-    /// that owns that screen; DF P2 took the half that is independent of the restyle (what the
-    /// controls are called and what they announce) and left the visual criteria there. The plan's
-    /// own checklist records the same division.
-    static let sessionSurfaceVisuals = AuditDeferral(
-        types: [.contrast, .dynamicType, .textClipped],
-        reason: "Session-surface type scale, colour pairs and metrics are owned by the design "
-            + "phase that restyles this screen (DF P3 recorded the same division). Semantics — "
-            + "labels, values, traits, hit regions — are audited here and are not deferred."
+    // The three session-surface deferrals this file used to carry — the surface's type scale and
+    // colour pairs, the status card's ~33×25 connection pills, and the captions overlay's missing
+    // ground plus its ~20pt speaker chip — are **gone rather than relaxed**. The phase they were
+    // waiting for restyled that surface: the pills and the chip carry real 44pt targets around
+    // their drawn artwork, the caption stack has an opaque media panel under it, and every colour on
+    // the screen reads from an audited token. `SessionSurfaceAccessibilityTests` now runs Dynamic
+    // Type, clipping, hit regions, traits and descriptions there unfiltered; contrast is the one
+    // check that still needs a filter, for a reason that is about the tool — see
+    // `contrastThroughGlass`.
+
+    /// Contrast measured *through* Liquid Glass.
+    ///
+    /// The session surface is the one screen in the app built out of translucent chrome: the
+    /// control dock, the hero capsule, the status card and its connection pills are all
+    /// `glassEffect`. The audit reports text on them as failing contrast, and the rendered pixels
+    /// say otherwise — measured rather than argued, by sampling the screenshot the simulator
+    /// produces: the capsule's label ("Connect & Talk", `Color(.label)` on the capsule's glass)
+    /// comes out at **20.5:1**, black on near-white.
+    ///
+    /// The mechanism is visible in what else trips it. A 0.8-alpha caption panel tripped it too,
+    /// on a stack whose pixels measure 8.8–11.5:1, and went away when the panel became opaque —
+    /// so the check is reading the *declared* background rather than the composite, and any
+    /// translucent ground looks like no ground at all to it. It is the same property DF P4
+    /// recorded for content scrolled under the translucent tab bar, and the reason that deferral
+    /// exists too.
+    ///
+    /// Deliberately narrow. It covers `.contrast` on this surface and nothing else: Dynamic Type,
+    /// clipping, hit regions, traits and descriptions all stay live here, which is where a real
+    /// regression on this screen shows up. And the colour work itself is asserted twice over
+    /// without this audit — every pair the palette paints is walked by `OGDesignContrastTests` in
+    /// both schemes, and after DG P4 nothing on this surface is hand-painted, so there is no
+    /// colour here that the headless suite does not already measure.
+    static let contrastThroughGlass = AuditDeferral(
+        types: .contrast,
+        reason: "Text on the session surface's Liquid Glass chrome. The audit samples the declared "
+            + "background rather than the composite, so any translucent ground reads as no ground: "
+            + "the capsule's label measures 20.5:1 in the rendered pixels. Every other audit type "
+            + "stays live on this screen, and the palette's own pairs are asserted headlessly."
     )
 
-    /// The captions overlay's ground: history rows and translation legs sit directly on whatever
-    /// is behind the overlay, so their contrast is unmeasurable rather than merely thin. Adding a
-    /// scrim is a layout decision that belongs to the phase restyling this surface — and so does
-    /// the ~20pt speaker chip, whose 44pt floor would reflow the caption stack.
-    static let captionsOverlayGround = AuditDeferral(
-        types: [.contrast, .hitRegion],
-        reason: "Captions overlay contrast and the speaker chip's target need a scrim and a "
-            + "reflow of the caption stack — both layout decisions owned by the phase that "
-            + "restyles the session surface."
-    )
-
-    /// The status card's connection pills are drawn as ~33×25 capsules. Their accessibility
-    /// element now *is* the capsule (it used to be the 13pt glyph inside it), but the drawn
-    /// control is still under 44pt, and growing it pushes the card's footer row apart — a metric
-    /// on the surface the design phase restyles.
-    static let sessionSurfaceTargets = AuditDeferral(
+    /// A caption in the history is *readable text made focusable*, not a control.
+    ///
+    /// DF P2 decided this surface is a swipeable history rather than a live region, which means
+    /// each past line is its own accessibility element so a VoiceOver user can go back through
+    /// what was said. The audit sees an element and asks whether a finger could hit it — but there
+    /// is nothing to hit: the line has no action, and the 44pt floor is a *pointer-target*
+    /// criterion. Growing every caption row to 44pt would push the stack apart to satisfy a check
+    /// on something that is not a target.
+    ///
+    /// Scoped to non-buttons for exactly that reason, and it is a real scope rather than a
+    /// formality: the speaker chip beside these lines *is* a button, it is the control this phase
+    /// grew to 44pt, and it still fails this audit if it ever shrinks back.
+    static let focusableCaptionHistory = AuditDeferral(
         types: .hitRegion,
-        reason: "Status-card connection pills are drawn at about 33×25; a 44pt floor grows the "
-            + "card's footer row, which is a session-surface metric owned by the phase that "
-            + "restyles it. Their accessibility element covers the drawn pill as of this phase."
+        reason: "A caption-history line is focusable text, not a control — it has no action, so "
+            + "the 44pt pointer-target floor does not apply to it. Scoped to non-button elements, "
+            + "so the speaker chip beside it is still held to the floor.",
+        matches: { $0.element?.elementType != .button }
     )
 
     /// Stock `Form` section headers and footers, rendered by the system in its own secondary
@@ -127,14 +154,17 @@ struct AuditDeferral {
     /// three phases: the tool that would have caught it and the tool that reports it are looking
     /// at different trees.
     ///
-    /// The findings themselves are the session surface's own — its type scale and its targets —
-    /// and are deferred to the same phase, and audited for real on the Voice tab.
+    /// This one survives the session-surface restyle, and for a reason that has nothing to do with
+    /// the surface's own quality: contrast measured *through* a full-screen cover is contrast
+    /// against the wrong ground. The elements behind onboarding are now audited properly on the
+    /// Voice tab — which is the right place to measure them, and the reason this stays scoped to
+    /// the cover rather than being widened.
     static let appBehindTheOverlay = AuditDeferral(
         types: [.contrast, .dynamicType, .textClipped, .hitRegion],
-        reason: "Session-surface elements rendered behind the full-screen onboarding cover. "
-            + "They are hidden from VoiceOver as of this phase; the audit walks the render tree "
-            + "and still sees them. Their own criteria are audited on the Voice tab and owned by "
-            + "the phase that restyles that surface."
+        reason: "Session-surface elements rendered behind the full-screen onboarding cover. They "
+            + "are hidden from VoiceOver; the audit walks the render tree and still sees them, "
+            + "compositing them against onboarding rather than against their own screen. Audited "
+            + "for real, and undeferred, on the Voice tab."
     )
 
     /// A one-line text field is a one-line text field. At accessibility sizes iOS scrolls the
@@ -148,18 +178,11 @@ struct AuditDeferral {
             + "accessibility sizes — platform behaviour for text fields, not an app decision."
     )
 
-    /// An `OGRow` is a title, a subtitle and a value competing for one width, and at larger sizes
-    /// they cannot all have it. Removing the value's line cap was tried here and rejected: the
-    /// value's second line comes straight out of the subtitle, and then out of the title, so the
-    /// audit reports a different clipped string rather than none. Which of the three yields —
-    /// or whether the value belongs under the title instead of beside it — is a layout decision
-    /// for the phase that owns this component, and is catalogued in the plan.
-    static let rowValueWidth = AuditDeferral(
-        types: .textClipped,
-        reason: "`OGRow`'s title, subtitle and value share one width and cannot all keep it at "
-            + "larger sizes. Rebalancing them is a layout change to a shipped component; "
-            + "catalogued in the plan."
-    )
+    // `OGRow`'s value width was the fourth deferral here, and it is gone too. The three strings
+    // were only competing because they were asked to share one line: above the accessibility
+    // threshold the value now sits *under* the title with the row's full width and no line cap,
+    // and below it the shipped side-by-side row is untouched. The settings audits no longer
+    // filter it.
 
     /// The onboarding page indicator: three-to-seven 4pt capsules. It is decoration and hidden
     /// from VoiceOver — where in the flow the user is rides on the page title's value — but it is

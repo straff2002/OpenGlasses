@@ -80,6 +80,11 @@ enum OGTheme {
         static let warn = OGColorToken(light: 0xFF9500, dark: 0xFF9F0A)
         /// Failure hue, likewise.
         static let error = OGColorToken(fixed: 0xE03026)
+        /// The "nothing is happening" hue — a disconnected session, an inactive
+        /// tile. A measured warm grey rather than `.gray`, because the status
+        /// tile tints a wash from whatever hue it is given and a system grey is
+        /// a value the palette cannot correct or assert against.
+        static let inactive = OGColorToken(light: 0x6E6A66, dark: 0x9A948E)
         /// The ground under a count badge or a LIVE capsule. The system's
         /// notification red carries white text at about 3.6:1 — under AA at the
         /// sizes a badge is drawn in — so this deepens the red rather than
@@ -115,6 +120,9 @@ enum OGTheme {
         /// The quietest white that still clears AA on black. Below this a value
         /// is decoration — a hairline or a divider — and not text.
         static let onMediaQuiet = 0.5
+        /// A divider or hairline over a media ground. Below the quiet floor on
+        /// purpose: it is decoration, not text, and nothing asserts it.
+        static let onMediaHairline = 0.3
     }
 
     /// Adaptive pair helper: most tokens carry explicit light/dark values
@@ -136,10 +144,21 @@ enum OGTheme {
     static let ok = Token.ok.color
     static let warn = Color.orange
     static let error = Token.error.color
+    /// The inactive hue, for a tile or dot that reports "not right now".
+    static let inactive = Token.inactive.color
 
     /// A count badge / LIVE capsule and the text on it.
     static let badge = Token.badge.color
     static let onBadge = Token.onInk.color
+
+    /// Secondary copy as an *audited* value rather than SwiftUI's `.secondary`.
+    ///
+    /// The two look alike and only one of them can be measured: the system's
+    /// secondary label is a semantic colour whose resolved value the suite
+    /// cannot read, and the audit reports it as clearing AA only at large-text
+    /// sizes. This is the same weight of grey expressed as a pair the palette
+    /// already asserts ("row subtitle on card", "section header on canvas").
+    static let secondaryLabel = Token.label.color.opacity(Opacity.secondaryLabel)
 }
 
 // MARK: - Derived accent colours
@@ -262,6 +281,7 @@ extension OGTheme {
     static let mediaOkLabel = mediaOkLabelToken.color
     static let mediaWarnLabel = mediaWarnLabelToken.color
     static let mediaErrorLabel = mediaErrorLabelToken.color
+
 
     /// Build an adaptive `Color` whose value in each scheme is computed from the
     /// accent resolved for that scheme.
