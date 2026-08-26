@@ -116,4 +116,43 @@ enum SignInFlowState: Equatable {
         if case .failed(let reason) = self { return reason }
         return nil
     }
+
+    /// What a VoiceOver user is told on entering this state — `nil` for the states that need
+    /// nothing said (Plan DF P2).
+    ///
+    /// This flow is the app's worst case for a screen reader, because most of it happens
+    /// somewhere else. The login page opens in a system sheet that takes focus, the sheet then
+    /// *dismisses itself* the instant the redirect is caught, and the user is dropped back on a
+    /// settings screen where a spinner has quietly replaced a button. Sighted, that reads as
+    /// progress; without sight it reads as the sheet having closed for no reason.
+    ///
+    /// `.captured` says nothing on purpose: `.exchanging` follows it within the same turn, and
+    /// two lines a frame apart is one line's worth of information delivered twice.
+    var spokenStatus: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .presenting(let listening):
+            // Only the paste route is worth a line here. When the redirect can be caught, the
+            // sheet handles itself and the announcement would land on top of the page's own.
+            return listening ? nil : "Sign-in page open. You'll paste the code back here when it's done."
+        case .captured:
+            return nil
+        case .exchanging:
+            return "Finishing sign-in"
+        case .connected:
+            return "Account connected"
+        case .failed(let reason):
+            return reason.isEmpty ? "Sign-in failed" : reason
+        case .cancelled:
+            return "Sign-in closed without finishing. Paste the code to continue."
+        }
+    }
+
+    /// Whether the line deserves to interrupt whatever VoiceOver is reading. A failure does: the
+    /// user is waiting on an outcome and a queued line arrives after they have moved on.
+    var spokenStatusInterrupts: Bool {
+        if case .failed = self { return true }
+        return false
+    }
 }

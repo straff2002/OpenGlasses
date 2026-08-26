@@ -67,6 +67,15 @@ struct StatusIndicator: View {
             .padding(.horizontal, 18)
             .padding(.top, 14)
             .padding(.bottom, 14)
+            // One stop, one sentence. Split across three Texts it read as "Listening…",
+            // "Voice middle dot Claude", "Camera streaming" — three swipes to assemble a fact
+            // that is one glance for a sighted user. `.updatesFrequently` is the non-intrusive
+            // half of the announcement design: VoiceOver re-reads this while focus is on it,
+            // and stays quiet when it isn't, because the transitions themselves are narrated
+            // from the state machine.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spokenStatus)
+            .accessibilityAddTraits(.updatesFrequently)
 
             // Tool call / reconnecting
             if isGemini && session.toolCallStatus.isActive {
@@ -99,8 +108,11 @@ struct StatusIndicator: View {
         }
         .glassEffect(in: .rect(cornerRadius: 16))
         .padding(.horizontal, 20)
+        // A group *name*, not a summary. The card's label used to restate the status and the
+        // mode, which the row above now says properly — so a VoiceOver user heard the whole
+        // sentence on entering the group and then again on the first swipe inside it.
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(statusLabel). \(modeLabel). \(appState.isConnected ? "Connected" : "Disconnected")")
+        .accessibilityLabel("Session status")
     }
 
     // MARK: - Connection pills (merged from the old StatusPillsRow)
@@ -137,7 +149,11 @@ struct StatusIndicator: View {
         } message: {
             Text("Stop mic, camera, and TTS. Gateway tasks keep running.")
         }
+        // The pill is drawn as a status dot, but it is a button that does opposite things in its
+        // two states — which is exactly what a hint is for.
         .accessibilityLabel("Glasses: \(label)")
+        .accessibilityHint(connected ? "Double-tap to disconnect the glasses."
+                                     : "Double-tap to connect the glasses.")
     }
 
     private var openClawPill: some View {
@@ -194,7 +210,9 @@ struct StatusIndicator: View {
                 .foregroundStyle(badgeColor)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(connected ? "Active" : "") mode: \(name)")
+        // Disconnected, the interpolation used to open with an empty string, so the line began
+        // with a pause and read as " mode: OpenGlasses".
+        .accessibilityLabel(connected ? "Active mode: \(name)" : "Mode: \(name)")
     }
 
     // MARK: - Computed Properties
@@ -304,6 +322,26 @@ struct StatusIndicator: View {
         } else {
             return "Voice \u{00B7} \(appState.llmService.activeModelName)"
         }
+    }
+
+    /// The mode as a sentence rather than as displayed: the middot is a visual separator and
+    /// VoiceOver reads it aloud as "middle dot", so it becomes the pause it was drawn to be.
+    private var spokenModeLabel: String {
+        modeLabel.replacingOccurrences(of: " \u{00B7} ", with: ", ")
+    }
+
+    /// Status, mode, and — only when it is actually on — the camera, as one spoken line. The
+    /// trailing ellipses of "Listening…" are dropped: they mean "ongoing" to the eye and are
+    /// read as a stumble.
+    private var spokenStatus: String {
+        let state = statusLabel
+            .replacingOccurrences(of: "...", with: "")
+            .replacingOccurrences(of: "\u{2026}", with: "")
+        var parts = [state, spokenModeLabel]
+        if isRealtime && appState.cameraService.isStreaming {
+            parts.append("camera streaming")
+        }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Helpers

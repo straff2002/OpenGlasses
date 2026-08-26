@@ -55,6 +55,18 @@ struct BottomControlBar: View {
                             appState.micMuted.toggle()
                         }
                 )
+                // Mute lives *only* on this long press. A sighted user finds it by accident; a
+                // VoiceOver user finds it never, because a gesture leaves no mark in the
+                // accessibility tree. The hint is the only place it is discoverable — and the
+                // custom action is the only way to reach it, since VoiceOver swallows the
+                // long press for its own element-inspection gesture.
+                .accessibilityHint(appState.micMuted
+                                   ? "Double-tap and hold to unmute the microphone."
+                                   : "Double-tap and hold to mute the microphone.")
+                .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
+                                                              : "Mute microphone") {
+                    appState.micMuted.toggle()
+                }
 
             // Utility row: everything else, one tile idiom, scrolls when it outgrows the width.
             ScrollView(.horizontal, showsIndicators: false) {
@@ -192,6 +204,7 @@ struct BottomControlBar: View {
             ActionCapsule(
                 icon: "stop.fill",
                 label: appState.speechService.isSpeaking ? "Tap to stop" : "Cancel",
+                spokenLabel: appState.speechService.isSpeaking ? "Stop speaking" : "Cancel",
                 isActive: true,
                 color: .orange
             ) {
@@ -203,6 +216,7 @@ struct BottomControlBar: View {
             ActionCapsule(
                 icon: "stop.circle.fill",
                 label: "Tap to stop",
+                spokenLabel: "End voice session",
                 isActive: true,
                 color: .orange,
                 showMuteBadge: appState.micMuted
@@ -225,6 +239,7 @@ struct BottomControlBar: View {
             ActionCapsule(
                 icon: "mic.fill",
                 label: "Tap to talk",
+                spokenLabel: "Start talking",
                 color: accent,
                 showMuteBadge: appState.micMuted
             ) {
@@ -268,6 +283,14 @@ struct BottomControlBar: View {
                     }
                 }
             }
+            // Dimmed-and-unexplained is the sighted version of this problem too, but a VoiceOver
+            // user gets only "dimmed" — the reason has to be said. The cold start is seconds long,
+            // so "starting" is its own answer rather than a silent dead button.
+            .accessibilityHint(
+                appState.cameraService.isStartingStream ? "Starting the camera. This takes a moment."
+                : !realtimeSessionActive ? "Start the live session first."
+                : appState.cameraService.isStreaming ? "The camera is already streaming."
+                : "Double-tap to stream the glasses camera to the model.")
         } else {
             BarButton(
                 icon: "camera.fill",
@@ -279,6 +302,10 @@ struct BottomControlBar: View {
                     Task { await appState.captureAndAnalyzePhoto() }
                 }
             }
+            .accessibilityHint(
+                photoDisabledForLocalModel ? "The on-device model cannot see images. Choose a vision model."
+                : appState.cameraService.isCaptureInProgress ? "Taking a photo."
+                : "Double-tap to take a photo and describe it.")
         }
     }
 
@@ -291,6 +318,11 @@ struct BottomControlBar: View {
 private struct ActionCapsule: View {
     let icon: String
     let label: String
+    /// What VoiceOver says instead of `label`. The visible copy is written as an instruction to a
+    /// finger — "Tap to talk", "Tap to stop" — which is the wrong instruction for a VoiceOver user
+    /// (the gesture is a double-tap) and reads as a sentence rather than a control name. Nil keeps
+    /// the visible copy, for the capsules whose label is already a name.
+    var spokenLabel: String? = nil
     var isActive: Bool = false
     var color: Color = .white
     var showMuteBadge: Bool = false
@@ -329,7 +361,11 @@ private struct ActionCapsule: View {
             .glassEffect(in: .capsule)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(showMuteBadge ? "\(label), microphone muted" : label)
+        // The mute badge is a 9pt glyph tucked behind the icon — the only thing distinguishing a
+        // muted session from a live one, so it has to be spoken, not just drawn. As a *value*
+        // rather than glued to the label, so it is re-read when it changes under a held focus.
+        .accessibilityLabel(spokenLabel ?? label)
+        .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
     }
 }
 

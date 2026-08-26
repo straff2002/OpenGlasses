@@ -95,6 +95,63 @@ final class SignInFlowStateTests: XCTestCase {
         XCTAssertFalse(state.apply(.cancel))
         XCTAssertEqual(state, .connected)
     }
+
+    // MARK: - What a VoiceOver user is told (Plan DF P2)
+
+    /// The three endings all have to arrive in words. This flow spends most of its life inside a
+    /// system sheet that dismisses *itself* on success, dropping the user back onto a screen where
+    /// a button has quietly become a spinner — so an unspoken ending is indistinguishable from
+    /// the sheet having closed for no reason.
+    func testEveryEndingIsSpoken() {
+        XCTAssertEqual(SignInFlowState.exchanging.spokenStatus, "Finishing sign-in")
+        XCTAssertEqual(SignInFlowState.connected.spokenStatus, "Account connected")
+        XCTAssertEqual(SignInFlowState.failed(reason: "The code expired").spokenStatus,
+                       "The code expired")
+        XCTAssertNotNil(SignInFlowState.cancelled.spokenStatus)
+    }
+
+    /// A failure with no reason still has to say *something*: the exchange path fails with an
+    /// empty reason on purpose (the service publishes the specific message), and an empty
+    /// announcement is a silent one.
+    func testAReasonlessFailureStillSaysItFailed() {
+        XCTAssertEqual(SignInFlowState.failed(reason: "").spokenStatus, "Sign-in failed")
+    }
+
+    /// Only a failure interrupts. The user is waiting on this answer and a queued line arrives
+    /// after they have given up and moved elsewhere.
+    func testOnlyAFailureInterrupts() {
+        XCTAssertTrue(SignInFlowState.failed(reason: "").spokenStatusInterrupts)
+        XCTAssertFalse(SignInFlowState.connected.spokenStatusInterrupts)
+        XCTAssertFalse(SignInFlowState.exchanging.spokenStatusInterrupts)
+    }
+
+    /// The quiet states, each for its own reason: nothing has happened yet; the login sheet
+    /// speaks for itself when the redirect can be caught; and `.captured` is followed by
+    /// `.exchanging` within the same turn, so announcing both says one thing twice.
+    func testTheStatesThatSayNothingSayNothing() {
+        XCTAssertNil(SignInFlowState.idle.spokenStatus)
+        XCTAssertNil(SignInFlowState.presenting(listening: true).spokenStatus)
+        XCTAssertNil(SignInFlowState.captured.spokenStatus)
+    }
+
+    /// The paste route is the exception: no listener will answer, so the user has to be told
+    /// there is a step waiting for them back on this screen.
+    func testThePasteRouteIsExplainedWhenTheSheetOpens() {
+        let spoken = SignInFlowState.presenting(listening: false).spokenStatus
+        XCTAssertNotNil(spoken)
+        XCTAssertTrue(spoken?.contains("paste") == true, "got \(spoken ?? "nil")")
+    }
+
+    /// Every state the machine can actually reach is accounted for — a new case must make a
+    /// deliberate decision about whether it is spoken, rather than defaulting to silence.
+    func testEveryReachableStateHasADecision() {
+        var state = SignInFlowState.idle
+        XCTAssertTrue(state.apply(.present(listening: true)))
+        XCTAssertTrue(state.apply(.capture))
+        XCTAssertTrue(state.apply(.beginExchange))
+        XCTAssertTrue(state.apply(.succeed))
+        XCTAssertEqual(state.spokenStatus, "Account connected")
+    }
 }
 
 /// The registered-redirect check that decides which providers get the zero-paste path (Plan DD).

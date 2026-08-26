@@ -802,9 +802,22 @@ struct OnboardingView: View {
         cameraGranted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
     }
 
+    /// Say how a permission request came out.
+    ///
+    /// The system alert is accessible on its own, but its *dismissal* is where onboarding goes
+    /// quiet: a grant swaps a button for a checkmark somewhere down the list, and a refusal
+    /// changes nothing at all — so from behind VoiceOver, "no" and "the tap didn't register"
+    /// are the same experience. Refusal is stated, because it is the answer that stalls the
+    /// flow, and a stalled flow the user cannot see is where onboarding is abandoned.
+    private func announcePermission(_ name: String, granted: Bool) {
+        SessionAnnouncer.say(granted ? "\(name) access granted"
+                                     : "\(name) access not granted")
+    }
+
     private func requestMicPermission() async {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         micGranted = granted
+        announcePermission("Microphone", granted: granted)
     }
 
     private func requestSpeechPermission() async {
@@ -814,6 +827,7 @@ struct OnboardingView: View {
             }
         }
         speechGranted = status == .authorized
+        announcePermission("Speech recognition", granted: speechGranted)
     }
 
     private func requestLocationPermission() {
@@ -823,6 +837,7 @@ struct OnboardingView: View {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             let status = CLLocationManager().authorizationStatus
             locationGranted = status == .authorizedWhenInUse || status == .authorizedAlways
+            announcePermission("Location", granted: locationGranted)
         }
     }
 
@@ -834,6 +849,7 @@ struct OnboardingView: View {
         _ = WearablesBootstrap.ensureConfigured()
         bluetoothConfigured = true
         NSLog("[Onboarding] Wearables SDK %@", WearablesBootstrap.statusDescription)
+        announcePermission("Bluetooth", granted: true)
     }
 
     private func requestHomeKitPermission() async {
@@ -843,6 +859,7 @@ struct OnboardingView: View {
         // Give time for the permission dialog
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         homeKitGranted = true
+        announcePermission("Home data", granted: true)
     }
 
     // MARK: - Page 6: Connect Glasses
@@ -910,15 +927,21 @@ struct OnboardingView: View {
 
     private func requestCameraPermission() async {
         cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
+        announcePermission("Camera", granted: cameraGranted)
     }
 
     private func connectToMetaAI() async {
         guard bluetoothConfigured else {
             registrationStatus = "Grant Bluetooth permission first (previous page)"
+            SessionAnnouncer.say(registrationStatus, interrupts: true)
             return
         }
         isRegistering = true
         registrationStatus = "Registering with Meta AI…"
+        // This step leaves the app entirely — the user approves in another app and comes back —
+        // so the one thing that must not happen is returning to a screen that says nothing about
+        // whether it worked. Both ends of the wait are spoken: it started, and how it finished.
+        SessionAnnouncer.say("Registering with Meta AI")
         await appState.glassesService.connect()
         let state = Wearables.shared.registrationState
         metaRegistered = state.rawValue >= 3
@@ -926,6 +949,8 @@ struct OnboardingView: View {
             ? ""
             : "Open the Meta AI app to approve, then tap Connect again"
         isRegistering = false
+        SessionAnnouncer.say(metaRegistered ? "Meta AI connected" : registrationStatus,
+                             interrupts: !metaRegistered)
 
         // Start observing devices now that registration is in progress
         appState.glassesService.startObserving()
@@ -1066,10 +1091,12 @@ struct OnboardingView: View {
         // Basic format validation
         if provider == .anthropic && !trimmed.hasPrefix("sk-ant-") {
             validationError = "Anthropic keys start with sk-ant-"
+            SessionAnnouncer.say(validationError ?? "", interrupts: true)
             return
         }
         if provider == .openai && !trimmed.hasPrefix("sk-") {
             validationError = "OpenAI keys start with sk-"
+            SessionAnnouncer.say(validationError ?? "", interrupts: true)
             return
         }
 
@@ -1100,6 +1127,12 @@ struct OnboardingView: View {
                         selectedModelId = models.first?.id
                     }
                 }
+                // The button goes back from "Validating…" to "Continue" and a model list appears
+                // further down the page — neither of which reaches a user whose focus is still on
+                // the key field, which is exactly where it is after typing one.
+                SessionAnnouncer.say(availableModels.isEmpty
+                                     ? "Key accepted"
+                                     : "Key accepted. \(availableModels.count) models available.")
             }
         }
     }
