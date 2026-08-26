@@ -230,7 +230,7 @@ struct PersonaEditorView: View {
                     if models.isEmpty {
                         Label("Add a model in Settings → AI Models first", systemImage: "exclamationmark.triangle")
                             .font(.footnote)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(OGTheme.warnLabel)
                     }
                 } header: {
                     Text("Model")

@@ -122,11 +122,11 @@ struct MCPServerTrustView: View {
     private func trustBadge(_ trust: ToolTrust) -> some View {
         switch trust {
         case .trusted:
-            badge("Trusted", systemImage: "checkmark.shield", color: .green)
+            badge("Trusted", systemImage: "checkmark.shield", color: OGTheme.okLabel)
         case .quarantined:
-            badge("Quarantined", systemImage: "exclamationmark.shield", color: .orange)
+            badge("Quarantined", systemImage: "exclamationmark.shield", color: OGTheme.warnLabel)
         case .blocked:
-            badge("Blocked", systemImage: "xmark.shield", color: .red)
+            badge("Blocked", systemImage: "xmark.shield", color: OGTheme.errorLabel)
         }
     }
 
@@ -134,8 +134,8 @@ struct MCPServerTrustView: View {
     private func egressBadge(_ action: EgressDecision.Action) -> some View {
         switch action {
         case .allowed:  badge("Allowed", systemImage: "paperplane", color: .gray)
-        case .redacted: badge("Redacted", systemImage: "eye.slash", color: .orange)
-        case .blocked:  badge("Blocked", systemImage: "hand.raised", color: .red)
+        case .redacted: badge("Redacted", systemImage: "eye.slash", color: OGTheme.warnLabel)
+        case .blocked:  badge("Blocked", systemImage: "hand.raised", color: OGTheme.errorLabel)
         }
     }
 

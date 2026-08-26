@@ -14,6 +14,7 @@ struct LocalModelManagerView: View {
     @State private var loadedLocalModelId: String?   // mirrors the in-memory loaded model for the UI
     @State private var loadError: String?
     @State private var failedLoadModelId: String?    // enables Try again after e.g. a headroom refusal
+    @ScaledMetric(relativeTo: .body) private var loadTapTarget: CGFloat = 44
 
     private var localService: LocalLLMService? {
         appState.llmService.localLLMService
@@ -30,7 +31,7 @@ struct LocalModelManagerView: View {
                 if ramGB < 4 {
                     Label("Limited RAM — use models under 1 GB", systemImage: "exclamationmark.triangle")
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OGTheme.warnLabel)
                 }
                 // Live memory readout: refreshes while visible so the user can watch a
                 // model load/unload. Sandboxing limits this to the app's own numbers —
@@ -95,7 +96,7 @@ struct LocalModelManagerView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(loadError, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                         if let failedLoadModelId {
                             // Retry seam for the headroom gate: the user swipes other apps
                             // away, watches headroom recover, and retries without leaving
@@ -143,7 +144,7 @@ struct LocalModelManagerView: View {
                                     if model.hasToolCalling {
                                         Label("Tools", systemImage: "wrench")
                                             .font(.caption2)
-                                            .foregroundStyle(.green)
+                                            .foregroundStyle(OGTheme.okLabel)
                                     }
                                 }
                             }
@@ -151,7 +152,7 @@ struct LocalModelManagerView: View {
 
                             if downloadedIds.contains(model.id) {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(OGTheme.okLabel)
                             } else if downloadingModelId == model.id, let service = localService {
                                 // Own subview so the service's @Published progress actually
                                 // re-renders it — read through the computed optional above,
@@ -165,7 +166,7 @@ struct LocalModelManagerView: View {
                                 // "Needs 8 GB" and misreported every other tier.
                                 Label("Needs \(Int(model.minimumRAMGB)) GB", systemImage: "memorychip")
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(OGTheme.warnLabel)
                             } else {
                                 Button("Download") {
                                     downloadModel(model.id)
@@ -211,7 +212,7 @@ struct LocalModelManagerView: View {
             if let error = downloadError {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                         .font(.footnote)
                 }
             }
@@ -279,7 +280,9 @@ struct LocalModelManagerView: View {
             Button { unloadLocalModel() } label: {
                 Label("Loaded", systemImage: "checkmark.circle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(OGTheme.okLabel)
+                    .frame(minWidth: loadTapTarget, minHeight: loadTapTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Model loaded — tap to unload")
@@ -290,6 +293,8 @@ struct LocalModelManagerView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(.tint.opacity(0.15), in: Capsule())
+                    .frame(minWidth: loadTapTarget, minHeight: loadTapTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .disabled(loadingModelId != nil)
@@ -340,6 +345,7 @@ struct LocalModelManagerView: View {
 private struct DownloadProgressRow: View {
     @ObservedObject var service: LocalLLMService
     let onCancel: () -> Void
+    @ScaledMetric(relativeTo: .body) private var cancelTapTarget: CGFloat = 44
 
     var body: some View {
         HStack(spacing: 6) {
@@ -355,6 +361,8 @@ private struct DownloadProgressRow: View {
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
+                    .frame(minWidth: cancelTapTarget, minHeight: cancelTapTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Cancel download")

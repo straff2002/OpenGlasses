@@ -55,7 +55,7 @@ struct CaptureFlowAuthorView: View {
                 }
                 .disabled(steps.isEmpty)
                 if let error {
-                    Label(error, systemImage: "xmark.circle").font(.footnote).foregroundStyle(.red)
+                    Label(error, systemImage: "xmark.circle").font(.footnote).foregroundStyle(OGTheme.errorLabel)
                 }
             } footer: {
                 Text("Validates the flow and exports its JSON. Save it into a vault's flows/ folder (via Vault import) to run it with the capture_flow tool.")
