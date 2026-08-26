@@ -206,7 +206,7 @@ struct BottomControlBar: View {
                 label: appState.speechService.isSpeaking ? "Tap to stop" : "Cancel",
                 spokenLabel: appState.speechService.isSpeaking ? "Stop speaking" : "Cancel",
                 isActive: true,
-                color: .orange
+                color: OGTheme.warn
             ) {
                 appState.cancelCurrentResponse()
             }
@@ -218,7 +218,7 @@ struct BottomControlBar: View {
                 label: "Tap to stop",
                 spokenLabel: "End voice session",
                 isActive: true,
-                color: .orange,
+                color: OGTheme.warn,
                 showMuteBadge: appState.micMuted
             ) {
                 appState.endListeningSession()
@@ -324,40 +324,60 @@ private struct ActionCapsule: View {
     /// the visible copy, for the capsules whose label is already a name.
     var spokenLabel: String? = nil
     var isActive: Bool = false
-    var color: Color = .white
+    var color: Color = .primary
     var showMuteBadge: Bool = false
     let action: () -> Void
+
+    /// The capsule's glyph, and the mute badge that rides it.
+    @ScaledMetric(relativeTo: .title3) private var glyph: CGFloat = 18
+    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 ZStack {
-                    if icon == "OpenGlassesLogo" {
-                        LogoIcon(size: 18)
-                            .foregroundStyle(color)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(color)
+                    // The glyph is the hue corrected to read on a wash of
+                    // itself — the same treatment the status tile takes, so a
+                    // stop-red or a pale accent preset stays legible whether the
+                    // capsule is washed (active) or bare glass (idle).
+                    Group {
+                        if icon == "OpenGlassesLogo" {
+                            LogoIcon(size: glyph)
+                        } else {
+                            Image(systemName: icon)
+                                .font(.title3.weight(.semibold))
+                        }
                     }
+                    .foregroundStyle(OGTheme.tintedAccentLabel(color))
 
                     if showMuteBadge {
                         Image(systemName: "mic.slash.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.red)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(OGTheme.mediaErrorLabel)
                             .padding(3)
-                            .background(.black.opacity(0.7), in: Circle())
-                            .offset(x: 12, y: -8)
+                            // Opaque, not the old 0.7 wash: a translucent badge
+                            // composites the capsule's glyph through itself and
+                            // the failure hue stops clearing 3:1 against it.
+                            .background(OGTheme.media, in: Circle())
+                            .offset(x: badgeOffsetX, y: -badgeOffsetY)
                     }
                 }
 
                 Text(label)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color(.label))
             }
+            // The shipped capsule is a fixed 50pt, which clips its own label once
+            // the text grows. Rather than scale 50 — which reaches about 155pt at
+            // AX5, three times what the content needs — the padding is fixed and
+            // the *content* sets the height: 22pt of glyph plus 28pt of padding
+            // is the same 50pt at the default size, and grows only as far as the
+            // label actually does. The 44pt floor still applies underneath.
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(isActive ? color.opacity(0.15) : Color.clear)
+            .frame(minHeight: OGMetrics.minTouchTarget)
+            .background(isActive ? color.opacity(OGTheme.Opacity.accentFill) : Color.clear)
             .glassEffect(in: .capsule)
             .contentShape(.capsule)
         }
@@ -391,58 +411,94 @@ private struct BarButton: View {
     var truncateLabel: Bool = false
     var action: () -> Void = {}
 
+    @Environment(\.appAccent) private var accent
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .callout) private var glyph: CGFloat = 18
+    @ScaledMetric(relativeTo: .callout) private var tileWidth: CGFloat = 32
+    @ScaledMetric(relativeTo: .callout) private var tileHeight: CGFloat = 28
+    /// Floors, not scaled metrics: the tile's glyph box and its caption grow on
+    /// their own, and these only stop a tile being smaller than a fingertip.
+    private let minTileWidth: CGFloat = 58
+    private let minTileHeight: CGFloat = 48
+    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 10
+    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
+
     private var foreground: Color {
-        if isDisabled { return .secondary }
-        if let tint, isActive { return tint }
+        // Disabled reads as the audited quiet grey rather than as everything at
+        // 0.4 — see the note on the missing `.opacity` below.
+        if isDisabled { return OGTheme.secondaryLabel }
+        if let tint, isActive { return OGTheme.tintedAccentLabel(tint) }
         return .primary
+    }
+
+    /// Glyph over label, or beside it at accessibility sizes. See the note at the call site.
+    @ViewBuilder
+    private func tileLayout<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if typeSize.isAccessibilitySize {
+            HStack(spacing: 8, content: content)
+        } else {
+            VStack(spacing: 3, content: content)
+        }
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
+            // Glyph over label normally; glyph *beside* label at accessibility sizes.
+            //
+            // Stacked, a tile is as tall as its glyph box plus its caption, and at AX5 that is
+            // around 130pt — for a row of them, above a capsule, in a dock that also has to leave
+            // the screen room for the conversation. Laid out side by side the same tile is about
+            // the height of one line, and the row already scrolls horizontally, so the space it
+            // needs is the axis it has. Nothing is dropped or renamed; the parts change places.
+            tileLayout {
                 ZStack {
                     if isBusy {
                         ProgressView()
                             .scaleEffect(0.7)
                     } else if icon == "OpenGlassesLogo" {
-                        LogoIcon(size: 18)
+                        LogoIcon(size: glyph)
                             .foregroundStyle(foreground)
                     } else {
                         Image(systemName: icon)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.callout.weight(.medium))
                             .foregroundStyle(foreground)
                     }
 
                     if let badge {
                         Text(badge)
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(Color(.label))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(OGTheme.onAccentLabel(accent))
                             .padding(.horizontal, 3)
                             .padding(.vertical, 1)
-                            .background(Color.accentColor, in: Capsule())
-                            .offset(x: 10, y: -8)
+                            .background(accent, in: Capsule())
+                            .offset(x: badgeOffsetX, y: -badgeOffsetY)
                     }
                 }
-                .frame(width: 32, height: 28)
+                .frame(width: tileWidth, height: tileHeight)
 
                 if !label.isEmpty {
                     Text(label)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(foreground)   // .secondary was illegible over the ambience tint
                         .lineLimit(1)
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
             }
-            .frame(minWidth: 58, minHeight: 48)
+            .padding(.horizontal, typeSize.isAccessibilitySize ? 8 : 0)
+            .frame(minWidth: minTileWidth, minHeight: minTileHeight)
             .padding(.horizontal, 2)
             .background(
-                (tint ?? Color.primary).opacity(isActive ? 0.12 : 0),
+                (tint ?? Color.primary).opacity(isActive ? OGTheme.Opacity.accentPillFill : 0),
                 in: RoundedRectangle(cornerRadius: 12)
             )
             .contentShape(Rectangle())
         }
         .disabled(isDisabled || isBusy)
-        .opacity(isDisabled ? 0.4 : 1)
+        // Deliberately no blanket `.opacity(0.4)` on a disabled tile. It applied
+        // to the label as well as the glyph, so a disabled caption rendered at
+        // roughly a quarter of its ink — under AA by a wide margin, on a control
+        // whose whole job in that state is to explain why it can't be used. The
+        // dimming now lives in `foreground`, which is a measured value.
         .accessibilityLabel(label.isEmpty ? icon.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ") : label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -464,7 +520,7 @@ private struct LocalModelTile: View {
             label: service.isLoadingModel ? "Loading…" : (isLoaded ? "Unload" : "Load \(modelConfig.name)"),
             isActive: !service.isLoadingModel,   // tinted whenever idle: accent invites Load, green marks Loaded
             isBusy: service.isLoadingModel,
-            tint: isLoaded ? .green : accent,
+            tint: isLoaded ? OGTheme.ok : accent,
             truncateLabel: true
         ) {
             if isLoaded {

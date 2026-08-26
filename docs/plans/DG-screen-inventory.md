@@ -70,28 +70,36 @@ visible and in what order; DG decides what it looks like.
 | `SyncStatusView.swift` | stock | |
 | `AttributionsView.swift` | OGDesign | Already converted. |
 
-## P4 — The session surface
+## P4 — The session surface ✅ shipped (2026-08-27)
 
 Highest-traffic surface; done after the language is proven on P2/P3. The approved
 signatures (capsule, status card, waveline) are polished within the language, not replaced.
 
 | View | Idiom | Note |
 |---|---|---|
-| `MainView.swift` | custom | Tab shell; owns the accent environment. |
-| `VoiceTab.swift` | custom | The three-zone session screen. |
-| `StatusIndicator.swift` | custom | The approved status card with merged pills. Signature — polish only. |
-| `BottomControlBar.swift` | custom | Capsule + quick actions. Signature — polish only. |
-| `VoiceWaveline.swift` | custom | Waveline + ambience. Signature; already Reduce-Motion-aware as of P1. |
-| `TranscriptOverlay.swift` | custom | |
-| `AmbientCaptionOverlay.swift` | custom | DF P2 also owns its Dynamic Type / live-region question. |
-| `QuickActionsOverlay.swift` | custom | |
-| `CircleButton.swift` | custom | Session-surface control primitive; a candidate to absorb into OGDesign in P4. |
-| `AssistiveModeToggleView.swift` | custom | |
-| `SafetyAssessmentOverlay.swift` | custom | |
-| `LivePreviewView.swift` | custom | Camera preview sheet. |
-| `PhoneCameraView.swift` | custom | |
-| `ModelPickerSheet.swift` | stock | Reached from the session surface, so it converts with it. |
-| `PersonaPickerSheet.swift` | stock | As above; ~800 lines. |
+| `MainView.swift` | ✅ custom, on tokens | Tab shell; owns the accent environment. Needed nothing beyond what it already did. |
+| `VoiceTab.swift` | ✅ converted (DG P4) | The three-zone session screen. Recording badge onto `Token.badge`. |
+| `StatusIndicator.swift` | ✅ converted (DG P4) | The approved status card with merged pills — same shape, measured numbers. Pills now carry a 44pt target inside the drawn capsule. |
+| `BottomControlBar.swift` | ✅ converted (DG P4) | Capsule + dock tiles. Text styles + scaled metrics throughout; the disabled tile's blanket `.opacity(0.4)` removed. |
+| `VoiceWaveline.swift` | ✅ no change needed | Waveline + ambience. A `Canvas`, hidden from the accessibility tree, already Reduce-Motion-aware as of P1; its fixed height is decoration and deliberately does not scale. |
+| `TranscriptOverlay.swift` | ✅ converted (DG P4) | Cards and the detail sheet, incl. the accent-as-text path. |
+| `AmbientCaptionOverlay.swift` | ✅ converted (DG P4) | Gained the measured scrim that makes its contrast assertable, and a 44pt speaker chip. |
+| `QuickActionsOverlay.swift` | ✅ converted (DG P4) | **Currently unreferenced** — the dock absorbed its call sites. Kept because Plan Y cites it as the phone-mirror reference; removal is a P5 question. |
+| `CircleButton.swift` | ✅ converted (DG P4) | Session-surface control primitive, on the media tokens. **Currently unreferenced**; absorbing it into OGDesign, or deleting it, is a P5 question. |
+
+**Moved to P5** — the sheets and full-screen surfaces reached *from* the session surface rather
+than the surface itself. Each is a screen of its own with its own composition, four of the six
+were already property-swept by DF P3, and none is on the tab the accessibility gate stands in
+front of; batching them with the long tail keeps the P4 change reviewable.
+
+| View | Idiom | Note |
+|---|---|---|
+| `AssistiveModeToggleView.swift` | custom | → P5. |
+| `SafetyAssessmentOverlay.swift` | custom | → P5. |
+| `LivePreviewView.swift` | custom | Camera preview sheet. → P5. |
+| `PhoneCameraView.swift` | custom | → P5. |
+| `ModelPickerSheet.swift` | stock | → P5. |
+| `PersonaPickerSheet.swift` | stock | ~800 lines. → P5. |
 
 ## P5 — The long tail
 

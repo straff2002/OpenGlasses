@@ -12,6 +12,8 @@ struct VoiceTab: View {
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
     @State private var showChatInput = false
+    @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var session: GeminiLiveSessionManager { appState.geminiLiveSession }
     private var openAISession: OpenAIRealtimeSessionManager { appState.openAIRealtimeSession }
@@ -33,33 +35,16 @@ struct VoiceTab: View {
                         .padding(.top, 8)
                 }
 
-                // Status card — one status surface: state, mode, persona, and the connection
-                // pills (formerly their own band above the card).
-                StatusIndicator(session: session, openAISession: openAISession,
-                                openClawBridge: appState.openClawBridge)
-                    .padding(.top, 12)
-
-                Spacer()
-
-                // Voice-state waveline — the assistant's presence. Decorative and additive:
-                // StatusIndicator stays the source of truth for connection/mode state.
-                VoiceWaveline(state: voiceState)
-                    .padding(.horizontal, 24)
-
-                Spacer()
-
-                // Ambient captions
-                if appState.ambientCaptions.isActive {
-                    AmbientCaptionOverlay(captionService: appState.ambientCaptions)
-                        .padding(.bottom, 8)
+                if typeSize.isAccessibilitySize {
+                    accessibleConversationZone()
+                } else {
+                    conversationZone(voiceState)
                 }
-
-                // Transcript
-                TranscriptOverlay(session: session, openAISession: openAISession)
-                    .padding(.bottom, 8)
 
                 // Chat input bar (when active) or voice controls. The control dock
                 // (BottomControlBar) owns the model chip and quick actions as tiles.
+                // Pinned below the zone above in both layouts: the primary control
+                // is the last thing that should need scrolling to.
                 if showChatInput && !isRealtime {
                     ChatInputBar(showChatInput: $showChatInput)
                 } else {
@@ -89,21 +74,90 @@ struct VoiceTab: View {
         }
     }
 
+    // MARK: - Conversation zone
+
+    /// The shipped three-zone composition: status card at the top, the waveline floating in the
+    /// middle on its two `Spacer`s, then captions and transcript above the dock.
+    @ViewBuilder
+    private func conversationZone(_ voiceState: VoiceVisualState) -> some View {
+        // Status card — one status surface: state, mode, persona, and the connection
+        // pills (formerly their own band above the card).
+        StatusIndicator(session: session, openAISession: openAISession,
+                        openClawBridge: appState.openClawBridge)
+            .padding(.top, 12)
+
+        Spacer()
+
+        // Voice-state waveline — the assistant's presence. Decorative and additive:
+        // StatusIndicator stays the source of truth for connection/mode state.
+        VoiceWaveline(state: voiceState)
+            .padding(.horizontal, 24)
+
+        Spacer()
+
+        // Ambient captions
+        if appState.ambientCaptions.isActive {
+            AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                .padding(.bottom, 8)
+        }
+
+        // Transcript
+        TranscriptOverlay(session: session, openAISession: openAISession)
+            .padding(.bottom, 8)
+    }
+
+    /// The same zone at accessibility text sizes, where it has to scroll.
+    ///
+    /// The shipped layout is a fixed `VStack` whose middle is held open by two `Spacer`s, and it
+    /// fits only because almost nothing in it used to grow: the status line, the mode line and the
+    /// dock captions were all fixed point sizes. Putting them on Dynamic Type — the job of this
+    /// phase — is what made the surface honest, and immediately made it overflow: at AX5 the
+    /// status card alone ran off the top of the screen and the dock off the bottom, with no way to
+    /// reach either. `Spacer`s cannot absorb that; they are already at zero.
+    ///
+    /// So above the accessibility threshold the conversation zone scrolls and the dock stays
+    /// pinned, which is the same trade onboarding's hero pages make. The waveline does not come
+    /// with it: it is decoration, it is hidden from the accessibility tree, the status card is the
+    /// source of truth for everything it expresses, and a reader who has asked for larger text has
+    /// asked for more of the content — not for 76 points of ribbon to scroll past on the way to it.
+    /// (Which is why this one takes no voice state: there is nothing here that expresses it.)
+    @ViewBuilder
+    private func accessibleConversationZone() -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                StatusIndicator(session: session, openAISession: openAISession,
+                                openClawBridge: appState.openClawBridge)
+
+                if appState.ambientCaptions.isActive {
+                    AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                }
+
+                TranscriptOverlay(session: session, openAISession: openAISession)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
     // MARK: - Recording Badge
 
     private var recordingBadge: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(.red)
-                .frame(width: 8, height: 8)
+                .fill(OGTheme.onBadge)
+                .frame(width: recordingDot, height: recordingDot)
                 .accessibilityHidden(true)
             Text("REC \(appState.videoRecorder.formattedDuration)")
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(Color(.label))
+                .foregroundStyle(OGTheme.onBadge)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Capsule().fill(.red.opacity(0.3)))
+        // The recording red is a convention worth keeping, but a 0.3 wash of it
+        // put label copy on an unpredictable ground. `Token.badge` is the same
+        // convention as a measured pair — the deepened red P3 introduced for
+        // exactly this shape of capsule, with its own text colour.
+        .background(Capsule().fill(OGTheme.badge))
         // `.accessibilityLabel` on an HStack does not absorb its children: the raw "REC 00:12"
         // text stayed in the tree as a second stop, and VoiceOver spells "REC".
         .accessibilityElement(children: .ignore)

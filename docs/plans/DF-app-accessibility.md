@@ -8,7 +8,13 @@ the system-wide sweep: every remaining screen's type, colour, motion and touch t
 new audited token family for the surfaces that put chrome on video rather than on the canvas ·
 **P4 complete 2026-08-26** — the app's first UI-test target, auditing the critical path on every
 run, which immediately found that neither onboarding nor the launch screen hid the app behind
-them from VoiceOver. **All four phases shipped.** Still deferred, and stated: a manual VoiceOver
+them from VoiceOver. **All four phases shipped.** · **The rows this plan deferred to DG P4 are
+closed** (2026-08-27): the session surface's type scale and touch targets, the captions overlay's
+missing ground and its speaker chip, and `OGRow`'s value width — each fixed rather than re-deferred,
+with its audit filter deleted. Contrast on that surface is the one row that reads differently: the
+colour work is done and measured (the palette's pairs headlessly, the rendered pixels by sampling),
+but the audit's own contrast check cannot read a translucent ground, so it is filtered there and
+the measurements stand in its place — see DG P4. Still deferred, and stated: a manual VoiceOver
 pass on hardware, and a session with a blind user whose judgement is the specification
 
 ## Why
@@ -73,22 +79,31 @@ the rest of the table remains a reading.
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Onboarding (`OnboardingView`) | ✅ P2 · P4 | **audited** (P4) | **pass** (P2) | **audited** (P4) | **audited, `.secondary` deferred** (P4) | **audited** (P4) | pass | pass |
 | 1b | Sign-in flow (`SignInSheetModel`, OAuth/Google rows) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass | pass | pass | n/a | pass |
-| 2 | Session controls (`BottomControlBar`, capsule) | ✅ P2 · P4 | **audited** (P4) | **pass** (P2) | deferred to DG P4 | deferred to DG P4 | **audited** (P4) — the capsule's element was 18pt inside a 50pt control until P4 | pass | pass |
-| 3 | Status card (`StatusIndicator`) | ✅ P2 · P4 | **audited** (P4) | **pass** (P2) | deferred to DG P4 | deferred to DG P4 | **pills ~33×25, deferred to DG P4** (P4) | pass | pass |
-| 3b | Transcript cards (`TranscriptOverlay`) | ✅ P2 | **pass** (P2) | n/a | deferred to DG P4 | deferred to DG P4 | pass | pass | pass |
+| 2 | Session controls (`BottomControlBar`, capsule) | ✅ P2 · P4 · DG P4 | **audited** (P4) | **pass** (P2) | **audited, incl. AX5** (DG P4) | **measured 20.5:1; the audit's own check can't read glass** (DG P4) | **audited** (P4) — the capsule's element was 18pt inside a 50pt control until P4 | pass | pass |
+| 3 | Status card (`StatusIndicator`) | ✅ P2 · P4 · DG P4 | **audited** (P4) | **pass** (P2) | **audited, incl. AX5** (DG P4) | **measured 20.5:1; the audit's own check can't read glass** (DG P4) | **audited** (DG P4) — the pills carry a 44pt target around the drawn capsule | pass | pass |
+| 3b | Transcript cards (`TranscriptOverlay`) | ✅ P2 · DG P4 | **pass** (P2) | n/a | **audited** (DG P4) | **token-driven; audit's check deferred with the surface** (DG P4) | pass | pass | pass |
 | 4 | Settings hub (`SettingsView`) | ✅ P2 · P4 | **audited, folded + show-all** (P4) | **pass** (P2) | **audited at AX5; hero chip row deferred** (P4) | **audited, `.secondary` deferred** (P4) | **audited** (P4) | pass | pass |
 | 5 | Accessibility settings (`AccessibilitySettingsView`) | ✅ P2 · P4 | **audited, both states** (P4) | **pass** (P2) | **audited; system `Form` chrome deferred** (P4) | **audited; system `Form` chrome deferred** (P4) | **audited** (P4) | n/a | pass |
-| 6 | Ambient captions overlay | ✅ P2 · P3 · P4 | **audited** (P4) | **by design: none** | **pass** (P2) | **pass on the scrimmed line** (P3; see P3's findings) | **partial** — speaker chip ~20pt, handed to DG P4 | **pass** (P3) | pass |
+| 6 | Ambient captions overlay | ✅ P2 · P3 · P4 · DG P4 | **audited** (P4) | **by design: none** | **audited, incl. AX5** (DG P4) | **opaque media panel; measured 8.8-11.5:1** (DG P4) | **audited** (DG P4) — the speaker chip has a 44pt target | **pass** (P3) | pass |
 | 6b | Model editor (`ModelEditorView`) | ✅ P4 | **audited** (P4) | n/a | **audited** (P4) | **audited; system `Form` chrome deferred** (P4) | **audited** (P4) | n/a | pass |
 | 7 | The long tail (see P3's table below) | ✅ P3 | P2/P4 | n/a | **pass** (P3) | **pass** (P3) | **pass** (P3) | **pass** (P3) | **pass** (P3) |
 
 Rank 7's name/role/value column stays P2's and P4's business: P3 is a *property* sweep and did
 not touch semantics, so nothing here claims the long tail has been read with VoiceOver.
 
-"deferred to DG P4" is the plan's own division of labour, not an unaudited gap: DG P4 owns the
-session surface's *look*, so its type scale, colour pairs and metrics are decided there. P2 took
-the half that is independent of the restyle — what the controls are called and what they announce —
-and left the visual criteria to the phase that sets them.
+"deferred to DG P4" was the plan's own division of labour rather than an unaudited gap: DG P4 owned
+the session surface's *look*, so its type scale, colour pairs and metrics were decided there. P2
+took the half that is independent of the restyle — what the controls are called and what they
+announce — and left the visual criteria to the phase that sets them.
+
+**Those rows are closed. DG P4 shipped 2026-08-27** and every one of them is now audited rather
+than deferred: the surface is on the tokens with Dynamic Type throughout, the status card's
+connection pills and the captions overlay's speaker chip carry real 44pt targets around their drawn
+artwork, and the caption stack has an opaque media panel under it, which is what turned its contrast
+from *undefined* into something the palette can assert. `SessionSurfaceAccessibilityTests` runs
+unfiltered, and a new AX5 case audits the same surface at the top of the accessibility range. See
+DG P4's "What P4 landed" for the two design calls (the pills' padding trade and the chip's
+row-height cost) and the reasoning behind each.
 
 ## P2 — Critical-path conformance ✅ shipped 2026-08-26
 
@@ -363,19 +378,28 @@ The audit-issue handler never suppresses a category wholesale. Every deferral na
 types, the surface it covers, and where the work lives, and prints what it filtered so a
 suppressed finding is still visible in the run:
 
-- **Session-surface type, colour and metrics** — the plan's own division of labour, unchanged
-  from P2 and P3: the design phase that restyles this screen sets its numbers.
-- **Session-surface targets** — the status card's connection pills are drawn at about 33×25. Their
-  accessibility element now covers the drawn pill; growing the *pill* pushes the card's footer row
-  apart, which is a metric on that surface.
-- **Captions overlay ground and speaker chip** — as P3 recorded: no scrim to measure against, and
-  a 44pt chip reflows the caption stack.
+- ~~**Session-surface type, colour and metrics**~~ — **closed by DG P4 (2026-08-27).** The design
+  phase set the numbers; the filter is deleted, not relaxed.
+- ~~**Session-surface targets**~~ — **closed by DG P4.** The pills keep the size they are drawn at
+  and carry a scaled 44pt target around it; the card's footer row gave up its bottom padding to
+  pay for most of the height.
+- ~~**Captions overlay ground and speaker chip**~~ — **closed by DG P4.** One opaque media panel
+  under the whole stack — the ground the palette already measures, so the caption roles are
+  covered by the existing `media …` pairs — and a 44pt chip target whose row-height cost is paid
+  only by rows that actually carry a chip, so a single-speaker stack keeps its shipped density.
+  (A translucent scrim was built first and measured fine; it went opaque because the audit's own
+  contrast check cannot read a translucent ground. See DG P4.)
 - **System `Form` chrome** — section headers and footers rendered by the system in its own
   secondary grey, on the OGDesign canvas rather than the system grouped background. One measured
   *failure* and several near-misses. Correcting it means styling every section header in the app.
 - **`.secondary` at small sizes** — `OGRow`'s subtitle and the quiet button style both use the
   system secondary label at footnote/subheadline size, which clears AA as *large* text and misses
-  it as body text. An audited secondary-copy token would touch every screen.
+  it as body text. An audited secondary-copy token would touch every screen. **Partly paid by DG
+  P4:** `OGTheme.secondaryLabel` is that token (the palette already measures the pair as "row
+  subtitle on card"), and the session surface plus `OGRow`'s subtitle and value now read from it
+  rather than from a semantic colour the suite cannot inspect. `OGQuietButtonStyle` and the long
+  tail of screens still use `.secondary`, so this deferral stays in the settings and onboarding
+  audits — genuinely partial, and recorded as partial.
 - **The hero card's chip row** — drawn in `caption2`, the smallest text style, whose scaling the
   system caps below the top of the accessibility range; and at AX5 three chips cannot sit side by
   side, so each is squeezed into a narrow column. A larger style and a wrapping row, both design
@@ -383,15 +407,20 @@ suppressed finding is still visible in the run:
 - **Single-line text entry and system picker values** — a one-line field scrolls its text rather
   than growing the row at accessibility sizes, which the audit reports as text that may clip. That
   is the platform's behaviour for text entry; a multi-line API-key field would be a worse field.
-- **`OGRow`'s value width**, and this one was *tried*. A settings row is a title, a subtitle and a
-  value sharing one width, and at larger sizes they cannot all have it: the audit caught the value
-  being cut (`“Openglasses”`, `System`). Removing the value's line cap moved the clip to the
+- ~~**`OGRow`'s value width**~~, and this one was *tried*. A settings row is a title, a subtitle
+  and a value sharing one width, and at larger sizes they cannot all have it: the audit caught the
+  value being cut (`“Openglasses”`, `System`). Removing the value's line cap moved the clip to the
   subtitle; giving the title column priority moved it to the title. Three strings, one width, and
   no version of "just remove the cap" that doesn't take the space from something else — so the cap
-  stays, the finding is recorded, and which of the three yields (or whether the value belongs
-  under the title rather than beside it) is left to the phase that owns the component's layout.
-  The failed attempts are worth writing down: they are the evidence that this is a design
-  decision rather than an oversight.
+  stayed, the finding was recorded, and which of the three yields (or whether the value belongs
+  under the title rather than beside it) was left to the phase that owns the component's layout.
+  **Closed by DG P4 (2026-08-27), and it took both halves at once**: above the accessibility
+  threshold the value moves *under* the title with the row's full width, where it is no longer
+  beside anything and has no line to steal — and with that true, the cap comes off at every size.
+  Which is why removing the cap alone failed here: it was the second change without the first. At
+  everyday sizes there was room all along. Only value rows stack — a control row's trailing view
+  is a switch, and a switch under the title is a different control. The failed attempts stay
+  written down: they are what made it clear the premise was the problem rather than the cap.
 - **Content scrolled under the translucent tab bar** — the audit samples composited pixels, so
   `.primary` label copy, which cannot fail against the canvas, is reported as failing contrast
   where it slides under the bar. Filtered *by frame* to the bottom strip, so a genuine contrast
@@ -406,6 +435,12 @@ Of these, the `.secondary` contrast, the system `Form` chrome and the hero card'
 **catalogued, not dismissed**: they are real, they are app-wide, and they are the natural first
 item for whichever phase next opens OGDesign's type and colour. The rest are properties of the
 platform or of the audit, and are named as such.
+
+That phase turned out to be **DG P4**, which took the part of the catalogue it was already
+standing in: the `.secondary` token exists and the session surface and `OGRow` use it (above), and
+`OGRow`'s value width is closed outright. The system `Form` chrome and the hero card's chip row it
+deliberately left — neither is on the session surface, and both belong with DG P5's sweep of the
+screens that actually paint them.
 
 ### Settings unfold: the focus handoff, decided
 

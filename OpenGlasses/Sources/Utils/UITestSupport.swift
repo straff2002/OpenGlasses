@@ -82,21 +82,49 @@ enum UITestSupport {
         guard isActive else { return }
 
         if isSet(.seedCaptions) {
-            // The overlay only draws while a recognition session is live, and a simulator has no
-            // microphone worth transcribing. These are the lines a session would have produced;
-            // the service is left `isActive` so the view renders exactly as it does in the room.
-            let now = Date()
-            appState.ambientCaptions.captionHistory = [
-                .init(text: "That's the one on the left, next to the window.",
-                      timestamp: now.addingTimeInterval(-8), seq: 3),
-                .init(text: "We should be there by about half past.",
-                      timestamp: now.addingTimeInterval(-16), seq: 2),
-                .init(text: "Did you want the long or the short version?",
-                      timestamp: now.addingTimeInterval(-24), seq: 1),
-            ]
-            appState.ambientCaptions.currentCaption = "I'll send the details over this afternoon."
-            appState.ambientCaptions.isActive = true
+            seedCaptions(appState)
+            // Re-applied on a tick rather than written once. With no glasses to talk to, the app
+            // correctly decides the wearer is away and *suspends* captions a few seconds in, which
+            // clears the live line and reshapes the overlay — and a screen that changes shape while
+            // an audit is walking it produces findings about a layout that has already gone (a
+            // caption measured for contrast against the canvas, because the scrim it actually sits
+            // on left with the rest of the panel). That is the app behaving correctly and the
+            // *seed* being too short-lived, and it stayed invisible while this surface's contrast
+            // was deferred.
+            //
+            // Still only state: every tick writes exactly what the initial seed wrote, and only
+            // when the app has cleared it. Nothing branches on this timer, and none of it exists
+            // outside a Debug build launched with `-OGUITest`.
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak appState] _ in
+                guard let appState else { return }
+                MainActor.assumeIsolated { seedCaptions(appState) }
+            }
         }
+    }
+
+    /// The lines a real session would have produced. Two of the three carry a diarized speaker, so
+    /// the speaker chip is on screen for the audit to measure — without one the chip never renders
+    /// and its touch target, which two phases deferred, would be gated by nothing at all.
+    ///
+    /// Idempotent: a no-op while the seeded state is already on screen.
+    @MainActor
+    private static func seedCaptions(_ appState: AppState) {
+        let captions = appState.ambientCaptions
+        guard !captions.isActive
+            || captions.currentCaption.isEmpty
+            || captions.captionHistory.count != 3 else { return }
+
+        let now = Date()
+        captions.captionHistory = [
+            .init(text: "That's the one on the left, next to the window.",
+                  timestamp: now.addingTimeInterval(-8), seq: 3, speaker: 1),
+            .init(text: "We should be there by about half past.",
+                  timestamp: now.addingTimeInterval(-16), seq: 2, speaker: 0),
+            .init(text: "Did you want the long or the short version?",
+                  timestamp: now.addingTimeInterval(-24), seq: 1),
+        ]
+        captions.currentCaption = "I'll send the details over this afternoon."
+        captions.isActive = true
     }
 }
 #endif

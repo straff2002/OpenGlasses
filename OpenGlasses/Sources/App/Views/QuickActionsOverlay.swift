@@ -2,6 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Horizontal row of quick action buttons shown below the status ring.
+///
+/// Currently unreferenced: the control dock absorbed these into its one tile idiom (`BarButton`).
+/// Kept and brought onto the tokens with the rest of the session surface (DG P4) — Plan Y cites it
+/// as the phone-mirror reference for the HUD launcher — rather than left as an un-audited idiom.
 struct QuickActionsOverlay: View {
     @EnvironmentObject var appState: AppState
     @State private var isExecuting = false
@@ -58,23 +62,25 @@ struct QuickActionsOverlay: View {
 private struct OverlayButtonLabel: View {
     let icon: String
     let label: String
-    var iconColor: Color = .white
+    var iconColor: Color = OGTheme.onMedia
 
     var body: some View {
         VStack(spacing: 4) {
             ZStack {
+                // A fingertip floor, not a type-relative one — see `OGMetrics`.
                 Color.clear
-                    .frame(width: 44, height: 44)
+                    .frame(width: OGMetrics.minTouchTarget,
+                           height: OGMetrics.minTouchTarget)
                     .glassEffect(in: .circle)
 
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(iconColor)
             }
 
             Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
                 .lineLimit(1)
         }
     }
@@ -92,7 +98,7 @@ private struct RecordingOverlayButton: View {
             OverlayButtonLabel(
                 icon: controller.isRecording ? "stop.circle.fill" : action.icon,
                 label: controller.isRecording ? "Recording" : action.label,
-                iconColor: controller.isRecording ? .red : .white
+                iconColor: controller.isRecording ? OGTheme.mediaErrorLabel : OGTheme.onMedia
             )
         }
         .buttonStyle(.plain)

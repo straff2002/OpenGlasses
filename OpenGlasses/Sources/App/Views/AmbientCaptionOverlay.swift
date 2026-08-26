@@ -26,12 +26,20 @@ struct AmbientCaptionOverlay: View {
     /// to grow with the reader. Fixed point sizes held the caption at 16pt however large the
     /// system text was set — which fails exactly the deaf or hard-of-hearing user this overlay
     /// exists for. `@ScaledMetric` keeps the shipped look at the default size and scales from
-    /// there; the caption itself is capped by `lineLimit`, so it is the sizes that must move.
+    /// there. DG P4 finished the job the caps were still blocking — see `capsLines`.
     @ScaledMetric(relativeTo: .body) private var captionSize: CGFloat = 16
     @ScaledMetric(relativeTo: .subheadline) private var historySize: CGFloat = 14
     @ScaledMetric(relativeTo: .caption) private var originalSize: CGFloat = 11
     @ScaledMetric(relativeTo: .caption2) private var legLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .caption) private var legPlaceholderSize: CGFloat = 12
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// The line caps that keep the stack a fixed number of lines are a density
+    /// choice, and density stops being the right trade at accessibility sizes:
+    /// a reader who has asked for larger text is the reader this overlay exists
+    /// for, and a caption they can only read half of is worse than a taller
+    /// panel. So above the threshold every cap here comes off.
+    private var capsLines: Bool { !typeSize.isAccessibilitySize }
 
     private var isRenaming: Binding<Bool> {
         Binding(get: { renameSpeakerId != nil }, set: { if !$0 { renameSpeakerId = nil } })
@@ -43,7 +51,9 @@ struct AmbientCaptionOverlay: View {
                 // Two-way conversation split (BY P3): the interlocutor's leg on top (their
                 // language), the wearer's leg below — each side reads their own half.
                 twoWayLeg(wearer: false)
-                Divider().overlay(.white.opacity(0.3)).padding(.horizontal, 40)
+                Divider()
+                    .overlay(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaHairline))
+                    .padding(.horizontal, 40)
                 twoWayLeg(wearer: true)
             } else {
                 // Recent history (faded)
@@ -57,14 +67,9 @@ struct AmbientCaptionOverlay: View {
                 Text(captionService.currentCaption)
                     .font(.system(size: captionSize, weight: .medium))
                     .foregroundStyle(OGTheme.onMedia)
-                    .lineLimit(3)
+                    .lineLimit(capsLines ? 3 : nil)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(OGTheme.media.opacity(0.7))
-                    )
+                    .padding(.horizontal, 8)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15),
                                value: captionService.currentCaption)
                     .accessibilityLabel("Now: \(captionService.currentCaption)")
@@ -75,6 +80,30 @@ struct AmbientCaptionOverlay: View {
             }
         }
         .id(registryVersion)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        // **One ground for the whole stack, and an opaque one.** Until now only
+        // the live line had a backing; the history and the translation legs sat
+        // directly on whatever the session surface happened to be drawing, which
+        // made their contrast not thin but *undefined* — there was nothing to
+        // measure against.
+        //
+        // Opaque rather than a wash, for two reasons that point the same way. It
+        // is the media ground the palette already measures, so the caption roles
+        // are covered by the `media …` pairs P3 established instead of needing a
+        // scrim token of their own; and a translucent ground is one the audit
+        // cannot measure either — a 0.8 wash was tried, and the contrast check
+        // reported failures on a stack whose rendered pixels measure 8.8:1,
+        // because it samples the declared background rather than the composite.
+        // A ground that is only *nearly* opaque buys nothing at this darkness:
+        // the two differ by about 0.03 in relative luminance.
+        //
+        // One block behind the whole stack also reads as a caption panel rather
+        // than as four separately-floating lines with one of them boxed.
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(OGTheme.media)
+        )
         .padding(.horizontal, 20)
         .transition(.opacity)
         // `children: .contain` is the whole decision: the rows stay individually focusable, so a
@@ -115,7 +144,7 @@ struct AmbientCaptionOverlay: View {
             if entries.isEmpty {
                 Text("…")
                     .font(.system(size: legPlaceholderSize))
-                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaQuiet))
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
                     .accessibilityLabel("Nothing said yet")
             } else {
                 ForEach(entries.suffix(2)) { entry in
@@ -135,17 +164,21 @@ struct AmbientCaptionOverlay: View {
                 }
             }
             VStack(spacing: 1) {
+                // Each line steps down one role rather than two: on the scrim's
+                // worst-case ground the quiet role is within rounding of AA, so
+                // the caption stack now runs full → secondary → tertiary and
+                // leaves the quiet floor to the surfaces that sit on real black.
                 Text(entry.text)
                     .font(.system(size: historySize, weight: .regular))
-                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
-                    .lineLimit(2)
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
+                    .lineLimit(capsLines ? 2 : nil)
                     .multilineTextAlignment(.center)
                 // Show-original ribbon (BY P2): the source-language words under the translation.
                 if Config.translationShowOriginal, let original = entry.original {
                     Text(original)
                         .font(.system(size: originalSize, weight: .regular))
-                        .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaQuiet))
-                        .lineLimit(1)
+                        .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
+                        .lineLimit(capsLines ? 1 : nil)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -193,6 +226,28 @@ private struct SpeakerChipView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(chipColor))
+                // **The chip's target, decided.** It was drawn at about 20pt and
+                // the earlier phases would not grow it, because a 44pt floor
+                // reflows the caption stack — which was true, and was their call
+                // to defer rather than to make. Made here: the target grows, the
+                // drawn capsule does not, and the row grows with it.
+                //
+                // The alternatives were worse. An overlay target that overhangs
+                // its row without taking layout space is 44pt of tappable area
+                // across rows that sit ~20pt apart, so three chips overlap and a
+                // tap near a boundary names the wrong speaker — a control that
+                // is easier to hit and easier to get wrong. Making the whole
+                // caption row the rename control would give the target for free,
+                // but it makes reading text a rename gesture, which is new
+                // behaviour on a surface this phase is not allowed to change.
+                //
+                // The cost is bounded by the thing that causes it: a row only
+                // pays the extra height when it actually *has* a chip, so a
+                // single-speaker stack — the default, with diarization off —
+                // keeps exactly the density it ships with today.
+                .frame(minWidth: OGMetrics.minTouchTarget,
+                       minHeight: OGMetrics.minTouchTarget)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         // The gesture instruction belongs in the hint, and the gesture is a double-tap.
