@@ -3,7 +3,10 @@
 **Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · **P2 complete 2026-08-26** — the
 critical path (onboarding + sign-in, session surface, captions overlay, settings hub +
 accessibility category) is operable with VoiceOver alone, with session state **announced** from
-the state machine and deduplicated against the app's own audio · P3–P4 planned
+the state machine and deduplicated against the app's own audio · **P3 complete 2026-08-26** —
+the system-wide sweep: every remaining screen's type, colour, motion and touch targets, plus a
+new audited token family for the surfaces that put chrome on video rather than on the canvas ·
+P4 planned
 
 ## Why
 
@@ -71,8 +74,11 @@ running UI, and asserting them is P4's job, not a claim this table makes.
 | 3b | Transcript cards (`TranscriptOverlay`) | ✅ P2 | **pass** (P2) | n/a | deferred to DG P4 | deferred to DG P4 | pass | pass | pass |
 | 4 | Settings hub (`SettingsView`) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass | pass | pass | pass | pass |
 | 5 | Accessibility settings (`AccessibilitySettingsView`) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass (stock `Form`) | pass | pass | n/a | pass |
-| 6 | Ambient captions overlay | ✅ P2 | **pass** (P2) | **by design: none** | **pass** (P2) | pass | pass | pass | pass |
-| 7 | The other ~90 screens | P3/P5 | — | — | — | — | — | — | — |
+| 6 | Ambient captions overlay | ✅ P2 · P3 | **pass** (P2) | **by design: none** | **pass** (P2) | **pass on the scrimmed line** (P3; see P3's findings) | **partial** — speaker chip ~20pt, handed to DG P4 | **pass** (P3) | pass |
+| 7 | The long tail (see P3's table below) | ✅ P3 | P2/P4 | n/a | **pass** (P3) | **pass** (P3) | **pass** (P3) | **pass** (P3) | **pass** (P3) |
+
+Rank 7's name/role/value column stays P2's and P4's business: P3 is a *property* sweep and did
+not touch semantics, so nothing here claims the long tail has been read with VoiceOver.
 
 "deferred to DG P4" is the plan's own division of labour, not an unaudited gap: DG P4 owns the
 session surface's *look*, so its type scale, colour pairs and metrics are decided there. P2 took
@@ -154,7 +160,7 @@ the master switch reveals three sections below it and now says so.
 The running-UI audit — traits, focus order, grouping, and a real VoiceOver pass on hardware.
 That is P4's target and this phase does not claim it.
 
-## P3 — System-wide sweep
+## P3 — System-wide sweep ✅ shipped 2026-08-26
 
 Dynamic Type across OGDesign (no fixed sizes; test at AX5), contrast pass over the theme tokens
 (including the accent-on-dark pairs), Reduce Motion variants for the ambience/waveline animations,
@@ -164,9 +170,115 @@ Pulled forward into P1, because they were properties of the components rather th
 screens: the OGDesign token contrast pass (now `OGTheme.contrastAudit`, asserted in both schemes
 for every accent preset — the accent-on-dark pairs are exactly what forced `inkAccentLabel`),
 the ambience/waveline Reduce Motion variants, and the OGDesign side of the Dynamic Type and
-touch-target work. What P3 still owes is the **screens**: fixed point sizes outside OGDesign
+touch-target work. What P3 still owed was the **screens**: fixed point sizes outside OGDesign
 (`LaunchScreen`'s `.system(size:)` among them), an AX5 truncation pass per screen, and the
 accent painted straight onto a surface without going through the tinted-label path.
+
+### What P3 landed
+
+A property sweep, deliberately not a redesign — DG P5 owns how the long tail *looks*, and this
+phase changed only what a screen's text scales with, what its colours are read from, what its
+animations do under Reduce Motion, and how big its targets are. Layout and behaviour are frozen
+throughout, which is what makes a change this wide reviewable at all.
+
+**Colour: 107 call sites onto the audited tokens, across 39 screens.** The pattern the sweep kept finding is the one
+`OGStatusLabel` was built for — a `.green` checkmark, an `.orange` warning line, a `.red`
+validation failure, hand-painted at the call site. Those hues are chosen to read as a 7pt dot;
+as text on a white card the green measures about 2.2:1. Every one of them now reads from
+`OGTheme.okLabel` / `warnLabel` / `errorLabel`, while the ones that really are *fills* — a
+status dot, a progress tint, a capsule wash — read from the uncorrected `ok` / `warn` / `error`.
+Several screens had a single `color(for:)` helper feeding both roles at once; those split into a
+wash and a label variant, because one function cannot be right for both. `SafetyControlColor`
+became the shared version of that split, so the HECA report and the evidence overlay stop
+carrying private copies.
+
+**A new token family, because a camera preview is not a canvas.** The audit had no answer for
+the surfaces that lay chrome over *video*: the live preview, the phone camera sheet, the HUD
+mirror. They are black in both schemes, so the card/canvas correction is the wrong one — the
+failure hue needs lightening to read on a dark card and needs nothing at all on black. `Token.media`
+plus `onMedia`, two opacity roles and `mediaOkLabel`/`mediaWarnLabel`/`mediaErrorLabel` name that
+ground, and six new pairs in `contrastAudit` measure it. The tests assert both halves: that the
+media labels clear AA on black, and that the media and card corrections *disagree* — if they
+ever agree, one of the two surfaces is being measured wrongly.
+
+**Type: 26 fixed point sizes onto Dynamic Type**, with two categories left fixed on purpose and
+said so in the code. A decorative hero glyph (the lock on the biometric gate, the paywall's
+cross, the settings lock) keeps its proportions through `@ScaledMetric` rather than becoming a
+text style. And `HUDPreviewView` keeps real fixed sizes, because it is a fidelity mirror of a
+fixed-geometry lens display: text that grew with the phone's setting would make the preview
+misreport what the wearer actually sees.
+
+**Motion: twelve decorative animations across nine screens** now ask first. The interesting one is the chat typing
+indicator — three dots pulsing off a repeating timer for as long as a reply is in flight. It is
+not a `withAnimation` call, so it survived the earlier passes; under Reduce Motion the timer
+stops advancing and the dots hold steady, which says the same thing without the flicker. The
+consent card and the pinned-frame card drop their slide and scale to a plain fade — the card
+still arrives, only the travel goes.
+
+**Targets: 18 sub-44pt controls across ten screens**, every one fixed by growing the *hit area* and leaving
+the drawn artwork alone: the chat composer's 36pt glass circles, the preview's close button
+(whose `.padding()` sat outside the button's hit region and so was never part of the target at
+all), a Lock Screen power button, and a scatter of icon-only buttons that were tappable at about
+20pt. Where the fix moved a glyph — the attachment's remove badge — the offset was rewritten in
+terms of the target so it still lands on the corner it was drawn on.
+
+**One contrast failure the sweep found rather than tidied.** A count badge and the LIVE capsule
+both drew white text on the system notification red — about 3.6:1, under AA at the size a badge
+is drawn in. `Token.badge` deepens the red instead of dropping a convention people read
+instantly, and the test asserts the gap it exists to close: if the system red ever clears AA
+under white, the token is unnecessary and should go.
+
+### The sweep, by area
+
+`fixed` names the kinds changed; `fine` means the screen was read against all five criteria and
+needed nothing.
+
+| Area | Fixed | Verified fine |
+|---|---|---|
+| Settings & services | `AgentHarness`, `AgenticFeatures`, `FieldAssist`, `Fingerspelling`, `Gateway`, `HermesBridge`, `HIPAA`, `Language`, `Playbooks`, `SafetyRules`, `Services`, `SiriExposure`, `SkillPacks`, `Sync`, `Tools`, `Translation`, `WebHUDMirror` (colour) · `QuickActions` (colour, type, target) · `SettingsView` (colour, type, motion) · `SettingsScreens` (badge contrast) | the remaining category screens |
+| Tools, skills & integrations | `ClawHubBrowser` (colour, type, target), `CustomTools`, `MCPServers`, `MCPServerTrust`, `RemoteInvokeAudit`, `SuggestedSkills`, `CaptureFlowAuthor` (colour) | `MCPCatalog`, `ScheduledTasks`, `RemoteActionConsent`, `VoiceSkillsManager` |
+| Models & personas | `LocalModelManager` (colour, target), `Personas`, `PersonaPickerSheet` (colour, target) | `AddModel`, `ModelEditor`, `ModelForm`, `ModelPricingEditor`, `PromptPresets`, `PromptInspector` |
+| Vaults, documents & records | `VaultManager` (colour), `Recordings` (colour, target) | `VaultFilesEditor`, `HealthVaultEditor`, `Documents`, `MeetingRecords`, `ProjectDetail` |
+| Learning | `Flashcard` (colour), `Quiz` (colour, **colour-alone**) | `DeckList`, `ReadingStats`, `Insights` |
+| Assessment & medical | `AssessmentCard` (colour, motion, target), `SafetyAssessmentReport` (colour, type, target), `SafetyAssessmentOverlay` (shared colour split), `MedicalCompliancePaywall` (colour, type) | — |
+| Media & HUD | `LivePreview` (all four), `PhoneCamera` (colour), `HUDPreview` (colour; sizes fixed on purpose) | `HUDMirror` |
+| Chat | `ChatComposer` (type, target, motion), `ChatThread` (motion) | `ChatList`, `MessageBubble`, `MessageContentView` |
+| Panels & shell | `LaunchScreen` (type), `RootView` (motion), `DeveloperPanel` (accent-on-fill), `AssistiveModeToggle` (motion), `ShortcutTemplates` (motion), `BiometricLock` (colour, type, motion), `NetworkMonitor` (colour) | `TurnTimelineDebug`, `SiriContentDetail`, `OnboardingOverlay` |
+| Widgets | `GlassesActivityWidget` (type, target) | `HomeScreenWidget` — the listening state is carried by a sentence in every family, so the dot beside it is reinforcement, not the signal |
+
+### Deliberately out of scope, and why
+
+- **The session surface** (`MainView`, `VoiceTab`, `StatusIndicator`, `BottomControlBar`,
+  `VoiceWaveline`, `TranscriptOverlay`, `CircleButton`, `QuickActionsOverlay`) — DG P4 sets its
+  type scale, colour pairs and metrics, and doing them here would be deciding that phase's
+  answers early. P2's checklist already records this division.
+- **The record/live red.** `.red` on a recording dot, a stop glyph or a LIVE badge is a platform
+  convention rather than a status hue, and it is never the only carrier — a duration, a label or
+  a changed glyph sits beside it every time. The rule the sweep followed: ok/warn/error go
+  through tokens; the record red does not.
+- **The Dynamic Island's compact slot** keeps its 9pt battery readout. That slot is a hard
+  geometry; text that grows there is text the system truncates away entirely, and the expanded
+  and Lock Screen presentations carry the same number at Dynamic Type.
+- **Two findings on the captions overlay, handed to DG P4 with its layout.** P2 recorded that
+  surface as passing contrast, and on the live line — the one with a scrim behind it — it does.
+  The rest does not have a ground: the history rows and the two-way legs sit directly on whatever
+  is behind the overlay, so their contrast is unmeasurable rather than merely thin. P3 did what
+  it can without touching the layout — every white in that stack now reads from the media
+  opacity roles, and the three values that measured under AA even against pure black (the
+  original-language ribbon at 0.35, the leg label at 0.4, the empty-leg placeholder at 0.25) are
+  lifted to roles that clear it, hierarchy intact. The scrim itself is a layout decision and
+  belongs to the phase that owns this surface. Likewise the speaker chip: its tap area is about
+  20pt, and a 44pt floor would push four caption rows apart by roughly 27pt each — a reflow of
+  the session surface, which is exactly what this phase was told not to do. Its *contrast* is
+  fixed here, though: the chip painted white on eight palette hues, which the pale slots lose
+  outright, and the label now goes through `onAccentLabel` like every other label on a filled
+  ground.
+- **The watch target and the widget's own palette.** Widgets render on a system material, not on
+  `Token.canvas`, so the audited pairs would not describe them; giving the extension targets the
+  token module is a target-membership change with its own blast radius, and the watch app is a
+  separate target whose layout DG explicitly leaves alone. The widget fixes that *were* made are
+  the ones that stand on their own: a Lock Screen target bumped to 44pt and a fixed size turned
+  into a text style.
 
 ## P4 — Automated regression gate
 
