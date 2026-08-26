@@ -70,12 +70,21 @@ enum OGTheme {
         /// The shipped default accent (the Coral preset). Other presets are the
         /// user's choice; `tintedAccentLabel` is what keeps *those* legible.
         static let accent = OGColorToken(light: 0xB05426, dark: 0xF08A4B)
+        /// Full-screen media ground — the camera preview, the HUD mirror, the
+        /// scrim under captions. Not adaptive: a video frame looks the same in
+        /// both schemes, so the chrome laid over it does too.
+        static let media = OGColorToken(fixed: 0x000000)
         /// Success hue, as painted by a status dot or a small glyph.
         static let ok = OGColorToken(fixed: 0x34C759)
         /// Attention hue — the system orange `OGTheme.warn` renders as.
         static let warn = OGColorToken(light: 0xFF9500, dark: 0xFF9F0A)
         /// Failure hue, likewise.
         static let error = OGColorToken(fixed: 0xE03026)
+        /// The ground under a count badge or a LIVE capsule. The system's
+        /// notification red carries white text at about 3.6:1 — under AA at the
+        /// sizes a badge is drawn in — so this deepens the red rather than
+        /// dropping a convention people read instantly.
+        static let badge = OGColorToken(fixed: 0xC62828)
     }
 
     /// Opacity roles. Named because the contrast audit asserts against them —
@@ -99,6 +108,13 @@ enum OGTheme {
         static let accentInkFill = 0.22
         /// Neutral wash on the ink hero (an unavailable chip's ground).
         static let onInkFill = 0.1
+        /// Supporting chrome over a media ground (a health readout, a duration).
+        static let onMediaSecondary = 0.85
+        /// Quiet chrome over a media ground (a "connecting…" line, a close glyph).
+        static let onMediaTertiary = 0.7
+        /// The quietest white that still clears AA on black. Below this a value
+        /// is decoration — a hairline or a divider — and not text.
+        static let onMediaQuiet = 0.5
     }
 
     /// Adaptive pair helper: most tokens carry explicit light/dark values
@@ -111,6 +127,8 @@ enum OGTheme {
     static let card = Token.card.color
     static let ink = Token.ink.color
     static let onInk = Token.onInk.color
+    /// The ground a full-screen camera preview or HUD mirror sits on.
+    static let media = Token.media.color
     static let hairline = Token.hairlineBase.color.opacity(Opacity.hairline)
 
     // Status dots only — never row-icon tints. As *text* they are far too light
@@ -118,6 +136,10 @@ enum OGTheme {
     static let ok = Token.ok.color
     static let warn = Color.orange
     static let error = Token.error.color
+
+    /// A count badge / LIVE capsule and the text on it.
+    static let badge = Token.badge.color
+    static let onBadge = Token.onInk.color
 }
 
 // MARK: - Derived accent colours
@@ -219,6 +241,27 @@ extension OGTheme {
     static let okLabel = okLabelToken.color
     static let warnLabel = warnLabelToken.color
     static let errorLabel = errorLabelToken.color
+
+    // MARK: Media chrome
+
+    /// Text and glyphs laid over a media ground — the same warm off-white the
+    /// ink hero uses, because it is the same role: chrome on always-dark.
+    static let onMedia = Token.onInk.color
+
+    /// A status hue as text on the media ground. The card/canvas correction is
+    /// the wrong one here — those grounds are light in light mode and these are
+    /// black in both, so the hue is corrected against black instead.
+    static func mediaStatusValue(_ status: SRGBColor) -> SRGBColor {
+        ContrastRatio.readable(status, on: [Token.media.dark])
+    }
+
+    static let mediaOkLabelToken = OGColorToken(fixed: mediaStatusValue(Token.ok.dark).hex)
+    static let mediaWarnLabelToken = OGColorToken(fixed: mediaStatusValue(Token.warn.dark).hex)
+    static let mediaErrorLabelToken = OGColorToken(fixed: mediaStatusValue(Token.error.dark).hex)
+
+    static let mediaOkLabel = mediaOkLabelToken.color
+    static let mediaWarnLabel = mediaWarnLabelToken.color
+    static let mediaErrorLabel = mediaErrorLabelToken.color
 
     /// Build an adaptive `Color` whose value in each scheme is computed from the
     /// accent resolved for that scheme.
@@ -337,6 +380,19 @@ extension OGTheme {
         .init("attention label on canvas", foreground: warnLabelToken, on: Token.canvas),
         .init("error label on card", foreground: errorLabelToken, on: Token.card),
         .init("error label on canvas", foreground: errorLabelToken, on: Token.canvas),
+        // Media chrome: the camera preview, the HUD mirror and the caption scrim
+        // put text on black rather than on the canvas, so they are their own pairs.
+        .init("media label on black", foreground: Token.onInk, on: Token.media),
+        .init("media secondary on black", foreground: Token.onInk,
+              opacity: Opacity.onMediaSecondary, on: Token.media),
+        .init("media tertiary on black", foreground: Token.onInk,
+              opacity: Opacity.onMediaTertiary, on: Token.media),
+        .init("media quiet on black", foreground: Token.onInk,
+              opacity: Opacity.onMediaQuiet, on: Token.media),
+        .init("media success label on black", foreground: mediaOkLabelToken, on: Token.media),
+        .init("media attention label on black", foreground: mediaWarnLabelToken, on: Token.media),
+        .init("media error label on black", foreground: mediaErrorLabelToken, on: Token.media),
+        .init("badge label on badge", foreground: Token.onInk, on: Token.badge),
     ]
 
     /// The label a filled accent button paints with the shipped Coral preset.
