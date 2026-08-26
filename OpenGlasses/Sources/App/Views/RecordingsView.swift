@@ -71,7 +71,7 @@ struct RecordingsView: View {
                         .font(.system(.caption, design: .monospaced))
                 }
             }
-            .foregroundStyle(controller.isRecording ? .red : Color.accentColor)
+            .foregroundStyle(controller.isRecording ? OGTheme.errorLabel : Color.accentColor)
         }
         .accessibilityLabel("Record meeting")
         .accessibilityValue(controller.isRecording ? "Recording \(audioRecorder.formattedDuration)" : "Stopped")
@@ -133,6 +133,7 @@ private struct RecordedSessionDetailView: View {
     private let controller: SessionRecorderController
     private let initialSession: RecordedSession
     @StateObject private var playback: RecordingPlaybackController
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
 
     init(
         session: RecordedSession,
@@ -175,6 +176,8 @@ private struct RecordedSessionDetailView: View {
                     } label: {
                         Image(systemName: playback.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.title)
+                            .frame(minWidth: tapTarget, minHeight: tapTarget)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(playback.isPlaying ? "Pause recording" : "Play recording")
@@ -195,7 +198,7 @@ private struct RecordedSessionDetailView: View {
                 if let failureReason = playback.failureReason {
                     Text(failureReason)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                 }
             }
 
@@ -251,7 +254,7 @@ private struct TranscriptionStateBadge: View {
             Text(state.displayName)
         }
         .font(.caption2.weight(.semibold))
-        .foregroundStyle(state.tint)
+        .foregroundStyle(state.labelTint)
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(state.tint.opacity(0.12), in: Capsule())
@@ -271,12 +274,24 @@ private extension TranscriptionState {
         }
     }
 
+    /// Badge fill wash — the uncorrected status hue.
     var tint: Color {
         switch self {
-        case .pending: return .orange
+        case .pending: return OGTheme.warn
         case .transcribing: return .blue
-        case .done: return .green
-        case .failed: return .red
+        case .done: return OGTheme.ok
+        case .failed: return OGTheme.error
+        case .unavailable: return .secondary
+        }
+    }
+
+    /// Badge text colour — the WCAG-AA-audited label variant.
+    var labelTint: Color {
+        switch self {
+        case .pending: return OGTheme.warnLabel
+        case .transcribing: return .blue
+        case .done: return OGTheme.okLabel
+        case .failed: return OGTheme.errorLabel
         case .unavailable: return .secondary
         }
     }

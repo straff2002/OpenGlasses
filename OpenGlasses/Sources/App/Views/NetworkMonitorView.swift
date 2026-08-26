@@ -75,7 +75,7 @@ struct NetworkMonitorView: View {
     private func summaryRow(category: NetworkCategory, count: Int, bytes: Int) -> some View {
         HStack {
             Image(systemName: category.icon)
-                .foregroundStyle(category == .meta ? .orange : .secondary)
+                .foregroundStyle(category == .meta ? OGTheme.warnLabel : .secondary)
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.rawValue)
@@ -113,7 +113,7 @@ struct NetworkMonitorView: View {
                 if entry.statusCode > 0 {
                     Text("\(entry.statusCode)")
                         .font(.caption)
-                        .foregroundStyle(entry.statusCode >= 400 ? .red : .secondary)
+                        .foregroundStyle(entry.statusCode >= 400 ? OGTheme.errorLabel : .secondary)
                 }
                 Text(timeAgo(entry.timestamp))
                     .font(.caption2)
@@ -124,9 +124,9 @@ struct NetworkMonitorView: View {
 
     private func statusColor(_ code: Int) -> Color {
         if code == 0 { return .gray }
-        if code < 300 { return .green }
-        if code < 400 { return .orange }
-        return .red
+        if code < 300 { return OGTheme.ok }
+        if code < 400 { return OGTheme.warn }
+        return OGTheme.error
     }
 
     private func formatBytes(_ bytes: Int) -> String {

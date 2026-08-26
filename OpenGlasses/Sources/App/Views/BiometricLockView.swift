@@ -7,6 +7,8 @@ struct BiometricLockView: View {
     @Binding var isLocked: Bool
     @State private var authFailed = false
     @State private var isAuthenticating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroGlyph: CGFloat = 60
 
     var body: some View {
         ZStack {
@@ -14,7 +16,7 @@ struct BiometricLockView: View {
 
             VStack(spacing: 24) {
                 Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 60))
+                    .font(.system(size: heroGlyph))
                     .foregroundStyle(AppAccent.aiCoral)
 
                 Text("OpenGlasses")
@@ -28,7 +30,7 @@ struct BiometricLockView: View {
                 if authFailed {
                     Text("Authentication failed. Tap to try again.")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                         .padding(.top, 8)
                 }
 
@@ -68,7 +70,7 @@ struct BiometricLockView: View {
             DispatchQueue.main.async {
                 isAuthenticating = false
                 if success {
-                    withAnimation(.easeOut(duration: 0.3)) {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
                         isLocked = false
                     }
                 } else {

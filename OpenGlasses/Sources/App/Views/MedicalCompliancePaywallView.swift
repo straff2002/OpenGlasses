@@ -10,6 +10,7 @@ struct MedicalCompliancePaywallView: View {
     @ObservedObject var exportService: MedicalExportService
     @State private var selectedProduct: Product?
     @State private var showRestoreAlert = false
+    @ScaledMetric(relativeTo: .largeTitle) private var heroGlyph: CGFloat = 56
 
     var body: some View {
         if storeKit.canAccessMedicalCompliance {
@@ -25,7 +26,7 @@ struct MedicalCompliancePaywallView: View {
                 // Hero
                 VStack(spacing: 12) {
                     Image(systemName: "cross.case.fill")
-                        .font(.system(size: 56))
+                        .font(.system(size: heroGlyph))
                         .foregroundStyle(Color.accentColor)
                         .padding(.top, 20)
 
@@ -97,7 +98,7 @@ struct MedicalCompliancePaywallView: View {
                 if let error = storeKit.purchaseError {
                     Text(error)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                         .padding(.horizontal)
                 }
 

@@ -38,8 +38,14 @@ struct QuizView: View {
                 HStack {
                     Text(option.text)
                     Spacer()
-                    if selected == option.id {
-                        Image(systemName: option.id == q.correctOptionID ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    // Once answered, mark the correct option even if it wasn't the one
+                    // tapped — colour alone (green vs. red) isn't enough of a signal.
+                    if selected != nil {
+                        if option.id == q.correctOptionID {
+                            Image(systemName: "checkmark.circle.fill")
+                        } else if selected == option.id {
+                            Image(systemName: "xmark.circle.fill")
+                        }
                     }
                 }
                 .padding()
@@ -68,7 +74,7 @@ struct QuizView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(q.prompt).font(.subheadline)
                     if let correct = q.correctOption {
-                        Text(correct.text).font(.caption).foregroundStyle(.green)
+                        Text(correct.text).font(.caption).foregroundStyle(OGTheme.okLabel)
                     }
                 }
             }
@@ -95,8 +101,8 @@ struct QuizView: View {
 
     private func optionColor(_ option: QuizOption, _ q: QuizQuestion) -> Color {
         guard selected != nil else { return Color.gray.opacity(0.12) }
-        if option.id == q.correctOptionID { return Color.green.opacity(0.25) }
-        if option.id == selected { return Color.red.opacity(0.25) }
+        if option.id == q.correctOptionID { return OGTheme.ok.opacity(0.25) }
+        if option.id == selected { return OGTheme.error.opacity(0.25) }
         return Color.gray.opacity(0.12)
     }
 }

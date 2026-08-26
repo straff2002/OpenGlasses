@@ -44,7 +44,7 @@ struct FlashcardView: View {
                         Button { _ = service.gradeCard(correct: true) } label: {
                             Label("Got it", systemImage: "checkmark").frame(maxWidth: .infinity)
                         }
-                        .tint(.green)
+                        .tint(OGTheme.ok)
                     }
                     .buttonStyle(.borderedProminent)
                 }
