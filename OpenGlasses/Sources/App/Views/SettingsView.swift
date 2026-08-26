@@ -148,6 +148,30 @@ struct SettingsView: View {
                 journey.record(.displayGlassesConnected)
             }
         }
+        // The unlock moment is a highlight that *arrives* — a card further down the page grows a
+        // coral border and a sentence, sometimes while the user is already reading elsewhere on
+        // this screen. Unfolding it was announced from the start; the moment it appeared was not,
+        // which made the one thing the whole mechanism exists for the one thing a VoiceOver user
+        // could only find by accident. Keyed off the pending set, so it says its piece exactly
+        // once per moment — the store's `deliveredMoments` guard means a moment cannot re-enter.
+        .onChange(of: journey.state.pendingMoments) { old, new in
+            announceNewSuggestions(added: new.subtracting(old))
+        }
+    }
+
+    /// Say what just lit up in Discover, and that it can be waved away.
+    private func announceNewSuggestions(added: Set<String>) {
+        guard !added.isEmpty else { return }
+        let lines = discoverCards.compactMap { category -> String? in
+            guard let suggestion = journey.pendingSuggestion(forCategory: category.id),
+                  added.contains(suggestion.moment.rawValue) else { return nil }
+            // The notes are written as display copy and don't all end in a full stop — spoken,
+            // that runs the pitch straight into the next sentence.
+            let note = suggestion.note.hasSuffix(".") ? suggestion.note : suggestion.note + "."
+            return "\(category.title). \(note)"
+        }
+        guard let first = lines.first else { return }
+        SessionAnnouncer.say("New in Discover: \(first) Dismiss it from the card.")
     }
 
     // MARK: - Discover (Plan DE)
@@ -209,11 +233,17 @@ struct SettingsView: View {
     /// One tap, permanent, no gate. The announcement matters because the change
     /// is a card *becoming* a row further up the page — a sighted user sees the
     /// list grow, and VoiceOver otherwise would not.
+    ///
+    /// It says *where*, not just *what*: the card the user was standing on disappears in the
+    /// same beat, so "added to Settings" left them holding a focus that no longer exists with no
+    /// idea which direction the row went.
     private func unfold(_ category: CapabilityCategory) {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
             journey.unfold(category.id)
         }
-        AccessibilityNotification.Announcement("\(category.title) added to Settings").post()
+        AccessibilityNotification
+            .Announcement("\(category.title) added to the Settings list above.")
+            .post()
     }
 
     // MARK: - Category rendering
@@ -957,6 +987,10 @@ struct HardwarePrivacyView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
+                        // Unlabelled, this read as "info circle" — the same three words on every
+                        // one of these rows, which tells the user nothing about which explanation
+                        // they are about to open.
+                        .accessibilityLabel("About encrypting conversations")
                         if isTogglingEncryption {
                             Spacer()
                             ProgressView()
@@ -1003,6 +1037,7 @@ struct InfoStatusRow: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("About \(title)")
             Spacer()
             Text(status)
                 .foregroundStyle(.secondary)
@@ -1037,6 +1072,7 @@ struct InfoToggle: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("About \(title)")
             }
         }
         .alert(title, isPresented: $showInfo) {

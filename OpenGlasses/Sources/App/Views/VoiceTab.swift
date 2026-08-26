@@ -104,7 +104,12 @@ struct VoiceTab: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(Capsule().fill(.red.opacity(0.3)))
-        .accessibilityLabel("Recording: \(appState.videoRecorder.formattedDuration)")
+        // `.accessibilityLabel` on an HStack does not absorb its children: the raw "REC 00:12"
+        // text stayed in the tree as a second stop, and VoiceOver spells "REC".
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recording video")
+        .accessibilityValue(appState.videoRecorder.formattedDuration)
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 

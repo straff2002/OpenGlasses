@@ -694,6 +694,9 @@ class AppState: ObservableObject, AppStateProtocol {
     let conversationClassifier = ConversationClassifier()
 
     private var cancellables: [Any] = []
+    /// Narrates session transitions to VoiceOver (Plan DF P2). Held so it outlives
+    /// `configureAccessibilityAnnouncements`, since the repeat guard is its state.
+    private var sessionAnnouncer: SessionAnnouncer?
     private var autoSleepTask: Task<Void, Never>?
     private var currentLLMTask: Task<Void, Never>?
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
@@ -1244,6 +1247,9 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Wire the battery/thermal power posture (Plan BV) to the device signals.
         configurePower()
+
+        // Tell VoiceOver what the session is doing (Plan DF P2).
+        configureAccessibilityAnnouncements()
 
         // Remote Agent Harness (Plan N): build the harness registry (OpenClaw + Custom URL) and
         // narrate via TTS. Gated at the tool layer by Config.agentModeEnabled.
@@ -3072,6 +3078,83 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in self?.presenceMonitor.update() }
         }
         presenceMonitor.update()
+    }
+
+    // MARK: - Accessibility Announcements (Plan DF P2)
+
+    /// Report session transitions to VoiceOver from the one place the state actually flips.
+    ///
+    /// Deliberately here and not in the views. A view announces only while it is on screen, and
+    /// the session runs hands-free with the phone in a pocket — the moment worth reporting is
+    /// usually the moment nothing is rendering it. Subscribing to the `@Published` flips means
+    /// every surface (voice tab, CarPlay, a future one) inherits the same narration for free, and
+    /// there is a single list to read when asking "what is a blind user told?".
+    ///
+    /// `SessionAnnouncementPolicy` decides what is actually said; several of the sinks below are
+    /// wired knowing it currently withholds them, because the app already makes its own sound for
+    /// them. That is the point — the subtraction lives in one reviewable place, so removing a tone
+    /// is one edit rather than a silence nobody notices.
+    private func configureAccessibilityAnnouncements() {
+        let announcer = SessionAnnouncer(context: { [weak self] in
+            guard let self else { return AnnouncementContext() }
+            return AnnouncementContext(
+                voiceOverRunning: SessionAnnouncer.voiceOverRunning,
+                assistantIsSpeaking: self.speechService.isSpeaking
+                    || self.geminiLiveSession.isModelSpeaking
+                    || self.openAIRealtimeSession.isModelSpeaking,
+                thinkingSoundPlaying: self.speechService.isPlayingThinkingSound)
+        })
+        sessionAnnouncer = announcer
+
+        /// Every sink uses the value Combine hands it, never a re-read of the property: `@Published`
+        /// fires on `willSet`, so the object still holds the *old* value when the sink runs.
+        func observe<P: Publisher>(_ publisher: P, _ transition: @escaping (P.Output) -> SessionTransition)
+        where P.Output: Equatable, P.Failure == Never {
+            let token = publisher
+                .removeDuplicates()
+                .dropFirst()          // the value on subscribe is the status quo, not a transition
+                .sink { value in
+                    Task { @MainActor in announcer.announce(transition(value)) }
+                }
+            cancellables.append(token)
+        }
+
+        // Silent transitions — the ones this phase exists for.
+        observe(geminiLiveSession.$isActive) { .liveSession(mode: "Gemini Live", active: $0) }
+        observe(openAIRealtimeSession.$isActive) { .liveSession(mode: "OpenAI Realtime", active: $0) }
+        observe(cameraService.$isStreaming) { .cameraStreaming($0) }
+        observe($micMuted) { .micMuted($0) }
+        observe($isProcessing) { .thinking($0) }
+
+        // A drop mid-session is the one the wearer can act on; a recovery is covered by the
+        // session's own resumption, so only the drop is reported.
+        let reconnectToken = Publishers.CombineLatest(
+            geminiLiveSession.$reconnecting, openAIRealtimeSession.$reconnecting)
+            .map { $0 || $1 }
+            .removeDuplicates()
+            .dropFirst()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                let mode = self?.currentMode == .openaiRealtime ? "OpenAI Realtime" : "Gemini Live"
+                Task { @MainActor in announcer.announce(.reconnecting(mode: mode)) }
+            }
+        cancellables.append(reconnectToken)
+
+        // The thing the user asked for did not happen — the only line allowed to interrupt.
+        // No `removeDuplicates` here on purpose: a failure that happens twice happened twice, and
+        // the announcer's repeat window already absorbs a republish of the same value.
+        let errorToken = $errorMessage
+            .compactMap { $0 }
+            .sink { message in
+                Task { @MainActor in announcer.announce(.error(message)) }
+            }
+        cancellables.append(errorToken)
+
+        // Wired, and currently withheld by the policy: the listen chime, the end-listening tone,
+        // the connect/disconnect cues, and the assistant's own voice already cover these.
+        observe($isListening) { .listening($0) }
+        observe(speechService.$isSpeaking) { .speaking($0) }
+        observe($isConnected) { .glassesConnected($0) }
     }
 
     // MARK: - Power Policy (Plan BV P2)

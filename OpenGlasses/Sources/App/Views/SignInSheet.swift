@@ -34,7 +34,15 @@ struct SignInSheetView: UIViewControllerRepresentable {
 /// timeout, sheet dismissed) turns the paste fallback on rather than dead-ending.
 @MainActor
 final class SignInSheetModel: ObservableObject {
-    @Published private(set) var state: SignInFlowState = .idle
+    /// Announced from here rather than from the two row components that drive it: both paths —
+    /// the loopback capture and the paste fallback — land on this one state, so wiring it at the
+    /// machine means neither surface can be the one that forgets (Plan DF P2).
+    @Published private(set) var state: SignInFlowState = .idle {
+        didSet {
+            guard state != oldValue, let line = state.spokenStatus else { return }
+            SessionAnnouncer.say(line, interrupts: state.spokenStatusInterrupts)
+        }
+    }
     /// Non-nil while the login sheet should be on screen.
     @Published var request: SignInSheetRequest?
     /// Whether to offer the paste field and the open-in-browser route.

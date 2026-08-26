@@ -25,6 +25,14 @@ struct AccessibilitySettingsView: View {
             Section {
                 Toggle("Enable Reading Accessibility", isOn: $enabled)
                     .tint(AppAccent.color)
+                    // This switch reveals three whole sections below it. Nothing about flipping a
+                    // switch says "and now there is more page" — a sighted user watches the list
+                    // grow under their thumb, and on the app's own accessibility screen of all
+                    // places, that must not be the sighted-only affordance.
+                    .onChange(of: enabled) { _, on in
+                        SessionAnnouncer.say(on ? "Reading accessibility on. More settings added below."
+                                                : "Reading accessibility off. Its settings are hidden.")
+                    }
             } footer: {
                 Text("Reads text through the glasses camera using on-device OCR. When enabled, the `reading_assist` tool can read aloud, simplify, translate, or define text you're looking at. Images never leave your device.")
             }
@@ -35,6 +43,8 @@ struct AccessibilitySettingsView: View {
                         ForEach(ReadingProfile.Level.allCases, id: \.rawValue) { level in
                             Text("\(level.rawValue) — \(level.audienceDescription.capitalizedFirst)")
                                 .tag(level.rawValue)
+                                // The dash is a visual separator; spoken, it is "em dash".
+                                .accessibilityLabel("Level \(level.rawValue), \(level.audienceDescription)")
                         }
                     }
                 } header: {
@@ -88,6 +98,10 @@ struct AccessibilitySettingsView: View {
                         Text(fingerspellingEnabled ? "On" : "Off")
                             .foregroundStyle(.secondary)
                     }
+                    // Name and state are one row, not two stops with a gap between them.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Fingerspelling")
+                    .accessibilityValue(fingerspellingEnabled ? "On" : "Off")
                 }
             } header: {
                 Text("Sign Language")

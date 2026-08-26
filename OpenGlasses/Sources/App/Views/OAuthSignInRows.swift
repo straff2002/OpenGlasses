@@ -117,12 +117,16 @@ struct OnboardingAccountSignInSection<Service: OAuthSignInService>: View {
                     Text("Connecting…")
                 } else {
                     Image(systemName: "person.crop.circle.badge.checkmark")
+                        .accessibilityHidden(true)
                     Text(signInLabel)
                 }
             }
         }
         .buttonStyle(.ogProminent)
         .disabled(flow.state.isBusy)
+        // Parity with the settings-side rows below: the glyph is decoration, and "Connecting"
+        // is the control's name while it is busy.
+        .accessibilityLabel(flow.state.isBusy ? "Connecting" : signInLabel)
         .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
         .listRowBackground(Color.clear)
         .sheet(item: $flow.request, onDismiss: { flow.sheetDismissed() }) { request in
@@ -156,6 +160,7 @@ struct OnboardingAccountSignInSection<Service: OAuthSignInService>: View {
                         Text("Connecting…")
                     } else {
                         Image(systemName: "link")
+                            .accessibilityHidden(true)
                         Text("Connect")
                     }
                 }
@@ -164,6 +169,8 @@ struct OnboardingAccountSignInSection<Service: OAuthSignInService>: View {
                 .frame(minHeight: rowMinHeight)
             }
             .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || flow.state.isBusy)
+            .accessibilityLabel(flow.state.isBusy ? "Connecting" : "Connect")
+            .accessibilityHint("Finishes sign-in with the code you pasted.")
 
             Button("Open in the browser instead") {
                 flow.openExternally()

@@ -66,6 +66,8 @@ struct TranscriptOverlay: View {
                 .padding(.vertical, 5)
                 .glassEffect(in: .capsule)
                 .transition(.opacity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Context trimmed by gateway")
             }
 
             if let error = errorText, !error.isEmpty {
@@ -164,9 +166,16 @@ struct TranscriptOverlay: View {
         .onTapGesture {
             expandedCard = ExpandedCard(label: label, text: text, accent: accent)
         }
+        // `children: .combine` then `.accessibilityLabel` *replaces* what was combined, so the
+        // card announced who was talking and never what they said — the transcript, the one
+        // thing on this card worth reading, was unreachable. The speaker is the name, the words
+        // are the value; the card is also only tappable through a gesture, which leaves no trait
+        // behind to say it can be opened.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(style == .ai ? "AI-generated response from \(label)" : label)
-        .accessibilityHint("Tap to see full response")
+        .accessibilityValue(text)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Double-tap to see the full response.")
     }
 }
 

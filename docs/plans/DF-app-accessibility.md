@@ -1,8 +1,9 @@
 # Plan DF — App Accessibility: VoiceOver, Dynamic Type & Contrast
 
-**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · **P2's onboarding slice shipped
-2026-08-25** with DG P2 (the screens converted, so the semantics landed with the look) ·
-the rest of P2 (session surface, captions overlay, hub) and P3–P4 planned
+**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · **P2 complete 2026-08-26** — the
+critical path (onboarding + sign-in, session surface, captions overlay, settings hub +
+accessibility category) is operable with VoiceOver alone, with session state **announced** from
+the state machine and deduplicated against the app's own audio · P3–P4 planned
 
 ## Why
 
@@ -56,28 +57,102 @@ for text, touch targets ≥ 44 pt, Reduce Motion respected, no meaning carried b
 
 ### Ranked screen checklist
 
-Ranked by how much a blind user's first session depends on the screen. `—` means not yet
-audited: P1 fixed the component layer and left the per-screen pass/fail to the phase that
-converts each screen, since a screen's semantics change when its idiom does.
+Ranked by how much a blind user's first session depends on the screen. The criteria are the
+WCAG 2.2 AA mapping from the top of this doc; `n/a` means the screen has nothing of that kind.
+Everything below is **static** conformance — traits, grouping and focus order only exist in a
+running UI, and asserting them is P4's job, not a claim this table makes.
 
-| Rank | Screen | Phase | State after P1 |
-|---|---|---|---|
-| 1 | Onboarding (`OnboardingView`, sign-in sheet) | ✅ P2 | Converted with DG P2: pages built from OGDesign rows and stock grouped lists, so P1's semantics apply; each page's title is a header and takes VoiceOver focus on page change; selection carries `.isSelected`; permission state is said in words; decoration hidden; Reduce Motion honoured; hero pages scroll at AX5. All text on contrast-asserted token pairs (`onAccentLabel`, `okLabel`/`errorLabel` added for this screen). Owed: the running-UI audit, which is P4's target. |
-| 2 | Main session surface (`VoiceTab`, `BottomControlBar`, capsule) | P2 | Controls already carry labels, selected traits and hints; decorative waveline/ambience hidden. Outstanding: mode/state changes **announced**, not just re-rendered. |
-| 3 | Status card (`StatusIndicator`) | P2 | Already grouped with a composed label. Re-audit when P4 restyles it. |
-| 4 | Settings hub (`SettingsView`) | ✅ P1 | Built from OGDesign, so it inherits everything above: hero card summarised, rows composed, both switches named. Re-audited when DE rebuilt it (2026-08-26): the new `OGDiscoverCard` reads as one element with a spoken label covered headlessly, its dismiss control is named and clears 44pt, the Discover heading carries the header trait, unfolding posts an announcement (the change happens further up the page, where VoiceOver would otherwise miss it), and the unfold/show-all animations are skipped under Reduce Motion. |
-| 5 | Accessibility settings (`AccessibilitySettingsView`) | P2 | — stock `Form`; stock controls are natively labelled, but never audited. Free forever per Plan A, so it must not be the weak screen. |
-| 6 | Ambient captions overlay | P2 | — Dynamic Type and the live-region question are open (see below). |
-| 7 | The other ~90 screens | P3/P5 | — see [the DG screen inventory](DG-screen-inventory.md) for which idiom each is in and which phase converts it. |
+| Rank | Screen | Phase | Name/role/value | State announced | Dynamic Type | Contrast | Targets ≥44pt | Reduce Motion | Not colour alone |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Onboarding (`OnboardingView`) | ✅ P2 | pass | **pass** (P2) | pass | pass | pass | pass | pass |
+| 1b | Sign-in flow (`SignInSheetModel`, OAuth/Google rows) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass | pass | pass | n/a | pass |
+| 2 | Session controls (`BottomControlBar`, capsule) | ✅ P2 | **pass** (P2) | **pass** (P2) | deferred to DG P4 | deferred to DG P4 | deferred to DG P4 | pass | pass |
+| 3 | Status card (`StatusIndicator`) | ✅ P2 | **pass** (P2) | **pass** (P2) | deferred to DG P4 | deferred to DG P4 | n/a | pass | pass |
+| 3b | Transcript cards (`TranscriptOverlay`) | ✅ P2 | **pass** (P2) | n/a | deferred to DG P4 | deferred to DG P4 | pass | pass | pass |
+| 4 | Settings hub (`SettingsView`) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass | pass | pass | pass | pass |
+| 5 | Accessibility settings (`AccessibilitySettingsView`) | ✅ P2 | **pass** (P2) | **pass** (P2) | pass (stock `Form`) | pass | pass | n/a | pass |
+| 6 | Ambient captions overlay | ✅ P2 | **pass** (P2) | **by design: none** | **pass** (P2) | pass | pass | pass | pass |
+| 7 | The other ~90 screens | P3/P5 | — | — | — | — | — | — | — |
 
-## P2 — Critical-path conformance
+"deferred to DG P4" is the plan's own division of labour, not an unaudited gap: DG P4 owns the
+session surface's *look*, so its type scale, colour pairs and metrics are decided there. P2 took
+the half that is independent of the restyle — what the controls are called and what they announce —
+and left the visual criteria to the phase that sets them.
+
+## P2 — Critical-path conformance ✅ shipped 2026-08-26
 
 Onboarding (including DD's sign-in sheet — `SFSafariViewController` is natively accessible; the
 custom pages around it are not), the main session surface (start/stop, mode state changes
-*announced*, not just re-rendered), captions overlay (Dynamic Type, and consider
-`UIAccessibility.post(notification:)` for live caption updates vs. VoiceOver chatter — likely an
-opt-in "speak captions" is wrong, but focusable transcript history is right), Settings hub +
-accessibility category.
+*announced*, not just re-rendered), captions overlay, Settings hub + accessibility category.
+
+### What P2 landed
+
+**Announcement, and the subtraction that makes it bearable.** The session's state now reaches
+VoiceOver as speech, wired at the state machine (`AppState.configureAccessibilityAnnouncements`)
+rather than in the views — a view announces only while it is on screen, and this session runs
+hands-free with the phone in a pocket, so the moment worth reporting is usually the moment
+nothing is rendering it. Every surface inherits the same narration, and there is one list to
+read when asking what a blind user is told.
+
+The harder half is what is *not* said. This app talks: an ascending cue when the glasses attach,
+a chime opening every turn, an end tone closing it, a descending cue on disconnect, an ambient
+pad while a turn runs, and its own voice for the answer. Announcing those again puts two voices
+in one ear a half-second apart — worse, for the user this phase exists for, than saying nothing.
+So `SessionAnnouncementPolicy` is a subtraction: a transition earns a line only when the app is
+otherwise silent about it, and every announcement is withheld outright while the assistant has
+the floor. What that leaves is exactly the state a blind user had no access to at all — a live
+session starting or ending, the camera starting or stopping, a reconnect, the mic muting, and an
+error. "Thinking" is the interesting case: covered by the pad *while the pad plays*, and spoken
+when something stopped it, because the cue's presence decides rather than the event's name.
+`SessionAnnouncer` adds the other guard — said once — since a `@Published` flip can arrive more
+than once for one real transition, and a screen reader that repeats itself is one the user turns
+off. Both halves are pure enough to be covered headlessly.
+
+**The session surface**, semantics only (DG P4 owns its look, untouched here): the status row
+became one sentence instead of three stops that had to be assembled by swiping ("Listening…",
+"Voice middle dot Claude", "Camera streaming"), with the middot as the pause it was drawn to be;
+the card's own label stopped restating what the row now says properly. The capsule's visible copy
+is written as an instruction to a finger — "Tap to talk", "Tap to stop" — which is the wrong
+gesture and the wrong grammar for VoiceOver, so it carries a spoken name instead, with the mute
+badge as a *value* so it is re-read when it changes. **Mute was unreachable**: it lives only on a
+long press, and VoiceOver swallows that gesture for its own use — it is now a named custom action
+as well as a hint. Dimmed controls say why they are dimmed. And the transcript card announced who
+was talking and never what they said: `children: .combine` followed by `.accessibilityLabel`
+*replaces* what was combined, so the words — the only thing on that card worth reading — were
+unreachable.
+
+**Onboarding and sign-in.** DG P2's conversion had already landed the page semantics; what it
+left was the *async* half. The permission rows, the key validation, the Meta AI registration and
+both OAuth flows all resolved in silence: a grant swaps a button for a checkmark somewhere down
+the list, a refusal changes nothing at all, and the sign-in sheet **dismisses itself** on success
+and drops the user on a screen where a button has quietly become a spinner. Every one of those
+endings is now spoken, and refusal is spoken too, because it is the answer that stalls the flow.
+The sign-in wording lives on `SignInFlowState` — both the loopback and paste paths land on that
+one state, so neither surface can be the one that forgets.
+
+**Settings.** DE's rebuild had already announced *unfolding* a Discover card; it had never
+announced the unlock moment **arriving**, which is the one thing the whole mechanism exists for —
+a card further down the page grows a border and a sentence while the user is reading elsewhere.
+That now announces once per moment (the store's `deliveredMoments` guard makes re-entry
+impossible) and names the dismiss control. The unfold line says *where* the row went, because the
+card the user was standing on disappears in the same beat. On the accessibility screen itself,
+the master switch reveals three sections below it and now says so.
+
+### Open questions this phase closed
+
+- **Captions overlay: readable history, not a live region — decided.** Captions are speech that
+  already happened in the room. A blind user heard it; pushing every line back at them through
+  VoiceOver would narrate the conversation a beat late and bury the app's own state
+  announcements. The people this surface serves — deaf and hard-of-hearing users — read it with
+  their eyes. So: no `.announcement` posts, per-row focusable history so the last few lines can
+  be swiped back through, `.updatesFrequently` on the live line so it re-reads only for someone
+  who chose to hold focus there, and Dynamic Type throughout (the fixed 16pt caption did not
+  grow with the system text size — which failed exactly the reader it was drawn for).
+
+### Still owed
+
+The running-UI audit — traits, focus order, grouping, and a real VoiceOver pass on hardware.
+That is P4's target and this phase does not claim it.
 
 ## P3 — System-wide sweep
 
@@ -114,7 +189,14 @@ it hands off to the in-ear assistive experience.
 
 ## Open
 
-- Whether the captions overlay should offer a VoiceOver-native live region or stay a visual-only
-  surface with a focusable history (leaning the latter — a blind user already has the audio).
+- ~~Whether the captions overlay should offer a VoiceOver-native live region or stay a visual-only
+  surface with a focusable history.~~ **Resolved 2026-08-26 (P2): focusable history, no live
+  region.** The lean was right and the reason sharpened in the building — a blind user already
+  heard the room, and forced announcements would both narrate the conversation back at them a
+  beat late and crowd out the session-state announcements that carry information they *don't*
+  have. See "Open questions this phase closed" above for the shape that shipped.
 - Whether `performAccessibilityAudit` runs in CI per-PR or as a nightly (it needs a booted
   simulator; cost unknown until P4).
+- Whether the announcement wording should be user-tunable (terse vs. full sentences). Not built:
+  a preference nobody has asked for is a setting to maintain, and the right judge is the blind-user
+  session P4 defers to.

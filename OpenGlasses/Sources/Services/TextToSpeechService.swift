@@ -750,6 +750,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private var thinkingPlayer: AVAudioPlayer?
     private var thinkingTimer: Timer?
 
+    /// Whether the processing pad is actually looping right now.
+    ///
+    /// Published because it is the app's own "I'm working on it" cue, and the accessibility
+    /// announcer subtracts it: a VoiceOver "Thinking" spoken over the pad is two voices saying
+    /// one thing. Set from the two functions below rather than inferred from `isProcessing`,
+    /// because a silent route or a failed player is exactly the case where the pad is *not*
+    /// audible and the spoken line is the only signal left.
+    @Published private(set) var isPlayingThinkingSound: Bool = false
+
     func startThinkingSound() {
         stopThinkingSound()
 
@@ -810,6 +819,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
             // Soft ambient breath every 2 seconds
             thinkingPlayer?.play()
+            isPlayingThinkingSound = true
             thinkingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     self?.thinkingPlayer?.currentTime = 0
@@ -827,6 +837,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         thinkingTimer = nil
         thinkingPlayer?.stop()
         thinkingPlayer = nil
+        isPlayingThinkingSound = false
     }
 }
 
