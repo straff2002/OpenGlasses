@@ -8,10 +8,15 @@ struct RootView: View {
     var body: some View {
         ZStack {
             MainView()
+                // Same reason as the onboarding overlay: the launch screen covers the app for two
+                // seconds without covering its accessibility tree, so VoiceOver would start
+                // reading a UI the user cannot yet see or touch.
+                .accessibilityHidden(showLaunchScreen)
 
             // Structured-vision result card (vision_assess), presented over the main UI.
             AssessmentCardOverlay()
                 .zIndex(0.5)
+                .accessibilityHidden(showLaunchScreen)
 
             if showLaunchScreen {
                 LaunchScreen()

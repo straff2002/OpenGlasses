@@ -124,9 +124,12 @@ struct OnboardingView: View {
                         .animation(pageChange, value: page)
                 }
             }
-            .accessibilityElement()
-            .accessibilityLabel("Page \(page + 1) of \(totalPages)")
-            .accessibilitySortPriority(1)
+            // The dots are decoration: 4pt tall, so as an accessibility element they are a
+            // target no finger could find, and VoiceOver would stop on them on the way to the
+            // page. Where in the flow the user is now rides on the page title instead — the
+            // element focus is moved to on every page change, which is where the question is
+            // actually asked. See `pagePosition`.
+            .accessibilityHidden(true)
 
             if page > 0 {
                 HStack {
@@ -151,6 +154,10 @@ struct OnboardingView: View {
         .padding(.bottom, 12)
     }
 
+    /// Where in the flow this page sits, spoken as the title's *value* so it is heard on arrival
+    /// and re-heard on every page change, without becoming a stop of its own.
+    private var pagePosition: String { "Page \(page + 1) of \(totalPages)" }
+
     /// The title block every page opens with — the VoiceOver landing point.
     private func pageTitle(_ title: String, _ subtitle: String? = nil, page index: Int) -> some View {
         VStack(spacing: 6) {
@@ -158,6 +165,7 @@ struct OnboardingView: View {
                 .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityValue(pagePosition)
                 .accessibilityFocused($focusedPage, equals: index)
             if let subtitle {
                 Text(subtitle)
@@ -185,6 +193,7 @@ struct OnboardingView: View {
                     Text("OpenGlasses")
                         .font(.largeTitle.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
+                        .accessibilityValue(pagePosition)
                         .accessibilityFocused($focusedPage, equals: 0)
 
                     Text("AI assistant for your smart glasses")
@@ -970,6 +979,7 @@ struct OnboardingView: View {
                     Text("You're ready")
                         .font(.title.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
+                        .accessibilityValue(pagePosition)
                         .accessibilityFocused($focusedPage, equals: 6)
 
                     Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")

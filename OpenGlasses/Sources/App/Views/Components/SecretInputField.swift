@@ -26,7 +26,12 @@ struct SecretInputField: View {
                     text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             } label: {
+                // Drawn as a bare glyph, which measured about 26×17 — under the 44pt floor on a
+                // field a user has to operate to get the app working at all. The target grows;
+                // the glyph stays exactly where it was drawn.
                 Image(systemName: "doc.on.clipboard")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Paste")
@@ -35,6 +40,8 @@ struct SecretInputField: View {
                 revealed.toggle()
             } label: {
                 Image(systemName: revealed ? "eye.slash" : "eye")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(revealed ? "Hide" : "Reveal")

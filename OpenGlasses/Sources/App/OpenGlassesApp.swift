@@ -136,6 +136,11 @@ struct OpenGlassesApp: App {
     @State private var isHipaaLocked = Config.hipaaMode
 
     init() {
+        #if DEBUG
+        // Deterministic launch state for the UI-test target (Plan DF P4). Debug-only, and inert
+        // without the launch argument — first, because everything below reads what it seeds.
+        UITestSupport.applyLaunchState()
+        #endif
         // Move any plaintext provider secrets out of UserDefaults and into the
         // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
         Config.migrateSecretsToKeychainIfNeeded()
@@ -184,6 +189,9 @@ struct OpenGlassesApp: App {
             }
             .onAppear {
                 AppStateProvider.shared = appState
+                #if DEBUG
+                UITestSupport.seedRuntime(appState)
+                #endif
                 // Plan BQ: refresh Siri's phrase predictions for the parameterized
                 // shortcuts (persona + action catalog) against current runtime data.
                 OpenGlassesShortcuts.updateAppShortcutParameters()

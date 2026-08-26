@@ -149,6 +149,11 @@ struct StatusIndicator: View {
         } message: {
             Text("Stop mic, camera, and TTS. Gateway tasks keep running.")
         }
+        // Without `children: .ignore` the element is the union of the pill's children — a 13pt
+        // logo — rather than the pill itself, so VoiceOver's focus ring landed inside the
+        // capsule instead of around it.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         // The pill is drawn as a status dot, but it is a button that does opposite things in its
         // two states — which is exactly what a hint is for.
         .accessibilityLabel("Glasses: \(label)")
