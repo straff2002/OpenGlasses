@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var appState: AppState
     @State private var showLaunchScreen = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -21,7 +22,7 @@ struct RootView: View {
         .onAppear {
             // Show launch screen for 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                withAnimation(.easeOut(duration: 0.5)) {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.5)) {
                     showLaunchScreen = false
                 }
             }
@@ -36,15 +37,20 @@ struct RootView: View {
 /// (BN P1) — one surface for agent confirms, gateway capture consent, and assistant tool calls.
 private struct ToolConfirmationModifier: ViewModifier {
     @ObservedObject var coordinator: ToolConfirmationCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             if let pending = coordinator.pending {
                 RemoteActionConsentView(pending: pending) { coordinator.resolve($0) }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // The card still arrives; Reduce Motion drops the slide, not
+                    // the confirmation.
+                    .transition(reduceMotion
+                        ? .opacity
+                        : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: coordinator.pending?.id)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: coordinator.pending?.id)
     }
 }
 

@@ -8,6 +8,7 @@ struct ShortcutTemplatesView: View {
     @State private var templates = ShortcutTemplate.allTemplates
     @State private var expandedId: String?
     @State private var installResult: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         List {
@@ -16,7 +17,9 @@ struct ShortcutTemplatesView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Header row — toggle + name + category badge
                         Button {
-                            withAnimation { expandedId = expandedId == template.id ? nil : template.id }
+                            withAnimation(reduceMotion ? nil : .default) {
+                                expandedId = expandedId == template.id ? nil : template.id
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 // Named so VoiceOver doesn't reach an unnamed switch;

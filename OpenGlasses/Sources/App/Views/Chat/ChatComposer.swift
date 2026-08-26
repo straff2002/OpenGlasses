@@ -23,6 +23,13 @@ struct ChatComposer: View {
     @State private var attachedImageData: Data?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @FocusState private var isTextFieldFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The drawn glass circle keeps its shipped diameter; `tapTarget` is the
+    /// hit area laid around it, so a 36pt button is still a 44pt target.
+    @ScaledMetric(relativeTo: .body) private var glassCircle: CGFloat = 36
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
+    @ScaledMetric(relativeTo: .title) private var sendGlyph: CGFloat = 32
 
     private var visionEnabled: Bool { Config.activeModel?.visionEnabled ?? false }
     private var canSend: Bool {
@@ -52,12 +59,16 @@ struct ChatComposer: View {
                         attachedImageData = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.body)
                             .foregroundStyle(.white)
                             .shadow(radius: 2)
+                            .frame(width: tapTarget, height: tapTarget)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Remove attached photo")
-                    .offset(x: 8, y: -8),
+                    // The glyph keeps the corner it was drawn on: the offset is
+                    // half the (now 44pt) target minus the inset it used to sit at.
+                    .offset(x: tapTarget / 2 - 2, y: -(tapTarget / 2 - 2)),
                     alignment: .topTrailing
                 )
             Spacer()
@@ -73,10 +84,12 @@ struct ChatComposer: View {
                     isTextFieldFocused = false
                 } label: {
                     Image(systemName: "keyboard.chevron.compact.down")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
+                        .frame(width: glassCircle, height: glassCircle)
                         .glassEffect(in: .circle)
+                        .frame(width: tapTarget, height: tapTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Dismiss keyboard")
                 .transition(.opacity)
@@ -88,10 +101,12 @@ struct ChatComposer: View {
                     voiceAction()
                 } label: {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
+                        .frame(width: glassCircle, height: glassCircle)
                         .glassEffect(in: .circle)
+                        .frame(width: tapTarget, height: tapTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Switch to voice input")
             }
@@ -100,10 +115,12 @@ struct ChatComposer: View {
             if let onAttachDocument {
                 Button(action: onAttachDocument) {
                     Image(systemName: "paperclip")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
+                        .frame(width: glassCircle, height: glassCircle)
                         .glassEffect(in: .circle)
+                        .frame(width: tapTarget, height: tapTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Attach document")
             }
@@ -112,10 +129,12 @@ struct ChatComposer: View {
             if visionEnabled {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
+                        .frame(width: glassCircle, height: glassCircle)
                         .glassEffect(in: .circle)
+                        .frame(width: tapTarget, height: tapTarget)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Attach photo")
                 .onChange(of: selectedPhotoItem) { _, item in
@@ -141,14 +160,16 @@ struct ChatComposer: View {
 
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: sendGlyph))
                     .foregroundStyle(canSend ? accent : Color(.tertiaryLabel))
+                    .frame(minWidth: tapTarget, minHeight: tapTarget)
+                    .contentShape(Rectangle())
             }
             .disabled(!canSend)
             .accessibilityLabel("Send message")
         }
         .padding(.horizontal, 16)
-        .animation(.easeInOut(duration: 0.15), value: isTextFieldFocused)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isTextFieldFocused)
     }
 
     private func send() {
