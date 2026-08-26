@@ -289,6 +289,8 @@ struct QuickActionTemplatePreview: View {
 
 struct QuickActionEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    /// Icon-picker tiles are drawn at 36x36 (unchanged) but the tap target is expanded to this.
+    @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
 
     let action: QuickAction?
     let onSave: (QuickAction) -> Void
@@ -401,10 +403,13 @@ struct QuickActionEditorView: View {
                                     icon = name
                                 } label: {
                                     Image(systemName: name)
-                                        .font(.system(size: 18))
+                                        .font(.body)
                                         .foregroundStyle(icon == name ? .white : .secondary)
                                         .frame(width: 36, height: 36)
                                         .background(icon == name ? Color.accentColor : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                                        // Hit area only — the drawn tile stays 36x36 above.
+                                        .frame(minWidth: tapTarget, minHeight: tapTarget)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("\(label) icon\(icon == name ? ", selected" : "")")
@@ -916,7 +921,7 @@ struct ShortcutPickerSection: View {
                             Spacer()
                             if shortcutName.lowercased() == sc.phrase.lowercased() {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(OGTheme.okLabel)
                             }
                         }
                     }

@@ -12,7 +12,7 @@ struct PlaybooksSettingsView: View {
                 Section {
                     HStack {
                         Image(systemName: pb.icon)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(OGTheme.okLabel)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(pb.name)
                                 .font(.headline)
@@ -22,7 +22,7 @@ struct PlaybooksSettingsView: View {
                         }
                         Spacer()
                         Button("Stop") { _ = store.finishPlaybook() }
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                     }
 
                     ForEach(Array(pb.steps.enumerated()), id: \.element.id) { offset, step in
@@ -38,7 +38,7 @@ struct PlaybooksSettingsView: View {
                                 if let result = step.stepResult, !result.isEmpty {
                                     Text(result)
                                         .font(.caption2)
-                                        .foregroundStyle(step.status == .failed ? .red : Color(.tertiaryLabel))
+                                        .foregroundStyle(step.status == .failed ? OGTheme.errorLabel : Color(.tertiaryLabel))
                                         .lineLimit(2)
                                 }
                             }
@@ -129,9 +129,9 @@ private func stepStatusColor(_ status: StepStatus, isCurrent: Bool) -> Color {
     if isCurrent && status == .pending { return .blue }
     switch status {
     case .pending:   return Color(.tertiaryLabel)
-    case .completed: return .green
-    case .failed:    return .red
-    case .skipped:   return .orange
+    case .completed: return OGTheme.okLabel
+    case .failed:    return OGTheme.errorLabel
+    case .skipped:   return OGTheme.warnLabel
     }
 }
 

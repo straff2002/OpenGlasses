@@ -503,9 +503,9 @@ struct ToolsActionsSettingsScreen: View {
                             if count > 0 {
                                 Text("\(count)")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(OGTheme.onBadge)
                                     .padding(.horizontal, 7).padding(.vertical, 2)
-                                    .background(Capsule().fill(.red))
+                                    .background(Capsule().fill(OGTheme.badge))
                             }
                         }
                     }

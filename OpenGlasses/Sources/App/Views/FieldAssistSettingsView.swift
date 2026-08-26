@@ -328,7 +328,7 @@ struct FieldAssistSettingsView: View {
             if let licenseMessage {
                 Text(licenseMessage)
                     .font(.caption)
-                    .foregroundStyle(licenseMessageIsError ? .red : .green)
+                    .foregroundStyle(licenseMessageIsError ? OGTheme.errorLabel : OGTheme.okLabel)
             }
         } header: {
             Text("License Code")
@@ -355,7 +355,7 @@ struct FieldAssistSettingsView: View {
             }
             Button("Restore Purchases") { Task { await store.restorePurchases() } }
             if let error = store.purchaseError {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).font(.caption).foregroundStyle(OGTheme.errorLabel)
             }
         } header: {
             Text("In-App Purchase")
@@ -378,10 +378,10 @@ struct FieldAssistSettingsView: View {
                 }
             } else if Config.fieldAssistPurchased {
                 Label("Unlocked via in-app purchase", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(OGTheme.okLabel)
             } else if Config.fieldAssistDeveloperUnlocked {
                 Label("Developer unlock active", systemImage: "hammer.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OGTheme.warnLabel)
             }
         } header: {
             Text("Entitlement")

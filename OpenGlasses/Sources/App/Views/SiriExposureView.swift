@@ -330,7 +330,7 @@ struct SiriActionEditorView: View {
                     Section {
                         Text(validationMessage)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OGTheme.errorLabel)
                     }
                 }
             }

@@ -57,7 +57,7 @@ struct SafetyRulesView: View {
                         .onChange(of: homeRadius) { _, r in updateHomeRadius(r) }
                 }
                 if let homeError {
-                    Text(homeError).font(.caption).foregroundStyle(.orange)
+                    Text(homeError).font(.caption).foregroundStyle(OGTheme.warnLabel)
                 }
             } header: {
                 Text("Home Region (geofence)")

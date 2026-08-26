@@ -32,7 +32,7 @@ struct WebHUDMirrorSettingsView: View {
                     }
                 if !Config.agentModeEnabled {
                     Label("Requires Agent Mode", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OGTheme.warnLabel)
                 }
             } footer: {
                 Text("Serves the current HUD frame to the glasses' built-in web view — no display entitlement needed. Read-only: item labels render, actions stay on the phone.")

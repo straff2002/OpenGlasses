@@ -235,15 +235,15 @@ struct HIPAASettingsView: View {
                               detail: "\(biometricName) required to open app")
                     changeRow(icon: "lock.doc.fill", color: AppAccent.aiCoral, title: "File Encryption",
                               detail: "Recordings and transcripts encrypted at rest")
-                    changeRow(icon: "icloud.slash.fill", color: .orange, title: "iCloud Backup",
+                    changeRow(icon: "icloud.slash.fill", color: OGTheme.warnLabel, title: "iCloud Backup",
                               detail: "Clinical data excluded from backup")
-                    changeRow(icon: "magnifyingglass", color: .red, title: "Web Search",
+                    changeRow(icon: "magnifyingglass", color: OGTheme.errorLabel, title: "Web Search",
                               detail: "Disabled — prevents clinical query leakage")
-                    changeRow(icon: "paperplane.fill", color: .red, title: "External Messaging",
+                    changeRow(icon: "paperplane.fill", color: OGTheme.errorLabel, title: "External Messaging",
                               detail: "Disabled — prevents uncontrolled PHI sharing")
-                    changeRow(icon: "cloud.fill", color: .red, title: "Cloud Memory Sync",
+                    changeRow(icon: "cloud.fill", color: OGTheme.errorLabel, title: "Cloud Memory Sync",
                               detail: "Disabled — memories stay on-device only")
-                    changeRow(icon: "globe", color: .orange, title: "Caption Translation",
+                    changeRow(icon: "globe", color: OGTheme.warnLabel, title: "Caption Translation",
                               detail: "On-device only — audio never streams to the cloud")
                     changeRow(icon: "list.clipboard.fill", color: AppAccent.aiCoral, title: "Audit Logging",
                               detail: "All data access events are recorded")
@@ -269,12 +269,12 @@ struct HIPAASettingsView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Covered by this app")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.green)
+                                        .foregroundStyle(OGTheme.okLabel)
                                     ForEach(framework.coveredSafeguards, id: \.self) { safeguard in
                                         HStack(spacing: 6) {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .font(.caption2)
-                                                .foregroundStyle(.green)
+                                                .foregroundStyle(OGTheme.okLabel)
                                             Text(safeguard.rawValue)
                                                 .font(.caption)
                                         }
@@ -285,12 +285,12 @@ struct HIPAASettingsView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Your organisation's responsibility")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(OGTheme.warnLabel)
                                     ForEach(framework.organisationalRequirements, id: \.self) { req in
                                         HStack(alignment: .top, spacing: 6) {
                                             Image(systemName: "person.fill")
                                                 .font(.caption2)
-                                                .foregroundStyle(.orange)
+                                                .foregroundStyle(OGTheme.warnLabel)
                                             Text(req)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
@@ -334,7 +334,7 @@ struct HIPAASettingsView: View {
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
                         }
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OGTheme.warnLabel)
                     }
                 }
 

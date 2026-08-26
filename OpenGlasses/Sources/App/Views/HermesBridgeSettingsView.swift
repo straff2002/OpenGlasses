@@ -67,7 +67,7 @@ struct HermesBridgeSettingsView: View {
                             ProgressView()
                         } else if let probeResult {
                             Image(systemName: probeResult ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(probeResult ? .green : .red)
+                                .foregroundStyle(probeResult ? OGTheme.okLabel : OGTheme.errorLabel)
                         }
                     }
                 }

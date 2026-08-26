@@ -17,7 +17,7 @@ struct LanguageSettingsView: View {
                         }
                         Spacer()
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(OGTheme.okLabel)
                     }
                 }
             } header: {
@@ -51,7 +51,7 @@ struct LanguageSettingsView: View {
                                     }
                                 } label: {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
+                                        .foregroundStyle(OGTheme.okLabel)
                                 }
                             } else if case .downloading(let code) = manager.downloadState, code == lang.code {
                                 ProgressView()
@@ -118,7 +118,7 @@ struct LanguageSettingsView: View {
             if case .failed(let message) = manager.downloadState {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                         .font(.caption)
                 }
             }

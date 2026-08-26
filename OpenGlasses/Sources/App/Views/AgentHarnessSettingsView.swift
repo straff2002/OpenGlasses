@@ -57,7 +57,7 @@ struct AgentHarnessSettingsView: View {
             } footer: {
                 if let issue = config.transportIssue {
                     Label(issue, systemImage: "lock.slash")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(OGTheme.errorLabel)
                 } else {
                     Text("Point OpenGlasses at any agent endpoint you already run. {id} is replaced with the run id, e.g. https://host/runs/{id}.")
                 }

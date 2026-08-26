@@ -64,7 +64,7 @@ struct GatewaySettingsView: View {
                 Section {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(.green)
+                            .fill(OGTheme.ok)
                             .frame(width: 8, height: 8)
                         Text("Connected to \(name)")
                             .font(.caption)
@@ -201,7 +201,7 @@ struct GatewaySettingsView: View {
                     if !gateway.token.isEmpty {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption2)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(OGTheme.okLabel)
                     }
                 }
             }
@@ -340,7 +340,7 @@ struct EditGatewaySheet: View {
                     if let deviceToken = gateway.deviceToken, !deviceToken.isEmpty {
                         HStack {
                             Label("Paired", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(OGTheme.okLabel)
                             Spacer()
                             Text("This device").font(.caption).foregroundStyle(.secondary)
                         }
@@ -413,7 +413,7 @@ struct EditGatewaySheet: View {
                     if !testStatus.isEmpty {
                         HStack(spacing: 6) {
                             Image(systemName: testStatus.contains("Connected") ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(testStatus.contains("Connected") ? .green : .red)
+                                .foregroundStyle(testStatus.contains("Connected") ? OGTheme.okLabel : OGTheme.errorLabel)
                             Text(testStatus)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
