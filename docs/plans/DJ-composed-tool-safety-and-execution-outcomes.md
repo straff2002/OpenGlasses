@@ -1,6 +1,9 @@
 # Plan DJ — Composed-Tool Safety and Uncertain Execution Outcomes
 
-**Status:** 🚧 P0 in review (PR #358, 2026-08-28) · P1–P3 pending
+**Status:** 🚧 All phases built, in review as a stacked series (2026-08-28): P0 #358 → P1 #361 →
+P2 #362 → P3 #363. Every exit criterion is test-covered by the stack except the release-log
+criterion, which P3 met at the execution boundary only — app-wide logging remains
+[[DM-privacy-safe-production-logging]]'s scope.
 **Origin:** 2026-08-26 adversarial review findings 1 (Critical) and 9 (Medium).
 **Priority:** Release blocker for skill-pack `.tool` bindings; the timeout work is the same execution
 boundary and should land immediately after the safety fix.
