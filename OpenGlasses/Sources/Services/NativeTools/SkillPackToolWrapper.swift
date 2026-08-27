@@ -26,9 +26,15 @@ struct SkillPackToolWrapper: NativeTool {
     /// The wrapper does template substitution and type coercion and nothing else: it holds no tool
     /// instance and has no way to execute one. The default fails closed, so a wrapper built without
     /// an authority refuses instead of finding another route.
-    var dispatchChild: @MainActor (ResolvedToolCall) async -> ToolResult = { call in
-        .failure(ComposedToolPolicy.unroutedRefusal(target: call.name))
+    var dispatchChild: @MainActor (ResolvedToolCall) async -> ToolExecutionOutcome = { call in
+        .rejected(reason: ComposedToolPolicy.unroutedRefusal(target: call.name))
     }
+
+    /// The wrapper itself only substitutes and routes; whatever it composes is classified and timed
+    /// on its own way through the authority. What the wrapper cannot promise is that nothing
+    /// happened if *this* call is abandoned, so it declares the conservative combination and relays
+    /// an uncertain child outcome rather than flattening it.
+    var executionSemantics: ToolExecutionSemantics { .conservativeDefault }
 
     /// Every wrapper's registered name begins with this, which is what makes a pack tool unable to
     /// shadow a native one — and what lets the authority spot pack-to-pack chaining.
@@ -85,8 +91,14 @@ struct SkillPackToolWrapper: NativeTool {
             let child = parent.child(name: target, arguments: merged, composerID: packId,
                                      origin: .skillPack)
             switch await dispatchChild(child) {
-            case .success(let text): return text
-            case .failure(let message): return message
+            case .completed(let text): return text
+            case .rejected(let reason): return reason
+            case .failedBeforeExecution(let reason): return reason
+            case .outcomeUnknown(let operationID, let message):
+                // Returning this as a string would make an uncertain child read as this skill's
+                // answer. Relay it so the caller hears the same "may still land" the child got.
+                throw RelayedToolOutcome(
+                    outcome: .outcomeUnknown(operationID: operationID, message: message))
             }
 
         case .procedure(let id):
@@ -161,7 +173,7 @@ extension NativeToolRegistry {
                     settingDeclarations: manifest.settings,
                     dispatchChild: { [weak authority] call in
                         guard let authority else {
-                            return .failure(ComposedToolPolicy.unroutedRefusal(target: call.name))
+                            return .rejected(reason: ComposedToolPolicy.unroutedRefusal(target: call.name))
                         }
                         return await authority.execute(call)
                     }))

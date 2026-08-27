@@ -43,10 +43,9 @@ enum IntentSupport {
         // composition floor applies to it exactly as it does to a skill pack.
         let call = ResolvedToolCall.root(name: name, arguments: ToolArguments(args),
                                          origin: .siriAction)
-        switch await appState.nativeToolRouter.execute(call) {
-        case .success(let text): return text
-        case .failure(let message): return message
-        }
+        // Siri reads one string either way, and every non-completed outcome already carries copy
+        // that says what happened and whether to try again.
+        return await appState.nativeToolRouter.execute(call).text
     }
 }
 

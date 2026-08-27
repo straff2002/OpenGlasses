@@ -6,7 +6,7 @@ import os.lock
 /// which they can resolve a target and execute it themselves.
 @MainActor
 protocol ToolExecutionAuthority: AnyObject {
-    func execute(_ call: ResolvedToolCall) async -> ToolResult
+    func execute(_ call: ResolvedToolCall) async -> ToolExecutionOutcome
 }
 
 /// Routes tool calls: native tools → MCP servers → OpenClaw fallback.
@@ -70,7 +70,15 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// integrations keep one signature; everything below the adapter sees the same resolved call a
     /// composed child does.
     func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
-        await execute(.root(name: name, arguments: ToolArguments(args), origin: .model))
+        await executeRoot(name: name, args: args).toolResult
+    }
+
+    /// The same root adapter, keeping the typed outcome. Callers that can act on the retry
+    /// disposition (the tool-loop driver, the live-session router) use this one; the `ToolResult`
+    /// adapter above stays for the provider wires, which only ever needed the text.
+    func executeRoot(name: String, args: [String: Any],
+                     origin: ToolInvocationOrigin = .model) async -> ToolExecutionOutcome {
+        await execute(.root(name: name, arguments: ToolArguments(args), origin: origin))
     }
 
     /// Authorize and dispatch one resolved call. Routing order: native → MCP → OpenClaw → error.
@@ -78,7 +86,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// Every acting path in the app funnels through here — a model tool call, a deterministically
     /// classified utterance, a Siri Action, and a skill pack's `.tool` binding — so the policy
     /// ladder is evaluated exactly once against the *real* target and its final arguments.
-    func execute(_ call: ResolvedToolCall) async -> ToolResult {
+    func execute(_ call: ResolvedToolCall) async -> ToolExecutionOutcome {
         let name = call.name
         let args = call.arguments.rawValues
         // Phase 3: track tools used this turn for skill detection. A composed child records its
@@ -97,31 +105,33 @@ final class NativeToolRouter: ToolExecutionAuthority {
         case .allow:
             break
 
+        // Every verdict below stopped the call before it ran, so they are all `rejected`: nothing
+        // happened, and repeating the call reaches the same answer.
         case .refuse(let reason, let message):
             authorizationEvents.record(call: call, verdict: reason.rawValue)
-            return .failure(message)
+            return .rejected(reason: message)
 
         case .block(let message):
             NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@", name)
-            return .failure(message)
+            return .rejected(reason: message)
 
         case .hold(let summary, let message):
             onActionHeld?(summary)
             NSLog("[NativeToolRouter] Held %@ for re-engagement (autonomy=%@)", name,
                   safetyContext.autonomy.rawValue)
-            return .failure(message)
+            return .rejected(reason: message)
 
         case .confirm(let summary):
             guard let coordinator = confirmationCoordinator else {
                 // No confirmation UI wired (e.g. headless): fail closed rather than actuate blind.
                 NSLog("[NativeToolRouter] No confirmation coordinator; refusing %@", name)
-                return .failure(ToolAuthorizationPolicy.unavailableConfirmationMessage(name))
+                return .rejected(reason: ToolAuthorizationPolicy.unavailableConfirmationMessage(name))
             }
             NSLog("[NativeToolRouter] Confirmation required for %@: %@", name, summary)
             let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
             guard approved else {
                 NSLog("[NativeToolRouter] User declined %@", name)
-                return .failure(ToolAuthorizationPolicy.declineMessage(name))
+                return .rejected(reason: ToolAuthorizationPolicy.declineMessage(name))
             }
         }
 
@@ -133,7 +143,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // 1. Check native tools first.
         if let tool = registry.tool(named: name) {
             NSLog("[NativeToolRouter] Executing native tool: %@", name)
-            return await executeWithTimeout(name: name, reportProgress: reportProgress) {
+            return await executeWithTimeout(name: name, semantics: tool.executionSemantics,
+                                            operationID: call.context.invocationID,
+                                            reportProgress: reportProgress) {
                 // The executing call is task-local so a tool that composes another one names its
                 // own invocation as the parent instead of inventing a fresh root.
                 try await ToolInvocationScope.$current.withValue(call) {
@@ -146,7 +158,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // gateway here would let an authored binding reach a third-party server the user never
         // pointed it at.
         guard !call.context.origin.isComposition else {
-            return .failure("This skill's underlying tool '\(name)' isn't available on this device.")
+            return .failedBeforeExecution(
+                reason: "This skill's underlying tool '\(name)' isn't available on this device.")
         }
 
         // 2. Check MCP servers for the tool (matched on its fully-qualified, namespace-isolated
@@ -163,11 +176,16 @@ final class NativeToolRouter: ToolExecutionAuthority {
             }
             if let reason = verdict.blockReason {
                 NSLog("[NativeToolRouter] Egress screen withheld MCP tool %@: %@", name, reason)
-                return .failure("The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
+                return .rejected(reason: "The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
             }
             let outboundArgs = verdict.redactedArgs ?? args
             NSLog("[NativeToolRouter] Executing MCP tool: %@", name)
-            return await executeWithTimeout(name: name, reportProgress: reportProgress) {
+            // A third-party server's tool declares nothing about itself, so it gets the same
+            // assumption an unclassified native tool gets: it reached outside, we can't stop it,
+            // and we don't know what a timeout left behind.
+            return await executeWithTimeout(name: name, semantics: .conservativeDefault,
+                                            operationID: call.context.invocationID,
+                                            reportProgress: reportProgress) {
                 await mcp.performCall(tool: tool, server: server, arguments: outboundArgs)
             }
         }
@@ -177,18 +195,26 @@ final class NativeToolRouter: ToolExecutionAuthority {
         if let bridge = openClawBridge, Config.isOpenClawAgentActive {
             let taskDesc = args["task"] as? String ?? String(describing: args)
             NSLog("[NativeToolRouter] Delegating to OpenClaw: %@(%@)", name, String(taskDesc.prefix(100)))
-            return await bridge.delegateTask(task: taskDesc, toolName: name)
+            // The bridge answers authoritatively or not at all — it has no timeout race of its own.
+            return ToolExecutionOutcome(await bridge.delegateTask(task: taskDesc, toolName: name))
         }
 
-        return .failure("Unknown tool: \(name)")
+        return .failedBeforeExecution(reason: "Unknown tool: \(name)")
     }
 
     // MARK: - Timeout + "Still Working" Updates
 
     /// Execute a tool with a timeout and periodic "still working" TTS updates.
-    private func executeWithTimeout(name: String, reportProgress: Bool = true,
-                                    work: @escaping () async throws -> String) async -> ToolResult {
+    ///
+    /// The tool's own semantics decide three things here: how long the wait is, whether cancelling
+    /// the abandoned work is worth asking for, and what a lost race *means*. Only a read yields an
+    /// authoritative failure; anything that writes, sends, or actuates yields `outcomeUnknown`
+    /// instead, because its effect may land in the moment after we stopped listening.
+    private func executeWithTimeout(name: String, semantics: ToolExecutionSemantics,
+                                    operationID: String, reportProgress: Bool = true,
+                                    work: @escaping () async throws -> String) async -> ToolExecutionOutcome {
         let startTime = Date()
+        let timeoutSeconds = semantics.timeout.resolved(default: toolTimeoutSeconds)
 
         // "Still working" timer: fires every 10 seconds during long operations
         let stillWorkingTask = Task { @MainActor [weak self] in
@@ -224,44 +250,60 @@ final class NativeToolRouter: ToolExecutionAuthority {
             }
         }
 
-        let result: ToolResult = await withCheckedContinuation { continuation in
+        let outcome: ToolExecutionOutcome = await withCheckedContinuation { continuation in
             let workTask = Task {
-                let outcome: ToolResult
+                let finished: ToolExecutionOutcome
                 do {
-                    outcome = .success(try await work())
+                    finished = .completed(try await work())
+                } catch let relayed as RelayedToolOutcome {
+                    // A composing tool handing back the child outcome it can't answer for.
+                    finished = relayed.outcome
                 } catch {
-                    outcome = .failure("Tool error: \(error.localizedDescription)")
+                    finished = .failedBeforeExecution(
+                        reason: "Tool error: \(error.localizedDescription)")
                 }
                 if claim() {
-                    continuation.resume(returning: outcome)
+                    continuation.resume(returning: finished)
                 } else {
                     NSLog("[NativeToolRouter] Tool %@ finished after it timed out — its effect landed late",
                           name)
                 }
             }
 
-            Task { [toolTimeoutSeconds] in
-                try? await Task.sleep(nanoseconds: UInt64(toolTimeoutSeconds * 1_000_000_000))
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
                 guard claim() else { return }
-                workTask.cancel()   // best effort; cancellation-aware tools stop here
-                continuation.resume(
-                    returning: .failure("Tool '\(name)' timed out after \(Int(toolTimeoutSeconds))s"))
+                // Asking a tool that never checks for cancellation to stop tells the caller nothing
+                // and hides that the work is still in flight; only ask when it can answer.
+                if semantics.cancellation.respondsToCancellation { workTask.cancel() }
+                let seconds = Int(timeoutSeconds)
+                continuation.resume(returning: semantics.timeoutIsAuthoritative
+                    ? .failedBeforeExecution(
+                        reason: ToolExecutionOutcome.timedOutRead(tool: name, seconds: seconds))
+                    : .outcomeUnknown(
+                        operationID: operationID,
+                        message: ToolExecutionOutcome.timedOutUnknown(tool: name, seconds: seconds)))
             }
         }
 
         stillWorkingTask.cancel()
 
         let duration = Date().timeIntervalSince(startTime)
-        switch result {
-        case .success(let text):
+        switch outcome {
+        case .completed(let text):
             NSLog("[NativeToolRouter] Tool %@ succeeded in %.1fs: %@", name, duration, String(text.prefix(200)))
-        case .failure(let err):
-            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration, err)
+        case .outcomeUnknown:
+            // Not a failure and not a success: the effect may still be in flight. Nothing is fed to
+            // the skill-gap signal, and nothing may retry it automatically.
+            NSLog("[NativeToolRouter] Tool %@ outcome unknown after %.1fs (%@ / %@)", name, duration,
+                  semantics.effect.rawValue, semantics.cancellation.rawValue)
+        case .rejected(let reason), .failedBeforeExecution(let reason):
+            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration, reason)
             // Skill Self-Evolution (Plan AW): a genuine tool-execution error is a skill-gap signal.
             // Record it off the critical path; the service is Agent-Mode-gated and re-checks. Timeouts
             // and intentional outcomes are filtered out so the proposal bank stays clean.
-            if Config.agentModeEnabled, ToolFailureFilter.shouldRecord(err) {
-                let sample = FailureSample(kind: .toolError, prompt: "tool: \(name)", response: err,
+            if Config.agentModeEnabled, ToolFailureFilter.shouldRecord(reason) {
+                let sample = FailureSample(kind: .toolError, prompt: "tool: \(name)", response: reason,
                                           toolName: name, at: Date())
                 Task { @MainActor in
                     SkillEvolutionService.shared.record(sample)
@@ -270,6 +312,6 @@ final class NativeToolRouter: ToolExecutionAuthority {
             }
         }
 
-        return result
+        return outcome
     }
 }

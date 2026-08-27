@@ -62,6 +62,9 @@ enum ToolCallStatus: Equatable {
     case executing(String)
     case completed(String)
     case failed(String, String)
+    /// The wait ran out on work that may still land. Deliberately not `.failed`: telling the user
+    /// something didn't happen when it may have is what makes them do it twice.
+    case outcomeUnknown(String)
     case cancelled(String)
     case yielded(String)
 
@@ -71,14 +74,20 @@ enum ToolCallStatus: Equatable {
         case .executing(let name): return "Running: \(name)..."
         case .completed(let name): return "Done: \(name)"
         case .failed(let name, let err): return "Failed: \(name) — \(err)"
+        case .outcomeUnknown(let name): return "\(name): status unknown — checking"
         case .cancelled(let name): return "Cancelled: \(name)"
         case .yielded: return "Waiting for you..."
         }
     }
 
+    /// Whether the status pill is worth showing. An unresolved outcome counts: the turn has moved
+    /// on, but the user is owed the fact that we don't yet know how it ended. It clears with the
+    /// rest of the turn when the loop goes idle.
     var isActive: Bool {
-        if case .executing = self { return true }
-        return false
+        switch self {
+        case .executing, .outcomeUnknown: return true
+        default: return false
+        }
     }
 }
 
