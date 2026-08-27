@@ -201,7 +201,7 @@ final class ComposedToolContainmentTests: XCTestCase {
                 parametersSchema: ["type": "object"],
                 binding: .tool(name: "smart_home", boundArgs: ["action": "unlock"])),
             dispatchChild: { [weak router] call in
-                await router?.execute(call) ?? .failure("no authority")
+                await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
             })
 
         let result = try await wrapper.execute(args: [:])

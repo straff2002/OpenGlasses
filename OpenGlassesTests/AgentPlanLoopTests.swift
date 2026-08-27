@@ -134,8 +134,11 @@ private final class FakePlanRouter: ToolExecuting {
     var calls: [String] = []
     var failTools: Set<String> = []
 
-    func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
+    func executeRoot(name: String, args: [String: Any],
+                     origin: ToolInvocationOrigin) async -> ToolExecutionOutcome {
         calls.append(name)
-        return failTools.contains(name) ? .failure("blocked") : .success("ok")
+        return failTools.contains(name)
+            ? .rejected(reason: "blocked")
+            : .completed("ok")
     }
 }

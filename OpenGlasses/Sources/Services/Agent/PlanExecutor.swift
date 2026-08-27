@@ -1,10 +1,11 @@
 import Foundation
 
 /// The execution seam the `PlanExecutor` runs steps through — `NativeToolRouter` in production,
-/// a fake in tests. Matches `NativeToolRouter.handleToolCall` so the router conforms for free.
+/// a fake in tests. Matches `NativeToolRouter.executeRoot` so the router conforms for free.
 @MainActor
 protocol ToolExecuting: AnyObject {
-    func handleToolCall(name: String, args: [String: Any]) async -> ToolResult
+    func executeRoot(name: String, args: [String: Any],
+                     origin: ToolInvocationOrigin) async -> ToolExecutionOutcome
 }
 
 extension NativeToolRouter: ToolExecuting {}
@@ -52,18 +53,27 @@ final class PlanExecutor {
             onStep?(index + 1, plan.steps.count, step)
             if !step.rationale.isEmpty { onNarrate?(step.rationale) }
 
-            let result = await router.handleToolCall(name: step.tool, args: step.args)
-            switch result {
-            case .success(let text):
+            switch await router.executeRoot(name: step.tool, args: step.args, origin: .model) {
+            case .completed(let text):
                 completed += 1
                 transcript.append("✓ \(step.tool): \(String(text.prefix(120)))")
                 onReinject?(Self.constraintReinjection)   // counter constraint drift before the next step
-            case .failure(let error):
-                transcript.append("✗ \(step.tool): \(error)")
+            case .outcomeUnknown(_, let message):
+                // The plan still stops here, but it must not claim the step didn't happen — the
+                // rest of the plan may be building on an effect that did land.
+                transcript.append("? \(step.tool): \(message)")
                 return PlanRunResult(
                     completedSteps: completed,
                     aborted: true,
-                    abortReason: "step \(index + 1) of \(plan.steps.count) (\(step.tool)) did not complete: \(error)",
+                    abortReason: "step \(index + 1) of \(plan.steps.count) (\(step.tool)) may or may not have completed: \(message)",
+                    transcript: transcript
+                )
+            case .rejected(let reason), .failedBeforeExecution(let reason):
+                transcript.append("✗ \(step.tool): \(reason)")
+                return PlanRunResult(
+                    completedSteps: completed,
+                    aborted: true,
+                    abortReason: "step \(index + 1) of \(plan.steps.count) (\(step.tool)) did not complete: \(reason)",
                     transcript: transcript
                 )
             }

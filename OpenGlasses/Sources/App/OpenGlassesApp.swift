@@ -3842,7 +3842,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 name: directCall.toolName,
                 arguments: ToolArguments(directCall.arguments),
                 origin: .user))
-            if case .success(let result) = outcome {
+            if case .completed(let result) = outcome {
                 TurnRecorder.addToolTime(since: toolStartedAt)
                 lastResponse = result
                 print("⚡ Direct tool call: \(directCall.toolName) → \(result)")
@@ -3860,10 +3860,12 @@ class AppState: ObservableObject, AppStateProtocol {
                 TurnRecorder.handOffToSpeech()
                 await speechService.speak(result)
                 stopStopListener()
-            } else if case .failure(let message) = outcome {
-                // Fall through to normal LLM path if direct call fails. A policy refusal lands here
-                // too, and re-reaches the same gate through the model — never around it.
-                print("⚠️ Direct tool call failed, falling back to LLM: \(message)")
+            } else {
+                // Fall through to normal LLM path if the direct call didn't produce an answer. A
+                // policy refusal lands here too, and re-reaches the same gate through the model —
+                // never around it. An unresolved outcome falls through as well: the classifier's
+                // allowlist is read-only, so there is no side effect the model could duplicate.
+                print("⚠️ Direct tool call did not answer, falling back to LLM: \(outcome.text)")
                 // Plan CU P1: the LLM turn below answers this same utterance, so seal this attempt
                 // as its own abandoned record and hand back the stamps it claimed. Sealed here
                 // rather than at the gate below, which `isProcessing = false` is about to skip.
@@ -3994,7 +3996,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         // local path only — cloud models tool-call fine on their own.
                         var weatherCtx: String?
                         if classification.relevantSections.contains(.weather),
-                           case .success(let forecast) = await nativeToolRouter.execute(
+                           case .completed(let forecast) = await nativeToolRouter.execute(
                                .root(name: "get_weather", origin: .appInternal)) {
                             weatherCtx = forecast
                         }
@@ -4430,8 +4432,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 // consent gate above it decides *who* may ask, not what may run unchecked.
                 switch await self.nativeToolRouter.execute(
                     .root(name: "save_note", arguments: ["content": text], origin: .appInternal)) {
-                case .success(let confirmation): return confirmation
-                case .failure: throw RemoteInvokeError.unavailable
+                case .completed(let confirmation): return confirmation
+                case .rejected, .failedBeforeExecution, .outcomeUnknown:
+                    throw RemoteInvokeError.unavailable
                 }
             },
             getTranscript: { [weak self] in

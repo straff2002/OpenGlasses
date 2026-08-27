@@ -33,8 +33,8 @@ final class ToolExecutionAuthorityTests: XCTestCase {
     @MainActor
     private final class RecordingAuthority: ToolExecutionAuthority {
         private(set) var calls: [ResolvedToolCall] = []
-        var result: ToolResult = .success("dispatched")
-        func execute(_ call: ResolvedToolCall) async -> ToolResult {
+        var result: ToolExecutionOutcome = .completed("dispatched")
+        func execute(_ call: ResolvedToolCall) async -> ToolExecutionOutcome {
             calls.append(call)
             return result
         }
@@ -44,7 +44,7 @@ final class ToolExecutionAuthorityTests: XCTestCase {
                          action name: String = "do_it",
                          target: String,
                          boundArgs: [String: String] = [:],
-                         dispatch: @escaping @MainActor (ResolvedToolCall) async -> ToolResult)
+                         dispatch: @escaping @MainActor (ResolvedToolCall) async -> ToolExecutionOutcome)
         -> SkillPackToolWrapper {
         SkillPackToolWrapper(
             packId: packId,
@@ -228,7 +228,7 @@ final class ToolExecutionAuthorityTests: XCTestCase {
         let composed = wrapper(target: "smart_home",
                                boundArgs: ["action": "unlock", "device": "{{door}}"],
                                dispatch: { [weak router] call in
-                                   await router?.execute(call) ?? .failure("no authority")
+                                   await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
                                })
 
         // Direct: what the user is asked when the model calls the tool itself.
@@ -278,7 +278,7 @@ final class ToolExecutionAuthorityTests: XCTestCase {
 
         let composed = wrapper(target: "smart_home", boundArgs: ["action": "unlock"],
                                dispatch: { [weak router] call in
-                                   await router?.execute(call) ?? .failure("no authority")
+                                   await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
                                })
         let result = try await composed.execute(args: [:])
         XCTAssertEqual(spy.count, 0, "no confirmation surface means no actuation")
@@ -320,7 +320,7 @@ final class ToolExecutionAuthorityTests: XCTestCase {
 
         let composed = wrapper(target: "get_weather",
                                dispatch: { [weak router] call in
-                                   await router?.execute(call) ?? .failure("no authority")
+                                   await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
                                })
         let result = try await composed.execute(args: [:])
         XCTAssertEqual(result, "ran:get_weather")
@@ -333,14 +333,14 @@ final class ToolExecutionAuthorityTests: XCTestCase {
         let spy = ExecutionSpy()
         let registry = NativeToolRegistry(locationService: LocationService())
         let inner = wrapper(packId: "com.example.inner", action: "inner", target: "get_weather",
-                            dispatch: { _ in .success("unreachable") })
+                            dispatch: { _ in .completed("unreachable") })
         registry.register(inner)
         registry.register(SpyTool(name: "get_weather", spy: spy))
         let router = NativeToolRouter(registry: registry)
 
         let outer = wrapper(packId: "com.example.outer", action: "outer", target: inner.name,
                             dispatch: { [weak router] call in
-                                await router?.execute(call) ?? .failure("no authority")
+                                await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
                             })
         let result = try await outer.execute(args: [:])
         XCTAssertTrue(result.contains("one skill can't call another"))
@@ -362,7 +362,7 @@ final class ToolExecutionAuthorityTests: XCTestCase {
         let router = NativeToolRouter(registry: registry)
         let composed = wrapper(target: "definitely_not_registered",
                                dispatch: { [weak router] call in
-                                   await router?.execute(call) ?? .failure("no authority")
+                                   await router?.execute(call) ?? .failedBeforeExecution(reason: "no authority")
                                })
         let result = try await composed.execute(args: [:])
         XCTAssertTrue(result.contains("isn't available on this device"),

@@ -73,17 +73,18 @@ class ToolCallRouter {
         let argsKey = ToolCallBreaker.argsKey(call.args)
         let task = Task { @MainActor in
             // Route through NativeToolRouter first (handles native → MCP → OpenClaw cascade)
-            var result: ToolResult
+            var outcome: ToolExecutionOutcome
             if let router = nativeToolRouter {
-                result = await router.handleToolCall(name: callName, args: call.args)
+                outcome = await router.executeRoot(name: callName, args: call.args)
             } else if Config.isOpenClawAgentActive {
                 // Fallback: direct OpenClaw delegation (legacy path). BK P0: only as an active
                 // agentic capability — delegateTask itself now fails closed otherwise, but don't
                 // route here at all with Agent Mode off.
                 let taskDesc = call.args["task"] as? String ?? String(describing: call.args)
-                result = await bridge.delegateTask(task: taskDesc, toolName: callName)
+                outcome = ToolExecutionOutcome(
+                    await bridge.delegateTask(task: taskDesc, toolName: callName))
             } else {
-                result = .failure("Unknown tool '\(callName)'")
+                outcome = .failedBeforeExecution(reason: "Unknown tool '\(callName)'")
             }
 
             // Resume streaming after tool execution
@@ -95,19 +96,26 @@ class ToolCallRouter {
             }
 
             // Identical-failure tracking: a tripped breaker appends its notice to the error
-            // so the model stops retrying instead of hammering the same broken call.
-            let succeeded: Bool
-            if case .success = result { succeeded = true } else { succeeded = false }
+            // so the model stops retrying instead of hammering the same broken call. An unresolved
+            // outcome is left alone — its own copy already forbids the retry, and counting it as a
+            // failure would let a slow tool trip the breaker on work that is actually succeeding.
             if let notice = self.breaker.recordOutcome(
-                toolName: callName, argsKey: argsKey, success: succeeded),
-               case .failure(let error) = result {
-                result = .failure("\(error)\n\(notice)")
+                toolName: callName, argsKey: argsKey, success: outcome.isCompleted) {
+                switch outcome {
+                case .rejected(let reason):
+                    outcome = .rejected(reason: "\(reason)\n\(notice)")
+                case .failedBeforeExecution(let reason):
+                    outcome = .failedBeforeExecution(reason: "\(reason)\n\(notice)")
+                case .completed, .outcomeUnknown:
+                    break
+                }
             }
 
             NSLog("[ToolCall] Result for %@ (id: %@): %@",
-                  callName, callId, String(describing: result))
+                  callName, callId, String(describing: outcome))
 
-            let response = self.buildToolResponse(callId: callId, name: callName, result: result)
+            let response = self.buildToolResponse(callId: callId, name: callName,
+                                                  result: outcome.toolResult)
             sendResponse(response)
 
             self.inFlightTasks.removeValue(forKey: callId)

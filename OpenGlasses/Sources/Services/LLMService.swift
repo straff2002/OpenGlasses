@@ -473,14 +473,17 @@ class LLMService: ObservableObject {
     private func makeToolDispatcher() -> ToolDispatcher {
         ToolDispatcher(
             execute: { [weak self] name, args, rawArgs in
-                guard let self else { return .failure("Service unavailable") }
+                guard let self else {
+                    return .failedBeforeExecution(reason: "Service unavailable")
+                }
                 if let router = self.nativeToolRouter {
-                    return await router.handleToolCall(name: name, args: args)
+                    return await router.executeRoot(name: name, args: args)
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
-                    return await bridge.delegateTask(task: taskDesc, toolName: name)
+                    return ToolExecutionOutcome(
+                        await bridge.delegateTask(task: taskDesc, toolName: name))
                 }
-                return .failure("No tool handler available")
+                return .failedBeforeExecution(reason: "No tool handler available")
             },
             onStatus: { [weak self] status in self?.toolCallStatus = status }
         )
@@ -2777,14 +2780,18 @@ class LLMService: ObservableObject {
             // above `sendLocal`), so its single tool round trip needs its own bracket. The
             // generation passes either side of it report themselves through `addGeneration`.
             let toolStartedAt = Date()
-            let result = await router.handleToolCall(name: toolName, args: toolArgs)
+            let outcome = await router.executeRoot(name: toolName, args: toolArgs)
             TurnRecorder.addToolTime(since: toolStartedAt)
             toolCallStatus = .idle
 
+            // An unresolved outcome is not an error, and must not be handed to the model prefixed
+            // as one — its own copy already says what is and isn't known.
             let resultText: String
-            switch result {
-            case .success(let text): resultText = text
-            case .failure(let error): resultText = "Error: \(error)"
+            switch outcome {
+            case .completed(let text): resultText = text
+            case .outcomeUnknown(_, let message): resultText = message
+            case .rejected(let reason), .failedBeforeExecution(let reason):
+                resultText = "Error: \(reason)"
             }
 
             // Get the text before the tool call as context

@@ -49,10 +49,18 @@ struct AssistantTurn {
 /// The result of dispatching one tool call.
 struct ToolDispatchOutcome {
     let invocation: ToolInvocation
-    let result: ToolResult
+    /// What the authority decided, typed. The wire text is the same string it always was, but the
+    /// driver and its callers can now read the retry disposition instead of inferring it from prose.
+    let outcome: ToolExecutionOutcome
     /// Non-nil when this was a successful `yield_to_human` — the loop returns this to hand control
     /// back to the user.
     let yieldReason: String?
+
+    /// The provider wire shape the adapters append to history.
+    var result: ToolResult { outcome.toolResult }
+    /// Whether anything may repeat this call. `unsafeToRetry` means the effect may already have
+    /// landed even though nothing confirmed it.
+    var retryDisposition: ToolRetryDisposition { outcome.retryDisposition }
 }
 
 /// Runs a single tool call: parses guard, executes via the injected executor, tracks status, and
@@ -61,24 +69,47 @@ struct ToolDispatchOutcome {
 struct ToolDispatcher {
     /// Executes a well-formed native/gateway tool call. `rawArguments` is the original arg string
     /// (OpenAI) for the bridge `task` fallback.
-    let execute: (_ name: String, _ args: [String: Any], _ rawArguments: String?) async -> ToolResult
-    /// Reports status transitions (executing → completed/failed) to the UI.
+    let execute: (_ name: String, _ args: [String: Any], _ rawArguments: String?) async -> ToolExecutionOutcome
+    /// Reports status transitions (executing → completed/failed/unknown) to the UI.
     let onStatus: (ToolCallStatus) -> Void
 
     func dispatch(_ invocation: ToolInvocation) async -> ToolDispatchOutcome {
         onStatus(.executing(invocation.name))
-        let result: ToolResult
+        let outcome: ToolExecutionOutcome
         if let args = invocation.arguments {
-            result = await execute(invocation.name, args, invocation.rawArguments)
+            outcome = await execute(invocation.name, args, invocation.rawArguments)
         } else {
-            result = .failure("Could not parse the arguments for '\(invocation.name)' as JSON. Re-issue the call with valid JSON arguments.")
+            // Malformed arguments never reached a tool, so this is authoritative.
+            outcome = .failedBeforeExecution(reason: "Could not parse the arguments for '\(invocation.name)' as JSON. Re-issue the call with valid JSON arguments.")
         }
-        onStatus(result.isSuccess ? .completed(invocation.name) : .failed(invocation.name, "Failed"))
+        switch outcome {
+        case .completed:
+            onStatus(.completed(invocation.name))
+        case .outcomeUnknown:
+            // Neither done nor failed — the user is told we're still finding out rather than being
+            // told something didn't happen when it may well have.
+            onStatus(.outcomeUnknown(invocation.name))
+        case .rejected, .failedBeforeExecution:
+            onStatus(.failed(invocation.name, "Failed"))
+        }
         return ToolDispatchOutcome(
             invocation: invocation,
-            result: result,
-            yieldReason: Self.yieldReason(name: invocation.name, result: result)
+            outcome: outcome,
+            yieldReason: Self.yieldReason(name: invocation.name, result: outcome.toolResult)
         )
+    }
+
+    /// Identifies one call for the purpose of "this exact thing was already attempted". Name plus a
+    /// digest of the arguments, so a *different* call to the same tool is unaffected.
+    static func signature(of invocation: ToolInvocation) -> String {
+        "\(invocation.name)#\(ToolCallBreaker.argsKey(invocation.arguments ?? [:]))"
+    }
+
+    /// What the model is told when it re-issues a call whose first attempt is still unresolved.
+    static func repeatOfUnresolvedCall(_ name: String) -> String {
+        "'\(name)' was already attempted with these arguments and may still be in progress, so it "
+            + "was not run a second time. Do not call it again. Tell the user you're checking "
+            + "whether the first attempt went through."
     }
 
     /// A successful `yield_to_human` result carries `YIELD_TO_HUMAN: <reason>` — extract the reason
@@ -124,6 +155,11 @@ func runToolLoop(
     adapter: ProviderLoopAdapter,
     setStatus: (ToolCallStatus) -> Void
 ) async throws -> String {
+    // Calls this turn whose outcome could not be established. The wire text tells the model not to
+    // retry, but "don't retry" is exactly the instruction a model reasons its way around ("I'll
+    // just check by doing it again"), so the loop enforces it rather than asking.
+    var unresolvedCalls: Set<String> = []
+
     for _ in 0..<maxIterations {
         try Task.checkCancellation()
         let turn = try await adapter.performTurn()
@@ -145,7 +181,17 @@ func runToolLoop(
 
         var outcomes: [ToolDispatchOutcome] = []
         for call in turn.toolCalls {
+            let signature = ToolDispatcher.signature(of: call)
+            guard !unresolvedCalls.contains(signature) else {
+                outcomes.append(ToolDispatchOutcome(
+                    invocation: call,
+                    outcome: .rejected(reason: ToolDispatcher.repeatOfUnresolvedCall(call.name)),
+                    yieldReason: nil))
+                continue
+            }
+
             let outcome = await adapter.dispatcher.dispatch(call)
+            if outcome.retryDisposition == .unsafeToRetry { unresolvedCalls.insert(signature) }
             outcomes.append(outcome)
             if let reason = outcome.yieldReason {
                 adapter.appendToolResults(outcomes)
