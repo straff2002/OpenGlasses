@@ -4334,6 +4334,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 // remote caller only needs the capture to have happened.
                 _ = try await self.cameraService.capturePhoto()
                 self.cameraService.restoreAudioForWakeWord()
+                // A phone-camera capture must SAY so (see `captureAndAnalyzePhoto`). The
+                // executor's pre-capture "Remote photo" announcement promises a glasses photo;
+                // if the fallback fired, the wearer just had their phone's view — of whatever
+                // pocket or desk it was on — sent off at a remote agent's request, and only
+                // this correction tells them.
+                if self.cameraService.lastCaptureSource == .phone {
+                    await self.speechService.speak(
+                        "That photo came from the phone camera — the glasses weren't available.")
+                }
             },
             startAudioRecording: { [weak self] in
                 guard let self else { throw RemoteInvokeError.unavailable }
