@@ -93,4 +93,22 @@ final class GlassesPhotoAlbumPolicyTests: XCTestCase {
         XCTAssertFalse(GlassesPhotoAlbumPolicy.isAlbumAlreadyExists(otherCode))
         XCTAssertFalse(GlassesPhotoAlbumPolicy.isAlbumAlreadyExists(otherDomain))
     }
+
+    // MARK: - Telling the three "not saved" cases apart
+
+    func testEveryStatusHasItsOwnWord() {
+        // A field report that says only "access denied" cannot distinguish a wearer who declined
+        // from a prompt that was never presented — the two need completely different answers.
+        let described: [PHAuthorizationStatus] = [.authorized, .limited, .denied, .restricted, .notDetermined]
+        let words = described.map(GlassesPhotoAlbumPolicy.describe)
+        XCTAssertEqual(words, ["authorized", "limited", "denied", "restricted", "not determined"])
+        XCTAssertEqual(Set(words).count, words.count)
+    }
+
+    func testSaveResultDistinguishesRefusalFromFailure() {
+        XCTAssertTrue(PhotoLibrarySaveResult.saved.didSave)
+        XCTAssertFalse(PhotoLibrarySaveResult.failed.didSave)
+        XCTAssertFalse(PhotoLibrarySaveResult.notPermitted(.notDetermined).didSave)
+        XCTAssertNotEqual(PhotoLibrarySaveResult.notPermitted(.denied), .failed)
+    }
 }

@@ -552,6 +552,14 @@ class LLMService: ObservableObject {
             return "I can't look at photos with the current on-device model. Switch to a vision-capable local model like SmolVLM2, or a cloud model, and try again."
         }
 
+        // Vision honesty (ChatGPT/Codex subscription provider): whether the codex catalog
+        // accepts image input was never actually confirmed on device (see
+        // `ChatGPTVisionGate`), so treat it like the on-device gate above — decline honestly
+        // before a vision-insisting system prompt is ever built or an image byte is sent.
+        if case .declineVision(let message) = ChatGPTVisionGate.decide(provider: provider, hasImage: imageData != nil) {
+            return message
+        }
+
         let smallContext = !isOnDevice && Config.llmImageLightweightPromptEnabled
         let effectiveIncludeTools = smallContext ? false : includeTools
 

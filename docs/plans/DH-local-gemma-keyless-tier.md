@@ -59,6 +59,32 @@ model) through Gemma's VLM where it beats the current local option — measured,
 decode latency and the Metal contention constraint (VLM decode vs on-device TTS synthesis) are
 the deciders, per the CV plan's duty-cycle reasoning.
 
+### P3 correction from the device (2026-08-27)
+
+A photo turn to the loaded Gemma killed the app to the home screen. The Jetsam event: terminated
+for **per-process-limit** while frontmost, at a 6.2 GB footprint, on a 12 GB iPhone.
+
+Two decisions in P1/P3 were wrong together, and each was defensible alone:
+
+1. **The tier was decided on marketing RAM.** `multimodalTurnPlan` gave anything ≥ 12 GB the full
+   prompt, full history and no image cap. But device RAM is not the constraint — iOS's per-process
+   allocation cap is, and it does not scale with the box on the shelf. With multi-gigabyte weights
+   resident and the camera pipeline live, a 12 GB phone had a few hundred megabytes left to
+   allocate and was still on the "roomy" tier. The plan now takes the headroom measured at *turn
+   time* (`os_proc_available_memory()` via `MemoryHeadroom`), treats a roomy-but-full device as
+   constrained, and refuses the image outright below a floor — spoken honestly
+   (`LocalLLMError.insufficientMemoryForPhoto`) rather than as a process kill.
+2. **The forced 896² pre-resize was removed** on the reasoning that Gemma's processor picks its own
+   canvas and its own soft-token count. That is true of the *token* count and beside the point for
+   memory: preprocessing a full-resolution frame materialises it as float pixels on top of an
+   already-resident model. The cap is back, but computed aspect-preserving from the frame's own
+   dimensions rather than passed as a square — so the crop the removal was defending survives, and
+   the long edge follows the tier.
+
+Both are pure decisions and are tested against injected headroom values, including the measured
+crash scenario. The performance matrix in P4 should now record headroom alongside tok/s, since
+headroom is what decides whether a photo turn happens at all.
+
 ## P4 — Deferred device work
 
 The performance matrix this plan exists for: which phones run it acceptably (decode tok/s,

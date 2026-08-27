@@ -65,6 +65,11 @@ struct RecordingFiler {
         var folderRequested: Bool
         /// Where the user-folder copy landed, if one was made.
         var folderCopyURL: URL?
+        /// The Photos save was refused by authorization rather than failing on its own merits.
+        /// Worth its own flag because it is the only failure here the wearer can actually fix,
+        /// and telling them "couldn't save" when the answer is one switch in Settings is not
+        /// honest reporting — it is a dead end.
+        var photosNotPermitted: Bool = false
 
         /// True when at least one copy survives outside the temporary directory.
         var isPersisted: Bool {
@@ -93,6 +98,11 @@ struct RecordingFiler {
                      + "storage and may not survive. Free up some space and try again."
             }
             if photosRequested && !savedToPhotos {
+                if photosNotPermitted {
+                    return "OpenGlasses doesn't have permission to add to your photo library, so "
+                         + "the recording isn't in Photos. You can turn that on in Settings. It is "
+                         + "safe in \(location) — nothing was lost."
+                }
                 return "Couldn't save the recording to Photos. The recording is safe in "
                      + "\(location) — nothing was lost."
             }

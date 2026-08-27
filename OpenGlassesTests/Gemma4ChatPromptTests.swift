@@ -171,6 +171,86 @@ final class Gemma4ChatPromptTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(plan.promptBudget, LocalModelBudget.minimumBudget)
     }
 
+    // MARK: - Headroom, not marketing RAM
+
+    private static let gemma = "mlx-community/gemma-4-e2b-it-4bit"
+    private static let gigabyte: Int64 = 1_073_741_824
+
+    /// The device kill this gate exists for: a 12 GB iPhone on the roomy tier, Gemma resident and
+    /// the camera live, taken to a 6.2 GB footprint by a photo turn and terminated for exceeding
+    /// the *per-process* limit while frontmost. Marketing RAM said "roomy" the whole way down.
+    func testTheMeasuredCrashScenarioIsRefusedNotAttempted() {
+        // ~0.3 GB left to allocate on a 12 GB phone at the moment the photo turn began.
+        let plan = LocalModelBudget.multimodalTurnPlan(
+            for: Self.gemma, marketingRAMGB: 12, availableBytes: Int64(0.3 * Double(Self.gigabyte)))
+        XCTAssertTrue(plan.refusesImage,
+                      "a turn with no headroom must be refused out loud, never attempted")
+    }
+
+    func testARoomyDeviceRunningLowIsTreatedAsConstrained() {
+        // Headroom leads: 12 GB on the box, 1.5 GB left in the process — that is the small-device
+        // case, and it gets the small-device plan rather than the full prompt and history.
+        let plan = LocalModelBudget.multimodalTurnPlan(
+            for: Self.gemma, marketingRAMGB: 12, availableBytes: Int64(1.5 * Double(Self.gigabyte)))
+        XCTAssertFalse(plan.refusesImage)
+        XCTAssertFalse(plan.keepsHistory)
+        XCTAssertFalse(plan.keepsFullSystemPrompt)
+        XCTAssertEqual(plan.imageLongEdge, LocalModelBudget.constrainedImageLongEdge)
+    }
+
+    func testARoomyDeviceWithRealHeadroomKeepsTheWholeTurn() {
+        let plan = LocalModelBudget.multimodalTurnPlan(
+            for: Self.gemma, marketingRAMGB: 12, availableBytes: 4 * Self.gigabyte)
+        XCTAssertFalse(plan.refusesImage)
+        XCTAssertTrue(plan.keepsHistory)
+        XCTAssertTrue(plan.keepsFullSystemPrompt)
+        XCTAssertEqual(plan.imageLongEdge, LocalModelBudget.fullImageLongEdge)
+    }
+
+    func testUnknownHeadroomSkipsTheGateRatherThanRefusing() {
+        // `os_proc_available_memory()` returns 0 where no per-process budget applies (simulator,
+        // Mac). Refusing on unknown would brick exactly the environments that don't need this.
+        let plan = LocalModelBudget.multimodalTurnPlan(
+            for: Self.gemma, marketingRAMGB: 12, availableBytes: 0)
+        XCTAssertFalse(plan.refusesImage)
+        XCTAssertTrue(plan.keepsHistory)
+    }
+
+    func testASmallDeviceWithHeadroomIsStillTrimmedNotRefused() {
+        let plan = LocalModelBudget.multimodalTurnPlan(
+            for: Self.gemma, marketingRAMGB: 8, availableBytes: 4 * Self.gigabyte)
+        XCTAssertFalse(plan.refusesImage)
+        XCTAssertFalse(plan.keepsHistory)
+        XCTAssertEqual(plan.imageLongEdge, LocalModelBudget.constrainedImageLongEdge)
+    }
+
+    // MARK: - Bounding the image itself
+
+    func testAFullResolutionPhotoIsBoundedWithItsAspectKept() {
+        // A glasses frame, not a square: squashing it to 896² was the old cap's cost, and having
+        // no cap at all was the memory spike that replaced it.
+        let size = LocalModelBudget.imageSize(width: 4032, height: 3024, maxLongEdge: 1344)
+        XCTAssertEqual(size?.width, 1344)
+        XCTAssertEqual(size?.height, 1008)
+    }
+
+    func testAPortraitPhotoIsBoundedOnItsLongEdge() {
+        let size = LocalModelBudget.imageSize(width: 1080, height: 1920, maxLongEdge: 896)
+        XCTAssertEqual(size?.height, 896)
+        XCTAssertEqual(size?.width, 504)
+    }
+
+    func testAnImageAlreadyWithinBudgetIsNotResampled() {
+        // Re-sampling a small image spends memory to change nothing, which is the opposite of
+        // what this is for.
+        XCTAssertNil(LocalModelBudget.imageSize(width: 640, height: 480, maxLongEdge: 1344))
+    }
+
+    func testDegenerateSizesAreLeftAlone() {
+        XCTAssertNil(LocalModelBudget.imageSize(width: 0, height: 0, maxLongEdge: 1344))
+        XCTAssertNil(LocalModelBudget.imageSize(width: 4032, height: 3024, maxLongEdge: 0))
+    }
+
     /// Text turns are unaffected by the tiering — their prefill is chunked, so a fat prompt
     /// costs time rather than a resident-memory spike.
     func testTextBudgetIsUnchangedByDeviceRAM() {

@@ -40,6 +40,28 @@ class VideoRecordingService: ObservableObject {
     // Accessed from background audio callback — must be nonisolated(unsafe)
     private nonisolated(unsafe) var audioInput: AVAssetWriterInput?
 
+    /// The writer, reachable from the background append callbacks so they can stop feeding one
+    /// that has already failed. An `AVAssetWriter` in `.failed` rejects every further append on
+    /// every track, so continuing to push at it only buries the first error.
+    private nonisolated(unsafe) var appendWriter: AVAssetWriter?
+
+    /// The stream description the audio input locked onto with its first sample buffer.
+    ///
+    /// An asset writer's audio input takes its format from the first buffer it accepts and fails
+    /// the whole writer — video track included — on the next one that disagrees. Capture audio is
+    /// normalised upstream (`CaptureAudioNormalizer`) precisely so this cannot happen, and this is
+    /// the belt to that pair of braces: a buffer in an unexpected format is dropped, loudly, rather
+    /// than allowed to kill the recording.
+    private nonisolated(unsafe) var audioStreamDescription: AudioStreamBasicDescription?
+    /// Reused for every buffer once the format is known — building one per buffer was pure waste.
+    private nonisolated(unsafe) var audioFormatDescription: CMAudioFormatDescription?
+    /// Buffers refused because their format didn't match the locked one. Reported at stop.
+    private nonisolated(unsafe) var mismatchedAudioBuffers: Int = 0
+
+    /// Reported to the on-screen diagnostics log: where a finished recording actually landed, and
+    /// why anything that didn't land, didn't. Optional; nothing here depends on it being wired.
+    var onDebugEvent: ((String) -> Void)?
+
     /// ID used to register as an audio buffer consumer on the capture audio router.
     private static let audioConsumerId = "video_recording_audio"
 
@@ -251,8 +273,12 @@ class VideoRecordingService: ObservableObject {
         writer.startSession(atSourceTime: .zero)
 
         self.writer = writer
+        self.appendWriter = writer
         self.videoInput = videoInput
         self.audioInput = audioInput
+        self.audioStreamDescription = nil
+        self.audioFormatDescription = nil
+        self.mismatchedAudioBuffers = 0
         self.adaptor = adaptor
         self.outputURL = url
         self.videoStartTime = nil
@@ -362,15 +388,33 @@ class VideoRecordingService: ObservableObject {
         // Stop meeting assistant
         meetingAssistant?.stop()
 
-        guard let writer, let videoInput else { return nil }
+        /// Non-nil when the encode itself went wrong — reported alongside wherever the bytes landed.
+        var writerFailure: String?
 
-        videoInput.markAsFinished()
-        audioInput?.markAsFinished()
+        // Whatever state the writer is in, everything below still runs: a recording that ended
+        // abnormally has bytes on disk that must be filed out of `tmp/` exactly like a clean one.
+        // Returning early here used to skip the filing step entirely (Plan DA's "never delete
+        // until a persistent copy exists" applies to abnormal ends too).
+        if let writer, let videoInput {
+            videoInput.markAsFinished()
+            audioInput?.markAsFinished()
 
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            writer.finishWriting {
-                cont.resume()
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                writer.finishWriting {
+                    cont.resume()
+                }
             }
+            if writer.status == .failed {
+                writerFailure = writer.error?.localizedDescription ?? "the recording could not be finished"
+                NSLog("[Recording] Writer failed: %@", writerFailure ?? "unknown")
+            }
+        } else {
+            writerFailure = "the recording could not be finished"
+            NSLog("[Recording] Stopped with no writer — filing whatever reached disk")
+        }
+        if mismatchedAudioBuffers > 0 {
+            NSLog("[Recording] Dropped %d audio buffer(s) in an unexpected format", mismatchedAudioBuffers)
+            onDebugEvent?("Recording dropped \(mismatchedAudioBuffers) mis-formatted audio buffer(s)")
         }
 
         let temporaryURL = outputURL
@@ -381,6 +425,14 @@ class VideoRecordingService: ObservableObject {
         // — the transcript sidecar, file protection, the URL handed back for sharing — works
         // against the filed location, not the temporary one.
         let url = await fileFinishedRecording(temporaryURL)
+
+        // A broken encode is worth saying out loud even when the bytes were filed: a playable
+        // prefix and an unplayable file look identical from the outside.
+        if let writerFailure {
+            let note = "Something went wrong while finishing the recording — \(writerFailure)."
+            lastSaveNote = [note, lastSaveNote].compactMap { $0 }.joined(separator: " ")
+            onDebugEvent?("Recording writer failed: \(writerFailure)")
+        }
 
         // Final caption collection
         if autoTranscribe {
@@ -425,8 +477,11 @@ class VideoRecordingService: ObservableObject {
         autoTranscribe = false
 
         self.writer = nil
+        self.appendWriter = nil
         self.videoInput = nil
         self.audioInput = nil
+        self.audioStreamDescription = nil
+        self.audioFormatDescription = nil
         self.adaptor = nil
         self.outputURL = nil
         self.videoStartTime = nil
@@ -482,8 +537,15 @@ class VideoRecordingService: ObservableObject {
                                  date: recordingStartDate ?? Date(),
                                  saveToPhotos: wantsPhotos)
 
-        if wantsPhotos {
-            outcome.savedToPhotos = await saveVideoToPhotos(outcome.primaryURL)
+        // Only offer Photos a file that is actually there — a failed encode leaves nothing behind,
+        // and asking the library to ingest a missing file reads as a save failure rather than as
+        // the encode failure it is.
+        if wantsPhotos, FileManager.default.fileExists(atPath: outcome.primaryURL.path) {
+            let result = await GlassesPhotoAlbum.saveVideo(at: outcome.primaryURL)
+            outcome.savedToPhotos = result.didSave
+            if case .notPermitted = result { outcome.photosNotPermitted = true }
+        } else if wantsPhotos {
+            NSLog("[Recording] Nothing on disk to hand to Photos")
         }
 
         if let copyURL = outcome.folderCopyURL {
@@ -491,28 +553,18 @@ class VideoRecordingService: ObservableObject {
         }
         lastSaveNote = outcome.message
         lastSaveSummary = outcome.summary
+        let photosState = outcome.savedToPhotos
+            ? "yes"
+            : (outcome.photosNotPermitted ? "not permitted" : (wantsPhotos ? "failed" : "off"))
         NSLog("[Recording] Filed → %@ (photos: %@, folder copy: %@)",
-              outcome.primaryURL.path,
-              outcome.savedToPhotos ? "yes" : (wantsPhotos ? "failed" : "off"),
+              outcome.primaryURL.path, photosState,
               outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")
+        // The chokepoint every recording passes through, so the next diagnostics report of this
+        // class carries the answer instead of a launch trace.
+        onDebugEvent?("Recording filed — app folder: \(outcome.savedToLibrary ? "yes" : "no"), "
+                      + "photos: \(photosState), "
+                      + "chosen folder: \(outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")")
         return outcome.primaryURL
-    }
-
-    // MARK: - Photos Library
-
-    /// Save the video file to the "Glasses" album in the Photos library.
-    /// Returns whether the save landed — a denied library or a failed change request is a normal
-    /// outcome here, not an error, because the on-disk copy has already been written.
-    ///
-    /// The album resolution and the single authorization prompt behind it live in
-    /// `GlassesPhotoAlbum`; this used to be one of two private copies of both.
-    @discardableResult
-    private func saveVideoToPhotos(_ url: URL) async -> Bool {
-        let saved = await GlassesPhotoAlbum.saveVideo(at: url)
-        if saved {
-            NSLog("[Recording] Video saved to %@ album", GlassesPhotoAlbum.albumName)
-        }
-        return saved
     }
 
     // MARK: - Transcript Persistence
@@ -556,6 +608,12 @@ class VideoRecordingService: ObservableObject {
     // MARK: - Frame Appending
 
     private nonisolated func appendFrame(_ image: UIImage) {
+        // A writer that has already failed rejects every further append on every track, so pushing
+        // at it only buries the first error. Deliberately *before* the watchdog stamp: with the
+        // writer dead nothing is reaching the file, and letting the stall watchdog notice is how a
+        // silently-dead recording gets stopped, saved and announced instead of running for ten
+        // minutes producing nothing.
+        guard appendWriter?.status == .writing else { return }
         lastFrameAt = Date()   // feeds the stream-death watchdog
         guard let cgImage = image.cgImage else { return }
 
@@ -614,9 +672,28 @@ class VideoRecordingService: ObservableObject {
     /// Append an audio buffer from the shared audio engine into the recording.
     private nonisolated func appendAudioBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let audioInput, audioInput.isReadyForMoreMediaData else { return }
+        guard appendWriter?.status == .writing else { return }
 
         let format = buffer.format
         let frameCount = buffer.frameLength
+        guard frameCount > 0 else { return }
+
+        // The audio input locks to the first format it accepts; a later buffer that disagrees
+        // fails the writer and takes the video track down with it. Capture audio is normalised
+        // upstream so every buffer of a recording arrives in one format — if one somehow doesn't,
+        // drop it. A recording missing 20 ms of audio beats a recording that does not exist.
+        let incoming = format.streamDescription.pointee
+        if let locked = audioStreamDescription {
+            guard CaptureAudioFormatMatch.matches(incoming, locked) else {
+                mismatchedAudioBuffers += 1
+                if mismatchedAudioBuffers == 1 {
+                    NSLog("[Recording] Audio format changed mid-file (%.0fHz/%uch → %.0fHz/%uch) — dropping buffers rather than failing the writer",
+                          locked.mSampleRate, locked.mChannelsPerFrame,
+                          incoming.mSampleRate, incoming.mChannelsPerFrame)
+                }
+                return
+            }
+        }
 
         // Convert AVAudioPCMBuffer → CMSampleBuffer for AVAssetWriter
         var sampleBuffer: CMSampleBuffer?
@@ -636,19 +713,26 @@ class VideoRecordingService: ObservableObject {
             timing.presentationTimeStamp = .zero
         }
 
-        var formatDescription: CMAudioFormatDescription?
-        CMAudioFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault,
-            asbd: format.streamDescription,
-            layoutSize: 0,
-            layout: nil,
-            magicCookieSize: 0,
-            magicCookie: nil,
-            extensions: nil,
-            formatDescriptionOut: &formatDescription
-        )
+        // Built once per recording, not once per buffer: the format is fixed by the first buffer
+        // and every later one is checked against it above.
+        if audioFormatDescription == nil {
+            var created: CMAudioFormatDescription?
+            CMAudioFormatDescriptionCreate(
+                allocator: kCFAllocatorDefault,
+                asbd: format.streamDescription,
+                layoutSize: 0,
+                layout: nil,
+                magicCookieSize: 0,
+                magicCookie: nil,
+                extensions: nil,
+                formatDescriptionOut: &created
+            )
+            guard created != nil else { return }
+            audioFormatDescription = created
+            audioStreamDescription = incoming
+        }
 
-        guard let desc = formatDescription else { return }
+        guard let desc = audioFormatDescription else { return }
 
         CMSampleBufferCreate(
             allocator: kCFAllocatorDefault,
@@ -677,7 +761,10 @@ class VideoRecordingService: ObservableObject {
             bufferList: audioBufferList
         )
 
-        audioInput.append(sb)
+        if !audioInput.append(sb) {
+            NSLog("[Recording] Audio append rejected: %@",
+                  appendWriter?.error?.localizedDescription ?? "unknown")
+        }
     }
 
     // MARK: - Pixel Buffer Pool

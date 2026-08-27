@@ -28,8 +28,16 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
     private let isPhoneSpeakerOutput: @MainActor () -> Bool
     private let includeAssistantVoice: @MainActor () -> Bool
 
+    /// Reported to the on-screen diagnostics log so a handover shows up in a bug report. Optional;
+    /// nothing here depends on it being wired.
+    var onDebugEvent: ((String) -> Void)?
+
     private var consumers: [String: @Sendable (AVAudioPCMBuffer) -> Void] = [:]
     private let fanout = CaptureAudioFanout()
+    /// Holds every source's buffers to one format for the life of a capture. Without this a
+    /// handover changes the sample format under the recorder's asset writer, which fails the
+    /// writer outright — video track included.
+    private let normalizer = CaptureAudioNormalizer()
     private var arbiter = AudioSourceArbiter()
     private var wakeListening = false
     private var assistantSpeaking = false
@@ -92,6 +100,7 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
         publishConsumers()
         run(arbiter.reset())
         activeSource = arbiter.source
+        normalizer.reset()
     }
 
     /// Await any in-flight source change. Test seam — production never needs to wait.
@@ -109,9 +118,15 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
         let commands = arbiter.apply(conditions)
         guard !commands.isEmpty else { return }
         activeSource = arbiter.source
-        NSLog("[CaptureAudio] Source → %@ (listening: %@, capturing: %@)",
-              arbiter.source.rawValue, wakeListening ? "yes" : "no",
-              conditions.captureActive ? "yes" : "no")
+        // A capture that has ended releases the canonical format, so the next one adopts whatever
+        // route it actually starts on. While a capture is live the format is held across every
+        // handover — that is the whole point of it.
+        if arbiter.source == .none { normalizer.reset() }
+        let summary = "Capture audio source → \(arbiter.source.rawValue) "
+                    + "(listening: \(wakeListening ? "on" : "off"), "
+                    + "capturing: \(conditions.captureActive ? "yes" : "no"))"
+        NSLog("[CaptureAudio] %@", summary)
+        onDebugEvent?(summary)
         run(commands)
     }
 
@@ -125,28 +140,36 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
         }
     }
 
-    private func execute(_ command: CaptureAudioCommand) async {
+    /// The block every source hands its buffers to. Normalise first, then fan out: consumers must
+    /// see one unbroken single-format stream no matter which engine is currently producing it.
+    private func makeSourceHandler() -> @Sendable (AVAudioPCMBuffer) -> Void {
         let fanout = self.fanout
+        let normalizer = self.normalizer
+        return { buffer in
+            guard let normalized = normalizer.normalize(buffer) else { return }
+            fanout.dispatch(normalized)
+        }
+    }
+
+    private func execute(_ command: CaptureAudioCommand) async {
         switch command {
         case .attachToWakeTap:
-            wakeTap?.addAudioBufferConsumer(id: Self.sourceConsumerId) { buffer in
-                fanout.dispatch(buffer)
-            }
+            wakeTap?.addAudioBufferConsumer(id: Self.sourceConsumerId, handler: makeSourceHandler())
         case .detachFromWakeTap:
             wakeTap?.removeAudioBufferConsumer(id: Self.sourceConsumerId)
         case .startStandalone:
             guard let standalone else {
                 NSLog("[CaptureAudio] No standalone engine — capture stays video-only while listening is off")
+                onDebugEvent?("Capture audio: no standalone engine — video-only while listening is off")
                 return
             }
-            standalone.addAudioBufferConsumer(id: Self.sourceConsumerId) { buffer in
-                fanout.dispatch(buffer)
-            }
+            standalone.addAudioBufferConsumer(id: Self.sourceConsumerId, handler: makeSourceHandler())
             do {
                 try await standalone.start()
             } catch {
                 standalone.removeAudioBufferConsumer(id: Self.sourceConsumerId)
                 NSLog("[CaptureAudio] Standalone engine failed to start: %@", error.localizedDescription)
+                onDebugEvent?("Capture audio engine failed to start: \(error.localizedDescription)")
             }
         case .stopStandalone:
             standalone?.removeAudioBufferConsumer(id: Self.sourceConsumerId)

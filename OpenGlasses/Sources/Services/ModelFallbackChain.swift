@@ -60,6 +60,9 @@ enum ModelFallbackChain {
             case .promptTooLong: return .needsBiggerWindow
             case .backgrounded: return .retryOtherModel   // a cloud candidate can still run
             case .insufficientMemory: return .retryOtherModel   // cloud (or a smaller local model) still fits
+            // The model is loaded and working; only this turn's photo is out of reach on it. A
+            // cloud candidate has no such ceiling, so cascade rather than end the turn.
+            case .insufficientMemoryForPhoto: return .retryOtherModel
             case .modelNotLoaded, .generationFailed, .alreadyGenerating, .alreadyDownloading:
                 return .retryOtherModel
             }

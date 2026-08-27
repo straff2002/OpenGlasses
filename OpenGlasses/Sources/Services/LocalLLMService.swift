@@ -664,16 +664,28 @@ final class LocalLLMService: ObservableObject {
 
         let effectiveSystem: String
         let effectiveHistory: [(role: String, content: String)]
+        // Long edge the photo may reach the processor at; 0 on a text turn.
+        var imageLongEdge = 0
         if let photo = imageData {
+            // Measured now, not at launch: the binding constraint on a photo turn is what this
+            // process may still allocate, and with the model resident and the camera live that
+            // is a completely different number from the device's RAM.
+            let headroom = MemoryHeadroom.availableBytes()
             let plan = LocalModelBudget.multimodalTurnPlan(
-                for: loadedModelId, marketingRAMGB: Self.marketingRAMGB)
+                for: loadedModelId, marketingRAMGB: Self.marketingRAMGB, availableBytes: headroom)
+            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ image=%dKB ram=%.0fGB headroom=%dMB footprint=%dMB fullPrompt=%@ refuse=%@",
+                  loadedModelId ?? "?", photo.count / 1024, Self.marketingRAMGB,
+                  headroom / 1_048_576, MemoryHeadroom.appFootprintBytes() / 1_048_576,
+                  plan.keepsFullSystemPrompt ? "yes" : "no", plan.refusesImage ? "yes" : "no")
+            // Say so rather than starting a prefill that ends as a process kill. A photo turn on
+            // an already-resident multi-gigabyte model crossed the per-process cap on a 12 GB
+            // phone and took the app to the home screen with no error and no recording of why.
+            guard !plan.refusesImage else { throw LocalLLMError.insufficientMemoryForPhoto }
             effectiveSystem = plan.keepsFullSystemPrompt
                 ? systemPrompt
                 : Config.compactVisionTurnPrompt(from: systemPrompt)
             effectiveHistory = plan.keepsHistory ? Array(history.suffix(4)) : []
-            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ image=%dKB ram=%.0fGB fullPrompt=%@ history=%d",
-                  loadedModelId ?? "?", photo.count / 1024, Self.marketingRAMGB,
-                  plan.keepsFullSystemPrompt ? "yes" : "no", effectiveHistory.count)
+            imageLongEdge = plan.imageLongEdge
         } else {
             effectiveSystem = systemPrompt
             effectiveHistory = history
@@ -688,19 +700,28 @@ final class LocalLLMService: ObservableObject {
             for turn in effectiveHistory {
                 chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
             }
+            var resize: CGSize?
             if let imageData {
                 guard let ciImage = CIImage(data: imageData) else {
                     throw LocalLLMError.generationFailed("Couldn't decode the photo.")
                 }
                 chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+                // Bounded, not squashed. There was no cap here at all, on the reasoning that
+                // Gemma's processor picks its own canvas and its own soft-token count — true of
+                // the *token* count, and beside the point for memory: preprocessing a
+                // full-resolution frame materialises it as float pixels on top of a resident
+                // multi-gigabyte model, which is where the per-process cap was crossed. The size
+                // is computed aspect-preserving rather than passed as a square, so the crop the
+                // old comment was defending is still intact.
+                resize = LocalModelBudget.imageSize(width: Int(ciImage.extent.width),
+                                                    height: Int(ciImage.extent.height),
+                                                    maxLongEdge: imageLongEdge)
             } else {
                 chat.append(.user(userMessage))
             }
 
-            // No forced resize: Gemma's processor picks an aspect-preserving canvas and its own
-            // per-image token count, and pre-squashing to 896² neither shrinks that count nor
-            // improves the crop — it just spends preprocessing on a phone photo twice.
-            let userInput = UserInput(chat: chat)
+            let userInput = resize.map { UserInput(chat: chat, processing: .init(resize: $0)) }
+                ?? UserInput(chat: chat)
             let lmInput: LMInput
             do {
                 lmInput = try await context.processor.prepare(input: userInput)
@@ -777,7 +798,16 @@ final class LocalLLMService: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(bgObserver) }
 
-        NSLog("🔬 LocalLLM.generateVisionTurn model=%@ image=%dKB", loadedModelId ?? "?", imageData.count / 1024)
+        // Same turn-time headroom gate as the Gemma path: a smaller VLM is still a resident model
+        // plus an unchunked multimodal prefill, and the per-process cap does not care which
+        // factory loaded it.
+        let visionPlan = LocalModelBudget.multimodalTurnPlan(
+            for: loadedModelId, marketingRAMGB: Self.marketingRAMGB,
+            availableBytes: MemoryHeadroom.availableBytes())
+        guard !visionPlan.refusesImage else { throw LocalLLMError.insufficientMemoryForPhoto }
+        let visionLongEdge = visionPlan.imageLongEdge
+        NSLog("🔬 LocalLLM.generateVisionTurn model=%@ image=%dKB longEdge=%d", loadedModelId ?? "?",
+              imageData.count / 1024, visionLongEdge)
         // `UserInput` (and the `CIImage` inside it) isn't `Sendable`, so it's built *inside* the
         // `@Sendable` closure from Sendable ingredients only — the image data, the prompt strings
         // and the history — rather than constructed out here and captured across the boundary.
@@ -791,10 +821,14 @@ final class LocalLLMService: ObservableObject {
                 chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
             }
             chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
-            // 896² is Gemma's native vision resolution and a sane cap for every supported VLM —
-            // a full-resolution glasses photo through the image pipeline is a pure memory spike.
-            let userInput = UserInput(chat: chat,
-                                      processing: .init(resize: CGSize(width: 896, height: 896)))
+            // Capped, because a full-resolution glasses photo through the image pipeline is a
+            // pure memory spike — but aspect-preserving now rather than squashed into a square,
+            // and at the long edge this turn's headroom actually allows.
+            let resize = LocalModelBudget.imageSize(width: Int(ciImage.extent.width),
+                                                    height: Int(ciImage.extent.height),
+                                                    maxLongEdge: visionLongEdge)
+                ?? CGSize(width: ciImage.extent.width, height: ciImage.extent.height)
+            let userInput = UserInput(chat: chat, processing: .init(resize: resize))
             let lmInput = try await context.processor.prepare(input: userInput)
             let stream = try MLXLMCommon.generate(input: lmInput, parameters: parameters, context: context)
             var iterator = stream.makeAsyncIterator()
@@ -1019,6 +1053,10 @@ enum LocalLLMError: LocalizedError {
     case generationFailed(String)
     case backgrounded
     case insufficientMemory(neededBytes: Int64, availableBytes: Int64)
+    /// Not enough process allocation left to prefill a photo on the loaded model. Distinct from
+    /// `insufficientMemory`, which is about *loading*: here the model is loaded and working, and
+    /// only the image turn is out of reach.
+    case insufficientMemoryForPhoto
     case promptTooLong(tokens: Int, limit: Int)
     case alreadyGenerating
     case alreadyDownloading
@@ -1034,6 +1072,8 @@ enum LocalLLMError: LocalizedError {
         case .insufficientMemory(let needed, let available):
             let gb = { (bytes: Int64) in String(format: "%.1f", Double(bytes) / 1_073_741_824) }
             return "Not enough memory to load the on-device model — it needs about \(gb(needed)) GB but only \(gb(available)) GB is available. Free up about \(gb(needed - available)) GB by closing other apps, or switch to a cloud model."
+        case .insufficientMemoryForPhoto:
+            return "There isn't enough memory to look at a photo with the on-device model right now. Ask me without the picture, or switch to a cloud model."
         case .promptTooLong(let tokens, let limit):
             return "Prompt is too long for the on-device model (\(tokens) tokens; limit \(limit)). Switch to a cloud model for this request."
         case .alreadyGenerating:

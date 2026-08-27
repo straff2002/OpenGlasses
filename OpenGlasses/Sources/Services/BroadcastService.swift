@@ -104,6 +104,16 @@ class BroadcastService: ObservableObject {
     private var streamName = ""
     private var currentTargetBitrate = 0
     private var measuredBitrate = 0
+    /// Anything has actually left the device on this connection, from the transport's own
+    /// cumulative byte count. Drives both the honest readout and the stall check — a target bitrate
+    /// next to 0 fps described an intention, not a stream.
+    private var hasSentAnything = false
+    /// When the current connection finished publishing, or nil when there isn't a live one. The
+    /// stall clock runs from here, per attempt.
+    private var liveSince: Date?
+
+    /// Reported to the on-screen diagnostics log. Optional; nothing here depends on it.
+    var onDebugEvent: ((String) -> Void)?
     private var droppedFrameBaseline = 0
 
     /// CY: supplies the outbound pipeline's own dropped-frame count (`OutboundFrameRelay` discards
@@ -296,11 +306,18 @@ class BroadcastService: ObservableObject {
         let controller = BroadcastBitRateController(
             ceiling: ceiling,
             floor: VideoBitratePolicy.Profile.rtmp.minimum
-        ) { [weak self] target, measured in
-            Task { @MainActor in self?.recordBitrate(target: target, measured: measured) }
+        ) { [weak self] target, measured, totalBytesOut in
+            Task { @MainActor in
+                self?.recordBitrate(target: target, measured: measured, totalBytesOut: totalBytesOut)
+            }
         }
         await stream.setBitRateStrategy(controller)
         bitRateController = controller
+
+        // This attempt's own silence clock. Per attempt, not per broadcast: a reconnect builds a
+        // fresh connection with fresh byte counters, and each one has to prove itself.
+        hasSentAnything = false
+        liveSince = Date()
 
         observeStatus(connection: connection, stream: stream)
     }
@@ -388,6 +405,10 @@ class BroadcastService: ObservableObject {
         guard machine.apply(.dropped) else { return }
 
         NSLog("[Broadcast] Connection lost (%@) — reconnecting", reason)
+        // Whatever killed it, this attempt's silence clock stops with it; the next attempt sets
+        // its own when it publishes.
+        liveSince = nil
+        hasSentAnything = false
         cancelStatusObservation()
         teardownConnectionObjects()
 
@@ -583,13 +604,45 @@ class BroadcastService: ObservableObject {
         }
         frameRateMeter.record(frames: pushedFrameCount, at: Date())
         pushedFrameCount = 0
+        checkForStall()
         publishHealth()
     }
 
+    /// A connection that believes it is publishing but has never put a byte on the wire is dead,
+    /// and is treated as dead.
+    ///
+    /// This is the swallowed-handshake case: the socket opens, the RTMP handshake never reaches it,
+    /// and the ingest sits there until its own timeout while the app shows a bitrate. Nothing in
+    /// the status streams reports it, because from the transport's point of view nothing went
+    /// wrong — so the silence itself has to be the signal.
+    ///
+    /// It routes into `handleConnectionLoss` rather than only setting an error, so the existing
+    /// reconnect machinery gets its shot: a fresh connection may well come up writable, and if none
+    /// ever does, the reconnect policy's own give-up budget ends the session honestly. Saying so in
+    /// the UI without retrying would leave a stream idling that could have recovered itself.
+    private func checkForStall() {
+        guard let liveSince else { return }
+        let verdict = BroadcastStallPolicy.verdict(
+            secondsSinceStart: Date().timeIntervalSince(liveSince),
+            hasSentAnything: hasSentAnything)
+        guard verdict == .stalled else { return }
+        self.liveSince = nil   // this attempt is spent; the next one starts its own clock
+        let message = BroadcastStallPolicy.stalledMessage(target: connectionURL)
+        NSLog("[Broadcast] Nothing sent after %.0fs — %@", BroadcastStallPolicy.stallSeconds, message)
+        onDebugEvent?("Broadcast published but wrote 0 bytes in \(Int(BroadcastStallPolicy.stallSeconds))s — reconnecting")
+        broadcastError = message
+        handleConnectionLoss(reason: "published but nothing reached the server")
+    }
+
     /// The bitrate controller applied a new target (or just measured the link).
-    private func recordBitrate(target: Int, measured: Int) {
+    ///
+    /// `totalBytesOut` is the transport's cumulative count, which is what proves the handshake
+    /// actually went out. The per-second measurement can legitimately read zero on a healthy
+    /// stream between keyframes, so it cannot carry this.
+    private func recordBitrate(target: Int, measured: Int, totalBytesOut: Int) {
         currentTargetBitrate = target
         measuredBitrate = measured
+        if totalBytesOut > 0 { hasSentAnything = true }
         publishHealth()
     }
 
@@ -604,7 +657,8 @@ class BroadcastService: ObservableObject {
             // Both counts are "a frame that did not reach the wire": one discarded by the privacy
             // relay keeping up, one dropped because there was no connection to push it to.
             droppedFrameCount: relayDrops + unsentFrameCount,
-            duration: broadcastDuration
+            duration: broadcastDuration,
+            hasSentAnything: hasSentAnything
         )
         sessionState = machine.state
     }
@@ -748,6 +802,8 @@ class BroadcastService: ObservableObject {
         rtmpConnection = nil
         mediaMixer = nil
         bitRateController = nil
+        liveSince = nil
+        hasSentAnything = false
     }
 }
 
@@ -764,9 +820,13 @@ final actor BroadcastBitRateController: StreamBitRateStrategy {
     let mamimumAudioBitRate: Int = 0
 
     private var policy: AdaptiveBitratePolicy
-    private let onSample: @Sendable (Int, Int) -> Void
+    /// `(target, measured, totalBytesOut)`. The third is cumulative bytes the transport has
+    /// actually written to the socket — the only number here that can tell "connected and
+    /// streaming" apart from "connected and silent", which is the state a swallowed handshake
+    /// leaves the session in.
+    private let onSample: @Sendable (Int, Int, Int) -> Void
 
-    init(ceiling: Int, floor: Int, onSample: @escaping @Sendable (Int, Int) -> Void) {
+    init(ceiling: Int, floor: Int, onSample: @escaping @Sendable (Int, Int, Int) -> Void) {
         self.mamimumVideoBitRate = ceiling
         self.policy = AdaptiveBitratePolicy(ceiling: ceiling, floor: floor)
         self.onSample = onSample
@@ -780,7 +840,7 @@ final actor BroadcastBitRateController: StreamBitRateStrategy {
             var settings = await stream.videoSettings
             settings.bitRate = mamimumVideoBitRate
             try? await stream.setVideoSettings(settings)
-            onSample(mamimumVideoBitRate, 0)
+            onSample(mamimumVideoBitRate, 0, 0)
         case .status(let report):
             await apply(report, insufficientBandwidth: false, to: stream)
         case .publishInsufficientBWOccured(let report):
@@ -800,13 +860,13 @@ final actor BroadcastBitRateController: StreamBitRateStrategy {
         )
         switch policy.evaluate(sample) {
         case .hold:
-            onSample(settings.bitRate, sample.measuredBitrate)
+            onSample(settings.bitRate, sample.measuredBitrate, report.totalBytesOut)
         case .stepDown(let bitrate), .stepUp(let bitrate):
             settings.bitRate = bitrate
             try? await stream.setVideoSettings(settings)
             NSLog("[Broadcast] Bitrate → %d bps (measured %d bps, queue %d B)",
                   bitrate, sample.measuredBitrate, sample.queuedBytes)
-            onSample(bitrate, sample.measuredBitrate)
+            onSample(bitrate, sample.measuredBitrate, report.totalBytesOut)
         }
     }
 }
