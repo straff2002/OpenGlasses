@@ -19,9 +19,9 @@ struct VaultFilesEditorView: View {
                 List {
                     if !unlocked {
                         Section {
-                            Label("Preview only — unlock to edit", systemImage: "lock")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            OGNotice(text: "Preview only — unlock to edit", systemImage: "lock")
+                                .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                                .listRowBackground(Color.clear)
                         }
                     }
                     Section {
@@ -40,6 +40,7 @@ struct VaultFilesEditorView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     private func displayName(_ filename: String) -> String {

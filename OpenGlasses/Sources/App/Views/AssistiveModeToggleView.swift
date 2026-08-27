@@ -7,6 +7,7 @@ struct AssistiveModeToggleView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var service = AssistiveModeService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appAccent) private var accent
 
     var body: some View {
         VStack(spacing: 6) {
@@ -15,19 +16,31 @@ struct AssistiveModeToggleView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: service.isActive ? "eye.fill" : "eye")
+                        .accessibilityHidden(true)
                     Text(service.isActive ? "Assistive: \(service.currentMode.rawValue.capitalized)" : "Assistive Mode")
                         .font(.subheadline.weight(.medium))
                 }
+                .foregroundStyle(
+                    service.isActive
+                        ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
+                        : AnyShapeStyle(Color.secondary)
+                )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
-                    Capsule().fill(service.isActive ? AppAccent.color.opacity(0.25) : Color.secondary.opacity(0.15))
-                )
-                .overlay(
-                    Capsule().stroke(service.isActive ? AppAccent.color : Color.clear, lineWidth: 1.5)
+                    service.isActive
+                        ? accent.opacity(OGTheme.Opacity.accentPillFill)
+                        : Color(.quaternarySystemFill),
+                    in: Capsule()
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(
+                service.isActive
+                    ? "Assistive Mode, \(service.currentMode.rawValue.capitalized), on"
+                    : "Assistive Mode, off"
+            )
+            .accessibilityHint("Double-tap to toggle Assistive Mode.")
 
             if service.isActive, let advice = service.latestAdvice {
                 Text(advice.advice)

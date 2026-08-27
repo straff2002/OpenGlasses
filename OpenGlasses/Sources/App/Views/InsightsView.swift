@@ -24,20 +24,22 @@ struct InsightsView: View {
 
             if let report, report.totalTurns > 0 {
                 Section("Activity") {
-                    row("Exchanges", "\(report.userTurns)")
-                    row("Total turns", "\(report.totalTurns)")
+                    HStack(spacing: 12) {
+                        OGStatTile(value: "\(report.userTurns)", caption: "Exchanges")
+                        OGStatTile(value: "\(report.totalTurns)", caption: "Total turns")
+                    }
                 }
                 if !report.topTopics.isEmpty {
                     Section("Top topics") {
                         ForEach(report.topTopics, id: \.name) { topic in
-                            row(topic.name, "\(topic.count)")
+                            LabeledContent(topic.name, value: "\(topic.count)")
                         }
                     }
                 }
                 if !report.topTools.isEmpty {
                     Section("Most-used tools") {
                         ForEach(report.topTools, id: \.name) { tool in
-                            row(tool.name, "\(tool.count)")
+                            LabeledContent(tool.name, value: "\(tool.count)")
                         }
                     }
                 }
@@ -68,7 +70,7 @@ struct InsightsView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    row("Estimated total", Self.costLabel(usage.totalUSD))
+                    LabeledContent("Estimated total", value: Self.costLabel(usage.totalUSD))
                     NavigationLink {
                         ModelPricingEditorView()
                     } label: {
@@ -81,6 +83,7 @@ struct InsightsView: View {
                 }
             }
         }
+        .ogFormStyle()
         .navigationTitle("Insights")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: refresh)
@@ -89,14 +92,6 @@ struct InsightsView: View {
     private func refresh() {
         report = InsightsService.shared.report(days: days)
         usage = UsageTracker.shared.rollup(days: days)
-    }
-
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Text(value).foregroundStyle(.secondary)
-        }
     }
 
     /// "$1.23", "<$0.01" for a tiny non-zero cost, or "—" when unpriced.

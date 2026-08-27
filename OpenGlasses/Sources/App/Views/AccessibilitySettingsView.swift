@@ -111,6 +111,7 @@ struct AccessibilitySettingsView: View {
         }
         .navigationTitle("Accessibility")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 }
 

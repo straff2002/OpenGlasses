@@ -54,6 +54,7 @@ struct VaultManagerView: View {
         }
         .navigationTitle("Custom Vaults")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
             handleImport(result)
         }

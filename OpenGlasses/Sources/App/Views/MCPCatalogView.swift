@@ -36,6 +36,7 @@ struct MCPCatalogView: View {
         }
         .navigationTitle("Catalogue")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     @ViewBuilder
@@ -158,6 +159,7 @@ struct MCPCatalogInstallView: View {
         }
         .navigationTitle(entry.label)
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     private var resolvedURLPreview: String {

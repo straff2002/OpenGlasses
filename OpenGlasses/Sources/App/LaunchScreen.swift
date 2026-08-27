@@ -7,8 +7,10 @@ struct LaunchScreen: View {
 
     var body: some View {
         ZStack {
-            // Sit on the system UI background — adapts to light/dark mode.
-            Color(.systemBackground)
+            // The warm app canvas, not stock system background — the launch
+            // screen is the first thing seen, so it should already look like
+            // the rest of the app rather than handing off to it a beat later.
+            OGTheme.canvas
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -60,7 +62,7 @@ struct LaunchScreen: View {
 
                 Text("Voice-Powered AI Assistant")
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OGTheme.secondaryLabel)
                     .padding(.top, 8)
                     .opacity(isAnimating ? 1.0 : 0)
 

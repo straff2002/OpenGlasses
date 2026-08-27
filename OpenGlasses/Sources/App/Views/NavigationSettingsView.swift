@@ -43,5 +43,6 @@ struct NavigationSettingsView: View {
             }
         }
         .navigationTitle("Navigation")
+        .ogFormStyle()
     }
 }

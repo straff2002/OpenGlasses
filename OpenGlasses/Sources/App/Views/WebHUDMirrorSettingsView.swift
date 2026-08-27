@@ -72,6 +72,7 @@ struct WebHUDMirrorSettingsView: View {
             }
         }
         .navigationTitle("Web HUD Mirror")
+        .ogFormStyle()
     }
 
     private func exportPreview() {

@@ -151,13 +151,9 @@ struct ChatThreadView: View {
     }
 
     private func noticeBanner(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        OGNotice(text: text, systemImage: "paperclip")
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
-            .background(accent.opacity(0.10))
             .transition(.opacity)
     }
 
@@ -325,7 +321,7 @@ private struct StreamingBubble: View {
             MessageContentView(text: text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                .background(OGTheme.card, in: RoundedRectangle(cornerRadius: 16))
             Spacer(minLength: 48)
         }
         .accessibilityLabel("AI is replying: \(text)")
@@ -351,7 +347,7 @@ private struct TypingIndicator: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(OGTheme.card, in: RoundedRectangle(cornerRadius: 16))
         .onReceive(timer) { _ in
             guard !reduceMotion else { return }
             phase = (phase + 1) % 3

@@ -88,6 +88,7 @@ struct SiriExposureView: View {
             contentIndexSections
         }
         .navigationTitle("Siri & Search")
+        .ogFormStyle()
         .sheet(isPresented: $showingEditor) {
             SiriActionEditorView(existing: editingAction) { saved in
                 if let index = config.userActions.firstIndex(where: { $0.id == saved.id }) {
@@ -335,6 +336,7 @@ struct SiriActionEditorView: View {
                 }
             }
             .navigationTitle(existing == nil ? "New Action" : "Edit Action")
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

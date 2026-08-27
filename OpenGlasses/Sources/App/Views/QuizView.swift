@@ -15,14 +15,18 @@ struct QuizView: View {
     private let grader = QuizGrader()
 
     var body: some View {
-        VStack(spacing: 20) {
-            if let result {
-                completion(result)
-            } else if index < deck.quiz.count {
-                question(deck.quiz[index])
+        ZStack {
+            OGTheme.canvas.ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                if let result {
+                    completion(result)
+                } else if index < deck.quiz.count {
+                    question(deck.quiz[index])
+                }
             }
+            .padding()
         }
-        .padding()
         .navigationTitle("Quiz")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -43,8 +47,10 @@ struct QuizView: View {
                     if selected != nil {
                         if option.id == q.correctOptionID {
                             Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(OGTheme.okLabel)
                         } else if selected == option.id {
                             Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(OGTheme.errorLabel)
                         }
                     }
                 }
@@ -58,7 +64,7 @@ struct QuizView: View {
 
         if selected != nil {
             Button(index == deck.quiz.count - 1 ? "Finish" : "Next", action: advance)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.ogProminent)
         }
     }
 
@@ -78,8 +84,9 @@ struct QuizView: View {
                     }
                 }
             }
+            .ogFormStyle()
         }
-        Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
+        Button("Done") { dismiss() }.buttonStyle(.ogProminent)
     }
 
     // MARK: - Logic
@@ -100,9 +107,9 @@ struct QuizView: View {
     }
 
     private func optionColor(_ option: QuizOption, _ q: QuizQuestion) -> Color {
-        guard selected != nil else { return Color.gray.opacity(0.12) }
+        guard selected != nil else { return OGTheme.card }
         if option.id == q.correctOptionID { return OGTheme.ok.opacity(0.25) }
         if option.id == selected { return OGTheme.error.opacity(0.25) }
-        return Color.gray.opacity(0.12)
+        return OGTheme.card
     }
 }

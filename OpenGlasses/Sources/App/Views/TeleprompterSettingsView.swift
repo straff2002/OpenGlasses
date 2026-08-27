@@ -30,6 +30,7 @@ struct TeleprompterSettingsView: View {
         }
         .navigationTitle("Teleprompter")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     // MARK: - Camera capture (Phase 4)

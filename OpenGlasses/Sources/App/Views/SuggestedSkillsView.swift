@@ -49,6 +49,7 @@ struct SuggestedSkillsView: View {
         }
         .navigationTitle("Suggested Skills")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onAppear(perform: reload)
     }
 

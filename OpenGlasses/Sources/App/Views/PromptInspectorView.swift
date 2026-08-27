@@ -55,11 +55,11 @@ struct PromptInspectorView: View {
                     } label: {
                         HStack {
                             Image(systemName: section.isPresent ? section.icon : "circle.dashed")
-                                .foregroundStyle(section.isPresent ? accent : Color.secondary)
+                                .foregroundStyle(section.isPresent ? OGTheme.tintedAccentLabel(accent) : Color.secondary)
                                 .font(.body)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(section.name)
-                                    .foregroundStyle(section.isPresent ? accent : .secondary)
+                                    .foregroundStyle(section.isPresent ? OGTheme.tintedAccentLabel(accent) : Color.secondary)
                                     .lineLimit(1)
                                 if section.isPresent {
                                     Text("\(section.content.count) characters")
@@ -81,6 +81,7 @@ struct PromptInspectorView: View {
             }
         }
         .navigationTitle("Prompt Inspector")
+        .ogFormStyle()
         .onAppear { buildSections() }
         .refreshable { buildSections() }
     }

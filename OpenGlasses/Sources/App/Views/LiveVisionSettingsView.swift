@@ -54,5 +54,6 @@ struct LiveVisionSettingsView: View {
         }
         .navigationTitle("Live Vision")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 }

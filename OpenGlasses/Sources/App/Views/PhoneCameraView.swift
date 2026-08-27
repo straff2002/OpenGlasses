@@ -52,7 +52,9 @@ struct PhoneCameraView: View {
                         .foregroundStyle(OGTheme.onMedia)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(OGTheme.media.opacity(0.5), in: Capsule())
+                        // Opaque, not a wash — the ground is the live scene, not a
+                        // palette token, so only a solid fill keeps the text measurable.
+                        .background(OGTheme.media, in: Capsule())
                         .padding(.bottom, 140)
                 }
             }
@@ -67,8 +69,9 @@ struct PhoneCameraView: View {
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(OGTheme.onMedia)
                             .padding(12)
-                            .background(OGTheme.media.opacity(0.4), in: Circle())
+                            .glassEffect(in: .circle)
                     }
+                    .accessibilityLabel("Cancel")
                     Spacer()
                 }
                 .padding()
@@ -81,8 +84,9 @@ struct PhoneCameraView: View {
                         .foregroundStyle(OGTheme.onMedia)
                         .multilineTextAlignment(.center)
                         .padding()
+                        // Opaque, not a wash — same reasoning as the zoom readout above.
                         .background(
-                            OGTheme.media.opacity(0.5), in: RoundedRectangle(cornerRadius: 12)
+                            OGTheme.media, in: RoundedRectangle(cornerRadius: 12)
                         )
                         .padding(.bottom, 24)
                 } else if !camera.isReady {
@@ -107,6 +111,7 @@ struct PhoneCameraView: View {
                 }
                 .disabled(!camera.isReady || camera.isCapturing)
                 .opacity(camera.isReady ? 1 : 0.4)
+                .accessibilityLabel("Take Photo")
                 .padding(.bottom, 40)
             }
         }

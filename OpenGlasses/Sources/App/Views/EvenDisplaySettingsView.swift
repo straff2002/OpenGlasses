@@ -70,6 +70,7 @@ struct EvenDisplaySettingsView: View {
             }
         }
         .navigationTitle("Display Backend")
+        .ogFormStyle()
         .onDisappear { scanner.stopScan() }
     }
 

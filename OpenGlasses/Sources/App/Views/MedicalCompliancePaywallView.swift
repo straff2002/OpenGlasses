@@ -11,6 +11,7 @@ struct MedicalCompliancePaywallView: View {
     @State private var selectedProduct: Product?
     @State private var showRestoreAlert = false
     @ScaledMetric(relativeTo: .largeTitle) private var heroGlyph: CGFloat = 56
+    @Environment(\.appAccent) private var accent
 
     var body: some View {
         if storeKit.canAccessMedicalCompliance {
@@ -27,7 +28,7 @@ struct MedicalCompliancePaywallView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "cross.case.fill")
                         .font(.system(size: heroGlyph))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                         .padding(.top, 20)
 
                     Text("Medical Compliance")
@@ -41,19 +42,25 @@ struct MedicalCompliancePaywallView: View {
                 }
 
                 // Features
-                VStack(alignment: .leading, spacing: 16) {
+                OGCard {
                     featureRow(icon: "lock.doc.fill", title: "Encryption at Rest",
                                detail: "All recordings and transcripts encrypted with NSFileProtectionComplete")
+                    OGDivider()
                     featureRow(icon: "faceid", title: "Biometric App Lock",
                                detail: "Face ID / Touch ID required every time the app opens")
+                    OGDivider()
                     featureRow(icon: "list.clipboard.fill", title: "Audit Logging",
                                detail: "Every data access event logged with timestamps — exportable")
+                    OGDivider()
                     featureRow(icon: "arrow.up.doc.fill", title: "Medical Export",
                                detail: "FHIR R4, HL7, PDF export to Epic, Cerner, and more")
+                    OGDivider()
                     featureRow(icon: "calendar.badge.clock", title: "Data Retention",
                                detail: "Configurable auto-purge with secure deletion")
+                    OGDivider()
                     featureRow(icon: "icloud.slash.fill", title: "Prevent Data Leakage",
                                detail: "Cloud tools disabled, iCloud backup excluded")
+                    OGDivider()
                     featureRow(icon: "globe", title: "International Frameworks",
                                detail: "HIPAA, GDPR, AU Privacy Act, NZ HIPC, PIPEDA, UK DPA")
                 }
@@ -80,17 +87,12 @@ struct MedicalCompliancePaywallView: View {
                         HStack {
                             if storeKit.isPurchasing {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(OGTheme.onAccentLabel(accent))
                             }
                             Text("Subscribe")
-                                .font(.headline)
                         }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.accentColor)
-                        .clipShape(Capsule())
                     }
+                    .buttonStyle(.ogProminent)
                     .disabled(storeKit.isPurchasing)
                     .padding(.horizontal, 24)
                 }
@@ -123,6 +125,7 @@ struct MedicalCompliancePaywallView: View {
                 .padding(.bottom, 24)
             }
         }
+        .background(OGTheme.canvas.ignoresSafeArea())
         .navigationTitle("Medical Compliance")
         .navigationBarTitleDisplayMode(.inline)
         .alert("No Subscription Found", isPresented: $showRestoreAlert) {
@@ -135,19 +138,7 @@ struct MedicalCompliancePaywallView: View {
     // MARK: - Subviews
 
     private func featureRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.bold())
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        OGRow(title, icon: icon, subtitle: detail, showsChevron: false) { EmptyView() }
     }
 
     private func subscriptionCard(product: Product) -> some View {
@@ -157,45 +148,45 @@ struct MedicalCompliancePaywallView: View {
         return Button {
             selectedProduct = product
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(isAnnual ? "Annual" : "Monthly")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        if isAnnual {
-                            Text("Best Value")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.accentColor)
-                                .clipShape(Capsule())
+            OGCard {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(isAnnual ? "Annual" : "Monthly")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            if isAnnual {
+                                OGBadge(text: "Best Value", prominent: true)
+                            }
+                        }
+                        Text(product.displayPrice + (isAnnual ? "/year" : "/month"))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if isAnnual, let monthly = storeKit.monthlyProduct {
+                            let monthlyAnnualized = monthly.price * 12
+                            let savings = monthlyAnnualized - product.price
+                            if savings > 0 {
+                                Text("Save \(savings.formatted(.currency(code: product.priceFormatStyle.currencyCode)))/year")
+                                    .font(.caption)
+                                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                            }
                         }
                     }
-                    Text(product.displayPrice + (isAnnual ? "/year" : "/month"))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if isAnnual, let monthly = storeKit.monthlyProduct {
-                        let monthlyAnnualized = monthly.price * 12
-                        let savings = monthlyAnnualized - product.price
-                        if savings > 0 {
-                            Text("Save \(savings.formatted(.currency(code: product.priceFormatStyle.currencyCode)))/year")
-                                .font(.caption)
-                                .foregroundStyle(Color.accentColor)
-                        }
-                    }
+                    Spacer()
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? OGTheme.tintedAccentLabel(accent) : .secondary)
+                        .font(.title2)
+                        .accessibilityHidden(true)
                 }
-                Spacer()
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    .font(.title2)
+                .padding()
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(isSelected ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(isSelected ? accent : OGTheme.hairline, lineWidth: isSelected ? 2 : 1)
             )
         }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }

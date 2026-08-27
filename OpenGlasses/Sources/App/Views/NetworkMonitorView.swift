@@ -63,6 +63,7 @@ struct NetworkMonitorView: View {
             }
         }
         .navigationTitle("Network Activity")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Clear") {

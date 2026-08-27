@@ -66,6 +66,7 @@ struct ScheduledTasksView: View {
         }
         .searchable(text: $searchText, prompt: "Search tasks")
         .navigationTitle("Scheduled Tasks")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -282,6 +283,7 @@ struct ScheduledTaskDetailView: View {
         }
         .navigationTitle(name.isEmpty ? "Task" : name)
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 if hasChanges {
@@ -362,6 +364,7 @@ private struct AddTaskSheet: View {
             }
             .navigationTitle("New Task")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

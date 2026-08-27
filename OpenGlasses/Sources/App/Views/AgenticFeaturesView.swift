@@ -318,6 +318,7 @@ struct AgenticFeaturesView: View {
             }
         }
         .navigationTitle("Agentic Features")
+        .ogFormStyle()
         .onAppear {
             downloadedModelIds = localLLM.downloadedModelIds()
             let isCloud = Config.savedModels.contains(where: { $0.id == Config.agentModelId })
@@ -388,6 +389,7 @@ struct AgenticFeaturesView: View {
 
 struct AgentDocumentEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appAccent) private var accent
     let type: AgentDocumentStore.DocumentType
     @ObservedObject var store: AgentDocumentStore
 
@@ -400,7 +402,7 @@ struct AgentDocumentEditorView: View {
                 .foregroundStyle(.primary)
                 .scrollContentBackground(.hidden)
                 .padding(12)
-                .background(Color(.secondarySystemGroupedBackground))
+                .background(OGTheme.canvas.ignoresSafeArea())
                 .navigationTitle(type.filename)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -418,5 +420,6 @@ struct AgentDocumentEditorView: View {
                     content = store.content(for: type)
                 }
         }
+        .tint(accent)
     }
 }

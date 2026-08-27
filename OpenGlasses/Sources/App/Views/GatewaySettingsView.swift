@@ -118,6 +118,7 @@ struct GatewaySettingsView: View {
             remoteInvokeSection
         }
         .navigationTitle("Gateways")
+        .ogFormStyle()
         .sheet(isPresented: $showAddSheet) {
             AddGatewaySheet { newGateway in
                 gateways.append(newGateway)
@@ -280,6 +281,7 @@ struct AddGatewaySheet: View {
             }
             .navigationTitle("Add Gateway")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -423,6 +425,7 @@ struct EditGatewaySheet: View {
             }
             .navigationTitle("Edit Gateway")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

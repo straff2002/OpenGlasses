@@ -29,6 +29,7 @@ struct DeckListView: View {
                         offsets.map { store.decks[$0].id }.forEach(store.deleteDeck)
                     }
                 }
+                .ogFormStyle()
             }
         }
         .navigationTitle("Study Mode")
@@ -65,6 +66,7 @@ struct DeckDetailView: View {
                 }
             }
         }
+        .ogFormStyle()
         .navigationTitle(deck.summary.title)
         .navigationBarTitleDisplayMode(.inline)
     }

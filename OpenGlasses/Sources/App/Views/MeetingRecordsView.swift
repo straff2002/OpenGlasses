@@ -45,6 +45,7 @@ struct MeetingRecordsView: View {
         }
         .navigationTitle("Meeting Records")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .task {
             loadRecords()
         }

@@ -8,52 +8,58 @@ struct FlashcardView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 24) {
-            if let session = service.reviewSession, session.index < session.cards.count {
-                let card = session.cards[session.index]
+        ZStack {
+            OGTheme.canvas.ignoresSafeArea()
 
-                Text("Card \(session.index + 1) of \(session.cards.count)")
-                    .font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 24) {
+                if let session = service.reviewSession, session.index < session.cards.count {
+                    let card = session.cards[session.index]
 
-                Spacer()
+                    Text("Card \(session.index + 1) of \(session.cards.count)")
+                        .font(.caption).foregroundStyle(.secondary)
 
-                Button {
-                    if !session.showingBack { _ = service.flip() }
-                } label: {
-                    VStack(spacing: 12) {
-                        Text(card.front).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                        if session.showingBack {
-                            Divider()
-                            Text(card.back).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        } else {
-                            Text("Tap to reveal").font(.caption).foregroundStyle(.tertiary)
+                    Spacer()
+
+                    Button {
+                        if !session.showingBack { _ = service.flip() }
+                    } label: {
+                        OGCard {
+                            VStack(spacing: 12) {
+                                Text(card.front).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                                if session.showingBack {
+                                    Divider()
+                                    Text(card.back).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                } else {
+                                    Text("Tap to reveal").font(.caption).foregroundStyle(.tertiary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(28)
                         }
                     }
-                    .frame(maxWidth: .infinity).padding(28)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.plain)
 
-                Spacer()
+                    Spacer()
 
-                if session.showingBack {
-                    HStack(spacing: 16) {
-                        Button(role: .destructive) { _ = service.gradeCard(correct: false) } label: {
-                            Label("Missed", systemImage: "xmark").frame(maxWidth: .infinity)
+                    if session.showingBack {
+                        HStack(spacing: 16) {
+                            Button(role: .destructive) { _ = service.gradeCard(correct: false) } label: {
+                                Label("Missed", systemImage: "xmark").frame(maxWidth: .infinity)
+                            }
+                            Button { _ = service.gradeCard(correct: true) } label: {
+                                Label("Got it", systemImage: "checkmark").frame(maxWidth: .infinity)
+                            }
+                            .tint(OGTheme.ok)
                         }
-                        Button { _ = service.gradeCard(correct: true) } label: {
-                            Label("Got it", systemImage: "checkmark").frame(maxWidth: .infinity)
-                        }
-                        .tint(OGTheme.ok)
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.borderedProminent)
+                } else {
+                    ContentUnavailableView("Review complete", systemImage: "checkmark.seal.fill")
+                    Button("Done") { dismiss() }.buttonStyle(.ogProminent)
                 }
-            } else {
-                ContentUnavailableView("Review complete", systemImage: "checkmark.seal.fill")
-                Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
             }
+            .padding()
         }
-        .padding()
         .navigationTitle("Flashcards")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { _ = service.startReview(deckID: deckID) }

@@ -28,6 +28,7 @@ struct ReadingStatsView: View {
                         offsets.map { books[$0].id }.forEach { store.deleteBook(id: $0) }
                     }
                 }
+                .ogFormStyle()
             }
         }
         .navigationTitle("Reading")
@@ -141,6 +142,7 @@ struct ReadingBookDetailView: View {
                 }
             }
         }
+        .ogFormStyle()
         .navigationTitle(store.stats(forBook: bookID)?.bookTitle ?? "Book")
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: [.pdf, .epub, .plainText, .text]) { result in
@@ -205,6 +207,7 @@ private struct ReadingReferencePickerView: View {
                 }
             }
         }
+        .ogFormStyle()
         .navigationTitle("Choose a copy")
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
     }

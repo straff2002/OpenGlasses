@@ -25,12 +25,7 @@ struct PersonasView: View {
                                         .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     if !persona.enabled {
-                                        Text("Off")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color(.tertiarySystemFill), in: Capsule())
+                                        OGBadge(text: "Off")
                                     }
                                 }
                                 Text("\"\(persona.wakePhrase)\"")
@@ -86,6 +81,7 @@ struct PersonasView: View {
             }
         }
         .navigationTitle("Personas")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -228,9 +224,7 @@ struct PersonaEditorView: View {
                     }
 
                     if models.isEmpty {
-                        Label("Add a model in Settings → AI Models first", systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
-                            .foregroundStyle(OGTheme.warnLabel)
+                        OGStatusLabel("Add a model in Settings → AI Models first", kind: .warn)
                     }
                 } header: {
                     Text("Model")
@@ -265,6 +259,7 @@ struct PersonaEditorView: View {
             }
             .navigationTitle(persona != nil ? "Edit Persona" : "New Persona")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

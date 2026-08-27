@@ -29,12 +29,7 @@ struct CustomToolsView: View {
                                         Text(tool.name)
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
-                                        Text(tool.actionType.displayName)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color(.tertiarySystemFill), in: Capsule())
+                                        OGBadge(text: tool.actionType.displayName)
                                     }
                                     Text(tool.description)
                                         .font(.caption)
@@ -73,6 +68,7 @@ struct CustomToolsView: View {
             }
         }
         .navigationTitle("Custom Tools")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -242,6 +238,7 @@ struct CustomToolEditorView: View {
             }
             .navigationTitle(tool != nil ? "Edit Tool" : "New Custom Tool")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

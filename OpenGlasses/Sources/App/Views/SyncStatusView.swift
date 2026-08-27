@@ -58,6 +58,7 @@ struct SyncStatusView: View {
         }
         .navigationTitle("Field Sync")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .toolbar { ToolbarItem(placement: .primaryAction) { Button("Refresh", action: reload) } }
         .onAppear(perform: reload)
     }

@@ -90,6 +90,7 @@ struct LLMImageSettingsView: View {
         }
         .navigationTitle("Vision Images")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     private var activeLimits: LLMImagePreparer.Limits {

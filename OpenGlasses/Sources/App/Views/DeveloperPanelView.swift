@@ -39,7 +39,7 @@ struct DeveloperPanelView: View {
                     OGDivider()
                     Label(failure, systemImage: "exclamationmark.triangle")
                         .font(.footnote)
-                        .foregroundStyle(OGTheme.error)
+                        .foregroundStyle(OGTheme.errorLabel)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                 }

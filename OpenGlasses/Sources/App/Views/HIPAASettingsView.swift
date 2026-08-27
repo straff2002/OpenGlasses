@@ -459,6 +459,7 @@ struct HIPAASettingsView: View {
             }
         }
         .navigationTitle("Medical Compliance")
+        .ogFormStyle()
         .alert("Enable Medical Compliance?", isPresented: $showConfirmEnable) {
             Button("Enable") {
                 hipaaService.setMode(true)
@@ -539,6 +540,7 @@ struct SafeguardDetailView: View {
             }
         }
         .navigationTitle("Safeguard Details")
+        .ogFormStyle()
     }
 }
 
@@ -575,6 +577,7 @@ struct AuditLogView: View {
             }
         }
         .navigationTitle("Audit Log")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

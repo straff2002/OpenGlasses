@@ -58,7 +58,7 @@ private struct MCPServersList: View {
                                             .foregroundStyle(Color(.label))
                                             .lineLimit(1)
                                         Circle()
-                                            .fill(server.enabled ? OGTheme.ok : .gray)
+                                            .fill(server.enabled ? OGTheme.ok : OGTheme.inactive)
                                             .frame(width: 8, height: 8)
                                             .accessibilityHidden(true)
                                     }
@@ -169,6 +169,7 @@ private struct MCPServersList: View {
             }
         }
         .navigationTitle("MCP Servers")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -277,6 +278,7 @@ struct MCPServerEditorView: View {
             .navigationTitle(isEditing ? "Edit \(existing?.label ?? "Server")"
                                        : (label.isEmpty ? "Add MCP Server" : "Add \(label)"))
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

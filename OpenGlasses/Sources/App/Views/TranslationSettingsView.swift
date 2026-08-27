@@ -125,6 +125,7 @@ struct TranslationSettingsView: View {
             }
         }
         .navigationTitle("Translation")
+        .ogFormStyle()
     }
 
     private var onDeviceModelReady: Bool { ASRModelStore().isModelPresent }

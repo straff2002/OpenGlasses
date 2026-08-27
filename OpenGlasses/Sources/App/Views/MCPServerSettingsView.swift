@@ -65,5 +65,6 @@ struct MCPServerSettingsView: View {
         }
         .navigationTitle("MCP Server")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 }

@@ -39,6 +39,7 @@ struct VoiceSkillsManagerView: View {
         }
         .navigationTitle("Voice Skills")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

@@ -24,14 +24,14 @@ struct RemoteActionConsentView: View {
                 } label: {
                     Text("Deny").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.ogQuiet)
 
                 Button(role: .destructive) {
                     respond(true)
                 } label: {
                     Text("Approve").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.ogProminent)
             }
 
             Text("Say \"yes\" or \"no\", or tap.")
@@ -39,8 +39,8 @@ struct RemoteActionConsentView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.quaternary))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(.quaternary))
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .accessibilityElement(children: .contain)

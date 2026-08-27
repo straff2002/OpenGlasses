@@ -71,6 +71,7 @@ struct ChatListView: View {
                 indexSet.map { sortedThreads[$0].id }.forEach { store.deleteThread($0) }
             }
         }
+        .ogFormStyle()
     }
 
     private var emptyView: some View {
@@ -150,13 +151,7 @@ private struct ThreadRow: View {
 
                 Spacer()
 
-                Text(thread.mode.capitalized)
-                    .font(.caption2)
-                    .foregroundStyle(AppAccent.color)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppAccent.color.opacity(0.12))
-                    .clipShape(Capsule())
+                OGChip(text: thread.mode.capitalized)
             }
         }
         .padding(.vertical, 4)

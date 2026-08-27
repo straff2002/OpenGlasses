@@ -189,6 +189,7 @@ struct QuickActionsSettingsView: View {
             }
         }
         .navigationTitle("Quick Actions")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showAddSheet = true } label: { Image(systemName: "plus") }
@@ -275,6 +276,7 @@ struct QuickActionTemplatePreview: View {
             }
             .navigationTitle("Template")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -490,6 +492,7 @@ struct QuickActionEditorView: View {
             }
             .navigationTitle(action == nil ? "New Action" : "Edit Action")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

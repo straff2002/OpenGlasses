@@ -67,6 +67,7 @@ struct SafetyRulesView: View {
         }
         .navigationTitle("Agent Safety")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     // MARK: - Bindings / actions

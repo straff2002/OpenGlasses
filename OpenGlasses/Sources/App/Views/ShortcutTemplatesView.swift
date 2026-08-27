@@ -147,6 +147,7 @@ struct ShortcutTemplatesView: View {
             }
         }
         .navigationTitle("Shortcut Templates")
+        .ogFormStyle()
     }
 
     private func installSelected() {

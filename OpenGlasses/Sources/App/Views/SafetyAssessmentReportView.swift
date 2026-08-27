@@ -32,6 +32,7 @@ struct SafetyAssessmentReportView: View {
             }
             .padding(16)
         }
+        .background(OGTheme.canvas.ignoresSafeArea())
     }
 
     private var header: some View {
@@ -54,23 +55,24 @@ struct SafetyAssessmentReportView: View {
     }
 
     private var scoreBanner: some View {
-        HStack(spacing: 12) {
-            if let score = report.score {
-                Text("\(Int((score * 100).rounded()))%")
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(score >= 1.0 ? OGTheme.okLabel : (report.uncontrolled.contains { $0.controlStatus == .none } ? OGTheme.errorLabel : OGTheme.warnLabel))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("HECA score").font(.caption).foregroundStyle(.secondary)
-                    Text("\(report.present.filter { $0.controlStatus == .direct }.count)/\(report.present.count) present hazards directly controlled")
-                        .font(.caption2).foregroundStyle(.secondary)
+        OGCard(cornerRadius: 12) {
+            HStack(spacing: 12) {
+                if let score = report.score {
+                    Text("\(Int((score * 100).rounded()))%")
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(score >= 1.0 ? OGTheme.okLabel : (report.uncontrolled.contains { $0.controlStatus == .none } ? OGTheme.errorLabel : OGTheme.warnLabel))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("HECA score").font(.caption).foregroundStyle(.secondary)
+                        Text("\(report.present.filter { $0.controlStatus == .direct }.count)/\(report.present.count) present hazards directly controlled")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No high-energy hazards detected").font(.subheadline)
                 }
-            } else {
-                Text("No high-energy hazards detected").font(.subheadline)
+                Spacer()
             }
-            Spacer()
+            .padding(12)
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var presentSection: some View {
