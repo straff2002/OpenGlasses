@@ -834,16 +834,18 @@ class AppState: ObservableObject, AppStateProtocol {
         // before any pack merge, so a previously installed pack can't launder a name past the
         // validator for the next install.
         let registryForPacks = nativeToolRegistry
+        let routerForPacks = nativeToolRouter
         skillPackStore = SkillPackStore(nativeToolNames: {
             Set(registryForPacks.allTools.compactMap { $0 is SkillPackToolWrapper ? nil : $0.name })
         })
-        nativeToolRegistry.registerSkillPackTools(from: skillPackStore)
+        nativeToolRegistry.registerSkillPackTools(from: skillPackStore, authority: nativeToolRouter)
         let storeForSideload = skillPackStore
         skillPackSideload = SkillPackSideloadService(
             store: storeForSideload,
-            onInstalled: { [weak registryForPacks] in
+            onInstalled: { [weak registryForPacks, weak routerForPacks] in
                 guard let registryForPacks else { return }
-                registryForPacks.registerSkillPackTools(from: storeForSideload)
+                registryForPacks.registerSkillPackTools(from: storeForSideload,
+                                                       authority: routerForPacks)
             })
 
         // Wire "still working" updates for long-running tool executions (Plan CB). Direct mode
@@ -3341,7 +3343,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Rebuild the registry's skill-pack tools after an install/remove/enable change (Plan BX).
     func refreshSkillPackTools() {
-        nativeToolRegistry.registerSkillPackTools(from: skillPackStore)
+        nativeToolRegistry.registerSkillPackTools(from: skillPackStore, authority: nativeToolRouter)
     }
 
     /// Resolve a command candidate, logging any demotion so a field miss is traceable to the clause
@@ -3834,11 +3836,13 @@ class AppState: ObservableObject, AppStateProtocol {
             // described the slow turns.
             TurnRecorder.beginTurn()
             let toolStartedAt = Date()
-            do {
-                let result = try await router.registry.executeTool(
-                    name: directCall.toolName,
-                    arguments: directCall.arguments
-                )
+            // Tier-0 skips the model, never the authorization boundary: the classifier's allowlist
+            // is a routing shortcut, not a permission to act unchecked.
+            let outcome = await router.execute(.root(
+                name: directCall.toolName,
+                arguments: ToolArguments(directCall.arguments),
+                origin: .user))
+            if case .success(let result) = outcome {
                 TurnRecorder.addToolTime(since: toolStartedAt)
                 lastResponse = result
                 print("⚡ Direct tool call: \(directCall.toolName) → \(result)")
@@ -3856,9 +3860,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 TurnRecorder.handOffToSpeech()
                 await speechService.speak(result)
                 stopStopListener()
-            } catch {
-                // Fall through to normal LLM path if direct call fails
-                print("⚠️ Direct tool call failed, falling back to LLM: \(error)")
+            } else if case .failure(let message) = outcome {
+                // Fall through to normal LLM path if direct call fails. A policy refusal lands here
+                // too, and re-reaches the same gate through the model — never around it.
+                print("⚠️ Direct tool call failed, falling back to LLM: \(message)")
                 // Plan CU P1: the LLM turn below answers this same utterance, so seal this attempt
                 // as its own abandoned record and hand back the stamps it claimed. Sealed here
                 // rather than at the gate below, which `isProcessing = false` is about to skip.
@@ -3988,9 +3993,10 @@ class AppState: ObservableObject, AppStateProtocol {
                         // phrasings (live-traced); handed the data, it just answers. ~200ms,
                         // local path only — cloud models tool-call fine on their own.
                         var weatherCtx: String?
-                        if classification.relevantSections.contains(.weather) {
-                            weatherCtx = try? await nativeToolRegistry.executeTool(
-                                name: "get_weather", arguments: [:])
+                        if classification.relevantSections.contains(.weather),
+                           case .success(let forecast) = await nativeToolRouter.execute(
+                               .root(name: "get_weather", origin: .appInternal)) {
+                            weatherCtx = forecast
                         }
                         // Fast path: on-device Gemma 4 agent — but spill to the cloud cascade if it
                         // can't serve the turn (BK P2b: prefer local for cost, fall over to cloud).
@@ -4420,8 +4426,13 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             addNote: { [weak self] text in
                 guard let self else { throw RemoteInvokeError.unavailable }
-                return try await self.nativeToolRouter.registry.executeTool(
-                    name: "save_note", arguments: ["content": text])
+                // A remote caller's note still goes through the authority; the remote-invoke
+                // consent gate above it decides *who* may ask, not what may run unchecked.
+                switch await self.nativeToolRouter.execute(
+                    .root(name: "save_note", arguments: ["content": text], origin: .appInternal)) {
+                case .success(let confirmation): return confirmation
+                case .failure: throw RemoteInvokeError.unavailable
+                }
             },
             getTranscript: { [weak self] in
                 guard let self else { return "" }

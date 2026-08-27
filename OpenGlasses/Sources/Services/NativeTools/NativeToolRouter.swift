@@ -1,9 +1,17 @@
 import Foundation
 import os.lock
 
+/// The one object allowed to dispatch an acting tool. Composition surfaces (a skill pack's `.tool`
+/// binding, a Siri Action) hold this rather than a `NativeTool` instance, so there is no shape in
+/// which they can resolve a target and execute it themselves.
+@MainActor
+protocol ToolExecutionAuthority: AnyObject {
+    func execute(_ call: ResolvedToolCall) async -> ToolResult
+}
+
 /// Routes tool calls: native tools → MCP servers → OpenClaw fallback.
 @MainActor
-final class NativeToolRouter {
+final class NativeToolRouter: ToolExecutionAuthority {
     let registry: NativeToolRegistry
     var openClawBridge: OpenClawBridge?
     var mcpClient: MCPClient?
@@ -33,6 +41,14 @@ final class NativeToolRouter {
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
+    /// What a composition may reach. Defaults to refusing any target the router would have gated —
+    /// admission and merge-time quarantine already keep such bindings out of the registry, so the
+    /// routed confirmation path is proven by tests before it is anything's default.
+    var composedTargetPolicy: ComposedToolPolicy.Mode = .refuse
+
+    /// Content-free record of refusals, for diagnostics and for tests to assert against.
+    let authorizationEvents = ToolAuthorizationEventLog()
+
     /// Names of tools routed since the last `takeTurnToolNames()` — lets the memory loop
     /// (Memory & Recall Phase 3) see which tools a turn used, to spot repeated multi-step
     /// requests worth saving as a skill.
@@ -50,83 +66,87 @@ final class NativeToolRouter {
         self.openClawBridge = openClawBridge
     }
 
-    /// Handle a tool call by name. Routing order: native → MCP → OpenClaw → error.
+    /// Handle a root tool call from a model turn. A thin adapter over `execute(_:)` so the provider
+    /// integrations keep one signature; everything below the adapter sees the same resolved call a
+    /// composed child does.
     func handleToolCall(name: String, args: [String: Any]) async -> ToolResult {
-        turnToolNames.append(name)   // Phase 3: track tools used this turn for skill detection
+        await execute(.root(name: name, arguments: ToolArguments(args), origin: .model))
+    }
 
-        // 0a. Actuation floor (Plan BC): confirmation before irreversible, security-relevant
-        // physical actions (unlock a door, open a garage, disarm an alarm) even when agent mode is
-        // OFF — so a prompt-injected sign/web result can't silently actuate. When agent mode is on,
-        // the SafetySupervisor below (0b) already confirms these high-impact tools, so this floor
-        // only needs to cover the agent-mode-off default and would otherwise double-prompt.
-        if !Config.agentModeEnabled,
-           HighImpactToolPolicy.mayRequireConfirmation(tool: name),
-           case .requiresConfirmation(let summary) = HighImpactToolPolicy.evaluate(tool: name, args: args) {
-            if let coordinator = confirmationCoordinator {
-                NSLog("[NativeToolRouter] Actuation floor requires confirmation for %@: %@", name, summary)
-                let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
-                guard approved else {
-                    NSLog("[NativeToolRouter] User declined %@ (actuation floor)", name)
-                    return .failure("The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again.")
-                }
-            } else {
+    /// Authorize and dispatch one resolved call. Routing order: native → MCP → OpenClaw → error.
+    ///
+    /// Every acting path in the app funnels through here — a model tool call, a deterministically
+    /// classified utterance, a Siri Action, and a skill pack's `.tool` binding — so the policy
+    /// ladder is evaluated exactly once against the *real* target and its final arguments.
+    func execute(_ call: ResolvedToolCall) async -> ToolResult {
+        let name = call.name
+        let args = call.arguments.rawValues
+        // Phase 3: track tools used this turn for skill detection. A composed child records its
+        // resolved target *and* keeps the pack action its parent already recorded — the pair is the
+        // useful signal; only the user-visible progress reporting below is de-duplicated.
+        turnToolNames.append(name)
+
+        let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
+        let decision = ToolAuthorizationPolicy.evaluate(.init(
+            call: call,
+            agentModeEnabled: Config.agentModeEnabled,
+            safetyContext: safetyContext,
+            composedTargets: composedTargetPolicy))
+
+        switch decision {
+        case .allow:
+            break
+
+        case .refuse(let reason, let message):
+            authorizationEvents.record(call: call, verdict: reason.rawValue)
+            return .failure(message)
+
+        case .block(let message):
+            NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@", name)
+            return .failure(message)
+
+        case .hold(let summary, let message):
+            onActionHeld?(summary)
+            NSLog("[NativeToolRouter] Held %@ for re-engagement (autonomy=%@)", name,
+                  safetyContext.autonomy.rawValue)
+            return .failure(message)
+
+        case .confirm(let summary):
+            guard let coordinator = confirmationCoordinator else {
                 // No confirmation UI wired (e.g. headless): fail closed rather than actuate blind.
-                NSLog("[NativeToolRouter] No confirmation coordinator; refusing high-impact %@", name)
-                return .failure("'\(name)' requires user confirmation, which isn't available right now, so it was not performed. Tell the user to try again with the app in the foreground.")
+                NSLog("[NativeToolRouter] No confirmation coordinator; refusing %@", name)
+                return .failure(ToolAuthorizationPolicy.unavailableConfirmationMessage(name))
+            }
+            NSLog("[NativeToolRouter] Confirmation required for %@: %@", name, summary)
+            let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
+            guard approved else {
+                NSLog("[NativeToolRouter] User declined %@", name)
+                return .failure(ToolAuthorizationPolicy.declineMessage(name))
             }
         }
 
-        // 0b. Deterministic safety supervisor (Plan S): the single pre-execution safety gate when
-        // agent mode is on. It subsumes the high-impact confirmation backstop — its
-        // `needsVoiceApproval` rule reproduces it — and adds deterministic block/confirm rules
-        // (geofence, quiet hours, irreversible floor). A `.block` veto short-circuits with no
-        // execution; a `.confirm` routes through the same human-in-the-loop gate. Even if
-        // untrusted content talked the model into a destructive tool, nothing runs without this.
-        if Config.agentModeEnabled {
-            let context = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
-            switch SafetySupervisor.evaluate(tool: name, args: args, context: context) {
-            case .allow:
-                break
-            case .block(let reason):
-                NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@: %@", name, reason)
-                // Plan W: when the block is the presence autonomy ceiling on an acting tool (the
-                // user is idle/away), hold it for re-engagement instead of reporting a hard safety
-                // block — the action was deferred, not forbidden.
-                if context.autonomy != .autoAct,
-                   PromptInjectionPolicy.isHighImpact(toolName: name, args: args) {
-                    let summary = PromptInjectionPolicy.actionSummary(toolName: name, args: args)
-                    onActionHeld?(summary)
-                    NSLog("[NativeToolRouter] Held %@ for re-engagement (autonomy=%@)", name, context.autonomy.rawValue)
-                    return .failure("'\(name)' wasn't run because you've been away from the glasses; I've held it to raise when you're back. Do not retry automatically.")
-                }
-                return .failure("'\(name)' was blocked by a safety rule (\(reason)). Do not retry; tell the user it was blocked for safety.")
-            case .confirm(let reason):
-                guard let coordinator = confirmationCoordinator else {
-                    // No confirmation UI wired (e.g. headless): fail closed rather than actuate
-                    // blind, exactly as the agent-mode-off floor above does. Falling through here
-                    // would make the *more* autonomous mode the one that skips the gate.
-                    NSLog("[NativeToolRouter] No confirmation coordinator; refusing %@ (%@)", name, reason)
-                    return .failure("'\(name)' requires user confirmation, which isn't available right now, so it was not performed. Tell the user to try again with the app in the foreground.")
-                }
-                // High-impact tools get the richer action summary; other rules use their reason.
-                let summary = PromptInjectionPolicy.isHighImpact(toolName: name, args: args)
-                    ? PromptInjectionPolicy.actionSummary(toolName: name, args: args)
-                    : reason
-                NSLog("[NativeToolRouter] Safety supervisor requires confirmation for %@: %@", name, reason)
-                let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
-                guard approved else {
-                    NSLog("[NativeToolRouter] User declined %@", name)
-                    return .failure("The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again.")
-                }
-            }
-        }
+        // Only a model's own root call speaks "still working" — a composed child runs inside its
+        // parent's execution, which is already reporting, and the non-model origins have no turn to
+        // narrate.
+        let reportProgress = call.context.origin == .model && call.context.depth == 0
 
-        // 1. Check native tools first
+        // 1. Check native tools first.
         if let tool = registry.tool(named: name) {
             NSLog("[NativeToolRouter] Executing native tool: %@", name)
-            return await executeWithTimeout(name: name) {
-                try await tool.execute(args: args)
+            return await executeWithTimeout(name: name, reportProgress: reportProgress) {
+                // The executing call is task-local so a tool that composes another one names its
+                // own invocation as the parent instead of inventing a fresh root.
+                try await ToolInvocationScope.$current.withValue(call) {
+                    try await tool.execute(args: args)
+                }
             }
+        }
+
+        // A composition binds a native tool by name and nothing else. Falling through to MCP or the
+        // gateway here would let an authored binding reach a third-party server the user never
+        // pointed it at.
+        guard !call.context.origin.isComposition else {
+            return .failure("This skill's underlying tool '\(name)' isn't available on this device.")
         }
 
         // 2. Check MCP servers for the tool (matched on its fully-qualified, namespace-isolated
@@ -147,7 +167,7 @@ final class NativeToolRouter {
             }
             let outboundArgs = verdict.redactedArgs ?? args
             NSLog("[NativeToolRouter] Executing MCP tool: %@", name)
-            return await executeWithTimeout(name: name) {
+            return await executeWithTimeout(name: name, reportProgress: reportProgress) {
                 await mcp.performCall(tool: tool, server: server, arguments: outboundArgs)
             }
         }
@@ -166,7 +186,8 @@ final class NativeToolRouter {
     // MARK: - Timeout + "Still Working" Updates
 
     /// Execute a tool with a timeout and periodic "still working" TTS updates.
-    private func executeWithTimeout(name: String, work: @escaping () async throws -> String) async -> ToolResult {
+    private func executeWithTimeout(name: String, reportProgress: Bool = true,
+                                    work: @escaping () async throws -> String) async -> ToolResult {
         let startTime = Date()
 
         // "Still working" timer: fires every 10 seconds during long operations
@@ -177,7 +198,7 @@ final class NativeToolRouter {
                 guard !Task.isCancelled else { break }
                 elapsed += 10
                 NSLog("[NativeToolRouter] Tool %@ still running after %ds", name, elapsed)
-                self?.onLongRunningUpdate?(elapsed)
+                if reportProgress { self?.onLongRunningUpdate?(elapsed) }
             }
         }
 

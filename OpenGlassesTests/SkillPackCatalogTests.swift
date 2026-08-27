@@ -220,7 +220,9 @@ final class SkillPackCatalogTests: XCTestCase {
         }
         nonisolated(unsafe) var captured: [String: Any] = [:]
         registry.register(CapturingTimer(onArgs: { captured = $0 }))
-        registry.registerSkillPackTools(from: store)
+        // A composed binding runs only through the execution authority, so the merge needs one.
+        let router = NativeToolRouter(registry: registry)
+        registry.registerSkillPackTools(from: store, authority: router)
         let breakTool = try XCTUnwrap(registry.tool(named: "pack_com_openglasses_focus_start_break"))
         _ = try await breakTool.execute(args: [:])
         XCTAssertEqual(captured["seconds"] as? Int, 300,

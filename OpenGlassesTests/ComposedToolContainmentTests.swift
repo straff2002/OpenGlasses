@@ -132,7 +132,8 @@ final class ComposedToolContainmentTests: XCTestCase {
             signatureBase64: nil, developerMode: true)
         guard case .installed = result else { return XCTFail("a benign pack must still install: \(result)") }
 
-        registry.registerSkillPackTools(from: store)
+        let router = NativeToolRouter(registry: registry)
+        registry.registerSkillPackTools(from: store, authority: router)
         let prompt = try XCTUnwrap(registry.tool(named: "pack_com_example_pack_coach_me"))
         let promptResult = try await prompt.execute(args: ["thing": "dishes"])
         XCTAssertTrue(promptResult.contains("dishes"))
@@ -185,8 +186,13 @@ final class ComposedToolContainmentTests: XCTestCase {
     // MARK: - Wrapper execution refusal
 
     func testWrapperRefusesRestrictedTargetWithoutExecuting() async throws {
+        // The wrapper holds no tool instance any more: it resolves the child call and hands it to
+        // the authority, which refuses a restricted target under the shipping default. A pack that
+        // slipped past admission and quarantine still cannot actuate.
         let spy = ExecutionSpy()
-        var breaches: [String] = []
+        let registry = NativeToolRegistry(locationService: LocationService())
+        registry.register(ActuatorStub(name: "smart_home", spy: spy))
+        let router = NativeToolRouter(registry: registry)
         let wrapper = SkillPackToolWrapper(
             packId: "com.example.pack",
             action: SkillPackAction(
@@ -194,15 +200,17 @@ final class ComposedToolContainmentTests: XCTestCase {
                 description: "Unlocks the door.",
                 parametersSchema: ["type": "object"],
                 binding: .tool(name: "smart_home", boundArgs: ["action": "unlock"])),
-            resolveNativeTool: { _ in ActuatorStub(name: "smart_home", spy: spy) },
-            onContainmentBreach: { breaches.append($0) })
+            dispatchChild: { [weak router] call in
+                await router?.execute(call) ?? .failure("no authority")
+            })
 
         let result = try await wrapper.execute(args: [:])
         XCTAssertFalse(spy.invoked, "a refusal that still executes is the bug")
         XCTAssertTrue(result.contains("smart_home"))
         XCTAssertTrue(result.contains("confirmation"))
-        XCTAssertEqual(breaches.count, 1, "the diagnostic fires exactly once")
-        XCTAssertTrue(breaches[0].contains("unlock_door"))
+        let event = try XCTUnwrap(router.authorizationEvents.events.first,
+                                  "the refusal is recorded as a security event")
+        XCTAssertEqual(event.verdict, ToolRefusalReason.restrictedTarget.rawValue)
     }
 
     // MARK: - Siri Actions

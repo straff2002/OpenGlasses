@@ -329,22 +329,11 @@ final class NativeToolRegistry {
         }
     }
 
-    /// Execute a tool by name with the given arguments.
-    /// Used by the ConversationClassifier for direct (LLM-free) tool calls.
-    func executeTool(name: String, arguments: [String: Any]) async throws -> String {
-        guard let tool = tool(named: name) else {
-            throw NativeToolError.toolNotFound(name)
-        }
-        return try await tool.execute(args: arguments)
-    }
-}
-
-enum NativeToolError: LocalizedError {
-    case toolNotFound(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .toolNotFound(let name): return "Tool '\(name)' not found or disabled"
-        }
-    }
+    // There is deliberately no `executeTool(name:arguments:)` here.
+    //
+    // A lookup-and-execute helper on the registry is how every bypass in this app started: a Siri
+    // Action, a skill-pack binding, and an LLM-free fast path each reached one and ran an acting
+    // tool without the confirmation gate, the safety supervisor, or the egress screen. Execution
+    // belongs to `NativeToolRouter.execute(_:)` and to nothing else; this type resolves and lists
+    // tools. New callers take a `ToolExecutionAuthority`, not a tool instance.
 }

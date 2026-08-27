@@ -38,17 +38,14 @@ enum IntentSupport {
     /// useful instead of a generic error.
     @MainActor
     static func runTool(_ name: String, args: [String: Any], appState: AppState) async -> String {
-        // Every intent tool call lands here, and the registry executes without the router's
-        // confirmation gate — so this is the chokepoint that keeps an intent from actuating
-        // something the assistant would have asked about first.
-        guard !ComposedToolPolicy.isRestrictedTarget(name) else {
-            NSLog("[IntentSupport] Refused intent-bound tool %@ (needs direct confirmation)", name)
-            return ComposedToolPolicy.refusalMessage(target: name)
-        }
-        do {
-            return try await appState.nativeToolRegistry.executeTool(name: name, arguments: args)
-        } catch {
-            return "That action isn't available right now: \(error.localizedDescription)"
+        // Every intent tool call lands here, and goes through the same authority a model tool call
+        // does — a user-authored Siri Action is a saved binding replayed by a machine, so the
+        // composition floor applies to it exactly as it does to a skill pack.
+        let call = ResolvedToolCall.root(name: name, arguments: ToolArguments(args),
+                                         origin: .siriAction)
+        switch await appState.nativeToolRouter.execute(call) {
+        case .success(let text): return text
+        case .failure(let message): return message
         }
     }
 }
