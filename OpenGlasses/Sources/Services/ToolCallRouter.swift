@@ -44,7 +44,7 @@ class ToolCallRouter {
         let callName = call.name
 
         NSLog("[ToolCall] Received: %@ (id: %@) args: %@",
-              callName, callId, String(describing: call.args))
+              callName, callId, ToolLogContent.redacted(String(describing: call.args)))
 
         // Plan BR P1: refuse suspended/runaway calls without executing — the message rides
         // back as the tool error so the model learns in-band and informs the user.
@@ -75,7 +75,10 @@ class ToolCallRouter {
             // Route through NativeToolRouter first (handles native → MCP → OpenClaw cascade)
             var outcome: ToolExecutionOutcome
             if let router = nativeToolRouter {
-                outcome = await router.executeRoot(name: callName, args: call.args)
+                // The live session's own id for this function call: a reconnect that redelivers it
+                // resolves to the operation that already ran rather than running it twice.
+                outcome = await router.executeRoot(name: callName, args: call.args,
+                                                   origin: .model, invocationID: callId)
             } else if Config.isOpenClawAgentActive {
                 // Fallback: direct OpenClaw delegation (legacy path). BK P0: only as an active
                 // agentic capability — delegateTask itself now fails closed otherwise, but don't
@@ -112,7 +115,7 @@ class ToolCallRouter {
             }
 
             NSLog("[ToolCall] Result for %@ (id: %@): %@",
-                  callName, callId, String(describing: outcome))
+                  callName, callId, ToolLogContent.redacted(String(describing: outcome)))
 
             let response = self.buildToolResponse(callId: callId, name: callName,
                                                   result: outcome.toolResult)

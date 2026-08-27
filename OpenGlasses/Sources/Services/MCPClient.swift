@@ -122,16 +122,15 @@ final class MCPClient: ObservableObject {
     /// Perform the actual `tools/call` network request. Egress screening is applied by the
     /// caller (`NativeToolRouter`) before this runs; `arguments` here are already screened.
     /// The JSON-RPC `name` is the server's *bare* tool name, never the qualified one.
-    func performCall(tool: MCPTool, server: MCPServerConfig, arguments: [String: Any]) async -> String {
-        let payload: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": [
-                "name": tool.name,
-                "arguments": arguments,
-            ] as [String: Any],
-        ]
+    ///
+    /// `idempotencyKey` identifies the operation across redeliveries. `tools/call` has no key field
+    /// of its own, so it rides in the request's `_meta` — the one place the protocol reserves for
+    /// exactly this, and which a server that doesn't understand it ignores. It is a digest, so it
+    /// carries no argument content off the device.
+    func performCall(tool: MCPTool, server: MCPServerConfig, arguments: [String: Any],
+                     idempotencyKey: String? = nil) async -> String {
+        let payload = Self.callPayload(toolName: tool.name, arguments: arguments,
+                                       idempotencyKey: idempotencyKey)
 
         guard let data = try? await mcpRequest(server: server, payload: payload),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -151,6 +150,25 @@ final class MCPClient: ObservableObject {
         }
         return "Tool executed successfully."
     }
+
+    /// The `tools/call` request body. Pure and static so the wire shape — including whether an
+    /// idempotency key actually reaches the server — is assertable without a network.
+    nonisolated static func callPayload(toolName: String, arguments: [String: Any],
+                                        idempotencyKey: String?) -> [String: Any] {
+        var params: [String: Any] = ["name": toolName, "arguments": arguments]
+        if let idempotencyKey {
+            params["_meta"] = [Self.idempotencyMetaKey: idempotencyKey]
+        }
+        return [
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": params,
+        ]
+    }
+
+    /// Namespaced so it can never collide with a protocol-reserved `_meta` key.
+    nonisolated static let idempotencyMetaKey = "nz.co.skunkworks.openglasses/idempotency-key"
 
     // MARK: - Server Management
 

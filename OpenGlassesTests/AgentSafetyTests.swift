@@ -280,8 +280,8 @@ private final class FakeRouter: ToolExecuting {
     var responses: [String: ToolExecutionOutcome] = [:]
     var defaultResult: ToolExecutionOutcome = .completed("ok")
 
-    func executeRoot(name: String, args: [String: Any],
-                     origin: ToolInvocationOrigin) async -> ToolExecutionOutcome {
+    func executeRoot(name: String, args: [String: Any], origin: ToolInvocationOrigin,
+                     invocationID: String) async -> ToolExecutionOutcome {
         calls.append((name, args))
         return responses[name] ?? defaultResult
     }

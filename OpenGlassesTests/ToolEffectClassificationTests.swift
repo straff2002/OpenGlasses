@@ -291,7 +291,7 @@ final class ToolEffectClassificationTests: XCTestCase {
     func testLoopRefusesToRepeatACallWhoseOutcomeIsUnresolved() async throws {
         var dispatched: [String] = []
         let dispatcher = ToolDispatcher(
-            execute: { name, _, _ in
+            execute: { name, _, _, _ in
                 dispatched.append(name)
                 return .outcomeUnknown(operationID: "op-1", message: "may still land")
             },
@@ -323,7 +323,7 @@ final class ToolEffectClassificationTests: XCTestCase {
     func testLoopStillAllowsADifferentCallToTheSameTool() async throws {
         var dispatched: [[String: Any]] = []
         let dispatcher = ToolDispatcher(
-            execute: { _, args, _ in
+            execute: { _, args, _, _ in
                 dispatched.append(args)
                 return .outcomeUnknown(operationID: "op", message: "may still land")
             },
@@ -358,7 +358,7 @@ final class ToolEffectClassificationTests: XCTestCase {
     func testDispatcherReportsAnUnresolvedOutcomeAsItsOwnStatus() async {
         var statuses: [ToolCallStatus] = []
         let dispatcher = ToolDispatcher(
-            execute: { _, _, _ in .outcomeUnknown(operationID: "op", message: "may still land") },
+            execute: { _, _, _, _ in .outcomeUnknown(operationID: "op", message: "may still land") },
             onStatus: { statuses.append($0) })
 
         let outcome = await dispatcher.dispatch(

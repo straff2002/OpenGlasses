@@ -1,6 +1,22 @@
 import Foundation
 import CryptoKit
 
+/// Keeps tool arguments, results, and confirmation copy out of release logs.
+///
+/// A device log is readable by anything with the device in hand, and these strings are the actual
+/// message being sent, the actual note being saved, the actual address being navigated to. In a
+/// debug build they are exactly what you need while working on a tool; in a shipped build the shape
+/// of the log — which tool, when, how long, what verdict — is kept and the content is not.
+enum ToolLogContent {
+    static func redacted(_ text: String) -> String {
+        #if DEBUG
+        return text
+        #else
+        return "<\(text.count) chars>"
+        #endif
+    }
+}
+
 /// A content-free record of one authorization verdict.
 ///
 /// Ids are fingerprints, never the values: an invocation id correlates a refusal with the turn that
