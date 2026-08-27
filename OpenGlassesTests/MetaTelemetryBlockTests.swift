@@ -44,21 +44,30 @@ final class MetaTelemetryBlockTests: XCTestCase {
 
     // MARK: - Interception
 
-    /// The claim worth testing: a telemetry POST issued the way the SDK issues one
-    /// (`URLSession.shared`) is answered locally and never leaves the process.
+    /// The claim worth testing: a telemetry POST is answered locally and never leaves the process.
+    ///
+    /// The interceptor is injected into an ephemeral session's `protocolClasses` rather than
+    /// registered globally — `URLProtocol.registerClass` against the shared session is
+    /// registration-order and timing sensitive when other suites are doing networking in
+    /// parallel. What this test owns is the interceptor's behaviour; the global registration
+    /// path is `install()`, covered below.
     func testTelemetryUploadIsAnsweredLocallyAndNeverSent() async throws {
-        MetaTelemetryBlock.install()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MetaTelemetryBlock.Interceptor.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
 
         var request = URLRequest(url: URL(string: "https://api2.ar.meta.com/mwsdk/telemetry")!)
         request.httpMethod = "POST"
         request.httpBody = Data("{\"events\":[]}".utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let blockedBefore = MetaTelemetryBlock.blockedCount
+        let (data, response) = try await session.data(for: request)
 
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 204,
                        "a success drops the SDK's cached batch; a failure would leave it retrying forever")
         XCTAssertTrue(data.isEmpty)
-        XCTAssertEqual(MetaTelemetryBlock.blockedCount, 1,
+        XCTAssertEqual(MetaTelemetryBlock.blockedCount, blockedBefore + 1,
                        "the counter is how a regression becomes visible without a packet capture")
     }
 
