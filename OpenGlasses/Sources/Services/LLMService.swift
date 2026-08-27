@@ -472,12 +472,15 @@ class LLMService: ObservableObject {
     /// `ToolDispatcher` value type so the whole step is unit-testable with a mock executor.
     private func makeToolDispatcher() -> ToolDispatcher {
         ToolDispatcher(
-            execute: { [weak self] name, args, rawArgs in
+            execute: { [weak self] name, args, rawArgs, callID in
                 guard let self else {
                     return .failedBeforeExecution(reason: "Service unavailable")
                 }
                 if let router = self.nativeToolRouter {
-                    return await router.executeRoot(name: name, args: args)
+                    // The provider's own call id, where it gave one: a redelivery of this exact
+                    // call then resolves to the operation that already ran instead of running again.
+                    return await router.executeRoot(name: name, args: args, origin: .model,
+                                                    invocationID: callID ?? UUID().uuidString)
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
                     return ToolExecutionOutcome(

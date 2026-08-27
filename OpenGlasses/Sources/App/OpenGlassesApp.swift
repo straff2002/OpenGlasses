@@ -883,6 +883,19 @@ class AppState: ObservableObject, AppStateProtocol {
         nativeToolRouter.onActionHeld = { [weak self] summary in
             self?.heldRecommendations.record(summary: summary, at: Date())
         }
+        // An operation that resolves after the turn has moved on updates the record and the log,
+        // and stops there: the conversation already said what was known at the time, and a second
+        // announcement arriving minutes later would be worse than the uncertainty it replaces.
+        nativeToolRouter.onOperationStatusChange = { record in
+            guard record.resolvedLate else { return }
+            NSLog("[AppState] Operation for %@ settled as %@ after the turn ended",
+                  record.toolName, record.state.rawValue)
+        }
+        // Anything a previous process left in flight is unknown until a tool that can check says
+        // otherwise. Off the launch path; nothing waits on it.
+        Task { @MainActor [weak self] in
+            await self?.nativeToolRouter.reconcileRecoveredOperations()
+        }
         toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
             guard let self else { return }
             // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together.

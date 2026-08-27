@@ -49,6 +49,21 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// Content-free record of refusals, for diagnostics and for tests to assert against.
     let authorizationEvents = ToolAuthorizationEventLog()
 
+    /// Durable at-most-once record for operations that cannot safely be repeated. Injected so a
+    /// test writes to its own directory; the app-wide protected store is the default because
+    /// durability here is the safety property, not a wiring detail somebody might forget.
+    var operationJournal: any OperationJournal = ProtectedOperationJournal.shared
+
+    /// One operation at a time per logical resource, for the adapters that can't de-duplicate for
+    /// themselves.
+    private let resourceSerializer = OperationResourceSerializer()
+
+    /// An operation's journal state changed. The one case that matters is a record arriving with
+    /// `resolvedLate` set: the caller was already told the outcome was unknown and the turn has
+    /// moved on, so the answer belongs to operation status and diagnostics — never to a second
+    /// spoken success after the fact.
+    var onOperationStatusChange: ((OperationRecord) -> Void)?
+
     /// Names of tools routed since the last `takeTurnToolNames()` — lets the memory loop
     /// (Memory & Recall Phase 3) see which tools a turn used, to spot repeated multi-step
     /// requests worth saving as a skill.
@@ -76,9 +91,16 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// The same root adapter, keeping the typed outcome. Callers that can act on the retry
     /// disposition (the tool-loop driver, the live-session router) use this one; the `ToolResult`
     /// adapter above stays for the provider wires, which only ever needed the text.
+    ///
+    /// `invocationID` is the caller's own identifier for the delivery — a provider's `tool_use` /
+    /// `tool_call` id, or a live-session function-call id. Supplying it is what lets a redelivery of
+    /// the same call be recognised as the same operation instead of executed a second time; where a
+    /// caller has no stable id, the default fresh UUID keeps every delivery distinct.
     func executeRoot(name: String, args: [String: Any],
-                     origin: ToolInvocationOrigin = .model) async -> ToolExecutionOutcome {
-        await execute(.root(name: name, arguments: ToolArguments(args), origin: origin))
+                     origin: ToolInvocationOrigin = .model,
+                     invocationID: String = UUID().uuidString) async -> ToolExecutionOutcome {
+        await execute(.root(name: name, arguments: ToolArguments(args), origin: origin,
+                            invocationID: invocationID))
     }
 
     /// Authorize and dispatch one resolved call. Routing order: native → MCP → OpenClaw → error.
@@ -127,7 +149,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 NSLog("[NativeToolRouter] No confirmation coordinator; refusing %@", name)
                 return .rejected(reason: ToolAuthorizationPolicy.unavailableConfirmationMessage(name))
             }
-            NSLog("[NativeToolRouter] Confirmation required for %@: %@", name, summary)
+            NSLog("[NativeToolRouter] Confirmation required for %@: %@", name,
+                  ToolLogContent.redacted(summary))
             let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
             guard approved else {
                 NSLog("[NativeToolRouter] User declined %@", name)
@@ -140,16 +163,25 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // narrate.
         let reportProgress = call.context.origin == .model && call.context.depth == 0
 
+        // Cancelled while it was being authorized — the turn was abandoned, the session torn down.
+        // Nothing has been dispatched and nothing is journaled: this is the one place where "it did
+        // not happen" is something we actually know.
+        if Task.isCancelled {
+            return .failedBeforeExecution(reason: Self.cancelledBeforeDispatch(name))
+        }
+
         // 1. Check native tools first.
         if let tool = registry.tool(named: name) {
             NSLog("[NativeToolRouter] Executing native tool: %@", name)
-            return await executeWithTimeout(name: name, semantics: tool.executionSemantics,
-                                            operationID: call.context.invocationID,
-                                            reportProgress: reportProgress) {
+            return await dispatch(call, semantics: tool.executionSemantics,
+                                  reportProgress: reportProgress) { key in
                 // The executing call is task-local so a tool that composes another one names its
-                // own invocation as the parent instead of inventing a fresh root.
+                // own invocation as the parent instead of inventing a fresh root; the operation's
+                // idempotency key rides alongside for any adapter that can put one on the wire.
                 try await ToolInvocationScope.$current.withValue(call) {
-                    try await tool.execute(args: args)
+                    try await OperationScope.$idempotencyKey.withValue(key) {
+                        try await tool.execute(args: args)
+                    }
                 }
             }
         }
@@ -183,10 +215,10 @@ final class NativeToolRouter: ToolExecutionAuthority {
             // A third-party server's tool declares nothing about itself, so it gets the same
             // assumption an unclassified native tool gets: it reached outside, we can't stop it,
             // and we don't know what a timeout left behind.
-            return await executeWithTimeout(name: name, semantics: .conservativeDefault,
-                                            operationID: call.context.invocationID,
-                                            reportProgress: reportProgress) {
-                await mcp.performCall(tool: tool, server: server, arguments: outboundArgs)
+            return await dispatch(call, semantics: .conservativeDefault,
+                                  reportProgress: reportProgress) { key in
+                await mcp.performCall(tool: tool, server: server, arguments: outboundArgs,
+                                      idempotencyKey: key)
             }
         }
 
@@ -194,12 +226,100 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // an autonomous action, so it needs Agent Mode on, not just a configured gateway).
         if let bridge = openClawBridge, Config.isOpenClawAgentActive {
             let taskDesc = args["task"] as? String ?? String(describing: args)
-            NSLog("[NativeToolRouter] Delegating to OpenClaw: %@(%@)", name, String(taskDesc.prefix(100)))
+            NSLog("[NativeToolRouter] Delegating to OpenClaw: %@(%@)", name,
+                  ToolLogContent.redacted(String(taskDesc.prefix(100))))
             // The bridge answers authoritatively or not at all — it has no timeout race of its own.
             return ToolExecutionOutcome(await bridge.delegateTask(task: taskDesc, toolName: name))
         }
 
         return .failedBeforeExecution(reason: "Unknown tool: \(name)")
+    }
+
+    // MARK: - At-most-once dispatch
+
+    /// Take one authorized call to the tool, at most once.
+    ///
+    /// Operations whose repetition is harmless — every read, and everything that converges on the
+    /// same world state — go straight through: journaling them would buy nothing and would fill a
+    /// security store with noise. Everything else is admitted against the journal first, so a second
+    /// delivery of a call already recorded is answered from the record instead of being run again,
+    /// across a process restart as well as within a session.
+    private func dispatch(_ call: ResolvedToolCall, semantics: ToolExecutionSemantics,
+                          reportProgress: Bool,
+                          work: @escaping (String) async throws -> String) async -> ToolExecutionOutcome {
+        let key = OperationIdempotencyKey.derive(call)
+        let name = call.name
+
+        guard !semantics.isSafeToRepeat else {
+            return await executeWithTimeout(name: name, semantics: semantics,
+                                            operationID: call.context.invocationID,
+                                            reportProgress: reportProgress) { try await work(key) }
+        }
+
+        let journal = operationJournal
+        switch journal.admit(call: call, semantics: semantics, key: key, at: Date()) {
+        case .duplicate(let existing):
+            let advice = OperationRetryPolicy.advice(for: existing, semantics: semantics)
+            NSLog("[NativeToolRouter] %@ already journaled as %@ — not run again (%@)",
+                  name, existing.state.rawValue,
+                  advice.allowsAutomaticRetry ? "repeatable" : "needs reconciliation before retry")
+            return journal.replayOutcome(for: existing)
+
+        case .proceed(let record):
+            let sink = journalSink(operationID: record.operationID)
+            return await resourceSerializer.withResource(name) {
+                await executeWithTimeout(name: name, semantics: semantics,
+                                         operationID: record.operationID,
+                                         reportProgress: reportProgress,
+                                         journalSink: sink) { try await work(key) }
+            }
+        }
+    }
+
+    /// Writes an operation's fate to the journal at the moment it is decided — including when it is
+    /// decided *after* the router stopped waiting, which is the whole reason the sink exists rather
+    /// than a return-value update: by then nobody is awaiting anything to update.
+    private func journalSink(operationID: String) -> (ToolExecutionOutcome) -> Void {
+        { [weak self] outcome in
+            guard let self else { return }
+            let resolution = self.operationJournal.resolve(operationID: operationID,
+                                                           outcome: outcome, at: Date())
+            switch resolution {
+            case .recorded(let record):
+                self.onOperationStatusChange?(record)
+            case .late(let record):
+                NSLog("[NativeToolRouter] Operation for %@ resolved late as %@", record.toolName,
+                      record.state.rawValue)
+                self.onOperationStatusChange?(record)
+            case .unknownOperation:
+                break
+            }
+        }
+    }
+
+    /// Ask tools that can answer what became of operations a previous process left in flight.
+    ///
+    /// Records nothing can answer for stay `unknown` — that is the honest state, and converting them
+    /// to failures is exactly the lie this phase exists to stop.
+    @discardableResult
+    func reconcileRecoveredOperations(at now: Date = Date()) async -> Int {
+        var settled = 0
+        for record in operationJournal.recoveredOperations {
+            guard let reconciler = registry.tool(named: record.toolName) as? OperationReconciling,
+                  let outcome = await reconciler.reconcile(operationID: record.operationID,
+                                                           idempotencyKey: record.idempotencyKey)
+            else { continue }
+            operationJournal.resolve(operationID: record.operationID, outcome: outcome, at: now)
+            settled += 1
+        }
+        if settled > 0 {
+            NSLog("[NativeToolRouter] Reconciled %d interrupted operation(s)", settled)
+        }
+        return settled
+    }
+
+    static func cancelledBeforeDispatch(_ tool: String) -> String {
+        "'\(tool)' was cancelled before it ran, so it had no effect."
     }
 
     // MARK: - Timeout + "Still Working" Updates
@@ -212,6 +332,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// instead, because its effect may land in the moment after we stopped listening.
     private func executeWithTimeout(name: String, semantics: ToolExecutionSemantics,
                                     operationID: String, reportProgress: Bool = true,
+                                    journalSink: ((ToolExecutionOutcome) -> Void)? = nil,
                                     work: @escaping () async throws -> String) async -> ToolExecutionOutcome {
         let startTime = Date()
         let timeoutSeconds = semantics.timeout.resolved(default: toolTimeoutSeconds)
@@ -262,11 +383,17 @@ final class NativeToolRouter: ToolExecutionAuthority {
                     finished = .failedBeforeExecution(
                         reason: "Tool error: \(error.localizedDescription)")
                 }
+                // Both branches journal, and both journal *here*, at the instant the fate is
+                // decided. The late branch is the one that could not be done by returning a value:
+                // nobody is awaiting this call any more, so the record is the only place the truth
+                // can still land.
                 if claim() {
+                    journalSink?(finished)
                     continuation.resume(returning: finished)
                 } else {
                     NSLog("[NativeToolRouter] Tool %@ finished after it timed out — its effect landed late",
                           name)
+                    journalSink?(finished)
                 }
             }
 
@@ -277,12 +404,14 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 // and hides that the work is still in flight; only ask when it can answer.
                 if semantics.cancellation.respondsToCancellation { workTask.cancel() }
                 let seconds = Int(timeoutSeconds)
-                continuation.resume(returning: semantics.timeoutIsAuthoritative
+                let timedOut: ToolExecutionOutcome = semantics.timeoutIsAuthoritative
                     ? .failedBeforeExecution(
                         reason: ToolExecutionOutcome.timedOutRead(tool: name, seconds: seconds))
                     : .outcomeUnknown(
                         operationID: operationID,
-                        message: ToolExecutionOutcome.timedOutUnknown(tool: name, seconds: seconds)))
+                        message: ToolExecutionOutcome.timedOutUnknown(tool: name, seconds: seconds))
+                journalSink?(timedOut)
+                continuation.resume(returning: timedOut)
             }
         }
 
@@ -291,14 +420,16 @@ final class NativeToolRouter: ToolExecutionAuthority {
         let duration = Date().timeIntervalSince(startTime)
         switch outcome {
         case .completed(let text):
-            NSLog("[NativeToolRouter] Tool %@ succeeded in %.1fs: %@", name, duration, String(text.prefix(200)))
+            NSLog("[NativeToolRouter] Tool %@ succeeded in %.1fs: %@", name, duration,
+                  ToolLogContent.redacted(String(text.prefix(200))))
         case .outcomeUnknown:
             // Not a failure and not a success: the effect may still be in flight. Nothing is fed to
             // the skill-gap signal, and nothing may retry it automatically.
             NSLog("[NativeToolRouter] Tool %@ outcome unknown after %.1fs (%@ / %@)", name, duration,
                   semantics.effect.rawValue, semantics.cancellation.rawValue)
         case .rejected(let reason), .failedBeforeExecution(let reason):
-            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration, reason)
+            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration,
+                  ToolLogContent.redacted(reason))
             // Skill Self-Evolution (Plan AW): a genuine tool-execution error is a skill-gap signal.
             // Record it off the critical path; the service is Agent-Mode-gated and re-checks. Timeouts
             // and intentional outcomes are filtered out so the proposal bank stays clean.

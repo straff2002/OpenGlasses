@@ -4,8 +4,8 @@ import Foundation
 /// a fake in tests. Matches `NativeToolRouter.executeRoot` so the router conforms for free.
 @MainActor
 protocol ToolExecuting: AnyObject {
-    func executeRoot(name: String, args: [String: Any],
-                     origin: ToolInvocationOrigin) async -> ToolExecutionOutcome
+    func executeRoot(name: String, args: [String: Any], origin: ToolInvocationOrigin,
+                     invocationID: String) async -> ToolExecutionOutcome
 }
 
 extension NativeToolRouter: ToolExecuting {}
@@ -48,12 +48,18 @@ final class PlanExecutor {
     func execute(_ plan: AgentPlan) async -> PlanRunResult {
         var transcript: [String] = []
         var completed = 0
+        let runID = UUID().uuidString
 
         for (index, step) in plan.steps.enumerated() {
             onStep?(index + 1, plan.steps.count, step)
             if !step.rationale.isEmpty { onNarrate?(step.rationale) }
 
-            switch await router.executeRoot(name: step.tool, args: step.args, origin: .model) {
+            // One identity per step of this run, so a step is the same operation wherever it is
+            // observed. A fresh run of the same plan gets a fresh run id and executes normally —
+            // re-running a plan is a decision, not a redelivery.
+            let stepInvocationID = "\(runID)#\(index)"
+            switch await router.executeRoot(name: step.tool, args: step.args, origin: .model,
+                                            invocationID: stepInvocationID) {
             case .completed(let text):
                 completed += 1
                 transcript.append("✓ \(step.tool): \(String(text.prefix(120)))")

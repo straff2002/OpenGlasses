@@ -11,7 +11,7 @@ final class ToolLoopDriverTests: XCTestCase {
     func testDispatcherExecutesWellFormedCallAndTracksStatus() async {
         var statuses: [ToolCallStatus] = []
         let dispatcher = ToolDispatcher(
-            execute: { name, args, _ in .completed("ran \(name) with \(args["x"] ?? "?")") },
+            execute: { name, args, _, _ in .completed("ran \(name) with \(args["x"] ?? "?")") },
             onStatus: { statuses.append($0) }
         )
         let outcome = await dispatcher.dispatch(
@@ -25,7 +25,7 @@ final class ToolLoopDriverTests: XCTestCase {
     func testDispatcherReturnsParseErrorForNilArgumentsWithoutExecuting() async {
         var executed = false
         let dispatcher = ToolDispatcher(
-            execute: { _, _, _ in executed = true; return .completed("should not run") },
+            execute: { _, _, _, _ in executed = true; return .completed("should not run") },
             onStatus: { _ in }
         )
         let outcome = await dispatcher.dispatch(
@@ -39,7 +39,7 @@ final class ToolLoopDriverTests: XCTestCase {
     func testDispatcherReportsFailureStatus() async {
         var statuses: [ToolCallStatus] = []
         let dispatcher = ToolDispatcher(
-            execute: { _, _, _ in .failedBeforeExecution(reason: "boom") },
+            execute: { _, _, _, _ in .failedBeforeExecution(reason: "boom") },
             onStatus: { statuses.append($0) }
         )
         _ = await dispatcher.dispatch(ToolInvocation(id: "1", name: "t", arguments: [:]))
@@ -67,7 +67,8 @@ final class ToolLoopDriverTests: XCTestCase {
     private func makeScriptedAdapter(
         label: String = "Test",
         turns: [AssistantTurn],
-        execute: @escaping (String, [String: Any], String?) async -> ToolExecutionOutcome = { name, _, _ in .completed("ok:\(name)") },
+        execute: @escaping (String, [String: Any], String?, String?) async -> ToolExecutionOutcome
+            = { name, _, _, _ in .completed("ok:\(name)") },
         history: Box<[String]>,
         statuses: Box<[ToolCallStatus]>
     ) -> ProviderLoopAdapter {
@@ -125,7 +126,7 @@ final class ToolLoopDriverTests: XCTestCase {
                 ToolInvocation(id: "1", name: "yield_to_human", arguments: [:]),
                 ToolInvocation(id: "2", name: "never", arguments: [:])
             ])],
-            execute: { name, _, _ in
+            execute: { name, _, _, _ in
                 name == "yield_to_human" ? .completed("YIELD_TO_HUMAN: your turn") : .completed("ran")
             },
             history: history, statuses: statuses

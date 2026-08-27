@@ -68,8 +68,11 @@ struct ToolDispatchOutcome {
 /// a mock executor.
 struct ToolDispatcher {
     /// Executes a well-formed native/gateway tool call. `rawArguments` is the original arg string
-    /// (OpenAI) for the bridge `task` fallback.
-    let execute: (_ name: String, _ args: [String: Any], _ rawArguments: String?) async -> ToolExecutionOutcome
+    /// (OpenAI) for the bridge `task` fallback. `callID` is the provider's own id for this call —
+    /// the identity a redelivery repeats, and what the operation journal keys at-most-once
+    /// execution off; nil where the provider is name-keyed (Gemini) and no such identity exists.
+    let execute: (_ name: String, _ args: [String: Any], _ rawArguments: String?,
+                  _ callID: String?) async -> ToolExecutionOutcome
     /// Reports status transitions (executing → completed/failed/unknown) to the UI.
     let onStatus: (ToolCallStatus) -> Void
 
@@ -77,7 +80,7 @@ struct ToolDispatcher {
         onStatus(.executing(invocation.name))
         let outcome: ToolExecutionOutcome
         if let args = invocation.arguments {
-            outcome = await execute(invocation.name, args, invocation.rawArguments)
+            outcome = await execute(invocation.name, args, invocation.rawArguments, invocation.id)
         } else {
             // Malformed arguments never reached a tool, so this is authoritative.
             outcome = .failedBeforeExecution(reason: "Could not parse the arguments for '\(invocation.name)' as JSON. Re-issue the call with valid JSON arguments.")
