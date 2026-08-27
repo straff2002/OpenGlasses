@@ -30,6 +30,7 @@ struct HealthVaultEditorView: View {
         }
         .navigationTitle("Health Vault")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     private func displayName(_ filename: String) -> String {

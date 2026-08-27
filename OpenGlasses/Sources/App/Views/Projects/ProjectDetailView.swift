@@ -83,6 +83,7 @@ struct ProjectDetailView: View {
         }
         .navigationTitle(project.name)
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .navigationDestination(for: String.self) { id in
             ChatThreadView(threadId: id)
         }

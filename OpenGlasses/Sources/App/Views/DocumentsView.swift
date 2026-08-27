@@ -50,12 +50,14 @@ struct DocumentsView: View {
         }
         .navigationTitle("Documents")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showAddText = true } label: { Label("Add text…", systemImage: "text.alignleft") }
                     Button { importing = true } label: { Label("Import file…", systemImage: "doc.badge.plus") }
                 } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Add document")
             }
         }
         .sheet(isPresented: $showAddText) {
@@ -114,6 +116,7 @@ private struct AddTextDocumentSheet: View {
             }
             .navigationTitle("Add Document")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

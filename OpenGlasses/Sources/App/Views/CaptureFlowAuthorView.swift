@@ -63,6 +63,7 @@ struct CaptureFlowAuthorView: View {
         }
         .navigationTitle("Author Capture-Flow")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .sheet(item: $shareItem) { ShareSheet(items: $0.items) }
     }
 

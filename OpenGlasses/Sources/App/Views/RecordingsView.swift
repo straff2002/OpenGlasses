@@ -35,6 +35,7 @@ struct RecordingsView: View {
         }
         .navigationTitle("Recordings")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 recordButton
@@ -236,6 +237,7 @@ private struct RecordedSessionDetailView: View {
         }
         .navigationTitle(session.title)
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onDisappear {
             playback.pause()
         }
