@@ -30,9 +30,10 @@ struct RemoteInvokeAuditView: View {
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
                                 .background(Capsule().fill(.quaternary))
-                            Text(entry.disposition)
-                                .font(.caption)
-                                .foregroundStyle(entry.disposition == "allowed" ? OGTheme.okLabel : OGTheme.warnLabel)
+                            OGStatusLabel(
+                                entry.disposition,
+                                kind: entry.disposition == "allowed" ? .ok : .warn
+                            )
                         }
                     }
                     .padding(.vertical, 2)
@@ -40,6 +41,7 @@ struct RemoteInvokeAuditView: View {
             }
         }
         .navigationTitle("Remote Activity")
+        .ogFormStyle()
         .toolbar {
             if !service.auditLog.isEmpty {
                 Button("Clear") { service.clearAudit() }

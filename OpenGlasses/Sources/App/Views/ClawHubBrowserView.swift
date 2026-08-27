@@ -214,6 +214,7 @@ struct ClawHubBrowserView: View {
             }
         }
         .navigationTitle("Skill Store")
+        .ogFormStyle()
         .searchable(text: $searchText, prompt: "Search skills...")
         .onSubmit(of: .search) {
             Task { await searchSkills() }
@@ -337,12 +338,7 @@ struct ClawHubBrowserView: View {
                         .foregroundStyle(Color(.label))
 
                     if skillStore.isInstalled(skill.slug) {
-                        Text("Installed")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color(.tertiarySystemFill), in: Capsule())
+                        OGBadge(text: "Installed")
                     }
                 }
 
@@ -635,6 +631,7 @@ struct SkillDetailSheet: View {
             }
             .navigationTitle("Skill Details")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

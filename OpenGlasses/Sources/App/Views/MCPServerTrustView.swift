@@ -95,6 +95,7 @@ struct MCPServerTrustView: View {
         }
         .navigationTitle("Safety & Trust")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onAppear { servers = Config.mcpServers }
     }
 
@@ -133,7 +134,7 @@ struct MCPServerTrustView: View {
     @ViewBuilder
     private func egressBadge(_ action: EgressDecision.Action) -> some View {
         switch action {
-        case .allowed:  badge("Allowed", systemImage: "paperplane", color: .gray)
+        case .allowed:  badge("Allowed", systemImage: "paperplane", color: OGTheme.inactive)
         case .redacted: badge("Redacted", systemImage: "eye.slash", color: OGTheme.warnLabel)
         case .blocked:  badge("Blocked", systemImage: "hand.raised", color: OGTheme.errorLabel)
         }
