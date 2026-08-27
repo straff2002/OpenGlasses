@@ -10,6 +10,7 @@ enum LaunchState: String {
     case configured = "-OGUITestConfigured"
     case showAllSettings = "-OGUITestShowAllSettings"
     case seedCaptions = "-OGUITestSeedCaptions"
+    case reinstall = "-OGUITestReinstall"
 }
 
 // MARK: - Deferrals

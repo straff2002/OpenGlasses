@@ -88,4 +88,59 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         app.buttons["Back"].tap()
         awaitScreen(app.buttons["Get Started"], named: "The welcome page, on the way back")
     }
+
+    // MARK: - Reinstall welcome-back
+
+    /// The page a delete-and-reinstall lands on. It exists because the flow used to be *skipped*
+    /// here — credentials survive an app delete and preferences don't, and credentials alone read
+    /// as "already set up" — so the returning user was dropped into a session with no statement of
+    /// what had carried over and what had not.
+    func testWelcomeBackPagePassesAccessibilityAudit() {
+        let app = launch([.reinstall])
+
+        awaitScreen(app.buttons["Restore my setup"], named: "The welcome-back page")
+        audit(app, screen: "Onboarding — Welcome back",
+              deferring: [.secondaryCopyContrast, .appBehindTheOverlay,
+                          .decorativePageIndicator])
+    }
+
+    /// The reinstall gate is only correct if it shows the page at all: on this launch state the
+    /// app must not go straight to the session, and the page must be the welcome-back variant
+    /// rather than the ordinary introduction.
+    func testReinstallShowsTheWelcomeBackVariantRatherThanSkippingOnboarding() {
+        let app = launch([.reinstall])
+
+        awaitScreen(app.staticTexts["Welcome back"], named: "The welcome-back page")
+        XCTAssertFalse(app.buttons["Get Started"].exists,
+                       "A reinstall got the first-run introduction instead of the welcome-back page")
+        XCTAssertTrue(app.buttons["Restore my setup"].exists)
+        XCTAssertTrue(app.buttons["Set up fresh"].exists)
+    }
+
+    /// Restore is the old silent path, chosen rather than assumed: it finishes onboarding and
+    /// hands the user the app, keys intact. The tab bar is the discriminator — it is
+    /// `accessibilityHidden` for as long as onboarding is over it.
+    func testRestoreMySetupLeavesOnboardingForTheApp() {
+        let app = launch([.reinstall])
+
+        awaitScreen(app.buttons["Restore my setup"], named: "The welcome-back page")
+        app.buttons["Restore my setup"].tap()
+
+        awaitScreen(app.tabBars.buttons["Voice"], named: "The session surface after restoring")
+        XCTAssertFalse(app.buttons["Restore my setup"].exists,
+                       "Onboarding is still up after the user chose to restore")
+    }
+
+    /// Set up fresh walks the ordinary flow instead — the same provider page every first run
+    /// reaches, with the reinstall's credentials left alone rather than deleted underneath it.
+    func testSetUpFreshWalksTheNormalFlow() {
+        let app = launch([.reinstall])
+
+        awaitScreen(app.buttons["Set up fresh"], named: "The welcome-back page")
+        app.buttons["Set up fresh"].tap()
+
+        awaitScreen(app.staticTexts["Choose your AI"], named: "The provider page")
+        XCTAssertTrue(app.buttons["Back"].exists,
+                      "The welcome-back page has to stay reachable from the page after it")
+    }
 }

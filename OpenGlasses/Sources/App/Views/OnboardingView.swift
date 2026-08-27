@@ -57,6 +57,15 @@ struct OnboardingView: View {
     @State private var speechGranted = false
     @State private var homeKitGranted = false
 
+    // Reinstall welcome-back (page 1 variant). Captured at view init, so the page does not change
+    // shape underneath a user who is reading it.
+    @State private var isWelcomeBack = Config.isReinstallLaunch
+
+    // Offline-model offer (Plan DH P2) — the optional download on the keyless path.
+    @State private var offlineOffer: OfflineModelOffer.Verdict?
+    @State private var isDownloadingOfflineModel = false
+    @State private var offlineDownloadError: String?
+
     // Connect glasses state (page 5)
     @State private var cameraGranted = false
     @State private var metaRegistered = false
@@ -98,6 +107,7 @@ struct OnboardingView: View {
             }
         }
         .onChange(of: page) { _, newPage in focusedPage = newPage }
+        .onAppear { refreshOfflineOffer() }
     }
 
     /// One animation for every page transition — nil under Reduce Motion, which
@@ -182,7 +192,73 @@ struct OnboardingView: View {
 
     // MARK: - Page 1: Welcome
 
+    /// The first page has two shapes. A reinstall gets the welcome-back variant; everyone else
+    /// gets the introduction, unchanged.
+    @ViewBuilder
     private var welcomePage: some View {
+        if isWelcomeBack {
+            welcomeBackPage
+        } else {
+            firstRunWelcomePage
+        }
+    }
+
+    /// What a delete-and-reinstall lands on.
+    ///
+    /// The app's own preferences went with the delete and its Keychain did not, and the copy says
+    /// exactly that and nothing more — the one thing this page must never imply is that settings
+    /// come back, because they don't. Both exits finish onboarding (`completeOnboarding` on the
+    /// restore side, the full flow on the other), so the completion flag is written and the
+    /// glasses stack is configured whichever the user picks.
+    private var welcomeBackPage: some View {
+        VStack(spacing: 0) {
+            centeredScroll {
+                VStack(spacing: 14) {
+                    LogoIcon(size: logoSize)
+                        .foregroundStyle(accent)
+                        .accessibilityHidden(true)
+
+                    Text("Welcome back")
+                        .font(.largeTitle.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityValue(pagePosition)
+                        .accessibilityFocused($focusedPage, equals: 0)
+
+                    Text("Your sign-ins and access keys are still on this iPhone.")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                OGCard {
+                    OGRow(
+                        "Sign-ins and keys kept",
+                        icon: "key.horizontal",
+                        subtitle: "Provider keys and connected accounts are stored securely on the device, so they survived the reinstall.",
+                        showsChevron: false
+                    )
+                    OGDivider()
+                    OGRow(
+                        "Settings start fresh",
+                        icon: "slider.horizontal.3",
+                        subtitle: "Your preferences — voice, personas, permissions and the rest — were removed with the app and begin at their defaults.",
+                        showsChevron: false
+                    )
+                }
+            }
+
+            pageFooter {
+                primaryButton("Restore my setup") {
+                    completeOnboarding()
+                }
+                Button("Set up fresh") { go(to: 1) }
+                    .buttonStyle(.ogQuiet)
+            }
+        }
+    }
+
+    private var firstRunWelcomePage: some View {
         VStack(spacing: 0) {
             centeredScroll {
                 VStack(spacing: 14) {
@@ -257,14 +333,29 @@ struct OnboardingView: View {
 
             List {
                 Section {
-                    // The keyless path, first because it is the one that needs nothing. Hidden on
-                    // devices that can't run the on-device model — offering it there is a dead end.
+                    // The keyless path, first because it is the one that needs nothing.
+                    //
+                    // Two devices can take it. One has Apple Intelligence and is ready to talk the
+                    // moment setup ends. The other doesn't — and used to be shown no keyless
+                    // option at all, because the chain's other on-device rung only exists once a
+                    // model has been downloaded and nothing here ever offered to download one.
+                    // It is offered now, on the devices that can actually run it; a phone below
+                    // the bar still sees no dead end here, and the reason is stated on the next
+                    // page rather than being left to guess at.
                     if FirstRunDefaults.appleIntelligenceAvailable {
                         providerRow(
                             .appleOnDevice,
                             name: "Start without an API key",
                             model: "Apple Intelligence",
                             detail: "Runs on this iPhone. Add a provider key later in Settings.",
+                            icon: "iphone"
+                        )
+                    } else if offlineModelIsOfferable {
+                        providerRow(
+                            .local,
+                            name: "Start without an API key",
+                            model: LLMProvider.local.defaultModel,
+                            detail: "Downloads a model to this iPhone. No account, works offline.",
                             icon: "iphone"
                         )
                     }
@@ -383,7 +474,7 @@ struct OnboardingView: View {
                         modelSection
                     }
                 } else {
-                    // Subscription providers — no key needed
+                    // Subscription and on-device providers — no key needed
                     Section {
                         Label {
                             Text("\(provider.displayName) doesn't require an access key.")
@@ -394,10 +485,15 @@ struct OnboardingView: View {
                         }
                         .frame(minHeight: rowMinHeight)
                     }
+
+                    if provider == .appleOnDevice || provider == .local {
+                        offlineModelSection
+                    }
                 }
             }
             .listStyle(.insetGrouped)
             .ogFormStyle()
+            .onAppear { refreshOfflineOffer() }
 
             pageFooter {
                 if needsAccount {
@@ -444,6 +540,7 @@ struct OnboardingView: View {
 
     private func keyPageTitle(_ provider: LLMProvider) -> String {
         if provider == .chatgpt { return "Connect ChatGPT" }
+        if provider == .local || provider == .appleOnDevice { return "On this iPhone" }
         if provider.requiresAPIKey {
             return provider == .anthropic ? "Connect Claude" : "Add your access key"
         }
@@ -453,6 +550,9 @@ struct OnboardingView: View {
     private func keyPageSubtitle(_ provider: LLMProvider) -> String? {
         if provider == .chatgpt {
             return "Sign in with your ChatGPT account — no API key needed"
+        }
+        if provider == .local || provider == .appleOnDevice {
+            return "There's nothing to paste — this one runs on your iPhone."
         }
         guard provider.requiresAPIKey else { return nil }
         return provider == .anthropic
@@ -569,8 +669,12 @@ struct OnboardingView: View {
         OnboardingAccountSignInSection(
             service: chatgptOAuth,
             signInLabel: "Sign in with ChatGPT",
-            caption: "Use your ChatGPT subscription — no API key required.",
-            connectedCaption: "Requests use your ChatGPT subscription (codex models).",
+            // The distinction that confused a real device session: signing in covers *typed and
+            // spoken conversation* on your plan. Live voice mode is a different OpenAI product
+            // that only accepts a platform API key — no sign-in of any kind reaches it — so the
+            // caption says which one this is and where the other comes from.
+            caption: "Use your ChatGPT plan for conversation — no API key required. Live voice mode is separate: it needs an OpenAI API key, added as its own model.",
+            connectedCaption: "Conversation uses your ChatGPT plan. Live voice mode still needs an OpenAI API key, added as its own model in Settings.",
             pasteInstructions: "Sign in in the browser. When it ends on a localhost page that can't connect, copy the full URL from the address bar and paste it here.",
             onConnected: { markChatGPTConnected() },
             onSignedOut: {
@@ -579,6 +683,200 @@ struct OnboardingView: View {
                 selectedModelId = nil
             }
         )
+    }
+
+    // MARK: - Offline model offer (Plan DH P2)
+
+    /// Whether the keyless card is worth showing on a device without Apple Intelligence: only
+    /// where a model could actually be downloaded, or already has been.
+    private var offlineModelIsOfferable: Bool {
+        guard let offlineOffer else { return false }
+        switch offlineOffer {
+        case .offer, .alreadyDownloaded: return true
+        case .notEnoughStorage, .deviceTooSmall: return false
+        }
+    }
+
+    /// The optional download that turns the keyless path into a fully-offline one.
+    ///
+    /// Every branch says something true about *this* device: the size before anything starts, the
+    /// reason when the device is under the bar, the storage shortfall when there is no room, and —
+    /// while a download runs — that leaving the flow doesn't cancel it. The download itself goes
+    /// through the same service call the local-model screen uses, so there is one download path in
+    /// the app, with one cancel, one resume, and one progress reading.
+    @ViewBuilder
+    private var offlineModelSection: some View {
+        if let verdict = offlineOffer {
+            Section {
+                offlineModelRows(verdict)
+
+                if let offlineDownloadError {
+                    OGStatusLabel(offlineDownloadError, kind: .error,
+                                  systemImage: "exclamationmark.triangle")
+                }
+            } header: {
+                Text("Offline Model")
+            } footer: {
+                offlineModelFooter(verdict)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func offlineModelRows(_ verdict: OfflineModelOffer.Verdict) -> some View {
+        switch verdict {
+        case .deviceTooSmall(let requiredRAMGB):
+            Label {
+                Text(OfflineModelOffer.deviceTooSmallDetail(requiredRAMGB: requiredRAMGB))
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "memorychip")
+                    .foregroundStyle(OGTheme.warnLabel)
+            }
+            .frame(minHeight: rowMinHeight)
+
+        case .notEnoughStorage(let needed, let free):
+            Label {
+                Text(OfflineModelOffer.notEnoughStorageDetail(neededBytes: needed, freeBytes: free))
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "internaldrive")
+                    .foregroundStyle(OGTheme.warnLabel)
+            }
+            .frame(minHeight: rowMinHeight)
+
+        case .alreadyDownloaded:
+            Label {
+                Text(OfflineModelOffer.alreadyDownloadedDetail)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(OGTheme.okLabel)
+            }
+            .frame(minHeight: rowMinHeight)
+
+        case .offer(let modelId, let sizeBytes):
+            offlineDownloadRow(modelId: modelId, sizeBytes: sizeBytes)
+        }
+    }
+
+    @ViewBuilder
+    private func offlineDownloadRow(modelId: String, sizeBytes: Int64) -> some View {
+        HStack(spacing: OGMetrics.rowSpacing) {
+            OGIconTile(systemName: "arrow.down.circle")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(OfflineModelOffer.title(
+                    appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable))
+                    .font(.body)
+                // The size is stated here, beside the button, before anything is downloaded —
+                // not discovered halfway through a multi-gigabyte pull on cellular.
+                Text(OfflineModelOffer.formattedSize(sizeBytes))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: 8)
+
+            if isDownloadingOfflineModel, let service = appState.llmService.localLLMService {
+                DownloadProgressRow(service: service) {
+                    service.cancelDownload()
+                    isDownloadingOfflineModel = false
+                    SessionAnnouncer.say("Offline model download cancelled")
+                }
+            } else {
+                Button("Download") { downloadOfflineModel(modelId) }
+                    .buttonStyle(.ogProminentCompact)
+                    .accessibilityLabel("Download the offline model, \(OfflineModelOffer.formattedSize(sizeBytes))")
+            }
+        }
+        .frame(minHeight: rowMinHeight)
+    }
+
+    @ViewBuilder
+    private func offlineModelFooter(_ verdict: OfflineModelOffer.Verdict) -> some View {
+        switch verdict {
+        case .offer(_, let sizeBytes):
+            // While it runs, the footer stops describing the offer and starts describing the
+            // download — because "can I leave this screen?" is the only question a user has once
+            // a multi-gigabyte transfer has started.
+            Text(isDownloadingOfflineModel
+                 ? OfflineModelOffer.inProgressDetail
+                 : OfflineModelOffer.detail(
+                    appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable,
+                    sizeBytes: sizeBytes))
+        case .alreadyDownloaded, .notEnoughStorage, .deviceTooSmall:
+            EmptyView()
+        }
+    }
+
+    private func refreshOfflineOffer() {
+        let verdict = OfflineModelOffer.verdict(OfflineModelOffer.currentInputs(),
+                                                modelId: OfflineModelOffer.modelId)
+        offlineOffer = verdict
+        // A model already on disk is the one this path should configure, so the id is settled
+        // before the user ever reaches Continue.
+        if case .alreadyDownloaded(let modelId) = verdict, selectedProvider == .local {
+            selectedModelId = modelId
+        }
+    }
+
+    private func downloadOfflineModel(_ modelId: String) {
+        guard let service = appState.llmService.localLLMService else {
+            offlineDownloadError = "On-device models aren't available on this build."
+            SessionAnnouncer.say(offlineDownloadError ?? "", interrupts: true)
+            return
+        }
+        isDownloadingOfflineModel = true
+        offlineDownloadError = nil
+        // The keyless local path should end up pointing at what is being fetched, whether or not
+        // the user waits here for it to land.
+        if selectedProvider == .local { selectedModelId = modelId }
+        // Both ends of a long wait are spoken. A progress spinner that replaces a button says
+        // nothing to a user who isn't looking at it, and this is the longest wait in the flow.
+        SessionAnnouncer.say("Downloading the offline model. You can carry on setting up.")
+        Task {
+            do {
+                try await service.downloadModel(modelId)
+                isDownloadingOfflineModel = false
+                ensureLocalModelIsSelectable(modelId)
+                refreshOfflineOffer()
+                SessionAnnouncer.say("Offline model ready")
+            } catch is CancellationError {
+                isDownloadingOfflineModel = false   // the user cancelled; not an error to report
+            } catch {
+                isDownloadingOfflineModel = false
+                offlineDownloadError = error.localizedDescription
+                SessionAnnouncer.say("Offline model download failed. \(error.localizedDescription)",
+                                     interrupts: true)
+            }
+        }
+    }
+
+    /// Make a downloaded model reachable from the model list.
+    ///
+    /// `FirstRunDefaults` decides what is *active*: on a device with Apple Intelligence that stays
+    /// Apple Intelligence, which is exactly what the offer promised there — an upgrade, not a
+    /// replacement. But "it appears alongside your other models" is only true if a saved
+    /// configuration exists for it, so this adds or retargets the local entry and leaves the
+    /// active model alone. On the keyless local path `saveModel` then makes it active on Continue,
+    /// which is the promise made on *that* device.
+    private func ensureLocalModelIsSelectable(_ modelId: String) {
+        var models = Config.savedModels
+        if let idx = models.firstIndex(where: { $0.llmProvider == .local }) {
+            guard models[idx].model != modelId else { return }
+            models[idx].model = modelId
+        } else {
+            var config = ModelConfig.defaultConfig(for: .local)
+            config.model = modelId
+            models.append(config)
+        }
+        Config.setSavedModels(models)
+        appState.llmService.refreshActiveModel()
     }
 
     // MARK: - Page 4: Services (Optional)
