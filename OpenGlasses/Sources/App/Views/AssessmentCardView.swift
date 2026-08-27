@@ -58,12 +58,8 @@ struct AssessmentCardView: View {
             footer
         }
         .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(tierColor.opacity(0.35), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        .background(tierColor.opacity(OGTheme.Opacity.accentFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassEffect(in: .rect(cornerRadius: 18))
     }
 
     // MARK: - Pieces
