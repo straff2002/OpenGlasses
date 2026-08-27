@@ -201,7 +201,12 @@ struct SiriActionCatalog {
         blockedToolNames: Set<String>
     ) -> Bool {
         if case .capability(kind: .customTool, id: _) = binding, !agentModeEnabled { return false }
-        if let tool = binding.toolName, blockedToolNames.contains(tool) { return false }
+        guard let tool = binding.toolName else { return true }
+        if blockedToolNames.contains(tool) { return false }
+        // A bound tool runs straight off the registry, with no router and so no confirmation
+        // gate. Compliance blocking (above) and the composition floor are separate screens: an
+        // action can be forbidden by either.
+        if ComposedToolPolicy.isRestrictedTarget(tool) { return false }
         return true
     }
 
@@ -214,6 +219,7 @@ struct SiriActionCatalog {
         case unknownTool(String)
         case invalidArgsJSON
         case toolBlockedByCompliance(String)
+        case toolNeedsDirectConfirmation(String)
         case agentModeRequired
     }
 
@@ -241,6 +247,9 @@ struct SiriActionCatalog {
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .emptyPrompt }
         case .tool(let toolName, let argsJSON):
             if blockedToolNames.contains(toolName) { return .toolBlockedByCompliance(toolName) }
+            if ComposedToolPolicy.isRestrictedTarget(toolName) {
+                return .toolNeedsDirectConfirmation(toolName)
+            }
             if let availableToolNames, !availableToolNames.contains(toolName) {
                 return .unknownTool(toolName)
             }
@@ -256,6 +265,9 @@ struct SiriActionCatalog {
                 if blockedToolNames.contains(id) { return .toolBlockedByCompliance(id) }
             } else if let tool = definition.binding.toolName, blockedToolNames.contains(tool) {
                 return .toolBlockedByCompliance(tool)
+            }
+            if let tool = definition.binding.toolName, ComposedToolPolicy.isRestrictedTarget(tool) {
+                return .toolNeedsDirectConfirmation(tool)
             }
         }
         return nil

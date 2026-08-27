@@ -26,6 +26,9 @@ final class SkillPackStore: ObservableObject {
         /// lesson applied to packs: a partial load is visible state, not a log line.
         var decodeSummary: String
         var actionCount: Int
+        /// Actions held back at the registry merge because their bound tool needs the user's
+        /// direct confirmation. Optional so state written before the floor existed still loads.
+        var quarantinedActions: [String]?
     }
 
     enum InstallResult: Equatable {
@@ -163,6 +166,20 @@ final class SkillPackStore: ObservableObject {
     func setEnabled(_ enabled: Bool, id: String) {
         guard savingAllowed, let index = installedPacks.firstIndex(where: { $0.id == id }) else { return }
         installedPacks[index].enabled = enabled
+        save()
+    }
+
+    /// Record which of a pack's actions the registry merge held back. Written only on change, so
+    /// the common (empty) case doesn't rewrite state on every launch and refresh.
+    func setQuarantinedActions(_ names: [String], id: String) {
+        guard savingAllowed, let index = installedPacks.firstIndex(where: { $0.id == id }) else { return }
+        let normalized = names.isEmpty ? nil : names.sorted()
+        guard installedPacks[index].quarantinedActions != normalized else { return }
+        installedPacks[index].quarantinedActions = normalized
+        if let normalized {
+            NSLog("[SkillPacks] Quarantined %d action(s) in %@: %@",
+                  normalized.count, id, normalized.joined(separator: ", "))
+        }
         save()
     }
 

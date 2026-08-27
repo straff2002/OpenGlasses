@@ -58,6 +58,12 @@ struct SkillPacksSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(OGTheme.warnLabel)
             }
+            if let quarantined = pack.quarantinedActions, !quarantined.isEmpty {
+                Label(ComposedToolPolicy.quarantineNotice(actionNames: quarantined),
+                      systemImage: "hand.raised")
+                    .font(.caption)
+                    .foregroundStyle(OGTheme.warnLabel)
+            }
             if pack.decodeSummary != "clean" {
                 Label(pack.decodeSummary, systemImage: "exclamationmark.circle")
                     .font(.caption)
