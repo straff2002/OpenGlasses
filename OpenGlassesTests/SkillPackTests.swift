@@ -297,7 +297,9 @@ final class SkillPackTests: XCTestCase {
         let store = makeStore(nativeNames: ["echo"])
         _ = store.install(manifestData: manifestJSON(actions: [composed]),
                           signatureBase64: nil, developerMode: true)
-        registry.registerSkillPackTools(from: store)
+        // A composed binding runs only through the execution authority, so the merge needs one.
+        let router = NativeToolRouter(registry: registry)
+        registry.registerSkillPackTools(from: store, authority: router)
 
         let tool = try XCTUnwrap(registry.tool(named: "pack_com_example_barista_shout"))
         let result = try await tool.execute(args: ["word": "espresso"])
