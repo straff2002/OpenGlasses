@@ -107,6 +107,7 @@ struct PlaybooksSettingsView: View {
             }
         }
         .navigationTitle("Playbooks")
+        .ogFormStyle()
         .sheet(item: $editingPlaybook) { playbook in
             PlaybookEditorView(store: store, playbook: playbook)
         }
@@ -241,6 +242,7 @@ struct PlaybookEditorView: View {
             }
             .navigationTitle(isNew ? "New Playbook" : "Edit Playbook")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -324,6 +326,7 @@ struct StepEditorSheet: View {
             }
             .navigationTitle("Edit Step")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -617,6 +620,7 @@ struct VariablePickerSheet: View {
             }
             .navigationTitle("Insert Variable")
             .navigationBarTitleDisplayMode(.inline)
+            .ogFormStyle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

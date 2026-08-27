@@ -124,6 +124,7 @@ struct LanguageSettingsView: View {
             }
         }
         .navigationTitle("Languages")
+        .ogFormStyle()
         .onAppear { manager.loadLanguageList() }
     }
 }

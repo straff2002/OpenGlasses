@@ -105,6 +105,7 @@ struct AgentHarnessSettingsView: View {
         }
         .navigationTitle("Remote Agents")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
     }
 
     private func save() {

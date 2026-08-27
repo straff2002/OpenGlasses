@@ -676,6 +676,7 @@ struct ServicesSettingsView: View {
             }
         }
         .navigationTitle("Services")
+        .ogFormStyle()
     }
 
     /// One folder-picker row: names the chosen folder with a Change/Reset pair, or offers the

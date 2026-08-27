@@ -253,6 +253,7 @@ struct FieldAssistSettingsView: View {
         }
         .navigationTitle("Field Assist")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onAppear {
             license.loadStored()
             // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.

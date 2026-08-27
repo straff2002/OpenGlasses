@@ -95,6 +95,7 @@ struct DiarizationSettingsView: View {
             }
         }
         .navigationTitle("Diarization")
+        .ogFormStyle()
         .onAppear { reloadNames() }
     }
 

@@ -54,5 +54,6 @@ struct DigestSettingsView: View {
             }
         }
         .navigationTitle("Digest")
+        .ogFormStyle()
     }
 }

@@ -252,6 +252,7 @@ struct ToolsSettingsView: View {
             }
         }
         .navigationTitle("Tools")
+        .ogFormStyle()
         .searchable(text: $searchText, prompt: "Search tools")
         .alert("Permission Denied", isPresented: Binding(
             get: { permissionDeniedTool != nil },

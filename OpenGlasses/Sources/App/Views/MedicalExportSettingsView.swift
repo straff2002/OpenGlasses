@@ -213,6 +213,7 @@ struct MedicalExportSettingsView: View {
             }
         }
         .navigationTitle("Medical Export")
+        .ogFormStyle()
         .alert("Connection Test", isPresented: $showTestResult) {
             Button("OK") {}
         } message: {

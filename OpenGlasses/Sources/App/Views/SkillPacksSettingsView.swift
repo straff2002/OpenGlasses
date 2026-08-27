@@ -13,6 +13,7 @@ struct SkillPacksSettingsView: View {
             developerSection
         }
         .navigationTitle("Skill Packs")
+        .ogFormStyle()
         .task { await viewModel.bind(appState: appState) }
     }
 
@@ -260,6 +261,7 @@ struct SkillPackSettingsSheet: View {
             }
         }
         .navigationTitle(packName)
+        .ogFormStyle()
     }
 
     @ViewBuilder private func control(for declaration: SkillPackManifest.SettingDeclaration) -> some View {

@@ -34,6 +34,7 @@ struct FingerspellingSettingsView: View {
         }
         .navigationTitle("Fingerspelling")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onAppear { downloader.refreshState() }
     }
 
