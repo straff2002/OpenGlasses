@@ -12,11 +12,7 @@ struct SiriContentDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(link.typeLabel)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                        OGChip(text: link.typeLabel)
                         Spacer()
                         if let date = link.date {
                             Text(date, style: .date)

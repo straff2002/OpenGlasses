@@ -119,10 +119,10 @@ private struct FlexBoxView: View {
         switch flexBox.background {
         case .card:
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.white.opacity(0.06))
+                .fill(OGTheme.onMedia.opacity(0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                        .strokeBorder(OGTheme.onMedia.opacity(0.12), lineWidth: 1)
                 )
         default:
             Color.clear
