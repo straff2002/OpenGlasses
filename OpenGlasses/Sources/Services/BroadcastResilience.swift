@@ -429,9 +429,18 @@ struct BroadcastHealth: Equatable {
     /// Frames that never reached the wire since this broadcast started.
     var droppedFrameCount: Int = 0
     var duration: TimeInterval = 0
+    /// Anything at all has left the device on this connection.
+    ///
+    /// The readout used to fall back to the *target* bitrate whenever the transport hadn't
+    /// reported, which reads as flow. A session that connected and then sent nothing showed
+    /// "3.7 Mbps · 0 fps" — a number that described an intention, next to the measurement proving
+    /// it never happened.
+    var hasSentAnything: Bool = false
 
-    /// "2.4 Mbps" / "820 kbps" — measured if the transport has told us, target otherwise.
+    /// "2.4 Mbps" / "820 kbps" — measured if the transport has told us, the target it is aiming
+    /// for once something has actually gone out, and nothing at all before that.
     var bitrateLabel: String {
+        guard hasSentAnything else { return "—" }
         let bits = measuredBitrate > 0 ? measuredBitrate : targetBitrate
         guard bits > 0 else { return "—" }
         if bits >= 1_000_000 {
@@ -445,14 +454,88 @@ struct BroadcastHealth: Equatable {
         "\(Int(achievedFrameRate.rounded())) fps"
     }
 
-    /// Short status word for the badge. Never names an attempt count it does not have.
+    /// Short status word for the badge. Never names an attempt count it does not have, and never
+    /// says "Live" for a connection that has yet to put a byte on the wire.
     var stateLabel: String {
         switch state {
         case .idle: return "Idle"
         case .connecting: return "Connecting"
-        case .live: return "Live"
+        case .live: return hasSentAnything ? "Live" : "Nothing sent yet"
         case .reconnecting(let attempt): return "Reconnecting \(attempt)"
         case .failed: return "Failed"
         }
+    }
+}
+
+/// Whether a broadcast that believes it is connected has actually put anything on the wire.
+///
+/// From the field: an RTMP ingest on the same network logged connection after connection opening
+/// and timing out with **zero bytes received** — no handshake, no publish — while the app showed a
+/// target bitrate and an ever-growing reconnect backoff. The reconnect machinery worked perfectly;
+/// what was missing was anybody noticing that the first publish never happened, and saying so.
+///
+/// The most common cause on a phone is iOS's local-network privacy gate, which is per-install and
+/// per-user and produces exactly this shape: the app believes it is connected, and nothing arrives.
+/// So the message names that when the target is a private address, and stays generic when it isn't.
+enum BroadcastStallPolicy {
+
+    /// How long a connected session may send nothing before it is worth saying so. Long enough to
+    /// clear a slow handshake and the encoder priming, short enough to beat a wearer's patience.
+    static let stallSeconds: TimeInterval = 8
+
+    enum Verdict: Equatable {
+        /// Bytes have gone out; nothing to say.
+        case flowing
+        /// Nothing yet, but not long enough to mean anything.
+        case tooEarly
+        /// Connected, past the grace period, and still nothing on the wire.
+        case stalled
+    }
+
+    static func verdict(secondsSinceStart: TimeInterval,
+                        hasSentAnything: Bool,
+                        stallSeconds: TimeInterval = stallSeconds) -> Verdict {
+        if hasSentAnything { return .flowing }
+        return secondsSinceStart >= stallSeconds ? .stalled : .tooEarly
+    }
+
+    /// Whether a host sits on the local network, where iOS's privacy gate applies. Accepts a bare
+    /// host, or a full `rtmp://host:port/app` URL.
+    static func isPrivateNetworkHost(_ hostOrURL: String) -> Bool {
+        let host = self.host(from: hostOrURL).lowercased()
+        guard !host.isEmpty else { return false }
+        if host == "localhost" || host.hasSuffix(".local") { return true }
+
+        let parts = host.split(separator: ".").map(String.init)
+        guard parts.count == 4, let first = Int(parts[0]), let second = Int(parts[1]),
+              parts.allSatisfy({ Int($0) != nil }) else { return false }
+        switch first {
+        case 10, 127: return true
+        case 192: return second == 168
+        case 172: return (16...31).contains(second)
+        case 169: return second == 254        // link-local
+        default: return false
+        }
+    }
+
+    /// The host out of an RTMP URL, or the input itself when it is already bare.
+    static func host(from hostOrURL: String) -> String {
+        var rest = hostOrURL
+        if let schemeEnd = rest.range(of: "://") { rest = String(rest[schemeEnd.upperBound...]) }
+        if let at = rest.firstIndex(of: "@") { rest = String(rest[rest.index(after: at)...]) }
+        if let slash = rest.firstIndex(of: "/") { rest = String(rest[..<slash]) }
+        if let colon = rest.firstIndex(of: ":") { rest = String(rest[..<colon]) }
+        return rest.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// What to tell the wearer about a connection that is sending nothing.
+    static func stalledMessage(target: String) -> String {
+        guard isPrivateNetworkHost(target) else {
+            return "Connected to the streaming server, but nothing is reaching it. Check the "
+                 + "stream key and that the server is accepting a publish."
+        }
+        return "Connected to the streaming server, but nothing is reaching it. If that server is "
+             + "on your own network, allow OpenGlasses to use it in Settings, under Privacy & "
+             + "Security, Local Network."
     }
 }

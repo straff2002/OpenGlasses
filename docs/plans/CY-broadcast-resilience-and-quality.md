@@ -163,7 +163,89 @@ throttling. "30 configured, 6 achieved" is a diagnosis; a lit LIVE badge is not.
   achieved frame rate, and dropped frames when there are any. Deliberately subtle and monospaced,
   matching the recording-duration capsule above it.
 
-## P4 — Device/network verification (deferred, needs hardware)
+## P4 — Device/network verification (first hardware run, 2026-08-27)
+
+Broadcast to an RTMP ingest on the same network was run on hardware. **The reconnect machinery
+works** — the backoff grew exactly as designed, and the session-state machine behaved. What it was
+faithfully reconnecting *from* is the finding: the ingest logged connection after connection
+opening and timing out after ten seconds having received **zero bytes** — no handshake, no publish.
+The initial publish never happened, and nothing in the app noticed or said so.
+
+Two things were wrong on our side of that, independent of whatever the transport was doing:
+
+- **The readout implied flow that did not exist.** `bitrateLabel` fell back to the *target* bitrate
+  whenever the transport hadn't reported, so the health bar read "3.7 Mbps · 0 fps" for a connection
+  the server never received a byte from. A target is an intention; printing it beside the
+  measurement that disproves it is worse than printing nothing. `BroadcastHealth.hasSentAnything`
+  now gates it, and the badge says "Nothing sent yet" rather than "Live".
+- **Nothing watched for the silence.** `BroadcastStallPolicy` calls a connection stalled when it is
+  past a grace period with nothing measured, and the tick reports it once, with copy that names
+  iOS's local-network permission when the target is a private address (the most common cause with
+  exactly this shape on a fresh install: the app believes it is connected and nothing arrives) and
+  stays generic — stream key, server accepting a publish — when it isn't. It does not tear the
+  session down; the reconnect may still succeed.
+
+The `NSLocalNetworkUsageDescription` copy also only described discovering AI servers, so the prompt
+made no sense in a streaming context; it now covers both.
+
+### What the simulator ruled out
+
+The permission theory was disproved on hardware: the wearer granted Local Network, force-restarted,
+went live again, and two fresh attempts showed the identical signature — TCP opened, zero bytes,
+server timeout at ten seconds.
+
+So the connect sequence itself was put under a byte-level probe from the simulator: a listener that
+records the first bytes of any connection, and two paths driven against it — a bare
+`RTMPConnection().connect()`, and our exact order (stream created against the connection, video and
+audio codec settings applied, mixer built and wired, then connect). **Both wrote the C0/C1
+handshake, byte-identical in shape** (`03 00 00 00 00 …`). Driven against a real RTMP ingest the same
+sequence went further still: connect returned, and the publish was accepted — the session went live.
+
+So the publish path, never once proven against a live ingest in the original work, is now proven
+from the simulator. It is not what fails.
+
+That refutes the three obvious candidates for our side of it: no deadlock between the main actor
+and the status-consumption tasks, no wrong-actor invocation, and no malformed connect URL. Our call
+sequence is not what stops the handshake.
+
+**The trigger is therefore device-specific, and the mechanism is most likely below us.** In
+HaishinKit's `RTMPSocket`, `send(_:)` returns early when `connected` is false — silently, no throw,
+no log:
+
+```swift
+func send(_ data: Data) {
+    guard connected else { return }
+    …
+}
+```
+
+`RTMPConnection.connect` writes the handshake immediately after the socket reports ready. `connected`
+is set true in `stateDidChange(.ready)`, but `viabilityUpdateHandler` runs through a *separate*,
+unordered actor hop, and `viabilityDidChange(false)` calls `close()` — which clears `connected` and
+`outputs`. A viability flap landing after ready leaves the socket TCP-open with the handshake write
+discarded and the receive loop (`while connected`) exiting immediately: precisely the observed
+signature, and precisely the kind of flap a phone's local-network machinery can produce and a
+simulator never will.
+
+This is **not** proven, and the fix does not depend on it being right.
+
+### What the fix is
+
+Detection, not diagnosis. `NetworkMonitorReport.totalBytesOut` — the transport's own cumulative
+count of bytes written — is plumbed through the bitrate controller, per connection attempt. A
+connection that has published and still written nothing past a grace period is treated as **dropped**
+and routed into `handleConnectionLoss`, so the reconnect machinery gets its shot; if no attempt ever
+comes up writable, the reconnect policy's give-up budget ends the session honestly. The per-second
+measured bitrate cannot carry this — it legitimately reads zero between keyframes on a healthy
+stream — which is why the cumulative count is the signal.
+
+The guard is unconditional rather than gated on the mechanism above, so it holds whatever the real
+trigger turns out to be. Nothing in the dependency is forked or patched; the upstream silent-drop is
+noted for a report.
+
+### Still owed on hardware
+
+- **A successful publish to a LAN ingest**, once the cause is known.
 
 Everything above is decision logic or wiring and is covered headlessly. What is not:
 

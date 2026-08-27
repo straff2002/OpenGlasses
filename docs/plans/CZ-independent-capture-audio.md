@@ -126,7 +126,60 @@ says the audio behaviour plainly. The stale "streams are silent while listening 
 comments in `BroadcastService` and in the [BS](BS-transcript-guard-and-broadcast-breadth.md) plan
 doc are corrected rather than deleted, so the history stays legible.
 
-## P5 — Device verification (owed)
+## P5 — Device verification (partly done, 2026-08-27)
+
+### What the device found
+
+The mid-stream handover was run on hardware for the first time, and it broke the recording rather
+than the audio. Repro: listening off → start a video recording from the UI → turn listening on
+mid-recording → about a second later the recording ends.
+
+Root cause, and it is one the headless suite could not have caught because both fakes pushed the
+same format: **the two sources are two `AVAudioEngine`s, and each takes its tap format from
+`inputNode.outputFormat(forBus: 0)` — whatever route that engine starts on.** A handover therefore
+changes the sample format under the consumers. `VideoRecordingService` built a fresh
+`CMAudioFormatDescription` per buffer and appended it, so the first buffer of the new format was
+rejected by the audio input and moved the whole `AVAssetWriter` to `.failed` — which takes the
+*video* track down with it. Not "the recording lost its audio": the recording died, `finishWriting`
+had nothing to hand back, and nothing on that path checked `writer.status` or said a word.
+
+That also explains the recording never appearing in Photos on those attempts: there was no file.
+
+### What the fix is
+
+- **`CaptureAudioNormalizer`** at the router boundary. The first buffer of a capture fixes the
+  canonical format; every later buffer is converted into it with a per-source `AVAudioConverter`,
+  and matching buffers (the whole steady state, and every capture that never sees a handover) pass
+  through untouched. A conversion that fails yields silence of the same duration rather than `nil`,
+  because dropping the slot would shift the broadcast's sample-count clock permanently. The format
+  is released when a capture ends, so the next one adopts the route it actually starts on.
+- **Recorder hardening**, as the second brace: the audio format description is built once and later
+  buffers are checked against it and dropped if they disagree; both append paths bail when the
+  writer is already `.failed`; a failed writer is reported on `lastSaveNote` instead of passing as a
+  successful stop; and `stopRecording` files whatever reached disk even when it is torn down with no
+  writer at all (Plan DA's "never delete before a persistent copy exists" applies to abnormal ends
+  too, and that path used to return early and skip filing entirely).
+- **Diagnostics.** Source handovers, the filer's per-destination outcome and the photo-library
+  authorization status now reach the in-app debug log, not just `NSLog`. A field report of exactly
+  this class arrived containing nothing but a launch trace, because none of these paths said
+  anything a wearer could send.
+
+Covered by new headless tests: sources pushing *different* formats across a handover in both
+directions, no buffer dropped, one format out; a new capture adopting its own format; and the
+normalizer's conversion, pass-through and reset behaviour directly.
+
+### Still owed on hardware
+
+- **A handover mid-stream, both directions** — now with the fix in place: toggle listening off and
+  on during a live broadcast and a recording; assert the finished artefact plays end to end and has
+  continuous audio across both switches, by listening to it rather than by counting buffers.
+- The rest of the list below is unchanged and still unverified.
+
+### Follow-up, deliberately not taken here
+
+The in-app debug log is per-launch and in-memory, so a report filed after a relaunch misses the
+window entirely. Persisting a small ring across launches is the obvious next step and is a separate
+change from a bug fix.
 
 Everything above is decision logic or engine construction, and only the first can be tested
 headlessly. What cannot:

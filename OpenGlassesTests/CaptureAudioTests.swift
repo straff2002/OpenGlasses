@@ -465,4 +465,178 @@ final class CaptureAudioRouterTests: XCTestCase {
         await router.settleForTesting()
         XCTAssertEqual(tap.consumerIds, [CaptureAudioRouter.sourceConsumerId])
     }
+
+    // MARK: - One format across a handover
+
+    /// A source-shaped buffer: the two engines take their format from whatever route they start
+    /// on, so a handover can change the sample rate under consumers.
+    private func buffer(sampleRate: Double, channels: AVAudioChannelCount = 1,
+                        frames: AVAudioFrameCount = 256, level: Float = 0.8) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        for channel in 0..<Int(channels) {
+            let data = buffer.floatChannelData![channel]
+            for frame in 0..<Int(frames) { data[frame] = level }
+        }
+        return buffer
+    }
+
+    /// Records the format of everything it is handed.
+    private final class FormatSink: @unchecked Sendable {
+        private(set) var rates: [Double] = []
+        private(set) var channels: [AVAudioChannelCount] = []
+        func receive(_ buffer: AVAudioPCMBuffer) {
+            rates.append(buffer.format.sampleRate)
+            channels.append(buffer.format.channelCount)
+        }
+    }
+
+    func testHandoverDoesNotChangeTheFormatConsumersSee() async {
+        // The device defect: enabling the listener mid-recording swapped a 48 kHz phone-mic engine
+        // for a 16 kHz glasses tap, the asset writer rejected the first buffer of the new format,
+        // and the whole writer — video track included — went to .failed a second later.
+        let router = makeRouter()
+        let sink = FormatSink()
+        router.addAudioBufferConsumer(id: "recording") { sink.receive($0) }
+        await router.settleForTesting()
+
+        standalone.push(buffer(sampleRate: 48_000))
+        router.setWakeListening(true)
+        await router.settleForTesting()
+        tap.push(buffer(sampleRate: 16_000))
+        tap.push(buffer(sampleRate: 16_000))
+
+        XCTAssertEqual(sink.rates.count, 3, "no buffer may be dropped at the handover")
+        XCTAssertEqual(Set(sink.rates), [48_000],
+                       "consumers must keep seeing the format the capture started on")
+    }
+
+    func testHandoverBackAlsoHoldsTheFormat() async {
+        // The fix has to hold in both directions: listening on → off mid-capture is the same swap.
+        let router = makeRouter()
+        let sink = FormatSink()
+        router.setWakeListening(true)
+        router.addAudioBufferConsumer(id: "broadcast") { sink.receive($0) }
+        await router.settleForTesting()
+
+        tap.push(buffer(sampleRate: 16_000, channels: 1))
+        router.setWakeListening(false)
+        await router.settleForTesting()
+        standalone.push(buffer(sampleRate: 48_000, channels: 2))
+
+        XCTAssertEqual(sink.rates.count, 2)
+        XCTAssertEqual(Set(sink.rates), [16_000])
+        XCTAssertEqual(Set(sink.channels), [1])
+    }
+
+    func testANewCaptureAdoptsTheRouteItStartsOn() async {
+        // The canonical format is held for the life of a *capture*, not for the life of the app:
+        // a recording made an hour ago must not pin the next one to a route that has since gone.
+        let router = makeRouter()
+        let first = FormatSink()
+        router.addAudioBufferConsumer(id: "recording") { first.receive($0) }
+        await router.settleForTesting()
+        standalone.push(buffer(sampleRate: 48_000))
+        router.removeAudioBufferConsumer(id: "recording")
+        await router.settleForTesting()
+
+        let second = FormatSink()
+        router.addAudioBufferConsumer(id: "recording") { second.receive($0) }
+        await router.settleForTesting()
+        standalone.push(buffer(sampleRate: 16_000))
+
+        XCTAssertEqual(first.rates, [48_000])
+        XCTAssertEqual(second.rates, [16_000])
+    }
+}
+
+// MARK: - Normalizer
+
+final class CaptureAudioNormalizerTests: XCTestCase {
+
+    private func buffer(sampleRate: Double, channels: AVAudioChannelCount = 1,
+                        frames: AVAudioFrameCount = 480, level: Float = 0.5) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        for channel in 0..<Int(channels) {
+            let data = buffer.floatChannelData![channel]
+            for frame in 0..<Int(frames) { data[frame] = level }
+        }
+        return buffer
+    }
+
+    func testTheFirstBufferFixesTheFormatAndIsPassedThroughUntouched() {
+        let normalizer = CaptureAudioNormalizer()
+        let source = buffer(sampleRate: 48_000)
+        let out = normalizer.normalize(source)
+        XCTAssertTrue(out === source, "a capture's first buffer must not be copied or resampled")
+        XCTAssertEqual(normalizer.canonicalFormat?.sampleRate, 48_000)
+    }
+
+    func testMatchingBuffersAreNotCopied() {
+        // The steady state, and every capture that never sees a handover: no conversion at all.
+        let normalizer = CaptureAudioNormalizer()
+        _ = normalizer.normalize(buffer(sampleRate: 48_000))
+        let next = buffer(sampleRate: 48_000)
+        XCTAssertTrue(normalizer.normalize(next) === next)
+    }
+
+    func testADifferentRateIsResampledIntoTheCanonicalFormat() {
+        let normalizer = CaptureAudioNormalizer()
+        _ = normalizer.normalize(buffer(sampleRate: 48_000, frames: 480))
+        let converted = normalizer.normalize(buffer(sampleRate: 16_000, frames: 160))
+        XCTAssertNotNil(converted)
+        XCTAssertEqual(converted?.format.sampleRate, 48_000)
+        XCTAssertEqual(converted?.format.channelCount, 1)
+        XCTAssertGreaterThan(converted?.frameLength ?? 0, 0)
+        XCTAssertEqual(normalizer.conversionFailureCount, 0)
+    }
+
+    func testADifferentChannelCountIsMixedIntoTheCanonicalFormat() {
+        let normalizer = CaptureAudioNormalizer()
+        _ = normalizer.normalize(buffer(sampleRate: 48_000, channels: 1))
+        let converted = normalizer.normalize(buffer(sampleRate: 48_000, channels: 2))
+        XCTAssertEqual(converted?.format.channelCount, 1)
+        XCTAssertEqual(converted?.format.sampleRate, 48_000)
+    }
+
+    func testConvertedAudioIsNotSilence() {
+        // A conversion that "succeeds" into zeroes would look fine to the writer and sound like a
+        // dead mic, which is the failure mode this whole path exists to avoid.
+        let normalizer = CaptureAudioNormalizer()
+        _ = normalizer.normalize(buffer(sampleRate: 48_000, level: 0.5))
+        // Several blocks, because a resampler's first output block rises out of its own priming.
+        var peak: Float = 0
+        for _ in 0..<4 {
+            let converted = normalizer.normalize(buffer(sampleRate: 16_000, frames: 160, level: 0.5))!
+            let data = converted.floatChannelData![0]
+            for frame in 0..<Int(converted.frameLength) { peak = max(peak, abs(data[frame])) }
+        }
+        XCTAssertGreaterThan(peak, 0.1)
+        XCTAssertEqual(normalizer.conversionFailureCount, 0)
+    }
+
+    func testResetLetsTheNextCapturePickItsOwnFormat() {
+        let normalizer = CaptureAudioNormalizer()
+        _ = normalizer.normalize(buffer(sampleRate: 48_000))
+        normalizer.reset()
+        XCTAssertNil(normalizer.canonicalFormat)
+        _ = normalizer.normalize(buffer(sampleRate: 16_000))
+        XCTAssertEqual(normalizer.canonicalFormat?.sampleRate, 16_000)
+    }
+
+    func testFormatMatchIsByStreamDescription() {
+        let mono48 = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+        let mono16 = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+        let stereo48 = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        let interleaved48 = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+                                          channels: 1, interleaved: true)!
+        XCTAssertTrue(CaptureAudioFormatMatch.matches(mono48, mono48))
+        XCTAssertFalse(CaptureAudioFormatMatch.matches(mono48, mono16))
+        XCTAssertFalse(CaptureAudioFormatMatch.matches(mono48, stereo48))
+        // Same audio, different packing — and it is the packing an asset writer locks onto.
+        XCTAssertFalse(CaptureAudioFormatMatch.matches(mono48, interleaved48))
+    }
 }

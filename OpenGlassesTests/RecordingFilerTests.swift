@@ -305,6 +305,35 @@ final class RecordingFilerTests: XCTestCase {
                        + "the app's Recordings folder — nothing was lost.")
     }
 
+    func testADeniedLibrarySaysSoAndPointsAtSettings() throws {
+        // Field report: a fresh install saved nothing to Photos and said nothing about it. "Couldn't
+        // save" is a dead end when the answer is one switch — the copy has to name it.
+        let source = try makeSourceFile()
+        let filer = RecordingFiler(recordingsDirectory: recordings)
+
+        var outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: true)
+        outcome.savedToPhotos = false
+        outcome.photosNotPermitted = true
+
+        XCTAssertEqual(outcome.message,
+                       "OpenGlasses doesn't have permission to add to your photo library, so the "
+                       + "recording isn't in Photos. You can turn that on in Settings. It is safe "
+                       + "in the app's Recordings folder — nothing was lost.")
+    }
+
+    func testAFailedPhotosSaveStillReadsAsAFailureNotAPermissionProblem() throws {
+        let source = try makeSourceFile()
+        let filer = RecordingFiler(recordingsDirectory: recordings)
+
+        var outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: true)
+        outcome.savedToPhotos = false
+        outcome.photosNotPermitted = false
+
+        XCTAssertEqual(outcome.message,
+                       "Couldn't save the recording to Photos. The recording is safe in "
+                       + "the app's Recordings folder — nothing was lost.")
+    }
+
     func testEverythingLandingSaysNothing() throws {
         let folder = root.appendingPathComponent("Chosen")
         let source = try makeSourceFile()

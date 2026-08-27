@@ -1644,6 +1644,23 @@ class AppState: ObservableObject, AppStateProtocol {
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
         // standalone engine instead of silently going video-only.
         broadcastService.audioProvider = captureAudioRouter
+
+        // Persistence and capture-audio diagnostics. A field report of a recording that vanished
+        // used to contain nothing but the launch trace, because none of these paths said anything
+        // the in-app log could carry — only NSLog, which a wearer cannot send.
+        captureAudioRouter.onDebugEvent = { [weak self] message in
+            self?.addDebugEvent(message)
+        }
+        videoRecorder.onDebugEvent = { [weak self] message in
+            self?.addDebugEvent(message)
+        }
+        broadcastService.onDebugEvent = { [weak self] message in
+            self?.addDebugEvent(message)
+        }
+        GlassesPhotoAlbum.onDebugEvent = { [weak self] message in
+            Task { @MainActor in self?.addDebugEvent(message) }
+        }
+
         let captureListeningToken = wakeWordService.$isListening
             .removeDuplicates()
             .sink { [weak self] listening in

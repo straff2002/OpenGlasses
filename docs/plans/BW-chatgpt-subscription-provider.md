@@ -95,7 +95,15 @@ confirmed covered. **Live half: pending, needs the phone + a real ChatGPT accoun
 - [ ] One streamed text turn (Chat tab), one buffered voice turn.
 - [ ] One tool turn (a native tool AND an MCP tool) — watch the `ChatGPT turn: N tool
       call(s) parsed` log line.
-- [ ] One image turn (photo question) — confirms `input_image` acceptance on codex models.
+- [ ] One image turn (photo question) — would confirm `input_image` acceptance on codex models.
+      **Closed in the negative for now (2026-08-27).** This was never run, yet the provider was
+      marked vision-capable and photo turns were handed the image *and* a system prompt insisting
+      "You CAN see it — never deny vision" — which invites a described scene the model never saw.
+      Every catalog entry is a coding variant with no vision sibling, so the honest default is no:
+      `ModelConfig.inferredSupportsVision` reports `false` for this provider, and
+      `ChatGPTVisionGate` declines a photo turn out loud (pointing at an API key, Gemini, or the
+      on-device model) before an image byte is sent. If a live turn ever *does* prove acceptance,
+      the gate is the one place to reopen, per model.
 - [ ] Token refresh across an expiry (leave the app overnight, ask again).
 - [ ] Verify the endpoint constants against the live service (the P1 constants block is
       captured-at-implementation and unverified until this runs).

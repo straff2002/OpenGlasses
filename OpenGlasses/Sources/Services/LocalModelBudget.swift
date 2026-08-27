@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Pure prompt-budget logic for on-device (MLX) generation (BK P2).
@@ -103,6 +104,13 @@ enum LocalModelBudget {
         let keepsFullSystemPrompt: Bool
         /// Tokenized-prompt ceiling for the turn.
         let promptBudget: Int
+        /// Longest edge (pixels) the photo may reach the processor at. The image is resampled to
+        /// fit, aspect preserved — the preprocessing of a full-resolution frame is itself a
+        /// multi-hundred-megabyte spike on top of an already-resident multi-gigabyte model.
+        let imageLongEdge: Int
+        /// There is not enough headroom to attempt an image turn at all. The caller must refuse
+        /// out loud rather than start a prefill that ends as a process kill.
+        let refusesImage: Bool
     }
 
     /// Marketing RAM (GB) at or above which a phone carries a full multimodal turn. Below it,
@@ -115,17 +123,70 @@ enum LocalModelBudget {
     /// room for them.
     static let constrainedMultimodalBudgetFraction = 0.25
 
-    /// Per-device plan for an image turn. Pure — the caller supplies the device's RAM, so this
-    /// is exercised headlessly at both tiers.
-    static func multimodalTurnPlan(for modelId: String?, marketingRAMGB: Double) -> MultimodalTurnPlan {
+    /// Remaining process allocation below which an image turn is refused rather than attempted.
+    ///
+    /// Sized from a device kill: a 12 GB iPhone, on the "roomy" tier, with Gemma 4 loaded and the
+    /// camera pipeline live, took a photo turn to a 6.2 GB footprint and was terminated for
+    /// exceeding the **per-process** limit while frontmost. Marketing RAM never saw it coming,
+    /// because marketing RAM is not the constraint — iOS's per-process cap is, and it does not
+    /// scale with the box on the shelf.
+    static let multimodalRefusalHeadroomBytes: Int64 = 1_024 * 1024 * 1024
+
+    /// Remaining process allocation below which an image turn is trimmed even on a roomy phone.
+    static let multimodalFullPromptHeadroomBytes: Int64 = 2_048 * 1024 * 1024
+
+    /// Long edge for a photo on the roomy tier, and on the constrained tier.
+    static let fullImageLongEdge = 1_344
+    static let constrainedImageLongEdge = 896
+
+    /// Per-turn plan for an image turn.
+    ///
+    /// Pure — the caller supplies both the device's RAM and the headroom measured *at turn time*,
+    /// so every tier including the refusal is exercised headlessly. Headroom leads: a roomy device
+    /// with nothing left to allocate is a constrained device, whatever the spec sheet says.
+    ///
+    /// `availableBytes <= 0` means "no per-process budget on this platform" (simulator, Mac) and
+    /// skips the headroom gate entirely rather than refusing — the same rule `MemoryHeadroom`
+    /// follows, for the same reason: refusing on unknown bricks the environments that don't need
+    /// the guard.
+    static func multimodalTurnPlan(for modelId: String?,
+                                   marketingRAMGB: Double,
+                                   availableBytes: Int64 = 0) -> MultimodalTurnPlan {
         let full = promptBudget(for: modelId)
-        guard marketingRAMGB < multimodalFullPromptRAMGB else {
-            return MultimodalTurnPlan(keepsHistory: true, keepsFullSystemPrompt: true, promptBudget: full)
+        let headroomKnown = availableBytes > 0
+
+        if headroomKnown, availableBytes < multimodalRefusalHeadroomBytes {
+            return MultimodalTurnPlan(keepsHistory: false, keepsFullSystemPrompt: false,
+                                      promptBudget: minimumBudget,
+                                      imageLongEdge: constrainedImageLongEdge,
+                                      refusesImage: true)
+        }
+
+        let roomyDevice = marketingRAMGB >= multimodalFullPromptRAMGB
+        let roomyRightNow = !headroomKnown || availableBytes >= multimodalFullPromptHeadroomBytes
+        if roomyDevice && roomyRightNow {
+            return MultimodalTurnPlan(keepsHistory: true, keepsFullSystemPrompt: true,
+                                      promptBudget: full,
+                                      imageLongEdge: fullImageLongEdge,
+                                      refusesImage: false)
         }
         return MultimodalTurnPlan(
             keepsHistory: false,
             keepsFullSystemPrompt: false,
-            promptBudget: max(minimumBudget, Int(Double(full) * constrainedMultimodalBudgetFraction)))
+            promptBudget: max(minimumBudget, Int(Double(full) * constrainedMultimodalBudgetFraction)),
+            imageLongEdge: constrainedImageLongEdge,
+            refusesImage: false)
+    }
+
+    /// Aspect-preserving size for an image whose long edge must not exceed `maxLongEdge`, or nil
+    /// when it already fits and re-sampling would only spend memory to change nothing.
+    static func imageSize(width: Int, height: Int, maxLongEdge: Int) -> CGSize? {
+        guard width > 0, height > 0, maxLongEdge > 0 else { return nil }
+        let longEdge = max(width, height)
+        guard longEdge > maxLongEdge else { return nil }
+        let scale = Double(maxLongEdge) / Double(longEdge)
+        return CGSize(width: max(1, Int((Double(width) * scale).rounded())),
+                      height: max(1, Int((Double(height) * scale).rounded())))
     }
 
     /// Trim conversation history so the tokenized prompt fits `budget`, dropping the **oldest**

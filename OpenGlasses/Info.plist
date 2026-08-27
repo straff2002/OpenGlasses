@@ -151,7 +151,7 @@
 	<key>NSHomeKitUsageDescription</key>
 	<string>OpenGlasses controls your smart home devices hands-free through your glasses.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-		<string>OpenGlasses scans your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) so you can connect without typing an address.</string>
+		<string>OpenGlasses uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_http._tcp</string>

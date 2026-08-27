@@ -266,8 +266,12 @@ class CameraService: ObservableObject {
     func saveToPhotoLibrary(_ data: Data) {
         guard let image = UIImage(data: data) else { return }
         Task {
-            if await GlassesPhotoAlbum.saveImage(image) {
-                print("📸 Photo saved to \(GlassesPhotoAlbum.albumName) album")
+            let result = await GlassesPhotoAlbum.saveImage(image)
+            if case .notPermitted(let status) = result {
+                // Not an error to swallow: on a fresh install this is the whole reason a capture
+                // is nowhere to be found afterwards.
+                NSLog("[Camera] Photo not saved — library %@",
+                      GlassesPhotoAlbumPolicy.describe(status))
             }
         }
     }

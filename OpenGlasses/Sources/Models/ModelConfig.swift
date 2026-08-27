@@ -27,8 +27,11 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         case .anthropic, .gemini, .geminiVertex, .openai:
             return true
         case .chatgpt:
-            // Codex models accept image input over the Responses backend (BW P4 verifies live).
-            return true
+            // The subscription catalog is coding-tuned, and image acceptance on it was never
+            // actually confirmed on device. Claiming vision here is what put a camera button in
+            // front of a model that cannot use it, so the honest answer is no until a photo turn
+            // is confirmed working against that backend. `ChatGPTVisionGate` is the backstop.
+            return false
         case .groq, .local, .appleOnDevice:
             return false
         case .qwen:

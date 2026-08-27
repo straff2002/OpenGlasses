@@ -375,19 +375,36 @@ final class BroadcastResilienceTests: XCTestCase {
                                      targetBitrate: 3_000_000,
                                      measuredBitrate: 2_400_000,
                                      droppedFrameCount: 4,
-                                     duration: 61)
+                                     duration: 61,
+                                     hasSentAnything: true)
         XCTAssertEqual(health.stateLabel, "Live")
         XCTAssertEqual(health.bitrateLabel, "2.4 Mbps")
         XCTAssertEqual(health.frameRateLabel, "29 fps")
     }
 
-    func testHealthFallsBackToTheTargetBeforeAnythingIsMeasured() {
-        let health = BroadcastHealth(state: .connecting, targetBitrate: 3_100_000)
+    func testHealthShowsTheTargetOnceSomethingIsActuallyFlowing() {
+        // Between "the first bytes went out" and "the transport has reported a rate", the target
+        // is the honest thing to show: it is what the encoder is aiming for, and something is
+        // moving.
+        let health = BroadcastHealth(state: .live, targetBitrate: 3_100_000, hasSentAnything: true)
         XCTAssertEqual(health.bitrateLabel, "3.1 Mbps")
     }
 
+    func testAConnectionThatHasSentNothingShowsNoBitrateAtAll() {
+        // The device readout that started this: "3.7 Mbps · 0 fps" on a connection the ingest
+        // never received a byte from. The target described an intention; printing it next to the
+        // measurement that disproved it is the bug.
+        let health = BroadcastHealth(state: .live,
+                                     achievedFrameRate: 0,
+                                     targetBitrate: 3_700_000,
+                                     hasSentAnything: false)
+        XCTAssertEqual(health.bitrateLabel, "—")
+        XCTAssertEqual(health.stateLabel, "Nothing sent yet")
+    }
+
     func testHealthRendersSubMegabitRatesInKilobits() {
-        let health = BroadcastHealth(state: .live, targetBitrate: 0, measuredBitrate: 820_000)
+        let health = BroadcastHealth(state: .live, targetBitrate: 0, measuredBitrate: 820_000,
+                                     hasSentAnything: true)
         XCTAssertEqual(health.bitrateLabel, "820 kbps")
     }
 
@@ -398,5 +415,67 @@ final class BroadcastResilienceTests: XCTestCase {
     func testReconnectingLabelNamesTheAttempt() {
         let health = BroadcastHealth(state: .reconnecting(attempt: 3))
         XCTAssertEqual(health.stateLabel, "Reconnecting 3")
+    }
+
+    // MARK: - Connected, and sending nothing
+
+    func testFlowingIsNeverCalledStalledHoweverLongItRuns() {
+        XCTAssertEqual(
+            BroadcastStallPolicy.verdict(secondsSinceStart: 600, hasSentAnything: true), .flowing)
+    }
+
+    func testTheGracePeriodCoversAHandshakeAndThePriming() {
+        XCTAssertEqual(
+            BroadcastStallPolicy.verdict(secondsSinceStart: 3, hasSentAnything: false), .tooEarly)
+    }
+
+    func testSilencePastTheGracePeriodIsAStall() {
+        XCTAssertEqual(
+            BroadcastStallPolicy.verdict(secondsSinceStart: 9, hasSentAnything: false), .stalled)
+    }
+
+    func testPrivateAddressesAreRecognisedAsLocalNetwork() {
+        for target in ["rtmp://192.168.1.103:1935/live", "10.0.0.4", "172.20.3.9",
+                       "rtmp://mediaserver.local/live", "localhost", "169.254.1.1"] {
+            XCTAssertTrue(BroadcastStallPolicy.isPrivateNetworkHost(target), target)
+        }
+    }
+
+    func testPublicIngestsAreNotTreatedAsLocalNetwork() {
+        for target in ["rtmp://a.rtmp.youtube.com/live2", "203.0.113.7", "172.32.0.1",
+                       "192.169.1.1", ""] {
+            XCTAssertFalse(BroadcastStallPolicy.isPrivateNetworkHost(target), target)
+        }
+    }
+
+    func testHostIsTakenOutOfAFullRTMPURL() {
+        XCTAssertEqual(BroadcastStallPolicy.host(from: "rtmp://192.168.1.103:1935/live"),
+                       "192.168.1.103")
+        XCTAssertEqual(BroadcastStallPolicy.host(from: "rtmp://user:pw@host.example/app"),
+                       "host.example")
+        XCTAssertEqual(BroadcastStallPolicy.host(from: "192.168.1.103"), "192.168.1.103")
+    }
+
+    func testAStalledLocalTargetNamesTheLocalNetworkSetting() {
+        let message = BroadcastStallPolicy.stalledMessage(target: "rtmp://192.168.1.103:1935/live")
+        XCTAssertTrue(message.contains("Local Network"), message)
+    }
+
+    func testAStallIsADropSoTheReconnectMachineryGetsItsShot() {
+        // A session that published and then wrote nothing is dead, and the session machine has to
+        // agree — otherwise the stall is a message next to a stream that idles forever instead of
+        // retrying. A fresh connection may well come up writable.
+        var machine = BroadcastSessionMachine()
+        machine.apply(.start)
+        XCTAssertTrue(machine.apply(.connected))
+        XCTAssertTrue(machine.apply(.dropped),
+                      "a zero-bytes stall must be accepted as a drop from live")
+        XCTAssertEqual(machine.state, .reconnecting(attempt: 1))
+    }
+
+    func testAStalledPublicTargetDoesNotBlameAPermissionItCannotHaveHit() {
+        let message = BroadcastStallPolicy.stalledMessage(target: "rtmp://a.rtmp.youtube.com/live2")
+        XCTAssertFalse(message.contains("Local Network"), message)
+        XCTAssertTrue(message.contains("stream key"), message)
     }
 }
