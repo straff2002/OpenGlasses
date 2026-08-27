@@ -36,12 +36,7 @@ struct PromptPresetsView: View {
                                         .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     if preset.isBuiltIn {
-                                        Text("Built-in")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color(.tertiarySystemFill), in: Capsule())
+                                        OGBadge(text: "Built-in")
                                     }
                                 }
                                 Text(preset.prompt.prefix(80) + (preset.prompt.count > 80 ? "…" : ""))
@@ -76,6 +71,7 @@ struct PromptPresetsView: View {
             }
         }
         .navigationTitle("System Prompt")
+        .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -157,6 +153,7 @@ struct PromptPresetEditorView: View {
                         Text("This prompt shapes how the AI responds. It's included with every message.")
                     }
                 }
+                .ogFormStyle()
             }
             .navigationTitle(isEditing ? "Edit Preset" : "New Preset")
             .navigationBarTitleDisplayMode(.inline)

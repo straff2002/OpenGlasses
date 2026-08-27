@@ -50,6 +50,7 @@ struct ModelPricingEditorView: View {
         }
         .navigationTitle("Model Pricing")
         .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
         .onAppear(perform: load)
     }
 

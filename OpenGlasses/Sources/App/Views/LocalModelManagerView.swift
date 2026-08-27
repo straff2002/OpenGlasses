@@ -29,9 +29,7 @@ struct LocalModelManagerView: View {
                 let ramGB = Double(totalRAM) / 1_073_741_824
                 LabeledContent("Device RAM", value: String(format: "%.1f GB", ramGB))
                 if ramGB < 4 {
-                    Label("Limited RAM — use models under 1 GB", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(OGTheme.warnLabel)
+                    OGStatusLabel("Limited RAM — use models under 1 GB", kind: .warn)
                 }
                 // Live memory readout: refreshes while visible so the user can watch a
                 // model load/unload. Sandboxing limits this to the app's own numbers —
@@ -70,10 +68,7 @@ struct LocalModelManagerView: View {
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                    if selectedModelId == modelId {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(Color(.label))
-                                    }
+                                    OGSelectionCheck(selectedModelId == modelId)
                                 }
                                 .contentShape(Rectangle())
                             }
@@ -94,9 +89,7 @@ struct LocalModelManagerView: View {
                 }
                 if let loadError {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(loadError, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(OGTheme.errorLabel)
+                        OGStatusLabel(loadError, kind: .error, systemImage: "exclamationmark.triangle")
                         if let failedLoadModelId {
                             // Retry seam for the headroom gate: the user swipes other apps
                             // away, watches headroom recover, and retries without leaving
@@ -211,13 +204,12 @@ struct LocalModelManagerView: View {
             // MARK: Error
             if let error = downloadError {
                 Section {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(OGTheme.errorLabel)
-                        .font(.footnote)
+                    OGStatusLabel(error, kind: .error, systemImage: "exclamationmark.triangle")
                 }
             }
         }
         .navigationTitle("Local Models")
+        .ogFormStyle()
         .onAppear {
             refreshDownloaded()
             // Set initial selection from active model config
