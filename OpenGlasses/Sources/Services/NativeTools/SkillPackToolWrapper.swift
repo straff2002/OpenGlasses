@@ -22,6 +22,15 @@ struct SkillPackToolWrapper: NativeTool {
     /// Resolves a native tool for `.tool` bindings. Injected; never captures the registry (the
     /// wrapper is *in* the registry — a strong loop there would leak both).
     let resolveNativeTool: @MainActor (String) -> (any NativeTool)?
+    /// Called when a `.tool` binding reaches execution with a target the composition floor
+    /// forbids — meaning admission and the merge-time quarantine both failed to contain it.
+    /// The default traps in debug (`assertionFailure` compiles out of release) so a routing
+    /// regression is impossible to miss locally; execution refuses either way. Injected so the
+    /// refusal path itself is testable.
+    var onContainmentBreach: (String) -> Void = { message in
+        NSLog("[SkillPacks] %@", message)
+        assertionFailure(message)
+    }
 
     private var settingsValues: [String: String] {
         SkillPackSettings.values(packId: packId, declarations: settingDeclarations)
@@ -56,6 +65,15 @@ struct SkillPackToolWrapper: NativeTool {
             return PromptInjectionPolicy.wrap(toolName: name, content: filled)
 
         case .tool(let target, let boundArgs):
+            // Last line of the composition floor: this wrapper executes its target itself, so the
+            // router's confirmation gate never sees the real name. Reaching here with a restricted
+            // target means neither admission nor the merge-time quarantine held — refuse, and say
+            // so loudly in debug.
+            guard !ComposedToolPolicy.isRestrictedTarget(target) else {
+                onContainmentBreach(
+                    "Pack '\(packId)' action '\(action.name)' reached execution bound to '\(target)'")
+                return ComposedToolPolicy.refusalMessage(target: target)
+            }
             guard let tool = resolveNativeTool(target) else {
                 return "This skill's underlying tool '\(target)' isn't available on this device."
             }
@@ -127,7 +145,13 @@ extension NativeToolRegistry {
     func registerSkillPackTools(from store: SkillPackStore) {
         removeSkillPackTools()
         for manifest in store.activeManifests() {
-            for action in manifest.actions {
+            // Re-run the composition floor over what's actually installed: a pack admitted by an
+            // earlier build can hold a `.tool` binding the floor now forbids. The pack stays
+            // installed and its other actions register; only the offending ones are held back,
+            // with the reason recorded on the row for the Settings UI.
+            let quarantined = SkillPackValidator.restrictedActionNames(in: manifest)
+            store.setQuarantinedActions(quarantined, id: manifest.id)
+            for action in manifest.actions where !quarantined.contains(action.name) {
                 register(SkillPackToolWrapper(
                     packId: manifest.id,
                     action: action,

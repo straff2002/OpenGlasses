@@ -38,6 +38,13 @@ enum IntentSupport {
     /// useful instead of a generic error.
     @MainActor
     static func runTool(_ name: String, args: [String: Any], appState: AppState) async -> String {
+        // Every intent tool call lands here, and the registry executes without the router's
+        // confirmation gate — so this is the chokepoint that keeps an intent from actuating
+        // something the assistant would have asked about first.
+        guard !ComposedToolPolicy.isRestrictedTarget(name) else {
+            NSLog("[IntentSupport] Refused intent-bound tool %@ (needs direct confirmation)", name)
+            return ComposedToolPolicy.refusalMessage(target: name)
+        }
         do {
             return try await appState.nativeToolRegistry.executeTool(name: name, arguments: args)
         } catch {

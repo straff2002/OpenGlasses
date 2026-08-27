@@ -279,8 +279,12 @@ struct SiriActionEditorView: View {
     @State private var customToolId = ""
     @State private var validationMessage: String?
 
+    /// Tools a voice action may bind to. Ones that need the user's direct confirmation aren't
+    /// offered at all — picking one would only ever end in a refusal.
     private var availableToolNames: [String] {
-        (AppStateProvider.shared?.nativeToolRegistry.allTools.map(\.name) ?? []).sorted()
+        (AppStateProvider.shared?.nativeToolRegistry.allTools.map(\.name) ?? [])
+            .filter { !ComposedToolPolicy.isRestrictedTarget($0) }
+            .sorted()
     }
 
     private var customToolNames: [String] {
@@ -425,6 +429,8 @@ struct SiriActionEditorView: View {
             return "Arguments must be a valid JSON object, like {\"action\": \"start\"}."
         case .toolBlockedByCompliance(let tool):
             return "\"\(tool)\" is unavailable while Medical Compliance Mode is on."
+        case .toolNeedsDirectConfirmation(let tool):
+            return "\"\(tool)\" takes an action you have to confirm yourself, so it can't run from a saved voice action. Ask the assistant for it instead."
         case .agentModeRequired:
             return "Custom tools need Agentic Features enabled (Settings → Agentic Features)."
         }

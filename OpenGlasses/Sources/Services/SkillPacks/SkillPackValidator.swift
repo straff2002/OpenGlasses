@@ -119,6 +119,11 @@ enum SkillPackValidator {
             if !nativeToolNames.contains(target) {
                 reasons.append("action '\(name)' binds to unknown native tool '\(target)'")
             }
+            // A wrapper executes its target directly, so the router's confirmation gate never
+            // sees the real name. Anything that gate would have caught is refused at the door.
+            if ComposedToolPolicy.isRestrictedTarget(target) {
+                reasons.append("action '\(name)' \(ComposedToolPolicy.admissionReason(target: target))")
+            }
         case .procedure(let id):
             if id.isEmpty { reasons.append("action '\(name)' has an empty procedure id") }
         case .gateway(let task):
@@ -147,6 +152,19 @@ enum SkillPackValidator {
         }
 
         return reasons
+    }
+
+    /// Names of an installed pack's actions whose `.tool` target the composition floor forbids.
+    ///
+    /// Packs installed by an earlier build predate that floor, so the registry merge re-runs this
+    /// on every launch and refresh rather than trusting install-time admission. Pure so the
+    /// reclassification is asserted without a store or a registry.
+    static func restrictedActionNames(in manifest: SkillPackManifest) -> [String] {
+        manifest.actions.compactMap { action in
+            guard case .tool(let target, _) = action.binding,
+                  ComposedToolPolicy.isRestrictedTarget(target) else { return nil }
+            return action.name
+        }
     }
 
     // MARK: - Shapes

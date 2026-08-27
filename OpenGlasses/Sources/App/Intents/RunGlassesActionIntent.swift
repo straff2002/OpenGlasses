@@ -61,7 +61,21 @@ enum SiriActionError: Error, CustomLocalizedStringResourceConvertible {
 /// as speakable text (not thrown) so Siri reads something useful instead of a generic error.
 @MainActor
 enum SiriActionDispatcher {
+
+    /// Why this binding can't run, or nil to proceed.
+    ///
+    /// The catalog drops such a binding at admission, but an action saved by an earlier build is
+    /// already in `SiriExposureConfig` — so the dispatcher re-decides rather than trusting that
+    /// what reached it was screened. Pure, so the refusal is asserted without an `AppState`.
+    static func refusalReason(for binding: SiriActionBinding) -> String? {
+        guard let tool = binding.toolName, ComposedToolPolicy.isRestrictedTarget(tool) else {
+            return nil
+        }
+        return ComposedToolPolicy.refusalMessage(target: tool)
+    }
+
     static func run(_ binding: SiriActionBinding, appState: AppState) async throws -> String {
+        if let refusal = refusalReason(for: binding) { return refusal }
         switch binding {
         case .builtin(let id):
             return try await BuiltinActionRunner.run(id, appState: appState)
