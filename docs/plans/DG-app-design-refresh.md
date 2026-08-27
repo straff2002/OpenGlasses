@@ -1,9 +1,11 @@
 # Plan DG — App-Wide Design Language Refresh
 
-**Status:** 🚧 P1 shipped 2026-08-25 (with DF P1, one PR) · P2 (onboarding) shipped 2026-08-25 ·
-**P3 shipped 2026-08-26** — its model-selection slice first, then the hub + category screens with
-the DE build · **P4 shipped 2026-08-27** — the session surface, and with it every accessibility
-row DF had deferred to this phase · P5 planned
+**Status:** ✅ **Complete — all phases shipped.** P1 2026-08-25 (with DF P1, one PR) ·
+P2 (onboarding) 2026-08-25 · **P3 2026-08-26** — its model-selection slice first, then the hub +
+category screens with the DE build · **P4 2026-08-27** — the session surface, and with it every
+accessibility row DF had deferred to this phase · **P5 2026-08-27** — the long tail, the six
+sheets P4 handed on, and the 29 settings sub-screens P3's remainder had left in system grey.
+Every screen in the [inventory](DG-screen-inventory.md) is accounted for.
 
 ## Why
 
@@ -375,11 +377,63 @@ Plan Y cites the former as its phone-mirror reference and the inventory assigned
 this phase; leaving an un-audited idiom in the tree for someone to reach for is the failure mode
 worth avoiding. Whether they survive at all is a P5 question.
 
-## P5 — The long tail
+## P5 — The long tail ✅ shipped (2026-08-27)
 
-Everything in P1's inventory not yet covered (tools screens, vault managers, browsers, panels,
-developer surfaces), batched into a small number of PRs by area, each mechanical once P1's
-components exist.
+Everything in P1's inventory not yet covered — tools screens, vault managers, browsers, panels,
+developer surfaces, the six sheets P4 handed on — batched by area, one commit each, and
+mechanical exactly as P1 predicted: **74 files, +318/−245**. A file's diff is a handful of lines
+because the components already existed; the phase's work was deciding which component each
+local invention had been reimplementing.
+
+### What P5 landed
+
+- **Nine areas, nine commits**: chat · models/prompts/personas · tools, skills & integrations ·
+  vaults, documents & records · learning, assessment & medical · HUD, Siri & launch · the six
+  session sheets · developer panels · the settings sub-screens.
+- **Nine files were verified and left alone.** `RootView` is a shell; `ChatComposer`,
+  `SafetyAssessmentOverlay` and `TurnTimelineDebugView` were already on the primitives after
+  DF P3; `AddModelView`/`ModelEditorView`/`ModelFormView`/`ModelPickerSheet` were converted with
+  P3's model-selection slice; `SceneNarrationToggleView` was already on the canvas. Recorded as
+  verified rather than churned — a no-op diff on a conformant screen is noise in a review, and
+  the inventory is the place that claim belongs.
+- **No new components and no new contrast pairs.** The phase is the proof that P1's set was the
+  right set: forty-seven screens converted without one addition to the library, and
+  `OGTheme.contrastAudit` is untouched because every text-on-surface pair the long tail paints
+  was already in it. Where a screen wanted something the library did not have, the answer was
+  that the screen wanted the wrong thing.
+- **Developer panels got the cheapest treatment that makes them consistent**, on purpose. They
+  are owner-facing; a monospaced log body is meant to be monospaced.
+
+### The finding: P3's remainder
+
+P1's inventory assigns 33 screens to P3. P3 shipped four surfaces — the hub, its seven category
+screens, and the model-selection pair — which is what its prose describes and what its PR
+contains. The other **29 screens, the ones reachable *from* those categories, kept their stock
+system grey**, so tapping a category row landed the user on cool iOS grey against the warm hub:
+this plan's opening complaint, one level down, in the part of the app DE had just spent a phase
+making inviting.
+
+P5 closed it as an area of its own. The fix is `.ogFormStyle()` — one line per screen, same
+controls, same rows, warm canvas and accent tint — plus the audited label tokens wherever a bare
+hue was still being used as text. Twenty-eight screens took it; `SceneNarrationToggleView` was
+already on the canvas.
+
+Recorded here rather than quietly absorbed, because the useful lesson is about the status line
+and not about the CSS: **a phase marked shipped had a remainder its own status line did not
+mention**, and the only reason it surfaced is that P5 checked the inventory against the tree
+instead of against the plan. The inventory now marks P3 for what P3 landed.
+
+### Scope notes
+
+- `DiagnosticsSupportView` was not in P1's inventory at all — it postdates it. Swept with the
+  developer panels while the phase was standing there.
+- `HUDPreviewView` keeps its fixed geometry, and the reason is unchanged from DF P3: it mirrors a
+  lens display of known size, and text that grew with Dynamic Type would make the preview
+  misreport what the wearer actually sees.
+- `QuickActionsOverlay` and `CircleButton` — the two unreferenced files P4 restyled and flagged
+  as "whether they survive at all is a P5 question" — **survive**. Neither was deleted here: the
+  question is about ownership rather than looks, Plan Y still cites the former as its phone-mirror
+  reference, and removing a file is not a restyle sweep's call to make.
 
 ## Non-goals
 

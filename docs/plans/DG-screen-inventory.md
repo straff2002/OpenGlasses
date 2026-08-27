@@ -29,10 +29,18 @@ file references); the phase assignment is not.
 | `GoogleSignInRows.swift` | custom | As above. |
 | `BiometricLockView.swift` | custom | First screen after a cold launch when the owner gate is on — reads as onboarding to the user even though it isn't. |
 
-## P3 — Settings
+## P3 — Settings ✅ shipped (2026-08-26) — with a remainder P5 closed
 
 The hub, its category screens, and everything reachable from them. DE decides what is
 visible and in what order; DG decides what it looks like.
+
+**Correction recorded by P5 (2026-08-27).** P3 shipped the hub, the seven category
+screens and the model-selection surfaces — which is what its prose describes and what
+its PR contains — but this table also lists the ~29 screens reachable *from* those
+categories, and those kept their stock system grey. Opening one flashed cool grey
+against the warm hub: the plan's own complaint, one level down. P5 closed it as an area
+of its own (`.ogFormStyle()`, one line each), listed at the foot of the P5 section. The
+rows below are marked for what P3 landed; the sub-screens are marked in P5.
 
 | View | Idiom | Note |
 |---|---|---|
@@ -101,106 +109,135 @@ front of; batching them with the long tail keeps the P4 change reviewable.
 | `ModelPickerSheet.swift` | stock | → P5. |
 | `PersonaPickerSheet.swift` | stock | ~800 lines. → P5. |
 
-## P5 — The long tail
+## P5 — The long tail ✅ shipped (2026-08-27)
 
-Batched by area. Each batch is mechanical once P1's components exist.
+Batched by area, one commit each. Mechanical, as P1 predicted it would be once the
+components existed: 74 files, +318/−245 — a consistency pass, not a redesign.
 
-**Chat**
-
-| View | Idiom |
-|---|---|
-| `Chat/ChatListView.swift` | stock |
-| `Chat/ChatThreadView.swift` | custom |
-| `Chat/ChatComposer.swift` | custom |
-| `Chat/MessageBubble.swift` | custom |
-| `Chat/MessageContentView.swift` | custom |
-
-**Models, prompts & personas**
+**Chat** — 4 changed, 1 verified
 
 | View | Idiom |
 |---|---|
-| `AddModelView.swift` | stock |
-| `ModelEditorView.swift` | stock |
-| `ModelFormView.swift` | custom |
-| `ModelPricingEditorView.swift` | stock |
-| `LocalModelManagerView.swift` | stock |
-| `PersonasView.swift` | stock |
-| `PromptPresetsView.swift` | stock |
-| `PromptInspectorView.swift` | stock |
+| `Chat/ChatListView.swift` | ✅ converted |
+| `Chat/ChatThreadView.swift` | ✅ converted |
+| `Chat/ChatComposer.swift` | ✅ verified, no change — already on tokens after DF P3 |
+| `Chat/MessageBubble.swift` | ✅ converted — bubble fill from the palette |
+| `Chat/MessageContentView.swift` | ✅ converted |
 
-**Tools, skills & integrations**
+**Models, prompts & personas** — 5 changed, 3 verified
 
 | View | Idiom |
 |---|---|
-| `CustomToolsView.swift` | stock |
-| `VoiceSkillsManagerView.swift` | stock |
-| `SuggestedSkillsView.swift` | stock |
-| `ClawHubBrowserView.swift` | stock |
-| `MCPCatalogView.swift` | stock |
-| `MCPServersView.swift` | stock |
-| `MCPServerTrustView.swift` | stock |
-| `ScheduledTasksView.swift` | stock |
-| `RemoteActionConsentView.swift` | custom |
-| `RemoteInvokeAuditView.swift` | stock |
+| `AddModelView.swift` | ✅ verified, no change — converted with P3's model-selection slice |
+| `ModelEditorView.swift` | ✅ verified, no change — as above |
+| `ModelFormView.swift` | ✅ verified, no change — as above |
+| `ModelPricingEditorView.swift` | ✅ converted |
+| `LocalModelManagerView.swift` | ✅ converted |
+| `PersonasView.swift` | ✅ converted |
+| `PromptPresetsView.swift` | ✅ converted |
+| `PromptInspectorView.swift` | ✅ converted |
 
-**Vaults, documents & records**
+**Tools, skills & integrations** — 10 changed
 
 | View | Idiom |
 |---|---|
-| `VaultManagerView.swift` | stock |
-| `VaultFilesEditorView.swift` | stock |
-| `HealthVaultEditorView.swift` | custom |
-| `DocumentsView.swift` | stock |
-| `RecordingsView.swift` | stock |
-| `MeetingRecordsView.swift` | stock |
-| `Projects/ProjectDetailView.swift` | stock |
-| `CaptureFlowAuthorView.swift` | stock |
+| `CustomToolsView.swift` | ✅ converted |
+| `VoiceSkillsManagerView.swift` | ✅ converted |
+| `SuggestedSkillsView.swift` | ✅ converted |
+| `ClawHubBrowserView.swift` | ✅ converted — stock list kept, canvas + status labels |
+| `MCPCatalogView.swift` | ✅ converted |
+| `MCPServersView.swift` | ✅ converted |
+| `MCPServerTrustView.swift` | ✅ converted |
+| `ScheduledTasksView.swift` | ✅ converted |
+| `RemoteActionConsentView.swift` | ✅ converted — prominent accept, quiet decline |
+| `RemoteInvokeAuditView.swift` | ✅ converted |
 
-**Learning**
-
-| View | Idiom |
-|---|---|
-| `DeckListView.swift` | stock |
-| `FlashcardView.swift` | custom |
-| `QuizView.swift` | custom |
-| `ReadingStatsView.swift` | stock |
-| `InsightsView.swift` | stock |
-
-**Assessment & medical**
+**Vaults, documents & records** — 8 changed
 
 | View | Idiom |
 |---|---|
-| `AssessmentCardView.swift` | custom |
-| `SafetyAssessmentReportView.swift` | custom |
-| `MedicalCompliancePaywallView.swift` | custom |
+| `VaultManagerView.swift` | ✅ converted |
+| `VaultFilesEditorView.swift` | ✅ converted |
+| `HealthVaultEditorView.swift` | ✅ converted |
+| `DocumentsView.swift` | ✅ converted |
+| `RecordingsView.swift` | ✅ converted |
+| `MeetingRecordsView.swift` | ✅ converted |
+| `Projects/ProjectDetailView.swift` | ✅ converted |
+| `CaptureFlowAuthorView.swift` | ✅ converted |
 
-**HUD & display**
-
-| View | Idiom |
-|---|---|
-| `HUDPreviewView.swift` | custom |
-| `HUDMirrorView.swift` | custom |
-
-**Developer & diagnostics**
+**Learning** — 5 changed
 
 | View | Idiom |
 |---|---|
-| `DeveloperPanelView.swift` | OGDesign |
-| `TurnTimelineDebugView.swift` | OGDesign |
-| `NetworkMonitorView.swift` | stock |
+| `DeckListView.swift` | ✅ converted |
+| `FlashcardView.swift` | ✅ converted — the card is `OGCard`, not a local material |
+| `QuizView.swift` | ✅ converted |
+| `ReadingStatsView.swift` | ✅ converted — numbers onto `OGStatTile` |
+| `InsightsView.swift` | ✅ converted — as above |
 
-**Siri surfaces**
+**Assessment & medical** — 3 changed
 
 | View | Idiom |
 |---|---|
-| `SiriContentDetailView.swift` | custom |
+| `AssessmentCardView.swift` | ✅ converted |
+| `SafetyAssessmentReportView.swift` | ✅ converted |
+| `MedicalCompliancePaywallView.swift` | ✅ converted — the largest single diff in the phase |
 
-**App shell**
+**HUD & display** — 2 changed
+
+| View | Idiom |
+|---|---|
+| `HUDPreviewView.swift` | ✅ converted — fixed lens geometry kept on purpose (see below) |
+| `HUDMirrorView.swift` | ✅ converted — onto `Token.media` and the named media opacity roles |
+
+**Developer & diagnostics** — 3 changed, 1 verified. Deliberately the cheapest
+treatment in the sweep: owner-facing, so consistency only.
+
+| View | Idiom |
+|---|---|
+| `DeveloperPanelView.swift` | ✅ converted (minimal) |
+| `TurnTimelineDebugView.swift` | ✅ verified, no change — already on the primitives |
+| `NetworkMonitorView.swift` | ✅ converted — form style + audited status labels |
+| `DiagnosticsSupportView.swift` | ✅ converted (minimal) — not in P1's list; swept while here |
+
+**Siri surfaces** — 1 changed
+
+| View | Idiom |
+|---|---|
+| `SiriContentDetailView.swift` | ✅ converted |
+
+**App shell** — 1 changed, 1 verified
 
 | View | Idiom | Note |
 |---|---|---|
-| `LaunchScreen.swift` | custom | Fixed point sizes (`.system(size: 36)`) still to convert; Reduce Motion handled in P1. |
-| `RootView.swift` | custom | Shell only. |
+| `LaunchScreen.swift` | ✅ converted | Fixed point sizes onto text styles; the glow and its Reduce Motion variant untouched. |
+| `RootView.swift` | ✅ verified, no change | Shell only, as P1 expected. |
+
+**The six sheets P4 moved here** — 4 changed, 2 verified
+
+| View | Idiom |
+|---|---|
+| `AssistiveModeToggleView.swift` | ✅ converted |
+| `SafetyAssessmentOverlay.swift` | ✅ verified, no change — already on tokens after DF P3 |
+| `LivePreviewView.swift` | ✅ converted — media ground + named opacity roles |
+| `PhoneCameraView.swift` | ✅ converted |
+| `ModelPickerSheet.swift` | ✅ verified, no change — already wore `.ogFormStyle()` |
+| `PersonaPickerSheet.swift` | ✅ converted — onto `OGSelectionRow`, matching the model picker |
+
+**The settings sub-screens P3 left stock** — 28 changed, 1 verified. Not a P5 area in
+P1's plan; see the correction below.
+
+`AccessibilitySettingsView`, `AgentHarnessSettingsView`, `AgenticFeaturesView`,
+`DiarizationSettingsView`, `DigestSettingsView`, `EvenDisplaySettingsView`,
+`FieldAssistSettingsView`, `FingerspellingSettingsView`, `GatewaySettingsView`,
+`HIPAASettingsView`, `LLMImageSettingsView`, `LanguageSettingsView`,
+`LiveVisionSettingsView`, `MCPServerSettingsView`, `MedicalExportSettingsView`,
+`NavigationSettingsView`, `PlaybooksSettingsView`, `QuickActionsSettingsView`,
+`ServicesSettingsView`, `SkillPacksSettingsView`, `TeleprompterSettingsView`,
+`ToolsSettingsView`, `TranslationSettingsView`, `WebHUDMirrorSettingsView`,
+`SafetyRulesView`, `SiriExposureView`, `ShortcutTemplatesView`, `SyncStatusView`
+— all ✅ `.ogFormStyle()`. `SceneNarrationToggleView` ✅ verified, no change (already
+on the canvas).
 
 ## Not screens
 
@@ -211,12 +248,17 @@ and `Components/OGDesign.swift` / `Components/OGDesignTokens.swift` (the library
 
 ## Counts
 
-| Phase | Screens |
-|---|---|
-| P2 onboarding | 5 |
-| P3 settings | 33 |
-| P4 session surface | 15 |
-| P5 long tail | 41 |
+As planned by P1, and as the phases actually landed:
+
+| Phase | Planned | Landed |
+|---|---|---|
+| P2 onboarding | 5 | 5 |
+| P3 settings | 33 | 4 (hub + categories + the model surfaces); 29 sub-screens fell to P5 |
+| P4 session surface | 15 | 9; the 6 sheets moved to P5 |
+| P5 long tail | 41 | 47 planned + 6 sheets + 29 settings sub-screens + `DiagnosticsSupportView` |
+
+P5 totals: **74 files changed, 9 verified-no-change**, in nine commits. Every row in
+this document is now accounted for.
 
 ## Notes for the later phases
 
