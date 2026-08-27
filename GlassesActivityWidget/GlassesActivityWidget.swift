@@ -132,18 +132,23 @@ struct GlassesActivityWidget: Widget {
                             .foregroundStyle(statusColor(for: context.state))
                     }
 
+                    // One line, not two: the Lock Screen presentation has a hard height
+                    // budget, and a second snippet line is the cheapest thing to give up.
                     if !context.state.lastResponseSnippet.isEmpty {
                         Text(context.state.lastResponseSnippet)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                 }
             }
 
             // Quick actions — always shown so the Lock Screen stays useful even when the
             // glasses are disconnected (most actions just open the app via deep link).
-            actionButtons(for: context.state, compact: false)
+            // Disconnected, the Connect row takes the vertical budget the second action
+            // row would have used — four capsule rows do not fit the Lock Screen slot.
+            actionButtons(for: context.state, compact: false,
+                          maxRows: context.state.isConnected ? 2 : 1)
             if !context.state.isConnected {
                 chunkyLink(label: "Connect Glasses",
                            icon: "antenna.radiowaves.left.and.right",
@@ -151,7 +156,7 @@ struct GlassesActivityWidget: Widget {
                            tint: .green, strong: true)
             }
         }
-        .padding(16)
+        .padding(12)
         .background(Color.black.opacity(0.6))
     }
 
@@ -191,8 +196,9 @@ struct GlassesActivityWidget: Widget {
     }
 
     @ViewBuilder
-    private func actionButtons(for state: GlassesActivityAttributes.ContentState, compact: Bool) -> some View {
-        let items = actionItems(for: state)
+    private func actionButtons(for state: GlassesActivityAttributes.ContentState, compact: Bool,
+                               maxRows: Int = 2) -> some View {
+        let items = Array(actionItems(for: state).prefix(maxRows * 2))
         if compact {
             // Dynamic Island: slim single row (space-constrained).
             HStack(spacing: 6) {
