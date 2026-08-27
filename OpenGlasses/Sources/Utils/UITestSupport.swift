@@ -26,6 +26,8 @@ enum UITestSupport {
         case showAllSettings = "-OGUITestShowAllSettings"
         /// Captions overlay on screen with a short history and a live line.
         case seedCaptions = "-OGUITestSeedCaptions"
+        /// A delete-and-reinstall: the Keychain kept a provider key, `UserDefaults` kept nothing.
+        case reinstall = "-OGUITestReinstall"
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -50,7 +52,14 @@ enum UITestSupport {
         // Saved models live in the Keychain, which outlives an app delete on a simulator — so
         // wiping the defaults domain is not on its own enough to produce a first-run app. One
         // keyless model is what a device with nothing configured actually holds.
-        Config.setSavedModels([Config.appleIntelligenceDefault])
+        //
+        // A reinstall is the same wipe with the *other* half left standing: the same absent
+        // defaults, and a saved model still carrying a real key. That is the whole state — no
+        // flag says "this is a reinstall", the app works it out from these two facts, which is
+        // exactly what the test is here to check.
+        Config.setSavedModels(isSet(.reinstall)
+                              ? [Config.appleIntelligenceDefault, keyedModelThatSurvivedTheDelete]
+                              : [Config.appleIntelligenceDefault])
 
         if isSet(.freshInstall) {
             Config.setHasCompletedOnboarding(false)
@@ -64,6 +73,36 @@ enum UITestSupport {
             seedJourney(showsEverything: isSet(.showAllSettings))
         }
     }
+
+    /// The one fact a reinstall is made of, stated directly because the store that carries it
+    /// does not exist here.
+    ///
+    /// A simulator build with code signing off has **no Keychain**: every read and write returns
+    /// `errSecMissingEntitlement`, which is also why ~13 Keychain-backed unit tests fail in the
+    /// same environment. A surviving *Keychain* credential is exactly what separates a reinstall
+    /// from a fresh install, so writing one and hoping to read it back seeds nothing at all.
+    /// `Config.captureLaunchProvenance()` takes this instead.
+    ///
+    /// Still only state, on the terms at the top of this file: the detection rule, the page it
+    /// produces and both of its exits are the shipping ones, and nothing here compiles into a
+    /// Release binary. `nil` on every launch that is not seeding a reinstall, so the real probe
+    /// answers for all of them.
+    static var seededSurvivingCredentials: Bool? {
+        guard isSet(.reinstall) else { return nil }
+        return true
+    }
+
+    /// The saved model a reinstall finds waiting for it — written for the sake of a device or a
+    /// signed build, where it is the whole seed. Not a real credential; nothing in a UI test ever
+    /// sends it anywhere. Just a non-empty key, which is what the gate reads.
+    private static let keyedModelThatSurvivedTheDelete = ModelConfig(
+        id: "uitest-surviving-key",
+        name: "Anthropic",
+        provider: LLMProvider.anthropic.rawValue,
+        apiKey: "sk-ant-uitest-not-a-real-key",
+        model: LLMProvider.anthropic.defaultModel,
+        baseURL: LLMProvider.anthropic.defaultBaseURL
+    )
 
     private static func seedJourney(showsEverything: Bool) {
         var state = SettingsJourneyMigration.initialState(

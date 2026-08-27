@@ -110,20 +110,33 @@ struct Config {
 
     /// Pure form of the onboarding gate, so the flag interaction below is testable without touching
     /// the Keychain that backs `savedModels`.
-    static func needsOnboarding(hasCompletedOnboarding: Bool, hasAnyAPIKey: Bool) -> Bool {
-        !hasCompletedOnboarding && !hasAnyAPIKey
+    ///
+    /// `isReinstall` is the third input and it *forces* the flow on. See ``isReinstall(_:)`` for
+    /// why: an install whose credentials outlived its preferences used to be waved straight past
+    /// this gate, because credentials alone read as "already set up".
+    static func needsOnboarding(hasCompletedOnboarding: Bool,
+                                hasAnyAPIKey: Bool,
+                                isReinstall: Bool = false) -> Bool {
+        if isReinstall { return true }
+        return !hasCompletedOnboarding && !hasAnyAPIKey
     }
 
     /// Pure form of ``isPastOnboarding``.
-    static func isPastOnboarding(hasCompletedOnboarding: Bool, hasAnyAPIKey: Bool) -> Bool {
-        !needsOnboarding(hasCompletedOnboarding: hasCompletedOnboarding, hasAnyAPIKey: hasAnyAPIKey)
+    static func isPastOnboarding(hasCompletedOnboarding: Bool,
+                                 hasAnyAPIKey: Bool,
+                                 isReinstall: Bool = false) -> Bool {
+        !needsOnboarding(hasCompletedOnboarding: hasCompletedOnboarding,
+                         hasAnyAPIKey: hasAnyAPIKey,
+                         isReinstall: isReinstall)
     }
 
-    /// True when the user hasn't completed onboarding and has no configured API keys.
+    /// True when the user hasn't completed onboarding and has no configured API keys — or when
+    /// this launch is a reinstall, which gets the welcome-back page rather than a silent skip.
     static var needsOnboarding: Bool {
         needsOnboarding(
             hasCompletedOnboarding: hasCompletedOnboarding,
-            hasAnyAPIKey: !savedModels.allSatisfy { $0.apiKey.isEmpty }
+            hasAnyAPIKey: hasAnyAPIKey,
+            isReinstall: isReinstallLaunch
         )
     }
 
@@ -137,6 +150,116 @@ struct Config {
     /// stack switched off forever with no in-app route to turn it on. Gating on the narrower flag
     /// meant even a completed registration would never surface as connected.
     static var isPastOnboarding: Bool { !needsOnboarding }
+
+    // MARK: - Reinstall detection
+
+    /// What a single launch can observe about whether this install's *preferences* survived.
+    ///
+    /// The Keychain outlives an app delete; `UserDefaults` does not. So after a delete and
+    /// reinstall the app finds the user's keys and sign-ins intact and every preference gone —
+    /// and the onboarding gate read that as "already set up" and skipped silently, dropping a
+    /// returning user into a session with no statement of what carried over and what didn't.
+    ///
+    /// Pure values in, verdict out, so the rule is tested without a Keychain or a wiped device.
+    struct LaunchProvenance: Equatable {
+        /// The onboarding flag as stored — false when the key is absent, which is exactly the
+        /// case a reinstall produces.
+        var hasCompletedOnboarding: Bool
+        /// At least one of the app's own long-lived defaults is present. This is the
+        /// corroboration: without it, "no completion flag" cannot tell a wiped preference store
+        /// apart from a user who simply never finished the flow.
+        var hasLongLivedDefaults: Bool
+        /// A credential survived: a saved provider key, or a connected account.
+        var hasSavedCredentials: Bool
+
+        init(hasCompletedOnboarding: Bool, hasLongLivedDefaults: Bool, hasSavedCredentials: Bool) {
+            self.hasCompletedOnboarding = hasCompletedOnboarding
+            self.hasLongLivedDefaults = hasLongLivedDefaults
+            self.hasSavedCredentials = hasSavedCredentials
+        }
+    }
+
+    /// Whether this launch is a reinstall: credentials on file with no preferences behind them.
+    ///
+    /// Deliberately conservative in both directions. No credential ⇒ never a reinstall (that is a
+    /// plain fresh install, and it must stay byte-identical to what it was). Any surviving
+    /// default ⇒ never a reinstall (the preference store is intact, so nothing was lost).
+    static func isReinstall(_ provenance: LaunchProvenance) -> Bool {
+        guard provenance.hasSavedCredentials else { return false }
+        return !provenance.hasCompletedOnboarding && !provenance.hasLongLivedDefaults
+    }
+
+    /// Our own mark that this install has launched before, written by ``captureLaunchProvenance()``.
+    /// Independent of the migrations below, so the verdict does not rest on their internals.
+    private static let launchedBeforeKey = "hasLaunchedBefore"
+
+    /// Defaults whose presence means this install has run before. Any one of them is enough —
+    /// they are written by different subsystems, so no single change of behaviour elsewhere can
+    /// quietly make every install look freshly reinstalled.
+    static let longLivedDefaultsKeys = [launchedBeforeKey, "settingsJourneyState", secretsMigratedKey]
+
+    /// Keychain items that outlive an app delete and stand in for "the user was signed in".
+    /// Keys alone are not enough: the account-sign-in providers store no key at all.
+    private static let accountCredentialKeychainKeys = [
+        "claudeOAuthCredentials", "chatgptOAuthCredentials",
+    ]
+
+    /// At least one saved model carries a real provider key.
+    static var hasAnyAPIKey: Bool { !savedModels.allSatisfy { $0.apiKey.isEmpty } }
+
+    /// A provider key or a connected account is on file — anything that would let the app talk to
+    /// a model without the user typing a thing.
+    static var hasSurvivingCredentials: Bool {
+        if hasAnyAPIKey { return true }
+        return accountCredentialKeychainKeys.contains { KeychainService.data(for: $0) != nil }
+    }
+
+    private static var cachedLaunchProvenance: LaunchProvenance?
+
+    /// Read the launch provenance **once, before any migration writes a default**, and remember it
+    /// for the life of the process.
+    ///
+    /// Ordering is the whole point: the secrets migration and the settings-journey migration both
+    /// write keys this reads, and both run in `OpenGlassesApp.init()`. Called after the UI-test
+    /// seed and ahead of everything else, this sees the disk as the launch found it. Called late
+    /// by accident, it would see the app's own writes and fall back to the pre-existing
+    /// behaviour — a silent skip — rather than to anything worse.
+    @discardableResult
+    static func captureLaunchProvenance() -> LaunchProvenance {
+        if let cachedLaunchProvenance { return cachedLaunchProvenance }
+        let defaults = UserDefaults.standard
+        // Read last: the saved-model getter can run the legacy migration, which writes.
+        var credentials = hasSurvivingCredentials
+        #if DEBUG
+        // A simulator build with code signing off has no Keychain, so the UI test's reinstall
+        // state cannot be seeded through the store that carries it. See
+        // `UITestSupport.seededSurvivingCredentials`; nil on every other launch, and absent from
+        // a Release binary.
+        if let seeded = UITestSupport.seededSurvivingCredentials { credentials = seeded }
+        #endif
+        let provenance = LaunchProvenance(
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            hasLongLivedDefaults: longLivedDefaultsKeys.contains { defaults.object(forKey: $0) != nil },
+            hasSavedCredentials: credentials
+        )
+        cachedLaunchProvenance = provenance
+        defaults.set(true, forKey: launchedBeforeKey)
+        return provenance
+    }
+
+    /// The provenance this launch was started with.
+    static var launchProvenance: LaunchProvenance { captureLaunchProvenance() }
+
+    /// True while this launch is a reinstall the user has not yet answered for.
+    ///
+    /// Re-reads the completion flag rather than trusting the captured snapshot, so the moment
+    /// onboarding is finished — by restoring *or* by setting up fresh, both of which set it — the
+    /// gate goes back to its ordinary answer and the services that key off `isPastOnboarding`
+    /// come up exactly as they always did.
+    static var isReinstallLaunch: Bool {
+        guard !hasCompletedOnboarding else { return false }
+        return isReinstall(launchProvenance)
+    }
 
     // MARK: - Wake Word
 

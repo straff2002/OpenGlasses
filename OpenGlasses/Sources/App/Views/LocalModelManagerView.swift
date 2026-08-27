@@ -330,11 +330,14 @@ struct LocalModelManagerView: View {
     }
 }
 
+/// Shared with the first-run offline-model offer (Plan DH P2), which drives the same service call
+/// — one download path in the app, so cancel, resume and the progress reading cannot diverge.
+///
 /// Observes the service so the download progress actually updates — with a live percentage,
 /// because a multi-GB pull with no numbers reads as a hang. A compact spinner + percent, not a
 /// linear bar: the bar-plus-Cancel cluster was wide enough to crush the model name and its
 /// Vision/Tools badges in the same row.
-private struct DownloadProgressRow: View {
+struct DownloadProgressRow: View {
     @ObservedObject var service: LocalLLMService
     let onCancel: () -> Void
     @ScaledMetric(relativeTo: .body) private var cancelTapTarget: CGFloat = 44

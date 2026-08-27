@@ -1,6 +1,6 @@
 # Plan DH — Local Gemma as the Universal Keyless Tier
 
-**Status:** 📝 Drafted 2026-08-25
+**Status:** 🚧 P1 shipped 2026-08-25 · P2 shipped 2026-08-27 · P3/P4 remain
 
 ## Why
 
@@ -40,7 +40,7 @@ declare `k_proj`/`v_proj`; the k_norm keyNotFound we reproduced). We track that 
   the PR with thanks, credit, and a pointer to what was taken; anything of residual value there
   gets re-evaluated against current main separately.
 
-## P2 — First-run integration
+## P2 — First-run integration ✅ (2026-08-27)
 
 - `FirstRunDefaults.resolve` already prefers a downloaded local model when Apple Intelligence
   is absent; make Gemma *offerable* at onboarding: the "Start without an API key" card gains an
@@ -51,6 +51,35 @@ declare `k_proj`/`v_proj`; the k_norm keyNotFound we reproduced). We track that 
 - Device capability gate: a conservative RAM/chip heuristic decides whether Gemma is offered at
   all — a phone that would thrash gets the cloud-provider paths, stated plainly, not a broken
   local tier.
+
+**As built.** `OfflineModelOffer` is the pure decision — RAM, free disk and what is already on
+disk in, one of four verdicts out (offer with its size, already downloaded, no room, device too
+small) — plus the copy each verdict carries, so the wording is asserted headlessly rather than
+only read in a running UI. Ordering is deliberate: a model already downloaded beats every other
+answer, then the capability gate, then storage. The gate's threshold is the offered model's own
+catalog `minimumRAMGB` and a test pins the two together, so the model list stays the single place
+a tier line is drawn; an unreadable volume is never a reason to refuse.
+
+The offer sits on the keyless provider's page, and that page is now reachable on **two** kinds of
+device. Where Apple Intelligence exists the card is unchanged and the download is framed as an
+upgrade ("the assistant already works on this iPhone…"). Where it does not, the "Start without an
+API key" card is shown for the first time — gated on the offer being real — and the download is
+framed as what makes that path work. A phone below the bar sees no keyless card and, if it
+reaches the page another way, is told plainly that the cloud providers are its path.
+
+The download reuses the local-model screen's service call and its `DownloadProgressRow`, so there
+is one download path in the app with one cancel, one resume and one progress reading. Leaving
+mid-download is stated in the footer rather than left to faith, and both ends of the wait are
+spoken for VoiceOver.
+
+**Also in this change (not from this plan):** the delete-and-reinstall welcome-back page. The
+Keychain outlives an app delete and `UserDefaults` does not, so the onboarding gate read surviving
+credentials as "already set up" and skipped silently. `Config.isReinstall` is the pure verdict —
+credentials on file, no completion flag, and no corroborating long-lived default — captured once
+at launch before any migration writes. In that state onboarding *shows*, with the first page in a
+welcome-back variant offering "Restore my setup" (the old silent path, chosen) or "Set up fresh".
+Both exits set the completion flag and run the `Wearables.configure()` path; a true fresh install
+is unchanged.
 
 ## P3 — Vision wiring
 

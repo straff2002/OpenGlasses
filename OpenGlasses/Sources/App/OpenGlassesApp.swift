@@ -141,6 +141,10 @@ struct OpenGlassesApp: App {
         // without the launch argument — first, because everything below reads what it seeds.
         UITestSupport.applyLaunchState()
         #endif
+        // Read how this launch found the disk before anything below writes to it. Both migrations
+        // that follow write defaults keys this reads, and the question it answers — "did this
+        // install's preferences survive, or only its Keychain?" — is only answerable now.
+        Config.captureLaunchProvenance()
         // Move any plaintext provider secrets out of UserDefaults and into the
         // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
         Config.migrateSecretsToKeychainIfNeeded()

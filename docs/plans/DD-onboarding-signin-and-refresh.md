@@ -103,6 +103,22 @@ mechanics, sheet, capture and paste fallbacks untouched.
   first.
 - The Settings/configuration progressive-disclosure journey — its own discussion and plan.
 
+## Later notes
+
+- **2026-08-27 — what a ChatGPT sign-in actually buys.** Device-traced confusion: signing in
+  covers *conversation* on the plan (it unlocks the codex catalog for Direct mode) and nothing
+  more. Live voice mode is a separate OpenAI product that accepts only a platform API key, so no
+  app can reach it through a subscription sign-in. The sign-in section's caption says this on
+  both sides of the connection, and the live-mode picker's refusal says it too when an account is
+  connected (`ConversationModeAvailability.realtimeUnavailableReason`) — a generic "add a model"
+  reads as a bug to someone whose plan advertises a voice mode.
+- **2026-08-27 — the flow can now open on a welcome-back page.** A delete-and-reinstall keeps its
+  Keychain and loses its `UserDefaults`, and the onboarding gate read the surviving credentials as
+  "already set up" and skipped silently. That state now shows the flow with the first page in a
+  welcome-back variant: "Restore my setup" (the old silent path, chosen) or "Set up fresh". Both
+  exits set the completion flag and run the SDK-configure path, so nothing downstream of
+  `isPastOnboarding` changes. See Plan DH P2, which shipped it.
+
 ## Security notes
 
 Listener binds loopback only, exists only while a sign-in sheet is on screen, accepts exactly

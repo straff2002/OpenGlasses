@@ -123,7 +123,7 @@ struct ModelFormView: View {
                         service: chatgptOAuth,
                         signInLabel: "Sign in with ChatGPT",
                         connectedLabel: "ChatGPT account connected",
-                        connectedCaption: "Requests use your ChatGPT subscription (codex models). Realtime voice still needs an OpenAI API key model.",
+                        connectedCaption: "Conversation uses your ChatGPT plan. Live voice mode is a separate OpenAI product and still needs an OpenAI API key model — a sign-in can't reach it.",
                         pasteInstructions: "Sign in in the browser. When it ends on a localhost page that can't connect, copy the full URL from the address bar and paste it here.",
                         onChange: resetModelList
                     )

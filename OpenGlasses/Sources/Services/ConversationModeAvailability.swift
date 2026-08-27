@@ -30,6 +30,10 @@ enum ConversationModeAvailability {
         var hasGeminiKey: Bool
         /// A saved OpenAI model whose id names a realtime variant.
         var hasOpenAIRealtimeModel: Bool
+        /// A connected ChatGPT account. Not a credential for this mode — it changes only what the
+        /// refusal *says*, because a user who just signed in reasonably expects the voice mode
+        /// their plan advertises and needs telling why this one is different.
+        var hasChatGPTAccount: Bool = false
     }
 
     static func options(for configuration: Configuration) -> [Option] {
@@ -52,19 +56,35 @@ enum ConversationModeAvailability {
                     isAvailable: configuration.hasOpenAIRealtimeModel,
                     unavailableReason: configuration.hasOpenAIRealtimeModel
                         ? nil
-                        : "Add an OpenAI model with \"realtime\" in its id to use OpenAI Realtime."
+                        : realtimeUnavailableReason(hasChatGPTAccount: configuration.hasChatGPTAccount)
                 )
             }
         }
     }
 
+    /// Why live voice can't start, worded for who is asking.
+    ///
+    /// A signed-in ChatGPT user is the case that needs more than "add a model": their plan does
+    /// include a voice mode, so the refusal reads as a bug unless it says that this one is a
+    /// different product on a different credential — one that no account sign-in can reach.
+    static func realtimeUnavailableReason(hasChatGPTAccount: Bool) -> String {
+        guard hasChatGPTAccount else {
+            return "Add an OpenAI model with \"realtime\" in its id to use OpenAI Realtime."
+        }
+        return "Live voice mode isn't part of a ChatGPT plan — it's a separate OpenAI product "
+            + "that only accepts an API key. Add an OpenAI model with \"realtime\" in its id in "
+            + "Settings to use it."
+    }
+
     /// Live configuration, read at the point of display.
+    @MainActor
     static var current: Configuration {
         Configuration(
             hasGeminiKey: Config.isGeminiLiveConfigured,
             hasOpenAIRealtimeModel: Config.savedModels.contains { model in
                 model.llmProvider == .openai && model.model.lowercased().contains("realtime")
-            }
+            },
+            hasChatGPTAccount: ChatGPTOAuthService.shared.isConnected
         )
     }
 }
