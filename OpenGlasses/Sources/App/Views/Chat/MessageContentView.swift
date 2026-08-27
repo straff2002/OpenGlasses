@@ -74,10 +74,10 @@ private struct CodeBlockView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        .background(OGTheme.card, in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(.separator).opacity(0.4))
+                .strokeBorder(OGTheme.hairline)
         )
     }
 

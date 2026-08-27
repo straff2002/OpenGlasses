@@ -14,7 +14,7 @@ struct MessageBubble: View {
 
     private var isUser: Bool { message.role == "user" }
     private var bubbleColor: Color {
-        isUser ? accent.opacity(0.18) : Color(.secondarySystemGroupedBackground)
+        isUser ? accent.opacity(0.18) : OGTheme.card
     }
 
     var body: some View {
