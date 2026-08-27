@@ -35,6 +35,22 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         try? await Task.sleep(nanoseconds: ms * 1_000_000)
     }
 
+    /// Poll until `condition` holds, up to `timeout` seconds. Frames driven by the
+    /// service's own wall-clock timers (flash auto-clear, screen restore) must be waited
+    /// on this way rather than with a fixed `settle`: on a loaded machine the timer can
+    /// overshoot its nominal duration by seconds, and a fixed sleep then asserts on the
+    /// pre-timer state. Callers still assert afterwards, so a timeout surfaces as the
+    /// real assertion failure with its frame diff.
+    @discardableResult
+    private func waitFor(timeout: TimeInterval = 5, until condition: () -> Bool) async -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while !condition() {
+            guard Date() < deadline else { return false }
+            await settle(5)
+        }
+        return true
+    }
+
     private func card(_ key: String, items: [String] = ["done"]) -> HUDScreen {
         HUDScreen(title: key, items: items.map { id in HUDItem(id: id, label: id.capitalized) {} })
     }
@@ -78,7 +94,7 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         // A caption (default showText) stays suppressed; an AI reply flashes over the card.
         svc.showText("a caption line")                          // suppressed
         svc.showText("the AI answer", flashWhileInteractive: true)  // flashes
-        await settle()
+        await waitFor { !self.frames.isEmpty }
         XCTAssertEqual(frames, [.content(body: "the AI answer", title: nil, icon: .none)])
     }
 
@@ -89,10 +105,10 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         frames.removeAll()
 
         svc.showNotification(title: nil, body: "ping", icon: .message, duration: 0.05)
-        await settle(25)                     // before the flash auto-clears
-        XCTAssertEqual(frames, [.content(body: "ping", title: nil, icon: .message)])
+        await waitFor { !self.frames.isEmpty }
+        XCTAssertEqual(frames.first, .content(body: "ping", title: nil, icon: .message))
 
-        await settle(120)                    // after the flash duration
+        await waitFor { self.frames.last == .screen(renderKey: screen.renderKey) }
         XCTAssertEqual(frames.last, .screen(renderKey: screen.renderKey))   // screen restored
     }
 
@@ -106,9 +122,9 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
 
     func testNonInteractiveFlashAutoClears() async {
         svc.flash("brief", duration: 0.05)
-        await settle(25)
-        XCTAssertEqual(frames, [.content(body: "brief", title: nil, icon: .none)])
-        await settle(120)
+        await waitFor { !self.frames.isEmpty }
+        XCTAssertEqual(frames.first, .content(body: "brief", title: nil, icon: .none))
+        await waitFor { self.frames.last == .clear }
         XCTAssertEqual(frames.last, .clear)
     }
 

@@ -22,7 +22,7 @@ struct GatewaySettingsView: View {
                             .foregroundStyle(.secondary)
                         Text("No Gateways Configured")
                             .font(.headline)
-                        Text("A gateway is a small server (e.g. running on your Mac or a Raspberry Pi) that gives the AI access to more capabilities — smart-home control, local automations, custom tools. Run OpenClaw, NanoClaw, NemoClaw, or any compatible server and point this app at it.")
+                        Text("A gateway is a small server (e.g. running on your computer or a Raspberry Pi) that gives the AI access to more capabilities — smart-home control, local automations, custom tools. Run OpenClaw, NanoClaw, NemoClaw, or any compatible server and point this app at it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -111,7 +111,7 @@ struct GatewaySettingsView: View {
             } header: {
                 Text("Agent Bridge")
             } footer: {
-                Text("Gateways add tools the assistant can call. The Hermes Bridge goes further: when enabled, an agent on your Mac answers whole conversations with its own tools and memory.")
+                Text("Gateways add tools the assistant can call. The Hermes Bridge goes further: when enabled, an agent on your computer answers whole conversations with its own tools and memory.")
             }
 
             // Remote invoke (Plan BH): per-class consent for gateway-initiated device commands.

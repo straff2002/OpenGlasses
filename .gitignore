@@ -73,3 +73,7 @@ xcuserdata/
 # MediaPipe Tasks binaries — fetched by Scripts/fetch-mediapipe-frameworks.sh (too large
 # to commit: the graph static libraries exceed GitHub's 100 MB per-file limit)
 Vendor/MediaPipeTasks/Frameworks/
+
+# Local TLS material — never commit private keys
+*.crt
+*.key
