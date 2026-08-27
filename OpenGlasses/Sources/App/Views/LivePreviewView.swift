@@ -53,8 +53,7 @@ struct LivePreviewView: View {
                     Button("Try Again") {
                         startStreamIfNeeded()
                     }
-                    .buttonStyle(.bordered)
-                    .tint(OGTheme.onMedia)
+                    .buttonStyle(.ogProminentCompact)
                 }
                 .padding()
             }
@@ -103,7 +102,7 @@ struct LivePreviewView: View {
                         Image(systemName: appState.videoRecorder.isRecording ? "stop.circle.fill" : "record.circle")
                             .font(.system(size: recordGlyph))
                             .foregroundStyle(
-                                appState.videoRecorder.isRecording ? .red : OGTheme.onMedia
+                                appState.videoRecorder.isRecording ? OGTheme.mediaErrorLabel : OGTheme.onMedia
                             )
                             .frame(width: controlCircle, height: controlCircle)
                             .glassEffect(in: .circle)
@@ -118,7 +117,7 @@ struct LivePreviewView: View {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.title2)
                                 .foregroundStyle(
-                                    appState.broadcastService.isBroadcasting ? .red : OGTheme.onMedia
+                                    appState.broadcastService.isBroadcasting ? OGTheme.mediaErrorLabel : OGTheme.onMedia
                                 )
                                 .frame(width: controlCircle, height: controlCircle)
                                 .glassEffect(in: .circle)
@@ -187,7 +186,7 @@ struct LivePreviewView: View {
                 VStack {
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(.red)
+                            .fill(OGTheme.error)
                             .frame(width: 8, height: 8)
                             .accessibilityHidden(true)
                         Text(appState.videoRecorder.formattedDuration)
@@ -196,9 +195,10 @@ struct LivePreviewView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    // The ground here is arbitrary video, not a token — the scrim
-                    // is what makes the pair measurable, so it stays opaque enough.
-                    .background(Capsule().fill(OGTheme.media.opacity(0.6)))
+                    // The ground here is arbitrary video, not a token — an opaque
+                    // fill (rather than a wash) is what keeps the pair measurable,
+                    // the same reasoning the caption overlay settled on.
+                    .background(Capsule().fill(OGTheme.media))
                     .padding(.top, 60)
                     .accessibilityLabel("Recording: \(appState.videoRecorder.formattedDuration)")
                     Spacer()
@@ -265,7 +265,7 @@ private struct BroadcastHealthBar: View {
         HStack(spacing: 10) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(health.state.isLive ? .red : OGTheme.warn)
+                    .fill(health.state.isLive ? OGTheme.error : OGTheme.warn)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
                 Text(health.stateLabel)
@@ -282,7 +282,9 @@ private struct BroadcastHealthBar: View {
         .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(Capsule().fill(OGTheme.media.opacity(0.6)))
+        // Opaque, not a wash — same reasoning as the recording badge above:
+        // the ground is arbitrary video, so only a solid fill is measurable.
+        .background(Capsule().fill(OGTheme.media))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Broadcast \(health.stateLabel), \(health.bitrateLabel), "
                             + "\(health.frameRateLabel), \(health.droppedFrameCount) frames dropped")
@@ -320,8 +322,11 @@ private struct PinnedFrameCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .padding(8)
+                        // Opaque fill, not a wash — the "PINNED" text and the frame
+                        // below it need a measurable ground, and the pinned still is
+                        // arbitrary video rather than a palette token.
                         .background(
-                            RoundedRectangle(cornerRadius: 12).fill(OGTheme.media.opacity(0.65))
+                            RoundedRectangle(cornerRadius: 12).fill(OGTheme.media)
                         )
                         // The border reinforces the "PINNED" line beside it rather
                         // than carrying the state on its own.

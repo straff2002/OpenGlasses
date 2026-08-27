@@ -101,6 +101,8 @@ struct PersonaPickerSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
         }
         .presentationDetents([.large])
         .sheet(item: $detailPersona) { persona in
@@ -225,6 +227,8 @@ struct PersonaPickerTab: View {
             }
         }
         .navigationTitle("Modes")
+        .listStyle(.insetGrouped)
+        .ogFormStyle()
         .sheet(item: $editingPersona) { persona in
             PersonaDetailView(persona: persona, appState: appState)
         }
@@ -312,6 +316,7 @@ struct PersonaPickerTab: View {
                         .font(.title3)
                         .foregroundStyle(AccentColors.aiCoral)
                         .frame(width: 32)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Field Assist")
                             .font(.body.weight(.medium))
@@ -324,6 +329,7 @@ struct PersonaPickerTab: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
             }
             .accessibilityLabel("Active vault: \(current?.name ?? "none"). Tap to switch.")
@@ -611,6 +617,8 @@ struct PersonaDetailView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
             .onAppear {
                 soulText = persona.soulOverride ?? ""
             }
@@ -644,13 +652,15 @@ struct PersonaDetailView: View {
 struct PersonaRow: View {
     let persona: Persona
     let isActive: Bool
+    @Environment(\.appAccent) private var accent
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: persona.icon ?? "person.circle")
                 .font(.title3)
-                .foregroundStyle(isActive ? AppAccent.color : .secondary)
+                .foregroundStyle(isActive ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent)) : AnyShapeStyle(Color.secondary))
                 .frame(width: 32)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -658,12 +668,7 @@ struct PersonaRow: View {
                         .font(.body.weight(.medium))
                         .foregroundStyle(Color(.label))
                     if persona.isBuiltIn == true {
-                        Text("Mode")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color(.tertiarySystemFill), in: Capsule())
+                        OGBadge(text: "Mode")
                     }
                 }
                 Text("\"\(persona.wakePhrase)\"")
@@ -797,6 +802,8 @@ struct ModeTemplatePreview: View {
         }
         .navigationTitle("Mode Preview")
         .navigationBarTitleDisplayMode(.inline)
+        .listStyle(.insetGrouped)
+        .ogFormStyle()
         // Same editor + fork-on-save semantics as the System Prompt list.
         .sheet(item: $editingPromptPreset) { preset in
             PromptPresetEditorView(preset: preset) { updated in
