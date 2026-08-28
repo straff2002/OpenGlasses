@@ -99,16 +99,13 @@ class GlassesConnectionService: ObservableObject {
 
             print("✅ startRegistration() succeeded, state: \(stateAfter)")
             connectionStatus = RegistrationFlow.status(stateRaw: stateAfter.rawValue)
-        } catch let error as RegistrationError {
+        } catch {
+            // `startRegistration()` uses typed throws, so every error reaching this catch is a
+            // `RegistrationError`; testing the type again is both redundant and a Swift 6 warning.
             print("❌ startRegistration() failed: \(error)")
             let message = RegistrationFlow.registrationErrorMessage(error)
             connectionStatus = message
             NoticeCenter.shared.post(message, severity: .error, source: .glasses)
-        } catch {
-            print("❌ startRegistration() failed: \(error)")
-            connectionStatus = "Connection failed: \(error.localizedDescription)"
-            NoticeCenter.shared.post("Connection failed: \(error.localizedDescription)",
-                                     severity: .error, source: .glasses)
         }
     }
 

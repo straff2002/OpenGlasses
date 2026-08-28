@@ -38,7 +38,7 @@ struct SkillPackToolWrapper: NativeTool {
 
     /// Every wrapper's registered name begins with this, which is what makes a pack tool unable to
     /// shadow a native one — and what lets the authority spot pack-to-pack chaining.
-    static let namePrefix = "pack_"
+    nonisolated static let namePrefix = "pack_"
 
     private var settingsValues: [String: String] {
         SkillPackSettings.values(packId: packId, declarations: settingDeclarations)

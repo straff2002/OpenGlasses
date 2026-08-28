@@ -58,7 +58,8 @@ final class SessionAnnouncer {
     }
 
     /// The real sink.
-    nonisolated static func postToVoiceOver(_ announcement: SessionAnnouncement) {
+    @MainActor
+    static func postToVoiceOver(_ announcement: SessionAnnouncement) {
         #if canImport(UIKit)
         // An `AttributedString` with `.accessibilitySpeechAnnouncementPriority` is how a line
         // asks to interrupt rather than queue behind whatever VoiceOver is mid-way through.
@@ -75,6 +76,7 @@ final class SessionAnnouncer {
     ///
     /// No repeat guard: these fire from a completion handler, once per attempt, and a user who
     /// taps Sign in twice genuinely wants to hear the second answer.
+    @MainActor
     static func say(_ message: String, interrupts: Bool = false) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, voiceOverRunning else { return }
@@ -82,7 +84,8 @@ final class SessionAnnouncer {
     }
 
     /// Whether VoiceOver is listening. Isolated here so no caller reaches for UIKit directly.
-    nonisolated static var voiceOverRunning: Bool {
+    @MainActor
+    static var voiceOverRunning: Bool {
         #if canImport(UIKit)
         return UIAccessibility.isVoiceOverRunning
         #else
