@@ -448,6 +448,19 @@ class ConversationStore: ObservableObject {
         NSLog("[ConversationStore] Locked")
     }
 
+    /// iOS can revoke access to complete-file-protected data independently of the app's optional
+    /// biometric conversation lock. Destroy recall immediately even when encryption is disabled.
+    func protectedDataWillBecomeUnavailable() {
+        recallCoordinator?.storeDidLock()
+    }
+
+    /// Rebuild only from the still-authoritative in-memory snapshot. A biometrically locked store
+    /// remains closed until its normal unlock flow supplies decrypted threads.
+    func protectedDataDidBecomeAvailable() {
+        guard !isLocked else { return }
+        recallCoordinator?.storeDidUnlock(threads: threads)
+    }
+
     // MARK: - Persistence
 
     @discardableResult

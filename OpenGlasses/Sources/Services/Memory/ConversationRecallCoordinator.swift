@@ -27,6 +27,11 @@ enum ConversationRecallProjectionEvent: Equatable, Sendable {
 /// authoritative `ConversationStore` snapshot.
 @MainActor
 final class ConversationRecallCoordinator: ObservableObject {
+    typealias IndexBuilder = @Sendable (
+        _ turns: [IndexedTurn],
+        _ shouldCancel: @escaping @Sendable () -> Bool
+    ) -> ConversationIndex?
+
     @Published private(set) var state: ConversationRecallState = .locked
 
     private var index: ConversationIndex?
@@ -35,11 +40,16 @@ final class ConversationRecallCoordinator: ObservableObject {
     private var projectionVersion: UInt64 = 0
     private var legacyDirectory: URL?
     private let migrateLegacyArtifacts: (URL) -> Bool
+    private let buildIndex: IndexBuilder
 
     init(migrateLegacyArtifacts: @escaping (URL) -> Bool = {
         RecallIndexMigration(directory: $0).removeLegacyArtifacts()
+    }, buildIndex: @escaping IndexBuilder = { turns, shouldCancel in
+        let candidate = ConversationIndex.inMemory()
+        return candidate.indexAll(turns, shouldCancel: shouldCancel) ? candidate : nil
     }) {
         self.migrateLegacyArtifacts = migrateLegacyArtifacts
+        self.buildIndex = buildIndex
     }
 
     deinit { rebuildTask?.cancel() }
@@ -126,13 +136,12 @@ final class ConversationRecallCoordinator: ObservableObject {
 
         let turns = Self.indexedTurns(from: threads)
         state = .rebuilding(completed: 0, total: turns.count)
+        let buildIndex = self.buildIndex
         rebuildTask = Task { [weak self] in
             let worker = Task.detached(priority: .utility) {
-                let candidate = ConversationIndex.inMemory()
-                let completed = candidate.indexAll(turns, shouldCancel: {
+                buildIndex(turns, {
                     withUnsafeCurrentTask { $0?.isCancelled ?? false }
                 })
-                return completed ? candidate : nil
             }
             let built = await withTaskCancellationHandler {
                 await worker.value

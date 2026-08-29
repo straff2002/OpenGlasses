@@ -207,6 +207,16 @@ struct OpenGlassesApp: App {
                     }
                 }
             }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: UIApplication.protectedDataWillBecomeUnavailableNotification
+                )) { _ in
+                    appState.conversationStore.protectedDataWillBecomeUnavailable()
+                }
+                .onReceive(NotificationCenter.default.publisher(
+                    for: UIApplication.protectedDataDidBecomeAvailableNotification
+                )) { _ in
+                    appState.conversationStore.protectedDataDidBecomeAvailable()
+                }
                 .onOpenURL { url in
                     // Handle shortcut x-callback-url results
                     if url.scheme == "openglasses",

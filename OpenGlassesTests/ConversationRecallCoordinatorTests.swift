@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class ConversationRecallCoordinatorTests: XCTestCase {
+    private final class CancellationProbe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var started = false
+        private var cancelled = false
+
+        func markStarted() { lock.withLock { started = true } }
+        func markCancelled() { lock.withLock { cancelled = true } }
+        var hasStarted: Bool { lock.withLock { started } }
+        var wasCancelled: Bool { lock.withLock { cancelled } }
+    }
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -22,6 +33,15 @@ final class ConversationRecallCoordinatorTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
         XCTFail("Recall coordinator did not become ready")
+    }
+
+    private func waitUntil(_ predicate: @escaping () -> Bool,
+                           failure: String) async {
+        for _ in 0..<200 {
+            if predicate() { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTFail(failure)
     }
 
     private func readyCoordinator() async -> ConversationRecallCoordinator {
@@ -82,6 +102,79 @@ final class ConversationRecallCoordinatorTests: XCTestCase {
 
         coordinator.storeDidLock()
         XCTAssertEqual(coordinator.search("museum"), .locked)
+    }
+
+    func testProtectedDataLossDestroysAndAvailabilityRebuildsProjection() async {
+        let coordinator = await readyCoordinator()
+        let store = ConversationStore(directory: tempDir)
+        store.recallCoordinator = coordinator
+        _ = store.startThread(mode: "direct")
+        store.appendMessage(role: "user", content: "protected museum memory")
+
+        store.protectedDataWillBecomeUnavailable()
+        XCTAssertEqual(coordinator.search("museum"), .locked)
+
+        store.protectedDataDidBecomeAvailable()
+        await waitUntilReady(coordinator)
+        guard case .ready(let hits, _) = coordinator.search("museum") else {
+            return XCTFail("Expected rebuilt search")
+        }
+        XCTAssertEqual(hits.count, 1)
+    }
+
+    func testProtectedDataAvailabilityDoesNotBypassConversationLock() async {
+        let coordinator = await readyCoordinator()
+        let store = ConversationStore(directory: tempDir)
+        store.recallCoordinator = coordinator
+        store.isLocked = true
+
+        coordinator.storeDidLock()
+        store.protectedDataDidBecomeAvailable()
+        XCTAssertEqual(coordinator.state, .locked)
+    }
+
+    func testLockDuringRebuildCancelsDetachedWorker() async {
+        let probe = CancellationProbe()
+        let coordinator = ConversationRecallCoordinator(buildIndex: { _, shouldCancel in
+            probe.markStarted()
+            while !shouldCancel() {
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+            probe.markCancelled()
+            return nil
+        })
+
+        coordinator.start(threads: [], isLocked: false, legacyDirectory: tempDir)
+        await waitUntil({ probe.hasStarted }, failure: "Rebuild worker did not start")
+        coordinator.storeDidLock()
+        await waitUntil({ probe.wasCancelled }, failure: "Detached rebuild was not cancelled")
+
+        XCTAssertEqual(coordinator.state, .locked)
+        XCTAssertEqual(coordinator.search("anything"), .locked)
+    }
+
+    func testRelaunchRebuildsWithoutLeavingRecallArtifacts() async {
+        let store = ConversationStore(directory: tempDir)
+        let first = ConversationRecallCoordinator()
+        store.recallCoordinator = first
+        first.start(threads: store.threads, isLocked: false, legacyDirectory: tempDir)
+        await waitUntilReady(first)
+        _ = store.startThread(mode: "direct")
+        store.appendMessage(role: "user", content: "relaunch museum memory")
+        first.storeDidLock()
+
+        let relaunched = ConversationRecallCoordinator()
+        store.recallCoordinator = relaunched
+        relaunched.start(threads: store.threads, isLocked: false, legacyDirectory: tempDir)
+        await waitUntilReady(relaunched)
+
+        guard case .ready(let hits, _) = relaunched.search("museum") else {
+            return XCTFail("Expected rebuilt search after relaunch")
+        }
+        XCTAssertEqual(hits.count, 1)
+        XCTAssertTrue(RecallIndexMigration.legacyNames.allSatisfy {
+            !FileManager.default.fileExists(atPath: tempDir.appendingPathComponent($0).path)
+        })
     }
 
     func testMessageAndThreadDeletionUpdateProjection() async {
