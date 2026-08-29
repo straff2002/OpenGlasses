@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single message in a conversation thread.
-struct ConversationMessage: Codable, Identifiable {
+struct ConversationMessage: Codable, Identifiable, Sendable {
     let id: String
     let role: String          // "user", "assistant", "system"
     let content: String
@@ -26,7 +26,7 @@ struct StreamingTurn: Equatable {
 }
 
 /// A conversation thread with metadata.
-struct ConversationThread: Codable, Identifiable {
+struct ConversationThread: Codable, Identifiable, Sendable {
     let id: String
     var title: String
     var summary: String?      // Auto-generated mini summary of what was discussed
@@ -74,9 +74,11 @@ class ConversationStore: ObservableObject {
     private let storageURL: URL
     private let encryption = ConversationEncryptionService.shared
 
-    /// On-device full-text index for cross-session recall (Memory & Recall Phase 2). Set by
-    /// `AppState`; nil keeps everything working with no indexing.
-    weak var recallIndex: ConversationIndex?
+    /// Lock-scoped disposable projection for cross-session recall. Set by `AppState`; nil keeps
+    /// conversation persistence working with recall unavailable.
+    weak var recallCoordinator: ConversationRecallCoordinator?
+
+    var storageDirectory: URL { storageURL.deletingLastPathComponent() }
 
     /// Key for persisting the active thread ID across restarts.
     private static let activeThreadKey = "conversationStore_activeThreadId"
@@ -135,8 +137,11 @@ class ConversationStore: ObservableObject {
         let thread = ConversationThread(mode: mode, personaId: personaId)
         threads.insert(thread, at: 0)
         activeThreadId = thread.id
-        trimOldThreads()
-        save()
+        if trimOldThreads() {
+            saveAndProject(.storeReplaced)
+        } else {
+            save()
+        }
         persistActiveSession()
         NSLog("[ConversationStore] Started thread %@ (project %@)", thread.id, personaId ?? "global")
         return thread
@@ -168,35 +173,22 @@ class ConversationStore: ObservableObject {
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = Date()
-        save()
-        indexMessage(msg, threadID: threads[idx].id)
+        if let turn = indexedTurn(msg, threadID: threads[idx].id) {
+            saveAndProject(.messageUpsert(turn))
+        } else {
+            save()
+        }
     }
 
     // MARK: - Recall index (Memory & Recall Phase 2)
 
-    /// Index a single message (user/assistant turns only — system turns aren't recalled).
-    private func indexMessage(_ msg: ConversationMessage, threadID: String) {
-        guard let recallIndex, msg.role == "user" || msg.role == "assistant" else { return }
+    /// Map a persisted user/assistant message to a projection event. System/blank messages save
+    /// normally but never enter the recall projection.
+    private func indexedTurn(_ msg: ConversationMessage, threadID: String) -> IndexedTurn? {
         let trimmed = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        recallIndex.index(IndexedTurn(id: msg.id, threadID: threadID, role: msg.role,
-                                      text: msg.content, timestamp: msg.timestamp))
-    }
-
-    /// One-time backfill of existing conversation history into the recall index (idempotent —
-    /// re-indexing the same message id is a no-op replace). Called by `AppState` when the index
-    /// is empty.
-    func backfillIndex() {
-        guard let recallIndex else { return }
-        let turns = threads.flatMap { thread in
-            thread.messages
-                .filter { ($0.role == "user" || $0.role == "assistant")
-                    && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                .map { IndexedTurn(id: $0.id, threadID: thread.id, role: $0.role,
-                                   text: $0.content, timestamp: $0.timestamp) }
-        }
-        recallIndex.indexAll(turns)
-        NSLog("[ConversationStore] Backfilled %d turns into the recall index", turns.count)
+        guard (msg.role == "user" || msg.role == "assistant"), !trimmed.isEmpty else { return nil }
+        return IndexedTurn(id: msg.id, threadID: threadID, role: msg.role,
+                           text: msg.content, timestamp: msg.timestamp)
     }
 
     /// End the active thread and auto-generate a title and summary.
@@ -280,9 +272,10 @@ class ConversationStore: ObservableObject {
 
     /// Delete a thread.
     func deleteThread(_ threadId: String) {
+        guard threads.contains(where: { $0.id == threadId }) else { return }
         threads.removeAll { $0.id == threadId }
         if activeThreadId == threadId { activeThreadId = nil }
-        save()
+        saveAndProject(.threadDelete(id: threadId))
     }
 
     /// Remove the message with `messageId` and every message after it in the thread. Used by the
@@ -290,9 +283,10 @@ class ConversationStore: ObservableObject {
     func truncate(from messageId: String, in threadId: String) {
         guard let tIdx = threads.firstIndex(where: { $0.id == threadId }),
               let mIdx = threads[tIdx].messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let removedIDs = threads[tIdx].messages[mIdx...].map(\.id)
         threads[tIdx].messages.removeSubrange(mIdx...)
         threads[tIdx].updatedAt = Date()
-        save()
+        saveAndProject(.messageDelete(ids: removedIDs))
     }
 
     /// Most recent thread for a given mode.
@@ -432,8 +426,11 @@ class ConversationStore: ObservableObject {
         do {
             let authed = try await encryption.authenticate(reason: "Unlock your conversations")
             guard authed else { return false }
-            loadThreads()
+            let data = try await encryption.decryptFile(at: storageURL)
+            threads = try JSONDecoder().decode([ConversationThread].self, from: data)
+            saveBlocked = false
             isLocked = false
+            recallCoordinator?.storeDidUnlock(threads: threads)
             return true
         } catch {
             NSLog("[ConversationStore] Unlock failed: %@", error.localizedDescription)
@@ -444,6 +441,7 @@ class ConversationStore: ObservableObject {
     /// Lock conversations — clears in-memory data.
     func lock() {
         guard encryption.isEnabled else { return }
+        recallCoordinator?.storeDidLock()
         threads = []
         activeThreadId = nil
         isLocked = true
@@ -452,18 +450,19 @@ class ConversationStore: ObservableObject {
 
     // MARK: - Persistence
 
-    private func save() {
+    @discardableResult
+    private func save(onPersisted: (@MainActor @Sendable () -> Void)? = nil) -> Bool {
         // While locked, `threads` is deliberately empty (or a lone session started pre-unlock) —
         // writing now would encrypt that over the user's full history. Same for the async
         // encrypted-load window, which also runs with `isLocked == true`.
         guard !isLocked else {
             NSLog("[ConversationStore] Save skipped — store is locked")
-            return
+            return false
         }
         // After a failed read of an existing file, the on-disk data may be intact — never write.
         guard !saveBlocked else {
             NSLog("[ConversationStore] Save skipped — last load failed to read the existing file")
-            return
+            return false
         }
         do {
             let data = try JSONEncoder().encode(threads)
@@ -473,13 +472,14 @@ class ConversationStore: ObservableObject {
                 // writes land in submission order.
                 let url = storageURL
                 let enc = encryption
-                pendingSaveTask = Task { [previous = pendingSaveTask] in
+                pendingSaveTask = Task { @MainActor [previous = pendingSaveTask] in
                     await previous?.value
                     do {
                         let encrypted = try await enc.encrypt(data)
                         var output = Data("OGENC1".utf8)
                         output.append(encrypted)
                         try output.write(to: url, options: [.atomic, .completeFileProtection])
+                        onPersisted?()
                     } catch {
                         // The existing ciphertext on disk is untouched — `encrypt` throws before
                         // the write, and a failed unlock no longer rotates the key out from under
@@ -488,13 +488,17 @@ class ConversationStore: ObservableObject {
                               error.localizedDescription)
                     }
                 }
+                return true
             } else {
                 // Conversation history can hold sensitive content — encrypt at rest even when
                 // the optional biometric encryption layer is off.
                 try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+                onPersisted?()
+                return true
             }
         } catch {
             NSLog("[ConversationStore] Save failed: %@", error.localizedDescription)
+            return false
         }
     }
 
@@ -511,7 +515,9 @@ class ConversationStore: ObservableObject {
                     let data = try await enc.decryptFile(at: url)
                     let decoded = try JSONDecoder().decode([ConversationThread].self, from: data)
                     self?.threads = decoded
+                    self?.saveBlocked = false
                     self?.isLocked = false
+                    self?.recallCoordinator?.storeDidUnlock(threads: decoded)
                     NSLog("[ConversationStore] Loaded %d encrypted threads", decoded.count)
                 } catch {
                     self?.isLocked = true
@@ -541,9 +547,23 @@ class ConversationStore: ObservableObject {
         }
     }
 
-    private func trimOldThreads() {
+    @discardableResult
+    private func trimOldThreads() -> Bool {
         if threads.count > maxThreads {
             threads = Array(threads.prefix(maxThreads))
+            return true
+        }
+        return false
+    }
+
+    private func saveAndProject(_ event: ConversationRecallProjectionEvent) {
+        let persistedSnapshot = threads
+        guard let coordinator = recallCoordinator else {
+            save()
+            return
+        }
+        save { [weak coordinator] in
+            coordinator?.apply(event, persistedSnapshot: persistedSnapshot)
         }
     }
 }

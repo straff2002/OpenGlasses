@@ -178,7 +178,7 @@ Meta is actively funding accessibility and workforce uses through nearly $2 mill
 | P0 | Keyless, five-minute onboarding | Default model or account sign-in; advanced providers later |
 | P1 | Everyday Briefing | Make this the daily retention loop |
 | P1 | See → Action | Make this the flagship visual interaction |
-| P1 | Explicit private memory | High differentiation and repeat value |
+| P1 | [Explicit private memory](plans/DX-private-memory-timeline.md) | High differentiation and repeat value; phone-first control surface after DK |
 | P1 | Accessibility bundle | High impact, partner-friendly and defensible |
 | P1 | Travel bundle | Strong, understandable consumer use case |
 | P2 | Cooking, shopping and DIY guided modes | Build as composed routines using existing primitives |
@@ -301,7 +301,7 @@ Make these more prominent than models, personas, tools and MCP.
 
 ## Phase 2: differentiated intelligence
 
-- Explicit memory timeline with provenance and deletion
+- [Explicit memory timeline with provenance and deletion](plans/DX-private-memory-timeline.md)
 - “Handle this” visual action flow
 - Cooking, shopping and household routines
 - Sensitivity-aware model routing: local for private content, cloud only with consent

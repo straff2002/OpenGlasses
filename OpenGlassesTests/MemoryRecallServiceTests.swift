@@ -7,21 +7,38 @@ import XCTest
 @MainActor
 final class MemoryRecallServiceTests: XCTestCase {
 
-    private func populatedIndex() -> ConversationIndex {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("recall-\(UUID().uuidString).sqlite")
-        let idx = ConversationIndex(dbURL: url)
-        idx.index(IndexedTurn(id: "1", threadID: "t1", role: "user",
-                              text: "Let's go with the coral accent for the AI elements", timestamp: Date()))
-        idx.index(IndexedTurn(id: "2", threadID: "t1", role: "assistant",
-                              text: "Got it — coral it is, never cyan", timestamp: Date()))
-        idx.index(IndexedTurn(id: "3", threadID: "t2", role: "user",
-                              text: "Remind me to water the plants", timestamp: Date()))
-        return idx
+    private func populatedCoordinator() async -> ConversationRecallCoordinator {
+        let coordinator = ConversationRecallCoordinator()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recall-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        coordinator.start(threads: [], isLocked: false, legacyDirectory: dir)
+        await waitUntilReady(coordinator)
+        let turns = [
+            IndexedTurn(id: "1", threadID: "t1", role: "user",
+                        text: "Let's go with the coral accent for the AI elements", timestamp: Date()),
+            IndexedTurn(id: "2", threadID: "t1", role: "assistant",
+                        text: "Got it — coral it is, never cyan", timestamp: Date()),
+            IndexedTurn(id: "3", threadID: "t2", role: "user",
+                        text: "Remind me to water the plants", timestamp: Date()),
+        ]
+        for turn in turns {
+            coordinator.apply(.messageUpsert(turn), persistedSnapshot: [])
+        }
+        return coordinator
+    }
+
+    private func waitUntilReady(_ coordinator: ConversationRecallCoordinator) async {
+        for _ in 0..<200 {
+            if case .ready = coordinator.state { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTFail("Recall coordinator did not become ready")
     }
 
     func testRecallReturnsCitedAnswer() async {
         let service = RecallService()
-        service.configure(index: populatedIndex()) { question, hits in
+        service.configure(coordinator: await populatedCoordinator()) { question, hits in
             "Answered '\(question)' from \(hits.count) excerpts"
         }
         let answer = await service.recall("what accent color did we choose")
@@ -33,22 +50,25 @@ final class MemoryRecallServiceTests: XCTestCase {
 
     func testRecallEmptyWhenNoMatch() async {
         let service = RecallService()
-        service.configure(index: populatedIndex()) { _, _ in "should not be called" }
+        service.configure(coordinator: await populatedCoordinator()) { _, _ in "should not be called" }
         let answer = await service.recall("quarterly tax filing deadline")
         XCTAssertTrue(answer.isEmpty)
         XCTAssertTrue(answer.summary.lowercased().contains("couldn't find"))
     }
 
-    func testSearchDelegatesToIndex() {
+    func testSearchDelegatesToCoordinator() async {
         let service = RecallService()
-        service.configure(index: populatedIndex()) { _, _ in "" }
-        XCTAssertTrue(service.search("plants").contains { $0.id == "3" })
+        service.configure(coordinator: await populatedCoordinator()) { _, _ in "" }
+        guard case .ready(let hits, _) = service.search("plants") else {
+            return XCTFail("Expected ready recall search")
+        }
+        XCTAssertTrue(hits.contains { $0.id == "3" })
     }
 
     func testUnconfiguredServiceIsSafe() async {
         let service = RecallService()
         XCTAssertFalse(service.isConfigured)
-        XCTAssertTrue(service.search("anything").isEmpty)
+        XCTAssertEqual(service.search("anything"), .unavailable)
         let answer = await service.recall("anything")
         XCTAssertTrue(answer.isEmpty)
     }

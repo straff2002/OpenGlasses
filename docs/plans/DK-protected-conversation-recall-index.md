@@ -1,12 +1,21 @@
 # Plan DK — Protected Conversation Recall Index
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🚧 P0–P2 core implemented (2026-08-29); P3 performance/device work and the full
+release gate remain.
 **Origin:** 2026-08-26 adversarial review finding 2 (High).
 **Priority:** P0 privacy remediation; ship before expanding recall or conversation-lock features.
 
 This plan makes conversation recall obey the same confidentiality, lock, deletion, and retention
 semantics as `ConversationStore`. The source of truth stays the encrypted conversation store; the
 search index is disposable derived state, never a second durable plaintext store.
+
+**Implementation checkpoint (2026-08-29):** production composition now uses
+`ConversationRecallCoordinator` and SQLite `:memory:` only; launch/unlock retries legacy DB/WAL/SHM
+removal and fails closed; lock cancels the detached rebuild and drops the handle; typed search states
+and post-persistence append/truncate/thread-delete projection events are wired. The focused recall
+suite is green (28 tests). Still owed before marking DK complete: protected-data notification/logout
+wiring, explicit edit/import/store-replacement entry points when those mutations exist, large-corpus
+benchmarks, filesystem relaunch/device evidence, and the full Release/suite gate.
 
 ---
 
@@ -161,4 +170,3 @@ Complete when:
 - the full unit suite and a Release build are green.
 
 Coordinate content-free lifecycle logging with [[DM-privacy-safe-production-logging]].
-

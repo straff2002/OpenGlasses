@@ -698,8 +698,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // Tier 1 services
     let conversationStore = ConversationStore()
-    /// On-device FTS index over conversation turns for cross-session recall (Memory & Recall Phase 2).
-    let conversationIndex = ConversationIndex()
+    /// DK: owns the disposable, lock-scoped in-memory conversation recall projection.
+    let conversationRecallCoordinator = ConversationRecallCoordinator()
     let userMemory = SemanticMemoryStore()
     let documentStore = DocumentStore()
     let intentClassifier = IntentClassifier()
@@ -1388,11 +1388,15 @@ class AppState: ObservableObject, AppStateProtocol {
             try await llm.completeStateless(user, system: system)
         })
 
-        // Memory & Recall Phase 2 — index conversation turns; recall summarizes via the user's
-        // active provider (on-device when that's their choice). Backfill existing history once.
-        conversationStore.recallIndex = conversationIndex
-        if conversationIndex.count() == 0 { conversationStore.backfillIndex() }
-        RecallService.shared.configure(index: conversationIndex) { [weak self] question, hits in
+        // DK — remove the former durable plaintext index, then build a disposable recall projection
+        // only while the authoritative conversation store is unlocked.
+        conversationStore.recallCoordinator = conversationRecallCoordinator
+        conversationRecallCoordinator.start(
+            threads: conversationStore.threads,
+            isLocked: conversationStore.isLocked,
+            legacyDirectory: conversationStore.storageDirectory
+        )
+        RecallService.shared.configure(coordinator: conversationRecallCoordinator) { [weak self] question, hits in
             guard let self else { return RecallService.fallbackSummary(hits) }
             let prompt = RecallService.summarizationPrompt(question: question, hits: hits)
             return (try? await self.llmService.completeStateless(prompt.user, system: prompt.system))
