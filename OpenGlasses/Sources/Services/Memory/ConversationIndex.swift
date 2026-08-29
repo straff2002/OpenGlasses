@@ -62,20 +62,36 @@ final class ConversationIndex: @unchecked Sendable {
         _ = sqlite3_step(stmt)
     }
 
-    /// Bulk index (unlock-time rebuild), wrapped in one transaction. The cancellation check lets a
-    /// lock tear down a large rebuild without carrying on through the remaining decrypted turns.
+    /// Bulk-load a fresh index (unlock-time rebuild) with one prepared statement and transaction.
+    /// The cancellation check lets a lock tear down a large rebuild without carrying on through the
+    /// remaining decrypted turns. Callers use `index(_:)` for idempotent updates to a live index.
     @discardableResult
     func indexAll(_ turns: [IndexedTurn], shouldCancel: () -> Bool = { false }) -> Bool {
-        exec("BEGIN TRANSACTION")
+        let sql = "INSERT INTO turns (turn_id, thread_id, role, text, ts) VALUES (?, ?, ?, ?, ?)"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        guard exec("BEGIN TRANSACTION") else { return false }
+
         for turn in turns {
             if shouldCancel() {
                 exec("ROLLBACK")
                 return false
             }
-            index(turn)
+            sqlite3_bind_text(stmt, 1, turn.id, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, turn.threadID, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, turn.role, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 4, turn.text, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 5, RecallTimestamp.string(from: turn.timestamp),
+                              -1, SQLITE_TRANSIENT)
+            guard sqlite3_step(stmt) == SQLITE_DONE else {
+                exec("ROLLBACK")
+                return false
+            }
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
         }
-        exec("COMMIT")
-        return true
+        return exec("COMMIT")
     }
 
     func delete(id: String) {

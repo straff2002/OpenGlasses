@@ -1,7 +1,7 @@
 # Plan DK — Protected Conversation Recall Index
 
-**Status:** 🚧 P0–P2 core implemented (2026-08-29); P3 performance/device work and the full
-release gate remain.
+**Status:** 🚧 P0–P3 implementation complete (2026-08-30); full suite and Release simulator gates
+are green, with oldest-supported-phone footprint and lifecycle smoke evidence still required.
 **Origin:** 2026-08-26 adversarial review finding 2 (High).
 **Priority:** P0 privacy remediation; ship before expanding recall or conversation-lock features.
 
@@ -9,13 +9,19 @@ This plan makes conversation recall obey the same confidentiality, lock, deletio
 semantics as `ConversationStore`. The source of truth stays the encrypted conversation store; the
 search index is disposable derived state, never a second durable plaintext store.
 
-**Implementation checkpoint (2026-08-29):** production composition now uses
+**Implementation checkpoint (2026-08-30):** production composition uses
 `ConversationRecallCoordinator` and SQLite `:memory:` only; launch/unlock retries legacy DB/WAL/SHM
-removal and fails closed; lock cancels the detached rebuild and drops the handle; typed search states
-and post-persistence append/truncate/thread-delete projection events are wired. The focused recall
-suite is green (28 tests). Still owed before marking DK complete: protected-data notification/logout
-wiring, explicit edit/import/store-replacement entry points when those mutations exist, large-corpus
-benchmarks, filesystem relaunch/device evidence, and the full Release/suite gate.
+removal and fails closed; lock or iOS protected-data loss cancels the detached rebuild and drops the
+handle; typed search states and post-persistence append/truncate/thread-delete projection events are
+wired. The fresh-index path uses one prepared statement and transaction. The focused recall suite is
+green (32 tests plus the opt-in performance harness); the full suite passed 3,743 tests with zero
+failures and four environment-gated skips; the Release simulator build passed. Simulator benchmark
+test durations were approximately 12 ms / 72 ms / 305 ms at 1k / 10k / 50k turns. Still owed before
+marking DK fully verified: run the same harness and protected-data lock/unlock smoke on the oldest
+supported physical phone and record footprint. Explicit edit/import/store-replacement entry points
+remain future mutation work because those source APIs do not exist. OpenGlasses has no app-account
+logout; provider OAuth sign-out does not own conversation data and is intentionally not coupled to
+recall lifecycle.
 
 ---
 
@@ -150,6 +156,13 @@ cannot mix old and new rows; duplicate upserts stay idempotent.
    It must not imply conversation deletion.
 4. Update the conversation-lock and memory settings copy: recall is unavailable while locked and the
    searchable projection is rebuilt in memory after unlock.
+
+**Implementation evidence (2026-08-30).** `ConversationRecallPerformanceTests` is an opt-in harness
+for 1k/10k/50k turns. Set `DK_RECALL_BENCHMARK` and `DK_RECALL_BENCHMARK_TURNS` in the physical-device
+test scheme or simulator launch environment. The iPhone 17 Pro simulator completed those cases in
+approximately 12 ms, 72 ms, and 305 ms of test time respectively after the fresh-index prepared-
+statement optimization. Simulator memory is not a jetsam budget, so the oldest-phone run remains the
+release evidence for retained footprint rather than substituting a desktop number.
 
 ---
 
