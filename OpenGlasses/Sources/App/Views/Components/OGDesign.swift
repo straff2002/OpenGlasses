@@ -194,6 +194,11 @@ struct OGRow<Trailing: View>: View {
                 Text(title)
                     .font(.body)
                     .foregroundStyle(.primary)
+                    // Row titles must be allowed to take every line Dynamic Type needs. Without
+                    // an explicit vertical fixed size, the surrounding HStack can compress the
+                    // title to its single-line ideal height even when the text wraps, which the
+                    // accessibility audit reports as clipped category names.
+                    .fixedSize(horizontal: false, vertical: true)
                 if let subtitle {
                     Text(subtitle)
                         .font(.footnote)
