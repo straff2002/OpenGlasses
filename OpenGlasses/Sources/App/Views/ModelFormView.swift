@@ -127,6 +127,12 @@ struct ModelFormView: View {
                         pasteInstructions: "Sign in in the browser. When it ends on a localhost page that can't connect, copy the full URL from the address bar and paste it here.",
                         onChange: resetModelList
                     )
+                    if !chatgptOAuth.isConnected {
+                        ChatGPTDeviceCodeSignInRows(
+                            service: chatgptOAuth,
+                            onConnected: resetModelList
+                        )
+                    }
                 }
 
                 if selectedProvider == .geminiVertex {
@@ -169,7 +175,7 @@ struct ModelFormView: View {
                     connectionRows
                 }
             } header: {
-                Text("API Key")
+                Text(selectedProvider == .chatgpt ? "ChatGPT Account" : "API Key")
             } footer: {
                 Text(providerHelpText)
             }
@@ -229,7 +235,9 @@ struct ModelFormView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(OGTheme.okLabel)
                         .accessibilityHidden(true)
-                    Text("Key valid · \(availableModels.count) models")
+                    Text(selectedProvider == .chatgpt
+                         ? "\(availableModels.count) models available"
+                         : "Key valid · \(availableModels.count) models")
                     Spacer()
                     Image(systemName: "arrow.clockwise")
                         .font(.footnote)
@@ -238,7 +246,7 @@ struct ModelFormView: View {
                 } else {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .accessibilityHidden(true)
-                    Text(selectedProvider == .custom ? "Fetch models" : "Validate key & fetch models")
+                    Text(validateButtonTitle)
                 }
             }
             .frame(minHeight: rowMinHeight)
@@ -246,8 +254,8 @@ struct ModelFormView: View {
         .disabled((apiKey.isEmpty && selectedProvider != .custom && !accountOAuthReady) || isFetchingModels)
         .accessibilityLabel(
             keyValidated
-                ? "Key valid, \(availableModels.count) models. Check again"
-                : (selectedProvider == .custom ? "Fetch models" : "Validate key and fetch models")
+                ? "\(availableModels.count) models available. Check again"
+                : validateButtonTitle
         )
     }
 
@@ -409,23 +417,32 @@ struct ModelFormView: View {
         )
         isFetchingModels = false
         if models.isEmpty {
-            fetchError = "Couldn't find any models. Double-check your API key and try again."
+            fetchError = selectedProvider == .chatgpt
+                ? "Couldn't load the models available to this ChatGPT account. Check the sign-in and try again."
+                : "Couldn't find any models. Double-check your API key and try again."
             keyValidated = false
         } else {
             availableModels = models
             keyValidated = true
             if !models.contains(where: { $0.id == model }) {
-                model = models.first(where: { $0.id == selectedProvider.defaultModel })?.id
+                model = models.first(where: \.isDefault)?.id
+                    ?? models.first(where: { $0.id == selectedProvider.defaultModel })?.id
                     ?? models.first?.id ?? model
             }
         }
+    }
+
+    private var validateButtonTitle: String {
+        if selectedProvider == .chatgpt { return "Fetch available models" }
+        if selectedProvider == .custom { return "Fetch models" }
+        return "Validate key & fetch models"
     }
 
     private var providerHelpText: String {
         switch selectedProvider {
         case .anthropic: return "Get your API key at console.anthropic.com"
         case .openai: return "Get your API key at platform.openai.com"
-        case .chatgpt: return "Sign in with your ChatGPT account — uses your subscription, no API key. Serves the codex model family."
+        case .chatgpt: return "Sign in with your ChatGPT account — uses your subscription, no API key. The model list comes from the models enabled for your account."
         case .gemini: return "Get your API key at aistudio.google.com"
         case .geminiVertex: return "Sign in with your Google account — Gemini on your own GCP project via Vertex AI, no API key. Needs a GCP iOS OAuth client ID and project ID (console.cloud.google.com). Gemini Live mode still uses the AI Studio key provider."
         case .groq: return "Get your API key at console.groq.com"

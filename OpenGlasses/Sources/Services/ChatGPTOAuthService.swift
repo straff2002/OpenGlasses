@@ -11,12 +11,17 @@ final class ChatGPTOAuthService: ObservableObject {
     /// Whether a ChatGPT account is currently connected (credentials on file).
     @Published private(set) var isConnected: Bool = false
     @Published private(set) var lastError: String?
+    /// Ceremony data held while the advanced device-code flow is waiting. Only the short user
+    /// code is shown; the device auth id stays in memory and is never logged or persisted.
+    @Published private(set) var deviceAuthorization: ChatGPTOAuth.DeviceAuthorization?
+    @Published private(set) var isDeviceCodeSigningIn = false
 
     private static let keychainKey = "chatgptOAuthCredentials"
 
     /// PKCE verifier + state for the sign-in currently in progress (nil between attempts).
     private var pendingVerifier: String?
     private var pendingState: String?
+    private var devicePollingTask: Task<Void, Never>?
 
     private var credentials: ChatGPTOAuth.Credentials? {
         didSet { isConnected = credentials != nil }
@@ -37,12 +42,45 @@ final class ChatGPTOAuthService: ObservableObject {
 
     /// Start a sign-in attempt: mint a fresh PKCE verifier/state and return the browser URL.
     func beginSignIn() -> URL? {
+        cancelDeviceCodeSignIn()
         let verifier = PKCE.makeVerifier()
         let state = PKCE.makeVerifier()
         pendingVerifier = verifier
         pendingState = state
         lastError = nil
         return ChatGPTOAuth.authorizeURL(verifier: verifier, state: state)
+    }
+
+    /// Start the advanced/headless sign-in ceremony. ChatGPT requires the user to explicitly
+    /// enable device-code authorization in Security settings; a disabled flow is explained
+    /// without falling back to copying any long-lived credential.
+    func beginDeviceCodeSignIn() async {
+        cancelDeviceCodeSignIn()
+        pendingVerifier = nil
+        pendingState = nil
+        isDeviceCodeSigningIn = true
+        lastError = nil
+
+        do {
+            let authorization = try await requestDeviceAuthorization()
+            deviceAuthorization = authorization
+            devicePollingTask = Task { [weak self] in
+                await self?.pollDeviceAuthorization(authorization)
+            }
+        } catch {
+            isDeviceCodeSigningIn = false
+            deviceAuthorization = nil
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Stop polling and discard the one-time code. Tokens already stored by a completed sign-in
+    /// are unaffected.
+    func cancelDeviceCodeSignIn() {
+        devicePollingTask?.cancel()
+        devicePollingTask = nil
+        deviceAuthorization = nil
+        isDeviceCodeSigningIn = false
     }
 
     /// The `state` minted for the sign-in currently in progress. The loopback listener validates
@@ -81,6 +119,7 @@ final class ChatGPTOAuthService: ObservableObject {
 
     /// Disconnect the ChatGPT account and wipe stored tokens.
     func signOut() {
+        cancelDeviceCodeSignIn()
         credentials = nil
         _ = KeychainService.delete(Self.keychainKey)
         pendingVerifier = nil
@@ -132,5 +171,87 @@ final class ChatGPTOAuthService: ObservableObject {
             ])
         }
         return try JSONDecoder().decode(ChatGPTOAuth.TokenResponse.self, from: data)
+    }
+
+    private func requestDeviceAuthorization() async throws -> ChatGPTOAuth.DeviceAuthorization {
+        let (data, response) = try await URLSession.shared.data(for: ChatGPTOAuth.deviceCodeRequest())
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(status) else {
+            if status == 404 || status == 403 {
+                throw deviceError(
+                    status,
+                    "Device-code sign-in isn't enabled. In ChatGPT, turn on Enable device code authorization under Settings → Security, then try again."
+                )
+            }
+            throw deviceError(status, "ChatGPT couldn't start device-code sign-in (HTTP \(status)).")
+        }
+        do {
+            return try JSONDecoder().decode(ChatGPTOAuth.DeviceAuthorization.self, from: data)
+        } catch {
+            throw deviceError(status, "ChatGPT returned an unreadable device-code response.")
+        }
+    }
+
+    private func pollDeviceAuthorization(_ authorization: ChatGPTOAuth.DeviceAuthorization) async {
+        var interval = max(authorization.interval ?? 5, 1)
+        let deadline = Date().addingTimeInterval(15 * 60)
+
+        while !Task.isCancelled, Date() < deadline {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                let request = ChatGPTOAuth.devicePollRequest(
+                    deviceAuthID: authorization.deviceAuthID,
+                    userCode: authorization.userCode
+                )
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+
+                switch ChatGPTOAuth.parseDevicePoll(statusCode: status, body: data) {
+                case .approved(let approval):
+                    let token = try await performTokenRequest(
+                        ChatGPTOAuth.tokenExchangeRequest(
+                            code: approval.authorizationCode,
+                            verifier: approval.codeVerifier
+                        )
+                    )
+                    store(ChatGPTOAuth.Credentials(response: token))
+                    deviceAuthorization = nil
+                    isDeviceCodeSigningIn = false
+                    devicePollingTask = nil
+                    lastError = nil
+                    return
+                case .pending:
+                    continue
+                case .slowDown:
+                    interval = min(interval + 5, 30)
+                case .expired:
+                    throw deviceError(410, "That device code expired. Start device-code sign-in again.")
+                case .denied:
+                    throw deviceError(403, "Device-code sign-in was declined or is no longer available.")
+                case .failure(let message):
+                    throw deviceError(status, "Device-code sign-in failed: \(message)")
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                deviceAuthorization = nil
+                isDeviceCodeSigningIn = false
+                devicePollingTask = nil
+                lastError = error.localizedDescription
+                return
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        deviceAuthorization = nil
+        isDeviceCodeSigningIn = false
+        devicePollingTask = nil
+        lastError = "That device code timed out. Start device-code sign-in again."
+    }
+
+    private func deviceError(_ status: Int, _ message: String) -> NSError {
+        NSError(domain: "ChatGPTOAuth.DeviceCode", code: status, userInfo: [
+            NSLocalizedDescriptionKey: message
+        ])
     }
 }

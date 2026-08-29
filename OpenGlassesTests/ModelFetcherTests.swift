@@ -47,6 +47,56 @@ final class ModelFetcherTests: XCTestCase {
         )
     }
 
+    // MARK: - ChatGPT account catalog
+
+    func testParsesDocumentedAppServerModelListShape() throws {
+        let json = #"""
+        {
+          "data": [
+            {
+              "id": "gpt-5.6-sol",
+              "displayName": "GPT-5.6-Sol",
+              "hidden": false,
+              "isDefault": true,
+              "inputModalities": ["text", "image"]
+            },
+            { "id": "hidden-model", "displayName": "Hidden", "hidden": true }
+          ]
+        }
+        """#
+        let models = ModelFetcher.parseChatGPTModels(Data(json.utf8))
+
+        XCTAssertEqual(models.map(\.id), ["gpt-5.6-sol"])
+        XCTAssertEqual(models.first?.name, "GPT-5.6-Sol")
+        XCTAssertEqual(models.first?.isDefault, true)
+        XCTAssertEqual(models.first?.inputModalities, ["text", "image"])
+    }
+
+    func testParsesSnakeCaseAccountCatalogAndDeduplicates() {
+        let json = #"""
+        {
+          "models": [
+            {
+              "slug": "gpt-5.6-terra",
+              "display_name": "GPT-5.6-Terra",
+              "is_default": true,
+              "input_modalities": ["text", "image"]
+            },
+            { "model": "gpt-5.6-terra", "display_name": "Duplicate" },
+            { "model": "gpt-5.6-luna" }
+          ]
+        }
+        """#
+        let models = ModelFetcher.parseChatGPTModels(Data(json.utf8))
+
+        XCTAssertEqual(models.map(\.id), ["gpt-5.6-terra", "gpt-5.6-luna"])
+        XCTAssertEqual(models.map(\.name), ["GPT-5.6-Terra", "gpt-5.6-luna"])
+    }
+
+    func testChatGPTDefaultIsCurrentPreDiscoveryFallback() {
+        XCTAssertEqual(ChatGPTOAuth.defaultModel, "gpt-5.6-sol")
+    }
+
     // MARK: - xAI provider defaults
 
     func testXAIProviderDefaults() {

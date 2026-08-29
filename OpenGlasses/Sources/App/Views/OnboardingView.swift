@@ -1448,12 +1448,31 @@ struct OnboardingView: View {
     /// After a successful Claude sign-in: fetch the model list with the OAuth credential (an
     /// empty key resolves to the connected account) and mark the provider ready to continue.
     /// A failed listing still counts as valid — the account is connected; the default model works.
-    /// After a successful ChatGPT sign-in: the codex catalog is static, so no network fetch —
-    /// mark the provider ready and pre-select the default model.
+    /// After a successful ChatGPT sign-in, fetch the account-scoped Codex catalog. Model access
+    /// follows the signed-in workspace, so a bundled allowlist would go stale and hide models the
+    /// account can already use.
     private func markChatGPTConnected() {
-        keyValid = true
-        availableModels = ChatGPTOAuth.modelCatalog.map { ModelFetcher.RemoteModel(id: $0, name: $0) }
-        selectedModelId = ChatGPTOAuth.defaultModel
+        isValidating = true
+        validationError = nil
+        Task {
+            let models = await ModelFetcher.fetchModels(
+                provider: .chatgpt,
+                apiKey: "",
+                baseURL: LLMProvider.chatgpt.defaultBaseURL
+            )
+            await MainActor.run {
+                isValidating = false
+                keyValid = true
+                availableModels = models
+                selectedModelId = models.first(where: \.isDefault)?.id
+                    ?? models.first(where: { $0.id == ChatGPTOAuth.defaultModel })?.id
+                    ?? models.first?.id
+                    ?? ChatGPTOAuth.defaultModel
+                if models.isEmpty {
+                    validationError = "ChatGPT is connected, but its model list couldn't be loaded. You can continue with the current default and refresh models later in Settings."
+                }
+            }
+        }
     }
 
     private func validateViaClaudeAccount() {

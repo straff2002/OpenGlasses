@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// What a browser-based account sign-in service looks like to the UI (Plan BW P3). Both the
 /// Claude and ChatGPT OAuth services conform, so the model editor renders one component for
@@ -345,5 +346,88 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
         flow.completePaste(code,
                            exchange: { await service.completeSignIn(pastedCode: $0) },
                            onConnected: { code = ""; onChange() })
+    }
+}
+
+/// Advanced fallback for ChatGPT accounts whose browser callback is brittle (for example a
+/// remote/headless ceremony). It stays collapsed behind the normal browser sign-in because the
+/// user must first opt into device codes in ChatGPT Security settings, and one-time codes are a
+/// phishing target. The long-lived credential never enters the view.
+struct ChatGPTDeviceCodeSignInRows: View {
+    @ObservedObject var service: ChatGPTOAuthService
+    var onConnected: () -> Void = {}
+
+    @State private var isExpanded = false
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
+
+    var body: some View {
+        DisclosureGroup("Other sign-in options", isExpanded: $isExpanded) {
+            if let authorization = service.deviceAuthorization {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Enter this one-time code at the ChatGPT authorization page:")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(authorization.userCode)
+                            .font(.title3.monospaced().weight(.semibold))
+                            .textSelection(.enabled)
+                            .accessibilityLabel("Device code \(authorization.userCode)")
+                        Spacer()
+                        Button("Copy") {
+                            UIPasteboard.general.string = authorization.userCode
+                        }
+                        .buttonStyle(.borderless)
+                    }
+
+                    Link(destination: authorization.verificationURL) {
+                        Label("Open ChatGPT authorization", systemImage: "arrow.up.right.square")
+                            .frame(minHeight: rowMinHeight)
+                    }
+
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for approval…")
+                            .font(.footnote)
+                    }
+
+                    Button("Cancel device-code sign-in", role: .cancel) {
+                        service.cancelDeviceCodeSignIn()
+                    }
+                    .frame(minHeight: rowMinHeight)
+
+                    Text("Only enter this code at auth.openai.com. Never send it to another person. The code expires and is not saved by OpenGlasses.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 6)
+            } else {
+                Button {
+                    Task { await service.beginDeviceCodeSignIn() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if service.isDeviceCodeSigningIn {
+                            ProgressView().controlSize(.small)
+                            Text("Requesting code…")
+                        } else {
+                            Image(systemName: "number.square")
+                                .accessibilityHidden(true)
+                            Text("Use a device code")
+                        }
+                    }
+                    .frame(minHeight: rowMinHeight)
+                }
+                .disabled(service.isDeviceCodeSigningIn)
+
+                Text("Advanced: first enable Device Code Authorization in ChatGPT Settings → Security. Normal browser sign-in above is recommended on this iPhone.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onChange(of: service.isConnected) { _, connected in
+            if connected { onConnected() }
+        }
     }
 }

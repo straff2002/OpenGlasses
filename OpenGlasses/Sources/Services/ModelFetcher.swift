@@ -6,6 +6,15 @@ enum ModelFetcher {
     struct RemoteModel: Identifiable, Hashable {
         let id: String      // model ID sent to the API
         let name: String    // display-friendly label
+        let isDefault: Bool
+        let inputModalities: Set<String>
+
+        init(id: String, name: String, isDefault: Bool = false, inputModalities: Set<String> = []) {
+            self.id = id
+            self.name = name
+            self.isDefault = isDefault
+            self.inputModalities = inputModalities
+        }
     }
 
     /// Outcome of a lightweight "can I reach this endpoint?" probe (siri-and-local-server plan).
@@ -63,8 +72,7 @@ enum ModelFetcher {
 
         switch provider {
         case .chatgpt:
-            // Subscription auth serves a fixed codex catalog — no key-based listing endpoint.
-            return ChatGPTOAuth.modelCatalog.map { RemoteModel(id: $0, name: $0) }
+            return await fetchChatGPT()
         case .anthropic:
             return await fetchAnthropic(apiKey: apiKey)
         case .gemini:
@@ -80,6 +88,77 @@ enum ModelFetcher {
         case .local, .appleOnDevice:
             return []  // Local/Apple models are managed separately
         }
+    }
+
+    // MARK: - ChatGPT subscription (account-scoped Codex catalog)
+
+    /// Fetch the catalog enabled for the connected ChatGPT account. This deliberately uses the
+    /// account-scoped Codex endpoint rather than the public API's `/v1/models`: subscription
+    /// credentials and API keys belong to different products and are not interchangeable.
+    private static func fetchChatGPT() async -> [RemoteModel] {
+        guard let token = await ChatGPTOAuthService.shared.validAccessToken() else { return [] }
+        var request = URLRequest(url: URL(string: ChatGPTOAuth.backendModelsURL)!)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        let accountID = await ChatGPTOAuthService.shared.accountID
+        ChatGPTAuth.apply(credential: token, accountID: accountID, to: &request)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return []
+            }
+            return parseChatGPTModels(data)
+        } catch {
+            return []
+        }
+    }
+
+    /// Parse both the current account endpoint (`models`) and App Server's documented
+    /// `model/list` envelope (`data`). Field aliases keep the iOS client tolerant of the
+    /// snake_case upstream payload and camelCase App Server projection.
+    static func parseChatGPTModels(_ data: Data) -> [RemoteModel] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return []
+        }
+        let rows = (json["models"] as? [[String: Any]]) ?? (json["data"] as? [[String: Any]]) ?? []
+        var seen = Set<String>()
+
+        return rows.compactMap { row in
+            guard !boolean(row, keys: ["hidden", "is_hidden"]),
+                  let id = string(row, keys: ["id", "model", "slug"]),
+                  !id.isEmpty,
+                  seen.insert(id).inserted else {
+                return nil
+            }
+            let name = string(row, keys: ["displayName", "display_name", "name"]) ?? id
+            let modalities = stringArray(
+                row,
+                keys: ["inputModalities", "input_modalities", "supported_input_modalities"]
+            )
+            return RemoteModel(
+                id: id,
+                name: name,
+                isDefault: boolean(row, keys: ["isDefault", "is_default", "default"]),
+                inputModalities: Set(modalities)
+            )
+        }
+    }
+
+    private static func string(_ dictionary: [String: Any], keys: [String]) -> String? {
+        keys.lazy.compactMap { dictionary[$0] as? String }.first
+    }
+
+    private static func boolean(_ dictionary: [String: Any], keys: [String]) -> Bool {
+        for key in keys {
+            if let value = dictionary[key] as? Bool { return value }
+            if let value = dictionary[key] as? NSNumber { return value.boolValue }
+        }
+        return false
+    }
+
+    private static func stringArray(_ dictionary: [String: Any], keys: [String]) -> [String] {
+        keys.lazy.compactMap { dictionary[$0] as? [String] }.first ?? []
     }
 
     // MARK: - OpenAI-compatible (/v1/models)

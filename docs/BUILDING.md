@@ -125,6 +125,7 @@ Select your iPhone, fix signing if prompted, and run (⌘R).
 
 ---
 
+
 ## Configuration
 
 All settings are in-app — no source code editing needed.
@@ -139,6 +140,22 @@ All settings are in-app — no source code editing needed.
 | Groq | Fast inference | [console.groq.com](https://console.groq.com/) |
 | ElevenLabs | Natural TTS | [elevenlabs.io](https://elevenlabs.io/) |
 | Perplexity | Web search | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) |
+
+### ChatGPT subscription sign-in
+
+Choose **ChatGPT (Subscription)** in Settings → AI Models to use the models enabled for your
+ChatGPT workspace without adding an OpenAI API key. Normal browser sign-in is recommended on
+iPhone. After connecting, **Fetch available models** loads the account-scoped Codex catalog and
+uses the model marked as its current default.
+
+For advanced or headless sign-in, expand **Other sign-in options** and choose **Use a device
+code**. First enable **Device Code Authorization** in ChatGPT Settings → Security. Enter the
+one-time code only at `auth.openai.com` and never share it; OpenGlasses keeps the device ceremony
+in memory and stores only the resulting account credentials in Keychain. See the
+[official authentication guidance](https://learn.chatgpt.com/docs/auth).
+
+The existing **OpenAI (GPT)** provider remains separate: it uses an API key, usage-based API
+billing, and is still required for OpenAI Realtime voice.
 
 ### Services (Settings → Services & Integrations)
 
@@ -167,4 +184,3 @@ All settings are in-app — no source code editing needed.
 | "Untrusted Developer" | Settings → General → VPN & Device Management → Verify (requires internet) |
 
 ---
-

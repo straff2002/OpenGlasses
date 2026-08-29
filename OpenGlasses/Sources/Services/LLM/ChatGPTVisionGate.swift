@@ -2,14 +2,13 @@ import Foundation
 
 /// Vision honesty for the ChatGPT (Codex/Responses) subscription provider.
 ///
-/// `LLMProvider.chatgpt` authenticates against the ChatGPT Codex backend and serves a
-/// coding-tuned model catalog (`ChatGPTOAuth.modelCatalog`: `gpt-5.1-codex`,
-/// `gpt-5.1-codex-mini`, `gpt-5.3-codex-spark`). Whether that backend accepts image input
-/// (`input_image`) at all was never actually confirmed on device —
+/// `LLMProvider.chatgpt` authenticates against the ChatGPT Codex backend and discovers the
+/// account's model catalog dynamically. Whether this app's direct Responses integration accepts
+/// image input (`input_image`) end-to-end was never actually confirmed on device —
 /// docs/plans/BW-chatgpt-subscription-provider.md's P4 checklist still has "One image turn
 /// (photo question) — confirms `input_image` acceptance on codex models" unchecked, and every
-/// catalog model is a "codex" (coding) variant with no documented vision sibling. Sending a
-/// photo down this path anyway, behind a system prompt that insists "You CAN see it — never
+/// previously bundled catalog was entirely coding variants. Sending a photo down this path
+/// anyway, behind a system prompt that insists "You CAN see it — never
 /// deny vision", produces either an odd denial or (worse) a hallucinated description of a
 /// scene the model never saw.
 ///
