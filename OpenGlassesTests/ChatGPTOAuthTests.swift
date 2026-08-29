@@ -69,6 +69,24 @@ final class ChatGPTOAuthTests: XCTestCase {
 
     // MARK: - Device-code flow
 
+    func testDeviceCodeRequestsUseCurrentCodexEndpointsWithoutPersistingSecrets() throws {
+        let start = ChatGPTOAuth.deviceCodeRequest()
+        XCTAssertEqual(start.url?.absoluteString, ChatGPTOAuth.deviceAuthorizationEndpoint)
+        XCTAssertEqual(start.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let startBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(start.httpBody)) as? [String: String]
+        )
+        XCTAssertEqual(startBody, ["client_id": ChatGPTOAuth.clientID])
+
+        let poll = ChatGPTOAuth.devicePollRequest(deviceAuthID: "auth-1", userCode: "ABCD-1234")
+        XCTAssertEqual(poll.url?.absoluteString, ChatGPTOAuth.deviceTokenEndpoint)
+        let pollBody = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(poll.httpBody)) as? [String: String]
+        )
+        XCTAssertEqual(pollBody["device_auth_id"], "auth-1")
+        XCTAssertEqual(pollBody["user_code"], "ABCD-1234")
+    }
+
     func testDevicePollClassification() {
         func poll(_ status: Int, _ json: String) -> ChatGPTOAuth.DevicePollResult {
             ChatGPTOAuth.parseDevicePoll(statusCode: status, body: Data(json.utf8))
@@ -77,21 +95,29 @@ final class ChatGPTOAuthTests: XCTestCase {
         XCTAssertEqual(poll(400, #"{"error":"slow_down"}"#), .slowDown)
         XCTAssertEqual(poll(400, #"{"error":"expired_token"}"#), .expired)
         XCTAssertEqual(poll(403, #"{"error":"access_denied"}"#), .denied)
+        XCTAssertEqual(poll(404, ""), .pending)
+        XCTAssertEqual(poll(429, ""), .slowDown)
         XCTAssertEqual(poll(500, #"{"error":"kaboom"}"#), .failure("kaboom"))
         XCTAssertEqual(poll(502, "not json"), .failure("HTTP 502"))
 
-        if case .authorized(let response) = poll(200, #"{"access_token":"at-1","refresh_token":"rt-1"}"#) {
-            XCTAssertEqual(response.accessToken, "at-1")
+        if case .approved(let approval) = poll(
+            200,
+            #"{"authorization_code":"code-1","code_verifier":"verifier-1","code_challenge":"challenge-1"}"#
+        ) {
+            XCTAssertEqual(approval.authorizationCode, "code-1")
+            XCTAssertEqual(approval.codeVerifier, "verifier-1")
         } else {
-            XCTFail("200 with tokens should classify as authorized")
+            XCTFail("200 with a Codex device approval should be accepted")
         }
     }
 
     func testDeviceAuthorizationDecoding() throws {
-        let json = #"{"device_code":"dc","user_code":"ABCD-EFGH","verification_uri":"https://example.test/activate","expires_in":900,"interval":5}"#
+        let json = #"{"device_auth_id":"dc","user_code":"ABCD-EFGH","interval":5}"#
         let auth = try JSONDecoder().decode(ChatGPTOAuth.DeviceAuthorization.self, from: Data(json.utf8))
+        XCTAssertEqual(auth.deviceAuthID, "dc")
         XCTAssertEqual(auth.userCode, "ABCD-EFGH")
         XCTAssertEqual(auth.interval, 5)
+        XCTAssertEqual(auth.verificationURL.absoluteString, ChatGPTOAuth.deviceVerificationURL)
     }
 
     // MARK: - id_token account claim

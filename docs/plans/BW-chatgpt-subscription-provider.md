@@ -1,7 +1,7 @@
 # Plan BW — ChatGPT Subscription Sign-In (Codex OAuth provider)
 
-**Status: 🚧 Shipped through P4's code half (2026-07-18) — on-device verification checklist
-pending.** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
+**Status: 🚧 Shipped through P4's code half; account-scoped models + advanced device-code
+fallback added 2026-08-29 — on-device verification checklist pending.** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
 stream accumulator), P3 (`ChatGPTOAuthService`, `LLMProvider.chatgpt`, `sendChatGPT`, shared
 `OAuthSignInRows` in the model editor), and P4's codeable half — stateless helpers
 (summarization, `analyzeFrame`, structured vision/completion via forced function-call), the
@@ -27,10 +27,12 @@ afternoon.
 Structural facts the design hangs on:
 
 - **Auth**: authorization-code + PKCE in the browser, with a **device-code** variant that is
-  the better fit for iOS (no localhost-redirect contortions). Yields access + refresh tokens
+  available under Other sign-in options for advanced/headless use. Browser sign-in remains the
+  normal iPhone path; device codes require the user to enable Device Code Authorization in
+  ChatGPT Security settings. Either path yields access + refresh tokens
   and an `id_token` whose **account-id claim must ride every API request** as a header.
 - **Wire**: the backend speaks the Responses API (input/output *items*, SSE streaming), and
-  serves the **Codex model catalog** (`gpt-5.x-codex` family) — not the general API models.
+  serves an account-scoped **Codex model catalog** — not the public API `/v1/models` catalog.
 - **Hard exclusions**: subscription credentials are not valid where platform keys are
   required — our OpenAI **Realtime voice mode stays API-key-only**, documented, not worked
   around.
@@ -40,7 +42,8 @@ Structural facts the design hangs on:
 - `ChatGPTOAuth` mirroring `ClaudeOAuth`'s shape: PKCE (extract the existing
   verifier/challenge/base64url helpers into a shared `PKCE` enum rather than duplicating),
   authorize-URL builder, **device-code request + poll** request shapes (pending / slow-down /
-  expired handled as values), token-response parse (access / refresh / `id_token`), and
+  expired handled as values), exchange of the approved authorization code, token-response parse
+  (access / refresh / `id_token`), and
   account-id extraction from the `id_token` (pure base64url JWT-payload decode — we consume a
   claim, we don't validate signatures client-side).
 - `Credentials` with `needsRefresh` leeway, refresh-request builder — same contract as the
@@ -74,7 +77,7 @@ Structural facts the design hangs on:
 - `ChatGPTOAuthService`: keychain persistence, refresh-ahead, `@Published isConnected`,
   `validAccessToken()` — structural copy of `ClaudeOAuthService`.
 - New `LLMProvider.chatgpt` case ("ChatGPT (subscription)"): `requiresAPIKey == false`,
-  its own base URL + model catalog (codex family, sensible default), request auth = bearer
+  its own base URL + account-scoped model discovery (with a current pre-discovery default), request auth = bearer
   token + account-id header applied in one `ChatGPTAuth.apply` (parallel to
   `AnthropicAuth`).
 - `sendChatGPT` built on the P2 translator + adapter; cascade integration classifies
@@ -92,6 +95,9 @@ Structural facts the design hangs on:
 confirmed covered. **Live half: pending, needs the phone + a real ChatGPT account:**
 
 - [ ] Sign in (browser → copy the localhost callback URL from the address bar → paste).
+- [ ] Sign in through Other sign-in options after enabling Device Code Authorization; confirm
+      cancel, expiry, and disabled-setting messages reveal no token or device-auth id.
+- [ ] Fetch models and confirm the list/default matches Codex for the same ChatGPT workspace.
 - [ ] One streamed text turn (Chat tab), one buffered voice turn.
 - [ ] One tool turn (a native tool AND an MCP tool) — watch the `ChatGPT turn: N tool
       call(s) parsed` log line.
@@ -125,9 +131,8 @@ confirmed covered. **Live half: pending, needs the phone + a real ChatGPT accoun
 - **Catalog fit**: codex models may answer voice queries in a coding register. P4 evaluates;
   the escape hatch is keeping the provider model-editor-only (power users) without the
   onboarding tile.
-- **Device-code availability**: if the device-code variant is gated, fall back to the
-  browser + paste-the-code pattern already proven by the Claude flow (the callback page
-  displays a code; no localhost listener needed).
+- **Device-code availability**: it is intentionally an advanced fallback and can be disabled at
+  the account/workspace level. The normal browser flow remains available and is presented first.
 
 ## Verification
 

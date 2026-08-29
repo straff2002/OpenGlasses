@@ -135,7 +135,7 @@ enum LLMProvider: String, CaseIterable {
     var supportsModelListing: Bool {
         switch self {
         case .local, .appleOnDevice, .geminiVertex: return false
-        default: return true   // .chatgpt lists from its static codex catalog
+        default: return true   // .chatgpt lists the signed-in account's live Codex catalog
         }
     }
 }

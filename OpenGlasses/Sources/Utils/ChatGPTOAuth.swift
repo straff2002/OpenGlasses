@@ -12,8 +12,8 @@ import Foundation
 ///    (which still carries `code`/`state`) out of the address bar and pastes it back — the same
 ///    paste-back UX the Claude flow proved.
 /// 2. **Device code**: show a short user code, the user enters it at the verification URL on any
-///    device, the app polls the token endpoint. Better fit for glasses/phone; shapes are
-///    modelled here and the service can adopt them once P4 verifies availability.
+///    device, and the app polls for an authorization code. This is an advanced fallback because
+///    the user must explicitly enable device-code authorization in ChatGPT Security settings.
 ///
 /// The token response carries an `id_token` (JWT) whose account-id claim must accompany every
 /// API request as a header.
@@ -30,7 +30,11 @@ enum ChatGPTOAuth {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     static let authorizeEndpoint = "https://auth.openai.com/oauth/authorize"
     static let tokenEndpoint = "https://auth.openai.com/oauth/token"
-    static let deviceAuthorizationEndpoint = "https://auth.openai.com/oauth/device/authorization"
+    /// Codex device authorization uses a short-lived, in-memory device auth id. These endpoints
+    /// intentionally mirror the current Codex device flow rather than the generic RFC 8628 grant.
+    static let deviceAuthorizationEndpoint = "https://auth.openai.com/api/accounts/deviceauth/usercode"
+    static let deviceTokenEndpoint = "https://auth.openai.com/api/accounts/deviceauth/token"
+    static let deviceVerificationURL = "https://auth.openai.com/codex/device"
     /// Registered redirect for the public client — a localhost URL (the CLI runs a listener; on
     /// iOS the user copies the resulting address-bar URL back instead).
     static let redirectURI = "http://localhost:1455/auth/callback"
@@ -38,16 +42,18 @@ enum ChatGPTOAuth {
 
     /// The Responses-API surface subscription tokens are valid against.
     static let backendResponsesURL = "https://chatgpt.com/backend-api/codex/responses"
+    /// Account-scoped catalog used by Codex. Never hard-code the picker to one release family;
+    /// this endpoint reflects the models enabled for the signed-in ChatGPT workspace.
+    static let backendModelsURL = "https://chatgpt.com/backend-api/codex/models"
     /// Header carrying the account id extracted from the `id_token`.
     static let accountIDHeader = "chatgpt-account-id"
     /// Beta header the Responses backend expects.
     static let betaHeaderField = "OpenAI-Beta"
     static let betaHeaderValue = "responses=experimental"
 
-    /// The codex model catalog served over subscription auth (P4 verifies the exact set; the
-    /// model picker also accepts a hand-typed id, so this list is a convenience, not a gate).
-    static let modelCatalog = ["gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.3-codex-spark"]
-    static let defaultModel = "gpt-5.1-codex"
+    /// Used before account-scoped discovery completes. The picker replaces this with the model
+    /// marked as default by the live catalog whenever possible.
+    static let defaultModel = "gpt-5.6-sol"
 
     // MARK: - Authorize URL (browser flow)
 
@@ -94,39 +100,47 @@ enum ChatGPTOAuth {
     // MARK: - Device-code flow shapes
 
     static func deviceCodeRequest() -> URLRequest {
-        formPOST(url: deviceAuthorizationEndpoint, fields: [
-            "client_id": clientID,
-            "scope": scopes,
-        ])
+        jsonPOST(url: deviceAuthorizationEndpoint, body: ["client_id": clientID])
     }
 
-    struct DeviceAuthorization: Decodable {
-        let deviceCode: String
+    struct DeviceAuthorization: Decodable, Equatable {
+        let deviceAuthID: String
         let userCode: String
-        let verificationURI: String
-        let expiresIn: Double?
         let interval: Double?
 
         enum CodingKeys: String, CodingKey {
-            case deviceCode = "device_code"
+            case deviceAuthID = "device_auth_id"
             case userCode = "user_code"
-            case verificationURI = "verification_uri"
-            case expiresIn = "expires_in"
             case interval = "interval"
         }
+
+        var verificationURL: URL { URL(string: ChatGPTOAuth.deviceVerificationURL)! }
     }
 
-    static func devicePollRequest(deviceCode: String) -> URLRequest {
-        formPOST(url: tokenEndpoint, fields: [
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code": deviceCode,
-            "client_id": clientID,
+    static func devicePollRequest(deviceAuthID: String, userCode: String) -> URLRequest {
+        jsonPOST(url: deviceTokenEndpoint, body: [
+            "device_auth_id": deviceAuthID,
+            "user_code": userCode,
         ])
+    }
+
+    /// The device endpoint returns a one-use authorization code plus the verifier generated for
+    /// it. Tokens are still obtained from the normal OAuth token endpoint and stored in Keychain.
+    struct DeviceApproval: Decodable, Equatable {
+        let authorizationCode: String
+        let codeVerifier: String
+        let codeChallenge: String?
+
+        enum CodingKeys: String, CodingKey {
+            case authorizationCode = "authorization_code"
+            case codeVerifier = "code_verifier"
+            case codeChallenge = "code_challenge"
+        }
     }
 
     /// One poll of the token endpoint during device-code sign-in, as a value.
     enum DevicePollResult: Equatable {
-        case authorized(TokenResponse)
+        case approved(DeviceApproval)
         case pending          // keep polling at the same interval
         case slowDown         // keep polling, back off
         case expired          // user took too long — restart the flow
@@ -135,7 +149,7 @@ enum ChatGPTOAuth {
 
         static func == (lhs: DevicePollResult, rhs: DevicePollResult) -> Bool {
             switch (lhs, rhs) {
-            case (.authorized(let a), .authorized(let b)): return a.accessToken == b.accessToken
+            case (.approved(let a), .approved(let b)): return a == b
             case (.pending, .pending), (.slowDown, .slowDown),
                  (.expired, .expired), (.denied, .denied): return true
             case (.failure(let a), .failure(let b)): return a == b
@@ -144,11 +158,13 @@ enum ChatGPTOAuth {
         }
     }
 
-    /// Classify a device-poll response body (RFC 8628 error codes on non-2xx, tokens on 200).
+    /// Classify a Codex device-poll response. A 404 means the user has not approved the code yet;
+    /// the initial user-code request uses a separate 404 message for the disabled-security-toggle
+    /// case. JSON OAuth-style errors are accepted too so server-side transitions fail safely.
     static func parseDevicePoll(statusCode: Int, body: Data) -> DevicePollResult {
         if (200..<300).contains(statusCode),
-           let response = try? JSONDecoder().decode(TokenResponse.self, from: body) {
-            return .authorized(response)
+           let approval = try? JSONDecoder().decode(DeviceApproval.self, from: body) {
+            return .approved(approval)
         }
         let error = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["error"] as? String
         switch error {
@@ -156,7 +172,14 @@ enum ChatGPTOAuth {
         case "slow_down":             return .slowDown
         case "expired_token":         return .expired
         case "access_denied":         return .denied
-        default:                      return .failure(error ?? "HTTP \(statusCode)")
+        default:
+            switch statusCode {
+            case 404, 408, 409, 425: return .pending
+            case 429: return .slowDown
+            case 410: return .expired
+            case 401, 403: return .denied
+            default: return .failure(error ?? "HTTP \(statusCode)")
+            }
         }
     }
 
@@ -241,6 +264,15 @@ enum ChatGPTOAuth {
             .sorted { $0.key < $1.key }   // deterministic body — testable byte-for-byte
             .map { URLQueryItem(name: $0.key, value: $0.value) }
         request.httpBody = Data((components.percentEncodedQuery ?? "").utf8)
+        request.timeoutInterval = 30
+        return request
+    }
+
+    private static func jsonPOST(url: String, body: [String: String]) -> URLRequest {
+        var request = URLRequest(url: URL(string: url)!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         request.timeoutInterval = 30
         return request
     }
