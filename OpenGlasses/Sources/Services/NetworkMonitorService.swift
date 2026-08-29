@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 
 /// Categorizes network requests by destination.
 enum NetworkCategory: String, CaseIterable {

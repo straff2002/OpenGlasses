@@ -163,6 +163,10 @@ struct OGRow<Trailing: View>: View {
     /// a plain value ("Model — Claude Sonnet" is one thought); false when the
     /// trailing view is a control, which has to stay its own focusable element.
     var combinesTrailing: Bool = false
+    /// Some rows carry descriptive summaries rather than compact values. Keep
+    /// those summaries below the label at every text size so the label retains
+    /// the full width on mini/SE-class screens as well as larger iPhones.
+    var alwaysStacksTrailing: Bool = false
     @ViewBuilder var trailing: () -> Trailing
 
     @ScaledMetric(relativeTo: .body) private var minRowHeight: CGFloat = 52
@@ -178,12 +182,15 @@ struct OGRow<Trailing: View>: View {
     /// not fit on one line at AX5, so above the accessibility threshold the
     /// value moves *under* the title instead of beside it, where it has the
     /// row's full width and nothing to take a second line from. That is what
-    /// lets `OGRowValue` drop its line cap at every size; below the threshold
-    /// the shipped side-by-side row is otherwise unchanged.
+    /// lets `OGRowValue` drop its line cap at every size. Rows with longer,
+    /// descriptive summaries can also opt into this arrangement at every size
+    /// so they remain comfortable on mini/SE-class widths.
     ///
     /// Only value rows stack: a *control* row's trailing view is a switch, and
     /// a switch under the title is a different control, not a wrapped one.
-    private var stacksTrailing: Bool { combinesTrailing && typeSize.isAccessibilitySize }
+    private var stacksTrailing: Bool {
+        combinesTrailing && (alwaysStacksTrailing || typeSize.isAccessibilitySize)
+    }
 
     var body: some View {
         HStack(spacing: OGMetrics.rowSpacing) {
@@ -194,6 +201,11 @@ struct OGRow<Trailing: View>: View {
                 Text(title)
                     .font(.body)
                     .foregroundStyle(.primary)
+                    // Row titles must be allowed to take every line Dynamic Type needs. Without
+                    // an explicit vertical fixed size, the surrounding HStack can compress the
+                    // title to its single-line ideal height even when the text wraps, which the
+                    // accessibility audit reports as clipped category names.
+                    .fixedSize(horizontal: false, vertical: true)
                 if let subtitle {
                     Text(subtitle)
                         .font(.footnote)
@@ -206,7 +218,11 @@ struct OGRow<Trailing: View>: View {
             }
             // Title and subtitle are one thought, not two stops.
             .accessibilityElement(children: .combine)
-            Spacer(minLength: 8)
+            // Fill the width left by the icon, trailing content, and chevron. An
+            // intrinsic-width label looks fine at the current size but gives the
+            // clipped-text audit no room for its larger Dynamic Type projection.
+            // A flexible label wraps into this real allocation on every iPhone.
+            .frame(maxWidth: .infinity, alignment: .leading)
             if !stacksTrailing {
                 trailing()
             }
@@ -256,7 +272,8 @@ extension OGRow {
     ) {
         self.init(
             title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
-            showsChevron: showsChevron, combinesTrailing: false, trailing: trailing
+            showsChevron: showsChevron, combinesTrailing: false,
+            alwaysStacksTrailing: false, trailing: trailing
         )
     }
 }
@@ -268,11 +285,13 @@ extension OGRow where Trailing == OGRowValue {
         mutedIcon: Bool = false,
         subtitle: String? = nil,
         value: String? = nil,
+        alwaysStacksValue: Bool = false,
         showsChevron: Bool = true
     ) {
         self.init(
             title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
             showsChevron: showsChevron, combinesTrailing: true,
+            alwaysStacksTrailing: alwaysStacksValue,
             trailing: { OGRowValue(value: value) }
         )
     }
@@ -291,7 +310,7 @@ extension OGRow where Trailing == OGToggle {
     ) {
         self.init(
             title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
-            showsChevron: false, combinesTrailing: false,
+            showsChevron: false, combinesTrailing: false, alwaysStacksTrailing: false,
             trailing: { OGToggle(label: title, isOn: isOn) }
         )
     }
@@ -623,6 +642,7 @@ struct OGHeroDeviceCard: View {
     var batteryPercent: Int? = nil
     var chips: [(label: String, available: Bool)] = []
     @Environment(\.appAccent) private var accent
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .body) private var glyphTile: CGFloat = 50
     @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
 
@@ -652,67 +672,72 @@ struct OGHeroDeviceCard: View {
     var body: some View {
         let inkAccent = OGTheme.inkAccent(accent)
         let inkAccentLabel = OGTheme.inkAccentLabel(accent)
+        let glyph = RoundedRectangle(cornerRadius: glyphTile * 0.26, style: .continuous)
+            .fill(inkAccent.opacity(0.2))
+            .frame(width: glyphTile, height: glyphTile)
+            .overlay {
+                Image(systemName: "eyeglasses")
+                    .font(.title3)
+                    .foregroundStyle(inkAccentLabel)
+            }
+        let identity = VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(OGTheme.onInk)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Circle().fill(dot).frame(width: dotSize, height: dotSize)
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        let battery = Group {
+            if let batteryPercent {
+                HStack(spacing: 4) {
+                    Image(systemName: batterySymbol(batteryPercent))
+                        .font(.footnote)
+                    Text("\(batteryPercent)%")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkSecondary))
+            }
+        }
 
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 14) {
-                RoundedRectangle(cornerRadius: glyphTile * 0.26, style: .continuous)
-                    .fill(inkAccent.opacity(0.2))
-                    .frame(width: glyphTile, height: glyphTile)
-                    .overlay {
-                        Image(systemName: "eyeglasses")
-                            .font(.title3)
-                            .foregroundStyle(inkAccentLabel)
+            if typeSize.isAccessibilitySize {
+                // The scaled glyph can consume nearly half a mini-width phone at AX5. Keep
+                // identity and status below it instead of squeezing status into a tall sliver.
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top) {
+                        glyph
+                        Spacer(minLength: 8)
+                        battery
                     }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(OGTheme.onInk)
-                    HStack(spacing: 6) {
-                        Circle().fill(dot).frame(width: dotSize, height: dotSize)
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary))
-                            // No line cap at all: `lineLimit(1)` truncated "Not connected"
-                            // outright at accessibility sizes — the state of the device, on the
-                            // card that exists to report it — and any cap is a size at which the
-                            // text can still be cut. These statuses are two words; letting them
-                            // wrap costs nothing at the sizes they already fit.
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    identity
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Spacer(minLength: 8)
-
-                if let batteryPercent {
-                    HStack(spacing: 4) {
-                        Image(systemName: batterySymbol(batteryPercent))
-                            .font(.footnote)
-                        Text("\(batteryPercent)%")
-                            .font(.footnote.weight(.semibold))
-                    }
-                    .foregroundStyle(OGTheme.onInk.opacity(OGTheme.Opacity.onInkSecondary))
+            } else {
+                HStack(spacing: 14) {
+                    glyph
+                    identity
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    battery
                 }
             }
 
             if !chips.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(chips, id: \.label) { chip in
-                        Text(chip.label)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(
-                                chip.available
-                                    ? inkAccentLabel
-                                    : OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary)
-                            )
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                chip.available
-                                    ? inkAccent.opacity(OGTheme.Opacity.accentInkFill)
-                                    : OGTheme.onInk.opacity(OGTheme.Opacity.onInkFill),
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            )
+                Group {
+                    if typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 6) {
+                            chipLabels(inkAccent: inkAccent, inkAccentLabel: inkAccentLabel)
+                        }
+                    } else {
+                        HStack(spacing: 6) {
+                            chipLabels(inkAccent: inkAccent, inkAccentLabel: inkAccentLabel)
+                        }
                     }
                 }
             }
@@ -740,6 +765,30 @@ struct OGHeroDeviceCard: View {
                 batteryPercent: batteryPercent, chips: chips
             )
         )
+    }
+
+    @ViewBuilder
+    private func chipLabels(inkAccent: Color, inkAccentLabel: Color) -> some View {
+        ForEach(chips, id: \.label) { chip in
+            Text(chip.label)
+                // `caption2` stops scaling before the top of the Dynamic Type range. Footnote
+                // remains compact at ordinary sizes and stays adjustable through AX5.
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(
+                    chip.available
+                        ? inkAccentLabel
+                        : OGTheme.onInk.opacity(OGTheme.Opacity.onInkTertiary)
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    chip.available
+                        ? inkAccent.opacity(OGTheme.Opacity.accentInkFill)
+                        : OGTheme.onInk.opacity(OGTheme.Opacity.onInkFill),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+        }
     }
 
     private func batterySymbol(_ percent: Int) -> String {

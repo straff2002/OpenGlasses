@@ -664,8 +664,10 @@ final class LocalLLMService: ObservableObject {
 
         let effectiveSystem: String
         let effectiveHistory: [(role: String, content: String)]
-        // Long edge the photo may reach the processor at; 0 on a text turn.
-        var imageLongEdge = 0
+        // Long edge the photo may reach the processor at; 0 on a text turn. Assigned once in each
+        // branch so the concurrently executing `container.perform` closure captures an immutable
+        // value rather than a mutable local.
+        let imageLongEdge: Int
         if let photo = imageData {
             // Measured now, not at launch: the binding constraint on a photo turn is what this
             // process may still allocate, and with the model resident and the camera live that
@@ -689,6 +691,7 @@ final class LocalLLMService: ObservableObject {
         } else {
             effectiveSystem = systemPrompt
             effectiveHistory = history
+            imageLongEdge = 0
             NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ text-only", loadedModelId ?? "?")
         }
 

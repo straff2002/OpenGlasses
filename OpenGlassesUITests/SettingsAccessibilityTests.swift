@@ -16,8 +16,7 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
         awaitScreen(app.staticTexts["Discover"], named: "The Discover section")
         audit(app, screen: "Settings hub — folded",
-              deferring: [.secondaryCopyContrast, .heroCardChipRow,
-                          .contentUnderTheTabBar(of: app)])
+              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 
     /// The whole surface at once, which is a different tree: every foldable category becomes a row
@@ -27,8 +26,7 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
         audit(app, screen: "Settings hub — showing everything",
-              deferring: [.secondaryCopyContrast, .heroCardChipRow,
-                          .contentUnderTheTabBar(of: app)])
+              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 
     /// Pinned, in both shapes. The one category a user reaching for assistive features must be
@@ -139,7 +137,6 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
                       + "VoiceOver focus to be handed to")
 
         audit(app, screen: "Settings hub — after unfolding a category",
-              deferring: [.secondaryCopyContrast, .heroCardChipRow,
-                          .contentUnderTheTabBar(of: app)])
+              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 }

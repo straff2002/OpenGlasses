@@ -72,7 +72,8 @@ struct SettingsView: View {
                             icon: category.icon,
                             mutedIcon: category.mutedIcon,
                             subtitle: category.subtitle,
-                            value: summary(for: category)
+                            value: summary(for: category),
+                            alwaysStacksValue: true
                         )
                     }
                 }
