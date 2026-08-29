@@ -267,22 +267,37 @@ class AccessibilityAuditCase: XCTestCase {
         XCTContext.runActivity(named: "Accessibility audit — \(screen)") { activity in
             var failures: [String] = []
             var deferred: [String] = []
+            var attempt = 1
 
-            do {
-                try app.performAccessibilityAudit(for: types) { issue in
-                    if let deferral = deferrals.first(where: {
-                        $0.types.contains(issue.auditType) && $0.matches(issue)
-                    }) {
-                        deferred.append(Self.describe(issue, note: "deferred — \(deferral.reason)"))
+            while true {
+                do {
+                    try app.performAccessibilityAudit(for: types) { issue in
+                        if let deferral = deferrals.first(where: {
+                            $0.types.contains(issue.auditType) && $0.matches(issue)
+                        }) {
+                            deferred.append(Self.describe(issue, note: "deferred — \(deferral.reason)"))
+                            return true
+                        }
+                        failures.append(Self.describe(issue))
                         return true
                     }
-                    failures.append(Self.describe(issue))
-                    return true  // collected and reported below, so one run lists every issue
+                    break
+                } catch where attempt == 1 && Self.isAuditTimeout(error) {
+                    // Xcode's audit service occasionally times out before returning any findings
+                    // on a cold, loaded CI simulator. Retry that infrastructure error once; an
+                    // actual finding is delivered through the handler above and is never retried
+                    // or filtered here. Clear partial output in case the service emitted anything
+                    // before timing out, then ask it for one clean result.
+                    print("[a11y-audit] \(screen): audit service timed out; retrying once")
+                    failures.removeAll(keepingCapacity: true)
+                    deferred.removeAll(keepingCapacity: true)
+                    attempt += 1
+                    app.activate()
+                } catch {
+                    XCTFail("\(screen): the audit itself failed to run — \(error)",
+                            file: file, line: line)
+                    return
                 }
-            } catch {
-                XCTFail("\(screen): the audit itself failed to run — \(error)",
-                        file: file, line: line)
-                return
             }
 
             if !deferred.isEmpty {
@@ -303,6 +318,14 @@ class AccessibilityAuditCase: XCTestCase {
                     """, file: file, line: line)
             }
         }
+    }
+
+    /// The audit service has no public error constants, but its timeout is stable as Cocoa-style
+    /// domain/code metadata. Keep the match exact so invalid targets, crashes, and every other
+    /// infrastructure problem still fail on the first attempt.
+    private static func isAuditTimeout(_ error: Error) -> Bool {
+        let error = error as NSError
+        return error.domain == "com.apple.xcode.xctest.accessibilityAudit" && error.code == -56
     }
 
     private static func describe(_ issue: XCUIAccessibilityAuditIssue, note: String? = nil) -> String {
