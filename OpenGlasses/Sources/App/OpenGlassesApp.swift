@@ -586,7 +586,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Broadcast chat read-aloud (Plan CI) — lives and dies with the broadcast session.
     let chatReadback = BroadcastChatReadbackService()
     let locationService = LocationService()
-    let proactiveAlerts = ProactiveAlertService()
+    /// One EventKit owner shared by tools, proactive alerts, and My Day.
+    let eventKitStore: EventKitDayStore
+    let proactiveAlerts: ProactiveAlertService
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
     /// Hermes agent bridge (Plan CL P5): optional LAN "brain" behind Agent Mode.
@@ -693,6 +695,7 @@ class AppState: ObservableObject, AppStateProtocol {
     // Native tool system
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
+    var myDayService: MyDayService { nativeToolRegistry.myDayService }
     /// Installed skill packs (Plan BX). Actions merge into the registry below; re-merge after any
     /// install/remove/enable change via `refreshSkillPackTools()`.
     let skillPackStore: SkillPackStore
@@ -818,6 +821,10 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     init() {
+        let sharedEventKitStore = EventKitDayStore()
+        eventKitStore = sharedEventKitStore
+        proactiveAlerts = ProactiveAlertService(eventStore: sharedEventKitStore)
+
         // Initialize native tool system
         // Active project namespace for document scoping (Plan AN). Bind a local ref to
         // `userMemory` (already initialized + kept current by activePersona.didSet) so the
@@ -836,7 +843,8 @@ class AppState: ObservableObject, AppStateProtocol {
             medicalExportService: medicalExportService,
             semanticMemory: userMemory,
             documentStore: documentStore,
-            activeNamespace: { memoryForNamespace.activePersonaId ?? "global" }
+            activeNamespace: { memoryForNamespace.activePersonaId ?? "global" },
+            eventKitStore: sharedEventKitStore
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 

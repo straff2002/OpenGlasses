@@ -1,5 +1,4 @@
 import Foundation
-import EventKit
 import UserNotifications
 import UIKit
 
@@ -17,7 +16,11 @@ final class ProactiveAlertService: ObservableObject {
 
     private var checkTimer: Timer?
     private var alertedEventIds: Set<String> = []
-    private let eventStore = EKEventStore()
+    private let eventStore: EventKitDayStore
+
+    init(eventStore: EventKitDayStore? = nil) {
+        self.eventStore = eventStore ?? EventKitDayStore()
+    }
 
     /// Presence-aware throttle (Plan W). Injected by AppState; nil ⇒ full cadence (unchanged).
     weak var presence: PresenceMonitor?
@@ -97,25 +100,24 @@ final class ProactiveAlertService: ObservableObject {
         }
 
         // Check calendar access
-        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        guard eventStore.hasCalendarReadAccess else { return }
 
         let now = Date()
         let lookAhead = Calendar.current.date(byAdding: .minute, value: earlyAlertMinutes + 1, to: now)!
 
-        let predicate = eventStore.predicateForEvents(withStart: now, end: lookAhead, calendars: nil)
-        let events = eventStore.events(matching: predicate)
+        let events = eventStore.calendarEvents(from: now, to: lookAhead)
             .filter { !$0.isAllDay }
             .sorted { $0.startDate < $1.startDate }
 
         for event in events {
             let minutesUntil = Int(event.startDate.timeIntervalSince(now) / 60)
-            let eventKey = event.eventIdentifier ?? UUID().uuidString
+            let eventKey = event.id
 
             // Imminent alert (0-1 minutes)
             let imminentKey = "\(eventKey)-imminent"
             if minutesUntil <= imminentAlertMinutes && minutesUntil >= 0 && !alertedEventIds.contains(imminentKey) {
                 alertedEventIds.insert(imminentKey)
-                let title = event.title ?? "Event"
+                let title = event.title
                 var alert = "\(title) is starting now"
                 if let location = event.location, !location.isEmpty {
                     alert += " at \(location)"
@@ -137,7 +139,7 @@ final class ProactiveAlertService: ObservableObject {
                 let earlyKey = "\(eventKey)-early"
                 if minutesUntil <= earlyAlertMinutes && minutesUntil > imminentAlertMinutes && !alertedEventIds.contains(earlyKey) {
                     alertedEventIds.insert(earlyKey)
-                    let title = event.title ?? "Event"
+                    let title = event.title
                     var alert = "Heads up: \(title) starts in \(minutesUntil) minute\(minutesUntil == 1 ? "" : "s")"
                     if let location = event.location, !location.isEmpty {
                         alert += " at \(location)"

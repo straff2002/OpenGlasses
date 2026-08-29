@@ -1,231 +1,176 @@
 import Foundation
-import EventKit
 
-/// Creates and lists Apple Reminders, with optional due dates and location triggers.
-/// These are real iOS reminders that sync with iCloud and trigger notifications.
+/// Creates, lists, and completes Apple Reminders through the shared EventKit day store.
+/// My Day uses stable reminder IDs; conversational completion resolves a unique title and asks
+/// when multiple reminders match instead of silently completing the first substring.
 final class AppleRemindersTool: NativeTool, @unchecked Sendable {
     let name = "reminder"
-    let description = "Create or list Apple Reminders. Supports due dates and notifications. These sync with iCloud and appear in the Reminders app. Great for 'remind me to buy milk', 'remind me at 5pm to call John'."
+    let description = "Create, list, or complete Apple Reminders. Creation accepts an absolute ISO-8601 due_at value; completion can target an exact reminder ID or an unambiguous title."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
-            "action": [
+            "action": ["type": "string", "description": "Action: 'create', 'list', or 'complete'."],
+            "title": ["type": "string", "description": "Reminder text for create, or an exact title for complete."],
+            "due_at": [
                 "type": "string",
-                "description": "Action: 'create' to add a reminder, 'list' to show incomplete reminders, 'complete' to mark one done."
+                "description": "Optional absolute ISO-8601 due date/time for create, e.g. '2026-08-30T17:00:00+12:00'. Convert the user's words to this absolute value before calling the tool."
             ],
-            "title": [
-                "type": "string",
-                "description": "Reminder text (required for 'create')"
-            ],
-            "due_date": [
-                "type": "string",
-                "description": "Due date, e.g. '2025-03-18', 'tomorrow', 'tonight'. Optional."
-            ],
-            "due_time": [
-                "type": "string",
-                "description": "Due time, e.g. '17:00' or '5pm'. If set, triggers a notification at this time."
-            ],
-            "search": [
-                "type": "string",
-                "description": "Search term for 'complete' action to find the reminder to complete."
-            ]
+            "id": ["type": "string", "description": "Stable reminder ID for exact completion."],
+            "search": ["type": "string", "description": "Title to resolve for complete when no stable ID is available."]
         ],
         "required": ["action"]
     ]
 
-    private let eventStore = EKEventStore()
+    private let eventStore: EventKitDayStore
+    private let now: () -> Date
+
+    @MainActor
+    convenience init() {
+        self.init(eventStore: EventKitDayStore())
+    }
+
+    @MainActor
+    init(eventStore: EventKitDayStore, now: @escaping () -> Date = Date.init) {
+        self.eventStore = eventStore
+        self.now = now
+    }
 
     func execute(args: [String: Any]) async throws -> String {
-        // Request reminders access
-        let granted: Bool
-        if #available(iOS 17.0, *) {
-            granted = try await eventStore.requestFullAccessToReminders()
-        } else {
-            granted = try await eventStore.requestAccess(to: .reminder)
-        }
-
-        guard granted else {
+        guard try await eventStore.requestRemindersAccess() else {
             return "Reminders access denied. Please enable it in Settings > Privacy > Reminders."
         }
 
-        let action = (args["action"] as? String ?? "create").lowercased()
-
-        switch action {
-        case "create", "add", "set":
-            return try createReminder(args: args)
-        case "list", "show":
-            return await listReminders()
-        case "complete", "done", "finish":
-            return await completeReminder(args: args)
-        default:
-            return "Unknown action '\(action)'. Use: create, list, or complete."
+        switch (args["action"] as? String ?? "create").lowercased() {
+        case "create", "add", "set": return try createReminder(args: args)
+        case "list", "show": return await listReminders()
+        case "complete", "done", "finish": return await completeReminder(args: args)
+        default: return "Unknown action. Use: create, list, or complete."
         }
     }
 
     private func createReminder(args: [String: Any]) throws -> String {
-        guard let title = args["title"] as? String, !title.isEmpty else {
+        guard let title = (args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else {
             return "No reminder text provided."
         }
 
-        let reminder = EKReminder(eventStore: eventStore)
-        reminder.title = title
-        reminder.calendar = eventStore.defaultCalendarForNewReminders()
-
-        // Parse due date
-        var hasDueDate = false
-        let dateStr = (args["due_date"] as? String ?? "").lowercased()
-        let timeStr = args["due_time"] as? String
-
-        let calendar = Calendar.current
-        var dueDate: Date?
-
-        if dateStr == "tomorrow" {
-            dueDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))
-        } else if dateStr == "tonight" || dateStr == "today" {
-            dueDate = calendar.startOfDay(for: Date())
-            if timeStr == nil && dateStr == "tonight" {
-                dueDate = calendar.date(bySettingHour: 20, minute: 0, second: 0, of: Date())
-            }
-        } else if !dateStr.isEmpty {
-            dueDate = parseDate(dateStr)
+        let due: Date?
+        switch ReminderDuePolicy.validate(args["due_at"] as? String, now: now()) {
+        case .valid(let date): due = date
+        case .invalidISO8601:
+            return "The due_at value must be an absolute ISO-8601 date and time."
+        case .past:
+            return "That due date is in the past. Choose a future date or time."
         }
 
-        // Apply time
-        if let timeStr, let time = parseTime(timeStr) {
-            let base = dueDate ?? calendar.startOfDay(for: Date())
-            dueDate = calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: base)
-            hasDueDate = true
-        } else if dueDate != nil {
-            hasDueDate = true
-        }
-
-        if let dueDate, hasDueDate {
-            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
-            reminder.dueDateComponents = components
-
-            // Add alarm if we have a specific time
-            if timeStr != nil {
-                reminder.addAlarm(EKAlarm(absoluteDate: dueDate))
-            }
-        }
-
-        try eventStore.save(reminder, commit: true)
-
+        try eventStore.saveReminder(title: title, dueDate: due, hasTime: due != nil)
         var response = "Reminder set: '\(title)'"
-        if let dueDate, hasDueDate {
-            let formatter = DateFormatter()
-            if timeStr != nil {
-                formatter.dateFormat = "EEEE, MMM d 'at' h:mm a"
-            } else {
-                formatter.dateFormat = "EEEE, MMM d"
-            }
-            response += " due \(formatter.string(from: dueDate))"
-            if timeStr != nil {
-                response += ". You'll get a notification at that time"
-            }
+        if let due {
+            response += " due \(formatDueDate(due, hasTime: true))"
+            response += ". You'll get a notification at that time"
         }
-        response += "."
-        return response
+        return response + "."
     }
 
     private func listReminders() async -> String {
-        let calendars = eventStore.calendars(for: .reminder)
-        let predicate = eventStore.predicateForIncompleteReminders(
-            withDueDateStarting: nil,
-            ending: nil,
-            calendars: calendars
-        )
+        let reminders = await eventStore.incompleteReminders().sorted(by: Self.reminderOrder)
+        guard !reminders.isEmpty else { return "No incomplete reminders." }
 
-        let reminders = await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
-            }
+        let descriptions = reminders.prefix(10).map { reminder -> String in
+            guard let due = reminder.dueDate else { return reminder.title }
+            return "\(reminder.title) (due \(formatDueDate(due, hasTime: reminder.hasTime)))"
         }
-
-        guard !reminders.isEmpty else {
-            return "No incomplete reminders."
-        }
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "h:mm a"
-
-        let descriptions = reminders.prefix(10).map { rem -> String in
-            var desc = rem.title ?? "Untitled"
-            if let due = rem.dueDateComponents, let date = Calendar.current.date(from: due) {
-                if due.hour != nil {
-                    desc += " (due \(formatter.string(from: date)) at \(timeFormatter.string(from: date)))"
-                } else {
-                    desc += " (due \(formatter.string(from: date)))"
-                }
-            }
-            return desc
-        }
-
         var result = "\(reminders.count) reminder\(reminders.count == 1 ? "" : "s"): \(descriptions.joined(separator: ". "))."
-        if reminders.count > 10 {
-            result += " Plus \(reminders.count - 10) more."
-        }
+        if reminders.count > 10 { result += " Plus \(reminders.count - 10) more." }
         return result
     }
 
     private func completeReminder(args: [String: Any]) async -> String {
-        guard let search = args["search"] as? String ?? args["title"] as? String, !search.isEmpty else {
+        if let id = (args["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            return await completeExact(id: id)
+        }
+        guard let search = ((args["search"] as? String) ?? (args["title"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !search.isEmpty else {
             return "Tell me which reminder to complete."
         }
 
-        let calendars = eventStore.calendars(for: .reminder)
-        let predicate = eventStore.predicateForIncompleteReminders(
-            withDueDateStarting: nil,
-            ending: nil,
-            calendars: calendars
-        )
-
-        let reminders = await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
-            }
+        let reminders = await eventStore.incompleteReminders()
+        switch ReminderMatchPolicy.resolve(search: search, reminders: reminders) {
+        case .match(let id, _): return await completeExact(id: id)
+        case .ambiguous(let titles):
+            return "More than one reminder matches '\(search)': \(titles.joined(separator: ", ")). Say the exact title."
+        case .notFound: return "No incomplete reminder matching '\(search)'."
         }
+    }
 
-        let term = search.lowercased()
-        guard let match = reminders.first(where: { ($0.title ?? "").lowercased().contains(term) }) else {
-            return "No incomplete reminder matching '\(search)'."
-        }
-
-        match.isCompleted = true
+    private func completeExact(id: String) async -> String {
         do {
-            try eventStore.save(match, commit: true)
-            return "Marked '\(match.title ?? search)' as complete."
+            guard let title = try await eventStore.completeReminder(id: id) else {
+                return "That reminder is no longer available."
+            }
+            return "Marked '\(title)' as complete."
         } catch {
             return "Couldn't complete reminder: \(error.localizedDescription)"
         }
     }
 
-    private func parseDate(_ str: String) -> Date? {
+    private func formatDueDate(_ date: Date, hasTime: Bool) -> String {
         let formatter = DateFormatter()
-        for format in ["yyyy-MM-dd", "MM/dd/yyyy", "MMM d", "MMMM d"] {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: str) {
-                let cal = Calendar.current
-                var components = cal.dateComponents([.month, .day], from: date)
-                components.year = cal.component(.year, from: Date())
-                return cal.date(from: components)
-            }
-        }
-        return nil
+        formatter.dateFormat = hasTime ? "EEEE, MMM d 'at' h:mm a" : "EEEE, MMM d"
+        return formatter.string(from: date)
     }
 
-    private func parseTime(_ str: String) -> (hour: Int, minute: Int)? {
-        let cleaned = str.lowercased().trimmingCharacters(in: .whitespaces)
-        let formatter = DateFormatter()
-        for format in ["h:mm a", "ha", "h a", "HH:mm", "H:mm"] {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: cleaned) {
-                let cal = Calendar.current
-                return (cal.component(.hour, from: date), cal.component(.minute, from: date))
-            }
+    private static func reminderOrder(_ lhs: EventKitReminderRecord, _ rhs: EventKitReminderRecord) -> Bool {
+        if lhs.dueDate != rhs.dueDate {
+            return (lhs.dueDate ?? .distantFuture) < (rhs.dueDate ?? .distantFuture)
         }
-        return nil
+        if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+        return lhs.id < rhs.id
+    }
+}
+
+enum ReminderMatchResult: Equatable {
+    case match(id: String, title: String)
+    case ambiguous(titles: [String])
+    case notFound
+}
+
+enum ReminderDueValidation: Equatable {
+    case valid(Date?)
+    case invalidISO8601
+    case past
+}
+
+enum ReminderDuePolicy {
+    static func validate(_ value: String?, now: Date) -> ReminderDueValidation {
+        guard let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return .valid(nil)
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = formatter.date(from: text)
+        if date == nil {
+            formatter.formatOptions = [.withInternetDateTime]
+            date = formatter.date(from: text)
+        }
+        guard let date else { return .invalidISO8601 }
+        guard date > now else { return .past }
+        return .valid(date)
+    }
+}
+
+enum ReminderMatchPolicy {
+    static func resolve(search: String, reminders: [EventKitReminderRecord]) -> ReminderMatchResult {
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !term.isEmpty else { return .notFound }
+
+        let exact = reminders.filter { $0.title.lowercased() == term }
+        if exact.count == 1, let match = exact.first { return .match(id: match.id, title: match.title) }
+        if exact.count > 1 { return .ambiguous(titles: exact.map(\.title).sorted()) }
+
+        let partial = reminders.filter { $0.title.lowercased().contains(term) }
+        if partial.count == 1, let match = partial.first { return .match(id: match.id, title: match.title) }
+        if partial.count > 1 { return .ambiguous(titles: partial.map(\.title).sorted()) }
+        return .notFound
     }
 }

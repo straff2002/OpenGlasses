@@ -63,7 +63,7 @@ extension QRContextTool { var executionSemantics: ToolExecutionSemantics { .read
 extension VisionAssessTool {
     var executionSemantics: ToolExecutionSemantics { .read(timeout: .seconds(60)) }
 }
-/// Fans out to weather + news + datetime, so it inherits the slowest of them.
+/// Reads EventKit and weather through the shared deterministic My Day service.
 extension DailyBriefingTool {
     var executionSemantics: ToolExecutionSemantics { .read(timeout: .seconds(45)) }
 }

@@ -45,9 +45,21 @@ struct AppleIntegrationsSettingsScreen: View {
 
     @State private var disabledTools: Set<String> = Config.disabledTools
     @State private var permissionDeniedTool: String?
+    @AppStorage("myDayEnabled") private var myDayEnabled = false
 
     var body: some View {
         Form {
+            Section {
+                Toggle("My Day", isOn: $myDayEnabled)
+                    .onChange(of: myDayEnabled) { _, enabled in
+                        Config.setMyDayEnabled(enabled)
+                    }
+            } header: {
+                Text("Everyday Briefing")
+            } footer: {
+                Text("Adds a phone and spoken briefing of what matters next from Calendar, Reminders, and Weather. It does not require a display or save a separate copy of your day.")
+            }
+
             Section {
                 ForEach(Self.integrations) { integration in
                     integrationRow(integration)
