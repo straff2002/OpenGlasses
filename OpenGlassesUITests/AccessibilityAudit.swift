@@ -117,19 +117,6 @@ struct AuditDeferral {
             + "An audited secondary-copy token is an app-wide change; catalogued in the plan."
     )
 
-    /// The hero card's capability chips are drawn in `caption2`, the smallest text style, whose
-    /// scaling the system caps below the top of the accessibility range — so the audit reports
-    /// them as only partially supporting Dynamic Type at *every* size. At AX5 there is a second
-    /// problem on top: three chips cannot sit side by side, so each is squeezed into a narrow
-    /// column. Both fixes are design decisions on a shipped component — a larger text style, and
-    /// a chip row that wraps.
-    static let heroCardChipRow = AuditDeferral(
-        types: .dynamicType,
-        reason: "The hero device card's chips use `caption2`, whose scaling the system caps "
-            + "below the top of the accessibility range, and the row does not wrap. Both are "
-            + "design changes to a shipped component; catalogued in the plan."
-    )
-
     /// The tab bar is translucent, so an element scrolled underneath it is composited against a
     /// blur of itself. The audit samples the composited pixels and reports a contrast failure on
     /// text that is fully legible where the user actually reads it — `.primary` label copy, which

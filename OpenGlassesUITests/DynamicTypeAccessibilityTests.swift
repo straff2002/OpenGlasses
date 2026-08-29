@@ -49,8 +49,7 @@ final class DynamicTypeAccessibilityTests: AccessibilityAuditCase {
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub at AX5")
         audit(app, screen: "Settings hub — AX5",
-              deferring: [.secondaryCopyContrast, .heroCardChipRow,
-                          .contentUnderTheTabBar(of: app)])
+              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 
     /// The session surface at AX5 — the screen the checklist recorded as "Dynamic Type: deferred
