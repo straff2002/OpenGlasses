@@ -8,7 +8,7 @@ struct RecallAnswer: Equatable {
     var isEmpty: Bool { citations.isEmpty }
 }
 
-/// Cross-session recall (Phase 2): searches the `ConversationIndex` and summarizes the top
+/// Cross-session recall (Phase 2): searches the lock-scoped recall coordinator and summarizes the top
 /// turns into a cited answer. The summarizer is an injectable seam (wired in `AppState` to the
 /// user's active provider via `LLMService.completeStateless` — which honors on-device models),
 /// so the search→answer flow is unit-testable without a model. Shared singleton like
@@ -17,28 +17,41 @@ struct RecallAnswer: Equatable {
 final class RecallService: ObservableObject {
     static let shared = RecallService()
 
-    private var index: ConversationIndex?
+    private var coordinator: ConversationRecallCoordinator?
     /// (question, hits) → answer text. Injected by `configure`; nil → a plain bulleted fallback.
     var summarize: ((String, [RecallHit]) async -> String)?
 
-    var isConfigured: Bool { index != nil }
+    var isConfigured: Bool { coordinator != nil }
 
     init() {}
 
-    func configure(index: ConversationIndex,
+    func configure(coordinator: ConversationRecallCoordinator,
                    summarize: @escaping (String, [RecallHit]) async -> String) {
-        self.index = index
+        self.coordinator = coordinator
         self.summarize = summarize
     }
 
-    /// Raw search (no summarization).
-    func search(_ phrase: String, now: Date = Date(), limit: Int = 12) -> [RecallHit] {
-        index?.search(phrase: phrase, now: now, limit: limit) ?? []
+    /// Raw search with an explicit availability state. Callers must not turn locked, rebuilding,
+    /// or unavailable into a misleading empty-history answer.
+    func search(_ phrase: String, now: Date = Date(), limit: Int = 12) -> ConversationRecallSearchResult {
+        coordinator?.search(phrase, now: now, limit: limit) ?? .unavailable
     }
 
     /// Search + summarize into a cited answer.
     func recall(_ question: String, now: Date = Date()) async -> RecallAnswer {
-        let hits = search(question, now: now, limit: 8)
+        let hits: [RecallHit]
+        switch search(question, now: now, limit: 8) {
+        case .locked:
+            return RecallAnswer(summary: "Your conversations are locked. Unlock them to search past conversations.",
+                                citations: [])
+        case .rebuilding:
+            return RecallAnswer(summary: "Conversation recall is rebuilding after unlock. Try again shortly.",
+                                citations: [])
+        case .unavailable:
+            return RecallAnswer(summary: "Conversation recall is temporarily unavailable.", citations: [])
+        case .ready(let readyHits, _):
+            hits = readyHits
+        }
         guard !hits.isEmpty else {
             return RecallAnswer(
                 summary: "I couldn't find anything about that in our past conversations.",

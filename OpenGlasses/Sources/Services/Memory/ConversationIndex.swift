@@ -7,27 +7,32 @@ import SQLite3
 /// lexically sortable) so date-window filtering works with plain string comparisons.
 ///
 /// Pure data layer — no model, no UI, no `Wearables` — so it's fully headless-testable.
-final class ConversationIndex {
+final class ConversationIndex: @unchecked Sendable {
     private var db: OpaquePointer?
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     /// `text` is the only indexed column → FTS5 column index 3 for `snippet()`.
     private static let textColumnIndex: Int32 = 3
 
-    init(dbURL: URL) {
-        if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
-            NSLog("[ConversationIndex] Failed to open database at %@", dbURL.path)
+    private init(sqlitePath: String, useWAL: Bool) {
+        if sqlite3_open(sqlitePath, &db) != SQLITE_OK {
+            NSLog("[ConversationIndex] Failed to open database")
         }
-        exec("PRAGMA journal_mode=WAL")
+        if useWAL { exec("PRAGMA journal_mode=WAL") }
         exec("PRAGMA synchronous=NORMAL")
         createTable()
     }
 
-    /// Default location alongside the other on-device stores.
-    convenience init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        self.init(dbURL: docs.appendingPathComponent("conversation_index.sqlite"))
+    /// Production factory. The decrypted search projection exists only for this process and can be
+    /// destroyed immediately when the conversation store locks.
+    static func inMemory() -> ConversationIndex {
+        ConversationIndex(sqlitePath: ":memory:", useWAL: false)
+    }
+
+    /// File-backed initializer for SQLite integration tests only. Production composition must use
+    /// `inMemory()` so conversation text never becomes a second durable plaintext store.
+    convenience init(dbURL: URL) {
+        self.init(sqlitePath: dbURL.path, useWAL: true)
     }
 
     deinit { sqlite3_close(db) }
@@ -57,11 +62,20 @@ final class ConversationIndex {
         _ = sqlite3_step(stmt)
     }
 
-    /// Bulk index (first-run backfill), wrapped in one transaction.
-    func indexAll(_ turns: [IndexedTurn]) {
+    /// Bulk index (unlock-time rebuild), wrapped in one transaction. The cancellation check lets a
+    /// lock tear down a large rebuild without carrying on through the remaining decrypted turns.
+    @discardableResult
+    func indexAll(_ turns: [IndexedTurn], shouldCancel: () -> Bool = { false }) -> Bool {
         exec("BEGIN TRANSACTION")
-        for turn in turns { index(turn) }
+        for turn in turns {
+            if shouldCancel() {
+                exec("ROLLBACK")
+                return false
+            }
+            index(turn)
+        }
         exec("COMMIT")
+        return true
     }
 
     func delete(id: String) {
@@ -70,6 +84,22 @@ final class ConversationIndex {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        _ = sqlite3_step(stmt)
+    }
+
+    func delete(messageIDs: [String]) {
+        guard !messageIDs.isEmpty else { return }
+        exec("BEGIN TRANSACTION")
+        for id in messageIDs { delete(id: id) }
+        exec("COMMIT")
+    }
+
+    func delete(threadID: String) {
+        let sql = "DELETE FROM turns WHERE thread_id = ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, threadID, -1, SQLITE_TRANSIENT)
         _ = sqlite3_step(stmt)
     }
 

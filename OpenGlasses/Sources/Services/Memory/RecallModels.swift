@@ -3,7 +3,7 @@ import Foundation
 /// One conversation turn as fed to the recall index. A plain value type (decoupled from
 /// `ConversationStore`'s model) so the index + query builder are pure and headless-testable;
 /// Phase 2 maps `ConversationMessage` → `IndexedTurn`.
-struct IndexedTurn: Equatable {
+struct IndexedTurn: Equatable, Sendable {
     let id: String          // stable per message (ConversationMessage.id)
     let threadID: String
     let role: String        // "user" / "assistant" / "system"
@@ -12,7 +12,7 @@ struct IndexedTurn: Equatable {
 }
 
 /// A search hit from the conversation index: the matched turn plus an FTS snippet and rank.
-struct RecallHit: Equatable {
+struct RecallHit: Equatable, Sendable {
     let id: String
     let threadID: String
     let role: String
@@ -27,7 +27,7 @@ struct RecallHit: Equatable {
 /// A natural-language recall phrase parsed into an FTS5 query + optional date window.
 /// `match == nil` means "no text filter" (e.g. "what did we talk about yesterday") — the
 /// index then returns the most recent turns in the date window.
-struct ParsedQuery: Equatable {
+struct ParsedQuery: Equatable, Sendable {
     let match: String?
     let since: Date?
     let until: Date?
