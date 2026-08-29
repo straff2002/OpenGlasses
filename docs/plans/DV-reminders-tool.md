@@ -1,9 +1,11 @@
 # Plan DV — Reminders Tool
 
-**Status:** 📝 Drafted (2026-08-27)
+**Status:** 🟠 Core create/list/complete contract implemented through DY P0 (2026-08-30);
+location alarms, named lists, and notes remain
 **Origin:** 2026-08-27 ecosystem review — a gap two independent implementations surfaced: we have
-alarms, timers, geofences, and calendar, but no Reminders/EventKit integration at all (verified — no
-`EKReminder`/EventKit reference anywhere in `Sources/`).
+alarms, timers, geofences, and calendar, but originally had no planned Reminders/EventKit seam.
+`AppleRemindersTool` was subsequently added before this plan was reconciled; DY P0 now supplies the
+shared seam and corrects its date/completion behavior.
 **Priority:** Small, self-contained, high daily utility ("remind me to take the bins out when I get
 home" is a canonical glasses ask).
 
@@ -42,6 +44,19 @@ home" is a canonical glasses ask).
 5. **Permission is asked in context.** First use triggers the EventKit prompt via the existing
    consent-surface conventions (Plan BN); denial degrades to an honest "Reminders access is off —
    I can set a timer instead" with the alternative actually offered.
+
+## Implemented contract correction (2026-08-30)
+
+- `AppleRemindersTool` and My Day share the injected `EventKitDayStore`; fake My Day sources keep
+  unit tests off the real device store.
+- Create accepts an optional absolute ISO-8601 `due_at`, with pure invalid/past-date validation.
+- List returns deterministic due-date/priority order.
+- Completion accepts the stable EventKit calendar-item ID. Title fallback requires a unique exact
+  or substring match and reports ambiguity.
+- `daily_briefing` consumes the same typed reminders snapshot through My Day.
+
+The larger P1 scope below is not fully complete: notes, list selection, location alarms, saved-place
+resolution, and their hardware checks remain.
 
 ## Phases
 

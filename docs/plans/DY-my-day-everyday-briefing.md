@@ -1,6 +1,7 @@
 # Plan DY — My Day: Everyday Briefing and Preparation
 
-**Status:** 📝 Drafted (2026-08-29)
+**Status:** 🟠 P0/P1 MVP implemented and automated verification complete (2026-08-30);
+physical-device permission/audio and accessibility walkthroughs pending
 **Origin:** The opportunity assessment names Everyday Briefing as the P1 daily-retention loop and
 places it before differentiated intelligence such as the private-memory timeline.
 **Priority:** P1 everyday product, immediately after the DK privacy close-out.
@@ -39,6 +40,37 @@ Most primitives exist, but they are disconnected:
 
 The gap is orchestration, prioritization, one configuration surface, and honest degraded states—not
 more tools.
+
+## Implemented P0/P1 slice (2026-08-30)
+
+- `MyDayComposer` now produces a bounded typed snapshot from Calendar, Reminders, and Weather with
+  stable source identity, deterministic urgency/order/caps, morning/daytime/evening behavior, and a
+  deterministic spoken formatter. It does not call an LLM or persist source content.
+- `EventKitDayStore` is the single injected EventKit owner for `CalendarTool`,
+  `AppleRemindersTool`, `ProactiveAlertService`, and My Day. Unit tests use fake day sources and do
+  not touch a real `EKEventStore`.
+- Reminder creation now accepts only an optional absolute ISO-8601 `due_at`, rejects invalid/past
+  values through a pure policy, and completes by stable ID. Title fallback refuses ambiguous
+  matches instead of completing the first substring.
+- The `daily_briefing` tool name and Siri intent remain compatible, but both now return the same My
+  Day spoken snapshot. The built-in morning scheduler task also calls that service directly rather
+  than asking an agent to discover and rank the day.
+- A feature-flagged **My Day** phone tab supports loading, pull-to-refresh, empty, stale, denied,
+  offline/partial-source states, Calendar open, exact reminder completion, semantic text, and
+  VoiceOver-labelled actions. The toggle lives under **Works with your iPhone** and defaults off.
+- No display, HUD, waveguide, private-memory, news, digest, or travel-time dependency was added.
+
+P2 travel/leave-by and P3 digest/evening controls remain separate follow-ups.
+
+### Automated evidence (2026-08-30)
+
+- Focused My Day contract/service suite: 14 passed, 0 failures.
+- Full unit suite on iPhone 17 Pro Max / iOS 27 simulator: 3,757 passed, 4
+  environment-gated skips, 0 failures (3,761 total).
+- Release iOS Simulator build: passed.
+
+Still required before enabling by default: physical-device Calendar/Reminders denial and regrant,
+spoken-duration/privacy review, VoiceOver walkthrough, and largest Dynamic Type walkthrough.
 
 ## Decisions and invariants
 
@@ -145,7 +177,7 @@ preserve item count, source facts, times, and action labels or be rejected whole
 
 ## Phases
 
-### P0 — Contracts and source seams 🔴
+### P0 — Contracts and source seams ✅
 
 1. Add `MyDaySnapshot`, item/source/action types, `MyDayComposer`, deterministic spoken formatter,
    fake adapters, and exhaustive priority/cap/partial-availability tests.
@@ -156,7 +188,7 @@ preserve item count, source facts, times, and action labels or be rejected whole
 4. Add `Config.myDayEnabled`, default off during construction. The flag hides surfaces/triggers and
    never deletes source data.
 
-### P1 — On-demand My Day MVP 🟠
+### P1 — On-demand My Day MVP ✅
 
 1. Compose calendar, reminders, and weather into the phone view and spoken command.
 2. Replace `DailyBriefingTool`'s independent text assembly with the shared snapshot/composer; keep a
@@ -200,4 +232,3 @@ Complete when one shared deterministic snapshot powers phone, voice, Siri, and s
 calendar/reminder/weather partial failure is honest; the next commitment and leave-by agree across
 surfaces; reminder completion targets a stable ID; no display hardware is required; and the full
 unit, accessibility, Release, and oldest-device matrix is green.
-

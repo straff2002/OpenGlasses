@@ -176,7 +176,7 @@ Meta is actively funding accessibility and workforce uses through nearly $2 mill
 |---|---|---|
 | P0 | Trust, security and reliability | Complete before consumer expansion |
 | P0 | Keyless, five-minute onboarding | Default model or account sign-in; advanced providers later |
-| P1 | [Everyday Briefing](plans/DY-my-day-everyday-briefing.md) | Make this the daily retention loop |
+| P1 | [Everyday Briefing](plans/DY-my-day-everyday-briefing.md) | P0/P1 phone/audio MVP implemented; validate on device, then add leave-by |
 | P1 | See → Action | Make this the flagship visual interaction |
 | P1 | [Explicit private memory](plans/DX-private-memory-timeline.md) | High differentiation and repeat value; phone-first control surface after DK |
 | P1 | Accessibility bundle | High impact, partner-friendly and defensible |
