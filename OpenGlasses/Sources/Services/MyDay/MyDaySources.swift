@@ -25,6 +25,12 @@ protocol TravelTimeDaySource: AnyObject {
     func directionsURL(for eventID: String) -> URL?
 }
 
+@MainActor
+protocol DigestDaySource: AnyObject {
+    func loadDigest(now: Date) async -> MyDaySourceLoad<[MyDayDigestUpdate]>
+    func dismissDigestItem(id: String)
+}
+
 extension EventKitDayStore: CalendarDaySource {
     func loadEvents(from start: Date, to end: Date) async -> MyDaySourceLoad<[MyDayCalendarEvent]> {
         do {

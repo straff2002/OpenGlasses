@@ -7,6 +7,7 @@ import UIKit
 import CarPlay
 import MLXLLM
 import MediaPlayer
+import UserNotifications
 
 extension Notification.Name {
     static let onboardingCompleted = Notification.Name("onboardingCompleted")
@@ -607,6 +608,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let presenceMonitor = PresenceMonitor()
     /// Notification digest (Plan BZ): first-party event streams composed into one glance.
     let notificationDigest = NotificationDigestService()
+    /// My Day owns its own opt-in schedule; it does not depend on Agent Mode or an LLM.
+    lazy var myDayDelivery = MyDayScheduledDeliveryService(myDayService: myDayService)
     /// Turn-by-turn walking navigation (Plan CA).
     let walkingRoute = WalkingRouteService()
     /// Web HUD mirror server (Plan BP) — entitlement-free Ray-Ban Display web-view path.
@@ -1307,6 +1310,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Wire the battery/thermal power posture (Plan BV) to the device signals.
         configurePower()
+        myDayDelivery.start()
 
         // Tell VoiceOver what the session is doing (Plan DF P2).
         configureAccessibilityAnnouncements()
@@ -1808,10 +1812,40 @@ class AppState: ObservableObject, AppStateProtocol {
             self?.agentNotificationQueue.markDelivered(ids: ids)
         }
         notificationDigest.isOffline = { [weak self] in !(self?.reachability.isOnline ?? true) }
+        myDayService.setDigestSource(NotificationDigestDaySource(service: notificationDigest))
         agentNotificationQueue.onQueued = { [weak self] notification in
             self?.notificationDigest.ingest(
                 source: .agent, title: notification.message, priority: notification.priority,
                 threadKey: notification.id, awaitingReply: notification.priority == .high)
+        }
+
+        myDayDelivery.presence = { [weak self] in self?.presenceMonitor.mode ?? .away }
+        myDayDelivery.power = { PowerPolicyService.shared.posture }
+        myDayDelivery.isOnline = { [weak self] in self?.reachability.isOnline ?? false }
+        myDayDelivery.isBusy = { [weak self] in
+            guard let self else { return true }
+            return self.isProcessing || self.isListening || self.speechService.isSpeaking
+        }
+        myDayDelivery.sourceAccessReady = { [weak self] in
+            guard let self else { return false }
+            let included = MyDaySourceSelection.current
+            return (!included.calendar || self.eventKitStore.calendarAuthorizationIsResolved)
+                && (!included.reminders || self.eventKitStore.remindersAuthorizationIsResolved)
+        }
+        myDayDelivery.onDelivery = { [weak self] slot, text, shouldSpeak, identifier in
+            guard let self else { return }
+            self.lastResponse = text
+
+            let content = UNMutableNotificationContent()
+            content.title = "My Day"
+            content.body = "Your \(slot.rawValue) briefing is ready."
+            content.sound = shouldSpeak ? nil : .default
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
+
+            if shouldSpeak {
+                Task { await self.speechService.speak(text, mirrorToHUD: false) }
+            }
         }
         hudLauncher.digestHasContent = { [weak self] in self?.notificationDigest.hasContent ?? false }
         hudLauncher.openDigest = { [weak self] in

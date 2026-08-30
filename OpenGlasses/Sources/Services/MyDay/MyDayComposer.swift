@@ -33,8 +33,10 @@ struct MyDayComposer: Sendable {
            travel.eventStart < endOfTomorrow {
             ranked.append(leaveByItem(travel, now: now))
         }
-        if period == .evening, let firstTomorrow = tomorrowEvents.first {
+        let firstTomorrow = tomorrowEvents.first
+        if period == .evening, let firstTomorrow {
             ranked.append(tomorrowItem(firstTomorrow))
+            ranked.append(preparationItem(firstTomorrow))
         }
 
         for reminder in inputs.reminders {
@@ -53,6 +55,10 @@ struct MyDayComposer: Sendable {
             }
         }
 
+        for update in inputs.digestUpdates.prefix(MyDayDigestPolicy.limit) {
+            ranked.append(digestItem(update))
+        }
+
         let items = ranked
             .sorted(by: rankedOrder)
             .prefix(maxItems)
@@ -69,6 +75,8 @@ struct MyDayComposer: Sendable {
                     guard let due = $0.dueDate else { return false }
                     return $0.hasTime ? due < now : due < startOfToday
                 }.count,
+                period: period,
+                firstTomorrow: firstTomorrow,
                 travel: inputs.travel,
                 items: items
             ),
@@ -140,6 +148,25 @@ struct MyDayComposer: Sendable {
                 kind: .event,
                 title: event.title,
                 detail: "Tomorrow, \(event.isAllDay ? "all day" : formatTime(event.startDate))" + locationSuffix(event.location),
+                dueAt: event.startDate,
+                urgency: .upcoming,
+                actions: [.open]
+            )
+        )
+    }
+
+    private func preparationItem(_ event: MyDayCalendarEvent) -> RankedItem {
+        let timing = event.isAllDay
+            ? "Tomorrow, all day"
+            : "Tomorrow at \(formatTime(event.startDate))"
+        return RankedItem(
+            rank: 5,
+            secondaryRank: 1,
+            item: MyDayItem(
+                id: .init(source: .calendar, rawValue: "prepare:\(event.id)"),
+                kind: .preparation,
+                title: "Prepare for \(event.title)",
+                detail: timing + locationSuffix(event.location) + ". Check what you need before then.",
                 dueAt: event.startDate,
                 urgency: .upcoming,
                 actions: [.open]
@@ -234,6 +261,21 @@ struct MyDayComposer: Sendable {
         )
     }
 
+    private func digestItem(_ update: MyDayDigestUpdate) -> RankedItem {
+        RankedItem(
+            rank: 8,
+            item: MyDayItem(
+                id: .init(source: .digest, rawValue: update.id),
+                kind: .update,
+                title: update.title,
+                detail: update.detail,
+                dueAt: update.createdAt,
+                urgency: update.urgency,
+                actions: [.dismiss]
+            )
+        )
+    }
+
     private func rankedOrder(_ lhs: RankedItem, _ rhs: RankedItem) -> Bool {
         if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
         if lhs.item.dueAt != rhs.item.dueAt {
@@ -246,11 +288,19 @@ struct MyDayComposer: Sendable {
     private func headline(
         todayCommitments: Int,
         overdueReminders: Int,
+        period: MyDayPeriod,
+        firstTomorrow: MyDayCalendarEvent?,
         travel: MyDayTravelEstimate?,
         items: [MyDayItem]
     ) -> String {
         var parts: [String] = []
-        if todayCommitments > 0 {
+        if period == .evening, let firstTomorrow {
+            if firstTomorrow.isAllDay {
+                parts.append("tomorrow includes \(firstTomorrow.title) all day")
+            } else {
+                parts.append("tomorrow starts with \(firstTomorrow.title) at \(formatTime(firstTomorrow.startDate))")
+            }
+        } else if todayCommitments > 0 {
             parts.append("\(todayCommitments) commitment\(todayCommitments == 1 ? "" : "s") today")
         }
         if overdueReminders > 0 {
@@ -260,6 +310,9 @@ struct MyDayComposer: Sendable {
             parts.append("leave by \(formatTime(travel.leaveAt)) for \(travel.eventTitle)")
         }
         if parts.isEmpty {
+            if period == .evening {
+                return items.isEmpty ? "Your evening is clear." : "Here is what matters before tomorrow."
+            }
             return items.isEmpty ? "Your day is clear." : "Here is what matters today."
         }
         return parts.joined(separator: "; ") + "."

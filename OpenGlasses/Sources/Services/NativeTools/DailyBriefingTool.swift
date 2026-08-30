@@ -4,7 +4,7 @@ import Foundation
 /// Selection and time math happen in `MyDayComposer`; no model discovers or ranks commitments.
 struct DailyBriefingTool: NativeTool {
     let name = "daily_briefing"
-    let description = "Get My Day: a concise, authoritative briefing of today's calendar, due reminders, and weather."
+    let description = "Get My Day: a concise, authoritative briefing of calendar, due reminders, weather, leave-by guidance, preparation, and actionable first-party updates."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [:] as [String: Any],

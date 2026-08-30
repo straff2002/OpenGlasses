@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 /// Scheduled background tasks for the agent personality mode.
-/// Runs periodic prompts (morning briefing, email check, self-reflection)
+/// Runs periodic agent prompts (calendar checks, awareness, self-reflection)
 /// only when Agentic Features is enabled.
 @MainActor
 class AgentScheduler: ObservableObject {
@@ -10,8 +10,6 @@ class AgentScheduler: ObservableObject {
     @Published var lastRunTime: Date?
 
     private var timer: Timer?
-    private var morningBriefingDone = false
-
     weak var appState: AppState?
 
     /// Built-in scheduled tasks. Users can add more via quick actions.
@@ -28,14 +26,6 @@ class AgentScheduler: ObservableObject {
         var createdBy: String?     // Which agent created this task (for audit trail)
 
         static let defaults: [ScheduledTask] = [
-            ScheduledTask(
-                id: "morning-briefing",
-                name: "Morning Briefing",
-                prompt: "Build My Day from the authoritative Calendar, Reminders, and Weather sources.",
-                intervalMinutes: 0,  // 0 = once per day, on first activation
-                enabled: true,
-                speakResult: true
-            ),
             ScheduledTask(
                 id: "calendar-check",
                 name: "Upcoming Events",
@@ -78,7 +68,6 @@ class AgentScheduler: ObservableObject {
         guard timer == nil else { return }
 
         NSLog("[AgentScheduler] Starting")
-        morningBriefingDone = false
         scheduleNextCheck()
 
         // Run onboarding check immediately if needed
@@ -90,11 +79,6 @@ class AgentScheduler: ObservableObject {
             }
         }
 
-        // Morning briefing on first start of the day
-        Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            await checkMorningBriefing()
-        }
     }
 
     /// Schedule the next check based on glasses connection state.
@@ -150,37 +134,6 @@ class AgentScheduler: ObservableObject {
 
         await executeAgentPrompt(onboardingPrompt, speakResult: true)
         Config.setAgentOnboardingComplete(true)
-    }
-
-    // MARK: - Morning Briefing
-
-    private func checkMorningBriefing() async {
-        guard !morningBriefingDone else { return }
-        guard let appState, Config.agentModeEnabled else { return }
-        guard Config.myDayEnabled else { return }
-        guard !appState.isProcessing, !appState.isListening else { return }
-
-        let tasks = loadTasks()
-        guard let briefing = tasks.first(where: { $0.id == "morning-briefing" && $0.enabled }) else { return }
-
-        // Check if already run today
-        if let lastRun = briefing.lastRun, Calendar.current.isDateInToday(lastRun) {
-            morningBriefingDone = true
-            return
-        }
-
-        NSLog("[AgentScheduler] Running morning briefing")
-        let result = await appState.myDayService.spokenBriefing()
-        appState.lastResponse = result
-        if briefing.speakResult {
-            appState.agentNotificationQueue.enqueue(
-                message: result,
-                source: "My Day",
-                priority: .medium
-            )
-        }
-        morningBriefingDone = true
-        markTaskRun("morning-briefing")
     }
 
     // MARK: - Periodic Tasks
@@ -336,7 +289,7 @@ class AgentScheduler: ObservableObject {
     private func loadTasks() -> [ScheduledTask] {
         if let data = UserDefaults.standard.data(forKey: "agentScheduledTasks"),
            let tasks = try? JSONDecoder().decode([ScheduledTask].self, from: data) {
-            return tasks
+            return Self.withoutLegacyMyDayTask(tasks)
         }
         return ScheduledTask.defaults
     }
@@ -354,14 +307,18 @@ class AgentScheduler: ObservableObject {
     static func savedTasks() -> [ScheduledTask] {
         if let data = UserDefaults.standard.data(forKey: "agentScheduledTasks"),
            let tasks = try? JSONDecoder().decode([ScheduledTask].self, from: data) {
-            return tasks
+            return withoutLegacyMyDayTask(tasks)
         }
         return ScheduledTask.defaults
     }
 
     static func saveTasks(_ tasks: [ScheduledTask]) {
-        if let data = try? JSONEncoder().encode(tasks) {
+        if let data = try? JSONEncoder().encode(withoutLegacyMyDayTask(tasks)) {
             UserDefaults.standard.set(data, forKey: "agentScheduledTasks")
         }
+    }
+
+    private static func withoutLegacyMyDayTask(_ tasks: [ScheduledTask]) -> [ScheduledTask] {
+        tasks.filter { $0.id != "morning-briefing" }
     }
 }
