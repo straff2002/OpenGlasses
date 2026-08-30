@@ -44,9 +44,11 @@ struct MyDayDeliveryContext: Equatable {
     let isOnline: Bool
     let isBusy: Bool
     let sourceAccessReady: Bool
+    let isProtectedDataAvailable: Bool
 }
 
 enum MyDayDeliveryDeferral: Equatable {
+    case protectedData
     case quietHours
     case sourceAccess
 }
@@ -88,6 +90,7 @@ enum MyDayDeliveryPolicy {
             return .notDue
         }
 
+        guard context.isProtectedDataAvailable else { return .deferred(.protectedData) }
         if settings.quietHoursEnabled,
            isQuiet(
                minute: minute,
@@ -141,16 +144,20 @@ final class MyDayScheduledDeliveryService: ObservableObject {
     var isOnline: () -> Bool = { false }
     var isBusy: () -> Bool = { true }
     var sourceAccessReady: () -> Bool = { false }
+    var protectedDataAvailable: () -> Bool = { false }
     var onDelivery: ((MyDayDeliverySlot, String, Bool, String) -> Void)?
 
     private let myDayService: MyDayService
-    private let calendar: Calendar
+    private let calendarProvider: () -> Calendar
     private var timer: Timer?
     private var checkInFlight = false
 
-    init(myDayService: MyDayService, calendar: Calendar = .current) {
+    init(
+        myDayService: MyDayService,
+        calendarProvider: @escaping () -> Calendar = { .autoupdatingCurrent }
+    ) {
         self.myDayService = myDayService
-        self.calendar = calendar
+        self.calendarProvider = calendarProvider
     }
 
     func start() {
@@ -173,21 +180,22 @@ final class MyDayScheduledDeliveryService: ObservableObject {
 
         let decision = MyDayDeliveryPolicy.decide(
             now: now,
-            calendar: calendar,
+            calendar: calendarProvider(),
             settings: settings(),
             context: .init(
                 presence: presence(),
                 power: power(),
                 isOnline: isOnline(),
                 isBusy: isBusy(),
-                sourceAccessReady: sourceAccessReady()
+                sourceAccessReady: sourceAccessReady(),
+                isProtectedDataAvailable: protectedDataAvailable()
             ),
             lastMorningDayKey: Config.myDayLastMorningDeliveryDay,
             lastEveningDayKey: Config.myDayLastEveningDeliveryDay
         )
         guard case .deliver(let slot, let dayKey, let speak) = decision else { return }
 
-        let text = await myDayService.spokenBriefing(now: now)
+        let text = await myDayService.spokenBriefing(now: now, channel: .scheduled)
         switch slot {
         case .morning: Config.myDayLastMorningDeliveryDay = dayKey
         case .evening: Config.myDayLastEveningDeliveryDay = dayKey

@@ -1,7 +1,7 @@
 # Plan DY — My Day: Everyday Briefing and Preparation
 
-**Status:** 🟠 P0/P1/P2/P3 implemented and automated verification complete (2026-08-30);
-physical-device routing, permission/audio, and accessibility walkthroughs pending
+**Status:** 🟠 P0–P4 implementation and automated verification complete (2026-08-31);
+physical-device routing, permission/lock/audio, oldest-phone latency, and accessibility walkthroughs pending
 **Origin:** The opportunity assessment names Everyday Briefing as the P1 daily-retention loop and
 places it before differentiated intelligence such as the private-memory timeline.
 **Priority:** P1 everyday product, immediately after the DK privacy close-out.
@@ -99,17 +99,57 @@ more tools.
 - Quiet hours defer delivery. Away, busy, offline, and power-reserve states still refresh and expose
   the deterministic phone briefing, while suppressing private speech.
 
-### Automated evidence (2026-08-30)
+### Implemented P4 slice (2026-08-31)
+
+- My Day now asks for an autoupdating calendar on every refresh and scheduled-delivery evaluation,
+  so timezone and daylight-saving changes do not require recreating the service. EventKit access
+  checks return immediately for an existing grant or denial and request only while status is
+  undetermined, allowing a later Settings regrant to appear on the next refresh.
+- The deterministic composer and route-candidate policy keep overlapping and all-day events
+  distinct, never route all-day/virtual/blank-location events, and retain the authoritative event
+  when routing or weather is unavailable.
+- Scheduled delivery explicitly defers while iOS protected data is unavailable and does not consume
+  the occurrence marker. On-demand refresh also refuses to touch source adapters while locked and
+  returns content-free unlock guidance; a later unlocked refresh loads the sources normally.
+- Spoken output has a deterministic 35-second estimated ceiling using both word and character
+  budgets. Partial-source warnings are admitted before item detail. Actual timing still depends on
+  the installed voice and accessibility speech settings and remains a physical-device check.
+- `MyDayMetricsStore` is local-only aggregate learning behind a closed enum API. It counts opt-ins,
+  phone/voice/scheduled briefing requests, reminder/event/directions actions, dismissals, one
+  seven-day return, latency buckets, and spoken-duration buckets. It has no free-form payload,
+  event log, network/export path, or field capable of recording titles, locations, reminder text,
+  notification bodies, or generated speech.
+
+### Automated evidence (2026-08-31)
 
 - Focused My Day contract/service suite: 14 passed, 0 failures.
 - Focused P2 My Day/travel/digest suite: 41 passed, 0 failures.
 - Focused P3 My Day/digest/delivery suite: 51 passed, 0 failures.
-- Full unit suite on iPhone 17 Pro / iOS 27 simulator: 3,774 passed, 4
-  environment-gated skips, 0 failures (3,778 total).
-- Release iOS Simulator build: passed.
+- P4-only hardening/privacy suite on iPhone 17 Pro / iOS 27 simulator: 11 passed, 0 skips,
+  0 failures. It covers dynamic timezone refresh, DST skipped/repeated civil times, overlapping and
+  all-day events, missing/virtual locations, route failure, offline weather, locked protected data,
+  denial-to-regrant source transitions, fixed-vocabulary metrics, seven-day return, latency
+  bucketing, and the estimated spoken-duration ceiling. EventKit/MapKit/lock tests use injected
+  seams; they do not represent physical-device validation.
+- Current focused My Day composer/service/travel/delivery/P4 matrix on iPhone 17 / iOS 27 simulator:
+  41 passed, 0 skips, 0 failures.
+- Full unit suite on iPhone 17 / iOS 27 simulator: 3,785 passed, 4 environment-gated skips,
+  0 failures (3,789 total).
+- Release iOS Simulator build with Xcode 27: passed.
 
-Still required before enabling by default: physical-device Calendar/Reminders denial and regrant,
-spoken-duration/privacy review, VoiceOver walkthrough, and largest Dynamic Type walkthrough.
+### Physical-device-only verification still required
+
+No physical-device checks were performed for P4. Before enabling My Day by default, run and record:
+
+- Calendar and Reminders system-sheet denial, Settings regrant, and the next-refresh recovery path;
+- a live timezone change and both DST-boundary scenarios against EventKit data;
+- all-day, overlapping, and missing-location events from real calendar accounts;
+- successful and failed MapKit routes plus offline Weather behavior on the supported network stack;
+- locked-phone scheduled delivery, unlock retry, generic notification content, and absence of private
+  speech while locked/away;
+- snapshot latency and actual spoken duration on the oldest supported iPhone, including installed
+  voices and accessibility speech-rate variants; and
+- VoiceOver and largest Dynamic Type walkthroughs on the phone surfaces.
 
 ## Decisions and invariants
 
@@ -253,14 +293,16 @@ preserve item count, source facts, times, and action labels or be rejected whole
 3. Add the complete phone settings surface and opt-in scheduled delivery with presence, quiet-hour,
    offline, and power gates.
 
-### P4 — Release and learning 🟡
+### P4 — Release and learning 🟠 implementation/automation complete; device matrix pending
 
-1. Device tests for permission denial/regrant, timezone and daylight-saving changes, all-day and
-   overlapping events, no-location events, route failure, offline weather, and locked phone.
-2. Measure snapshot latency and speech duration on the oldest supported phone; no source content in
-   telemetry.
-3. Track opt-in, briefings requested, actions taken, dismissals, and seven-day return without
-   recording titles, locations, reminder text, or generated speech.
+1. Automated seams cover permission denial/regrant, timezone and daylight-saving changes, all-day
+   and overlapping events, no-location events, route failure, offline weather, and locked-phone
+   policy. The corresponding physical-device matrix above remains required.
+2. Snapshot latency and estimated speech duration are recorded in content-free buckets; the oldest
+   supported phone measurement and actual voice timing remain required.
+3. Local-only aggregate metrics track opt-in, briefings requested, actions taken, dismissals, and
+   seven-day return without recording titles, locations, reminder text, notification bodies, or
+   generated speech. ✅
 
 ## Rollout and exit criteria
 

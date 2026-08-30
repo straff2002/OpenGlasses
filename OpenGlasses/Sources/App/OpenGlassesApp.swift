@@ -1826,6 +1826,12 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return true }
             return self.isProcessing || self.isListening || self.speechService.isSpeaking
         }
+        myDayService.protectedDataAvailable = {
+            UIApplication.shared.isProtectedDataAvailable
+        }
+        myDayDelivery.protectedDataAvailable = {
+            UIApplication.shared.isProtectedDataAvailable
+        }
         myDayDelivery.sourceAccessReady = { [weak self] in
             guard let self else { return false }
             let included = MyDaySourceSelection.current

@@ -139,6 +139,7 @@ struct MyDayView: View {
         } else if item.actions.contains(.directions),
                   let url = service.directionsURL(for: item.id) {
             Button {
+                service.recordAction(.startDirections)
                 openURL(url)
             } label: {
                 Image(systemName: "arrow.triangle.turn.up.right.diamond")
@@ -159,6 +160,7 @@ struct MyDayView: View {
             .accessibilityLabel("Dismiss \(item.title)")
         } else if item.actions.contains(.open), let dueAt = item.dueAt {
             Button {
+                service.recordAction(.openEvent)
                 let seconds = dueAt.timeIntervalSinceReferenceDate
                 if let url = URL(string: "calshow:\(seconds)") { openURL(url) }
             } label: {
@@ -273,6 +275,7 @@ struct MyDayHomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button("Set Up My Day") {
+                    MyDayMetricsStore.shared.record(.optedIn, at: Date())
                     isEnabled = true
                 }
                 .buttonStyle(.borderedProminent)

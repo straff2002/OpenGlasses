@@ -45,16 +45,32 @@ final class EventKitDayStore {
 
     func requestCalendarAccess() async throws -> Bool {
         if #available(iOS 17.0, *) {
-            return try await eventStore.requestFullAccessToEvents()
+            switch EKEventStore.authorizationStatus(for: .event) {
+            case .fullAccess: return true
+            case .notDetermined: return try await eventStore.requestFullAccessToEvents()
+            default: return false
+            }
         }
-        return try await eventStore.requestAccess(to: .event)
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .authorized: return true
+        case .notDetermined: return try await eventStore.requestAccess(to: .event)
+        default: return false
+        }
     }
 
     func requestRemindersAccess() async throws -> Bool {
         if #available(iOS 17.0, *) {
-            return try await eventStore.requestFullAccessToReminders()
+            switch EKEventStore.authorizationStatus(for: .reminder) {
+            case .fullAccess: return true
+            case .notDetermined: return try await eventStore.requestFullAccessToReminders()
+            default: return false
+            }
         }
-        return try await eventStore.requestAccess(to: .reminder)
+        switch EKEventStore.authorizationStatus(for: .reminder) {
+        case .authorized: return true
+        case .notDetermined: return try await eventStore.requestAccess(to: .reminder)
+        default: return false
+        }
     }
 
     func calendarEvents(from start: Date, to end: Date) -> [EventKitCalendarRecord] {
@@ -113,9 +129,9 @@ final class EventKitDayStore {
         reminder.title = title
         reminder.calendar = eventStore.defaultCalendarForNewReminders()
         if let dueDate {
-            var components = Calendar.current.dateComponents([.year, .month, .day], from: dueDate)
+            var components = Calendar.autoupdatingCurrent.dateComponents([.year, .month, .day], from: dueDate)
             if hasTime {
-                let time = Calendar.current.dateComponents([.hour, .minute], from: dueDate)
+                let time = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: dueDate)
                 components.hour = time.hour
                 components.minute = time.minute
                 reminder.addAlarm(EKAlarm(absoluteDate: dueDate))
@@ -149,7 +165,7 @@ final class EventKitDayStore {
 
     private static func record(from reminder: EKReminder) -> EventKitReminderRecord {
         let components = reminder.dueDateComponents
-        let date = components.flatMap { Calendar.current.date(from: $0) }
+        let date = components.flatMap { Calendar.autoupdatingCurrent.date(from: $0) }
         return EventKitReminderRecord(
             id: reminder.calendarItemIdentifier,
             title: reminder.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled",
