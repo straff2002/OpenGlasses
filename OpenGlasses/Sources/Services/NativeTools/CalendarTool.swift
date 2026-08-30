@@ -1,5 +1,4 @@
 import Foundation
-import EventKit
 
 /// Provides calendar access: view today's events, upcoming meetings, and create new events.
 final class CalendarTool: NativeTool, @unchecked Sendable {
@@ -36,16 +35,22 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         "required": ["action"]
     ]
 
-    private let eventStore = EKEventStore()
+    private let eventStore: EventKitDayStore
+
+    @MainActor
+    convenience init() {
+        self.init(eventStore: EventKitDayStore())
+    }
+
+    @MainActor
+    init(eventStore: EventKitDayStore) {
+        self.eventStore = eventStore
+    }
 
     func execute(args: [String: Any]) async throws -> String {
         // Request calendar access
         let granted: Bool
-        if #available(iOS 17.0, *) {
-            granted = try await eventStore.requestFullAccessToEvents()
-        } else {
-            granted = try await eventStore.requestAccess(to: .event)
-        }
+        granted = try await eventStore.requestCalendarAccess()
 
         guard granted else {
             return "Calendar access denied. Please enable calendar access in Settings > Privacy > Calendars."
@@ -74,8 +79,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
-        let predicate = eventStore.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: nil)
-        let events = eventStore.events(matching: predicate).sorted { $0.startDate < $1.startDate }
+        let events = eventStore.calendarEvents(from: startOfDay, to: endOfDay)
 
         guard !events.isEmpty else {
             return "Your calendar is clear today. No events scheduled."
@@ -85,9 +89,9 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         formatter.dateFormat = "h:mm a"
 
         let descriptions = events.map { event -> String in
-            var desc = "\(formatter.string(from: event.startDate)): \(event.title ?? "Untitled")"
+            var desc = "\(formatter.string(from: event.startDate)): \(event.title)"
             if event.isAllDay {
-                desc = "All day: \(event.title ?? "Untitled")"
+                desc = "All day: \(event.title)"
             }
             if let location = event.location, !location.isEmpty {
                 desc += " at \(location)"
@@ -103,8 +107,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))!
         let endOfTomorrow = calendar.date(byAdding: .day, value: 1, to: tomorrow)!
 
-        let predicate = eventStore.predicateForEvents(withStart: tomorrow, end: endOfTomorrow, calendars: nil)
-        let events = eventStore.events(matching: predicate).sorted { $0.startDate < $1.startDate }
+        let events = eventStore.calendarEvents(from: tomorrow, to: endOfTomorrow)
 
         guard !events.isEmpty else {
             return "No events scheduled for tomorrow."
@@ -114,9 +117,9 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         formatter.dateFormat = "h:mm a"
 
         let descriptions = events.map { event -> String in
-            var desc = "\(formatter.string(from: event.startDate)): \(event.title ?? "Untitled")"
+            var desc = "\(formatter.string(from: event.startDate)): \(event.title)"
             if event.isAllDay {
-                desc = "All day: \(event.title ?? "Untitled")"
+                desc = "All day: \(event.title)"
             }
             if let location = event.location, !location.isEmpty {
                 desc += " at \(location)"
@@ -131,8 +134,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         let now = Date()
         let endDate = Calendar.current.date(byAdding: .day, value: 7, to: now)!
 
-        let predicate = eventStore.predicateForEvents(withStart: now, end: endDate, calendars: nil)
-        let events = eventStore.events(matching: predicate)
+        let events = eventStore.calendarEvents(from: now, to: endDate)
             .filter { !$0.isAllDay }
             .sorted { $0.startDate < $1.startDate }
 
@@ -148,7 +150,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
             let timeStr = formatter.string(from: next.startDate)
             let minsUntil = Int(next.startDate.timeIntervalSince(now) / 60)
 
-            var desc = "Next up: \(next.title ?? "Untitled") at \(timeStr)"
+            var desc = "Next up: \(next.title) at \(timeStr)"
             if minsUntil > 0 {
                 if minsUntil < 60 {
                     desc += " (in \(minsUntil) minute\(minsUntil == 1 ? "" : "s"))"
@@ -164,7 +166,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
             return desc + "."
         } else {
             formatter.dateFormat = "EEEE 'at' h:mm a"
-            var desc = "Next up: \(next.title ?? "Untitled") on \(formatter.string(from: next.startDate))"
+            var desc = "Next up: \(next.title) on \(formatter.string(from: next.startDate))"
             if let location = next.location, !location.isEmpty {
                 desc += " at \(location)"
             }
@@ -176,8 +178,7 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
 
-        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
-        let events = eventStore.events(matching: predicate).sorted { $0.startDate < $1.startDate }
+        let events = eventStore.calendarEvents(from: start, to: end)
 
         guard !events.isEmpty else {
             return "No events in the next \(days) days."
@@ -193,9 +194,9 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
                       Calendar.current.isDateInTomorrow(event.startDate) ? "Tomorrow" :
                       dayFormatter.string(from: event.startDate)
             if event.isAllDay {
-                return "\(day): \(event.title ?? "Untitled") (all day)"
+                return "\(day): \(event.title) (all day)"
             }
-            return "\(day) \(timeFormatter.string(from: event.startDate)): \(event.title ?? "Untitled")"
+            return "\(day) \(timeFormatter.string(from: event.startDate)): \(event.title)"
         }
 
         var result = "Upcoming (\(events.count) event\(events.count == 1 ? "" : "s")): \(descriptions.joined(separator: ". "))."
@@ -235,20 +236,13 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         let durationMinutes = (args["duration_minutes"] as? Int) ?? 60
         let endDate = calendar.date(byAdding: .minute, value: durationMinutes, to: startDate)!
 
-        let event = EKEvent(eventStore: eventStore)
-        event.title = title
-        event.startDate = startDate
-        event.endDate = endDate
-        event.calendar = eventStore.defaultCalendarForNewEvents
-        if let location = args["location"] as? String {
-            event.location = location
-        }
-
-        // Add a default alert 15 minutes before
-        event.addAlarm(EKAlarm(relativeOffset: -900))
-
         do {
-            try eventStore.save(event, span: .thisEvent)
+            try eventStore.saveCalendarEvent(
+                title: title,
+                startDate: startDate,
+                endDate: endDate,
+                location: args["location"] as? String
+            )
             let formatter = DateFormatter()
             formatter.dateFormat = "EEEE, MMM d 'at' h:mm a"
             var result = "Created: '\(title)' on \(formatter.string(from: startDate)) (\(durationMinutes) min)"

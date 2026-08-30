@@ -175,6 +175,16 @@ struct ScheduledTasksView: View {
 
     private func runTaskNow(_ task: AgentScheduler.ScheduledTask) async {
         guard !appState.isProcessing else { return }
+        if task.id == "morning-briefing" {
+            guard Config.myDayEnabled else {
+                appState.lastResponse = "My Day is off. Turn it on in Settings under Works with your iPhone."
+                return
+            }
+            let result = await appState.myDayService.spokenBriefing()
+            appState.lastResponse = result
+            if task.speakResult { await appState.speechService.speak(result) }
+            return
+        }
         await appState.sendTextMessage(task.prompt)
     }
 }

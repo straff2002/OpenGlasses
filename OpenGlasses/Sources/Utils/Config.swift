@@ -2748,6 +2748,14 @@ struct Config {
 
     static func setAudioOnlyMode(_ enabled: Bool) { audioOnlyMode = enabled }
 
+    // MARK: - My Day
+
+    /// Phone/audio-first everyday briefing. Off by default while the MVP rolls out; disabling it
+    /// hides its surface and scheduled trigger without changing Calendar or Reminders data.
+    @UserDefaultsBacked("myDayEnabled", default: false) static var myDayEnabled: Bool
+
+    static func setMyDayEnabled(_ enabled: Bool) { myDayEnabled = enabled }
+
     // MARK: - Glasses Display (in-lens HUD)
 
     /// When enabled, AI responses and ambient captions are mirrored to the
@@ -3626,4 +3634,3 @@ struct Config {
 
     static func setLocalAgentEnabled(_ value: Bool) { localAgentEnabled = value }
 }
-

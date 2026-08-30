@@ -30,10 +30,10 @@ struct MemoryRewindIntent: AppIntent {
     }
 }
 
-/// Weather + news + calendar rundown, spoken by Siri.
+/// Calendar + reminders + weather My Day rundown, spoken by Siri.
 struct DailyBriefingIntent: AppIntent {
     static var title: LocalizedStringResource = "Daily Briefing"
-    static var description = IntentDescription("Get a spoken briefing with weather, news, and your day ahead")
+    static var description = IntentDescription("Get a spoken My Day briefing with your calendar, due reminders, and weather")
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = false

@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class NativeToolRegistry {
     private var tools: [String: any NativeTool] = [:]
+    let myDayService: MyDayService
 
     init(locationService: LocationService, conversationStore: ConversationStore? = nil,
          faceRecognitionService: FaceRecognitionService? = nil, cameraService: CameraService? = nil,
@@ -15,10 +16,18 @@ final class NativeToolRegistry {
          medicalExportService: MedicalExportService? = nil,
          semanticMemory: SemanticMemoryStore? = nil,
          documentStore: DocumentStore? = nil,
-         activeNamespace: (() -> String)? = nil) {
+         activeNamespace: (() -> String)? = nil,
+         eventKitStore: EventKitDayStore? = nil) {
+        let eventKitStore = eventKitStore ?? EventKitDayStore()
         let weatherTool = WeatherTool(locationService: locationService)
         let newsTool = NewsTool()
         let dateTimeTool = DateTimeTool()
+        let myDayService = MyDayService(
+            calendarSource: eventKitStore,
+            remindersSource: eventKitStore,
+            weatherSource: NativeWeatherDaySource(weatherTool: weatherTool)
+        )
+        self.myDayService = myDayService
 
         register(weatherTool)
         register(dateTimeTool)
@@ -39,7 +48,7 @@ final class NativeToolRegistry {
         register(ShazamTool())
         register(CurrencyTool())
         register(MusicControlTool())
-        register(DailyBriefingTool(weatherTool: weatherTool, newsTool: newsTool, dateTimeTool: dateTimeTool))
+        register(DailyBriefingTool(myDayService: myDayService))
         register(ClipboardTool())
         register(PhoneCallTool())
         register(FlashlightTool())
@@ -54,9 +63,9 @@ final class NativeToolRegistry {
         register(ListSavedLocationsTool(locationService: locationService))
         register(PedometerTool())
         register(EmergencyInfoTool(locationService: locationService))
-        register(CalendarTool())
+        register(CalendarTool(eventStore: eventKitStore))
         register(ContactsTool())
-        register(AppleRemindersTool())
+        register(AppleRemindersTool(eventStore: eventKitStore))
         register(AlarmTool())
         register(BrightnessTool())
         register(HomeKitTool())

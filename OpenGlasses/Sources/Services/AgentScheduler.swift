@@ -31,7 +31,7 @@ class AgentScheduler: ObservableObject {
             ScheduledTask(
                 id: "morning-briefing",
                 name: "Morning Briefing",
-                prompt: "Use your tools to check: 1) today's calendar events, 2) any due reminders, 3) current weather. Summarize in 3-4 spoken sentences. If the day is completely empty, still mention the weather.",
+                prompt: "Build My Day from the authoritative Calendar, Reminders, and Weather sources.",
                 intervalMinutes: 0,  // 0 = once per day, on first activation
                 enabled: true,
                 speakResult: true
@@ -157,6 +157,7 @@ class AgentScheduler: ObservableObject {
     private func checkMorningBriefing() async {
         guard !morningBriefingDone else { return }
         guard let appState, Config.agentModeEnabled else { return }
+        guard Config.myDayEnabled else { return }
         guard !appState.isProcessing, !appState.isListening else { return }
 
         let tasks = loadTasks()
@@ -169,12 +170,14 @@ class AgentScheduler: ObservableObject {
         }
 
         NSLog("[AgentScheduler] Running morning briefing")
-        let outcome = await executeAgentPrompt(briefing.prompt, speakResult: briefing.speakResult)
-        guard outcome == .completed else {
-            // Deferred (on-device model, backgrounded) — leave morningBriefingDone false
-            // so the next foreground check re-runs it today.
-            NSLog("[AgentScheduler] Morning briefing deferred — will retry when foregrounded")
-            return
+        let result = await appState.myDayService.spokenBriefing()
+        appState.lastResponse = result
+        if briefing.speakResult {
+            appState.agentNotificationQueue.enqueue(
+                message: result,
+                source: "My Day",
+                priority: .medium
+            )
         }
         morningBriefingDone = true
         markTaskRun("morning-briefing")
