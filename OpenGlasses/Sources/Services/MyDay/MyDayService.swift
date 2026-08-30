@@ -18,7 +18,13 @@ final class MyDayService: ObservableObject {
     private let sourceSelection: () -> MyDaySourceSelection
     private let composer: MyDayComposer
     private let spokenFormatter: MyDaySpokenFormatter
-    private let calendar: Calendar
+    private let calendarProvider: () -> Calendar
+    private let metrics: any MyDayMetricsRecording
+    private let monotonicNow: () -> TimeInterval
+
+    /// EventKit and the content-bearing snapshot are not touched while iOS protected data is
+    /// unavailable. AppState replaces this default with UIApplication's live lock-state signal.
+    var protectedDataAvailable: () -> Bool = { true }
 
     init(
         calendarSource: any CalendarDaySource,
@@ -29,7 +35,9 @@ final class MyDayService: ObservableObject {
         sourceSelection: @escaping () -> MyDaySourceSelection = { .current },
         composer: MyDayComposer = MyDayComposer(),
         spokenFormatter: MyDaySpokenFormatter = MyDaySpokenFormatter(),
-        calendar: Calendar = .current
+        calendarProvider: @escaping () -> Calendar = { .autoupdatingCurrent },
+        metrics: any MyDayMetricsRecording = MyDayMetricsStore.shared,
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.calendarSource = calendarSource
         self.remindersSource = remindersSource
@@ -39,21 +47,50 @@ final class MyDayService: ObservableObject {
         self.sourceSelection = sourceSelection
         self.composer = composer
         self.spokenFormatter = spokenFormatter
-        self.calendar = calendar
+        self.calendarProvider = calendarProvider
+        self.metrics = metrics
+        self.monotonicNow = monotonicNow
     }
 
     @discardableResult
-    func refresh(now: Date = Date()) async -> MyDaySnapshot {
+    func refresh(
+        now: Date = Date(),
+        channel: MyDayBriefingChannel? = .phone
+    ) async -> MyDaySnapshot {
+        let refreshStartedAt = monotonicNow()
+        if let channel {
+            metrics.record(.briefingRequested(channel), at: now)
+        }
         let previous: MyDaySnapshot?
         if case .loaded(let snapshot) = state { previous = snapshot } else { previous = nil }
         state = .loading(previous: previous)
 
+        let calendar = calendarProvider()
+        let refreshComposer = MyDayComposer(
+            calendar: calendar,
+            locale: composer.locale,
+            maxItems: composer.maxItems
+        )
         let start = calendar.startOfDay(for: now)
         let end = calendar.date(byAdding: .day, value: 2, to: start) ?? now
         // Calendar and Reminders can each show a first-use system permission sheet. Keep those in
         // sequence; weather and the first-party digest have no permission prompt and can run beside
         // them. Travel starts after Calendar because it consumes that authoritative event set.
         let selection = sourceSelection()
+        guard protectedDataAvailable() else {
+            let snapshot = refreshComposer.compose(
+                inputs: .init(
+                    events: [],
+                    reminders: [],
+                    weather: nil,
+                    sourceStates: lockedSourceStates(for: selection)
+                ),
+                now: now
+            )
+            state = .loaded(snapshot)
+            recordLatency(since: refreshStartedAt, at: now)
+            return snapshot
+        }
         async let weatherLoad = loadWeather(enabled: selection.weather)
         async let digestLoad = loadDigest(enabled: selection.digest, now: now)
         let events = await loadEvents(enabled: selection.calendar, from: start, to: end)
@@ -68,7 +105,7 @@ final class MyDayService: ObservableObject {
         let digest = await digestLoad
         let sourceStates = [events?.state, reminders?.state, weather?.state, travel?.state, digest?.state]
             .compactMap { $0 }
-        let snapshot = composer.compose(
+        let snapshot = refreshComposer.compose(
             inputs: MyDayInputs(
                 events: events?.value ?? [],
                 reminders: reminders?.value ?? [],
@@ -80,11 +117,20 @@ final class MyDayService: ObservableObject {
             now: now
         )
         state = .loaded(snapshot)
+        recordLatency(since: refreshStartedAt, at: now)
         return snapshot
     }
 
-    func spokenBriefing(now: Date = Date()) async -> String {
-        spokenFormatter.format(await refresh(now: now))
+    func spokenBriefing(
+        now: Date = Date(),
+        channel: MyDayBriefingChannel = .voice
+    ) async -> String {
+        let text = spokenFormatter.format(await refresh(now: now, channel: channel))
+        metrics.record(
+            .spokenDuration(.init(seconds: MyDaySpeechPolicy.estimatedDuration(for: text))),
+            at: now
+        )
+        return text
     }
 
     func directionsURL(for itemID: MyDayItemID) -> URL? {
@@ -100,15 +146,21 @@ final class MyDayService: ObservableObject {
 
     @discardableResult
     func dismissDigestItem(id: String, now: Date = Date()) async -> MyDaySnapshot {
+        metrics.record(.dismissal, at: now)
         digestSource?.dismissDigestItem(id: id)
-        return await refresh(now: now)
+        return await refresh(now: now, channel: nil)
     }
 
     @discardableResult
     func completeReminder(id: String, now: Date = Date()) async throws -> String? {
+        metrics.record(.action(.completeReminder), at: now)
         let title = try await remindersSource.completeReminder(id: id)
-        _ = await refresh(now: now)
+        _ = await refresh(now: now, channel: nil)
         return title
+    }
+
+    func recordAction(_ action: MyDayActionMetric, at date: Date = Date()) {
+        metrics.record(.action(action), at: date)
     }
 
     private func loadEvents(
@@ -145,5 +197,23 @@ final class MyDayService: ObservableObject {
     ) async -> MyDaySourceLoad<[MyDayDigestUpdate]>? {
         guard enabled, let digestSource else { return nil }
         return await digestSource.loadDigest(now: now)
+    }
+
+    private func lockedSourceStates(for selection: MyDaySourceSelection) -> [MyDaySourceState] {
+        let message = "Unlock iPhone to refresh My Day."
+        return [
+            selection.calendar ? .unavailable(.calendar, message: message) : nil,
+            selection.reminders ? .unavailable(.reminders, message: message) : nil,
+            selection.weather ? .unavailable(.weather, message: message) : nil,
+            selection.travel ? .unavailable(.travel, message: message) : nil,
+            selection.digest ? .unavailable(.digest, message: message) : nil,
+        ].compactMap { $0 }
+    }
+
+    private func recordLatency(since start: TimeInterval, at date: Date) {
+        metrics.record(
+            .snapshotLatency(.init(seconds: max(0, monotonicNow() - start))),
+            at: date
+        )
     }
 }

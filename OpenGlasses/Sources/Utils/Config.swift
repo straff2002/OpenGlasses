@@ -2754,7 +2754,12 @@ struct Config {
     /// hides its surface and scheduled trigger without changing Calendar or Reminders data.
     @UserDefaultsBacked("myDayEnabled", default: false) static var myDayEnabled: Bool
 
-    static func setMyDayEnabled(_ enabled: Bool) { myDayEnabled = enabled }
+    static func setMyDayEnabled(_ enabled: Bool) {
+        myDayEnabled = enabled
+        if enabled {
+            MyDayMetricsStore.shared.record(.optedIn, at: Date())
+        }
+    }
 
     @UserDefaultsBacked("myDayTransportMode", default: MyDayTransportMode.walking.rawValue)
     private static var myDayTransportModeRaw: String

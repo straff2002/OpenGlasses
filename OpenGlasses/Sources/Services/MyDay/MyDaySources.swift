@@ -129,7 +129,7 @@ final class NativeWeatherDaySource: WeatherDaySource {
         return decisionWords.contains { text.contains($0) }
     }
 
-    private static func looksUnavailable(_ summary: String) -> Bool {
+    static func looksUnavailable(_ summary: String) -> Bool {
         let text = summary.lowercased()
         return text.contains("can't get the weather")
             || text.contains("weather service is temporarily unavailable")

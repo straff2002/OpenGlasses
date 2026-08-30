@@ -131,7 +131,8 @@ final class MyDayDeliveryPolicyTests: XCTestCase {
             power: power,
             isOnline: online,
             isBusy: busy,
-            sourceAccessReady: access
+            sourceAccessReady: access,
+            isProtectedDataAvailable: true
         )
     }
 

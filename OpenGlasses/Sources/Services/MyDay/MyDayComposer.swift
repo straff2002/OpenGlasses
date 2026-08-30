@@ -5,7 +5,7 @@ struct MyDayComposer: Sendable {
     let locale: Locale
     let maxItems: Int
 
-    init(calendar: Calendar = .current, locale: Locale = .current, maxItems: Int = 6) {
+    init(calendar: Calendar = .autoupdatingCurrent, locale: Locale = .autoupdatingCurrent, maxItems: Int = 6) {
         self.calendar = calendar
         self.locale = locale
         self.maxItems = max(1, maxItems)
@@ -342,21 +342,69 @@ struct MyDayComposer: Sendable {
     }
 }
 
+enum MyDaySpeechPolicy {
+    /// A conservative deterministic ceiling for the normal iOS speech rate. Actual device timing
+    /// remains a physical-device release check because installed voices and accessibility speech
+    /// settings vary.
+    static let maximumDuration: TimeInterval = 35
+    static let wordsPerSecond = 2.4
+    static let charactersPerSecond = 15.0
+    static let maximumWords = Int(maximumDuration * wordsPerSecond)
+    static let maximumCharacters = Int(maximumDuration * charactersPerSecond)
+
+    static func estimatedDuration(for text: String) -> TimeInterval {
+        let words = text.split(whereSeparator: { $0.isWhitespace }).count
+        return max(
+            Double(words) / wordsPerSecond,
+            Double(text.count) / charactersPerSecond
+        )
+    }
+
+    static func bounded(_ text: String) -> String {
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        var result = words.prefix(maximumWords).joined(separator: " ")
+        if result.count > maximumCharacters - 1 {
+            result = String(result.prefix(maximumCharacters - 1))
+            if let lastSpace = result.lastIndex(of: " ") {
+                result = String(result[..<lastSpace])
+            }
+        }
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.count < text.trimmingCharacters(in: .whitespacesAndNewlines).count else {
+            return result
+        }
+        return result.trimmingCharacters(in: .punctuationCharacters) + "…"
+    }
+}
+
 struct MyDaySpokenFormatter: Sendable {
     func format(_ snapshot: MyDaySnapshot) -> String {
-        var sentences = [snapshot.headline]
-        sentences.append(contentsOf: snapshot.items.map { item in
+        var candidates = [snapshot.headline]
+
+        let unavailable = snapshot.sourceStates.filter { $0.availability != .available }
+        if !unavailable.isEmpty {
+            let names = unavailable.map { $0.source.displayName }.joined(separator: " and ")
+            candidates.append("\(names) \(unavailable.count == 1 ? "is" : "are") unavailable.")
+        }
+
+        candidates.append(contentsOf: snapshot.items.map { item in
             if let detail = item.detail, !detail.isEmpty {
                 return "\(item.title): \(detail)."
             }
             return "\(item.title)."
         })
 
-        let unavailable = snapshot.sourceStates.filter { $0.availability != .available }
-        if !unavailable.isEmpty {
-            let names = unavailable.map { $0.source.displayName }.joined(separator: " and ")
-            sentences.append("\(names) \(unavailable.count == 1 ? "is" : "are") unavailable.")
+        var result = ""
+        for candidate in candidates {
+            let proposed = result.isEmpty ? candidate : result + " " + candidate
+            if MyDaySpeechPolicy.estimatedDuration(for: proposed) <= MyDaySpeechPolicy.maximumDuration {
+                result = proposed
+            } else if result.isEmpty {
+                result = MyDaySpeechPolicy.bounded(candidate)
+            } else {
+                break
+            }
         }
-        return sentences.joined(separator: " ")
+        return MyDaySpeechPolicy.bounded(result)
     }
 }
