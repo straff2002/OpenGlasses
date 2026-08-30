@@ -28,6 +28,11 @@ struct MyDayComposer: Sendable {
         for event in todayEvents {
             ranked.append(eventItem(event, now: now))
         }
+        if let travel = inputs.travel,
+           travel.eventStart > now,
+           travel.eventStart < endOfTomorrow {
+            ranked.append(leaveByItem(travel, now: now))
+        }
         if period == .evening, let firstTomorrow = tomorrowEvents.first {
             ranked.append(tomorrowItem(firstTomorrow))
         }
@@ -64,6 +69,7 @@ struct MyDayComposer: Sendable {
                     guard let due = $0.dueDate else { return false }
                     return $0.hasTime ? due < now : due < startOfToday
                 }.count,
+                travel: inputs.travel,
                 items: items
             ),
             items: items,
@@ -151,7 +157,7 @@ struct MyDayComposer: Sendable {
             reminder.hasTime ? due < now : due < startOfToday
         } ?? false
         let isDueToday = reminder.dueDate.map { $0 >= startOfToday && $0 < startOfTomorrow } ?? false
-        let rank = isOverdue ? 1 : (isDueToday ? 3 : 6)
+        let rank = isOverdue ? 2 : (isDueToday ? 3 : 6)
         let urgency: MyDayUrgency = isOverdue ? .important : (isDueToday ? .upcoming : .routine)
 
         let detail: String?
@@ -174,6 +180,41 @@ struct MyDayComposer: Sendable {
                 dueAt: reminder.dueDate,
                 urgency: urgency,
                 actions: [.complete, .open]
+            )
+        )
+    }
+
+    private func leaveByItem(_ estimate: MyDayTravelEstimate, now: Date) -> RankedItem {
+        let secondsUntilLeave = estimate.leaveAt.timeIntervalSince(now)
+        let urgency: MyDayUrgency
+        if secondsUntilLeave <= 0 {
+            urgency = .immediate
+        } else if secondsUntilLeave <= 30 * 60 {
+            urgency = .important
+        } else {
+            urgency = .upcoming
+        }
+
+        let title = secondsUntilLeave <= 0
+            ? "Leave now for \(estimate.eventTitle)"
+            : "Leave by \(formatTime(estimate.leaveAt)) for \(estimate.eventTitle)"
+        let routeMinutes = max(1, Int((estimate.travelDuration / 60).rounded()))
+        let bufferMinutes = max(0, Int((estimate.bufferDuration / 60).rounded()))
+        var detail = "\(routeMinutes) min \(estimate.mode.displayName.lowercased()) to \(estimate.destination)"
+        if bufferMinutes > 0 {
+            detail += " + \(bufferMinutes) min buffer"
+        }
+
+        return RankedItem(
+            rank: 1,
+            item: MyDayItem(
+                id: .init(source: .travel, rawValue: "leave-by:\(estimate.eventID)"),
+                kind: .leaveBy,
+                title: title,
+                detail: detail,
+                dueAt: estimate.leaveAt,
+                urgency: urgency,
+                actions: [.directions]
             )
         )
     }
@@ -202,13 +243,21 @@ struct MyDayComposer: Sendable {
         return lhs.item.id < rhs.item.id
     }
 
-    private func headline(todayCommitments: Int, overdueReminders: Int, items: [MyDayItem]) -> String {
+    private func headline(
+        todayCommitments: Int,
+        overdueReminders: Int,
+        travel: MyDayTravelEstimate?,
+        items: [MyDayItem]
+    ) -> String {
         var parts: [String] = []
         if todayCommitments > 0 {
             parts.append("\(todayCommitments) commitment\(todayCommitments == 1 ? "" : "s") today")
         }
         if overdueReminders > 0 {
             parts.append("\(overdueReminders) overdue reminder\(overdueReminders == 1 ? "" : "s")")
+        }
+        if let travel, items.contains(where: { $0.kind == .leaveBy }) {
+            parts.append("leave by \(formatTime(travel.leaveAt)) for \(travel.eventTitle)")
         }
         if parts.isEmpty {
             return items.isEmpty ? "Your day is clear." : "Here is what matters today."

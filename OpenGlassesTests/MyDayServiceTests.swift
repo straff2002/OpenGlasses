@@ -30,6 +30,44 @@ final class MyDayServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.items.isEmpty)
     }
 
+    func testRefreshLoadsTravelFromCalendarEventsAndExposesDirections() async {
+        let now = Date(timeIntervalSince1970: 1_788_065_600)
+        let start = now.addingTimeInterval(3600)
+        let event = MyDayCalendarEvent(
+            id: "event-with-location",
+            title: "Dentist",
+            startDate: start,
+            endDate: start.addingTimeInterval(1800),
+            isAllDay: false,
+            location: "Queen Street Dental"
+        )
+        let sources = FakeDaySources(events: [event])
+        sources.travel = .init(
+            eventID: event.id,
+            eventTitle: event.title,
+            destination: "Queen Street Dental",
+            eventStart: start,
+            travelDuration: 20 * 60,
+            bufferDuration: 10 * 60,
+            leaveAt: now.addingTimeInterval(1800),
+            mode: .walking
+        )
+        let service = MyDayService(
+            calendarSource: sources,
+            remindersSource: sources,
+            weatherSource: sources,
+            travelSource: sources
+        )
+
+        let snapshot = await service.refresh(now: now)
+
+        XCTAssertEqual(sources.travelEventIDs, [event.id])
+        let leaveBy = snapshot.items.first { $0.kind == .leaveBy }
+        XCTAssertEqual(leaveBy?.id.rawValue, "leave-by:event-with-location")
+        XCTAssertEqual(service.directionsURL(for: leaveBy!.id)?.absoluteString,
+                       "https://maps.apple.com/?daddr=Queen%20Street%20Dental")
+    }
+
     func testStableReminderCompletionRefreshesSnapshot() async throws {
         let now = Date()
         let sources = FakeDaySources(reminders: [
@@ -75,14 +113,17 @@ final class MyDayServiceTests: XCTestCase {
 }
 
 @MainActor
-private final class FakeDaySources: CalendarDaySource, RemindersDaySource, WeatherDaySource {
+private final class FakeDaySources: CalendarDaySource, RemindersDaySource, WeatherDaySource,
+                                    TravelTimeDaySource {
     var events: [MyDayCalendarEvent]
     var reminders: [MyDayReminder]
     var weather: MyDayWeather?
+    var travel: MyDayTravelEstimate?
     var calendarState = MyDaySourceState.available(.calendar)
     var remindersState = MyDaySourceState.available(.reminders)
     var weatherState = MyDaySourceState.available(.weather)
     var completedIDs: [String] = []
+    var travelEventIDs: [String] = []
 
     init(events: [MyDayCalendarEvent] = [], reminders: [MyDayReminder] = [], weather: MyDayWeather? = nil) {
         self.events = events
@@ -106,5 +147,20 @@ private final class FakeDaySources: CalendarDaySource, RemindersDaySource, Weath
 
     func loadWeather() async -> MyDaySourceLoad<MyDayWeather?> {
         .init(value: weather, state: weatherState)
+    }
+
+    func loadTravel(
+        for events: [MyDayCalendarEvent],
+        now: Date
+    ) async -> MyDaySourceLoad<MyDayTravelEstimate?> {
+        travelEventIDs = events.map(\.id)
+        return .init(value: travel, state: .available(.travel))
+    }
+
+    func directionsURL(for eventID: String) -> URL? {
+        guard travel?.eventID == eventID else { return nil }
+        var components = URLComponents(string: "https://maps.apple.com/")
+        components?.queryItems = [URLQueryItem(name: "daddr", value: travel?.destination)]
+        return components?.url
     }
 }

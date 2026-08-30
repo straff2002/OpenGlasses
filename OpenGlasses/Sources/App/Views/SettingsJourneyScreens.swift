@@ -46,6 +46,11 @@ struct AppleIntegrationsSettingsScreen: View {
     @State private var disabledTools: Set<String> = Config.disabledTools
     @State private var permissionDeniedTool: String?
     @AppStorage("myDayEnabled") private var myDayEnabled = false
+    @AppStorage("myDayTransportMode") private var myDayTransportMode = MyDayTransportMode.walking.rawValue
+    @AppStorage("myDayTravelBufferMinutes") private var myDayTravelBufferMinutes = 10
+    @AppStorage("myDayTravelOrigin") private var myDayTravelOrigin = MyDayTravelOrigin.currentLocation.rawValue
+    @AppStorage("myDayHomeAddress") private var myDayHomeAddress = ""
+    @AppStorage("myDayWorkAddress") private var myDayWorkAddress = ""
 
     var body: some View {
         Form {
@@ -54,10 +59,41 @@ struct AppleIntegrationsSettingsScreen: View {
                     .onChange(of: myDayEnabled) { _, enabled in
                         Config.setMyDayEnabled(enabled)
                     }
+
+                if myDayEnabled {
+                    Picker("Travel mode", selection: $myDayTransportMode) {
+                        ForEach(MyDayTransportMode.allCases, id: \.rawValue) { mode in
+                            Text(mode.displayName).tag(mode.rawValue)
+                        }
+                    }
+
+                    Stepper(
+                        "Leave-by buffer: \(myDayTravelBufferMinutes) min",
+                        value: $myDayTravelBufferMinutes,
+                        in: 0...60,
+                        step: 5
+                    )
+
+                    Picker("Start from", selection: $myDayTravelOrigin) {
+                        ForEach(MyDayTravelOrigin.allCases, id: \.rawValue) { origin in
+                            Text(origin.displayName).tag(origin.rawValue)
+                        }
+                    }
+
+                    if myDayTravelOrigin == MyDayTravelOrigin.home.rawValue {
+                        TextField("Home address", text: $myDayHomeAddress)
+                            .textContentType(.fullStreetAddress)
+                            .autocorrectionDisabled()
+                    } else if myDayTravelOrigin == MyDayTravelOrigin.work.rawValue {
+                        TextField("Work address", text: $myDayWorkAddress)
+                            .textContentType(.fullStreetAddress)
+                            .autocorrectionDisabled()
+                    }
+                }
             } header: {
                 Text("Everyday Briefing")
             } footer: {
-                Text("Adds a phone and spoken briefing of what matters next from Calendar, Reminders, and Weather. It does not require a display or save a separate copy of your day.")
+                Text("Adds a phone and spoken briefing from Calendar, Reminders, Weather, and a short-lived Maps travel estimate for the next event with a physical location. Event locations and routes are not saved by OpenGlasses.")
             }
 
             Section {

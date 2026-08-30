@@ -17,9 +17,15 @@ final class ProactiveAlertService: ObservableObject {
     private var checkTimer: Timer?
     private var alertedEventIds: Set<String> = []
     private let eventStore: EventKitDayStore
+    private let travelSource: (any TravelTimeDaySource)?
+    private var checkInFlight = false
 
-    init(eventStore: EventKitDayStore? = nil) {
+    init(
+        eventStore: EventKitDayStore? = nil,
+        travelSource: (any TravelTimeDaySource)? = nil
+    ) {
         self.eventStore = eventStore ?? EventKitDayStore()
+        self.travelSource = travelSource
     }
 
     /// Presence-aware throttle (Plan W). Injected by AppState; nil ⇒ full cadence (unchanged).
@@ -28,6 +34,10 @@ final class ProactiveAlertService: ObservableObject {
 
     /// Callback to speak an alert through TTS, with an urgency for rate/prefix.
     var onAlert: ((String, TextToSpeechService.SpeechUrgency) -> Void)?
+
+    /// One structured ingest path for the first-party digest. Stable IDs make an alert an upsert
+    /// across foreground checks and process restarts instead of a second notification source.
+    var onDigestItem: ((String, String, Date?, TextToSpeechService.SpeechUrgency) -> Void)?
 
     /// Callback to auto-create a playbook from a calendar event's agenda/notes
     var onMeetingPlaybook: ((String, String, [String]) -> Void)?
@@ -49,12 +59,10 @@ final class ProactiveAlertService: ObservableObject {
 
         // Check immediately, then on interval
         throttle.reset()   // the immediate check below always runs
-        checkForAlerts()
+        scheduleAlertCheck()
 
         checkTimer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.checkForAlerts()
-            }
+            Task { @MainActor [weak self] in self?.scheduleAlertCheck() }
         }
 
         NSLog("[ProactiveAlerts] Started — checking every %.0fs", checkInterval)
@@ -80,16 +88,26 @@ final class ProactiveAlertService: ObservableObject {
     func resumeAlerts() {
         guard isRunning, checkTimer == nil else { return }
         checkTimer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.checkForAlerts()
-            }
+            Task { @MainActor [weak self] in self?.scheduleAlertCheck() }
         }
         NSLog("[ProactiveAlerts] Resumed after foreground")
     }
 
     // MARK: - Alert Checking
 
-    private func checkForAlerts() {
+    private func scheduleAlertCheck() {
+        guard !checkInFlight else { return }
+        checkInFlight = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.checkForAlerts()
+            self.checkInFlight = false
+        }
+    }
+
+    private func checkForAlerts() async {
+        guard isRunning else { return }
+
         // Presence throttle (Plan W): calendar alerts are time-sensitive, so they floor at `.present`
         // — never slower than 2× base and never paused merely because the user is idle (the existing
         // background path still pauses them when truly away). This trims redundant calendar queries
@@ -109,21 +127,52 @@ final class ProactiveAlertService: ObservableObject {
             .filter { !$0.isAllDay }
             .sorted { $0.startDate < $1.startDate }
 
+        var travelEstimate: MyDayTravelEstimate?
+        var leaveByAlert: MyDayLeaveByAlert?
+        if Config.myDayEnabled, let travelSource {
+            let travelEnd = Calendar.current.date(byAdding: .hour, value: 6, to: now) ?? lookAhead
+            let travelEvents = eventStore.calendarEvents(from: now, to: travelEnd).map {
+                MyDayCalendarEvent(
+                    id: $0.id,
+                    title: $0.title,
+                    startDate: $0.startDate,
+                    endDate: $0.endDate,
+                    isAllDay: $0.isAllDay,
+                    location: $0.location
+                )
+            }
+            let load = await travelSource.loadTravel(for: travelEvents, now: now)
+            guard isRunning else { return }
+            travelEstimate = load.value
+            if let estimate = load.value {
+                leaveByAlert = MyDayLeaveByAlertPolicy.alert(for: estimate, now: now)
+            }
+        }
+
+        var imminentEventIDs = Set<String>()
+
         for event in events {
             let minutesUntil = Int(event.startDate.timeIntervalSince(now) / 60)
-            let eventKey = event.id
+            let occurrence = Int(event.startDate.timeIntervalSince1970)
+            let eventKey = "calendar:\(event.id):\(occurrence)"
 
             // Imminent alert (0-1 minutes)
             let imminentKey = "\(eventKey)-imminent"
             if minutesUntil <= imminentAlertMinutes && minutesUntil >= 0 && !alertedEventIds.contains(imminentKey) {
                 alertedEventIds.insert(imminentKey)
+                imminentEventIDs.insert(event.id)
                 let title = event.title
                 var alert = "\(title) is starting now"
                 if let location = event.location, !location.isEmpty {
                     alert += " at \(location)"
                 }
                 alert += "."
-                deliverAlert(alert, urgency: .high)
+                deliverAlert(
+                    alert,
+                    urgency: .high,
+                    stableID: imminentKey,
+                    eventDate: event.startDate
+                )
 
                 // Auto-create playbook from calendar event notes/agenda
                 if let notes = event.notes, !notes.isEmpty {
@@ -137,7 +186,11 @@ final class ProactiveAlertService: ObservableObject {
             // Early alert (around 10 minutes)
             else {
                 let earlyKey = "\(eventKey)-early"
-                if minutesUntil <= earlyAlertMinutes && minutesUntil > imminentAlertMinutes && !alertedEventIds.contains(earlyKey) {
+                let hasLeaveBy = travelEstimate?.eventID == event.id
+                if !hasLeaveBy,
+                   minutesUntil <= earlyAlertMinutes,
+                   minutesUntil > imminentAlertMinutes,
+                   !alertedEventIds.contains(earlyKey) {
                     alertedEventIds.insert(earlyKey)
                     let title = event.title
                     var alert = "Heads up: \(title) starts in \(minutesUntil) minute\(minutesUntil == 1 ? "" : "s")"
@@ -145,9 +198,28 @@ final class ProactiveAlertService: ObservableObject {
                         alert += " at \(location)"
                     }
                     alert += "."
-                    deliverAlert(alert, urgency: .medium)
+                    deliverAlert(
+                        alert,
+                        urgency: .medium,
+                        stableID: earlyKey,
+                        eventDate: event.startDate
+                    )
                 }
             }
+        }
+
+        if let leaveByAlert,
+           !imminentEventIDs.contains(leaveByAlert.eventID),
+           Config.myDayLastDeliveredLeaveByID != leaveByAlert.id,
+           !alertedEventIds.contains(leaveByAlert.id) {
+            alertedEventIds.insert(leaveByAlert.id)
+            Config.myDayLastDeliveredLeaveByID = leaveByAlert.id
+            deliverAlert(
+                leaveByAlert.message,
+                urgency: .high,
+                stableID: leaveByAlert.id,
+                eventDate: leaveByAlert.eventStart
+            )
         }
 
         // Clean up old event IDs (keep last 100 max)
@@ -156,12 +228,18 @@ final class ProactiveAlertService: ObservableObject {
         }
     }
 
-    private func deliverAlert(_ message: String, urgency: TextToSpeechService.SpeechUrgency = .medium) {
+    private func deliverAlert(
+        _ message: String,
+        urgency: TextToSpeechService.SpeechUrgency = .medium,
+        stableID: String,
+        eventDate: Date?
+    ) {
         lastAlert = message
         NSLog("[ProactiveAlerts] %@", message)
 
         // Speak through TTS if callback is set
         onAlert?(message, urgency)
+        onDigestItem?(stableID, message, eventDate, urgency)
 
         // Also send a local notification in case the app is backgrounded
         let content = UNMutableNotificationContent()
@@ -171,7 +249,7 @@ final class ProactiveAlertService: ObservableObject {
         content.interruptionLevel = .timeSensitive
 
         let request = UNNotificationRequest(
-            identifier: "proactive-\(UUID().uuidString)",
+            identifier: "proactive-\(stableID)",
             content: content,
             trigger: nil // Deliver immediately
         )

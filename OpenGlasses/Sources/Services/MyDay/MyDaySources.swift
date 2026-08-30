@@ -16,6 +16,15 @@ protocol WeatherDaySource: AnyObject {
     func loadWeather() async -> MyDaySourceLoad<MyDayWeather?>
 }
 
+@MainActor
+protocol TravelTimeDaySource: AnyObject {
+    func loadTravel(
+        for events: [MyDayCalendarEvent],
+        now: Date
+    ) async -> MyDaySourceLoad<MyDayTravelEstimate?>
+    func directionsURL(for eventID: String) -> URL?
+}
+
 extension EventKitDayStore: CalendarDaySource {
     func loadEvents(from start: Date, to end: Date) async -> MyDaySourceLoad<[MyDayCalendarEvent]> {
         do {

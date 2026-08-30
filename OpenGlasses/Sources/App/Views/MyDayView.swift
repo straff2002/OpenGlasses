@@ -136,6 +136,17 @@ struct MyDayView: View {
             .buttonStyle(.plain)
             .foregroundStyle(accent)
             .accessibilityLabel("Complete \(item.title)")
+        } else if item.actions.contains(.directions),
+                  let url = service.directionsURL(for: item.id) {
+            Button {
+                openURL(url)
+            } label: {
+                Image(systemName: "arrow.triangle.turn.up.right.diamond")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Start directions for \(item.title)")
         } else if item.actions.contains(.open), let dueAt = item.dueAt {
             Button {
                 let seconds = dueAt.timeIntervalSinceReferenceDate
@@ -185,6 +196,7 @@ struct MyDayView: View {
     private func icon(for kind: MyDayKind) -> String {
         switch kind {
         case .event: "calendar"
+        case .leaveBy: "location.fill"
         case .reminder: "checklist"
         case .weather: "cloud.sun"
         }
@@ -403,6 +415,7 @@ struct MyDayHomeView: View {
     private func icon(for kind: MyDayKind) -> String {
         switch kind {
         case .event: "calendar"
+        case .leaveBy: "location.fill"
         case .reminder: "checklist"
         case .weather: "cloud.sun"
         }

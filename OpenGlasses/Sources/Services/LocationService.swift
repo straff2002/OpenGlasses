@@ -30,6 +30,8 @@ class LocationService: NSObject, ObservableObject {
 
     private let locationManager = CLLocationManager()
 
+    var authorizationStatus: CLAuthorizationStatus { locationManager.authorizationStatus }
+
     /// Region-monitoring event forwarders (BK P1). Set by `GeofenceTool.activate()`.
     var onRegionEvent: ((CLRegion, Bool) -> Void)?
     var onBecameAuthorizedAlways: (() -> Void)?
