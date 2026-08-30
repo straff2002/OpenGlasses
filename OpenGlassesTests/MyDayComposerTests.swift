@@ -28,9 +28,11 @@ final class MyDayComposerTests: XCTestCase {
         reminders: [MyDayReminder] = [],
         weather: MyDayWeather? = nil,
         travel: MyDayTravelEstimate? = nil,
+        digestUpdates: [MyDayDigestUpdate] = [],
         states: [MyDaySourceState] = MyDaySource.allCases.map(MyDaySourceState.available)
     ) -> MyDayInputs {
         .init(events: events, reminders: reminders, weather: weather, travel: travel,
+              digestUpdates: digestUpdates,
               sourceStates: states)
     }
 
@@ -132,14 +134,39 @@ final class MyDayComposerTests: XCTestCase {
         XCTAssertEqual(snapshot.sourceStates.first?.availability, .denied)
     }
 
-    func testEveningIncludesFirstTomorrowCommitment() {
+    func testEveningIncludesFirstTomorrowCommitmentAndOnePreparationCue() {
         let snapshot = MyDayComposer(calendar: calendar).compose(
             inputs: inputs(events: [event("second", at: 11, day: 31), event("first", at: 8, day: 31)]),
             now: date(20)
         )
         XCTAssertEqual(snapshot.period, .evening)
-        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["first"])
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["first", "prepare:first"])
         XCTAssertTrue(snapshot.items[0].detail?.contains("Tomorrow") == true)
+        XCTAssertEqual(snapshot.items[1].kind, .preparation)
+        XCTAssertTrue(snapshot.headline.contains("tomorrow starts with Event first"))
+    }
+
+    func testDigestUpdatesAreCappedAtTwoAndOnlyFillRemainingCapacity() {
+        let updates = (1...3).map {
+            MyDayDigestUpdate(
+                id: "update-\($0)",
+                title: "Update \($0)",
+                detail: "Agent",
+                createdAt: date(8, minute: $0),
+                urgency: .important
+            )
+        }
+        let snapshot = MyDayComposer(calendar: calendar, maxItems: 3).compose(
+            inputs: inputs(
+                reminders: [reminder("due", due: date(10))],
+                digestUpdates: updates
+            ),
+            now: date(9)
+        )
+
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["due", "update-1", "update-2"])
+        XCTAssertEqual(snapshot.items.filter { $0.kind == .update }.count, 2)
+        XCTAssertEqual(snapshot.items.last?.actions, [.dismiss])
     }
 
     func testAllDayEventIsUpcomingRatherThanImmediate() {

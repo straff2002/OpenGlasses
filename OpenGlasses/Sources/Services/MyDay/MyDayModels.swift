@@ -9,7 +9,9 @@ enum MyDayPeriod: String, Equatable, Sendable {
 enum MyDayKind: String, Equatable, Sendable {
     case event
     case leaveBy
+    case preparation
     case reminder
+    case update
     case weather
 }
 
@@ -26,6 +28,7 @@ enum MyDayUrgency: Int, Comparable, Equatable, Sendable {
 
 enum MyDaySource: String, CaseIterable, Equatable, Sendable {
     case calendar
+    case digest
     case reminders
     case travel
     case weather
@@ -33,6 +36,7 @@ enum MyDaySource: String, CaseIterable, Equatable, Sendable {
     var displayName: String {
         switch self {
         case .calendar: "Calendar"
+        case .digest: "Actionable Updates"
         case .reminders: "Reminders"
         case .travel: "Travel Time"
         case .weather: "Weather"
@@ -70,6 +74,7 @@ enum MyDayAction: Hashable, Sendable {
     case open
     case complete
     case directions
+    case dismiss
 }
 
 struct MyDayItem: Identifiable, Equatable, Sendable {
@@ -152,11 +157,47 @@ struct MyDayTravelEstimate: Equatable, Sendable {
     let mode: MyDayTransportMode
 }
 
+struct MyDayDigestUpdate: Equatable, Sendable {
+    let id: String
+    let title: String
+    let detail: String?
+    let createdAt: Date
+    let urgency: MyDayUrgency
+}
+
+struct MyDaySourceSelection: Equatable, Sendable {
+    let calendar: Bool
+    let reminders: Bool
+    let weather: Bool
+    let travel: Bool
+    let digest: Bool
+
+    static var current: Self {
+        let calendar = Config.myDayCalendarIncluded
+        return .init(
+            calendar: calendar,
+            reminders: Config.myDayRemindersIncluded,
+            weather: Config.myDayWeatherIncluded,
+            travel: calendar && Config.myDayTravelIncluded,
+            digest: Config.myDayDigestIncluded
+        )
+    }
+
+    static let all = Self(
+        calendar: true,
+        reminders: true,
+        weather: true,
+        travel: true,
+        digest: true
+    )
+}
+
 struct MyDayInputs: Equatable, Sendable {
     let events: [MyDayCalendarEvent]
     let reminders: [MyDayReminder]
     let weather: MyDayWeather?
     let travel: MyDayTravelEstimate?
+    let digestUpdates: [MyDayDigestUpdate]
     let sourceStates: [MyDaySourceState]
 
     init(
@@ -164,12 +205,14 @@ struct MyDayInputs: Equatable, Sendable {
         reminders: [MyDayReminder],
         weather: MyDayWeather?,
         travel: MyDayTravelEstimate? = nil,
+        digestUpdates: [MyDayDigestUpdate] = [],
         sourceStates: [MyDaySourceState]
     ) {
         self.events = events
         self.reminders = reminders
         self.weather = weather
         self.travel = travel
+        self.digestUpdates = digestUpdates
         self.sourceStates = sourceStates
     }
 }

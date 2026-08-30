@@ -33,6 +33,16 @@ final class EventKitDayStore {
         return status == .authorized
     }
 
+    /// Scheduled My Day must never trigger a first-use permission sheet. A denied/restricted
+    /// source is still resolved: its adapter can report an honest partial-availability state.
+    var calendarAuthorizationIsResolved: Bool {
+        EKEventStore.authorizationStatus(for: .event) != .notDetermined
+    }
+
+    var remindersAuthorizationIsResolved: Bool {
+        EKEventStore.authorizationStatus(for: .reminder) != .notDetermined
+    }
+
     func requestCalendarAccess() async throws -> Bool {
         if #available(iOS 17.0, *) {
             return try await eventStore.requestFullAccessToEvents()

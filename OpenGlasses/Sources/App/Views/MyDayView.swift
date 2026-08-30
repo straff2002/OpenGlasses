@@ -147,6 +147,16 @@ struct MyDayView: View {
             .buttonStyle(.plain)
             .foregroundStyle(accent)
             .accessibilityLabel("Start directions for \(item.title)")
+        } else if item.actions.contains(.dismiss) {
+            Button {
+                Task { await service.dismissDigestItem(id: item.id.rawValue) }
+            } label: {
+                Image(systemName: "xmark.circle")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Dismiss \(item.title)")
         } else if item.actions.contains(.open), let dueAt = item.dueAt {
             Button {
                 let seconds = dueAt.timeIntervalSinceReferenceDate
@@ -197,7 +207,9 @@ struct MyDayView: View {
         switch kind {
         case .event: "calendar"
         case .leaveBy: "location.fill"
+        case .preparation: "checkmark.seal"
         case .reminder: "checklist"
+        case .update: "bell.badge"
         case .weather: "cloud.sun"
         }
     }
@@ -416,7 +428,9 @@ struct MyDayHomeView: View {
         switch kind {
         case .event: "calendar"
         case .leaveBy: "location.fill"
+        case .preparation: "checkmark.seal"
         case .reminder: "checklist"
+        case .update: "bell.badge"
         case .weather: "cloud.sun"
         }
     }

@@ -11,7 +11,8 @@ final class MyDayServiceTests: XCTestCase {
                                      hasTime: true, priority: 0)
         let sources = FakeDaySources(events: [event], reminders: [reminder],
                                      weather: .init(summary: "Rain.", isDecisionRelevant: true))
-        let service = MyDayService(calendarSource: sources, remindersSource: sources, weatherSource: sources)
+        let service = MyDayService(calendarSource: sources, remindersSource: sources,
+                                   weatherSource: sources, sourceSelection: { .all })
 
         let snapshot = await service.refresh(now: now)
 
@@ -22,7 +23,8 @@ final class MyDayServiceTests: XCTestCase {
     func testRefreshIsHonestWhenCalendarDenied() async {
         let sources = FakeDaySources()
         sources.calendarState = .denied(.calendar, message: "Calendar access is off.")
-        let service = MyDayService(calendarSource: sources, remindersSource: sources, weatherSource: sources)
+        let service = MyDayService(calendarSource: sources, remindersSource: sources,
+                                   weatherSource: sources, sourceSelection: { .all })
 
         let snapshot = await service.refresh()
 
@@ -56,7 +58,8 @@ final class MyDayServiceTests: XCTestCase {
             calendarSource: sources,
             remindersSource: sources,
             weatherSource: sources,
-            travelSource: sources
+            travelSource: sources,
+            sourceSelection: { .all }
         )
 
         let snapshot = await service.refresh(now: now)
@@ -73,7 +76,8 @@ final class MyDayServiceTests: XCTestCase {
         let sources = FakeDaySources(reminders: [
             .init(id: "exact-id", title: "Call Ana", dueDate: now, hasTime: true, priority: 0)
         ])
-        let service = MyDayService(calendarSource: sources, remindersSource: sources, weatherSource: sources)
+        let service = MyDayService(calendarSource: sources, remindersSource: sources,
+                                   weatherSource: sources, sourceSelection: { .all })
         _ = await service.refresh(now: now)
 
         let title = try await service.completeReminder(id: "exact-id", now: now)
@@ -110,20 +114,73 @@ final class MyDayServiceTests: XCTestCase {
         }
         XCTAssertNotNil(date)
     }
+
+    func testRefreshLoadsAndDismissesActionableDigestThroughItsOwner() async {
+        let now = Date(timeIntervalSince1970: 1_788_065_600)
+        let sources = FakeDaySources()
+        sources.digestUpdates = [
+            .init(id: "agent-reply", title: "Agent needs your answer", detail: "Agent",
+                  createdAt: now, urgency: .important)
+        ]
+        let service = MyDayService(
+            calendarSource: sources,
+            remindersSource: sources,
+            weatherSource: sources,
+            digestSource: sources,
+            sourceSelection: { .all }
+        )
+
+        var snapshot = await service.refresh(now: now)
+        XCTAssertEqual(snapshot.items.first { $0.kind == .update }?.id.rawValue, "agent-reply")
+
+        snapshot = await service.dismissDigestItem(id: "agent-reply", now: now)
+        XCTAssertEqual(sources.dismissedDigestIDs, ["agent-reply"])
+        XCTAssertFalse(snapshot.items.contains { $0.kind == .update })
+    }
+
+    func testDisabledSourcesAreNotLoadedOrReportedUnavailable() async {
+        let sources = FakeDaySources()
+        let service = MyDayService(
+            calendarSource: sources,
+            remindersSource: sources,
+            weatherSource: sources,
+            travelSource: sources,
+            digestSource: sources,
+            sourceSelection: {
+                .init(calendar: false, reminders: true, weather: false, travel: false, digest: false)
+            }
+        )
+
+        let snapshot = await service.refresh()
+
+        XCTAssertEqual(sources.calendarLoadCount, 0)
+        XCTAssertEqual(sources.remindersLoadCount, 1)
+        XCTAssertEqual(sources.weatherLoadCount, 0)
+        XCTAssertEqual(sources.travelLoadCount, 0)
+        XCTAssertEqual(sources.digestLoadCount, 0)
+        XCTAssertEqual(snapshot.sourceStates.map(\.source), [.reminders])
+    }
 }
 
 @MainActor
 private final class FakeDaySources: CalendarDaySource, RemindersDaySource, WeatherDaySource,
-                                    TravelTimeDaySource {
+                                    TravelTimeDaySource, DigestDaySource {
     var events: [MyDayCalendarEvent]
     var reminders: [MyDayReminder]
     var weather: MyDayWeather?
     var travel: MyDayTravelEstimate?
+    var digestUpdates: [MyDayDigestUpdate] = []
     var calendarState = MyDaySourceState.available(.calendar)
     var remindersState = MyDaySourceState.available(.reminders)
     var weatherState = MyDaySourceState.available(.weather)
     var completedIDs: [String] = []
     var travelEventIDs: [String] = []
+    var dismissedDigestIDs: [String] = []
+    var calendarLoadCount = 0
+    var remindersLoadCount = 0
+    var weatherLoadCount = 0
+    var travelLoadCount = 0
+    var digestLoadCount = 0
 
     init(events: [MyDayCalendarEvent] = [], reminders: [MyDayReminder] = [], weather: MyDayWeather? = nil) {
         self.events = events
@@ -132,11 +189,13 @@ private final class FakeDaySources: CalendarDaySource, RemindersDaySource, Weath
     }
 
     func loadEvents(from start: Date, to end: Date) async -> MyDaySourceLoad<[MyDayCalendarEvent]> {
-        .init(value: events, state: calendarState)
+        calendarLoadCount += 1
+        return .init(value: events, state: calendarState)
     }
 
     func loadReminders() async -> MyDaySourceLoad<[MyDayReminder]> {
-        .init(value: reminders, state: remindersState)
+        remindersLoadCount += 1
+        return .init(value: reminders, state: remindersState)
     }
 
     func completeReminder(id: String) async throws -> String? {
@@ -146,13 +205,15 @@ private final class FakeDaySources: CalendarDaySource, RemindersDaySource, Weath
     }
 
     func loadWeather() async -> MyDaySourceLoad<MyDayWeather?> {
-        .init(value: weather, state: weatherState)
+        weatherLoadCount += 1
+        return .init(value: weather, state: weatherState)
     }
 
     func loadTravel(
         for events: [MyDayCalendarEvent],
         now: Date
     ) async -> MyDaySourceLoad<MyDayTravelEstimate?> {
+        travelLoadCount += 1
         travelEventIDs = events.map(\.id)
         return .init(value: travel, state: .available(.travel))
     }
@@ -162,5 +223,15 @@ private final class FakeDaySources: CalendarDaySource, RemindersDaySource, Weath
         var components = URLComponents(string: "https://maps.apple.com/")
         components?.queryItems = [URLQueryItem(name: "daddr", value: travel?.destination)]
         return components?.url
+    }
+
+    func loadDigest(now: Date) async -> MyDaySourceLoad<[MyDayDigestUpdate]> {
+        digestLoadCount += 1
+        return .init(value: digestUpdates, state: .available(.digest))
+    }
+
+    func dismissDigestItem(id: String) {
+        dismissedDigestIDs.append(id)
+        digestUpdates.removeAll { $0.id == id }
     }
 }

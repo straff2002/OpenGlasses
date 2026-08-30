@@ -1,6 +1,6 @@
 # Plan DY — My Day: Everyday Briefing and Preparation
 
-**Status:** 🟠 P0/P1/P2 implemented and automated verification complete (2026-08-30);
+**Status:** 🟠 P0/P1/P2/P3 implemented and automated verification complete (2026-08-30);
 physical-device routing, permission/audio, and accessibility walkthroughs pending
 **Origin:** The opportunity assessment names Everyday Briefing as the P1 daily-retention loop and
 places it before differentiated intelligence such as the private-memory timeline.
@@ -53,8 +53,8 @@ more tools.
   values through a pure policy, and completes by stable ID. Title fallback refuses ambiguous
   matches instead of completing the first substring.
 - The `daily_briefing` tool name and Siri intent remain compatible, but both now return the same My
-  Day spoken snapshot. The built-in morning scheduler task also calls that service directly rather
-  than asking an agent to discover and rank the day.
+  Day spoken snapshot. P3 moves scheduled delivery to the same service without an Agent Mode or LLM
+  dependency.
 - A feature-flagged **My Day** card replaces the decorative waveline in the centre of the Voice
   home screen. Its compact at-a-glance state shows what matters next, opens the full review surface,
   and yields room to active conversation; the full surface supports refresh, empty, stale, denied,
@@ -81,14 +81,31 @@ more tools.
   digest ingest is an upsert rather than an appended duplicate; one content-free occurrence ID
   prevents repeat speech/HUD delivery after relaunch.
 
-P3 digest composition/evening controls remain a separate follow-up.
+### Implemented P3 slice (2026-08-30)
+
+- Evening My Day now shows tomorrow's first commitment and one deterministic preparation cue. The
+  same bounded snapshot powers the phone card, full review, command/Siri response, and schedule.
+- My Day can include at most two live, actionable first-party digest updates. Calendar, Reminder,
+  proactive, routine, and arbitrary third-party notifications are excluded; displayed title/body
+  text is bounded, and dismissal returns to the digest owner and acknowledges agent-owned rows.
+- The existing iPhone integrations screen now owns included-source controls, morning/evening times,
+  opt-in scheduled speech, quiet hours, and content-free delivery-history reset alongside P2 travel
+  settings. Calendar reads every account exposed through iOS EventKit—including Outlook/Microsoft
+  365 accounts synced into iPhone Calendar—but does not directly access the Outlook app or Graph.
+- A dedicated My Day scheduler replaces the legacy AgentScheduler morning row, so delivery no
+  longer depends on Agent Mode or an LLM. It records one content-free occurrence key per slot/day,
+  avoids first-use permission sheets, preserves denied sources as honest partial availability, and
+  uses generic notification copy rather than private briefing content.
+- Quiet hours defer delivery. Away, busy, offline, and power-reserve states still refresh and expose
+  the deterministic phone briefing, while suppressing private speech.
 
 ### Automated evidence (2026-08-30)
 
 - Focused My Day contract/service suite: 14 passed, 0 failures.
 - Focused P2 My Day/travel/digest suite: 41 passed, 0 failures.
-- Full unit suite on iPhone 17 Pro Max / iOS 27 simulator: 3,764 passed, 4
-  environment-gated skips, 0 failures (3,768 total).
+- Focused P3 My Day/digest/delivery suite: 51 passed, 0 failures.
+- Full unit suite on iPhone 17 Pro / iOS 27 simulator: 3,774 passed, 4
+  environment-gated skips, 0 failures (3,778 total).
 - Release iOS Simulator build: passed.
 
 Still required before enabling by default: physical-device Calendar/Reminders denial and regrant,
@@ -229,7 +246,7 @@ preserve item count, source facts, times, and action labels or be rejected whole
 3. Feed leave-by into `ProactiveAlertService` and the digest as one stable item so the same warning is
    not spoken, notified, and displayed three times.
 
-### P3 — Evening preparation, digest, and controls 🟡
+### P3 — Evening preparation, digest, and controls ✅
 
 1. Add evening/tomorrow composition and one deterministic preparation cue.
 2. Add at most two still-actionable digest items; never mirror arbitrary notifications.

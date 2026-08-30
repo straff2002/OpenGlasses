@@ -14,6 +14,8 @@ final class MyDayService: ObservableObject {
     private let remindersSource: any RemindersDaySource
     private let weatherSource: any WeatherDaySource
     private let travelSource: (any TravelTimeDaySource)?
+    private var digestSource: (any DigestDaySource)?
+    private let sourceSelection: () -> MyDaySourceSelection
     private let composer: MyDayComposer
     private let spokenFormatter: MyDaySpokenFormatter
     private let calendar: Calendar
@@ -23,6 +25,8 @@ final class MyDayService: ObservableObject {
         remindersSource: any RemindersDaySource,
         weatherSource: any WeatherDaySource,
         travelSource: (any TravelTimeDaySource)? = nil,
+        digestSource: (any DigestDaySource)? = nil,
+        sourceSelection: @escaping () -> MyDaySourceSelection = { .current },
         composer: MyDayComposer = MyDayComposer(),
         spokenFormatter: MyDaySpokenFormatter = MyDaySpokenFormatter(),
         calendar: Calendar = .current
@@ -31,6 +35,8 @@ final class MyDayService: ObservableObject {
         self.remindersSource = remindersSource
         self.weatherSource = weatherSource
         self.travelSource = travelSource
+        self.digestSource = digestSource
+        self.sourceSelection = sourceSelection
         self.composer = composer
         self.spokenFormatter = spokenFormatter
         self.calendar = calendar
@@ -44,23 +50,31 @@ final class MyDayService: ObservableObject {
 
         let start = calendar.startOfDay(for: now)
         let end = calendar.date(byAdding: .day, value: 2, to: start) ?? now
-        // Calendar and Reminders can each show a first-use system permission sheet. Load them in
-        // sequence so iOS never has to arbitrate two permission prompts at once; weather can run
-        // alongside both because it has no prompt of its own.
-        async let weatherLoad = weatherSource.loadWeather()
-        let events = await calendarSource.loadEvents(from: start, to: end)
-        async let travelLoad = loadTravel(for: events.value, now: now)
-        let reminders = await remindersSource.loadReminders()
+        // Calendar and Reminders can each show a first-use system permission sheet. Keep those in
+        // sequence; weather and the first-party digest have no permission prompt and can run beside
+        // them. Travel starts after Calendar because it consumes that authoritative event set.
+        let selection = sourceSelection()
+        async let weatherLoad = loadWeather(enabled: selection.weather)
+        async let digestLoad = loadDigest(enabled: selection.digest, now: now)
+        let events = await loadEvents(enabled: selection.calendar, from: start, to: end)
+        async let travelLoad = loadTravel(
+            enabled: selection.travel,
+            for: events?.value ?? [],
+            now: now
+        )
+        let reminders = await loadReminders(enabled: selection.reminders)
         let weather = await weatherLoad
         let travel = await travelLoad
-        var sourceStates = [events.state, reminders.state, weather.state]
-        if let travel { sourceStates.append(travel.state) }
+        let digest = await digestLoad
+        let sourceStates = [events?.state, reminders?.state, weather?.state, travel?.state, digest?.state]
+            .compactMap { $0 }
         let snapshot = composer.compose(
             inputs: MyDayInputs(
-                events: events.value,
-                reminders: reminders.value,
-                weather: weather.value,
+                events: events?.value ?? [],
+                reminders: reminders?.value ?? [],
+                weather: weather?.value,
                 travel: travel?.value,
+                digestUpdates: digest?.value ?? [],
                 sourceStates: sourceStates
             ),
             now: now
@@ -80,6 +94,16 @@ final class MyDayService: ObservableObject {
         return travelSource?.directionsURL(for: eventID)
     }
 
+    func setDigestSource(_ source: any DigestDaySource) {
+        digestSource = source
+    }
+
+    @discardableResult
+    func dismissDigestItem(id: String, now: Date = Date()) async -> MyDaySnapshot {
+        digestSource?.dismissDigestItem(id: id)
+        return await refresh(now: now)
+    }
+
     @discardableResult
     func completeReminder(id: String, now: Date = Date()) async throws -> String? {
         let title = try await remindersSource.completeReminder(id: id)
@@ -87,11 +111,39 @@ final class MyDayService: ObservableObject {
         return title
     }
 
+    private func loadEvents(
+        enabled: Bool,
+        from start: Date,
+        to end: Date
+    ) async -> MyDaySourceLoad<[MyDayCalendarEvent]>? {
+        guard enabled else { return nil }
+        return await calendarSource.loadEvents(from: start, to: end)
+    }
+
+    private func loadReminders(enabled: Bool) async -> MyDaySourceLoad<[MyDayReminder]>? {
+        guard enabled else { return nil }
+        return await remindersSource.loadReminders()
+    }
+
+    private func loadWeather(enabled: Bool) async -> MyDaySourceLoad<MyDayWeather?>? {
+        guard enabled else { return nil }
+        return await weatherSource.loadWeather()
+    }
+
     private func loadTravel(
+        enabled: Bool,
         for events: [MyDayCalendarEvent],
         now: Date
     ) async -> MyDaySourceLoad<MyDayTravelEstimate?>? {
-        guard let travelSource else { return nil }
+        guard enabled, let travelSource else { return nil }
         return await travelSource.loadTravel(for: events, now: now)
+    }
+
+    private func loadDigest(
+        enabled: Bool,
+        now: Date
+    ) async -> MyDaySourceLoad<[MyDayDigestUpdate]>? {
+        guard enabled, let digestSource else { return nil }
+        return await digestSource.loadDigest(now: now)
     }
 }

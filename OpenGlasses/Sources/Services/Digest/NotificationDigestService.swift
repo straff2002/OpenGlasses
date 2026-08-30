@@ -113,6 +113,19 @@ final class NotificationDigestService: ObservableObject {
         lastPresented = nil
     }
 
+    /// Retire one source-owned item from My Day and acknowledge its upstream agent row when
+    /// applicable. This mutates the digest owner rather than hiding a copied My Day row.
+    func dismissItem(id: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        let item = items[index]
+        items[index].seenCount = max(items[index].seenCount, 99)
+        if item.source == .agent, let threadKey = item.threadKey {
+            acknowledgeAgentItems?([threadKey])
+        }
+        prune()
+        save()
+    }
+
     /// Auto-surface on glasses (re)connect: only with an urgent item pending, only when the
     /// user is actually there (Plan W), and never under power reserve (Plan BV).
     func autoSurfaceOnConnect() async {
