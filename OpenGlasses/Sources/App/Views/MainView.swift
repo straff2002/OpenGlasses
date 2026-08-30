@@ -12,7 +12,6 @@ struct MainView: View {
     // said otherwise. Kept in sync with `SettingsView` and `LookFeelSettingsScreen`.
     @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
-    @AppStorage("myDayEnabled") private var myDayEnabled = false
 
     private var colorScheme: ColorScheme? {
         switch appearance {
@@ -33,23 +32,17 @@ struct MainView: View {
                     VoiceTab()
                 }
 
-                if myDayEnabled {
-                    Tab("My Day", systemImage: "sun.max.fill", value: 1) {
-                        MyDayView(service: appState.myDayService)
-                    }
-                }
-
-                Tab("Modes", systemImage: "person.2.fill", value: 2) {
+                Tab("Modes", systemImage: "person.2.fill", value: 1) {
                     NavigationStack {
                         PersonaPickerTab(appState: appState)
                     }
                 }
 
-                Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: 3) {
+                Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: 2) {
                     ChatListView()
                 }
 
-                Tab("Settings", systemImage: "gearshape.fill", value: 4) {
+                Tab("Settings", systemImage: "gearshape.fill", value: 3) {
                     NavigationStack {
                         SettingsView(appState: appState)
                     }

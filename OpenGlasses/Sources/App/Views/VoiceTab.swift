@@ -12,6 +12,7 @@ struct VoiceTab: View {
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
     @State private var showChatInput = false
+    @AppStorage("myDayEnabled") private var myDayEnabled = false
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -36,7 +37,7 @@ struct VoiceTab: View {
                 }
 
                 if typeSize.isAccessibilitySize {
-                    accessibleConversationZone()
+                    accessibleConversationZone(voiceState)
                 } else {
                     conversationZone(voiceState)
                 }
@@ -76,8 +77,9 @@ struct VoiceTab: View {
 
     // MARK: - Conversation zone
 
-    /// The shipped three-zone composition: status card at the top, the waveline floating in the
-    /// middle on its two `Spacer`s, then captions and transcript above the dock.
+    /// The shipped three-zone composition: status card at the top, useful day context in the
+    /// middle, then captions and transcript above the dock. My Day contracts while listening and
+    /// yields the centre entirely while the assistant thinks or speaks.
     @ViewBuilder
     private func conversationZone(_ voiceState: VoiceVisualState) -> some View {
         // Status card — one status surface: state, mode, persona, and the connection
@@ -88,10 +90,14 @@ struct VoiceTab: View {
 
         Spacer()
 
-        // Voice-state waveline — the assistant's presence. Decorative and additive:
-        // StatusIndicator stays the source of truth for connection/mode state.
-        VoiceWaveline(state: voiceState)
-            .padding(.horizontal, 24)
+        if voiceState != .thinking && voiceState != .speaking {
+            MyDayHomeView(
+                service: appState.myDayService,
+                isEnabled: $myDayEnabled,
+                compact: voiceState == .listening
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        }
 
         Spacer()
 
@@ -116,17 +122,23 @@ struct VoiceTab: View {
     /// reach either. `Spacer`s cannot absorb that; they are already at zero.
     ///
     /// So above the accessibility threshold the conversation zone scrolls and the dock stays
-    /// pinned, which is the same trade onboarding's hero pages make. The waveline does not come
-    /// with it: it is decoration, it is hidden from the accessibility tree, the status card is the
-    /// source of truth for everything it expresses, and a reader who has asked for larger text has
-    /// asked for more of the content — not for 76 points of ribbon to scroll past on the way to it.
-    /// (Which is why this one takes no voice state: there is nothing here that expresses it.)
+    /// pinned, which is the same trade onboarding's hero pages make. Unlike the old decorative
+    /// waveline, My Day is content, so it remains reachable here and uses its compact form while
+    /// listening. It still yields while the assistant thinks or speaks.
     @ViewBuilder
-    private func accessibleConversationZone() -> some View {
+    private func accessibleConversationZone(_ voiceState: VoiceVisualState) -> some View {
         ScrollView {
             VStack(spacing: 16) {
                 StatusIndicator(session: session, openAISession: openAISession,
                                 openClawBridge: appState.openClawBridge)
+
+                if voiceState != .thinking && voiceState != .speaking {
+                    MyDayHomeView(
+                        service: appState.myDayService,
+                        isEnabled: $myDayEnabled,
+                        compact: voiceState == .listening
+                    )
+                }
 
                 if appState.ambientCaptions.isActive {
                     AmbientCaptionOverlay(captionService: appState.ambientCaptions)

@@ -55,9 +55,12 @@ more tools.
 - The `daily_briefing` tool name and Siri intent remain compatible, but both now return the same My
   Day spoken snapshot. The built-in morning scheduler task also calls that service directly rather
   than asking an agent to discover and rank the day.
-- A feature-flagged **My Day** phone tab supports loading, pull-to-refresh, empty, stale, denied,
+- A feature-flagged **My Day** card replaces the decorative waveline in the centre of the Voice
+  home screen. Its compact at-a-glance state shows what matters next, opens the full review surface,
+  and yields room to active conversation; the full surface supports refresh, empty, stale, denied,
   offline/partial-source states, Calendar open, exact reminder completion, semantic text, and
-  VoiceOver-labelled actions. The toggle lives under **Works with your iPhone** and defaults off.
+  VoiceOver-labelled actions. The toggle lives under **Works with your iPhone** and defaults off;
+  while off, the same home space offers an explicit setup action rather than requesting permissions.
 - No display, HUD, waveguide, private-memory, news, digest, or travel-time dependency was added.
 
 P2 travel/leave-by and P3 digest/evening controls remain separate follow-ups.

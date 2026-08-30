@@ -202,3 +202,209 @@ struct MyDayView: View {
         return "\(prefix) \(formatter.string(from: snapshot.generatedAt))"
     }
 }
+
+/// Compact home-screen expression of My Day. It replaces the decorative voice waveline with
+/// information that is useful before a conversation starts, while keeping the complete review and
+/// action surface one tap away.
+struct MyDayHomeView: View {
+    @ObservedObject var service: MyDayService
+    @Binding var isEnabled: Bool
+    let compact: Bool
+
+    @Environment(\.appAccent) private var accent
+    @State private var showDetail = false
+
+    var body: some View {
+        Group {
+            if isEnabled {
+                enabledCard
+            } else {
+                setupCard
+            }
+        }
+        .padding(.horizontal, 16)
+        .task(id: isEnabled) {
+            guard isEnabled else { return }
+            if case .idle = service.state { _ = await service.refresh() }
+        }
+        .sheet(isPresented: $showDetail) {
+            MyDayView(service: service)
+        }
+    }
+
+    private var setupCard: some View {
+        OGCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("My Day", systemImage: "sun.max.fill")
+                    .font(.headline)
+                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+
+                Text("Put what matters next here instead of an animation.")
+                    .font(.body.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Uses Calendar, Reminders, and Weather only after you choose to set it up.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Set Up My Day") {
+                    isEnabled = true
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minHeight: OGMetrics.minTouchTarget)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+        }
+    }
+
+    private var enabledCard: some View {
+        OGCard {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Label("My Day", systemImage: "sun.max.fill")
+                        .font(.headline)
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        Task { _ = await service.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(accent)
+                    .accessibilityLabel("Refresh My Day")
+
+                    Button {
+                        showDetail = true
+                    } label: {
+                        Image(systemName: "arrow.up.right")
+                            .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(accent)
+                    .accessibilityLabel("Open full My Day")
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 6)
+                .padding(.vertical, 6)
+
+                Rectangle()
+                    .fill(OGTheme.hairline)
+                    .frame(height: 0.5)
+                    .accessibilityHidden(true)
+
+                stateContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stateContent: some View {
+        switch service.state {
+        case .idle:
+            progressRow("Building your day…")
+        case .loading(let previous):
+            if let previous {
+                snapshotContent(previous)
+                progressRow("Refreshing…")
+            } else {
+                progressRow("Building your day…")
+            }
+        case .loaded(let snapshot):
+            snapshotContent(snapshot)
+        }
+    }
+
+    @ViewBuilder
+    private func snapshotContent(_ snapshot: MyDaySnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(snapshot.headline)
+                .font(.body.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if snapshot.items.isEmpty {
+                Label("Nothing urgent", systemImage: "checkmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                let visibleItems = Array(snapshot.items.prefix(compact ? 1 : 3))
+                ForEach(visibleItems) { item in
+                    Button {
+                        showDetail = true
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: icon(for: item.kind))
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                .frame(width: 20)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if !compact, let detail = item.detail {
+                                    Text(detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer(minLength: 4)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens My Day")
+                }
+
+                if !compact, snapshot.items.count > visibleItems.count {
+                    Button("See all \(snapshot.items.count) items") {
+                        showDetail = true
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+            }
+
+            if !compact {
+                let unavailableCount = snapshot.sourceStates.filter {
+                    $0.availability != .available
+                }.count
+                if unavailableCount > 0 {
+                    Label(
+                        unavailableCount == 1 ? "1 source needs attention" : "\(unavailableCount) sources need attention",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private func progressRow(_ label: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text(label)
+                .font(.footnote)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func icon(for kind: MyDayKind) -> String {
+        switch kind {
+        case .event: "calendar"
+        case .reminder: "checklist"
+        case .weather: "cloud.sun"
+        }
+    }
+}
