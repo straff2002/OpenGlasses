@@ -17,15 +17,19 @@ final class NativeToolRegistry {
          semanticMemory: SemanticMemoryStore? = nil,
          documentStore: DocumentStore? = nil,
          activeNamespace: (() -> String)? = nil,
-         eventKitStore: EventKitDayStore? = nil) {
+         eventKitStore: EventKitDayStore? = nil,
+         travelTimeSource: (any TravelTimeDaySource)? = nil) {
         let eventKitStore = eventKitStore ?? EventKitDayStore()
         let weatherTool = WeatherTool(locationService: locationService)
+        let travelTimeSource = travelTimeSource
+            ?? MapKitTravelTimeDaySource(locationService: locationService)
         let newsTool = NewsTool()
         let dateTimeTool = DateTimeTool()
         let myDayService = MyDayService(
             calendarSource: eventKitStore,
             remindersSource: eventKitStore,
-            weatherSource: NativeWeatherDaySource(weatherTool: weatherTool)
+            weatherSource: NativeWeatherDaySource(weatherTool: weatherTool),
+            travelSource: travelTimeSource
         )
         self.myDayService = myDayService
 

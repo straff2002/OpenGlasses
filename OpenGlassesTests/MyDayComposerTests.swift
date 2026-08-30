@@ -27,9 +27,11 @@ final class MyDayComposerTests: XCTestCase {
         events: [MyDayCalendarEvent] = [],
         reminders: [MyDayReminder] = [],
         weather: MyDayWeather? = nil,
+        travel: MyDayTravelEstimate? = nil,
         states: [MyDaySourceState] = MyDaySource.allCases.map(MyDaySourceState.available)
     ) -> MyDayInputs {
-        .init(events: events, reminders: reminders, weather: weather, sourceStates: states)
+        .init(events: events, reminders: reminders, weather: weather, travel: travel,
+              sourceStates: states)
     }
 
     func testPriorityPolicyPutsImmediateCommitmentThenOverdueAndDueItems() {
@@ -61,6 +63,35 @@ final class MyDayComposerTests: XCTestCase {
             now: date(9)
         )
         XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["soon", "late"])
+    }
+
+    func testLeaveByRanksAfterImminentEventAndBeforeOverdueReminder() {
+        let now = date(9)
+        let later = event("dentist", at: 10)
+        let travel = MyDayTravelEstimate(
+            eventID: later.id,
+            eventTitle: "Dentist",
+            destination: "Queen Street Dental",
+            eventStart: later.startDate,
+            travelDuration: 20 * 60,
+            bufferDuration: 10 * 60,
+            leaveAt: date(9, minute: 30),
+            mode: .walking
+        )
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(
+                events: [event("standup", at: 9, minute: 15), later],
+                reminders: [reminder("overdue", due: date(8))],
+                travel: travel
+            ),
+            now: now
+        )
+
+        XCTAssertEqual(snapshot.items.prefix(3).map(\.id.rawValue),
+                       ["standup", "leave-by:dentist", "overdue"])
+        XCTAssertEqual(snapshot.items[1].kind, .leaveBy)
+        XCTAssertEqual(snapshot.items[1].actions, [.directions])
+        XCTAssertTrue(snapshot.headline.contains("leave by"))
     }
 
     func testStableIdentityKeepsSimilarlyNamedEventAndReminder() {

@@ -198,4 +198,25 @@ final class DigestCoreTests: XCTestCase {
         screen.items[0].action()
         XCTAssertTrue(dismissed)
     }
+
+    @MainActor
+    func testStableIngestUpsertsInsteadOfDuplicatingAlert() {
+        let oldEnabled = Config.digestEnabled
+        Config.digestEnabled = true
+        defer { Config.digestEnabled = oldEnabled }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("digest-\(UUID().uuidString).json")
+        let service = NotificationDigestService(storageURL: url)
+
+        service.ingest(id: "leave-by:event:1", source: .proactive,
+                       title: "Leave soon", priority: .high,
+                       threadKey: "leave-by:event:1")
+        service.ingest(id: "leave-by:event:1", source: .proactive,
+                       title: "Leave now", priority: .high,
+                       threadKey: "leave-by:event:1")
+
+        XCTAssertEqual(service.items.count, 1)
+        XCTAssertEqual(service.items.first?.title, "Leave now")
+        try? FileManager.default.removeItem(at: url)
+    }
 }

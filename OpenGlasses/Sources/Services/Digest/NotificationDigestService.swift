@@ -38,14 +38,21 @@ final class NotificationDigestService: ObservableObject {
 
     // MARK: - Ingest (called from AppState source wiring)
 
-    func ingest(source: DigestSource, title: String, body: String = "",
+    func ingest(id: String? = nil, source: DigestSource, title: String, body: String = "",
                 priority: NotificationPriority, threadKey: String? = nil,
                 eventDate: Date? = nil, awaitingReply: Bool = false) {
         guard Config.digestEnabled else { return }
-        let item = DigestItem(source: source, title: title, rawBody: body, createdAt: Date(),
-                              priority: priority, threadKey: threadKey, eventDate: eventDate,
-                              awaitingReply: awaitingReply)
-        items.append(item)
+        let stableID = id ?? UUID().uuidString
+        let existingSeenCount = items.first(where: { $0.id == stableID })?.seenCount ?? 0
+        let item = DigestItem(id: stableID, source: source, title: title, rawBody: body,
+                              createdAt: Date(), priority: priority, threadKey: threadKey,
+                              eventDate: eventDate, awaitingReply: awaitingReply,
+                              seenCount: existingSeenCount)
+        if let index = items.firstIndex(where: { $0.id == stableID }) {
+            items[index] = item
+        } else {
+            items.append(item)
+        }
         prune()
         save()
     }

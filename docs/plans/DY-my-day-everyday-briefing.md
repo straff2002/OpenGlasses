@@ -1,7 +1,7 @@
 # Plan DY — My Day: Everyday Briefing and Preparation
 
-**Status:** 🟠 P0/P1 MVP implemented and automated verification complete (2026-08-30);
-physical-device permission/audio and accessibility walkthroughs pending
+**Status:** 🟠 P0/P1/P2 implemented and automated verification complete (2026-08-30);
+physical-device routing, permission/audio, and accessibility walkthroughs pending
 **Origin:** The opportunity assessment names Everyday Briefing as the P1 daily-retention loop and
 places it before differentiated intelligence such as the private-memory timeline.
 **Priority:** P1 everyday product, immediately after the DK privacy close-out.
@@ -61,15 +61,34 @@ more tools.
   offline/partial-source states, Calendar open, exact reminder completion, semantic text, and
   VoiceOver-labelled actions. The toggle lives under **Works with your iPhone** and defaults off;
   while off, the same home space offers an explicit setup action rather than requesting permissions.
-- No display, HUD, waveguide, private-memory, news, digest, or travel-time dependency was added.
+- No display, HUD, waveguide, private-memory, news, digest, or travel-time dependency was added to
+  the P0/P1 slice.
 
-P2 travel/leave-by and P3 digest/evening controls remain separate follow-ups.
+### Implemented P2 slice (2026-08-30)
+
+- My Day now estimates MapKit travel time for the next timed event with a usable physical location.
+  The origin can be current location or an explicit Home/Work address; walking, driving, and transit
+  modes and a 0–60 minute buffer are configured in the existing My Day settings section.
+- Leave-by is pure event-start minus route-duration minus buffer math. The route cache is in memory
+  for at most five minutes and invalidates when the event, destination, route settings, time, or
+  current origin changes materially. Event locations and resolved routes are not persisted.
+- The deterministic composer ranks leave-by after an imminent commitment and before overdue work,
+  shows the same result on the Voice-home My Day card/full review, and opens Apple Maps directions
+  from the origin used for the estimate.
+- `ProactiveAlertService` uses the shared travel source, suppresses its generic early warning when a
+  route-backed leave-by exists, yields to the existing imminent alert inside two minutes, and sends
+  one occurrence-stable item through speech/HUD, local notification, and digest delivery. Stable
+  digest ingest is an upsert rather than an appended duplicate; one content-free occurrence ID
+  prevents repeat speech/HUD delivery after relaunch.
+
+P3 digest composition/evening controls remain a separate follow-up.
 
 ### Automated evidence (2026-08-30)
 
 - Focused My Day contract/service suite: 14 passed, 0 failures.
-- Full unit suite on iPhone 17 Pro Max / iOS 27 simulator: 3,757 passed, 4
-  environment-gated skips, 0 failures (3,761 total).
+- Focused P2 My Day/travel/digest suite: 41 passed, 0 failures.
+- Full unit suite on iPhone 17 Pro Max / iOS 27 simulator: 3,764 passed, 4
+  environment-gated skips, 0 failures (3,768 total).
 - Release iOS Simulator build: passed.
 
 Still required before enabling by default: physical-device Calendar/Reminders denial and regrant,
@@ -201,7 +220,7 @@ preserve item count, source facts, times, and action labels or be rejected whole
 4. Ship deterministic empty, loading, denied, partial, offline, and stale states with VoiceOver and
    large Dynamic Type coverage.
 
-### P2 — Travel time and leave-by 🟠
+### P2 — Travel time and leave-by ✅
 
 1. Add MapKit travel-time estimation for the next event with a usable location, using current
    location or an explicit home/work origin and the configured transport mode.

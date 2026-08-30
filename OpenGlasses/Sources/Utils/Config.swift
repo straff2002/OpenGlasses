@@ -2756,6 +2756,38 @@ struct Config {
 
     static func setMyDayEnabled(_ enabled: Bool) { myDayEnabled = enabled }
 
+    @UserDefaultsBacked("myDayTransportMode", default: MyDayTransportMode.walking.rawValue)
+    private static var myDayTransportModeRaw: String
+
+    static var myDayTransportMode: MyDayTransportMode {
+        get { MyDayTransportMode(rawValue: myDayTransportModeRaw) ?? .walking }
+        set { myDayTransportModeRaw = newValue.rawValue }
+    }
+
+    @UserDefaultsBacked("myDayTravelBufferMinutes", default: 10)
+    private static var storedMyDayTravelBufferMinutes: Int
+
+    static var myDayTravelBufferMinutes: Int {
+        get { min(60, max(0, storedMyDayTravelBufferMinutes)) }
+        set { storedMyDayTravelBufferMinutes = min(60, max(0, newValue)) }
+    }
+
+    @UserDefaultsBacked("myDayTravelOrigin", default: MyDayTravelOrigin.currentLocation.rawValue)
+    private static var myDayTravelOriginRaw: String
+
+    static var myDayTravelOrigin: MyDayTravelOrigin {
+        get { MyDayTravelOrigin(rawValue: myDayTravelOriginRaw) ?? .currentLocation }
+        set { myDayTravelOriginRaw = newValue.rawValue }
+    }
+
+    /// Explicit user-entered fallbacks. Event locations and resolved routes are never persisted.
+    @UserDefaultsBacked("myDayHomeAddress", default: "") static var myDayHomeAddress: String
+    @UserDefaultsBacked("myDayWorkAddress", default: "") static var myDayWorkAddress: String
+
+    /// Content-free delivery state prevents one leave-by occurrence being repeated after relaunch.
+    @UserDefaultsBacked("myDayLastDeliveredLeaveByID", default: "")
+    static var myDayLastDeliveredLeaveByID: String
+
     // MARK: - Glasses Display (in-lens HUD)
 
     /// When enabled, AI responses and ambient captions are mirrored to the

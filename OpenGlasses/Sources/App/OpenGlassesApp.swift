@@ -588,6 +588,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let locationService = LocationService()
     /// One EventKit owner shared by tools, proactive alerts, and My Day.
     let eventKitStore: EventKitDayStore
+    /// One short-lived MapKit estimator shared by My Day and proactive leave-by delivery.
+    let travelTimeSource: MapKitTravelTimeDaySource
     let proactiveAlerts: ProactiveAlertService
     let ambientCaptions = AmbientCaptionService()
     let glassesDisplay = GlassesDisplayService()
@@ -822,8 +824,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
     init() {
         let sharedEventKitStore = EventKitDayStore()
+        let sharedTravelTimeSource = MapKitTravelTimeDaySource(locationService: locationService)
         eventKitStore = sharedEventKitStore
-        proactiveAlerts = ProactiveAlertService(eventStore: sharedEventKitStore)
+        travelTimeSource = sharedTravelTimeSource
+        proactiveAlerts = ProactiveAlertService(
+            eventStore: sharedEventKitStore,
+            travelSource: sharedTravelTimeSource
+        )
 
         // Initialize native tool system
         // Active project namespace for document scoping (Plan AN). Bind a local ref to
@@ -844,7 +851,8 @@ class AppState: ObservableObject, AppStateProtocol {
             semanticMemory: userMemory,
             documentStore: documentStore,
             activeNamespace: { memoryForNamespace.activePersonaId ?? "global" },
-            eventKitStore: sharedEventKitStore
+            eventKitStore: sharedEventKitStore,
+            travelTimeSource: sharedTravelTimeSource
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 
@@ -1264,12 +1272,19 @@ class AppState: ObservableObject, AppStateProtocol {
         proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
             self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
-            // Plan BZ: calendar/proactive alerts also feed the digest.
-            self.notificationDigest.ingest(source: .proactive, title: message,
-                                           priority: urgency == .high ? .high : .medium)
             Task {
                 await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
             }
+        }
+        proactiveAlerts.onDigestItem = { [weak self] id, message, eventDate, urgency in
+            self?.notificationDigest.ingest(
+                id: id,
+                source: .proactive,
+                title: message,
+                priority: urgency == .high ? .high : .medium,
+                threadKey: id,
+                eventDate: eventDate
+            )
         }
         proactiveAlerts.onMeetingPlaybook = { [weak self] title, notes, steps in
             guard let self else { return }
