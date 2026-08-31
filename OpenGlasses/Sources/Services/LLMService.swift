@@ -566,7 +566,9 @@ class LLMService: ObservableObject {
             return message
         }
 
-        let smallContext = !isOnDevice && Config.llmImageLightweightPromptEnabled
+        // Per-model: the lean prompt exists for tight providers (Groq's 8k cap) and would
+        // strip tools from roomier ones. On-device is lean unconditionally, below.
+        let smallContext = !isOnDevice && modelConfig.smallContextEnabled
         let effectiveIncludeTools = smallContext ? false : includeTools
 
         let fullPrompt: String

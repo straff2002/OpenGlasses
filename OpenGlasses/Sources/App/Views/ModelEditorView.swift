@@ -9,6 +9,7 @@ struct ModelEditorView: View {
     @State private var model: String
     @State private var baseURL: String
     @State private var supportsVision: Bool
+    @State private var smallContext: Bool
 
     @State private var availableModels: [ModelFetcher.RemoteModel] = []
     @State private var isFetchingModels: Bool = false
@@ -27,6 +28,7 @@ struct ModelEditorView: View {
         _model = State(initialValue: config.model)
         _baseURL = State(initialValue: config.baseURL)
         _supportsVision = State(initialValue: config.visionEnabled)
+        _smallContext = State(initialValue: config.smallContextEnabled)
     }
 
     var body: some View {
@@ -39,6 +41,7 @@ struct ModelEditorView: View {
                     model: $model,
                     baseURL: $baseURL,
                     supportsVision: $supportsVision,
+                    smallContext: $smallContext,
                     availableModels: $availableModels,
                     isFetchingModels: $isFetchingModels,
                     fetchError: $fetchError,
@@ -62,7 +65,8 @@ struct ModelEditorView: View {
                             apiKey: apiKey,
                             model: model,
                             baseURL: baseURL,
-                            supportsVision: supportsVision
+                            supportsVision: supportsVision,
+                            smallContext: smallContext
                         )
                         onSave(updated)
                         dismiss()

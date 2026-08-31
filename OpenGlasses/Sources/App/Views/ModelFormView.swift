@@ -9,6 +9,7 @@ struct ModelFormView: View {
     @Binding var model: String
     @Binding var baseURL: String
     @Binding var supportsVision: Bool
+    @Binding var smallContext: Bool
 
     // Model fetching state
     @Binding var availableModels: [ModelFetcher.RemoteModel]
@@ -102,7 +103,9 @@ struct ModelFormView: View {
                 if localDownloadedModels.isEmpty {
                     Text("Download a model first, then select it here. No internet needed after download.")
                 } else {
-                    Text("Select a downloaded model. Runs entirely on-device — no internet needed.")
+                    // The numbers come from the same budget the truncation logic enforces, so
+                    // what this caption promises is what the model actually receives.
+                    Text("Select a downloaded model. Runs entirely on-device — no internet needed. \(Self.localContextCaption(modelId: model))")
                 }
             }
         } else {
@@ -214,6 +217,12 @@ struct ModelFormView: View {
                 } else {
                     Text("Turn on Vision to send photos from your glasses to the AI. Leave it off for text-only models.")
                 }
+            }
+
+            Section {
+                Toggle("Small context", isOn: $smallContext)
+            } footer: {
+                Text("Each turn sends a short prompt and recent lines only — no tool list or full system prompt. Turn on for tight providers like Groq (8k token cap); leave off for roomier models so tools keep working.")
             }
         }
     }
@@ -410,26 +419,62 @@ struct ModelFormView: View {
     private func fetchModels() async {
         isFetchingModels = true
         fetchError = nil
-        let models = await ModelFetcher.fetchModels(
-            provider: selectedProvider,
-            apiKey: apiKey,
-            baseURL: baseURL
-        )
+        let models: [ModelFetcher.RemoteModel]
+        if selectedProvider == .chatgpt {
+            // The account catalog is a drifting private surface; the distinguishable failure
+            // reasons are the only way to tell "sign in again" from "the backend moved".
+            switch await ModelFetcher.fetchChatGPTCatalog() {
+            case .models(let fetched):
+                models = fetched
+            case .tokenUnavailable(let signedIn):
+                models = []
+                fetchError = signedIn
+                    ? "Signed in, but the session couldn't be refreshed. Sign out and sign in again."
+                    : "No ChatGPT account is connected. Sign in first."
+            case .httpError(let code):
+                models = []
+                fetchError = code == 401 || code == 403
+                    ? "ChatGPT rejected the sign-in (HTTP \(code)). Sign out and sign in again — if it persists, the backend contract may have changed."
+                    : "ChatGPT's model service returned HTTP \(code). Try again shortly."
+            case .networkError(let why):
+                models = []
+                fetchError = "Couldn't reach ChatGPT — \(why)"
+            case .emptyCatalog:
+                models = []
+                fetchError = "ChatGPT answered, but reported no models enabled for this account."
+            }
+        } else {
+            models = await ModelFetcher.fetchModels(
+                provider: selectedProvider,
+                apiKey: apiKey,
+                baseURL: baseURL
+            )
+        }
         isFetchingModels = false
         if models.isEmpty {
-            fetchError = selectedProvider == .chatgpt
-                ? "Couldn't load the models available to this ChatGPT account. Check the sign-in and try again."
-                : "Couldn't find any models. Double-check your API key and try again."
+            if fetchError == nil {
+                fetchError = "Couldn't find any models. Double-check your API key and try again."
+            }
             keyValidated = false
         } else {
             availableModels = models
             keyValidated = true
             if !models.contains(where: { $0.id == model }) {
-                model = models.first(where: \.isDefault)?.id
+                let fallback: String? = models.first(where: \.isDefault)?.id
                     ?? models.first(where: { $0.id == selectedProvider.defaultModel })?.id
-                    ?? models.first?.id ?? model
+                    ?? models.first?.id
+                model = fallback ?? model
             }
         }
+    }
+
+    /// Pure. Describes the prompt room a local model actually has, from the same tables the
+    /// truncation logic uses. Local models always run the lean prompt, so there is no toggle —
+    /// only the truth about the window.
+    static func localContextCaption(modelId: String) -> String {
+        let window = LocalModelBudget.contextWindow(for: modelId)
+        let prompt = LocalModelBudget.promptBudget(for: modelId)
+        return "Always uses a compact prompt; ~\(window / 1024)k-token context (~\(prompt / 1024)k for the prompt)."
     }
 
     private var validateButtonTitle: String {

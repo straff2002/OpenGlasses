@@ -5,19 +5,9 @@ struct LLMImageSettingsView: View {
     @State private var customMaxLongEdge = Double(Config.llmImageCustomMaxLongEdge)
     @State private var customMaxMegabytes = Double(Config.llmImageCustomMaxBytes) / 1_000_000
     @State private var customJPEGQuality = Double(Config.llmImageCustomJPEGQuality)
-    @State private var lightweightPrompt = Config.llmImageLightweightPromptEnabled
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Small context", isOn: $lightweightPrompt)
-                    .onChange(of: lightweightPrompt) { _, value in
-                        Config.setLLMImageLightweightPromptEnabled(value)
-                    }
-            } footer: {
-                Text("Send a short spoken-style prompt, your last few lines, and the photo if any — no tool list or full system prompt. Off by default. Turn on for tight providers like Groq (8k token cap).")
-            }
-
             Section {
                 Picker("Preset", selection: $preset) {
                     ForEach(LLMImagePreset.allCases) { option in

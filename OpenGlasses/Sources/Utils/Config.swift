@@ -2499,12 +2499,29 @@ struct Config {
         UserDefaults.standard.set(Double(value), forKey: "llmImageCustomJPEGQuality")
     }
 
-    /// Send a short spoken-style prompt and a few recent lines instead of the full system prompt
-    /// and tool list. Off by default; for providers with a tight token cap.
+    /// Legacy global "small context" switch, superseded by the per-model `ModelConfig.smallContext`.
+    /// Kept only so `migrateSmallContextToPerModelIfNeeded()` can read what the user had set; no
+    /// production decision may consult it.
     @UserDefaultsBacked("llmImageLightweightPromptEnabled", default: false) static var llmImageLightweightPromptEnabled: Bool
 
     static func setLLMImageLightweightPromptEnabled(_ enabled: Bool) {
         llmImageLightweightPromptEnabled = enabled
+    }
+
+    /// Carry a global small-context choice onto the models it actually applied to (cloud
+    /// providers — on-device always ran lean), then clear the global flag so behaviour is
+    /// per-model from here on. Safe to run every launch: once the flag is false it is a no-op.
+    static func migrateSmallContextToPerModelIfNeeded() {
+        guard llmImageLightweightPromptEnabled else { return }
+        var models = savedModels
+        for i in models.indices {
+            let provider = models[i].llmProvider
+            if provider != .local && provider != .appleOnDevice && models[i].smallContext == nil {
+                models[i].smallContext = true
+            }
+        }
+        setSavedModels(models)
+        llmImageLightweightPromptEnabled = false
     }
 
     // MARK: - Perplexity Search

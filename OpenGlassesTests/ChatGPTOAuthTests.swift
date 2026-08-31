@@ -186,4 +186,21 @@ final class ChatGPTOAuthTests: XCTestCase {
         ChatGPTAuth.apply(credential: "at-1", accountID: nil, to: &request)
         XCTAssertNil(request.value(forHTTPHeaderField: "chatgpt-account-id"))
     }
+
+    func testAuthHeadersCarryClientIdentity() {
+        // The backend keys catalog visibility on the client identity (2026-08-31 rotation
+        // returned empty lists without it), so originator and User-Agent must ride every request.
+        var request = URLRequest(url: URL(string: ChatGPTOAuth.backendResponsesURL)!)
+        ChatGPTAuth.apply(credential: "at-1", accountID: "acct-1", to: &request)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "originator"), "codex_cli_rs")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), ChatGPTOAuth.userAgentValue)
+        XCTAssertTrue(ChatGPTOAuth.userAgentValue.hasPrefix("codex_cli_rs/"))
+    }
+
+    func testModelsRequestURLCarriesClientVersion() {
+        let url = ChatGPTOAuth.backendModelsRequestURL
+        XCTAssertTrue(url.hasPrefix(ChatGPTOAuth.backendModelsURL))
+        XCTAssertTrue(url.contains("client_version=\(ChatGPTOAuth.clientVersion)"))
+        XCTAssertFalse(ChatGPTOAuth.clientVersion.isEmpty)
+    }
 }
