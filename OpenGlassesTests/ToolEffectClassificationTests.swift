@@ -375,15 +375,14 @@ final class ToolEffectClassificationTests: XCTestCase {
     /// tools register, and the cheap services they need are supplied.
     private func widestRegistry() -> NativeToolRegistry {
         let savedFieldAssist = Config.fieldAssistEnabled
-        let savedPurchased = Config.fieldAssistPurchased
         let savedAccessibility = Config.accessibilityModeEnabled
+        let savedEntitlement = EntitlementTestScope.grant()
         Config.setFieldAssistEnabled(true)
-        Config.setFieldAssistPurchased(true)
         Config.setAccessibilityModeEnabled(true)
         defer {
             Config.setFieldAssistEnabled(savedFieldAssist)
-            Config.setFieldAssistPurchased(savedPurchased)
             Config.setAccessibilityModeEnabled(savedAccessibility)
+            EntitlementTestScope.restore(savedEntitlement)
         }
 
         let registry = NativeToolRegistry(

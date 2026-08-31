@@ -5,16 +5,18 @@ import XCTest
 @MainActor
 final class ITNetworkPackTests: XCTestCase {
 
+    private var previousEntitlement: FieldAssistEntitlementProvider!
+
     override func setUp() {
         super.setUp()
         UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
-        UserDefaults.standard.set(true, forKey: "fieldAssistDeveloperUnlocked")
+        previousEntitlement = EntitlementTestScope.grant()
         VaultRegistry.shared.resetCache()
     }
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled")
-        UserDefaults.standard.removeObject(forKey: "fieldAssistDeveloperUnlocked")
+        EntitlementTestScope.restore(previousEntitlement)
         super.tearDown()
     }
 

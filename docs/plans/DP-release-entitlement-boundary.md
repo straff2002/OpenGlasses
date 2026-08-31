@@ -1,6 +1,6 @@
 # Plan DP — Release Entitlement Boundary
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🚧 P0 ✅ + P1 ✅ shipped (2026-08-31); P2 partially landed (test injection); P3 planned
 **Origin:** 2026-08-26 adversarial review finding 7 (High business/access-control risk).
 **Priority:** Immediate release blocker.
 
@@ -50,7 +50,7 @@ Relevant seams:
 
 ---
 
-## P0 — Remove the release bypass 🔴
+## P0 — Remove the release bypass ✅
 
 1. Delete `Config.fieldAssistDeveloperUnlocked` and remove it from
    `Config.fieldAssistUnlocked`/all production decisions.
@@ -73,7 +73,21 @@ grants; a cryptographically valid license grants; neither
 denied; tool/service calls fail closed even when invoked without UI; migration removes only the legacy
 key. Build a Release configuration as part of the PR.
 
-## P1 — Typed entitlement evaluator and injected provider 🔴
+**Shipped 2026-08-31.** `Config.fieldAssistDeveloperUnlocked` is gone, as is the settings toggle, its
+footer, and the "unlock active" status row — including their entries in the string catalog.
+`FieldAssistEntitlement.removeLegacyPreferenceKeys()` runs from `OpenGlassesApp.init` next to the
+Keychain migration; it deletes exactly one key and is idempotent, so a real purchase or license cannot
+be revoked by it. Steps 5 and 6 were satisfied directly by P1 rather than by interim guards: the
+mirrors stopped being authoritative the moment `fieldAssistUnlocked` began delegating to the
+evaluator, so no throwaway fail-closed layer was written.
+
+Debug convenience is `FieldAssistEntitlement.setInternalDeveloperGrant(_:)` — in-memory, `#if DEBUG`,
+routed through the same provider, with no preference key and no Release symbol or string. Plain
+`#if DEBUG` was used rather than a new repository-wide `OPENGLASSES_INTERNAL` condition; introducing
+one is still open should an internal TestFlight flavor ever be wanted, and would be the place to hang
+P2's internal launch argument and watermark. No internal-only UI shipped with P0/P1.
+
+## P1 — Typed entitlement evaluator and injected provider ✅
 
 Create a pure policy result:
 
@@ -110,17 +124,52 @@ struct FieldAssistEntitlementDecision: Equatable {
 malformed license; cached evidence expiration; service reactions to mid-session revoke; internal source
 is constructible only in internal test compilation.
 
-## P2 — Replace debug globals in tests and internal builds 🟠
+**Shipped 2026-08-31** in `OpenGlasses/Sources/Services/Entitlement/`:
 
-1. Update `ITNetworkPackTests`, `EscalationCoordinatorTests`, `FieldSessionServiceTests`,
-   `SessionExporterTests`, and any other caller to inject `AlwaysGrantedEntitlementProvider` or explicit
-   evidence. Tests must cleanly run in parallel without shared `UserDefaults` state.
+- `FieldAssistEntitlementEvidence` + `…EvidenceSet` + `FieldAssistEntitlementDecision` — evidence is
+  only constructed by code that already checked a signature or a StoreKit verification result. The
+  evidence set carries `hasUnverifiableLicense`, so a forged code denies with a stated reason rather
+  than looking like "never bought it".
+- `FieldAssistEntitlementEvaluator.decide(_:now:)` — pure, injected clock. Expiry is **exclusive**
+  (evidence lapses at the instant it expires); among live evidence the perpetual piece wins, otherwise
+  the one that lasts longest. Absent or unverifiable evidence denies; there is no fallback grant.
+- `LiveFieldAssistEntitlementProvider` — the stored license **code** is the evidence, re-verified on
+  every read through the new `nonisolated LicenseService.decode(code:publicKeyBase64:)` (signature +
+  feature, no expiry check, so the clock lives in one place). Its identity reaches decisions as a
+  16-hex-character SHA-256 prefix, never the code itself.
+- `VerifiedStorePurchaseRecorder` — process-local, deliberately unpersisted. `StoreKitService`
+  records or clears it from `Transaction.currentEntitlements`, which resolves against the on-device
+  receipt and so holds offline. Organization licenses bound themselves by their signed expiry claim;
+  no separate offline grace window was added, because a signed claim already is one.
+- `FieldAssistEntitlement.shared` — lock-guarded provider + clock, so the synchronous gates can ask
+  from any isolation domain. The provider is the single injection seam; tests swap it.
+
+`Config.fieldAssistUnlocked` survives only as a delegating convenience with no stored boolean.
+Enforcement is at service boundaries, not UI: `VaultRegistry.isUnlocked` (which every Field Assist
+tool and `FieldSessionService.startSession` route through), `SessionExporter.export`
+(`ExportError.notEntitled`), and `EscalationCoordinator.requestExpert`.
+
+**Revocation contract.** Gates are entry checks. Once `VerifiedStorePurchaseRecorder.clear()` runs,
+every later decision denies, so no new vault, procedure, export, or escalation opens; an operation
+already in flight completes, and an escalation already under way runs to `resolve`/`cancel` so a
+technician is never abandoned on a live call. Artifacts already written stay on disk.
+
+Item 4 (a protected, expiry-bound cache of verified facts) was not needed: nothing entitlement-bearing
+is persisted at all. The license code was already on disk and is now re-verified rather than trusted,
+and StoreKit state is re-derived per process.
+
+## P2 — Replace debug globals in tests and internal builds 🚧
+
+1. ✅ **Landed with P1.** `ITNetworkPackTests`, `EscalationCoordinatorTests`, `FieldSessionServiceTests`,
+   `SessionExporterTests`, and `ToolEffectClassificationTests` inject through `EntitlementTestScope`
+   (`AlwaysGrantedEntitlementProvider` / `DeniedEntitlementProvider` / `StubEntitlementProvider` in
+   `OpenGlassesTests/EntitlementTestSupport.swift`). No test writes the legacy key any more, and
+   `LicenseServiceTests` asserts through a decision computed from the stored code rather than a mirror.
 2. Provide an internal-only launch argument or settings toggle backed by an ephemeral in-memory provider,
    reset on restart, with an unmistakable “INTERNAL ENTITLEMENT” banner/watermark.
 3. Ensure internal builds cannot produce or migrate entitlement evidence that a Release build accepts.
    Separate bundle id/receipt environment where practical.
-4. Add a test helper for denied/granted/expired decisions so feature tests state the access condition
-   rather than relying on setup magic.
+4. ✅ **Landed with P1** as `EntitlementTestSupport.swift`.
 
 ## P3 — Release artifact and CI enforcement 🟠
 

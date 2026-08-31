@@ -3341,21 +3341,11 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "fieldAssistEnabled")
     }
 
-    /// Developer override that unlocks Field Assist vaults without a paid IAP. Used during
-    /// internal development and demos before per-pack IAP products go live in App Store Connect.
-    static var fieldAssistDeveloperUnlocked: Bool {
-        UserDefaults.standard.bool(forKey: "fieldAssistDeveloperUnlocked")
-    }
+    // MARK: - Field Assist entitlement
 
-    static func setFieldAssistDeveloperUnlocked(_ unlocked: Bool) {
-        UserDefaults.standard.set(unlocked, forKey: "fieldAssistDeveloperUnlocked")
-    }
-
-    // MARK: - Field Assist entitlement (license code OR IAP OR dev unlock)
-
-    /// Cached result of validating a stored Field Assist license code. Written by `LicenseService`
-    /// (the heavy CryptoKit signature check runs at activation/launch); read here synchronously so
-    /// the tool and vault gates stay non-async.
+    /// Display mirror of the last license validation. **Not authoritative** — it is a plain mutable
+    /// preference, so it is exactly as forgeable as any other. Entitlement decisions re-verify the
+    /// stored license code itself; this only drives settings copy.
     static var fieldAssistLicenseValid: Bool {
         UserDefaults.standard.bool(forKey: "fieldAssistLicenseValid")
     }
@@ -3364,8 +3354,8 @@ struct Config {
         UserDefaults.standard.set(valid, forKey: "fieldAssistLicenseValid")
     }
 
-    /// Mirror of `StoreKitService.isFieldAssistPurchased` for synchronous gate reads. Written when
-    /// StoreKit entitlements are checked.
+    /// Display mirror of `StoreKitService.isFieldAssistPurchased`. **Not authoritative** for the same
+    /// reason as `fieldAssistLicenseValid`; the verified transaction is the evidence.
     static var fieldAssistPurchased: Bool {
         UserDefaults.standard.bool(forKey: "fieldAssistPurchased")
     }
@@ -3374,11 +3364,14 @@ struct Config {
         UserDefaults.standard.set(purchased, forKey: "fieldAssistPurchased")
     }
 
-    /// Whether the user is entitled to Field Assist — via a valid license code (B2B), a completed
-    /// in-app purchase, or the developer override. This is the paywall; `fieldAssistEnabled` is the
+    /// Whether the user is entitled to Field Assist. This is the paywall; `fieldAssistEnabled` is the
     /// user's on/off switch and is only meaningful when entitled.
+    ///
+    /// Delegates to the entitlement evaluator, which decides from verified evidence — a StoreKit
+    /// transaction verified in this process, or a signed organization license re-checked at read
+    /// time. There is no stored "entitled" boolean behind this, by design.
     static var fieldAssistUnlocked: Bool {
-        fieldAssistDeveloperUnlocked || fieldAssistLicenseValid || fieldAssistPurchased
+        FieldAssistEntitlement.shared.isGranted
     }
 
     /// True only when Field Assist is both entitled and switched on. Field tools and vaults gate on

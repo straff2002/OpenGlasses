@@ -134,17 +134,20 @@ final class VaultRegistry {
 
     /// Whether the user has unlocked this vault.
     /// IAP-gated vaults check StoreKit; vaults without an `iap` requirement are always unlocked.
+    ///
+    /// This is a service boundary, not a UI hint: `FieldSessionService` and the Field Assist tools
+    /// route through here, so a denied decision blocks a vault read even when no settings screen is
+    /// involved.
     func isUnlocked(_ manifest: VaultManifest) -> Bool {
         guard let iap = manifest.gating.iap else { return true }
         switch iap {
         case "medical_compliance":
             return StoreKitService.shared.isMedicalComplianceActive
         case "field_assist_refrigeration", "field_assist_it":
-            // Field Assist entitlement: license code (B2B) OR in-app purchase OR developer unlock.
-            return Config.fieldAssistUnlocked
+            return FieldAssistEntitlement.shared.isGranted
         case "enterprise":
             // Customer-imported vaults (Plan H) ride the same Field Assist entitlement.
-            return Config.fieldAssistUnlocked
+            return FieldAssistEntitlement.shared.isGranted
         default:
             return false
         }

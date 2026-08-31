@@ -362,6 +362,8 @@ Hands-free, step-by-step guidance for technicians and other hands-busy work. Pro
 | "Next step" / "Go back" / "Repeat that" | Navigate the procedure hands-free |
 | "Call an expert" | Bridges to a remote human with live glasses video |
 
+**Access:** Field Assist unlocks with a signed license code (teams — issued with your purchase order) or a one-time in-app purchase. TestFlight builds unlock through the StoreKit sandbox at no charge, so beta testers don't need a code.
+
 ### Medical Compliance
 
 Professional-grade safeguards for clinical recordings, available as an in-app subscription.

@@ -9,9 +9,9 @@ import CryptoKit
 /// forged by reverse-engineering the binary. Codes are issued out-of-band (e.g. on purchase order)
 /// with `Scripts/generate-field-license.swift`.
 ///
-/// On successful activation the code is persisted and `Config.fieldAssistLicenseValid` is set, which
-/// the synchronous tool/vault gates read. The stored code is re-validated at launch so an expired
-/// license stops unlocking the feature.
+/// On successful activation the code is persisted and drives the UI. Entitlement decisions do not
+/// read the `Config.fieldAssistLicenseValid` mirror this also writes: the stored *code* is the
+/// evidence, re-verified through `decode(code:publicKeyBase64:)` on every gate read.
 @MainActor
 final class LicenseService: ObservableObject {
     static let shared = LicenseService()
@@ -32,7 +32,10 @@ final class LicenseService: ObservableObject {
     /// The currently active license payload, if any (drives UI; nil = not licensed).
     @Published private(set) var activeLicense: LicensePayload?
 
-    private let storageKey = "fieldAssistLicenseCode"
+    /// Where the activated code lives. Shared with the entitlement provider, which re-verifies it at
+    /// read time rather than trusting any cached verdict.
+    nonisolated static let storageKey = "fieldAssistLicenseCode"
+
     private let defaults = UserDefaults.standard
 
     struct LicensePayload: Codable, Equatable {
@@ -69,7 +72,7 @@ final class LicenseService: ObservableObject {
     @discardableResult
     func activate(code: String) throws -> LicensePayload {
         let payload = try verify(code: code)
-        defaults.set(code.trimmingCharacters(in: .whitespacesAndNewlines), forKey: storageKey)
+        defaults.set(code.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.storageKey)
         activeLicense = payload
         Config.setFieldAssistLicenseValid(true)
         return payload
@@ -77,14 +80,14 @@ final class LicenseService: ObservableObject {
 
     /// Remove the stored license and drop the entitlement.
     func clear() {
-        defaults.removeObject(forKey: storageKey)
+        defaults.removeObject(forKey: Self.storageKey)
         activeLicense = nil
         Config.setFieldAssistLicenseValid(false)
     }
 
     /// Re-validate the stored code (called at launch and init). Clears entitlement on expiry/failure.
     func loadStored() {
-        guard let code = defaults.string(forKey: storageKey) else {
+        guard let code = defaults.string(forKey: Self.storageKey) else {
             Config.setFieldAssistLicenseValid(false)
             return
         }
@@ -99,8 +102,19 @@ final class LicenseService: ObservableObject {
 
     // MARK: - Verification
 
-    /// Pure validation: decode, check the signature against the public key, the feature id, and expiry.
+    /// Full validation against this service's key: signature, feature id, and expiry as of now.
     func verify(code: String) throws -> LicensePayload {
+        let payload = try Self.decode(code: code, publicKeyBase64: publicKeyBase64)
+        if let expires = payload.expires, expires < Date() { throw LicenseError.expired(expires) }
+        return payload
+    }
+
+    /// Signature and feature verification without the expiry check.
+    ///
+    /// `nonisolated` and expiry-free so the entitlement provider can re-verify a stored code from any
+    /// isolation domain and hand the *signed* expiry claim to the evaluator — the clock belongs in one
+    /// place, not in every verifier.
+    nonisolated static func decode(code: String, publicKeyBase64: String) throws -> LicensePayload {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = trimmed.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 2,
@@ -113,11 +127,10 @@ final class LicenseService: ObservableObject {
         guard publicKey.isValidSignature(signature, for: payloadData) else {
             throw LicenseError.badSignature
         }
-        guard let payload = try? Self.decoder.decode(LicensePayload.self, from: payloadData) else {
+        guard let payload = try? decoder.decode(LicensePayload.self, from: payloadData) else {
             throw LicenseError.malformed
         }
-        guard payload.feature == Self.featureId else { throw LicenseError.wrongFeature }
-        if let expires = payload.expires, expires < Date() { throw LicenseError.expired(expires) }
+        guard payload.feature == featureId else { throw LicenseError.wrongFeature }
         return payload
     }
 
@@ -137,14 +150,16 @@ final class LicenseService: ObservableObject {
 
     // MARK: - Codable config (shared by sign + verify so the format stays in lockstep)
 
-    static let encoder: JSONEncoder = {
+    /// `nonisolated(unsafe)` because `decode(code:publicKeyBase64:)` runs off the main actor; both
+    /// are configured once here and only read afterwards.
+    nonisolated(unsafe) static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = [.sortedKeys]
         return e
     }()
 
-    static let decoder: JSONDecoder = {
+    nonisolated(unsafe) static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d

@@ -40,7 +40,10 @@
 
 ## Gating
 
-Add an `it_network` case to `VaultRegistry.isUnlocked` (new IAP `field_assist_it`, dev-unlock via `fieldAssistDeveloperUnlocked` like refrigeration until the product is live).
+Add an `it_network` case to `VaultRegistry.isUnlocked` (new IAP `field_assist_it`, riding the same Field Assist entitlement as refrigeration until the product is live).
+
+> Superseded detail: this originally reached the vault through a `fieldAssistDeveloperUnlocked`
+> preference. That bypass was removed in DP P0/P1 — the gate now asks the entitlement decision.
 
 ## Build order
 

@@ -133,10 +133,16 @@ class StoreKitService: ObservableObject {
     // MARK: - Subscription Status
 
     /// Check current entitlements for both the Medical Compliance subscription and the Field Assist
-    /// non-consumable. Mirrors the Field Assist state into `Config` for the synchronous gates.
+    /// non-consumable.
+    ///
+    /// The Field Assist result is recorded as entitlement *evidence* in `VerifiedStorePurchaseRecorder`
+    /// — a process-local record of a verified, unrevoked transaction. `Config.fieldAssistPurchased` is
+    /// still written, but only as a display mirror. This runs at launch and on every transaction
+    /// update, and resolves against the on-device receipt, so it holds offline.
     func checkSubscriptionStatus() async {
         var medicalActive = false
         var fieldActive = false
+        var fieldExpiration: Date?
 
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
@@ -164,6 +170,7 @@ class StoreKitService: ObservableObject {
                     )
                 } else if transaction.productID == Self.fieldAssistId {
                     fieldActive = true
+                    fieldExpiration = transaction.expirationDate
                 }
             }
         }
@@ -175,6 +182,13 @@ class StoreKitService: ObservableObject {
 
         isFieldAssistPurchased = fieldActive
         Config.setFieldAssistPurchased(fieldActive)
+        // Revocation lands here: clearing the record makes every later gate deny, so nothing new
+        // opens. Work already in flight finishes — the gates are entry checks.
+        if fieldActive {
+            VerifiedStorePurchaseRecorder.shared.record(productID: Self.fieldAssistId, expiration: fieldExpiration)
+        } else {
+            VerifiedStorePurchaseRecorder.shared.clear()
+        }
     }
 
     /// Restore purchases (triggers App Store sign-in if needed).

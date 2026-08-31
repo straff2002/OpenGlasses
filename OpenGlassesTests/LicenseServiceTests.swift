@@ -25,6 +25,16 @@ final class LicenseServiceTests: XCTestCase {
 
     private var privateKeyBase64: String { privateKey.rawRepresentation.base64EncodedString() }
 
+    /// The entitlement a gate would compute right now from the stored code, verified with this
+    /// test's key. Asserting through this rather than a cached flag is the point: the code is the
+    /// evidence.
+    private func storedCodeDecision() -> FieldAssistEntitlementDecision {
+        let provider = LiveFieldAssistEntitlementProvider(
+            storePurchases: VerifiedStorePurchaseRecorder(),
+            licensePublicKeyBase64: service.publicKeyBase64)
+        return FieldAssistEntitlementEvaluator.decide(provider.evidence())
+    }
+
     private func code(feature: String = "field_assist", licensee: String = "Acme Co", expires: Date? = nil) throws -> String {
         let payload = LicenseService.LicensePayload(feature: feature, licensee: licensee, issued: Date(), expires: expires)
         return try LicenseService.makeCode(payload: payload, privateKeyBase64: privateKeyBase64)
@@ -34,7 +44,7 @@ final class LicenseServiceTests: XCTestCase {
         let payload = try service.activate(code: try code(licensee: "Globex"))
         XCTAssertEqual(payload.licensee, "Globex")
         XCTAssertTrue(Config.fieldAssistLicenseValid)
-        XCTAssertTrue(Config.fieldAssistUnlocked)
+        XCTAssertTrue(storedCodeDecision().isGranted)
         XCTAssertNotNil(service.activeLicense)
     }
 
@@ -87,9 +97,10 @@ final class LicenseServiceTests: XCTestCase {
 
     func testClearDropsEntitlement() throws {
         _ = try service.activate(code: try code())
-        XCTAssertTrue(Config.fieldAssistUnlocked)
+        XCTAssertTrue(storedCodeDecision().isGranted)
         service.clear()
         XCTAssertFalse(Config.fieldAssistLicenseValid)
+        XCTAssertFalse(storedCodeDecision().isGranted)
         XCTAssertNil(service.activeLicense)
     }
 
