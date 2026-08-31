@@ -74,7 +74,7 @@ struct VoiceTab: View {
             PersonaPickerSheet(appState: appState)
         }
         .sheet(item: $appState.pendingShareItem) { item in
-            ShareSheet(items: item.items)
+            ShareSheet(items: item.items, onComplete: item.onComplete)
         }
     }
 

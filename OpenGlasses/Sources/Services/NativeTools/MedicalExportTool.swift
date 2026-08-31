@@ -71,88 +71,67 @@ struct MedicalExportTool: NativeTool {
 
         switch action {
         case "export_fhir":
-            let config = FHIRConfig.fromDefaults()
-            guard !config.baseURL.isEmpty else {
-                return "FHIR server not configured. Go to Settings → Medical Compliance → Medical Export to configure your FHIR endpoint."
-            }
-
-            let result = await service.exportToFHIR(
-                transcript: transcript, duration: duration, date: now, config: config
-            )
+            let result = await service.exportToFHIR(transcript: transcript, duration: duration, date: now)
             await MainActor.run { service.lastExportResult = result }
 
             if result.success {
                 return "Transcript uploaded to FHIR server successfully. \(result.message)"
             } else {
-                return "FHIR export failed: \(result.message). You can try again or use the share sheet instead."
+                return "FHIR export failed: \(result.message) You can try again or use the share sheet instead."
             }
 
         case "export_file":
-            let formatStr = args["format"] as? String ?? "text"
-            let format: ExportFormat
-            switch formatStr {
-            case "pdf": format = .pdf
-            case "fhir_json": format = .fhirJson
-            case "hl7": format = .hl7
-            default: format = .plainText
-            }
-
-            let url = service.createExportFile(
-                transcript: transcript, duration: duration, date: now, format: format
-            )
-
-            if let url {
-                return "Export file created: \(url.lastPathComponent) (\(format.rawValue)). The file is ready for sharing via the Files app or share sheet."
-            } else {
-                return "Failed to create export file. Try plain text format as a fallback."
+            let format = Self.format(from: args)
+            do {
+                let lease = try await MainActor.run {
+                    try service.createExportLease(transcript: transcript, duration: duration,
+                                                  date: now, format: format)
+                }
+                return "Export file created: \(lease.displayName) (\(format.rawValue)). It is held in protected storage for sharing and is removed once the share finishes."
+            } catch {
+                return "Failed to create export file: \(error.localizedDescription)"
             }
 
         case "share":
-            let formatStr = args["format"] as? String ?? "text"
-            let format: ExportFormat
-            switch formatStr {
-            case "pdf": format = .pdf
-            case "fhir_json": format = .fhirJson
-            case "hl7": format = .hl7
-            default: format = .plainText
-            }
-
-            let url = service.createExportFile(
-                transcript: transcript, duration: duration, date: now, format: format
-            )
-
-            if let url {
-                // Request share sheet via AppState
+            let format = Self.format(from: args)
+            do {
+                let lease = try await MainActor.run {
+                    try service.createExportLease(transcript: transcript, duration: duration,
+                                                  date: now, format: format)
+                }
+                // The share sheet is presented by AppState, which owns releasing the lease when
+                // the provider finishes — success, cancel, or error alike.
                 await MainActor.run {
                     NotificationCenter.default.post(
                         name: .medicalExportShareRequest,
                         object: nil,
-                        userInfo: ["url": url]
+                        userInfo: ["lease": lease]
                     )
                 }
                 return "Share sheet opening with the transcript file (\(format.rawValue)). Choose your preferred sharing method."
-            } else {
-                return "Failed to create export file for sharing."
+            } catch {
+                return "Failed to create export file for sharing: \(error.localizedDescription)"
             }
 
         case "status":
-            let config = FHIRConfig.fromDefaults()
+            let config = await MainActor.run { service.configurationStore.configuration }
             var lines: [String] = []
 
-            if config.baseURL.isEmpty {
-                lines.append("FHIR server: Not configured")
-            } else {
+            if config.isConfigured {
                 lines.append("FHIR server: \(config.baseURL)")
-                if !config.patientId.isEmpty {
-                    lines.append("Patient ID: \(config.patientId)")
-                }
-                if !config.practitionerId.isEmpty {
-                    lines.append("Practitioner ID: \(config.practitionerId)")
-                }
+            } else {
+                lines.append("FHIR server: Not configured")
             }
+            // Credentials and clinical identifiers are reported as present or absent only — their
+            // values are protected data and must not reach a model context.
+            let hasCredential = await MainActor.run { service.configurationStore.hasStoredCredential() }
+            lines.append("Credential: \(hasCredential ? "Stored" : "Not stored")")
+            let hasIdentifiers = await MainActor.run {
+                ((try? service.configurationStore.loadPrivateContext())?.isEmpty == false)
+            }
+            lines.append("Patient/practitioner references: \(hasIdentifiers ? "Configured" : "Not configured")")
 
-            let platform = MedicalPlatform(rawValue: config.platformType) ?? .manual
-            lines.append("Platform: \(platform.rawValue)")
+            lines.append("Platform: \(config.platform.rawValue)")
             lines.append("Auto-export: \(Config.autoExportEnabled ? "Enabled" : "Disabled")")
             lines.append("Default format: \(Config.defaultExportFormat.rawValue)")
 
@@ -160,6 +139,15 @@ struct MedicalExportTool: NativeTool {
 
         default:
             return "Unknown action '\(action)'. Use export_fhir, export_file, share, or status."
+        }
+    }
+
+    private static func format(from args: [String: Any]) -> ExportFormat {
+        switch args["format"] as? String {
+        case "pdf": return .pdf
+        case "fhir_json": return .fhirJson
+        case "hl7": return .hl7
+        default: return .plainText
         }
     }
 }

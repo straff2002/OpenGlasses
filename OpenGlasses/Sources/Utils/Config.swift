@@ -51,6 +51,11 @@ struct Config {
     static var knownSecretValues: [String] {
         var values = migratableStringSecretKeys.compactMap { KeychainService.string(for: $0) }
         values.append(contentsOf: savedModels.map(\.apiKey))
+        // FHIR credentials live in their own protected store rather than the migration list, but a
+        // token that leaked into a log line has to be masked the same way.
+        if let credential = try? FHIRConfigurationStore.shared.loadCredential() {
+            values.append(contentsOf: [credential.bearerToken, credential.clientSecret].compactMap { $0 })
+        }
         return values.filter { !$0.isEmpty }
     }
 

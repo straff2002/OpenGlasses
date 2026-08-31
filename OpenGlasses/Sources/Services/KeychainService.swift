@@ -24,6 +24,90 @@ enum KeychainService {
     /// device only (never backed up, never synced to iCloud).
     private static let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
+    /// Accessibility classes a caller may pick from. `afterFirstUnlock` is the default because
+    /// background LLM/TTS requests read their keys unattended. `whenUnlocked` is the stricter
+    /// class required for clinical credentials, which are only ever read for a foreground export
+    /// and so must not be readable on a locked device.
+    enum Accessibility {
+        case afterFirstUnlockThisDeviceOnly
+        case whenUnlockedThisDeviceOnly
+
+        var attribute: CFString {
+            switch self {
+            case .afterFirstUnlockThisDeviceOnly: return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            case .whenUnlockedThisDeviceOnly: return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            }
+        }
+    }
+
+    /// Failures a caller has to tell apart. `unavailable` means protected data is not readable
+    /// right now — the item may well exist, so the caller must defer rather than conclude the
+    /// secret is absent and act on that.
+    enum KeychainError: Error, Equatable {
+        case unavailable(OSStatus)
+        case readFailed(OSStatus)
+        case writeFailed(OSStatus)
+        case deleteFailed(OSStatus)
+    }
+
+    /// Statuses that mean "the device is locked / the item is not accessible right now" rather
+    /// than "there is nothing stored".
+    private static func isUnavailable(_ status: OSStatus) -> Bool {
+        status == errSecInteractionNotAllowed || status == errSecAuthFailed
+    }
+
+    // MARK: - Throwing Data
+
+    /// Read raw data, distinguishing "no item" (`nil`) from "cannot read right now" (throws
+    /// `.unavailable`). Prefer this over ``data(for:)`` wherever absence and lock must not be
+    /// conflated.
+    static func readData(for key: String) throws -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess: return result as? Data
+        case errSecItemNotFound: return nil
+        default:
+            throw isUnavailable(status) ? KeychainError.unavailable(status) : KeychainError.readFailed(status)
+        }
+    }
+
+    /// Store raw data under an explicit accessibility class. Empty data deletes the item.
+    static func writeData(_ data: Data, for key: String, accessibility: Accessibility) throws {
+        try deleteItem(key)
+        guard !data.isEmpty else { return }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessibility.attribute,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status != errSecSuccess else { return }
+        throw isUnavailable(status) ? KeychainError.unavailable(status) : KeychainError.writeFailed(status)
+    }
+
+    /// Remove an item, throwing on anything other than success or a missing item.
+    static func deleteItem(_ key: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status != errSecSuccess, status != errSecItemNotFound else { return }
+        throw isUnavailable(status) ? KeychainError.unavailable(status) : KeychainError.deleteFailed(status)
+    }
+
     // MARK: - Data
 
     /// Read raw data for a key, or `nil` if the item does not exist.

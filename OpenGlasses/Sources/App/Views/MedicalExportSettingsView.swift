@@ -4,15 +4,23 @@ import SwiftUI
 /// Accessible from Medical Compliance settings.
 struct MedicalExportSettingsView: View {
     @ObservedObject var exportService: MedicalExportService
-    @State private var selectedPlatform: MedicalPlatform = {
-        MedicalPlatform(rawValue: FHIRConfig.fromDefaults().platformType) ?? .fhir
-    }()
-    @State private var fhirConfig = FHIRConfig.fromDefaults()
+    @State private var config = FHIRConfigurationStore.shared.configuration
+    @State private var selectedPlatform: MedicalPlatform = FHIRConfigurationStore.shared.configuration.platform
+    /// Transient editor state. The stored credential is never decrypted back into this field —
+    /// once saved, the UI can only report that one exists, replace it, or clear it.
+    @State private var tokenDraft = ""
+    @State private var isReplacingCredential = false
+    @State private var hasStoredCredential = FHIRConfigurationStore.shared.hasStoredCredential()
+    @State private var patientIDDraft = ""
+    @State private var practitionerIDDraft = ""
     @State private var autoExportEnabled = Config.autoExportEnabled
     @State private var defaultExportFormat: ExportFormat = Config.defaultExportFormat
     @State private var showTestResult = false
     @State private var testResultMessage = ""
     @State private var isTesting = false
+    @State private var saveMessage: String?
+
+    private var store: FHIRConfigurationStore { exportService.configurationStore }
 
     var body: some View {
         List {
@@ -21,8 +29,8 @@ struct MedicalExportSettingsView: View {
                 ForEach(MedicalPlatform.allCases) { platform in
                     Button {
                         selectedPlatform = platform
-                        fhirConfig.platformType = platform.rawValue
-                        fhirConfig.save()
+                        config.platformType = platform.rawValue
+                        store.save(config)
                     } label: {
                         HStack(spacing: 12) {
                             Text(platform.flag)
@@ -56,25 +64,20 @@ struct MedicalExportSettingsView: View {
                         Text("Server URL")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        TextField("https://fhir.example.com/r4", text: $fhirConfig.baseURL)
+                        TextField("https://fhir.example.com/r4", text: $config.baseURL)
                             .textContentType(.URL)
                             .keyboardType(.URL)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Bearer Token")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        SecretInputField(placeholder: "Pre-obtained OAuth token", text: $fhirConfig.bearerToken)
-                    }
+                    credentialRow
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Patient ID")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        TextField("Optional — e.g. 12345", text: $fhirConfig.patientId)
+                        TextField("Optional — e.g. 12345", text: $patientIDDraft)
                             .autocapitalization(.none)
                     }
 
@@ -82,16 +85,22 @@ struct MedicalExportSettingsView: View {
                         Text("Practitioner ID")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        TextField("Optional — e.g. dr-smith-001", text: $fhirConfig.practitionerId)
+                        TextField("Optional — e.g. dr-smith-001", text: $practitionerIDDraft)
                             .autocapitalization(.none)
                     }
 
                     Button {
-                        fhirConfig.save()
+                        saveConfiguration()
                     } label: {
                         Label("Save Configuration", systemImage: "checkmark.circle")
                     }
                     .tint(Color.accentColor)
+
+                    if let saveMessage {
+                        Text(saveMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("FHIR Server")
                 } footer: {
@@ -117,7 +126,7 @@ struct MedicalExportSettingsView: View {
                             }
                         }
                     }
-                    .disabled(fhirConfig.baseURL.isEmpty || isTesting)
+                    .disabled(!config.isConfigured || isTesting)
                 } footer: {
                     Text("Sends a metadata request to verify the FHIR server is reachable and responds to capability queries.")
                 }
@@ -214,10 +223,48 @@ struct MedicalExportSettingsView: View {
         }
         .navigationTitle("Medical Export")
         .ogFormStyle()
+        .onAppear(perform: loadProtectedValues)
         .alert("Connection Test", isPresented: $showTestResult) {
             Button("OK") {}
         } message: {
             Text(testResultMessage)
+        }
+    }
+
+    // MARK: - Credential
+
+    /// A stored credential is reported, never rendered. Entry is only offered when there is
+    /// nothing stored, or after the user explicitly asks to replace what is.
+    @ViewBuilder
+    private var credentialRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Bearer Token")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if hasStoredCredential && !isReplacingCredential {
+                HStack(spacing: 12) {
+                    Label("Credential stored", systemImage: "lock.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Replace") {
+                        tokenDraft = ""
+                        isReplacingCredential = true
+                    }
+                    .buttonStyle(.borderless)
+                    Button("Clear", role: .destructive) {
+                        store.clearCredential()
+                        tokenDraft = ""
+                        hasStoredCredential = false
+                        isReplacingCredential = false
+                        saveMessage = "Credential cleared."
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                SecretInputField(placeholder: "Pre-obtained OAuth token", text: $tokenDraft)
+            }
         }
     }
 
@@ -236,10 +283,41 @@ struct MedicalExportSettingsView: View {
         }
     }
 
+    /// Clinical identifiers are editable, so they are loaded back into their fields; the
+    /// credential deliberately is not.
+    private func loadProtectedValues() {
+        // @State initializers cannot reach `exportService`, so the injected store is the authority
+        // from here on — it and the singleton are the same object outside tests.
+        config = store.configuration
+        selectedPlatform = config.platform
+        hasStoredCredential = store.hasStoredCredential()
+        guard let context = try? store.loadPrivateContext() else { return }
+        patientIDDraft = context.patientID ?? ""
+        practitionerIDDraft = context.practitionerID ?? ""
+    }
+
+    private func saveConfiguration() {
+        store.save(config)
+        do {
+            if !tokenDraft.isEmpty {
+                try store.storeCredential(FHIRCredential(bearerToken: tokenDraft))
+                tokenDraft = ""
+                isReplacingCredential = false
+                hasStoredCredential = true
+            }
+            try store.storePrivateContext(
+                FHIRPrivateContext(patientID: patientIDDraft, practitionerID: practitionerIDDraft)
+            )
+            saveMessage = "Configuration saved."
+        } catch {
+            saveMessage = error.localizedDescription
+        }
+    }
+
     private func testConnection() {
         isTesting = true
         Task {
-            guard let url = URL(string: "\(fhirConfig.baseURL)/metadata") else {
+            guard let url = config.endpoint(for: "metadata") else {
                 testResultMessage = "Invalid server URL."
                 showTestResult = true
                 isTesting = false
@@ -250,9 +328,10 @@ struct MedicalExportSettingsView: View {
             request.setValue("application/fhir+json", forHTTPHeaderField: "Accept")
             request.timeoutInterval = 10
 
-            if !fhirConfig.bearerToken.isEmpty {
-                request.setValue("Bearer \(fhirConfig.bearerToken)",
-                                forHTTPHeaderField: "Authorization")
+            // Read the credential only here, for this one request.
+            let draft = tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let token = (try? store.loadCredential())?.bearerToken ?? (draft.isEmpty ? nil : draft) {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
 
             do {
