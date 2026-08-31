@@ -142,6 +142,7 @@ core first, with the live/device/backend edge deferred; one PR per plan.
 | [DX](DX-private-memory-timeline.md) | Private Memory Timeline and Control Surface | 📝 Drafted 2026-08-29 — phone-first provenance, correction, deletion, and federated search over existing authoritative memory stores; no copied timeline database or HUD dependency; conversation entries require DK P0–P2 |
 | [DY](DY-my-day-everyday-briefing.md) | My Day: Everyday Briefing and Preparation | 🟠 P0/P1 MVP implemented + automated suite green 2026-08-30 — feature-flagged phone/audio snapshot over shared Calendar, Reminders, and Weather sources with deterministic ranking/actions; physical UX validation, MapKit leave-by, and digest remain; no waveguide dependency |
 | [DZ](DZ-local-gguf-and-durable-agent-runtime.md) | Local GGUF Runtime and Durable Agent Loops | 📝 Drafted 2026-08-30 — adds a second, text-first local runtime beside MLX, revision-pinned resumable model acquisition, truthful scheduled-task outcomes, transactional memory curation, and separately gated multimodal/skill-storage follow-ups |
+| [EA](EA-voice-home-grid.md) | Voice Home Grid & Quick Actions | 📋 Planned 2026-08-31 — top-aligned home rhythm (deterministic gaps around My Day), quick-action grid absorbing the dock's `QuickActionTiles` band plus canned-prompt and photo-first actions through the existing turn pipeline, then a persisted grid editor. Dock returns to controls-only |
 
 **Three selectable expert-stream transports** (Plans L/M + the meeting-link connector): **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote, nothing to self-host), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -235,6 +236,11 @@ the suggested sequences.
   downloader and manager UI. Durable scheduler outcomes can proceed after the shared contracts and
   should land before memory curation uses scheduling opportunities. Multimodal GGUF waits for the
   text-runtime device matrix; declarative skill-pack storage is an optional independent follow-up.
+- **Round 21 — home-surface composition (EA).** From an on-device design review of the shipped My
+  Day surface: fix the conversation-zone rhythm and slim the scrolling dock first (P1), then the
+  canned-prompt/photo actions over shipped tools (P2), then the grid editor (P3). Pure UI
+  composition over existing seams — `ChatInputBar`'s turn submission, CN vision attachment, the
+  Plan Y quick-action band — with the Plan DF VoiceOver bar held throughout.
 - **Standalone tools.** First-Aid (AA), HECA (AC), Structured Vision (AD), Study Mode (AE), Memory/Recall (AY), Vehicle (AZ), and the planned/drafted items (AB, AF, AG, AH, AI, BP) sit outside a single round but are indexed and lettered above.
 
 ## Dependency graph
