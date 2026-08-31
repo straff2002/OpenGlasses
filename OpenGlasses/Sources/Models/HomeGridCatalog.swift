@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// One shipped action on the Voice tab's home grid.
@@ -182,6 +183,59 @@ enum HomeGridCatalog {
 }
 
 // MARK: - The dock's one grid
+
+/// The dock grid's metrics, in one place because two views have to agree on them exactly.
+///
+/// The panel sizes itself to a whole number of rows. It used to take a single scaled constant as its
+/// maximum height, which landed mid-tile — on device that read as one and three-quarter rows, with
+/// the fourth row's tiles sliced across the panel's edge. A partial tile is not a smaller control,
+/// it is an unreachable one, so the height is always `n` complete rows and everything past them is
+/// a scroll rather than a crop. That only stays true while the row height the panel snaps to is the
+/// tile height the tile actually draws, which is why the floor and the spacing live here rather than
+/// as literals inside `BarButton`.
+enum DockGridMetrics {
+    /// `BarButton`'s height floor — the fingertip minimum, before Dynamic Type grows the content
+    /// past it.
+    static let tileMinHeight: CGFloat = 48
+    static let tileMinWidth: CGFloat = 58
+    /// The tile's glyph box and its one caption line, at the default text size. Both are scaled by
+    /// the views that draw and measure them; what has to be shared is the base.
+    ///
+    /// The caption base is a point or two *above* the real line height of `.caption`, deliberately.
+    /// The two failures are not symmetric: an estimate that runs high leaves a hairline of empty
+    /// glass under the last row, and one that runs low clips the last row's tiles — which is the
+    /// bug this whole type exists to prevent.
+    static let tileGlyphBox: CGFloat = 28
+    static let tileCaptionLine: CGFloat = 18
+    /// Gap between the glyph and the caption inside a tile.
+    static let tileStackSpacing: CGFloat = 3
+    /// Gap between tiles, in both axes.
+    static let rowSpacing: CGFloat = 4
+
+    /// The resting height of the grid: three complete rows. Beyond that it scrolls — the panel is
+    /// the bottom of a screen that still has a conversation on it, and a grid that keeps growing
+    /// takes that room from the surface it exists to serve.
+    static let defaultVisibleRows = 3
+
+    static func rowsNeeded(slotCount: Int, columns: Int) -> Int {
+        guard slotCount > 0, columns > 0 else { return 0 }
+        return (slotCount + columns - 1) / columns
+    }
+
+    /// Rows the panel shows before it starts scrolling. Fewer slots than that shrink the panel —
+    /// yielding the content tiles takes rows away, and the conversation zone gets the height back.
+    static func visibleRows(slotCount: Int, columns: Int,
+                            limit: Int = defaultVisibleRows) -> Int {
+        max(1, min(limit, rowsNeeded(slotCount: slotCount, columns: columns)))
+    }
+
+    /// The panel's viewport for `rows` complete rows: `n` tiles and the `n - 1` gaps between them,
+    /// and never the trailing gap, which is what would let a sliver of the next row show.
+    static func gridHeight(rows: Int, tileHeight: CGFloat) -> CGFloat {
+        guard rows > 0 else { return 0 }
+        return CGFloat(rows) * tileHeight + CGFloat(rows - 1) * rowSpacing
+    }
+}
 
 /// One slot in the dock panel's wrapped grid.
 ///

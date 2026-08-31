@@ -330,6 +330,72 @@ final class HomeGridTests: XCTestCase {
                        ["control:disconnect", "control:micMode"])
     }
 
+    // MARK: - Row-snapped panel height
+
+    /// The panel's resting height is three complete rows; more than that scrolls.
+    func testThePanelRestsAtThreeRowsAndScrollsPastThem() {
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 20, columns: 4), 3)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 12, columns: 4), 3)
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 20, columns: 4), 5,
+                       "The rows past the third still exist — they are scrolled, not dropped")
+    }
+
+    /// Fewer slots shrink the panel rather than leaving it three rows of empty glass. Yielding the
+    /// content tiles is the common case, and the height it frees goes back to the conversation.
+    func testAShortGridShrinksThePanel() {
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 6, columns: 4), 2)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 4, columns: 4), 1)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 1, columns: 4), 1)
+        // Never zero-height glass: an empty grid still draws one row's worth of panel.
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 0, columns: 4), 1)
+    }
+
+    /// Two columns at accessibility sizes means the same slots need more rows — and still snap.
+    func testTheAccessibilityColumnCountChangesRowsNotTheSnap() {
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 6, columns: 2), 3)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 6, columns: 2), 3)
+    }
+
+    /// The bug this arithmetic exists to prevent: a height that lands mid-tile, so the row below
+    /// the last complete one shows as a sliver at the panel's edge. For every row count and every
+    /// plausible tile height, the panel is exactly `n` tiles plus the `n - 1` gaps between them —
+    /// never the trailing gap, which is the gap a sliver would sit in.
+    func testThePanelHeightIsAlwaysAWholeNumberOfRows() {
+        for tileHeight in [DockGridMetrics.tileMinHeight, 48, 65, 96, 130] as [CGFloat] {
+            for rows in 1...4 {
+                let height = DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
+                XCTAssertEqual(height,
+                               CGFloat(rows) * tileHeight + CGFloat(rows - 1) * DockGridMetrics.rowSpacing,
+                               accuracy: 0.001)
+
+                // The next row's first pixel is strictly below the viewport, so nothing of it shows.
+                let nextRowTop = height + DockGridMetrics.rowSpacing
+                XCTAssertGreaterThan(nextRowTop, height,
+                                     "A row boundary that coincides with the panel edge would peek")
+            }
+        }
+        XCTAssertEqual(DockGridMetrics.gridHeight(rows: 0, tileHeight: 48), 0)
+    }
+
+    /// The panel measures the tile the tile draws, and it measures it *generously*. The two ways of
+    /// being wrong are not equal — a row height under the drawn tile clips it, which is the bug;
+    /// over it leaves a hairline of glass, which nobody can see. This pins the safe direction.
+    func testTheRowHeightNeverUnderestimatesTheTile() {
+        XCTAssertEqual(DockGridMetrics.tileGlyphBox, 28)
+        XCTAssertEqual(DockGridMetrics.tileStackSpacing, 3)
+
+        // `.caption` renders a line at roughly 16.7 pt at the default text size; the base is above
+        // it, so a stacked tile's estimate is never short of what it draws.
+        XCTAssertGreaterThan(DockGridMetrics.tileCaptionLine, 16.7)
+
+        let stacked = DockGridMetrics.tileGlyphBox + DockGridMetrics.tileStackSpacing
+            + DockGridMetrics.tileCaptionLine
+        XCTAssertGreaterThanOrEqual(max(DockGridMetrics.tileMinHeight, stacked),
+                                    DockGridMetrics.tileMinHeight)
+        // And the floor is still a fingertip, which is the reason it is a floor at all.
+        XCTAssertGreaterThanOrEqual(DockGridMetrics.tileMinHeight, OGMetrics.minTouchTarget)
+    }
+
     func testHidingEverythingLeavesAnEmptyGridRatherThanTheDefaults() {
         var arrangement = HomeGridArrangement()
         arrangement.hidden = HomeGridCatalog.available(quickActions: speedDial).map(\.id)

@@ -3,8 +3,8 @@
 **Status:** ✅ Shipped P1–P3, then revised on device (2026-08-31). The dock-fit criterion closed the
 same day — the model tile dropped its model-name label for a provider glyph + constant caption (full
 name stays in the accessibility label), and the dock's strip wraps into rows of four instead of
-scrolling horizontally. A phone test of that build then rewrote decisions 1, 2, 5 and 6: see
-**P4 — On-device revision** below.
+scrolling horizontally. Two phone tests then rewrote decisions 1, 2, 5, 6 and 8: see
+**P4 — On-device revision** and **P5 — Inverted stack, whole rows** below.
 **Origin:** On-device design review of the shipped My Day home surface (2026-08-31): inconsistent
 vertical gaps around the My Day card, and a bottom-dock utility row that scrolls because it carries
 both controls and the user's quick actions.
@@ -60,6 +60,12 @@ Relevant seams:
 7. Controls are always present; content tiles yield. A dock a user can strip of its own disconnect
    is a trap, so `hidden` is honoured for actions and ignored for controls — enforced in the
    resolver, not in one list's gesture configuration.
+8. The capsule is the bottom-most element, on its own glass, and the grid sits above it (P5). The
+   biggest and most-used target belongs nearest the thumb; the grid of small ones does not belong
+   between it and the tab bar.
+9. The panel's height is always a whole number of rows — three at rest, fewer when the grid is
+   shorter, scrolling beyond (P5). A partial tile is not a smaller control, it is an unreachable
+   one.
 
 As built: `.prompt` submits through `AppState.sendTextMessage` — the `ChatInputBar` seam with turn
 running, cancellation, and thread persistence — deliberately not `executeQuickAction`'s older
@@ -132,6 +138,34 @@ Tested on an iPhone Air against a Release build. Four changes:
 **Tests.** Dock-slot composition (controls then actions, interleaving, stored control order leads);
 yielding removes actions and leaves every control; controls cannot be hidden; every provider has a
 symbol fallback and the three major ones do not collide; asset names keyed to the raw value.
+
+## P5 — Inverted stack, whole rows ✅
+
+A second phone test, against the P4 build. Two changes and a re-check:
+
+1. **The stack inverted.** The capsule was on top of the grid inside one glass rectangle — glass on
+   glass, with the app's largest and most-used control furthest from the thumb. They are two
+   surfaces now: the grid panel keeps the rounded-rectangle glass, the capsule keeps the
+   capsule-shaped glass it always drew, and bottom-to-top the tab reads tab bar → capsule → grid
+   panel → conversation zone.
+2. **Whole rows, three of them.** The panel took a single scaled constant (~100 pt) as its maximum
+   height, which landed mid-tile: on device that was one and three-quarter rows with the next row's
+   tiles sliced across the panel edge — "definitely not accessible", and correctly so. The height is
+   now `rows × tileHeight + (rows − 1) × spacing` from `DockGridMetrics`, with three complete rows
+   at rest, fewer when the grid is shorter (yielding the content tiles gives the rows back to the
+   conversation), and a scroll beyond. It is an exact `.frame(height:)` rather than a maximum,
+   because any height the stack picks that is not a multiple of a row is a clipped tile. The row
+   height is composed from the same scaled bases `BarButton` draws from — both now live in
+   `DockGridMetrics` so they cannot drift — and the caption base is set a point above `.caption`'s
+   real line height on purpose: over-estimating leaves a hairline of glass, under-estimating clips.
+3. **Overflow re-checked.** The split into two surfaces keeps the P4 fix and sharpens it: the
+   controls block now has an exact intrinsic height instead of a bounded one, so the `layoutPriority`
+   split with the conversation zone's `ScrollView` is unambiguous. Nothing overlaps the tab bar or
+   the capsule.
+
+**Tests.** Three rows at rest and the rest scrolled; short grids shrink the panel; the accessibility
+column drop changes the row count, not the snap; the panel height is a whole number of rows at every
+plausible tile height; the row height never underestimates the drawn tile.
 
 ## Rollout and exit criteria
 

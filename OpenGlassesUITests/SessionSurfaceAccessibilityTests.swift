@@ -57,9 +57,10 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
                       "The session capsule is not reachable by any of its spoken names")
     }
 
-    /// The quick-action grid that replaced the dock's scrolling band of prompts. Each tile is a
-    /// named button, including the ones whose drawn caption is an arrow — a tile that reaches
-    /// VoiceOver as its glyph name is a tile nobody can find.
+    /// The content tiles in the dock's one grid. Each is a named button, including the ones whose
+    /// drawn caption is an arrow — a tile that reaches VoiceOver as its glyph name is a tile nobody
+    /// can find. They sit in the same grid as the controls, so this also fails if the merge ever
+    /// leaves them off the panel.
     func testQuickActionGridTilesAreNamedButtons() {
         let app = launch([.configured])
         awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
@@ -95,9 +96,14 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
 
         XCTAssertFalse(
             app.buttons["Meetings"].exists,
-            "The quick-action grid is still occupying the conversation zone while live captions "
-            + "need its height"
+            "The dock's content tiles are still taking rows while live captions need the height"
         )
+
+        // Yielding removes the content tiles and nothing else — a dock that loses its controls
+        // while captions run is a dock the wearer cannot use to stop them.
+        let modelTile = app.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH 'Model: '")).firstMatch
+        XCTAssertTrue(modelTile.exists, "A dock control vanished with the content tiles")
 
         audit(app, screen: "Session surface — captions overlay",
               deferring: [.contrastThroughGlass, .focusableCaptionHistory])

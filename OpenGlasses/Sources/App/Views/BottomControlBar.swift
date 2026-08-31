@@ -1,14 +1,14 @@
 import SwiftUI
 import PhotosUI
 
-/// The control dock — ONE floating glass panel above the tab bar holding every control and every
-/// content action in a single visual language.
+/// The control dock — two glass surfaces above the tab bar, bottom-most first:
 ///
-/// Layout inside the panel:
-///   Row 1 (primary):  wide mic/action capsule — the only large element, the main touch target.
-///   Below it:         one grid of identical tiles wrapping into rows of four — controls and the
-///                     user's canned prompts together, bounded in height and scrolling vertically
-///                     once it outgrows that.
+///   Capsule (bottom): the wide mic/action capsule on its own glass, nearest the thumb. It is the
+///                     control reached most often and by far the largest target, so it sits at the
+///                     bottom of the reach rather than on top of a grid of small ones.
+///   Panel (above):    one grid of identical tiles wrapping into rows of four — controls and the
+///                     user's canned prompts together, sized to a whole number of rows and
+///                     scrolling past three of them.
 ///
 /// The panel used to hold controls only, with a second grid of content tiles as its own card on the
 /// home surface. Two grids of identical tiles stacked one above the other read as one thing split
@@ -16,7 +16,9 @@ import PhotosUI
 /// content tiles yield with the rest of the home surface and their rows close up behind them.
 ///
 /// The PANEL is the glass; tiles are flat on it. One blur layer instead of a stack of
-/// per-tile blurs — deliberately cheaper to composite over the animating ambience.
+/// per-tile blurs — deliberately cheaper to composite over the animating ambience. The capsule
+/// carries its own capsule-shaped glass, which is what it always drew; stacking that inside the
+/// panel's rectangle was glass on glass, and separating them is what lets the two swap places.
 struct BottomControlBar: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
@@ -78,73 +80,103 @@ struct BottomControlBar: View {
     /// so the same four columns would shred every caption — two is the honest count there.
     private var columnCount: Int { typeSize.isAccessibilitySize ? 2 : 4 }
 
-    /// Two rows of tiles plus the gap between them. The panel has to leave the conversation zone
-    /// above it a screen to live on, so the grid takes a stated height and scrolls inside it rather
-    /// than growing until the dock pushes itself off the bottom of the tab.
-    @ScaledMetric(relativeTo: .callout) private var gridMaxHeight: CGFloat = 100
+    /// The two scaled parts a tile is made of, so the panel snaps to the height the tile actually
+    /// draws rather than to a constant that happens to match at one text size. `BarButton` composes
+    /// its glyph box and its single caption line from exactly these.
+    @ScaledMetric(relativeTo: .callout) private var tileGlyphBox: CGFloat
+        = DockGridMetrics.tileGlyphBox
+    @ScaledMetric(relativeTo: .caption) private var tileCaptionLine: CGFloat
+        = DockGridMetrics.tileCaptionLine
+
+    /// A row's height: the tile's own, floored at a fingertip. Glyph over caption normally, glyph
+    /// beside it at accessibility sizes — the same switch `BarButton` makes.
+    private var tileHeight: CGFloat {
+        let content = typeSize.isAccessibilitySize
+            ? max(tileGlyphBox, tileCaptionLine)
+            : tileGlyphBox + DockGridMetrics.tileStackSpacing + tileCaptionLine
+        return max(DockGridMetrics.tileMinHeight, content)
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Primary: wide action capsule
-            heroCapsule
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5)
-                        .onEnded { _ in
-                            appState.micMuted.toggle()
-                        }
-                )
-                // Mute lives *only* on this long press. A sighted user finds it by accident; a
-                // VoiceOver user finds it never, because a gesture leaves no mark in the
-                // accessibility tree. The hint is the only place it is discoverable — and the
-                // custom action is the only way to reach it, since VoiceOver swallows the
-                // long press for its own element-inspection gesture.
-                .accessibilityHint(appState.micMuted
-                                   ? "Double-tap and hold to unmute the microphone."
-                                   : "Double-tap and hold to mute the microphone.")
-                .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
-                                                              : "Mute microphone") {
-                    appState.micMuted.toggle()
-                }
-
-            // The one grid: controls and content actions, wrapping into rows and scrolling
-            // vertically past the panel's stated height. Nothing is ever cut off — a tile past the
-            // second row is a scroll away, and VoiceOver walks the same order either way.
-            ScrollView(.vertical) {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 4),
-                                   count: columnCount),
-                    spacing: 4
-                ) {
-                    // Slots render in the user's arranged order (Settings → Quick Actions → Bar
-                    // Layout); contextual ones still gate themselves.
-                    ForEach(slots) { slot in
-                        dockView(for: slot)
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
-            .frame(maxHeight: gridMaxHeight)
-            // Short grids should not become scroll views: bouncing a two-row grid that already
-            // fits reads as the panel coming loose from the tab.
-            .scrollBounceBehavior(.basedOnSize)
-            // The sighted half of the edit affordance, on the grid's *background* — behind the
-            // tiles, so it answers a press on the gaps and never fires alongside a tile's action
-            // or the capsule's press-and-hold mute. Settings → Quick Actions → Bar Layout is the
-            // half reachable by name; a long press leaves no mark in the accessibility tree.
-            .background(
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 0.6) { showLayoutEditor = true }
-            )
+        // Bottom-most control last: the grid panel, then the capsule beneath it.
+        VStack(spacing: 8) {
+            gridPanel
+            capsule
         }
-        .padding(14)
-        .glassEffect(in: .rect(cornerRadius: 28))
-        .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
         .sheet(isPresented: $showLayoutEditor) {
             NavigationStack { DockLayoutEditorView() }
         }
+    }
+
+    // MARK: - Grid panel
+
+    private var gridPanel: some View {
+        let slots = slots
+        let rows = DockGridMetrics.visibleRows(slotCount: slots.count, columns: columnCount)
+
+        // The one grid: controls and content actions, wrapping into rows and scrolling vertically
+        // past three of them. Nothing is ever cut off — a tile past the third row is a scroll away,
+        // never a sliver at the panel's edge, and VoiceOver walks the same order either way.
+        return ScrollView(.vertical) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: DockGridMetrics.rowSpacing),
+                               count: columnCount),
+                spacing: DockGridMetrics.rowSpacing
+            ) {
+                // Slots render in the user's arranged order (Settings → Quick Actions → Bar
+                // Layout); contextual ones still gate themselves.
+                ForEach(slots) { slot in
+                    dockView(for: slot)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        // An exact height, not a maximum: a maximum lets the stack hand the panel some other
+        // number, and any number that is not a whole multiple of a row is a clipped tile.
+        .frame(height: DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight))
+        // Short grids should not become scroll views: bouncing a grid that already fits reads as
+        // the panel coming loose from the tab.
+        .scrollBounceBehavior(.basedOnSize)
+        // The sighted half of the edit affordance, on the grid's *background* — behind the tiles,
+        // so it answers a press on the gaps and never fires alongside a tile's action or the
+        // capsule's press-and-hold mute. Settings → Quick Actions → Bar Layout is the half
+        // reachable by name; a long press leaves no mark in the accessibility tree.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.6) { showLayoutEditor = true }
+        )
+        .padding(14)
+        .glassEffect(in: .rect(cornerRadius: 28))
+        .padding(.horizontal, 12)
+    }
+
+    // MARK: - Capsule
+
+    /// The primary control, on its own glass at the bottom of the reach.
+    private var capsule: some View {
+        heroCapsule
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        appState.micMuted.toggle()
+                    }
+            )
+            // Mute lives *only* on this long press. A sighted user finds it by accident; a
+            // VoiceOver user finds it never, because a gesture leaves no mark in the
+            // accessibility tree. The hint is the only place it is discoverable — and the
+            // custom action is the only way to reach it, since VoiceOver swallows the
+            // long press for its own element-inspection gesture.
+            .accessibilityHint(appState.micMuted
+                               ? "Double-tap and hold to unmute the microphone."
+                               : "Double-tap and hold to mute the microphone.")
+            .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
+                                                          : "Mute microphone") {
+                appState.micMuted.toggle()
+            }
+            .padding(.horizontal, 12)
     }
 
     // MARK: - Slots
@@ -519,11 +551,15 @@ private struct BarButton: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .callout) private var glyph: CGFloat = 18
     @ScaledMetric(relativeTo: .callout) private var tileWidth: CGFloat = 32
-    @ScaledMetric(relativeTo: .callout) private var tileHeight: CGFloat = 28
+    /// The parts the dock panel also measures, so the height it snaps its rows to is the height
+    /// this tile draws. Shared bases, not literals: the panel showing a sliver of a fourth row is
+    /// exactly what these two drifting apart looks like.
+    @ScaledMetric(relativeTo: .callout) private var tileHeight: CGFloat
+        = DockGridMetrics.tileGlyphBox
     /// Floors, not scaled metrics: the tile's glyph box and its caption grow on
     /// their own, and these only stop a tile being smaller than a fingertip.
-    private let minTileWidth: CGFloat = 58
-    private let minTileHeight: CGFloat = 48
+    private let minTileWidth = DockGridMetrics.tileMinWidth
+    private let minTileHeight = DockGridMetrics.tileMinHeight
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 10
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
 
@@ -541,7 +577,7 @@ private struct BarButton: View {
         if typeSize.isAccessibilitySize {
             HStack(spacing: 8, content: content)
         } else {
-            VStack(spacing: 3, content: content)
+            VStack(spacing: DockGridMetrics.tileStackSpacing, content: content)
         }
     }
 

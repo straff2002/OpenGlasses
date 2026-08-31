@@ -7,7 +7,8 @@ import Combine
 ///      glasses/OpenClaw connection pills merged into its footer row
 ///   2. Conversation (center): My Day, ambient captions, transcript — scrolls, so the dock
 ///      below it always gets its height
-///   3. Controls (bottom): one dock panel — hero capsule, then controls and content tiles
+///   3. Controls (bottom): the grid panel of controls and content tiles, then the hero capsule
+///      beneath it on its own glass — the biggest, most-used target nearest the thumb
 struct VoiceTab: View {
     @EnvironmentObject var appState: AppState
     @State private var showPreview = false
@@ -40,10 +41,10 @@ struct VoiceTab: View {
 
                 conversationZone(voiceState)
 
-                // Chat input bar (when active) or the control dock, which holds the capsule, the
-                // controls and the content tiles in one panel. Pinned below the zone above and
-                // laid out first: the primary control is the last thing that should need
-                // scrolling to, and the zone takes whatever height is left over.
+                // Chat input bar (when active) or the control dock — the grid panel with the
+                // capsule beneath it. Pinned below the zone above and laid out first: the primary
+                // control is the last thing that should need scrolling to, and the zone takes
+                // whatever height is left over.
                 Group {
                     if showChatInput && !isRealtime {
                         ChatInputBar(showChatInput: $showChatInput)
