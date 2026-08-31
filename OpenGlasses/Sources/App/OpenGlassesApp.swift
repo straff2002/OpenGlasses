@@ -158,6 +158,8 @@ struct OpenGlassesApp: App {
         // restored from a backup) can never read as an entitlement. Idempotent, one key, and it
         // touches no receipt or license code — a real purchase survives it untouched.
         FieldAssistEntitlement.removeLegacyPreferenceKeys()
+        // Carry the retired global small-context switch onto the saved cloud models it applied to.
+        Config.migrateSmallContextToPerModelIfNeeded()
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they

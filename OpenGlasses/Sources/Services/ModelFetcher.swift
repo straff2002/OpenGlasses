@@ -96,8 +96,28 @@ enum ModelFetcher {
     /// account-scoped Codex endpoint rather than the public API's `/v1/models`: subscription
     /// credentials and API keys belong to different products and are not interchangeable.
     private static func fetchChatGPT() async -> [RemoteModel] {
-        guard let token = await ChatGPTOAuthService.shared.validAccessToken() else { return [] }
-        var request = URLRequest(url: URL(string: ChatGPTOAuth.backendModelsURL)!)
+        if case .models(let models) = await fetchChatGPTCatalog() { return models }
+        return []
+    }
+
+    /// Why a ChatGPT catalog fetch produced no models. The backend is a private surface that
+    /// drifts (the 2026-08-31 catalog rotation returned empty lists to stale clients), so the
+    /// failure modes must stay distinguishable or every drift reads as "check the sign-in".
+    enum ChatGPTCatalogResult: Equatable {
+        case models([RemoteModel])
+        /// No stored account, or the token refresh failed — `signedIn` separates the two.
+        case tokenUnavailable(signedIn: Bool)
+        case httpError(Int)
+        case networkError(String)
+        /// The request succeeded but the account's catalog parsed to zero visible models.
+        case emptyCatalog
+    }
+
+    static func fetchChatGPTCatalog() async -> ChatGPTCatalogResult {
+        guard let token = await ChatGPTOAuthService.shared.validAccessToken() else {
+            return .tokenUnavailable(signedIn: await ChatGPTOAuthService.shared.isConnected)
+        }
+        var request = URLRequest(url: URL(string: ChatGPTOAuth.backendModelsRequestURL)!)
         request.httpMethod = "GET"
         request.timeoutInterval = 30
         let accountID = await ChatGPTOAuthService.shared.accountID
@@ -106,11 +126,15 @@ enum ModelFetcher {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return []
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                NSLog("[ChatGPT] Models fetch failed: HTTP %d", code)
+                return .httpError(code)
             }
-            return parseChatGPTModels(data)
+            let models = parseChatGPTModels(data)
+            return models.isEmpty ? .emptyCatalog : .models(models)
         } catch {
-            return []
+            NSLog("[ChatGPT] Models fetch failed: %@", error.localizedDescription)
+            return .networkError(error.localizedDescription)
         }
     }
 

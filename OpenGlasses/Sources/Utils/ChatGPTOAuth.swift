@@ -50,6 +50,19 @@ enum ChatGPTOAuth {
     /// Beta header the Responses backend expects.
     static let betaHeaderField = "OpenAI-Beta"
     static let betaHeaderValue = "responses=experimental"
+    /// Client identity the backend keys behaviour on. The catalog rotated out a model family on
+    /// 2026-08-31 and requests without a client identity started coming back empty, so these ride
+    /// every backend request. Bump `clientVersion` when the upstream client ships a release that
+    /// changes the wire contract; the value is a dialect marker, not our app version.
+    static let originatorHeaderField = "originator"
+    static let originatorValue = "codex_cli_rs"
+    static let clientVersion = "0.151.0"
+    static let userAgentValue = "codex_cli_rs/\(clientVersion)"
+
+    /// The models URL with the client-version marker the backend filters the catalog by.
+    static var backendModelsRequestURL: String {
+        "\(backendModelsURL)?client_version=\(clientVersion)"
+    }
 
     /// Used before account-scoped discovery completes. The picker replaces this with the model
     /// marked as default by the live catalog whenever possible.
@@ -279,7 +292,8 @@ enum ChatGPTOAuth {
 }
 
 /// Applies ChatGPT subscription authentication to a Responses-backend request: bearer token,
-/// account-id header, and the beta header the backend expects. Pure.
+/// account-id header, the beta header, and the client identity (originator + User-Agent) the
+/// backend keys catalog and behaviour on. Pure.
 enum ChatGPTAuth {
     static func apply(credential: String, accountID: String?, to request: inout URLRequest) {
         request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
@@ -287,5 +301,7 @@ enum ChatGPTAuth {
             request.setValue(accountID, forHTTPHeaderField: ChatGPTOAuth.accountIDHeader)
         }
         request.setValue(ChatGPTOAuth.betaHeaderValue, forHTTPHeaderField: ChatGPTOAuth.betaHeaderField)
+        request.setValue(ChatGPTOAuth.originatorValue, forHTTPHeaderField: ChatGPTOAuth.originatorHeaderField)
+        request.setValue(ChatGPTOAuth.userAgentValue, forHTTPHeaderField: "User-Agent")
     }
 }

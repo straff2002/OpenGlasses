@@ -11,6 +11,11 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     /// Optional user override for whether this model accepts image input.
     /// When nil, the app falls back to provider/model-name heuristics.
     var supportsVision: Bool? = nil
+    /// Per-model "small context": send a short spoken-style prompt and recent lines only — no
+    /// tool list or full system prompt. A per-model choice because it exists for tight providers
+    /// (Groq's 8k cap) and would cripple roomier ones. Optional so configs saved before the field
+    /// existed decode as false. On-device providers ignore it — they always run the lean prompt.
+    var smallContext: Bool? = nil
 
     /// Convenience to get the LLMProvider enum
     var llmProvider: LLMProvider {
@@ -21,6 +26,9 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     var visionEnabled: Bool {
         supportsVision ?? Self.inferredSupportsVision(provider: llmProvider, model: model, baseURL: baseURL)
     }
+
+    /// Whether turns to this model use the lean prompt. False for configs from before the field.
+    var smallContextEnabled: Bool { smallContext ?? false }
 
     static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {
         switch provider {

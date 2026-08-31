@@ -9,6 +9,7 @@ struct AddModelView: View {
     @State private var model: String = LLMProvider.anthropic.defaultModel
     @State private var baseURL: String = LLMProvider.anthropic.defaultBaseURL
     @State private var supportsVision: Bool = true
+    @State private var smallContext: Bool = false
 
     @State private var availableModels: [ModelFetcher.RemoteModel] = []
     @State private var isFetchingModels: Bool = false
@@ -27,6 +28,7 @@ struct AddModelView: View {
                     model: $model,
                     baseURL: $baseURL,
                     supportsVision: $supportsVision,
+                    smallContext: $smallContext,
                     availableModels: $availableModels,
                     isFetchingModels: $isFetchingModels,
                     fetchError: $fetchError,
@@ -56,7 +58,8 @@ struct AddModelView: View {
                             apiKey: apiKey,
                             model: model,
                             baseURL: baseURL,
-                            supportsVision: supportsVision
+                            supportsVision: supportsVision,
+                            smallContext: smallContext
                         )
                         onAdd(config)
                         dismiss()

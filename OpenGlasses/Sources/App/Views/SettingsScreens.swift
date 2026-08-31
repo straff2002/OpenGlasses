@@ -107,7 +107,6 @@ struct AIPersonalitySettingsScreen: View {
     @State private var memoryNudgesEnabled = Config.memoryNudgesEnabled
     @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
     @State private var autoModelRoutingEnabled = Config.autoModelRoutingEnabled
-    @State private var smallContextEnabled = Config.llmImageLightweightPromptEnabled
 
     var body: some View {
         Form {
@@ -124,7 +123,12 @@ struct AIPersonalitySettingsScreen: View {
                     .accessibilityLabel(Self.spokenModelRow(
                         name: model.name,
                         provider: model.llmProvider.displayName,
-                        hasKey: !model.apiKey.isEmpty,
+                        badge: Self.modelAuthBadge(
+                            provider: model.llmProvider,
+                            hasKey: !model.apiKey.isEmpty,
+                            claudeConnected: ClaudeOAuthService.shared.isConnected,
+                            chatgptConnected: ChatGPTOAuthService.shared.isConnected,
+                            googleConnected: GoogleOAuthService.shared.isConnected),
                         vision: model.visionEnabled
                     ))
                     .accessibilityAddTraits(.isButton)
@@ -244,14 +248,6 @@ struct AIPersonalitySettingsScreen: View {
                 Text("Intent Classifier ignores nearby chatter so the AI only responds when you're talking to it. Memory and History let the AI remember who you are across sessions. Smart Routing picks the right model for the task; Agentic Features let the AI take multi-step actions on its own.")
             }
 
-            Section {
-                Toggle("Small context", isOn: $smallContextEnabled)
-                    .onChange(of: smallContextEnabled) { _, value in
-                        Config.setLLMImageLightweightPromptEnabled(value)
-                    }
-            } footer: {
-                Text("Off by default. When on, each turn sends a short prompt and recent lines only — no tool list or full system prompt. Use this for tight providers like Groq.")
-            }
         }
         .navigationTitle("AI & Personality")
         .ogFormStyle()
@@ -305,11 +301,13 @@ struct AIPersonalitySettingsScreen: View {
                             .lineLimit(1)
                     }
                 }
-                if model.apiKey.isEmpty {
-                    OGStatusLabel("No API key", kind: .warn)
-                } else {
-                    OGStatusLabel("Key set", kind: .ok)
-                }
+                let badge = Self.modelAuthBadge(
+                    provider: model.llmProvider,
+                    hasKey: !model.apiKey.isEmpty,
+                    claudeConnected: ClaudeOAuthService.shared.isConnected,
+                    chatgptConnected: ChatGPTOAuthService.shared.isConnected,
+                    googleConnected: GoogleOAuthService.shared.isConnected)
+                OGStatusLabel(badge.label, kind: badge.isReady ? .ok : .warn)
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
@@ -321,11 +319,52 @@ struct AIPersonalitySettingsScreen: View {
         .contentShape(Rectangle())
     }
 
+    /// How a model row's readiness is described. Auth is three-shaped — API key, OAuth account,
+    /// or on-device with no auth at all — so a key-only check would warn about providers that
+    /// cannot take a key. `isReady` decides ok-vs-warn; the label carries the words.
+    struct ModelAuthBadge: Equatable {
+        let label: String
+        let isReady: Bool
+    }
+
+    /// Pure. Mirrors the credential precedence the request builders use: an explicit key wins,
+    /// then a connected account; on-device providers never involve either.
+    static func modelAuthBadge(provider: LLMProvider, hasKey: Bool,
+                               claudeConnected: Bool, chatgptConnected: Bool,
+                               googleConnected: Bool) -> ModelAuthBadge {
+        switch provider {
+        case .local, .appleOnDevice:
+            return ModelAuthBadge(label: "On-device", isReady: true)
+        case .chatgpt:
+            return chatgptConnected
+                ? ModelAuthBadge(label: "ChatGPT account connected", isReady: true)
+                : ModelAuthBadge(label: "Not signed in", isReady: false)
+        case .geminiVertex:
+            return googleConnected
+                ? ModelAuthBadge(label: "Google account connected", isReady: true)
+                : ModelAuthBadge(label: "Not signed in", isReady: false)
+        case .anthropic:
+            if hasKey { return ModelAuthBadge(label: "Key set", isReady: true) }
+            return claudeConnected
+                ? ModelAuthBadge(label: "Claude account connected", isReady: true)
+                : ModelAuthBadge(label: "No account or key", isReady: false)
+        case .custom:
+            return hasKey
+                ? ModelAuthBadge(label: "Key set", isReady: true)
+                : ModelAuthBadge(label: "Key optional", isReady: true)
+        default:
+            return hasKey
+                ? ModelAuthBadge(label: "Key set", isReady: true)
+                : ModelAuthBadge(label: "No API key", isReady: false)
+        }
+    }
+
     /// Pure, so the spoken wording is covered headlessly.
-    static func spokenModelRow(name: String, provider: String, hasKey: Bool, vision: Bool) -> String {
+    static func spokenModelRow(name: String, provider: String, badge: ModelAuthBadge,
+                               vision: Bool) -> String {
         var parts = [name, provider]
         if vision { parts.append("vision enabled") }
-        parts.append(hasKey ? "API key set" : "no API key")
+        parts.append(badge.isReady ? badge.label : "needs setup: \(badge.label)")
         return parts.joined(separator: ", ")
     }
 
