@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Voice tab — the primary interaction screen, kept to three zones:
 ///
@@ -12,6 +13,7 @@ struct VoiceTab: View {
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
     @State private var showChatInput = false
+    @State private var captionsActive = false
     @AppStorage("myDayEnabled") private var myDayEnabled = false
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -60,6 +62,7 @@ struct VoiceTab: View {
             }
         }
         }
+        .onReceive(appState.ambientCaptions.$isActive) { captionsActive = $0 }
         .fullScreenCover(isPresented: $showPreview) {
             LivePreviewView()
                 .environmentObject(appState)
@@ -79,7 +82,8 @@ struct VoiceTab: View {
 
     /// The shipped three-zone composition: status card at the top, useful day context in the
     /// middle, then captions and transcript above the dock. My Day contracts while listening and
-    /// yields the centre entirely while the assistant thinks or speaks.
+    /// yields the centre entirely while the assistant thinks or speaks, or while live captions
+    /// need the space to keep every line readable.
     @ViewBuilder
     private func conversationZone(_ voiceState: VoiceVisualState) -> some View {
         // Status card — one status surface: state, mode, persona, and the connection
@@ -90,7 +94,7 @@ struct VoiceTab: View {
 
         Spacer()
 
-        if voiceState != .thinking && voiceState != .speaking {
+        if shouldShowMyDay(for: voiceState) {
             MyDayHomeView(
                 service: appState.myDayService,
                 isEnabled: $myDayEnabled,
@@ -102,7 +106,7 @@ struct VoiceTab: View {
         Spacer()
 
         // Ambient captions
-        if appState.ambientCaptions.isActive {
+        if captionsActive {
             AmbientCaptionOverlay(captionService: appState.ambientCaptions)
                 .padding(.bottom, 8)
         }
@@ -124,7 +128,8 @@ struct VoiceTab: View {
     /// So above the accessibility threshold the conversation zone scrolls and the dock stays
     /// pinned, which is the same trade onboarding's hero pages make. Unlike the old decorative
     /// waveline, My Day is content, so it remains reachable here and uses its compact form while
-    /// listening. It still yields while the assistant thinks or speaks.
+    /// listening. It still yields while the assistant thinks or speaks, and while live captions
+    /// are active so the same content priority applies at every text size.
     @ViewBuilder
     private func accessibleConversationZone(_ voiceState: VoiceVisualState) -> some View {
         ScrollView {
@@ -132,7 +137,7 @@ struct VoiceTab: View {
                 StatusIndicator(session: session, openAISession: openAISession,
                                 openClawBridge: appState.openClawBridge)
 
-                if voiceState != .thinking && voiceState != .speaking {
+                if shouldShowMyDay(for: voiceState) {
                     MyDayHomeView(
                         service: appState.myDayService,
                         isEnabled: $myDayEnabled,
@@ -140,7 +145,7 @@ struct VoiceTab: View {
                     )
                 }
 
-                if appState.ambientCaptions.isActive {
+                if captionsActive {
                     AmbientCaptionOverlay(captionService: appState.ambientCaptions)
                 }
 
@@ -149,6 +154,14 @@ struct VoiceTab: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
         }
+    }
+
+    /// Captions are current speech and cannot be recovered if their rows are compressed. My Day
+    /// remains one tap away after the caption session ends, so it gives the conversation zone to
+    /// captions just as it already does to an assistant response.
+    private func shouldShowMyDay(for voiceState: VoiceVisualState) -> Bool {
+        guard !captionsActive else { return false }
+        return voiceState != .thinking && voiceState != .speaking
     }
 
     // MARK: - Recording Badge
