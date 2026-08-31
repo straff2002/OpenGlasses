@@ -1,14 +1,19 @@
 import SwiftUI
 import PhotosUI
 
-/// The control dock — ONE floating glass panel above the tab bar holding every control in a
-/// single visual language (previously four stacked bands in four styles: full-width model bar,
-/// glass quick-action tiles, hero capsule, plain utility buttons).
+/// The control dock — ONE floating glass panel above the tab bar holding every control and every
+/// content action in a single visual language.
 ///
 /// Layout inside the panel:
 ///   Row 1 (primary):  wide mic/action capsule — the only large element, the main touch target.
-///   Row 2 (utility):  one horizontally-scrolling row of identical tiles — local-model chip
-///                     first (contextual), then the user's quick actions, then system utilities.
+///   Below it:         one grid of identical tiles wrapping into rows of four — controls and the
+///                     user's canned prompts together, bounded in height and scrolling vertically
+///                     once it outgrows that.
+///
+/// The panel used to hold controls only, with a second grid of content tiles as its own card on the
+/// home surface. Two grids of identical tiles stacked one above the other read as one thing split
+/// in half, so there is one grid, one arrangement and one editor. Controls are always present;
+/// content tiles yield with the rest of the home surface and their rows close up behind them.
 ///
 /// The PANEL is the glass; tiles are flat on it. One blur layer instead of a stack of
 /// per-tile blurs — deliberately cheaper to composite over the animating ambience.
@@ -18,11 +23,18 @@ struct BottomControlBar: View {
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
     @ObservedObject private var assistive = AssistiveModeService.shared
     @Environment(\.appAccent) private var accent
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @Binding var showSettings: Bool
     @Binding var showModelPicker: Bool
     @Binding var showPreview: Bool
     var showChatInput: Binding<Bool>? = nil
+    /// The home surface's yielding rule, reaching the dock: false while the assistant thinks or
+    /// speaks, while live captions run, and while the mic is open.
+    var showsActions: Bool = true
+
+    @State private var runningActionId: String?
+    @State private var showLayoutEditor = false
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
     private var isGemini: Bool { appState.currentMode == .geminiLive }
@@ -37,13 +49,39 @@ struct BottomControlBar: View {
     /// Observes the same UserDefaults key `Config.silentMode` writes, so the push-to-talk
     /// BarButton re-renders on toggle AND stays live-synced with the Settings switch.
     @AppStorage("silentMode") private var pushToTalk = false
-    /// Arranged item order (Settings → Quick Actions → Bar Layout); empty = shipped order.
+    /// The legacy control-only order. Nothing writes it any more — the unified editor writes
+    /// `homeGridArrangement` — but it is still read, so a bar a user arranged before the two grids
+    /// merged keeps its order without a migration step.
     @AppStorage("dockItemOrder") private var dockOrder = ""
+    /// The one arrangement: controls and content actions, order and hidden set.
+    @AppStorage("homeGridArrangement") private var storedArrangement = ""
 
     private var photoDisabledForLocalModel: Bool {
         guard let model = Config.activeModel, model.llmProvider == .local else { return false }
         return !model.visionEnabled
     }
+
+    private var slots: [DockSlot] {
+        let controlOrder = DockLayout.decode(dockOrder)
+        let quickActions = Config.quickActions
+        let available = DockGridCatalog.available(controlOrder: controlOrder,
+                                                  quickActions: quickActions).map(\.id)
+        let arrangement = HomeGridStore.decode(storedArrangement, available: available).arrangement
+        return DockGridCatalog.slots(arrangement: arrangement,
+                                     controlOrder: controlOrder,
+                                     quickActions: quickActions,
+                                     showsActions: showsActions)
+    }
+
+    /// Four tiles at their floor width need ~268 pt, which every supported width provides. At
+    /// accessibility sizes a tile lays its glyph beside its label and needs the width of a phrase,
+    /// so the same four columns would shred every caption — two is the honest count there.
+    private var columnCount: Int { typeSize.isAccessibilitySize ? 2 : 4 }
+
+    /// Two rows of tiles plus the gap between them. The panel has to leave the conversation zone
+    /// above it a screen to live on, so the grid takes a stated height and scrolls inside it rather
+    /// than growing until the dock pushes itself off the bottom of the tab.
+    @ScaledMetric(relativeTo: .callout) private var gridMaxHeight: CGFloat = 100
 
     var body: some View {
         VStack(spacing: 12) {
@@ -68,23 +106,89 @@ struct BottomControlBar: View {
                     appState.micMuted.toggle()
                 }
 
-            // Utility row: everything else, one tile idiom, scrolls when it outgrows the width.
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    // Items render in the user's arranged order (Settings → Quick
-                    // Actions → Bar Layout); contextual ones still gate themselves.
-                    ForEach(DockLayout.decode(dockOrder)) { item in
-                        dockView(for: item)
+            // The one grid: controls and content actions, wrapping into rows and scrolling
+            // vertically past the panel's stated height. Nothing is ever cut off — a tile past the
+            // second row is a scroll away, and VoiceOver walks the same order either way.
+            ScrollView(.vertical) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 4),
+                                   count: columnCount),
+                    spacing: 4
+                ) {
+                    // Slots render in the user's arranged order (Settings → Quick Actions → Bar
+                    // Layout); contextual ones still gate themselves.
+                    ForEach(slots) { slot in
+                        dockView(for: slot)
                     }
                 }
                 .padding(.horizontal, 4)
             }
+            .frame(maxHeight: gridMaxHeight)
+            // Short grids should not become scroll views: bouncing a two-row grid that already
+            // fits reads as the panel coming loose from the tab.
+            .scrollBounceBehavior(.basedOnSize)
+            // The sighted half of the edit affordance, on the grid's *background* — behind the
+            // tiles, so it answers a press on the gaps and never fires alongside a tile's action
+            // or the capsule's press-and-hold mute. Settings → Quick Actions → Bar Layout is the
+            // half reachable by name; a long press leaves no mark in the accessibility tree.
+            .background(
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 0.6) { showLayoutEditor = true }
+            )
         }
         .padding(14)
         .glassEffect(in: .rect(cornerRadius: 28))
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 8)
+        .sheet(isPresented: $showLayoutEditor) {
+            NavigationStack { DockLayoutEditorView() }
+        }
+    }
+
+    // MARK: - Slots
+
+    @ViewBuilder
+    private func dockView(for slot: DockSlot) -> some View {
+        switch slot {
+        case .control(let item): dockView(for: item)
+        case .action(let entry): actionTile(entry)
+        }
+    }
+
+    /// A content tile — the same `BarButton` every control uses, because they now share a grid and
+    /// anything less than identical reads as two grids again.
+    @ViewBuilder
+    private func actionTile(_ entry: HomeGridEntry) -> some View {
+        if case .quickAction(let action) = entry, action.type == .toggleRecording {
+            // Live tile: reflects recording state and duration, unlike the fire-and-forget tiles.
+            RecordingQuickActionTile(
+                action: action,
+                controller: appState.sessionRecorder,
+                audioRecorder: appState.audioRecorder
+            )
+        } else {
+            let blocked = entry.capturesPhoto && photoDisabledForLocalModel
+            BarButton(
+                icon: entry.icon,
+                label: entry.label,
+                isDisabled: blocked,
+                isBusy: runningActionId == entry.id,
+                truncateLabel: true
+            ) {
+                guard runningActionId == nil else { return }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                runningActionId = entry.id
+                Task {
+                    await HomeGridDispatcher.run(entry, on: appState)
+                    runningActionId = nil
+                }
+            }
+            .accessibilityHint(
+                blocked ? "The on-device model cannot see images. Choose a vision model."
+                : runningActionId == entry.id ? "Running." : entry.spokenHint)
+        }
     }
 
     // MARK: - Dock items
@@ -101,19 +205,15 @@ struct BottomControlBar: View {
                let active = Config.activeModel, active.llmProvider == .local {
                 LocalModelTile(service: local, modelConfig: active)
             }
+            let provider = Config.activeModel?.llmProvider ?? .custom
             BarButton(
-                icon: "brain",
-                label: appState.llmService.activeModelName,
-                truncateLabel: true
+                icon: DockLayout.modelTileGlyph(for: provider),
+                label: "Model",
+                assetIcon: ProviderMark.bundledAsset(for: provider)
             ) {
                 showModelPicker = true
             }
-
-        case .quickActions:
-            // The user's quick actions (was its own band of glass tiles).
-            if appState.isConnected && appState.currentMode == .direct {
-                QuickActionTiles()
-            }
+            .accessibilityLabel("Model: \(appState.llmService.activeModelName). Opens the model picker.")
 
         case .camera:
             cameraButton
@@ -409,6 +509,10 @@ private struct BarButton: View {
     var badge: String? = nil
     var tint: Color? = nil
     var truncateLabel: Bool = false
+    /// A bundled image asset to draw instead of `icon` when one is present — the seam a provider's
+    /// own mark drops into. Template-rendered, so it takes the tile's foreground like every other
+    /// glyph and never arrives as an off-palette full-colour logo.
+    var assetIcon: String? = nil
     var action: () -> Void = {}
 
     @Environment(\.appAccent) private var accent
@@ -446,10 +550,11 @@ private struct BarButton: View {
             // Glyph over label normally; glyph *beside* label at accessibility sizes.
             //
             // Stacked, a tile is as tall as its glyph box plus its caption, and at AX5 that is
-            // around 130pt — for a row of them, above a capsule, in a dock that also has to leave
+            // around 130pt — for a grid of them, above a capsule, in a dock that also has to leave
             // the screen room for the conversation. Laid out side by side the same tile is about
-            // the height of one line, and the row already scrolls horizontally, so the space it
-            // needs is the axis it has. Nothing is dropped or renamed; the parts change places.
+            // the height of one line, and the grid scrolls vertically inside its bounded height,
+            // so the space it needs is there. Nothing is dropped or renamed; the parts change
+            // places.
             tileLayout {
                 ZStack {
                     if isBusy {
@@ -457,6 +562,13 @@ private struct BarButton: View {
                             .scaleEffect(0.7)
                     } else if icon == "OpenGlassesLogo" {
                         LogoIcon(size: glyph)
+                            .foregroundStyle(foreground)
+                    } else if let assetIcon {
+                        Image(assetIcon)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: glyph, height: glyph)
                             .foregroundStyle(foreground)
                     } else {
                         Image(systemName: icon)
@@ -534,46 +646,19 @@ private struct LocalModelTile: View {
     }
 }
 
-// MARK: - Quick action tiles (was QuickActionsGrid, its own band of glass tiles)
+// MARK: - Provider mark
 
-/// The user's configured quick actions as dock tiles — same idiom as every other control.
-private struct QuickActionTiles: View {
-    @EnvironmentObject var appState: AppState
-    @State private var executingActionId: String?
-
-    private var actions: [QuickAction] {
-        let all = Config.quickActions
-        return Config.showAllQuickActions ? all : Array(all.prefix(4))
-    }
-
-    var body: some View {
-        ForEach(actions) { action in
-            if action.type == .toggleRecording {
-                // Live tile: reflects recording state + duration, unlike the fire-and-forget tiles.
-                RecordingQuickActionTile(
-                    action: action,
-                    controller: appState.sessionRecorder,
-                    audioRecorder: appState.audioRecorder
-                )
-            } else {
-                BarButton(
-                    icon: action.icon,
-                    label: action.label,
-                    isBusy: executingActionId == action.id
-                ) {
-                    guard executingActionId == nil else { return }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    executingActionId = action.id
-                    Task {
-                        await appState.executeQuickAction(action)
-                        executingActionId = nil
-                    }
-                }
-                .accessibilityHint(executingActionId == action.id ? "Running" : "Double-tap to execute")
-            }
-        }
+/// Whether a provider's own brand mark is bundled, so the model tile can prefer it over the
+/// SF-symbol stand-in. Asset-first by design: dropping `ProviderMark-<provider>` into the catalog
+/// is the whole change, and nothing here draws an approximation of a mark that isn't there.
+enum ProviderMark {
+    static func bundledAsset(for provider: LLMProvider) -> String? {
+        let name = DockLayout.providerMarkAsset(for: provider)
+        return UIImage(named: name) == nil ? nil : name
     }
 }
+
+// MARK: - Recording tile
 
 /// The record-meeting quick action as a live dock tile: red stop icon + elapsed duration while
 /// a preserved recording is running. Observes the controller directly because a nested
@@ -600,3 +685,23 @@ private struct RecordingQuickActionTile: View {
         .accessibilityHint("Double-tap to start or stop recording.")
     }
 }
+
+// MARK: - Session seams
+
+/// Every content tile reaches the session through a call some other surface already makes: a canned
+/// prompt is `ChatInputBar`'s send, a photo prompt is the dock camera's capture-and-ask, and a
+/// speed-dial action is the one the widget, the watch and the launcher all run.
+extension AppState: HomeGridSession {
+    func submitHomePrompt(_ text: String) async {
+        await sendTextMessage(text)
+    }
+
+    func submitHomePhotoPrompt(_ text: String) async {
+        await capturePhotoAndSend(prompt: text)
+    }
+
+    func runHomeQuickAction(_ action: QuickAction) async {
+        await executeQuickAction(action)
+    }
+}
+

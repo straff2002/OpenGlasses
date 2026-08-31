@@ -1,7 +1,7 @@
 import Foundation
 
 /// A user-configurable quick action button shown on the main screen.
-struct QuickAction: Codable, Identifiable {
+struct QuickAction: Codable, Identifiable, Equatable {
     var id: String
     var label: String
     var icon: String

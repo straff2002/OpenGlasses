@@ -77,3 +77,4 @@ Vendor/MediaPipeTasks/Frameworks/
 # Local TLS material — never commit private keys
 *.crt
 *.key
+.dd-agent/

@@ -5,8 +5,9 @@ import Combine
 ///
 ///   1. Status (top): one StatusIndicator card — state, mode, persona, and the
 ///      glasses/OpenClaw connection pills merged into its footer row
-///   2. Conversation (center): the coral voice waveline, ambient captions, transcript
-///   3. Controls (bottom): quick-action row, chat input or hero capsule + actions
+///   2. Conversation (center): My Day, ambient captions, transcript — scrolls, so the dock
+///      below it always gets its height
+///   3. Controls (bottom): one dock panel — hero capsule, then controls and content tiles
 struct VoiceTab: View {
     @EnvironmentObject var appState: AppState
     @State private var showPreview = false
@@ -16,7 +17,6 @@ struct VoiceTab: View {
     @State private var captionsActive = false
     @AppStorage("myDayEnabled") private var myDayEnabled = false
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
-    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var session: GeminiLiveSessionManager { appState.geminiLiveSession }
     private var openAISession: OpenAIRealtimeSessionManager { appState.openAIRealtimeSession }
@@ -38,27 +38,34 @@ struct VoiceTab: View {
                         .padding(.top, 8)
                 }
 
-                if typeSize.isAccessibilitySize {
-                    accessibleConversationZone(voiceState)
-                } else {
-                    conversationZone(voiceState)
-                }
+                conversationZone(voiceState)
 
-                // Chat input bar (when active) or voice controls. The control dock
-                // (BottomControlBar) owns the model chip and quick actions as tiles.
-                // Pinned below the zone above in both layouts: the primary control
-                // is the last thing that should need scrolling to.
-                if showChatInput && !isRealtime {
-                    ChatInputBar(showChatInput: $showChatInput)
-                } else {
-                    VoiceTabControls(
-                        session: session,
-                        openAISession: openAISession,
-                        showPreview: $showPreview,
-                        showModelPicker: $showModelPicker,
-                        showChatInput: $showChatInput
-                    )
+                // Chat input bar (when active) or the control dock, which holds the capsule, the
+                // controls and the content tiles in one panel. Pinned below the zone above and
+                // laid out first: the primary control is the last thing that should need
+                // scrolling to, and the zone takes whatever height is left over.
+                Group {
+                    if showChatInput && !isRealtime {
+                        ChatInputBar(showChatInput: $showChatInput)
+                    } else {
+                        VoiceTabControls(
+                            session: session,
+                            openAISession: openAISession,
+                            showPreview: $showPreview,
+                            showModelPicker: $showModelPicker,
+                            showChatInput: $showChatInput,
+                            showsActions: HomeSurfaceVisibility.showsActionGrid(
+                                state: voiceState,
+                                captionsActive: captionsActive,
+                                mode: appState.currentMode)
+                        )
+                    }
                 }
+                // Stated, not inferred: the dock is laid out at its full height first and the zone
+                // above takes what is left. Both children of this stack are flexible in the
+                // vertical axis, and leaving the split to the default meant the dock could be
+                // squeezed — which is the shape the overflow regression took.
+                .layoutPriority(1)
             }
         }
         }
@@ -80,88 +87,56 @@ struct VoiceTab: View {
 
     // MARK: - Conversation zone
 
-    /// The shipped three-zone composition: status card at the top, useful day context in the
-    /// middle, then captions and transcript above the dock. My Day contracts while listening and
-    /// yields the centre entirely while the assistant thinks or speaks, or while live captions
-    /// need the space to keep every line readable.
+    /// Status card, then My Day, then captions and the transcript — one order and one 16 pt scale
+    /// at every text size, with the dock pinned below it.
+    ///
+    /// The zone is a scroll view inside a `GeometryReader`, and that combination is the fix for a
+    /// functional regression, not a nicety. The zone used to be a fixed `VStack` sharing one
+    /// column with the dock: when a long reply arrived and the dock was two rows tall, the column's
+    /// intrinsic height exceeded the tab and a `VStack` in that position does not clip or scroll —
+    /// it overflows. The overflow pushed the bottom of the dock past the tab bar, so the capsule
+    /// stayed visible while the tiles under it were outside the hittable area. A scroll view
+    /// accepts any height down to zero, so the dock always gets its intrinsic height first and
+    /// every tile stays on screen and tappable; the `minHeight` keeps the old top-aligned rhythm,
+    /// with the flexible spacer holding the transcript against the dock whenever the content is
+    /// short enough for that to mean anything.
     @ViewBuilder
     private func conversationZone(_ voiceState: VoiceVisualState) -> some View {
-        // Status card — one status surface: state, mode, persona, and the connection
-        // pills (formerly their own band above the card).
-        StatusIndicator(session: session, openAISession: openAISession,
-                        openClawBridge: appState.openClawBridge)
-            .padding(.top, 12)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Status card — one status surface: state, mode, persona, and the connection
+                    // pills (formerly their own band above the card).
+                    StatusIndicator(session: session, openAISession: openAISession,
+                                    openClawBridge: appState.openClawBridge)
 
-        Spacer()
+                    if HomeSurfaceVisibility.showsMyDay(state: voiceState,
+                                                        captionsActive: captionsActive) {
+                        MyDayHomeView(
+                            service: appState.myDayService,
+                            isEnabled: $myDayEnabled,
+                            compact: voiceState == .listening
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    }
 
-        if shouldShowMyDay(for: voiceState) {
-            MyDayHomeView(
-                service: appState.myDayService,
-                isEnabled: $myDayEnabled,
-                compact: voiceState == .listening
-            )
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
-        }
+                    Spacer(minLength: 0)
 
-        Spacer()
+                    if captionsActive {
+                        AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                    }
 
-        // Ambient captions
-        if captionsActive {
-            AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                    TranscriptOverlay(session: session, openAISession: openAISession)
+                }
+                .padding(.top, 12)
                 .padding(.bottom, 8)
-        }
-
-        // Transcript
-        TranscriptOverlay(session: session, openAISession: openAISession)
-            .padding(.bottom, 8)
-    }
-
-    /// The same zone at accessibility text sizes, where it has to scroll.
-    ///
-    /// The shipped layout is a fixed `VStack` whose middle is held open by two `Spacer`s, and it
-    /// fits only because almost nothing in it used to grow: the status line, the mode line and the
-    /// dock captions were all fixed point sizes. Putting them on Dynamic Type — the job of this
-    /// phase — is what made the surface honest, and immediately made it overflow: at AX5 the
-    /// status card alone ran off the top of the screen and the dock off the bottom, with no way to
-    /// reach either. `Spacer`s cannot absorb that; they are already at zero.
-    ///
-    /// So above the accessibility threshold the conversation zone scrolls and the dock stays
-    /// pinned, which is the same trade onboarding's hero pages make. Unlike the old decorative
-    /// waveline, My Day is content, so it remains reachable here and uses its compact form while
-    /// listening. It still yields while the assistant thinks or speaks, and while live captions
-    /// are active so the same content priority applies at every text size.
-    @ViewBuilder
-    private func accessibleConversationZone(_ voiceState: VoiceVisualState) -> some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                StatusIndicator(session: session, openAISession: openAISession,
-                                openClawBridge: appState.openClawBridge)
-
-                if shouldShowMyDay(for: voiceState) {
-                    MyDayHomeView(
-                        service: appState.myDayService,
-                        isEnabled: $myDayEnabled,
-                        compact: voiceState == .listening
-                    )
-                }
-
-                if captionsActive {
-                    AmbientCaptionOverlay(captionService: appState.ambientCaptions)
-                }
-
-                TranscriptOverlay(session: session, openAISession: openAISession)
+                // Exactly the viewport when the content is shorter, so a short surface keeps the
+                // old rhythm — top-aligned modules, transcript held down against the dock — and
+                // does not become a scroll view for no reason.
+                .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .scrollBounceBehavior(.basedOnSize)
         }
-    }
-
-    /// Captions are current speech and cannot be recovered if their rows are compressed. My Day
-    /// remains one tap away after the caption session ends, so it gives the conversation zone to
-    /// captions just as it already does to an assistant response.
-    private func shouldShowMyDay(for voiceState: VoiceVisualState) -> Bool {
-        guard !captionsActive else { return false }
-        return voiceState != .thinking && voiceState != .speaking
     }
 
     // MARK: - Recording Badge
@@ -192,6 +167,35 @@ struct VoiceTab: View {
     }
 }
 
+// MARK: - Home surface yielding
+
+/// When the Voice tab's home content is on screen: My Day in the conversation zone, and the content
+/// tiles in the dock's grid. Pure, because these are the rules that decide whether the surface is
+/// honest at every state, and they should not need a device to check.
+///
+/// Captions are current speech and cannot be recovered if their rows are compressed. My Day
+/// remains one tap away after the caption session ends, so it gives the zone to captions just as
+/// it already does to an assistant response.
+enum HomeSurfaceVisibility {
+    static func showsMyDay(state: VoiceVisualState, captionsActive: Bool) -> Bool {
+        guard !captionsActive else { return false }
+        return state != .thinking && state != .speaking
+    }
+
+    /// The content tiles yield on everything My Day yields on, and on listening as well. My Day
+    /// compacts there because its top row is still worth reading with the mic open; a row of canned
+    /// prompts under a live mic is a control nobody reaches for, so the tiles give their rows back
+    /// and the controls close up behind them. The dock's own controls never yield.
+    ///
+    /// Realtime modes run their own turn spine, and these tiles submit ordinary Direct-mode turns,
+    /// so they are a Direct-mode surface — the gate the dock's quick-action slot always had.
+    static func showsActionGrid(state: VoiceVisualState, captionsActive: Bool,
+                                mode: AppMode) -> Bool {
+        guard mode == .direct else { return false }
+        return showsMyDay(state: state, captionsActive: captionsActive) && state != .listening
+    }
+}
+
 // MARK: - Voice Tab Controls (hero capsule + secondary buttons)
 
 /// Bottom controls for the Voice tab — reuses the original BottomControlBar patterns.
@@ -203,6 +207,7 @@ private struct VoiceTabControls: View {
     @Binding var showPreview: Bool
     @Binding var showModelPicker: Bool
     @Binding var showChatInput: Bool
+    let showsActions: Bool
 
     var body: some View {
         BottomControlBar(
@@ -211,7 +216,8 @@ private struct VoiceTabControls: View {
             showSettings: .constant(false),
             showModelPicker: $showModelPicker,
             showPreview: $showPreview,
-            showChatInput: $showChatInput
+            showChatInput: $showChatInput,
+            showsActions: showsActions
         )
     }
 }

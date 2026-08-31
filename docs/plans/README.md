@@ -142,7 +142,7 @@ core first, with the live/device/backend edge deferred; one PR per plan.
 | [DX](DX-private-memory-timeline.md) | Private Memory Timeline and Control Surface | 📝 Drafted 2026-08-29 — phone-first provenance, correction, deletion, and federated search over existing authoritative memory stores; no copied timeline database or HUD dependency; conversation entries require DK P0–P2 |
 | [DY](DY-my-day-everyday-briefing.md) | My Day: Everyday Briefing and Preparation | 🟠 P0/P1 MVP implemented + automated suite green 2026-08-30 — feature-flagged phone/audio snapshot over shared Calendar, Reminders, and Weather sources with deterministic ranking/actions; physical UX validation, MapKit leave-by, and digest remain; no waveguide dependency |
 | [DZ](DZ-local-gguf-and-durable-agent-runtime.md) | Local GGUF Runtime and Durable Agent Loops | 📝 Drafted 2026-08-30 — adds a second, text-first local runtime beside MLX, revision-pinned resumable model acquisition, truthful scheduled-task outcomes, transactional memory curation, and separately gated multimodal/skill-storage follow-ups |
-| [EA](EA-voice-home-grid.md) | Voice Home Grid & Quick Actions | 📋 Planned 2026-08-31 — top-aligned home rhythm (deterministic gaps around My Day), quick-action grid absorbing the dock's `QuickActionTiles` band plus canned-prompt and photo-first actions through the existing turn pipeline, then a persisted grid editor. Dock returns to controls-only |
+| [EA](EA-voice-home-grid.md) | Voice Home Grid & Quick Actions | ✅ Shipped P1–P4 (2026-08-31) — top-aligned home rhythm; 4 new canned built-ins (`.prompt` / `.photoPrompt`) beside the speed dial in a versioned arrangement store. Then revised on device (P4): the home grid and the dock band merged into **one** panel grid of `DockSlot`s with one editor (a tile can sit beside a control), wrapping into rows of 4 and scrolling vertically with no tile ceiling; My Day collapses to its header (persisted); provider marks are asset-first with an exhaustive symbol fallback. **Fixed a functional regression** — the conversation zone and the dock shared one fixed `VStack` that overflowed once a reply met the two-row dock, pushing the dock's tiles past the tab bar where they rendered but could not be tapped; the zone is a `ScrollView` in a `GeometryReader` now, so the dock is laid out first and every tile stays hittable |
 
 **Three selectable expert-stream transports** (Plans L/M + the meeting-link connector): **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote, nothing to self-host), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -240,7 +240,9 @@ the suggested sequences.
   Day surface: fix the conversation-zone rhythm and slim the scrolling dock first (P1), then the
   canned-prompt/photo actions over shipped tools (P2), then the grid editor (P3). Pure UI
   composition over existing seams — `ChatInputBar`'s turn submission, CN vision attachment, the
-  Plan Y quick-action band — with the Plan DF VoiceOver bar held throughout.
+  Plan Y quick-action band — with the Plan DF VoiceOver bar held throughout. A phone test of the
+  shipped build then folded the two grids into one and revised four of the plan's decisions (P4),
+  which is the round's real lesson: a composition plan is not finished until it has been held.
 - **Standalone tools.** First-Aid (AA), HECA (AC), Structured Vision (AD), Study Mode (AE), Memory/Recall (AY), Vehicle (AZ), and the planned/drafted items (AB, AF, AG, AH, AI, BP) sit outside a single round but are indexed and lettered above.
 
 ## Dependency graph

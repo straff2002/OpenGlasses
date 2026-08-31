@@ -7,12 +7,6 @@ struct QuickActionsSettingsView: View {
     @State private var editingAction: QuickAction?
     @State private var showAddSheet = false
     @State private var previewingTemplate: QuickAction?
-    @State private var showAllQuickActions = Config.showAllQuickActions
-    /// Same key the dock observes — reordering here re-renders the bar live.
-    @AppStorage("dockItemOrder") private var dockOrder = ""
-
-    private var dockOrderItems: [DockItem] { DockLayout.decode(dockOrder) }
-
     /// Pre-built quick action templates users can add.
     static let templates: [QuickAction] = [
         QuickAction(id: "skin-analysis", label: "Skin Check", icon: "cross.circle", type: .photoThenPrompt,
@@ -48,7 +42,7 @@ struct QuickActionsSettingsView: View {
             // MARK: - User's actions (shown first)
             if !actions.isEmpty {
                 Section {
-                    ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+                    ForEach(actions) { action in
                         Button {
                             editingAction = action
                         } label: {
@@ -75,14 +69,6 @@ struct QuickActionsSettingsView: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
-                                if index < 4 && !showAllQuickActions {
-                                    Text("visible")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(.tertiarySystemFill), in: Capsule())
-                                }
                                 Image(systemName: "chevron.right")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
@@ -91,7 +77,7 @@ struct QuickActionsSettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(action.label), \(action.type.displayName)\(index < 4 && !showAllQuickActions ? ", visible on main screen" : "")")
+                        .accessibilityLabel("\(action.label), \(action.type.displayName)")
                         .accessibilityHint("Double-tap to edit")
                     }
                     .onDelete { indexSet in
@@ -105,47 +91,23 @@ struct QuickActionsSettingsView: View {
                 } header: {
                     Text("Speed Dial")
                 } footer: {
-                    if showAllQuickActions {
-                        Text("All actions shown on the Voice tab, wrapped in rows of 4. Drag to reorder.")
-                    } else {
-                        Text("Only the top 4 actions are shown on the Voice tab. Drag to reorder priority.")
-                    }
+                    Text("Every action you can reach by voice, from the widget, the watch, and the in-lens launcher. Which of them also sit on the Voice tab's bar is arranged in Bar Layout below.")
                 }
             }
 
-            // MARK: - Bar Layout (Plan CL follow-up)
-            // The dock's built-in buttons were fixed in code while quick actions
-            // reordered above — people hunting for the push-to-talk tile couldn't
-            // move it. The whole scrolling row is arrangeable now.
+            // MARK: - Bar Layout
+            // One editor for the dock's one grid: the controls (Plan CL made those
+            // arrangeable) and the content actions now share an ordered list, because
+            // the move people wanted — a tile beside a control — neither list could
+            // express on its own.
             Section {
-                ForEach(dockOrderItems) { item in
-                    Label(item.displayName, systemImage: item.icon)
+                NavigationLink {
+                    DockLayoutEditorView()
+                } label: {
+                    Label("Bar Layout", systemImage: "square.grid.2x2")
                 }
-                .onMove { from, to in
-                    var items = dockOrderItems
-                    items.move(fromOffsets: from, toOffset: to)
-                    dockOrder = DockLayout.encode(items)
-                }
-            } header: {
-                Text("Bar Layout")
             } footer: {
-                Text("The order of everything in the Voice tab's control bar — Quick Actions is the block configured above. Drag to reorder; buttons that only appear in context (Preview, Disconnect) keep their conditions, just in your order.")
-            }
-
-            // MARK: - Display Mode
-            Section {
-                InfoToggle(
-                    title: "Show All Actions",
-                    isOn: $showAllQuickActions,
-                    info: "When off, only the top 4 quick actions are shown on the Voice tab. When on, all actions are displayed in a grid that wraps every 4 buttons. Reorder actions above to control which appear in the top 4."
-                )
-                .onChange(of: showAllQuickActions) { _, newValue in
-                    Config.setShowAllQuickActions(newValue)
-                }
-            } header: {
-                Text("Display")
-            } footer: {
-                Text("Whether the Voice tab shows just the top four actions or every action in a wrapping grid.")
+                Text("Arrange the Voice tab's bottom bar — controls and actions in one grid. Taking a tile off never deletes the action, and controls always stay.")
             }
 
             // MARK: - Templates (below user actions)
@@ -195,7 +157,8 @@ struct QuickActionsSettingsView: View {
                 Button { showAddSheet = true } label: { Image(systemName: "plus") }
             }
             ToolbarItem(placement: .topBarLeading) {
-                // Always shown: even with no quick actions, Bar Layout reorders.
+                // Reorders and deletes the speed dial above; the bar's own order lives behind
+                // Bar Layout, which has its own edit mode.
                 EditButton()
             }
         }

@@ -57,6 +57,24 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
                       "The session capsule is not reachable by any of its spoken names")
     }
 
+    /// The quick-action grid that replaced the dock's scrolling band of prompts. Each tile is a
+    /// named button, including the ones whose drawn caption is an arrow — a tile that reaches
+    /// VoiceOver as its glyph name is a tile nobody can find.
+    func testQuickActionGridTilesAreNamedButtons() {
+        let app = launch([.configured])
+        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+
+        for name in ["Meetings", "Tasks", "Photo → Event", "Photo → Task"] {
+            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 60),
+                          "The “\(name)” tile is not reachable by name on the home grid")
+        }
+
+        // The speed-dial actions the dock used to draw are still on the surface, and the live
+        // recording tile still says what it is rather than reading out a duration.
+        XCTAssertTrue(app.buttons["Record meeting"].exists,
+                      "The record tile lost its spoken name in the move off the dock")
+    }
+
     /// Rank 6: the captions overlay, seeded with the history and live line a real session would
     /// have produced — two of them diarized, so the speaker chip is on screen to be measured. Its
     /// ground and its chip's target were the two findings this surface carried; both are fixed —
@@ -73,6 +91,12 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         XCTAssertFalse(
             app.staticTexts["Put what matters next here instead of an animation."].exists,
             "My Day is still occupying the conversation zone while live captions need its height"
+        )
+
+        XCTAssertFalse(
+            app.buttons["Meetings"].exists,
+            "The quick-action grid is still occupying the conversation zone while live captions "
+            + "need its height"
         )
 
         audit(app, screen: "Session surface — captions overlay",
