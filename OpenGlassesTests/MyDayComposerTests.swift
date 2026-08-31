@@ -143,7 +143,26 @@ final class MyDayComposerTests: XCTestCase {
         XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["first", "prepare:first"])
         XCTAssertTrue(snapshot.items[0].detail?.contains("Tomorrow") == true)
         XCTAssertEqual(snapshot.items[1].kind, .preparation)
-        XCTAssertTrue(snapshot.headline.contains("tomorrow starts with Event first"))
+        XCTAssertTrue(snapshot.headline.contains("Tomorrow starts with Event first"))
+        XCTAssertTrue(snapshot.headline.first?.isUppercase == true,
+                      "headline is a sentence and must start capitalized")
+    }
+
+    /// "X's birthday, all day" reads as parody — an all-day event's headline names the event and
+    /// lets the missing time say the rest. The card detail row keeps the qualifier.
+    func testEveningHeadlineForAllDayEventOmitsAllDay() {
+        let birthday = MyDayCalendarEvent(
+            id: "bday", title: "Mike's birthday",
+            startDate: date(0, day: 31), endDate: date(23, day: 31, minute: 59),
+            isAllDay: true, location: nil)
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [birthday]),
+            now: date(20)
+        )
+        XCTAssertTrue(snapshot.headline.contains("Tomorrow includes Mike's birthday"))
+        XCTAssertFalse(snapshot.headline.contains("all day"))
+        XCTAssertTrue(snapshot.items[0].detail?.contains("all day") == true,
+                      "the detail row keeps the schedule qualifier")
     }
 
     func testDigestUpdatesAreCappedAtTwoAndOnlyFillRemainingCapacity() {
