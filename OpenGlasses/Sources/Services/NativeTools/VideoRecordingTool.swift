@@ -129,28 +129,31 @@ struct VideoRecordingTool: NativeTool {
 
                 // Auto-export if configured
                 if Config.autoExportEnabled, let exportService = medicalExportService {
-                    let config = FHIRConfig.fromDefaults()
-                    if !config.baseURL.isEmpty && (MedicalPlatform(rawValue: config.platformType)?.usesFHIR ?? false) {
+                    let config = await MainActor.run { exportService.configurationStore.configuration }
+                    if config.isConfigured && config.platform.usesFHIR {
                         let exportResult = await exportService.exportToFHIR(
                             transcript: transcript,
                             duration: duration,
-                            date: Date(),
-                            config: config
+                            date: Date()
                         )
                         if exportResult.success {
                             response += " Auto-exported to FHIR server."
                         } else {
-                            response += " Auto-export failed: \(exportResult.message). You can export manually."
+                            response += " Auto-export failed: \(exportResult.message) You can export manually."
                         }
                     } else {
-                        // Create file for sharing in the default format
-                        let fileURL = exportService.createExportFile(
-                            transcript: transcript,
-                            duration: duration,
-                            date: Date(),
-                            format: Config.defaultExportFormat
-                        )
-                        if fileURL != nil {
+                        // Create a protected share file in the default format. The lease is held
+                        // by the export coordinator, so an auto-export nobody shares is cleaned up
+                        // on backgrounding rather than left on disk.
+                        let created = await MainActor.run {
+                            (try? exportService.createExportLease(
+                                transcript: transcript,
+                                duration: duration,
+                                date: Date(),
+                                format: Config.defaultExportFormat
+                            )) != nil
+                        }
+                        if created {
                             response += " Export file created in \(Config.defaultExportFormat.rawValue) format."
                         }
                     }

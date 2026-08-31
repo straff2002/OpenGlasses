@@ -13,6 +13,7 @@ final class MedicalComplianceTests: XCTestCase {
         "hipaaMode", "hipaaRetentionDays", "hipaaLocalOnly",
         "autoExportEnabled", "defaultExportFormat",
         "conversationEncryptionEnabled", "fhirConfig",
+        "fhirServerConfiguration", "fhirSecretsMigratedVersion",
         // Tool enable keys that might interfere
         "disabledTools",
     ]
@@ -385,156 +386,130 @@ final class MedicalComplianceTests: XCTestCase {
 
     // MARK: - Medical Export Service
 
-    func testFHIRConfigPersistence() {
-        var config = FHIRConfig()
+    /// Isolated export service: its own preferences suite, in-memory protected stores, and its
+    /// own export root, so nothing here touches the shared singletons or the app container.
+    private func makeExportHarness() -> (service: MedicalExportService,
+                                         store: FHIRConfigurationStore,
+                                         secrets: InMemoryFHIRSecretStore,
+                                         root: URL) {
+        let suite = UserDefaults(suiteName: "MedicalComplianceTests.\(UUID().uuidString)")!
+        let secrets = InMemoryFHIRSecretStore()
+        let store = FHIRConfigurationStore(defaults: suite, credentials: secrets, contexts: secrets)
+        let root = tempDir.appendingPathComponent("exports_\(UUID().uuidString)")
+        let service = MedicalExportService(
+            configurationStore: store,
+            leases: MedicalExportLeaseCoordinator(store: MedicalExportFileStore(root: root))
+        )
+        return (service, store, secrets, root)
+    }
+
+    func testPublicConfigurationPersistsWithoutSecrets() throws {
+        let harness = makeExportHarness()
+        var config = harness.store.configuration
         config.baseURL = "https://fhir.example.com/r4"
-        config.bearerToken = "test-token-123"
-        config.patientId = "patient-001"
-        config.practitionerId = "dr-smith"
-        config.platformType = "epic"
-        config.save()
+        config.platformType = MedicalPlatform.epic.rawValue
+        harness.store.save(config)
+        try harness.store.storeCredential(FHIRCredential(bearerToken: "test-token-123"))
+        try harness.store.storePrivateContext(
+            FHIRPrivateContext(patientID: "patient-001", practitionerID: "dr-smith")
+        )
 
-        let loaded = FHIRConfig.fromDefaults()
+        let loaded = harness.store.configuration
         XCTAssertEqual(loaded.baseURL, "https://fhir.example.com/r4")
-        XCTAssertEqual(loaded.bearerToken, "test-token-123")
-        XCTAssertEqual(loaded.patientId, "patient-001")
-        XCTAssertEqual(loaded.practitionerId, "dr-smith")
-        XCTAssertEqual(loaded.platformType, "epic")
-
-        // Clean up
-        UserDefaults.standard.removeObject(forKey: "fhirConfig")
+        XCTAssertEqual(loaded.platform, .epic)
+        XCTAssertEqual(loaded.serverID, config.serverID, "server id must be stable across saves")
+        XCTAssertEqual(try harness.store.loadCredential().bearerToken, "test-token-123")
+        XCTAssertEqual(try harness.store.loadPrivateContext().patientID, "patient-001")
     }
 
-    func testFHIRConfigDefaultsToEmpty() {
-        UserDefaults.standard.removeObject(forKey: "fhirConfig")
-        let config = FHIRConfig.fromDefaults()
-        XCTAssertTrue(config.baseURL.isEmpty)
-        XCTAssertTrue(config.bearerToken.isEmpty)
-        XCTAssertTrue(config.patientId.isEmpty)
+    func testConfigurationDefaultsToUnconfigured() {
+        let harness = makeExportHarness()
+        let config = harness.store.configuration
+        XCTAssertFalse(config.isConfigured)
+        XCTAssertFalse(harness.store.hasStoredCredential())
+        XCTAssertTrue(try! harness.store.loadPrivateContext().isEmpty)
     }
 
-    func testExportServiceCreatesPlainTextFile() {
-        let service = MedicalExportService()
+    func testExportServiceCreatesPlainTextLease() throws {
+        let harness = makeExportHarness()
         let transcript = "Patient presented with symptoms of..."
-        let url = service.createExportFile(
+        let lease = try harness.service.createExportLease(
             transcript: transcript, duration: "05:30", date: Date(), format: .plainText
         )
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.lastPathComponent.hasSuffix(".txt"))
-
-        let content = try? String(contentsOf: url!, encoding: .utf8)
-        XCTAssertEqual(content, transcript)
-
-        // Clean up
-        try? FileManager.default.removeItem(at: url!)
+        XCTAssertEqual(lease.fileURL.pathExtension, "txt")
+        XCTAssertEqual(try String(contentsOf: lease.fileURL, encoding: .utf8), transcript)
+        harness.service.leases.release(lease)
     }
 
-    func testExportServiceCreatesPDFFile() {
-        let service = MedicalExportService()
-        let url = service.createExportFile(
+    func testExportServiceCreatesPDFLease() throws {
+        let harness = makeExportHarness()
+        let lease = try harness.service.createExportLease(
             transcript: "Test transcript for PDF", duration: "02:00", date: Date(), format: .pdf
         )
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.lastPathComponent.hasSuffix(".pdf"))
-
-        let data = try? Data(contentsOf: url!)
-        XCTAssertNotNil(data)
-        XCTAssertGreaterThan(data!.count, 0)
-        // PDF magic bytes: %PDF
-        let header = String(data: data!.prefix(4), encoding: .ascii)
-        XCTAssertEqual(header, "%PDF")
-
-        try? FileManager.default.removeItem(at: url!)
+        let data = try Data(contentsOf: lease.fileURL)
+        XCTAssertGreaterThan(data.count, 0)
+        XCTAssertEqual(String(data: data.prefix(4), encoding: .ascii), "%PDF")
+        harness.service.leases.release(lease)
     }
 
-    func testExportServiceCreatesFHIRJsonFile() {
-        let service = MedicalExportService()
-        let url = service.createExportFile(
+    func testExportServiceCreatesFHIRJsonLease() throws {
+        let harness = makeExportHarness()
+        let lease = try harness.service.createExportLease(
             transcript: "FHIR test", duration: "01:00", date: Date(), format: .fhirJson
         )
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.lastPathComponent.contains(".fhir.json"))
-
-        let data = try? Data(contentsOf: url!)
-        let json = try? JSONSerialization.jsonObject(with: data!) as? [String: Any]
-        XCTAssertNotNil(json)
+        let data = try Data(contentsOf: lease.fileURL)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertEqual(json?["resourceType"] as? String, "DocumentReference")
         XCTAssertEqual(json?["status"] as? String, "current")
-
-        try? FileManager.default.removeItem(at: url!)
+        harness.service.leases.release(lease)
     }
 
-    func testExportServiceCreatesHL7File() {
-        let service = MedicalExportService()
-        let url = service.createExportFile(
+    func testExportServiceCreatesHL7Lease() throws {
+        let harness = makeExportHarness()
+        let lease = try harness.service.createExportLease(
             transcript: "HL7 test transcript", duration: "03:00", date: Date(), format: .hl7
         )
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.lastPathComponent.hasSuffix(".hl7"))
-
-        let content = try? String(contentsOf: url!, encoding: .utf8)
-        XCTAssertNotNil(content)
-        XCTAssertTrue(content!.contains("MSH|"))
-        XCTAssertTrue(content!.contains("MDM^T02"))
-        XCTAssertTrue(content!.contains("OBX|"))
-
-        try? FileManager.default.removeItem(at: url!)
+        let content = try String(contentsOf: lease.fileURL, encoding: .utf8)
+        XCTAssertTrue(content.contains("MSH|"))
+        XCTAssertTrue(content.contains("MDM^T02"))
+        XCTAssertTrue(content.contains("OBX|"))
+        harness.service.leases.release(lease)
     }
 
-    func testHL7EscapesSpecialCharacters() {
-        let service = MedicalExportService()
+    func testHL7EscapesSpecialCharacters() throws {
+        let harness = makeExportHarness()
         let transcript = "Patient said: \"blood pressure is 120|80\" & temp was ~37°C"
-        let url = service.createExportFile(
+        let lease = try harness.service.createExportLease(
             transcript: transcript, duration: "01:00", date: Date(), format: .hl7
         )
-        let content = try? String(contentsOf: url!, encoding: .utf8)
-        XCTAssertNotNil(content)
-        // HL7 pipe character should be escaped
-        XCTAssertFalse(content!.contains("120|80"),
+        let content = try String(contentsOf: lease.fileURL, encoding: .utf8)
+        XCTAssertFalse(content.contains("120|80"),
                        "Pipe characters in transcript should be escaped in HL7")
-        XCTAssertTrue(content!.contains("120\\F\\80"))
-
-        try? FileManager.default.removeItem(at: url!)
+        XCTAssertTrue(content.contains("120\\F\\80"))
+        harness.service.leases.release(lease)
     }
 
-    func testFHIRDocumentIncludesPatientReference() {
-        var config = FHIRConfig()
-        config.baseURL = "https://test.fhir.org/r4"
-        config.patientId = "patient-42"
-        config.save()
+    func testFHIRDocumentIncludesPatientReference() throws {
+        let harness = makeExportHarness()
+        try harness.store.storePrivateContext(FHIRPrivateContext(patientID: "patient-42"))
 
-        let service = MedicalExportService()
-        let url = service.createExportFile(
+        let lease = try harness.service.createExportLease(
             transcript: "test", duration: "00:30", date: Date(), format: .fhirJson
         )
-        let data = try? Data(contentsOf: url!)
-        let json = try? JSONSerialization.jsonObject(with: data!) as? [String: Any]
-
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: lease.fileURL)) as? [String: Any]
         let subject = json?["subject"] as? [String: Any]
         XCTAssertEqual(subject?["reference"] as? String, "Patient/patient-42")
-
-        try? FileManager.default.removeItem(at: url!)
-        UserDefaults.standard.removeObject(forKey: "fhirConfig")
+        harness.service.leases.release(lease)
     }
 
-    func testFHIRDocumentExcludesPatientWhenEmpty() {
-        var config = FHIRConfig()
-        config.baseURL = "https://test.fhir.org/r4"
-        config.patientId = ""
-        config.save()
-
-        let service = MedicalExportService()
-        let url = service.createExportFile(
+    func testFHIRDocumentExcludesPatientWhenEmpty() throws {
+        let harness = makeExportHarness()
+        let lease = try harness.service.createExportLease(
             transcript: "test", duration: "00:30", date: Date(), format: .fhirJson
         )
-        let data = try? Data(contentsOf: url!)
-        let json = try? JSONSerialization.jsonObject(with: data!) as? [String: Any]
-
-        XCTAssertNil(json?["subject"],
-                     "subject should be omitted when patientId is empty")
-
-        try? FileManager.default.removeItem(at: url!)
-        UserDefaults.standard.removeObject(forKey: "fhirConfig")
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: lease.fileURL)) as? [String: Any]
+        XCTAssertNil(json?["subject"], "subject should be omitted when no patient id is stored")
+        harness.service.leases.release(lease)
     }
 
     // MARK: - Medical Platform Types
