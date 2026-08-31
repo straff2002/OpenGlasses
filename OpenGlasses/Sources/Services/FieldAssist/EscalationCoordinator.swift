@@ -44,8 +44,16 @@ final class EscalationCoordinator: ObservableObject {
     // MARK: - Flow
 
     /// Request a human expert: record the escalation on the active session, then page the pool.
+    ///
+    /// Entitlement is checked at this boundary, not only where the button lives — the escalation tool
+    /// calls straight in. A revocation observed mid-session stops the *next* escalation; one already
+    /// under way runs to `resolve`/`cancel` so the technician is never abandoned on a live call.
     @discardableResult
     func requestExpert(reason: String) async -> State {
+        guard FieldAssistEntitlement.shared.isGranted else {
+            state = .failed("Field Assist isn't unlocked on this device.")
+            return state
+        }
         state = .requested(reason: reason)
         let service = sessionService
         service.recordEscalation(reason: reason)

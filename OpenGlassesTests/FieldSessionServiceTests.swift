@@ -3,13 +3,14 @@ import XCTest
 
 /// Lifecycle and audit-log tests for FieldSessionService + SessionLogger.
 ///
-/// These tests run against a temporary sessions root and use the bundled refrigeration vault
-/// (with the developer-unlock flag set) so they exercise the real VaultRegistry gating path.
+/// These tests run against a temporary sessions root and use the bundled refrigeration vault, with
+/// an injected always-granted entitlement, so they exercise the real VaultRegistry gating path.
 @MainActor
 final class FieldSessionServiceTests: XCTestCase {
 
     private var tempRoot: URL!
     private var service: FieldSessionService!
+    private var previousEntitlement: FieldAssistEntitlementProvider!
 
     override func setUp() {
         super.setUp()
@@ -18,7 +19,7 @@ final class FieldSessionServiceTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
 
         UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
-        UserDefaults.standard.set(true, forKey: "fieldAssistDeveloperUnlocked")
+        previousEntitlement = EntitlementTestScope.grant()
         VaultRegistry.shared.resetCache()
 
         service = FieldSessionService(sessionsRoot: tempRoot)
@@ -27,7 +28,7 @@ final class FieldSessionServiceTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempRoot)
         UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled")
-        UserDefaults.standard.removeObject(forKey: "fieldAssistDeveloperUnlocked")
+        EntitlementTestScope.restore(previousEntitlement)
         super.tearDown()
     }
 
@@ -61,7 +62,7 @@ final class FieldSessionServiceTests: XCTestCase {
     }
 
     func testLockedVaultThrows() throws {
-        UserDefaults.standard.set(false, forKey: "fieldAssistDeveloperUnlocked")
+        FieldAssistEntitlement.shared.provider = DeniedEntitlementProvider()
         UserDefaults.standard.set(false, forKey: "agentModeEnabled")
         VaultRegistry.shared.resetCache()
 

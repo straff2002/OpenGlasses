@@ -10,6 +10,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     private var tempRoot: URL!
     private var service: FieldSessionService!
     private var coordinator: EscalationCoordinator!
+    private var previousEntitlement: FieldAssistEntitlementProvider!
 
     /// Notifier whose result is configurable, to exercise the success and failure branches.
     private struct ConfigurableNotifier: ExpertNotifier {
@@ -20,7 +21,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     override func setUp() {
         super.setUp()
         UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
-        UserDefaults.standard.set(true, forKey: "fieldAssistDeveloperUnlocked")
+        previousEntitlement = EntitlementTestScope.grant()
         VaultRegistry.shared.resetCache()
 
         tempRoot = FileManager.default.temporaryDirectory
@@ -41,7 +42,7 @@ final class EscalationCoordinatorTests: XCTestCase {
         coordinator.sessionService = .shared
         try? FileManager.default.removeItem(at: tempRoot)
         UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled")
-        UserDefaults.standard.removeObject(forKey: "fieldAssistDeveloperUnlocked")
+        EntitlementTestScope.restore(previousEntitlement)
         super.tearDown()
     }
 

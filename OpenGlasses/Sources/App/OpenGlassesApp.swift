@@ -149,6 +149,10 @@ struct OpenGlassesApp: App {
         // Move any plaintext provider secrets out of UserDefaults and into the
         // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
         Config.migrateSecretsToKeychainIfNeeded()
+        // Delete the retired developer-unlock preference so a value left behind by an older build (or
+        // restored from a backup) can never read as an entitlement. Idempotent, one key, and it
+        // touches no receipt or license code — a real purchase survives it untouched.
+        FieldAssistEntitlement.removeLegacyPreferenceKeys()
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they

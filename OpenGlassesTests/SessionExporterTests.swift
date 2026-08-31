@@ -8,11 +8,12 @@ final class SessionExporterTests: XCTestCase {
 
     private var tempRoot: URL!
     private var sessionDir: URL!
+    private var previousEntitlement: FieldAssistEntitlementProvider!
 
     override func setUp() {
         super.setUp()
         UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
-        UserDefaults.standard.set(true, forKey: "fieldAssistDeveloperUnlocked")
+        previousEntitlement = EntitlementTestScope.grant()
         VaultRegistry.shared.resetCache()
 
         tempRoot = FileManager.default.temporaryDirectory
@@ -24,7 +25,7 @@ final class SessionExporterTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempRoot)
         UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled")
-        UserDefaults.standard.removeObject(forKey: "fieldAssistDeveloperUnlocked")
+        EntitlementTestScope.restore(previousEntitlement)
         super.tearDown()
     }
 

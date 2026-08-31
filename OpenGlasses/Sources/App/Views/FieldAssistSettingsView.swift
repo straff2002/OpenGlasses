@@ -9,7 +9,6 @@ struct FieldAssistSettingsView: View {
     @StateObject private var license = LicenseService.shared
     @StateObject private var store = StoreKitService.shared
     @AppStorage("fieldAssistEnabled") private var enabled: Bool = false
-    @AppStorage("fieldAssistDeveloperUnlocked") private var developerUnlocked: Bool = false
     @AppStorage("fieldAssistDefaultVaultId") private var defaultVaultId: String = "refrigeration"
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
 
@@ -242,14 +241,6 @@ struct FieldAssistSettingsView: View {
                     }
                 }
             }
-
-            // ──────────────── Developer unlock
-            Section {
-                Toggle("Developer unlock (skip IAP)", isOn: $developerUnlocked)
-                    .tint(AppAccent.color)
-            } footer: {
-                Text("Internal only. Bypasses per-pack IAP gates so all vaults are usable during development. Disable before shipping.")
-            }
         }
         .navigationTitle("Field Assist")
         .navigationBarTitleDisplayMode(.inline)
@@ -377,12 +368,9 @@ struct FieldAssistSettingsView: View {
                     licenseMessage = nil
                     if enabled && !Config.fieldAssistUnlocked { enabled = false }
                 }
-            } else if Config.fieldAssistPurchased {
+            } else if case .storeProduct? = FieldAssistEntitlement.shared.decision().source {
                 Label("Unlocked via in-app purchase", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(OGTheme.okLabel)
-            } else if Config.fieldAssistDeveloperUnlocked {
-                Label("Developer unlock active", systemImage: "hammer.fill")
-                    .foregroundStyle(OGTheme.warnLabel)
             }
         } header: {
             Text("Entitlement")

@@ -16,18 +16,27 @@ enum SessionExporter {
     enum ExportError: LocalizedError {
         case sessionNotFound(URL)
         case metadataUnreadable
+        case notEntitled
 
         var errorDescription: String? {
             switch self {
             case .sessionNotFound(let url): return "No session found at \(url.lastPathComponent)."
             case .metadataUnreadable: return "Session metadata could not be read."
+            case .notEntitled: return "Field Assist isn't unlocked on this device."
             }
         }
     }
 
     /// Produce the requested export artifacts in the session directory; returns their URLs.
+    ///
+    /// Entitlement is enforced here rather than only at the settings screen: the export tool and the
+    /// session service both reach this directly. Once entitlement is revoked no new artifact is
+    /// produced; artifacts already written stay on disk and remain the user's record.
     @discardableResult
     static func export(sessionDir: URL, formats: Set<Format> = [.json, .pdf]) throws -> [URL] {
+        guard FieldAssistEntitlement.shared.isGranted else {
+            throw ExportError.notEntitled
+        }
         guard FileManager.default.fileExists(atPath: sessionDir.path) else {
             throw ExportError.sessionNotFound(sessionDir)
         }
