@@ -14,7 +14,24 @@ class MedicalExportService: ObservableObject {
     @Published var isExporting = false
     @Published var lastExportResult: ExportResult?
 
-    weak var hipaaService: HIPAAComplianceService?
+    weak var hipaaService: HIPAAComplianceService? {
+        didSet { wireAuditSink() }
+    }
+
+    /// Split FHIR configuration: public metadata in preferences, credentials and clinical
+    /// identifiers in protected storage.
+    let configurationStore: FHIRConfigurationStore
+    /// Owner of every clinical export file this service creates.
+    let leases: MedicalExportLeaseCoordinator
+
+    init(configurationStore: FHIRConfigurationStore = .shared,
+         leases: MedicalExportLeaseCoordinator? = nil) {
+        self.configurationStore = configurationStore
+        // Built here rather than as a default argument: the coordinator is main-actor isolated and
+        // default arguments are evaluated outside that isolation.
+        self.leases = leases ?? MedicalExportLeaseCoordinator()
+        wireAuditSink()
+    }
 
     struct ExportResult: Identifiable {
         let id = UUID()
@@ -24,20 +41,45 @@ class MedicalExportService: ObservableObject {
         let timestamp: Date
     }
 
+    /// Route lease lifecycle events into the compliance audit log. The event carries a format and
+    /// a count and nothing else — no path, no filename, no clinical value.
+    private func wireAuditSink() {
+        leases.auditSink = { [weak self] event in
+            self?.hipaaService?.log(action: event.action, detail: event.detail)
+        }
+    }
+
     // MARK: - Export to FHIR
 
-    /// Export a transcript as a FHIR R4 DocumentReference resource.
-    /// Posts to the configured FHIR server endpoint.
+    /// Export a transcript as a FHIR R4 DocumentReference resource, resolving credentials from
+    /// protected storage at request-construction time.
+    ///
+    /// Submission is entirely in memory — it creates no file. A share file is only ever produced
+    /// by an explicit ``createExportLease(transcript:duration:date:format:)`` call.
+    func exportToFHIR(transcript: String, duration: String, date: Date) async -> ExportResult {
+        let context: FHIRRequestContext
+        do {
+            context = try configurationStore.requestContext()
+        } catch {
+            return ExportResult(success: false, platform: .fhir,
+                                message: error.localizedDescription, timestamp: Date())
+        }
+        return await exportToFHIR(transcript: transcript, duration: duration, date: date, context: context)
+    }
+
+    /// Submit against an already-resolved context. Callers that have to surface a resolution
+    /// failure themselves resolve first and call this.
     func exportToFHIR(transcript: String, duration: String, date: Date,
-                      config: FHIRConfig) async -> ExportResult {
+                      context: FHIRRequestContext) async -> ExportResult {
         isExporting = true
         defer { isExporting = false }
 
+        let config = context.configuration
         let resource = buildFHIRDocumentReference(
-            transcript: transcript, duration: duration, date: date, config: config
+            transcript: transcript, duration: duration, date: date, privateContext: context.privateContext
         )
 
-        guard let url = URL(string: "\(config.baseURL)/DocumentReference") else {
+        guard let url = config.endpoint(for: "DocumentReference") else {
             return ExportResult(success: false, platform: .fhir,
                                 message: "Invalid FHIR server URL", timestamp: Date())
         }
@@ -47,10 +89,9 @@ class MedicalExportService: ObservableObject {
         request.setValue("application/fhir+json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/fhir+json", forHTTPHeaderField: "Accept")
 
-        // Auth: Bearer token or Basic auth
-        if !config.bearerToken.isEmpty {
-            request.setValue("Bearer \(config.bearerToken)", forHTTPHeaderField: "Authorization")
-        } else if !config.clientId.isEmpty {
+        if let token = context.credential.bearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else if !config.clientID.isEmpty {
             // SMART on FHIR OAuth flow would go here — for now, support pre-obtained tokens
             NSLog("[MedicalExport] SMART on FHIR OAuth not yet implemented — use bearer token")
         }
@@ -67,7 +108,7 @@ class MedicalExportService: ObservableObject {
                 let result = ExportResult(success: true, platform: .fhir,
                                           message: "Document uploaded to FHIR server (HTTP \(statusCode))",
                                           timestamp: Date())
-                hipaaService?.log(action: "FHIR_EXPORT", detail: "Transcript exported to \(config.baseURL)")
+                hipaaService?.log(action: "FHIR_EXPORT", detail: "status=\(statusCode)")
                 return result
             } else {
                 return ExportResult(success: false, platform: .fhir,
@@ -83,7 +124,7 @@ class MedicalExportService: ObservableObject {
 
     /// Build a FHIR R4 DocumentReference resource from a transcript.
     private func buildFHIRDocumentReference(transcript: String, duration: String,
-                                             date: Date, config: FHIRConfig) -> [String: Any] {
+                                             date: Date, privateContext: FHIRPrivateContext) -> [String: Any] {
         let isoFormatter = ISO8601DateFormatter()
         let dateString = isoFormatter.string(from: date)
         let base64Content = Data(transcript.utf8).base64EncodedString()
@@ -118,13 +159,13 @@ class MedicalExportService: ObservableObject {
         ]
 
         // Add patient reference if configured
-        if !config.patientId.isEmpty {
-            resource["subject"] = ["reference": "Patient/\(config.patientId)"]
+        if let patientID = privateContext.patientID {
+            resource["subject"] = ["reference": "Patient/\(patientID)"]
         }
 
         // Add practitioner reference if configured
-        if !config.practitionerId.isEmpty {
-            resource["author"] = [["reference": "Practitioner/\(config.practitionerId)"]]
+        if let practitionerID = privateContext.practitionerID {
+            resource["author"] = [["reference": "Practitioner/\(practitionerID)"]]
         }
 
         return resource
@@ -132,53 +173,48 @@ class MedicalExportService: ObservableObject {
 
     // MARK: - Export File for Manual Sharing
 
-    /// Create an export file bundle (transcript + metadata) ready for sharing.
-    /// Returns a URL to the export file that can be passed to the share sheet.
-    func createExportFile(transcript: String, duration: String, date: Date,
-                          format: ExportFormat = .plainText) -> URL? {
-        let tempDir = FileManager.default.temporaryDirectory
+    /// Create a protected clinical export and return the lease that owns it. The caller must hand
+    /// the lease back to ``leases`` when the share ends; until then the file exists only inside a
+    /// protected, backup-excluded session directory under the export root.
+    ///
+    /// The date is used for the human-readable display name only. The on-disk name is a UUID, so
+    /// nothing about the recording is legible from the filesystem.
+    func createExportLease(transcript: String, duration: String, date: Date,
+                           format: ExportFormat = .plainText) throws -> MedicalExportLease {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HHmm"
         let dateString = dateFormatter.string(from: date)
 
         switch format {
         case .plainText:
-            let fileName = "clinical_transcript_\(dateString).txt"
-            let url = tempDir.appendingPathComponent(fileName)
-            try? transcript.write(to: url, atomically: true, encoding: .utf8)
-            hipaaService?.log(action: "EXPORT_FILE_CREATED", detail: fileName)
-            return url
+            return try leases.makeLease(data: Data(transcript.utf8), format: format,
+                                        displayName: "clinical_transcript_\(dateString).txt")
 
         case .pdf:
-            let fileName = "clinical_transcript_\(dateString).pdf"
-            let url = tempDir.appendingPathComponent(fileName)
-            if createPDF(transcript: transcript, duration: duration, date: date, outputURL: url) {
-                hipaaService?.log(action: "EXPORT_FILE_CREATED", detail: fileName)
-                return url
+            return try leases.makeLease(format: format,
+                                        displayName: "clinical_transcript_\(dateString).pdf") { url in
+                guard createPDF(transcript: transcript, duration: duration, date: date, outputURL: url) else {
+                    throw MedicalExportError.exportWriteFailed
+                }
             }
-            return nil
 
         case .fhirJson:
-            let fileName = "clinical_document_\(dateString).fhir.json"
-            let url = tempDir.appendingPathComponent(fileName)
-            let config = FHIRConfig.fromDefaults()
+            // Clinical identifiers come from protected storage; a locked device fails the export
+            // rather than silently emitting a document with the references stripped out.
+            let privateContext = try configurationStore.loadPrivateContext()
             let resource = buildFHIRDocumentReference(
-                transcript: transcript, duration: duration, date: date, config: config
+                transcript: transcript, duration: duration, date: date, privateContext: privateContext
             )
-            if let data = try? JSONSerialization.data(withJSONObject: resource, options: .prettyPrinted) {
-                try? data.write(to: url)
-                hipaaService?.log(action: "EXPORT_FILE_CREATED", detail: fileName)
-                return url
+            guard let data = try? JSONSerialization.data(withJSONObject: resource, options: .prettyPrinted) else {
+                throw MedicalExportError.exportWriteFailed
             }
-            return nil
+            return try leases.makeLease(data: data, format: format,
+                                        displayName: "clinical_document_\(dateString).fhir.json")
 
         case .hl7:
-            let fileName = "clinical_message_\(dateString).hl7"
-            let url = tempDir.appendingPathComponent(fileName)
-            let hl7Message = buildHL7Message(transcript: transcript, duration: duration, date: date)
-            try? hl7Message.write(to: url, atomically: true, encoding: .utf8)
-            hipaaService?.log(action: "EXPORT_FILE_CREATED", detail: fileName)
-            return url
+            let message = buildHL7Message(transcript: transcript, duration: duration, date: date)
+            return try leases.makeLease(data: Data(message.utf8), format: format,
+                                        displayName: "clinical_message_\(dateString).hl7")
         }
     }
 
@@ -340,31 +376,26 @@ enum ExportFormat: String, CaseIterable, Identifiable {
     case hl7 = "HL7 Message (.hl7)"
 
     var id: String { rawValue }
-}
 
-/// FHIR server configuration.
-struct FHIRConfig: Codable {
-    var baseURL: String = ""
-    var bearerToken: String = ""
-    var clientId: String = ""       // For SMART on FHIR OAuth
-    var clientSecret: String = ""
-    var patientId: String = ""
-    var practitionerId: String = ""
-    var platformType: String = "fhir" // fhir, epic, cerner
-
-    /// Load from UserDefaults.
-    static func fromDefaults() -> FHIRConfig {
-        guard let data = UserDefaults.standard.data(forKey: "fhirConfig"),
-              let config = try? JSONDecoder().decode(FHIRConfig.self, from: data) else {
-            return FHIRConfig()
+    /// Extension for the generic on-disk name. Kept accurate so the share sheet still routes the
+    /// file to the right consumer despite the UUID filename.
+    var fileExtension: String {
+        switch self {
+        case .plainText: return "txt"
+        case .pdf: return "pdf"
+        case .fhirJson: return "fhir.json"
+        case .hl7: return "hl7"
         }
-        return config
     }
 
-    /// Save to UserDefaults.
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: "fhirConfig")
+    /// Stable identifier for audit records — the display name carries punctuation that reads badly
+    /// in a log line, and the audit trail must stay machine-comparable.
+    var auditToken: String {
+        switch self {
+        case .plainText: return "txt"
+        case .pdf: return "pdf"
+        case .fhirJson: return "fhir_json"
+        case .hl7: return "hl7"
         }
     }
 }

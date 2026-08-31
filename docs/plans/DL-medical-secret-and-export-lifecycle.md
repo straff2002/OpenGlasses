@@ -1,6 +1,6 @@
 # Plan DL — Medical Secret Storage and Export Lifecycle
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🚧 P0 ✅ · P1 ✅ · P2 ✅ · P3 remaining (drafted 2026-08-26)
 **Origin:** 2026-08-26 adversarial review findings 3 (High) and 10 (Medium).
 **Priority:** P0 for FHIR credentials; P1 before broader medical-export distribution.
 
@@ -52,7 +52,15 @@ Relevant seams:
 
 ---
 
-## P0 — Split configuration and migrate credentials 🔴
+## P0 — Split configuration and migrate credentials ✅
+
+Shipped as `FHIRServerConfiguration` (preferences), `FHIRCredential` and `FHIRPrivateContext`
+(protected storage behind `FHIRCredentialStore`/`FHIRPrivateContextStore`, Keychain-backed by
+`KeychainFHIRSecretStore` at `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`), coordinated by
+`FHIRConfigurationStore`. `baseURL` stayed a `String` rather than a `URL` because it is bound to an
+editable text field where empty means "unconfigured"; validated `URL`s are produced by
+`endpoint(for:)` at request time.
+
 
 Create two models and an injected store:
 
@@ -104,7 +112,13 @@ defers and blocks send; failed migration retains recoverability without using th
 server deletion clears both protected stores; encoding the public config cannot contain credentials
 or clinical identifiers; settings never repopulate a plaintext secret field.
 
-## P1 — Dedicated protected export sessions 🔴
+## P1 — Dedicated protected export sessions ✅
+
+Shipped as `MedicalExportFileStore` returning a `MedicalExportLease`. The attribute pass sits
+behind `MedicalExportProtecting` so it stays verifiable where the simulator does not report file
+protection back, and a completion marker written last is what lets the scavenger tell an abandoned
+session from a live one without keeping a ledger of contents.
+
 
 Add a `MedicalExportFileStore` that returns an opaque `MedicalExportLease`, not a bare URL.
 
@@ -124,7 +138,16 @@ Add a `MedicalExportFileStore` that returns an opaque `MedicalExportLease`, not 
 and backup exclusion; attribute failure removes partial output; traversal-like display names cannot
 escape; FHIR submit creates no file.
 
-## P2 — Share completion, cancellation, and crash cleanup 🟠
+## P2 — Share completion, cancellation, and crash cleanup ✅
+
+Shipped as `MedicalExportLeaseCoordinator`, with `ShareSheet` now wiring
+`completionWithItemsHandler` and `MedicalExportActivityItem` giving the share UI the display name
+while the file keeps its UUID name. Audit events carry an action, a format token, and a count, and
+are routed into the existing compliance audit log.
+
+Medical data reset has no control in the app yet, so `revokeAll()` is wired to compliance-mode
+enable and exposed for the reset control to call when P3 adds it.
+
 
 1. Route every share path through one coordinator owning the lease. Wire
    `UIActivityViewController.completionWithItemsHandler` (and SwiftUI equivalent) so success, cancel,

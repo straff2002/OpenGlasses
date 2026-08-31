@@ -384,8 +384,7 @@ struct HIPAASettingsView: View {
                         HStack {
                             Label("Medical Export", systemImage: "arrow.up.doc.fill")
                             Spacer()
-                            let config = FHIRConfig.fromDefaults()
-                            if !config.baseURL.isEmpty {
+                            if exportService.configurationStore.configuration.isConfigured {
                                 Text("Configured")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)

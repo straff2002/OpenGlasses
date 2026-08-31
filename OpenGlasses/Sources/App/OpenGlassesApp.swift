@@ -149,6 +149,11 @@ struct OpenGlassesApp: App {
         // Move any plaintext provider secrets out of UserDefaults and into the
         // Keychain. Must run before anything reads a secret (AppState, LLM, TTS…).
         Config.migrateSecretsToKeychainIfNeeded()
+        // Same move for the FHIR blob, which carried a bearer token, a client secret, and the
+        // patient/practitioner identifiers in one preferences value. Forward-only: the legacy key
+        // is removed only after the protected copies read back identical, and a locked device
+        // simply retries next launch while FHIR sends stay blocked.
+        FHIRConfigurationStore.shared.migrateIfNeeded()
         // Delete the retired developer-unlock preference so a value left behind by an older build (or
         // restored from a backup) can never read as an entitlement. Idempotent, one key, and it
         // touches no receipt or license code — a real purchase survives it untouched.
@@ -203,6 +208,8 @@ struct OpenGlassesApp: App {
                 #if DEBUG
                 UITestSupport.seedRuntime(appState)
                 #endif
+                // Crash recovery: remove clinical export sessions a previous run abandoned.
+                appState.medicalExportService.leases.scavenge()
                 // Plan BQ: refresh Siri's phrase predictions for the parameterized
                 // shortcuts (persona + action catalog) against current runtime data.
                 OpenGlassesShortcuts.updateAppShortcutParameters()
@@ -223,6 +230,9 @@ struct OpenGlassesApp: App {
                     for: UIApplication.protectedDataDidBecomeAvailableNotification
                 )) { _ in
                     appState.conversationStore.protectedDataDidBecomeAvailable()
+                    // Retry a migration that deferred while locked, then sweep abandoned exports.
+                    FHIRConfigurationStore.shared.migrateIfNeeded()
+                    appState.medicalExportService.leases.scavenge()
                 }
                 .onOpenURL { url in
                     // Handle shortcut x-callback-url results
@@ -999,7 +1009,12 @@ class AppState: ObservableObject, AppStateProtocol {
         hipaaService.onModeChanged = { [weak ambientCaptions, weak self] in
             ambientCaptions?.reconfigureForModeChange()
             // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
-            if Config.hipaaMode { self?.webHUDMirror.stop() }
+            if Config.hipaaMode {
+                self?.webHUDMirror.stop()
+                // Entering compliance mode revokes every outstanding clinical export: a file
+                // created under the looser regime must not survive into the stricter one.
+                self?.medicalExportService.leases.revokeAll()
+            }
         }
         // Same teardown when translation settings change under a live session (BY P2) — the
         // backend branch is picked at session start, so a settings flip must restart it.
@@ -1159,12 +1174,32 @@ class AppState: ObservableObject, AppStateProtocol {
         llmService.conversationStore = conversationStore
         geminiLiveSession.nativeToolRouter = nativeToolRouter
 
-        // Medical export share sheet — triggered by agent tool
+        // Medical export share sheet — triggered by agent tool. The lease is released when the
+        // provider finishes, whichever way it finishes; backgrounding and the launch scavenge are
+        // the backstops for a share that never reports at all.
         NotificationCenter.default.addObserver(forName: .medicalExportShareRequest, object: nil, queue: .main) { [weak self] note in
-            guard let url = note.userInfo?["url"] as? URL else { return }
+            guard let lease = note.userInfo?["lease"] as? MedicalExportLease else { return }
             Task { @MainActor in
-                self?.pendingShareItem = ShareItem(items: [url])
+                guard let self else { return }
+                self.medicalExportService.leases.beginShare(lease)
+                self.pendingShareItem = ShareItem(
+                    items: [MedicalExportActivityItem(lease: lease)],
+                    onComplete: { [weak self] completed in
+                        Task { @MainActor in
+                            self?.medicalExportService.leases.finishShare(
+                                lease, outcome: completed ? .completed : .cancelled
+                            )
+                        }
+                    }
+                )
             }
+        }
+
+        // Clinical exports must not outlive the app being onscreen: anything not held by a live
+        // share controller goes when the app backgrounds.
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.medicalExportService.leases.handleBackground() }
         }
 
         // Hands-free "new topic" — the new_topic tool posts this; clear the LLM's context
