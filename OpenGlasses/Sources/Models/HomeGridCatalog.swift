@@ -220,16 +220,45 @@ enum DockGridMetrics {
 
     /// Room the page control needs under the pages it indexes, so no tile or transcript line sits
     /// beneath the dots.
-    static let pageIndicatorHeight: CGFloat = 28
+    ///
+    /// Measured against the dots as drawn, not guessed: SwiftUI centres its page index view inside
+    /// the bottom of the tab view's bounds rather than sitting it below them, so reserving only the
+    /// capsule's own height still left it overlapping the last row's captions by a few points.
+    static let pageIndicatorHeight: CGFloat = 40
     /// Gap between the glyph and the caption inside a tile.
     static let tileStackSpacing: CGFloat = 3
     /// Gap between tiles, in both axes.
     static let rowSpacing: CGFloat = 4
 
-    /// The resting height of the grid: four complete rows. Beyond that it scrolls — the panel is
-    /// the bottom of a screen that still has a status card and My Day on it, and a grid that keeps
-    /// growing takes that room from the surface it exists to serve.
+    /// The most rows the grid ever rests at. Beyond that it scrolls.
     static let defaultVisibleRows = 4
+
+    /// The share of the tab's height the panel may take at rest, and the reason it is two numbers.
+    ///
+    /// The panel is the bottom of a screen that still has a status card and My Day on it, and on a
+    /// phone those three cannot all have what they want: four rows plus an expanded My Day is more
+    /// than a 6.9" screen has, and the surface that lost was My Day — clipped mid-card at the
+    /// panel's edge. So the ceiling is four rows and the *floor of the screen* decides how many of
+    /// them are affordable. Collapsing My Day gives its height back, and the panel is allowed to
+    /// take it: that is what the collapse control is for, and it is the one state where a phone
+    /// genuinely affords the full four.
+    static let restingHeightShare: CGFloat = 0.20
+    static let restingHeightShareWhenSurfaceAboveIsCompact: CGFloat = 0.30
+
+    /// Rows the panel rests at: never more than the content needs, never more than the ceiling, and
+    /// never more than the screen can spare for it.
+    static func restingRows(slotCount: Int, columns: Int, availableHeight: CGFloat,
+                            rowHeight: CGFloat, surfaceAboveIsCompact: Bool) -> Int {
+        let needed = rowsNeeded(slotCount: slotCount, columns: columns)
+        guard rowHeight > 0, availableHeight > 0 else {
+            return max(1, min(defaultVisibleRows, needed))
+        }
+        let share = surfaceAboveIsCompact
+            ? restingHeightShareWhenSurfaceAboveIsCompact
+            : restingHeightShare
+        let affordable = Int((availableHeight * share) / rowHeight)
+        return max(1, min(min(defaultVisibleRows, affordable), needed))
+    }
 
     static func rowsNeeded(slotCount: Int, columns: Int) -> Int {
         guard slotCount > 0, columns > 0 else { return 0 }

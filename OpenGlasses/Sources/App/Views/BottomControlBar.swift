@@ -41,6 +41,10 @@ struct BottomControlBar: View {
     /// rather than deriving its own, so the panel and the ambience can never disagree about what
     /// the session is doing.
     var voiceState: VoiceVisualState = .idle
+    /// The tab's usable height, measured once at the top of the surface. A one-way dependency on
+    /// purpose: the panel sizes itself from the screen, and the conversation zone then takes what
+    /// is left — the reverse would be circular.
+    var availableHeight: CGFloat = 0
 
     @State private var runningActionId: String?
     @State private var pager = DockPagerState()
@@ -67,6 +71,11 @@ struct BottomControlBar: View {
     @AppStorage("dockItemOrder") private var dockOrder = ""
     /// The one arrangement: controls and content actions, order and hidden set.
     @AppStorage("homeGridArrangement") private var storedArrangement = ""
+    /// My Day's own state, read rather than plumbed. The panel's resting height is a function of
+    /// what the surface above it needs, and these two keys are exactly that signal — a collapsed or
+    /// unconfigured My Day hands back the height the fourth row needs.
+    @AppStorage("myDayCollapsed") private var myDayCollapsed = false
+    @AppStorage("myDayEnabled") private var myDayEnabled = false
 
     private var photoDisabledForLocalModel: Bool {
         guard let model = Config.activeModel, model.llmProvider == .local else { return false }
@@ -98,9 +107,15 @@ struct BottomControlBar: View {
     @ScaledMetric(relativeTo: .caption) private var tileCaptionLine: CGFloat
         = DockGridMetrics.tileCaptionLine
 
-    /// A row's height: the tile's own, floored at a fingertip. Glyph over caption normally, glyph
-    /// beside it at accessibility sizes — the same switch `BarButton` makes.
+    /// What a tile actually measured, once one has been laid out.
+    @State private var measuredTileHeight: CGFloat?
+
+    /// A row's height. The composed estimate is only the first frame's answer: a prediction of a
+    /// tile's height is a prediction of a font's line height, and being a point or two short of it
+    /// is exactly how the last row ends up sliced. Once a real tile has reported its size the panel
+    /// snaps to *that*, so the arithmetic stops depending on guessing what `.caption` renders at.
     private var tileHeight: CGFloat {
+        if let measuredTileHeight, measuredTileHeight > 0 { return measuredTileHeight }
         let content = typeSize.isAccessibilitySize
             ? max(tileGlyphBox, tileCaptionLine)
             : tileGlyphBox + DockGridMetrics.tileStackSpacing + tileCaptionLine
@@ -123,7 +138,10 @@ struct BottomControlBar: View {
     /// control needs, so every page is the same size whatever it holds and the panel never resizes
     /// under a swipe.
     private var panel: some View {
-        let rows = DockGridMetrics.visibleRows(slotCount: slots.count, columns: columnCount)
+        let rows = DockGridMetrics.restingRows(
+            slotCount: slots.count, columns: columnCount,
+            availableHeight: availableHeight, rowHeight: tileHeight,
+            surfaceAboveIsCompact: myDayCollapsed || !myDayEnabled)
         let pageHeight = DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
 
         return TabView(selection: pageSelection) {
@@ -221,11 +239,19 @@ struct BottomControlBar: View {
             ) {
                 // Slots render in the user's arranged order (Settings → Quick Actions → Bar
                 // Layout); contextual ones still gate themselves.
-                ForEach(slots) { slot in
+                ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
                     dockView(for: slot)
+                        // One tile reports its height and the panel snaps to it. Measuring the
+                        // first is enough: a row is as tall as its tallest tile, and every tile in
+                        // this grid is the same `BarButton` with a one-line caption.
+                        .background(index == 0 ? tileHeightReader : nil)
                 }
             }
             .padding(.horizontal, 4)
+        }
+        .onPreferenceChange(DockTileHeightKey.self) { height in
+            guard let height, height > 0, height != measuredTileHeight else { return }
+            measuredTileHeight = height
         }
         // Short grids should not become scroll views: bouncing a grid that already fits reads as
         // the panel coming loose from the tab.
@@ -238,6 +264,12 @@ struct BottomControlBar: View {
                 .contentShape(Rectangle())
                 .onLongPressGesture(minimumDuration: 0.6) { move(to: .edit) }
         )
+    }
+
+    private var tileHeightReader: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: DockTileHeightKey.self, value: proxy.size.height)
+        }
     }
 
     // MARK: - Capsule
@@ -774,6 +806,18 @@ private struct LocalModelTile: View {
         }
         .accessibilityLabel(isLoaded ? "\(modelConfig.name) loaded. Tap to unload."
                                      : "Load on-device model \(modelConfig.name)")
+    }
+}
+
+// MARK: - Measured row height
+
+/// One tile's measured height, so the panel snaps rows to what was drawn rather than to a
+/// prediction of it.
+private struct DockTileHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat? { nil }
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        value = value ?? nextValue()
     }
 }
 

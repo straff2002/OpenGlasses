@@ -187,6 +187,16 @@ final class MyDayService: ObservableObject {
         metrics.record(.action(action), at: date)
     }
 
+#if DEBUG
+    /// UI-test seeding only — see `UITestSupport`, and the note at the top of that file about what
+    /// seeding is and is not. It sets the state a real refresh would have produced, so the card can
+    /// be audited with rows in it without a calendar, a permission grant, or a device. Nothing
+    /// branches on it; a seeded snapshot is an ordinary one.
+    func seedForUITest(_ snapshot: MyDaySnapshot) {
+        state = .loaded(snapshot)
+    }
+#endif
+
     private func loadEvents(
         enabled: Bool,
         from start: Date,

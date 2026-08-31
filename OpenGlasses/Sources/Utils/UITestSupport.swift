@@ -26,6 +26,9 @@ enum UITestSupport {
         case showAllSettings = "-OGUITestShowAllSettings"
         /// Captions overlay on screen with a short history and a live line.
         case seedCaptions = "-OGUITestSeedCaptions"
+        /// My Day set up and loaded with a full card's worth of rows — the state that needs a
+        /// calendar, a permission grant and a real morning to reach otherwise.
+        case seedMyDay = "-OGUITestSeedMyDay"
         /// A delete-and-reinstall: the Keychain kept a provider key, `UserDefaults` kept nothing.
         case reinstall = "-OGUITestReinstall"
     }
@@ -63,6 +66,13 @@ enum UITestSupport {
 
         if isSet(.freshInstall) {
             Config.setHasCompletedOnboarding(false)
+        }
+
+        if isSet(.seedMyDay) {
+            // The opt-in the setup card writes. The card's *content* is seeded at runtime below;
+            // this is only the switch that decides which card is drawn.
+            UserDefaults.standard.set(true, forKey: "myDayEnabled")
+            UserDefaults.standard.set(false, forKey: "myDayCollapsed")
         }
 
         if isSet(.configured) {
@@ -120,6 +130,10 @@ enum UITestSupport {
     static func seedRuntime(_ appState: AppState) {
         guard isActive else { return }
 
+        if isSet(.seedMyDay) {
+            appState.myDayService.seedForUITest(seededDay())
+        }
+
         if isSet(.seedCaptions) {
             seedCaptions(appState)
             // Re-applied on a tick rather than written once. With no glasses to talk to, the app
@@ -139,6 +153,37 @@ enum UITestSupport {
                 MainActor.assumeIsolated { seedCaptions(appState) }
             }
         }
+    }
+
+    /// A full card: the three rows the home surface draws plus the ones behind "See all", with a
+    /// long title in the mix because a row that wraps is what makes the card tall enough to test
+    /// the layout that has to hold it.
+    private static func seededDay() -> MyDaySnapshot {
+        let now = Date()
+        func item(_ id: String, _ kind: MyDayKind, _ title: String, _ detail: String,
+                  _ urgency: MyDayUrgency, in minutes: Int) -> MyDayItem {
+            MyDayItem(id: .init(source: .calendar, rawValue: id), kind: kind, title: title,
+                      detail: detail, dueAt: now.addingTimeInterval(TimeInterval(minutes * 60)),
+                      urgency: urgency, actions: [.open])
+        }
+
+        return MyDaySnapshot(
+            generatedAt: now,
+            period: .morning,
+            headline: "Four things today, first one in 25 minutes.",
+            items: [
+                item("standup", .event, "Design review with the hardware team",
+                     "9:30 AM · Meeting room 2, second floor", .immediate, in: 25),
+                item("call", .event, "Call back the supplier about the lens order",
+                     "11:00 AM", .important, in: 120),
+                item("errand", .reminder, "Pick up the replacement charging case",
+                     "Due today", .upcoming, in: 300),
+                item("write-up", .reminder, "Send the field notes from yesterday's test",
+                     "Due today", .upcoming, in: 400),
+            ],
+            sourceStates: MyDaySource.allCases.map(MyDaySourceState.available),
+            nextRefreshAt: now.addingTimeInterval(900)
+        )
     }
 
     /// The lines a real session would have produced. Two of the three carry a diarized speaker, so

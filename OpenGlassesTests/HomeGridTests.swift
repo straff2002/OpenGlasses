@@ -323,12 +323,65 @@ final class HomeGridTests: XCTestCase {
 
     // MARK: - Row-snapped panel height
 
-    /// The panel's resting height is four complete rows; more than that scrolls.
+    /// The panel's ceiling is four complete rows; more than that scrolls.
     func testThePanelRestsAtFourRowsAndScrollsPastThem() {
         XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 20, columns: 4), 4)
         XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 16, columns: 4), 4)
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 20, columns: 4), 5,
                        "The rows past the fourth still exist — they are scrolled, not dropped")
+    }
+
+    // MARK: - What the screen can spare
+
+    /// A phone cannot give four rows *and* an expanded My Day, and the surface that lost was My Day
+    /// — clipped mid-card at the panel's edge. The ceiling stays four; the screen decides how many
+    /// of them are affordable, and collapsing My Day is what buys the fourth back.
+    func testAPhoneWithAnExpandedMyDayRestsAtThreeRows() {
+        // The measured numbers from the device this regressed on: an 874 pt tab, a ~52 pt row.
+        let expanded = DockGridMetrics.restingRows(
+            slotCount: 15, columns: 4, availableHeight: 874, rowHeight: 52,
+            surfaceAboveIsCompact: false)
+        XCTAssertEqual(expanded, 3)
+
+        let collapsed = DockGridMetrics.restingRows(
+            slotCount: 15, columns: 4, availableHeight: 874, rowHeight: 52,
+            surfaceAboveIsCompact: true)
+        XCTAssertEqual(collapsed, DockGridMetrics.defaultVisibleRows,
+                       "Collapsing My Day hands back its height and the panel does not take it")
+    }
+
+    /// The ceiling is a ceiling: a taller canvas does not grow the panel past four.
+    func testTheCeilingHoldsOnALargeCanvas() {
+        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 40, columns: 4,
+                                                   availableHeight: 2000, rowHeight: 52,
+                                                   surfaceAboveIsCompact: true),
+                       DockGridMetrics.defaultVisibleRows)
+    }
+
+    /// Content still wins when there is less of it: a short grid shrinks the panel rather than
+    /// padding it out to whatever the screen would allow.
+    func testTheContentStillCapsTheRestingRows() {
+        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 6, columns: 4,
+                                                   availableHeight: 874, rowHeight: 52,
+                                                   surfaceAboveIsCompact: true),
+                       2)
+    }
+
+    /// Before the first layout there is no measured height to divide by. The panel falls back to
+    /// the ceiling rather than to zero rows.
+    func testAnUnmeasuredScreenFallsBackToTheCeiling() {
+        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 20, columns: 4,
+                                                   availableHeight: 0, rowHeight: 52,
+                                                   surfaceAboveIsCompact: false),
+                       DockGridMetrics.defaultVisibleRows)
+    }
+
+    /// Never zero, whatever the arithmetic says: a panel with no rows is a panel with no controls.
+    func testAVeryShortScreenStillGetsARow() {
+        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 20, columns: 4,
+                                                   availableHeight: 200, rowHeight: 52,
+                                                   surfaceAboveIsCompact: false),
+                       1)
     }
 
     /// Fewer slots shrink the panel rather than leaving it three rows of empty glass. Yielding the

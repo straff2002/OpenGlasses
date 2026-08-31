@@ -241,6 +241,43 @@ event absent from `items` but still in the inputs and the headline count; a clea
 slot; a rescheduled event returning; dismissals surviving every refresh in a day and lapsing at the
 rollover; keys namespaced by source.
 
+## P8 — The clip the four-row panel caused ✅
+
+Reported from the phone as "the My Day panel is cut off at the bottom", and **reproduced in the
+simulator first** — which is the only reason the diagnosis is a mechanism rather than a guess. A
+`-OGUITestSeedMyDay` launch flag now seeds a full card the way `.seedCaptions` seeds a caption
+session, so this state is reachable without a calendar, a permission grant or a real morning.
+
+**Mechanism (the second of the three proposed, with a cause the list did not name).** The zone was
+*scrollable* — swiping revealed the rest of the card intact. So this was not a claimed gesture or a
+stale height. It was arithmetic: the dock had grown by a row, a page indicator and a separated
+capsule, the zone's content (status card + expanded My Day) no longer fitted what was left, and the
+resting scroll position put the clip line exactly on the panel's top edge. Flush against the glass,
+with no gap and no scroll indicator, a card with more below it is indistinguishable from a card that
+has been cut in half. Two smaller clips rode along: the grid's last row was trimmed by a few points,
+and the page dots overlapped its captions.
+
+**Fixes, all structural:**
+
+1. **The panel sizes itself from the screen.** `DockGridMetrics.restingRows` takes the tab's height
+   and a share of it. Four rows and an expanded My Day do not both fit on a 6.9" phone — that is
+   arithmetic, not preference — so the ceiling stays four and the phone rests at three. Collapsing
+   My Day hands back its height and the panel takes the fourth row, which is the one state where a
+   phone genuinely affords it. The tab height is read once at the top of `VoiceTab` and handed down:
+   one-way, because the reverse is circular.
+2. **The row height is measured, not predicted.** `DockTileHeightKey` reports a real tile's height
+   and the panel snaps to that. Predicting a tile meant predicting a font's line height, and being a
+   point short of it is precisely how a last row ends up sliced — the composed estimate is now only
+   the first frame's answer.
+3. **`pageIndicatorHeight` 28 → 40.** SwiftUI centres its page index view *inside* the tab view's
+   bottom rather than below it, so reserving the capsule's own height still left it over the last
+   row's captions. Measured against the dots as drawn.
+4. **The zone never ends flush.** 16 pt of bottom padding plus visible scroll indicators, so "there
+   is more here" is legible at rest instead of being discoverable only by trying.
+
+**Verified on device-sized simulator across states:** expanded (3 rows, card whole, gap before the
+panel), collapsed (4 rows, all captions intact, dots clear), and the grid page's own scroll.
+
 ## Rollout and exit criteria
 
 Pure UI/composition — no new permissions, no new network. Rollback is reverting the PR. Complete

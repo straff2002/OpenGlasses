@@ -32,6 +32,10 @@ struct VoiceTab: View {
         ZStack {
             VoiceAmbience(state: voiceState).ignoresSafeArea()
 
+            // The tab's usable height, read once and handed down to the dock, which sizes its
+            // resting rows from it. One-way: the panel decides from the screen, the conversation
+            // zone takes what is left. The reverse would be circular.
+            GeometryReader { tab in
             VStack(spacing: 0) {
                 // Recording indicator
                 if appState.videoRecorder.isRecording {
@@ -57,7 +61,8 @@ struct VoiceTab: View {
                             showChatInput: $showChatInput,
                             showsActions: HomeSurfaceVisibility.showsActionTiles(
                                 mode: appState.currentMode),
-                            voiceState: voiceState
+                            voiceState: voiceState,
+                            availableHeight: tab.size.height
                         )
                     }
                 }
@@ -66,6 +71,7 @@ struct VoiceTab: View {
                 // vertical axis, and leaving the split to the default meant the dock could be
                 // squeezed — which is the shape the overflow regression took.
                 .layoutPriority(1)
+            }
             }
         }
         }
@@ -132,13 +138,20 @@ struct VoiceTab: View {
                     SessionNoticeOverlay(session: session, openAISession: openAISession)
                 }
                 .padding(.top, 12)
-                .padding(.bottom, 8)
+                // Content never ends flush against the dock. When the zone does have to scroll,
+                // the clip line landed exactly on the panel's edge and read as a card that had
+                // been cut in half rather than one with more below it — the gap is what makes
+                // "there is more here" legible at a glance.
+                .padding(.bottom, 16)
                 // Exactly the viewport when the content is shorter, so a short surface keeps the
                 // old rhythm — top-aligned modules, transcript held down against the dock — and
                 // does not become a scroll view for no reason.
                 .frame(minHeight: proxy.size.height, alignment: .top)
             }
             .scrollBounceBehavior(.basedOnSize)
+            // And when it scrolls, it says so. A surface whose only cue was a flush-cut card is
+            // the surface this fix exists for.
+            .scrollIndicators(.automatic)
         }
     }
 
@@ -210,6 +223,7 @@ private struct VoiceTabControls: View {
     @Binding var showChatInput: Bool
     let showsActions: Bool
     let voiceState: VoiceVisualState
+    let availableHeight: CGFloat
 
     var body: some View {
         BottomControlBar(
@@ -220,7 +234,8 @@ private struct VoiceTabControls: View {
             showPreview: $showPreview,
             showChatInput: $showChatInput,
             showsActions: showsActions,
-            voiceState: voiceState
+            voiceState: voiceState,
+            availableHeight: availableHeight
         )
     }
 }
