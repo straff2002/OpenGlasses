@@ -94,7 +94,8 @@ final class GoogleOAuthService: NSObject, ObservableObject {
             store(current)
             return current.accessToken
         } catch {
-            NSLog("[GoogleOAuth] Token refresh failed: %@", error.localizedDescription)
+            // A refresh failure's description can quote the token endpoint's response body.
+            PrivacyLog.authFailed(.google, .tokenRefresh, SafeErrorSummary(error))
             lastError = "Google sign-in expired — please sign in again."
             return nil
         }

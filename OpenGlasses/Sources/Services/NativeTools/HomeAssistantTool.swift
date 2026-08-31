@@ -99,7 +99,9 @@ struct HomeAssistantTool: NativeTool {
         }()
 
         if let matched = await cache.fuzzyMatch(raw, preferDomain: preferDomain) {
-            NSLog("[HomeAssistant] Resolved '%@' → '%@' via fuzzy match", raw, matched)
+            // Entity ids name a room and a device in someone's house — regulated class. Hashing
+            // would not anonymise a dictionary that small, so only the match kind is recorded.
+            PrivacyLog.homeEntityResolved(.fuzzy)
             return matched
         }
 
@@ -130,11 +132,13 @@ struct HomeAssistantTool: NativeTool {
                let speech = response["speech"] as? [String: Any],
                let plain = speech["plain"] as? [String: Any],
                let reply = plain["speech"] as? String {
-                NSLog("[HomeAssistant] Conversation API: '%@' → '%@'", text, reply)
+                // The command and the reply are both spoken content: sizes only.
+                PrivacyLog.homeOperation(.converse, success: true, replyCharacters: reply.count)
                 return reply
             }
             return "Home Assistant processed the command but gave no response."
         } catch {
+            PrivacyLog.homeOperation(.converse, success: false)
             return "Home Assistant conversation error: \(error.localizedDescription)"
         }
     }
@@ -147,8 +151,7 @@ struct HomeAssistantTool: NativeTool {
 
         // If direct call failed, try Conversation API
         if result.contains("error") || result.contains("Error") {
-            NSLog("[HomeAssistant] Direct call failed for %@.%@ on %@, trying Conversation API with: '%@'",
-                  domain, service, entityId, naturalLanguage)
+            PrivacyLog.homeFallback(.callService)
             let conversationResult = await converse(text: naturalLanguage)
             // If conversation API also failed, return the original error
             if conversationResult.contains("error") || conversationResult.contains("Error") {
@@ -165,8 +168,10 @@ struct HomeAssistantTool: NativeTool {
 
         do {
             let _ = try await haRequest(url: url, method: "POST", body: body)
+            PrivacyLog.homeOperation(.callService, success: true)
             return "Done — \(service) on \(entityId.replacingOccurrences(of: "_", with: " "))."
         } catch {
+            PrivacyLog.homeOperation(.callService, success: false)
             return "Home Assistant error: \(error.localizedDescription)"
         }
     }
@@ -240,8 +245,8 @@ struct HomeAssistantTool: NativeTool {
         let session = URLSession(configuration: config)
         let (data, response) = try await session.data(for: request)
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            NSLog("[HomeAssistant] HTTP %d: %@", httpResponse.statusCode, String(body.prefix(200)))
+            // The body is the home's own state — status class only.
+            PrivacyLog.requestFailed(.homeAssistant, .http(status: httpResponse.statusCode))
             throw URLError(.badServerResponse)
         }
         return data

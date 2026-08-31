@@ -101,7 +101,8 @@ final class ClaudeOAuthService: ObservableObject {
             store(current)
             return current.accessToken
         } catch {
-            NSLog("[ClaudeOAuth] Token refresh failed: %@", error.localizedDescription)
+            // A refresh failure's description can quote the token endpoint's response body.
+            PrivacyLog.authFailed(.claude, .tokenRefresh, SafeErrorSummary(error))
             lastError = "Claude sign-in expired — please sign in again."
             return nil
         }

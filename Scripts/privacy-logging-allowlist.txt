@@ -1,0 +1,14 @@
+# Privacy-logging allowlist — files whose direct NSLog/print sites are knowingly deferred.
+#
+# One repo-relative path per line. Blank lines and '#' comments ignored.
+#
+# This list exists so that deferring a file is a reviewable diff rather than a silently smaller
+# number: Scripts/check-privacy-logging.sh reports allowlisted files and their site counts
+# separately, and never subtracts them from the headline total.
+#
+# Rules for adding a line:
+#   1. The file's logging must already be content-free, or
+#   2. it must be a platform shim that genuinely cannot use PrivacyLog.
+# "We haven't got to it yet" is not a reason to allowlist — that is what the ledger is for.
+#
+# Empty on purpose at P0. The six named leak sites were fixed rather than allowlisted.

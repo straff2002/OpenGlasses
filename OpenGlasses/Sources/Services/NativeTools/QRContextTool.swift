@@ -60,15 +60,20 @@ struct QRContextTool: NativeTool {
             return "No QR code detected. Point the camera directly at the QR code and try again."
         }
 
-        NSLog("[QRContext] Scanned QR: %@", String(payload.prefix(200)))
+        // A QR payload is whatever someone printed on a wall: a URL with a token in its query,
+        // a JSON venue definition, a plain note. Its class and size are loggable; it is not.
+        let isURL = payload.hasPrefix("http://") || payload.hasPrefix("https://")
+        let isJSON = payload.hasPrefix("{") || payload.hasPrefix("[")
+        PrivacyLog.qrScanned(payload: isURL ? .url : (isJSON ? .json : .text),
+                             bytes: payload.utf8.count)
 
         // Check if it's a URL
-        if payload.hasPrefix("http://") || payload.hasPrefix("https://") {
+        if isURL {
             return await loadContext(from: payload, createPlaybook: createPlaybook)
         }
 
         // Check if it's JSON (playbook definition)
-        if payload.hasPrefix("{") || payload.hasPrefix("[") {
+        if isJSON {
             return parseJSONContext(payload, createPlaybook: createPlaybook)
         }
 
@@ -86,7 +91,8 @@ struct QRContextTool: NativeTool {
         case .success(let validated):
             url = validated
         case .failure(let rejection):
-            NSLog("[QRContext] Blocked fetch of %@: %@", urlString, rejection.description)
+            // The rejection's own description names the host or scheme it refused — case only.
+            PrivacyLog.qrFetchBlocked(.refused(rejection))
             return "Won't load that URL — \(rejection.description)."
         }
 
@@ -108,7 +114,7 @@ struct QRContextTool: NativeTool {
                 ? String(content.prefix(maxLength)) + "\n\n[Content truncated — \(content.count) characters total]"
                 : content
 
-            NSLog("[QRContext] Loaded %d characters from %@", content.count, urlString)
+            PrivacyLog.qrFetchLoaded(host: url.host, characters: content.count)
 
             var result = "[CONTEXT_LOADED from \(url.host ?? urlString)]\n\n\(truncated)\n\n"
             result += "[Use this context to provide informed, detailed responses about this venue, museum, or location. "

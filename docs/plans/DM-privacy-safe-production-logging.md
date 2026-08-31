@@ -1,6 +1,8 @@
 # Plan DM — Privacy-Safe Production Logging
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🚧 P0 shipped (2026-09-01) — `PrivacyLog` + `SafeErrorSummary` landed, all named leak
+sites emit metadata only, and the P1 scanner runs in report-only mode with a checked-in ledger
+baseline ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). P1–P3 outstanding.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -49,7 +51,7 @@ is not assumed safe because networking and decoding errors can embed URLs, serve
 
 ---
 
-## P0 — Stop known leaks and add a safe facade 🔴
+## P0 — Stop known leaks and add a safe facade ✅ (2026-09-01)
 
 1. Introduce `PrivacyLog`, backed by `os.Logger`, with fixed categories and typed methods. Callers pass
    event names, enums, counts, durations, and explicitly wrapped private identifiers—not arbitrary
@@ -71,7 +73,50 @@ is not assumed safe because networking and decoding errors can embed URLs, serve
 not echo malicious descriptions; source scans prove the named files contain no content-bearing log;
 Release compilation excludes debug-content methods.
 
+### What shipped
+
+`OpenGlasses/Sources/Utils/PrivacyLog.swift` and `SafeErrorSummary.swift`. Categories are
+`tools`/`realtime`/`capture`/`home`/`lifecycle`/`auth`/`network`; 26 typed methods, no `log(String)`.
+A field value can only be a count, a duration, a flag, a `PrivacyToken` (bounded vocabulary word,
+dropped rather than truncated if it does not fit the shape), a `PrivateIdentifier` (SHA-256/8
+fingerprint), or a `SafeErrorSummary`. `emit` returns the event it logged, so `PrivacyEventEncoder`
+is exercised through the real methods in tests rather than a parallel implementation.
+
+Migrated sites: `ToolCallRouter` (name + duration + outcome class), `OpenAIRealtimeService` and
+`GeminiLiveService` (state transitions, utterance character counts, frame kilobytes, latency —
+no text), `QRContextTool` (payload class + byte count; fetched host as a fingerprint),
+`HomeAssistantTool` (operation class + success; no command, entity, or body), `OpenGlassesApp`
+callback handling (route kind + verdict; no URL), plus the `ClaudeOAuthService` /
+`ChatGPTOAuthService` / `GoogleOAuthService` refresh failures that were passing
+`localizedDescription` (Google was not in the audit list but is the identical statement).
+
+`LogRedaction` kept and re-documented as export-diagnostics defence-in-depth only, naming its four
+remaining gateway callers as P1 migration targets.
+
+**Stated limit.** `PrivacyToken` is a shape filter, not a secret detector: a short,
+identifier-shaped value survives it. A test pins that behaviour rather than implying otherwise;
+the compensating control is that no call site builds a token from a credential, and the scanner
+flags the ones that could.
+
 ## P1 — Inventory and migrate the entire source tree 🔴
+
+**Report-only scanner shipped (2026-09-01):** `Scripts/check-privacy-logging.sh` (+
+`Scripts/privacy-logging-allowlist.txt`, empty at P0) counts direct `NSLog`/`print` sites, flags
+log calls interpolating content/credential-named identifiers, flags `localizedDescription` in log
+calls, and prints a `PRIVACY_LOG_*` summary for CI to trend. It always exits 0 until P2.
+
+Baseline at P0 completion (`docs/plans/DM-ledger-baseline.txt`, `--ledger`):
+
+| Metric | Count |
+|---|---|
+| Direct `NSLog`/`print` sites | 872 across 127 files |
+| Log calls interpolating content/credential-named identifiers | 45 |
+| Log calls reading `localizedDescription` | 120 |
+| Allowlisted files / sites | 0 / 0 |
+
+The largest single item is `OpenGlassesApp.swift` at 136 sites (only its callback handling was in
+P0 scope), then `WakeWordService` and `MetaCameraBackend` at 46 each.
+
 
 Generate and check in a classification ledger with one row per logging site/category, then migrate in
 bounded PRs:

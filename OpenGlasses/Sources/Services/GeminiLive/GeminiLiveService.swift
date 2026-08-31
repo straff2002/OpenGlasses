@@ -10,6 +10,20 @@ enum GeminiConnectionState: Equatable {
     case error(String)
 }
 
+extension GeminiConnectionState {
+    /// The state's name for a log line. `.error` collapses to the bare case: its payload is a
+    /// server-supplied message, which is user-content class.
+    var privacyToken: PrivacyToken {
+        switch self {
+        case .disconnected: return PrivacyToken("disconnected")
+        case .connecting: return PrivacyToken("connecting")
+        case .settingUp: return PrivacyToken("settingUp")
+        case .ready: return PrivacyToken("ready")
+        case .error: return PrivacyToken("error")
+        }
+    }
+}
+
 /// WebSocket-based real-time Gemini streaming service.
 /// Sends/receives audio (PCM), sends video frames (JPEG), handles tool calls,
 /// and supports automatic reconnection with exponential backoff.
@@ -245,7 +259,7 @@ class GeminiLiveService: ObservableObject {
 
     private func scheduleReconnect(reason: String?) {
         guard !intentionalDisconnect else {
-            NSLog("[Gemini] Intentional disconnect — not reconnecting")
+            PrivacyLog.realtimeSession(.gemini, .intentionalDisconnect)
             return
         }
         // Coalesce the duplicate triggers a single failure fires (close + error + receive-loop):
@@ -253,7 +267,7 @@ class GeminiLiveService: ObservableObject {
         guard !reconnectPending else { return }
 
         guard let delay = reconnectPolicy.delay(forAttempt: reconnectAttempts + 1) else {
-            NSLog("[Gemini] Max reconnect attempts (%d) reached — giving up", maxReconnectAttempts)
+            PrivacyLog.realtimeReconnectExhausted(.gemini, attempts: maxReconnectAttempts)
             connectionState = .error("Connection lost after \(maxReconnectAttempts) reconnect attempts")
             reconnecting = false
             onReconnectExhausted?()
@@ -263,8 +277,9 @@ class GeminiLiveService: ObservableObject {
         reconnecting = true
         reconnectPending = true
         reconnectAttempts += 1
-        NSLog("[Gemini] Reconnect attempt %d/%d in %.0fs (reason: %@)",
-              reconnectAttempts, maxReconnectAttempts, delay, reason ?? "unknown")
+        // The reason is derived from an error's description at every call site — dropped.
+        PrivacyLog.realtimeReconnectScheduled(.gemini, attempt: reconnectAttempts,
+                                              of: maxReconnectAttempts, delaySeconds: delay)
 
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
@@ -282,7 +297,7 @@ class GeminiLiveService: ObservableObject {
             if success {
                 self.reconnectAttempts = 0
                 self.reconnecting = false
-                NSLog("[Gemini] Reconnected successfully")
+                PrivacyLog.realtimeSession(.gemini, .reconnected)
                 self.onReconnected?()
             } else {
                 // connect() may have failed via a timeout that fires NO close/error event — the old
@@ -314,8 +329,8 @@ class GeminiLiveService: ObservableObject {
 
     func sendVideoFrame(image: UIImage) {
         guard connectionState == .ready, let task = webSocketTask else {
-            NSLog("[Gemini] sendVideoFrame skipped — state: %@",
-                  String(describing: connectionState))
+            PrivacyLog.realtimeSendSkipped(.gemini, kind: .frame, reason: .notReady,
+                                           state: connectionState.privacyToken)
             return
         }
         videoFramesSent += 1
@@ -323,7 +338,7 @@ class GeminiLiveService: ObservableObject {
         // Dispatch JPEG compression, base64 encoding, and send to background queue
         sendQueue.async {
             guard let jpegData = image.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality) else {
-                NSLog("[Gemini] sendVideoFrame skipped — JPEG conversion failed")
+                PrivacyLog.realtimeSendSkipped(.gemini, kind: .frame, reason: .encodingFailed)
                 return
             }
             let base64 = jpegData.base64EncodedString()
@@ -335,7 +350,8 @@ class GeminiLiveService: ObservableObject {
                     ]
                 ]
             ]
-            NSLog("[Gemini] Sending video frame #%d (%d KB JPEG)", count, jpegData.count / 1024)
+            PrivacyLog.realtimeMedia(.gemini, kind: .streamedFrame,
+                                     kilobytes: jpegData.count / 1024, sequence: count)
             Self.sendJSONDirect(json, via: task)
         }
     }
@@ -355,7 +371,8 @@ class GeminiLiveService: ObservableObject {
     /// as a delivery bug, so pass `false` only for background notes (see `LiveInjectionEnvelope`).
     func sendText(_ text: String, completeTurn: Bool) {
         guard connectionState == .ready, let task = webSocketTask else {
-            NSLog("[Gemini] sendText skipped — state: %@", String(describing: connectionState))
+            PrivacyLog.realtimeSendSkipped(.gemini, kind: .text, reason: .notReady,
+                                           state: connectionState.privacyToken)
             return
         }
         let json = LiveInjectionEnvelope.geminiText(text, completeTurn: completeTurn)
@@ -366,12 +383,13 @@ class GeminiLiveService: ObservableObject {
     /// resize/quality-0.5 encode. Pre-encoded JPEG so the sharp bytes go out exactly as captured.
     func sendHighResImage(jpegData: Data) {
         guard connectionState == .ready, let task = webSocketTask else {
-            NSLog("[Gemini] sendHighResImage skipped — state: %@", String(describing: connectionState))
+            PrivacyLog.realtimeSendSkipped(.gemini, kind: .image, reason: .notReady,
+                                           state: connectionState.privacyToken)
             return
         }
         sendQueue.async {
             let json = LiveInjectionEnvelope.geminiImage(base64JPEG: jpegData.base64EncodedString())
-            NSLog("[Gemini] Injecting sharp frame (%d KB JPEG)", jpegData.count / 1024)
+            PrivacyLog.realtimeMedia(.gemini, kind: .sharpFrame, kilobytes: jpegData.count / 1024)
             Self.sendJSONDirect(json, via: task)
         }
     }
@@ -407,10 +425,9 @@ class GeminiLiveService: ObservableObject {
         // Report a swap: a silent substitution files the session's usage and latency cohorts under
         // a model that never served it.
         let resolution = resolvedLiveModel
-        if let replaced = resolution.substitutedFor {
-            NSLog("[GeminiLive] %@ cannot open a Live session — using %@%@",
-                  replaced, resolution.model,
-                  resolution.usedOfflineFallback ? " (could not check what this key supports)" : "")
+        if resolution.substitutedFor != nil {
+            PrivacyLog.realtimeSession(.gemini, .modelSubstituted,
+                                       detail: PrivacyToken(resolution.model))
         }
 
         var setupBody = GeminiLiveSetup.body(
@@ -445,7 +462,7 @@ class GeminiLiveService: ObservableObject {
         }
         task.send(.string(string)) { error in
             if let error {
-                NSLog("[Gemini] WebSocket send error: %@", error.localizedDescription)
+                PrivacyLog.realtimeError(.gemini, phase: .send, SafeErrorSummary(error))
             }
         }
     }
@@ -552,7 +569,7 @@ class GeminiLiveService: ObservableObject {
             let timeLeft = goAway["timeLeft"] as? [String: Any]
             let seconds = timeLeft?["seconds"] as? Int ?? 0
             isModelSpeaking = false
-            NSLog("[Gemini] goAway received (time left: %ds) — scheduling reconnect", seconds)
+            PrivacyLog.realtimeGoAway(.gemini, secondsRemaining: seconds)
             scheduleReconnect(reason: "server rotating connection")   // sets reconnecting = true first
             onDisconnected?("Server rotating connection (time left: \(seconds)s)")
             return
@@ -560,14 +577,14 @@ class GeminiLiveService: ObservableObject {
 
         // Tool call from model
         if let toolCall = GeminiToolCall(json: json) {
-            NSLog("[Gemini] Tool call received: %d function(s)", toolCall.functionCalls.count)
+            PrivacyLog.realtimeToolCall(.gemini, functions: toolCall.functionCalls.count)
             onToolCall?(toolCall)
             return
         }
 
         // Tool call cancellation
         if let cancellation = GeminiToolCallCancellation(json: json) {
-            NSLog("[Gemini] Tool call cancellation: %@", cancellation.ids.joined(separator: ", "))
+            PrivacyLog.realtimeToolCancellation(.gemini, calls: cancellation.ids.count)
             onToolCallCancellation?(cancellation)
             return
         }
@@ -588,7 +605,7 @@ class GeminiLiveService: ObservableObject {
                     // Log response latency
                     if let speechEnd = lastUserSpeechEnd, !responseLatencyLogged {
                         let latency = Date().timeIntervalSince(speechEnd)
-                        NSLog("[Latency] %.0fms (user speech end -> first audio)", latency * 1000)
+                        PrivacyLog.realtimeLatency(.gemini, milliseconds: Int(latency * 1000))
                         responseLatencyLogged = true
                     }
                 }
@@ -600,7 +617,8 @@ class GeminiLiveService: ObservableObject {
                let parts = modelTurn["parts"] as? [[String: Any]] {
                 for part in parts where part["inlineData"] == nil {
                     if let text = part["text"] as? String {
-                        NSLog("[Gemini] %@", text)
+                        PrivacyLog.realtimeUtterance(.gemini, direction: .output,
+                                                     characters: text.count)
                         onTextOutput?(text)
                     }
                 }
@@ -616,7 +634,8 @@ class GeminiLiveService: ObservableObject {
             // Input transcription (what the user said)
             if let inputTranscription = serverContent["inputTranscription"] as? [String: Any],
                let text = inputTranscription["text"] as? String, !text.isEmpty {
-                NSLog("[Gemini] You: %@", text)
+                // The wearer's own speech: length only.
+                PrivacyLog.realtimeUtterance(.gemini, direction: .input, characters: text.count)
                 lastUserSpeechEnd = Date()
                 responseLatencyLogged = false
                 onInputTranscription?(text)
@@ -625,7 +644,7 @@ class GeminiLiveService: ObservableObject {
             // Output transcription (what the AI said)
             if let outputTranscription = serverContent["outputTranscription"] as? [String: Any],
                let text = outputTranscription["text"] as? String, !text.isEmpty {
-                NSLog("[Gemini] AI: %@", text)
+                PrivacyLog.realtimeUtterance(.gemini, direction: .output, characters: text.count)
                 onOutputTranscription?(text)
             }
         }

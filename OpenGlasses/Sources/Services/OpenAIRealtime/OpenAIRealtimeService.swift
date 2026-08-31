@@ -10,6 +10,20 @@ enum OpenAIRealtimeConnectionState: Equatable {
     case error(String)
 }
 
+extension OpenAIRealtimeConnectionState {
+    /// The state's name for a log line. `.error` collapses to the bare case: its payload is a
+    /// server-supplied message, which is user-content class.
+    var privacyToken: PrivacyToken {
+        switch self {
+        case .disconnected: return PrivacyToken("disconnected")
+        case .connecting: return PrivacyToken("connecting")
+        case .settingUp: return PrivacyToken("settingUp")
+        case .ready: return PrivacyToken("ready")
+        case .error: return PrivacyToken("error")
+        }
+    }
+}
+
 /// WebSocket-based OpenAI Realtime API service.
 /// Sends/receives audio (PCM16 24kHz), sends images, handles tool calls,
 /// and supports automatic reconnection with exponential backoff.
@@ -243,7 +257,7 @@ class OpenAIRealtimeService: ObservableObject {
                 ]
             ]
             Self.sendJSONDirect(json, via: task)
-            NSLog("[OpenAI RT] Sent image frame (%d KB)", jpegData.count / 1024)
+            PrivacyLog.realtimeMedia(.openai, kind: .streamedFrame, kilobytes: jpegData.count / 1024)
         }
     }
 
@@ -255,7 +269,8 @@ class OpenAIRealtimeService: ObservableObject {
     /// above stays append-only deliberately: forcing a response per frame would be wrong.
     func sendText(_ text: String, completeTurn: Bool) {
         guard connectionState == .ready, let task = webSocketTask else {
-            NSLog("[OpenAI RT] sendText skipped — state: %@", String(describing: connectionState))
+            PrivacyLog.realtimeSendSkipped(.openai, kind: .text, reason: .notReady,
+                                           state: connectionState.privacyToken)
             return
         }
         sendQueue.async {
@@ -271,13 +286,14 @@ class OpenAIRealtimeService: ObservableObject {
     /// response drives generation, and elsewhere the caller pairs it with a completing text.
     func sendHighResImage(jpegData: Data, prompt: String? = nil) {
         guard connectionState == .ready, let task = webSocketTask else {
-            NSLog("[OpenAI RT] sendHighResImage skipped — state: %@", String(describing: connectionState))
+            PrivacyLog.realtimeSendSkipped(.openai, kind: .image, reason: .notReady,
+                                           state: connectionState.privacyToken)
             return
         }
         sendQueue.async {
             let json = LiveInjectionEnvelope.realtimeImage(
                 base64JPEG: jpegData.base64EncodedString(), prompt: prompt)
-            NSLog("[OpenAI RT] Injecting sharp frame (%d KB)", jpegData.count / 1024)
+            PrivacyLog.realtimeMedia(.openai, kind: .sharpFrame, kilobytes: jpegData.count / 1024)
             Self.sendJSONDirect(json, via: task)
         }
     }
@@ -308,7 +324,7 @@ class OpenAIRealtimeService: ObservableObject {
                     "content_index": contentIndex,
                     "audio_end_ms": playedMs,
                 ], via: task)
-                NSLog("[OpenAI RT] Truncated %@ at %dms (confirmed played)", itemId, playedMs)
+                PrivacyLog.realtimeTruncated(.openai, item: itemId, playedMs: playedMs)
             }
         }
     }
@@ -330,7 +346,8 @@ class OpenAIRealtimeService: ObservableObject {
         reconnecting = true
         reconnectPending = true
         reconnectAttempts += 1
-        NSLog("[OpenAI RT] Reconnect attempt %d/%d in %.0fs", reconnectAttempts, maxReconnectAttempts, delay)
+        PrivacyLog.realtimeReconnectScheduled(.openai, attempt: reconnectAttempts,
+                                              of: maxReconnectAttempts, delaySeconds: delay)
 
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
@@ -387,7 +404,7 @@ class OpenAIRealtimeService: ObservableObject {
             ]
         ]
         sendJSON(sessionConfig)
-        NSLog("[OpenAI RT] Sent session.update")
+        PrivacyLog.realtimeSession(.openai, .sessionUpdateSent)
     }
 
     private func sendJSON(_ json: [String: Any]) {
@@ -405,7 +422,7 @@ class OpenAIRealtimeService: ObservableObject {
         }
         task.send(.string(string)) { error in
             if let error {
-                NSLog("[OpenAI RT] WebSocket send error: %@", error.localizedDescription)
+                PrivacyLog.realtimeError(.openai, phase: .send, SafeErrorSummary(error))
             }
         }
     }
@@ -474,12 +491,12 @@ class OpenAIRealtimeService: ObservableObject {
 
         switch type {
         case "session.created":
-            NSLog("[OpenAI RT] Session created")
+            PrivacyLog.realtimeSession(.openai, .sessionCreated)
             // Now send our session configuration
             sendSessionUpdate()
 
         case "session.updated":
-            NSLog("[OpenAI RT] Session configured — ready")
+            PrivacyLog.realtimeSession(.openai, .sessionConfigured)
             connectionState = .ready
             resolveConnect(success: true)
 
@@ -490,7 +507,7 @@ class OpenAIRealtimeService: ObservableObject {
                     isModelSpeaking = true
                     if let speechEnd = lastUserSpeechEnd, !responseLatencyLogged {
                         let latency = Date().timeIntervalSince(speechEnd)
-                        NSLog("[Latency] %.0fms (user speech end -> first audio)", latency * 1000)
+                        PrivacyLog.realtimeLatency(.openai, milliseconds: Int(latency * 1000))
                         responseLatencyLogged = true
                     }
                 }
@@ -527,7 +544,7 @@ class OpenAIRealtimeService: ObservableObject {
         case "input_audio_buffer.speech_started":
             // User started speaking — interrupt model if it's responding
             if isModelSpeaking {
-                NSLog("[OpenAI RT] Server VAD: user interrupted model")
+                PrivacyLog.realtimeSession(.openai, .userInterrupted)
                 cancelResponse()
             }
             lastUserSpeechEnd = nil
@@ -537,7 +554,8 @@ class OpenAIRealtimeService: ObservableObject {
 
         case "conversation.item.input_audio_transcription.completed":
             if let transcript = json["transcript"] as? String, !transcript.isEmpty {
-                NSLog("[OpenAI RT] You: %@", transcript)
+                // The transcript is the wearer's own speech: length only.
+                PrivacyLog.realtimeUtterance(.openai, direction: .input, characters: transcript.count)
                 onInputTranscription?(transcript)
             }
 
@@ -550,13 +568,15 @@ class OpenAIRealtimeService: ObservableObject {
                 // .error state, or the assistant goes silently deaf while the mic stays open
                 // (Plan BD). Only tear down + reconnect on a genuinely fatal error.
                 if RealtimeReconnect.isFatalOpenAIError(code: code, message: message) {
-                    NSLog("[OpenAI RT] Fatal error: %@ — reconnecting", message ?? code ?? "unknown")
+                    // The server's `message` is free-form prose about our request; only the
+                    // machine-readable code is summarised.
+                    PrivacyLog.realtimeError(.openai, phase: .fatal, .remote(code: code))
                     connectionState = .error(message ?? "Realtime error")
                     isModelSpeaking = false
                     onDisconnected?(message)
                     scheduleReconnect(reason: message)
                 } else {
-                    NSLog("[OpenAI RT] Recoverable error (ignored): %@", message ?? code ?? "unknown")
+                    PrivacyLog.realtimeError(.openai, phase: .recoverable, .remote(code: code))
                 }
             }
 
@@ -571,7 +591,7 @@ class OpenAIRealtimeService: ObservableObject {
             break // Expected events, no action needed
 
         default:
-            NSLog("[OpenAI RT] Unhandled event: %@", type)
+            PrivacyLog.realtimeSession(.openai, .unhandledEvent, detail: PrivacyToken(type))
         }
     }
 }
