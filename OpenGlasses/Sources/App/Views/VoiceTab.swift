@@ -55,10 +55,9 @@ struct VoiceTab: View {
                             showPreview: $showPreview,
                             showModelPicker: $showModelPicker,
                             showChatInput: $showChatInput,
-                            showsActions: HomeSurfaceVisibility.showsActionGrid(
-                                state: voiceState,
-                                captionsActive: captionsActive,
-                                mode: appState.currentMode)
+                            showsActions: HomeSurfaceVisibility.showsActionTiles(
+                                mode: appState.currentMode),
+                            voiceState: voiceState
                         )
                     }
                 }
@@ -127,7 +126,10 @@ struct VoiceTab: View {
                         AmbientCaptionOverlay(captionService: appState.ambientCaptions)
                     }
 
-                    TranscriptOverlay(session: session, openAISession: openAISession)
+                    // The transcript moved into the dock's conversation page. The error card did
+                    // not: the panel pages, and a failure the wearer has to see must not be one
+                    // swipe from invisible.
+                    SessionNoticeOverlay(session: session, openAISession: openAISession)
                 }
                 .padding(.top, 12)
                 .padding(.bottom, 8)
@@ -183,17 +185,15 @@ enum HomeSurfaceVisibility {
         return state != .thinking && state != .speaking
     }
 
-    /// The content tiles yield on everything My Day yields on, and on listening as well. My Day
-    /// compacts there because its top row is still worth reading with the mic open; a row of canned
-    /// prompts under a live mic is a control nobody reaches for, so the tiles give their rows back
-    /// and the controls close up behind them. The dock's own controls never yield.
+    /// Whether the content tiles belong in the dock's grid at all.
     ///
-    /// Realtime modes run their own turn spine, and these tiles submit ordinary Direct-mode turns,
-    /// so they are a Direct-mode surface — the gate the dock's quick-action slot always had.
-    static func showsActionGrid(state: VoiceVisualState, captionsActive: Bool,
-                                mode: AppMode) -> Bool {
-        guard mode == .direct else { return false }
-        return showsMyDay(state: state, captionsActive: captionsActive) && state != .listening
+    /// A mode gate and nothing more. The tiles used to *vanish* while the assistant worked, on the
+    /// same reasoning My Day still uses — but the panel pages now, so the conversation takes the
+    /// front rather than the tiles being taken away, and the rules for that live in
+    /// `DockPagerPolicy`. What is left here is the one condition that was never about yielding:
+    /// realtime modes run their own turn spine, and these tiles submit ordinary Direct-mode turns.
+    static func showsActionTiles(mode: AppMode) -> Bool {
+        mode == .direct
     }
 }
 
@@ -209,6 +209,7 @@ private struct VoiceTabControls: View {
     @Binding var showModelPicker: Bool
     @Binding var showChatInput: Bool
     let showsActions: Bool
+    let voiceState: VoiceVisualState
 
     var body: some View {
         BottomControlBar(
@@ -218,7 +219,8 @@ private struct VoiceTabControls: View {
             showModelPicker: $showModelPicker,
             showPreview: $showPreview,
             showChatInput: $showChatInput,
-            showsActions: showsActions
+            showsActions: showsActions,
+            voiceState: voiceState
         )
     }
 }

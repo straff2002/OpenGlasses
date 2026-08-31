@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Arranges the dock panel's one grid: every control and every content action, in one ordered list.
-/// Reached by long-pressing the dock, or from Settings → Quick Actions → Bar Layout.
+/// Reached from Settings → Quick Actions → Bar Layout — the roomy alternative to the panel's own
+/// edit page, with drag-to-reorder and a full screen to do it on.
 ///
 /// It used to be two editors — a Bar Layout list for the controls and a Home Grid list for the
 /// actions — which meant the one thing a user actually wanted to do, put a tile next to a control,
@@ -129,35 +130,23 @@ struct DockLayoutEditorView: View {
 
     // MARK: - Mutations
 
-    /// Every mutation writes the *resolved* order back, not the stored one: an arrangement is
-    /// allowed to leave slots unmentioned (that is how new controls and new actions arrive), and a
-    /// move or a removal is only meaningful once those implicit slots have a place.
-    private func mutate(_ change: (inout HomeGridArrangement, [DockSlot]) -> Void) {
-        let resolved = onGrid
-        var next = arrangement
-        next.order = resolved.map(\.id)
-        change(&next, resolved)
-        storedArrangement = HomeGridStore.encode(next)
-    }
-
+    /// What an edit *means* is `DockArrangementEditor`'s, shared with the in-panel edit page. This
+    /// view only decides how the edit is driven.
     private func move(from: IndexSet, to: Int) {
-        mutate { arrangement, _ in arrangement.order.move(fromOffsets: from, toOffset: to) }
+        storedArrangement = HomeGridStore.encode(
+            DockArrangementEditor.moving(arrangement, resolved: onGrid,
+                                         fromOffsets: from, toOffset: to))
     }
 
     private func remove(_ offsets: IndexSet) {
-        mutate { arrangement, resolved in
-            // `deleteDisabled` already stops a control being swiped, but the rule that controls
-            // cannot be hidden belongs to the data, not to one list's gesture configuration.
-            let removed = offsets.map { resolved[$0] }.filter(\.isHideable).map(\.id)
-            arrangement.order.removeAll { removed.contains($0) }
-            arrangement.hidden.append(contentsOf: removed.filter { !arrangement.hidden.contains($0) })
-        }
+        let resolved = onGrid
+        storedArrangement = HomeGridStore.encode(
+            DockArrangementEditor.removing(arrangement, resolved: resolved,
+                                           ids: offsets.map { resolved[$0].id }))
     }
 
     private func add(_ slot: DockSlot) {
-        mutate { arrangement, _ in
-            arrangement.hidden.removeAll { $0 == slot.id }
-            if !arrangement.order.contains(slot.id) { arrangement.order.append(slot.id) }
-        }
+        storedArrangement = HomeGridStore.encode(
+            DockArrangementEditor.adding(arrangement, resolved: onGrid, id: slot.id))
     }
 }

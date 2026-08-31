@@ -21,39 +21,29 @@ final class HomeGridTests: XCTestCase {
 
     /// The truth table the surface is built on. My Day compacts while listening; the grid does not
     /// appear at all there, and both give the zone to captions and to an assistant turn.
-    func testHomeModulesYieldOnTheStatesTheyShould() {
-        let states: [VoiceVisualState] = [.idle, .listening, .thinking, .speaking]
-
-        for state in states {
+    /// My Day still yields the conversation zone. The content tiles no longer yield anything — the
+    /// dock pages instead, so the conversation takes the front rather than the tiles being taken
+    /// away. `DockPagerTests` holds that half.
+    func testMyDayYieldsOnTheStatesItShould() {
+        for state in [VoiceVisualState.idle, .listening, .thinking, .speaking] {
             let quiet = HomeSurfaceVisibility.showsMyDay(state: state, captionsActive: false)
             XCTAssertEqual(quiet, state == .idle || state == .listening,
                            "My Day is wrong at \(state)")
 
             XCTAssertFalse(HomeSurfaceVisibility.showsMyDay(state: state, captionsActive: true),
                            "My Day is still taking caption height at \(state)")
-
-            let grid = HomeSurfaceVisibility.showsActionGrid(
-                state: state, captionsActive: false, mode: .direct)
-            XCTAssertEqual(grid, state == .idle, "The grid is wrong at \(state)")
-
-            XCTAssertFalse(
-                HomeSurfaceVisibility.showsActionGrid(state: state, captionsActive: true,
-                                                      mode: .direct),
-                "The grid is still taking caption height at \(state)")
         }
     }
 
     /// The tiles submit ordinary Direct-mode turns, so they do not offer themselves in a realtime
-    /// session that runs its own spine — the gate the dock's quick-action slot carried.
-    func testTheGridIsADirectModeSurface() {
+    /// session that runs its own spine — the gate the dock's quick-action slot carried. This is the
+    /// only condition left on the tiles, and it never was a yielding rule.
+    func testTheTilesAreADirectModeSurface() {
         for mode in [AppMode.geminiLive, .openaiRealtime] {
-            XCTAssertFalse(
-                HomeSurfaceVisibility.showsActionGrid(state: .idle, captionsActive: false,
-                                                      mode: mode),
-                "The grid offers Direct-mode turns during \(mode.rawValue)")
+            XCTAssertFalse(HomeSurfaceVisibility.showsActionTiles(mode: mode),
+                           "The tiles offer Direct-mode turns during \(mode.rawValue)")
         }
-        XCTAssertTrue(HomeSurfaceVisibility.showsActionGrid(state: .idle, captionsActive: false,
-                                                           mode: .direct))
+        XCTAssertTrue(HomeSurfaceVisibility.showsActionTiles(mode: .direct))
     }
 
     // MARK: - P1/P2: the catalog
@@ -281,9 +271,10 @@ final class HomeGridTests: XCTestCase {
         ])
     }
 
-    /// Yielding reaches the dock: the content tiles give their rows back and the controls close up
-    /// behind them, rather than the grid keeping a hole where they were.
-    func testYieldingRemovesActionsAndLeavesEveryControl() {
+    /// The mode gate: realtime sessions run their own turn spine, so the Direct-mode tiles are not
+    /// offered there. This is no longer a *yielding* rule — the panel pages instead — but the gate
+    /// itself never was one.
+    func testARealtimeModeStillLeavesEveryControlAndNoActions() {
         let slots = DockGridCatalog.slots(arrangement: .default, controlOrder: controls,
                                           quickActions: speedDial, showsActions: false)
         XCTAssertEqual(slotIds(slots), controls.map { "control:\($0.rawValue)" })
@@ -332,12 +323,12 @@ final class HomeGridTests: XCTestCase {
 
     // MARK: - Row-snapped panel height
 
-    /// The panel's resting height is three complete rows; more than that scrolls.
-    func testThePanelRestsAtThreeRowsAndScrollsPastThem() {
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 20, columns: 4), 3)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 12, columns: 4), 3)
+    /// The panel's resting height is four complete rows; more than that scrolls.
+    func testThePanelRestsAtFourRowsAndScrollsPastThem() {
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 20, columns: 4), 4)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 16, columns: 4), 4)
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 20, columns: 4), 5,
-                       "The rows past the third still exist — they are scrolled, not dropped")
+                       "The rows past the fourth still exist — they are scrolled, not dropped")
     }
 
     /// Fewer slots shrink the panel rather than leaving it three rows of empty glass. Yielding the
@@ -354,6 +345,7 @@ final class HomeGridTests: XCTestCase {
     func testTheAccessibilityColumnCountChangesRowsNotTheSnap() {
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 6, columns: 2), 3)
         XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 6, columns: 2), 3)
+        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 12, columns: 2), 4)
     }
 
     /// The bug this arithmetic exists to prevent: a height that lands mid-tile, so the row below

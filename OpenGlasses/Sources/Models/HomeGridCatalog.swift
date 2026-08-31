@@ -207,15 +207,29 @@ enum DockGridMetrics {
     /// bug this whole type exists to prevent.
     static let tileGlyphBox: CGFloat = 28
     static let tileCaptionLine: CGFloat = 18
+
+    /// The square a bundled provider mark is drawn into.
+    ///
+    /// A tile's SF symbol is drawn at `.callout` — about 16 pt of ink, held up by the stroke
+    /// weights and optical corrections every symbol in the family shares. A brand mark has none of
+    /// that: it is flat artwork with its own margin baked into its viewBox, so at the symbol's size
+    /// it reads visibly lighter and, on device, simply too small to recognise. It takes most of the
+    /// tile's glyph box instead — roughly 1.25× the symbol beside it, which is what makes the two
+    /// read at one weight in the same row, and still inside the box so the badge overlay clears it.
+    static let markGlyphBox: CGFloat = 24
+
+    /// Room the page control needs under the pages it indexes, so no tile or transcript line sits
+    /// beneath the dots.
+    static let pageIndicatorHeight: CGFloat = 28
     /// Gap between the glyph and the caption inside a tile.
     static let tileStackSpacing: CGFloat = 3
     /// Gap between tiles, in both axes.
     static let rowSpacing: CGFloat = 4
 
-    /// The resting height of the grid: three complete rows. Beyond that it scrolls — the panel is
-    /// the bottom of a screen that still has a conversation on it, and a grid that keeps growing
-    /// takes that room from the surface it exists to serve.
-    static let defaultVisibleRows = 3
+    /// The resting height of the grid: four complete rows. Beyond that it scrolls — the panel is
+    /// the bottom of a screen that still has a status card and My Day on it, and a grid that keeps
+    /// growing takes that room from the surface it exists to serve.
+    static let defaultVisibleRows = 4
 
     static func rowsNeeded(slotCount: Int, columns: Int) -> Int {
         guard slotCount > 0, columns > 0 else { return 0 }

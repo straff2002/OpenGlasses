@@ -1,3 +1,4 @@
+import EventKit
 import SwiftUI
 
 /// On-demand phone surface for the same deterministic snapshot used by voice and Siri.
@@ -86,7 +87,11 @@ struct MyDayView: View {
             OGSection(header: "Next") {
                 ForEach(Array(snapshot.items.enumerated()), id: \.element.id) { index, item in
                     if index > 0 { OGDivider() }
-                    itemRow(item)
+                    MyDaySwipeToClear(label: item.title) {
+                        Task { await service.dismiss(item) }
+                    } content: {
+                        itemRow(item)
+                    }
                 }
             }
         }
@@ -258,9 +263,39 @@ struct MyDayHomeView: View {
             guard isEnabled else { return }
             if case .idle = service.state { _ = await service.refresh() }
         }
+        // The card is meant to be current, and until now nothing made it so: `nextRefreshAt` only
+        // ever *labelled* a snapshot stale, and the sole automatic refresh was the first load. Two
+        // cheap signals cover the day — coming back to the app, and the calendar changing under it.
+        // Both are cheap because a dismissal is persisted, so recomposing often costs the wearer
+        // nothing: a cleared row does not come back, and genuinely new information is not delayed.
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshIfStale()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+            refreshInBackground()
+        }
         .sheet(isPresented: $showDetail) {
             MyDayView(service: service)
         }
+    }
+
+    /// Only when the snapshot has aged past the interval it advertises — coming back to the app for
+    /// five seconds should not re-hit EventKit.
+    private func refreshIfStale() {
+        guard isEnabled else { return }
+        if case .loaded(let snapshot) = service.state,
+           let next = snapshot.nextRefreshAt, Date() < next { return }
+        refreshInBackground()
+    }
+
+    /// `channel: nil` — this is the card keeping itself current, not the wearer asking for a
+    /// briefing, and the metrics should not read as though they did.
+    private func refreshInBackground() {
+        guard isEnabled else { return }
+        // EventKit posts its change notification in bursts; a refresh already in flight is enough.
+        if case .loading = service.state { return }
+        Task { _ = await service.refresh(channel: nil) }
     }
 
     private var setupCard: some View {
@@ -412,32 +447,36 @@ struct MyDayHomeView: View {
             } else {
                 let visibleItems = Array(snapshot.items.prefix(compact ? 1 : 3))
                 ForEach(visibleItems) { item in
-                    Button {
-                        showDetail = true
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: icon(for: item.kind))
-                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-                                .frame(width: 20)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                    .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if !compact, let detail = item.detail {
-                                    Text(detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                    MyDaySwipeToClear(label: item.title) {
+                        Task { await service.dismiss(item) }
+                    } content: {
+                        Button {
+                            showDetail = true
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: icon(for: item.kind))
+                                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                    .frame(width: 20)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
+                                        .foregroundStyle(.primary)
                                         .fixedSize(horizontal: false, vertical: true)
+                                    if !compact, let detail = item.detail {
+                                        Text(detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
+                                Spacer(minLength: 4)
                             }
-                            Spacer(minLength: 4)
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens My Day")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens My Day")
                 }
 
                 if !compact, snapshot.items.count > visibleItems.count {

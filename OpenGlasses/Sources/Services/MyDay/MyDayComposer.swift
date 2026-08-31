@@ -17,8 +17,14 @@ struct MyDayComposer: Sendable {
         let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
         let endOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfTomorrow) ?? startOfTomorrow
 
+        // An all-day event today is briefing information, not a commitment: "today is someone's
+        // birthday" is worth a slot over breakfast and is noise by lunchtime, because there is
+        // nothing to do about it and nothing that changes. It holds a slot in the morning only.
+        // Tomorrow's all-day events are untouched — the evening preview below is forward-looking,
+        // which is a different question.
         let todayEvents = inputs.events
             .filter { $0.endDate > now && $0.startDate < startOfTomorrow }
+            .filter { period == .morning || !$0.isAllDay }
             .sorted(by: eventOrder)
         let tomorrowEvents = inputs.events
             .filter { $0.startDate >= startOfTomorrow && $0.startDate < endOfTomorrow }
@@ -59,8 +65,15 @@ struct MyDayComposer: Sendable {
             ranked.append(digestItem(update))
         }
 
+        // Cleared rows drop out *here* — after ranking, before the cap. Filtering the inputs would
+        // have hidden the row from the headline's counts as well and left travel selection looking
+        // at events the card no longer shows; filtering the finished snapshot would have left the
+        // headline describing rows that are gone. Here, a cleared row also frees its slot for the
+        // next-ranked one, which is what a wearer clearing clutter is asking for.
+        let dismissed = inputs.dismissals
         let items = ranked
             .sorted(by: rankedOrder)
+            .filter { !MyDayDismissalPolicy.isDismissed($0.item, in: dismissed) }
             .prefix(maxItems)
             .map(\.item)
 
@@ -68,8 +81,12 @@ struct MyDayComposer: Sendable {
             generatedAt: now,
             period: period,
             headline: headline(
+                // The headline counts what the card is willing to show: an all-day event is part
+                // of the morning's count and no part of the afternoon's, which keeps the sentence
+                // and the rows telling the same story.
                 todayCommitments: inputs.events.filter {
                     $0.startDate >= startOfToday && $0.startDate < startOfTomorrow
+                        && (period == .morning || !$0.isAllDay)
                 }.count,
                 overdueReminders: inputs.reminders.filter {
                     guard let due = $0.dueDate else { return false }

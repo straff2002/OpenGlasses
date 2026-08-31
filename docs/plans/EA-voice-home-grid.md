@@ -3,8 +3,9 @@
 **Status:** ✅ Shipped P1–P3, then revised on device (2026-08-31). The dock-fit criterion closed the
 same day — the model tile dropped its model-name label for a provider glyph + constant caption (full
 name stays in the accessibility label), and the dock's strip wraps into rows of four instead of
-scrolling horizontally. Two phone tests then rewrote decisions 1, 2, 5, 6 and 8: see
-**P4 — On-device revision** and **P5 — Inverted stack, whole rows** below.
+scrolling horizontally. Four phone rounds then rewrote most of the plan's decisions — the dock is a
+three-page pager and My Day rows can be cleared. See **P4**–**P7** below. The pattern is the plan's
+real lesson: every one of those rounds found something no amount of headless reasoning had.
 **Origin:** On-device design review of the shipped My Day home surface (2026-08-31): inconsistent
 vertical gaps around the My Day card, and a bottom-dock utility row that scrolls because it carries
 both controls and the user's quick actions.
@@ -166,6 +167,79 @@ A second phone test, against the P4 build. Two changes and a re-check:
 **Tests.** Three rows at rest and the rest scrolled; short grids shrink the panel; the accessibility
 column drop changes the row count, not the snap; the panel height is a whole number of rows at every
 plausible tile height; the row height never underestimates the drawn tile.
+
+## P6 — The panel becomes a pager ✅
+
+A third and fourth phone round, and the largest change to the surface's shape so far. The panel
+stopped being one grid with a yielding rule and became three pages behind one frame.
+
+1. **Four rows at rest**, same row-snapped arithmetic — `DockGridMetrics.defaultVisibleRows`.
+2. **Pager: conversation ↔ grid ↔ edit.** The grid is the middle page and the home one, so each of
+   the others is one gesture away. `DockPagerPolicy` is the whole decision, pure:
+
+   | from | to | result |
+   |---|---|---|
+   | idle / listening | thinking | flip to conversation (the turn started) |
+   | thinking | speaking | flip to conversation (the reply arrived) |
+   | idle | listening | nothing — an open mic is not a turn |
+   | speaking | idle | nothing, **and it does not flip back** |
+   | any | any, after the user swiped this turn | nothing |
+   | any | any, on a new turn | the override clears; it flips again |
+
+   **Dwell: no timer.** The reply stays until the wearer swipes away or the next turn arrives. A
+   panel that slides out from under someone still reading is the same failure as one that fights
+   their swipe, only on a delay.
+3. **The transcript moved to page 1; the error card did not.** `TranscriptOverlay` is now the
+   conversation page, flat on the panel's glass. The error/notice card split out as
+   `SessionNoticeOverlay` and stayed in the conversation zone — the panel pages, and a failure the
+   wearer has to see must never be one swipe from invisible. The zone is now status card → My Day →
+   captions → notices.
+4. **The editor is page 2.** `DockLayoutEditPage` shares every mutation with the full-screen
+   `DockLayoutEditorView` through `DockArrangementEditor`; only the driving differs. The page
+   reorders with ▲▼ buttons rather than a drag, deliberately: a drag handle inside a horizontally
+   paging panel is two gestures competing for one finger, and buttons are also the only reordering
+   VoiceOver can drive. Settings → Quick Actions → Bar Layout keeps the drag. Long-press on the grid
+   background now flips to this page instead of presenting a sheet.
+5. **Provider marks are drawn at `DockGridMetrics.markGlyphBox`**, not the SF symbol's point size —
+   a mark is flat artwork with its own viewBox margin and no stroke conventions, so at the symbol's
+   number it read too small to recognise. Applies wherever `BarButton.assetIcon` renders.
+6. **Nothing critical hides behind a page.** The capsule never pages, and during a turn it *is* the
+   mid-turn control ("Cancel" / "Tap to stop"), so stopping is always one tap with no swipe.
+   Disconnect and the model picker are one swipe away, which is the deliberate trade.
+
+**Tests.** The flip table above; the override standing for its turn and clearing on the next; the
+grid as the middle page; every page named for VoiceOver; drag and nudge agreeing; removal refusing
+controls from either surface.
+
+## P7 — My Day: clearing rows, all-day policy, freshness ✅
+
+1. **Swipe a row left to clear it.** `.swipeActions` was unavailable — it is a `List` modifier and
+   both My Day surfaces are `OGCard` → `VStack` rows — so `MyDaySwipeToClear` builds it: horizontal
+   drag only, refusing any gesture whose vertical travel dominates, so it never claims the
+   conversation zone's scroll. Partial swipe rests showing a Clear button; a full swipe clears on
+   release. The gesture leaves no mark in the accessibility tree, so a named per-row action is the
+   real control rather than a convenience beside it.
+2. **`.dismiss` generalised, not duplicated.** One entry point, `MyDayService.dismiss(_:)`. A digest
+   update still retires inside the digest — its own record, the shipped path. Everything else
+   belongs to a source this app does not own, so the dismissal is recorded against the *card*:
+   `MyDayDismissalStore`, day-scoped, filtered inside `compose` between ranking and the item cap
+   (so a cleared row frees its slot rather than leaving a hole, and the headline stays consistent
+   with the rows). **It never deletes or completes anything** — the event is still in the compose
+   inputs, still counted, only un-ranked. A dismissal is pinned to the row's content as well as its
+   id, so a rescheduled meeting is new news and comes back.
+3. **Today's all-day events are a morning-only slot.** Briefing information, not a commitment:
+   worth a row over breakfast, noise by lunchtime. The headline counts them on the same rule, so
+   the sentence and the rows tell one story. Tomorrow's all-day events in the evening preview are
+   untouched — that is forward-looking, a different question.
+4. **The card refreshes across the day.** It did not before: `nextRefreshAt` only ever *labelled* a
+   snapshot stale, and the sole automatic refresh was the first load. It now also refreshes on app
+   foregrounding (when actually stale) and on `EKEventStoreChanged`, both as background refreshes
+   that record no briefing metric. Frequent recompose is safe precisely because dismissals persist.
+
+**Tests.** All-day present at 9:00, absent at 14:00 and 20:00, tomorrow's preview intact; a cleared
+event absent from `items` but still in the inputs and the headline count; a cleared row freeing its
+slot; a rescheduled event returning; dismissals surviving every refresh in a day and lapsing at the
+rollover; keys namespaced by source.
 
 ## Rollout and exit criteria
 
