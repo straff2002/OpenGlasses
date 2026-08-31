@@ -296,7 +296,9 @@ struct MyDayComposer: Sendable {
         var parts: [String] = []
         if period == .evening, let firstTomorrow {
             if firstTomorrow.isAllDay {
-                parts.append("tomorrow includes \(firstTomorrow.title) all day")
+                // No "all day" here: an event named "X's birthday" already is, and the absence
+                // of a time says the rest. The card's detail row still carries the qualifier.
+                parts.append("tomorrow includes \(firstTomorrow.title)")
             } else {
                 parts.append("tomorrow starts with \(firstTomorrow.title) at \(formatTime(firstTomorrow.startDate))")
             }
@@ -315,7 +317,14 @@ struct MyDayComposer: Sendable {
             }
             return items.isEmpty ? "Your day is clear." : "Here is what matters today."
         }
-        return parts.joined(separator: "; ") + "."
+        return Self.sentenceCased(parts.joined(separator: "; ")) + "."
+    }
+
+    /// Capitalize only the leading character — the parts are written mid-sentence ("tomorrow
+    /// includes…") and event titles keep their own casing.
+    static func sentenceCased(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.uppercased() + text.dropFirst()
     }
 
     private func formatTime(_ date: Date) -> String {
