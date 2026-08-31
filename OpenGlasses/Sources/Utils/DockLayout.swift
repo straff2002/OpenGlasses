@@ -4,9 +4,12 @@ import Foundation
 /// scrolling row is one of these; the user arranges them in Settings → Quick
 /// Actions → Bar Layout. Contextual items (camera preview, the on-device model
 /// chip) still only *appear* when relevant — ordering decides where they appear.
+///
+/// The dock carries controls only. The `quickActions` slot that used to sit here
+/// moved to the home grid; a stored order still naming it salvages like any other
+/// stale identifier, so no migration is needed.
 enum DockItem: String, CaseIterable, Identifiable {
     case model
-    case quickActions
     case camera
     case preview
     case type
@@ -19,7 +22,6 @@ enum DockItem: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .model: return "Model Picker"
-        case .quickActions: return "Quick Actions"
         case .camera: return "Camera"
         case .preview: return "Preview"
         case .type: return "Type"
@@ -32,7 +34,6 @@ enum DockItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .model: return "brain"
-        case .quickActions: return "square.grid.2x2"
         case .camera: return "camera"
         case .preview: return "eye"
         case .type: return "keyboard"
@@ -50,7 +51,7 @@ enum DockItem: String, CaseIterable, Identifiable {
 enum DockLayout {
     /// The order the bar shipped with before it became arrangeable.
     static let canonical: [DockItem] = [
-        .model, .quickActions, .camera, .preview, .type, .micMode, .assistive, .disconnect,
+        .model, .camera, .preview, .type, .micMode, .assistive, .disconnect,
     ]
 
     static func effectiveOrder(stored: [String]) -> [DockItem] {
@@ -74,5 +75,36 @@ enum DockLayout {
 
     static func decode(_ encoded: String) -> [DockItem] {
         effectiveOrder(stored: encoded.split(separator: ",").map(String.init))
+    }
+
+    /// The asset a provider's own mark would be bundled under. The tile prefers it when the asset
+    /// catalog carries one and falls back to `modelTileGlyph` when it does not — so a brand mark is
+    /// a drop-in asset rather than a code change, and no mark is ever drawn from an approximation
+    /// of somebody's trademark.
+    static func providerMarkAsset(for provider: LLMProvider) -> String {
+        "ProviderMark-\(provider.rawValue)"
+    }
+
+    /// Glyph for the model-picker tile, keyed to the active model's provider. The tile used to
+    /// carry the model's name, which made it the widest thing in the row; the provider identity
+    /// survives as the symbol and the full name stays in the accessibility label.
+    ///
+    /// Deliberately exhaustive: a new provider should have to answer this question rather than
+    /// inherit a generic brain from a `default` clause.
+    static func modelTileGlyph(for provider: LLMProvider) -> String {
+        switch provider {
+        case .anthropic: return "sparkle"
+        case .openai, .chatgpt: return "text.bubble"
+        case .gemini, .geminiVertex: return "rhombus"
+        case .groq: return "bolt"
+        case .zai: return "circle.hexagongrid"
+        case .qwen: return "cloud"
+        case .minimax: return "triangle"
+        case .xai: return "xmark.circle"
+        case .local: return "cpu"
+        case .appleOnDevice: return "apple.logo"
+        case .openrouter: return "arrow.triangle.branch"
+        case .custom: return "server.rack"
+        }
     }
 }

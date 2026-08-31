@@ -21,6 +21,9 @@ final class MyDayService: ObservableObject {
     private let calendarProvider: () -> Calendar
     private let metrics: any MyDayMetricsRecording
     private let monotonicNow: () -> TimeInterval
+    /// Rows the wearer cleared from today's card. Read on every compose so a dismissal survives
+    /// the frequent refreshes, and day-scoped so it lapses on its own.
+    private let dismissals: MyDayDismissalStore
 
     /// EventKit and the content-bearing snapshot are not touched while iOS protected data is
     /// unavailable. AppState replaces this default with UIApplication's live lock-state signal.
@@ -37,8 +40,10 @@ final class MyDayService: ObservableObject {
         spokenFormatter: MyDaySpokenFormatter = MyDaySpokenFormatter(),
         calendarProvider: @escaping () -> Calendar = { .autoupdatingCurrent },
         metrics: any MyDayMetricsRecording = MyDayMetricsStore.shared,
-        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        dismissals: MyDayDismissalStore = MyDayDismissalStore()
     ) {
+        self.dismissals = dismissals
         self.calendarSource = calendarSource
         self.remindersSource = remindersSource
         self.weatherSource = weatherSource
@@ -112,7 +117,8 @@ final class MyDayService: ObservableObject {
                 weather: weather?.value,
                 travel: travel?.value,
                 digestUpdates: digest?.value ?? [],
-                sourceStates: sourceStates
+                sourceStates: sourceStates,
+                dismissals: dismissals.active(on: now)
             ),
             now: now
         )
@@ -144,6 +150,24 @@ final class MyDayService: ObservableObject {
         digestSource = source
     }
 
+    /// Clear one row from today's card — the one entry point, whichever source the row came from.
+    ///
+    /// A digest update owns its own record and is retired inside the digest, which is the shipped
+    /// behaviour and the reason `.dismiss` existed at all. Everything else — an event, a reminder,
+    /// a leave-by, the weather — belongs to a source this app does not own and must not edit, so
+    /// the dismissal is recorded against the *card* instead. Neither branch deletes or completes
+    /// anything the wearer would miss.
+    @discardableResult
+    func dismiss(_ item: MyDayItem, now: Date = Date()) async -> MyDaySnapshot {
+        metrics.record(.dismissal, at: now)
+        if item.id.source == .digest {
+            digestSource?.dismissDigestItem(id: item.id.rawValue)
+        } else {
+            dismissals.dismiss(item, on: now)
+        }
+        return await refresh(now: now, channel: nil)
+    }
+
     @discardableResult
     func dismissDigestItem(id: String, now: Date = Date()) async -> MyDaySnapshot {
         metrics.record(.dismissal, at: now)
@@ -162,6 +186,16 @@ final class MyDayService: ObservableObject {
     func recordAction(_ action: MyDayActionMetric, at date: Date = Date()) {
         metrics.record(.action(action), at: date)
     }
+
+#if DEBUG
+    /// UI-test seeding only — see `UITestSupport`, and the note at the top of that file about what
+    /// seeding is and is not. It sets the state a real refresh would have produced, so the card can
+    /// be audited with rows in it without a calendar, a permission grant, or a device. Nothing
+    /// branches on it; a seeded snapshot is an ordinary one.
+    func seedForUITest(_ snapshot: MyDaySnapshot) {
+        state = .loaded(snapshot)
+    }
+#endif
 
     private func loadEvents(
         enabled: Bool,

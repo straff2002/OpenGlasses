@@ -29,11 +29,18 @@ final class MyDayComposerTests: XCTestCase {
         weather: MyDayWeather? = nil,
         travel: MyDayTravelEstimate? = nil,
         digestUpdates: [MyDayDigestUpdate] = [],
-        states: [MyDaySourceState] = MyDaySource.allCases.map(MyDaySourceState.available)
+        states: [MyDaySourceState] = MyDaySource.allCases.map(MyDaySourceState.available),
+        dismissals: [String: String] = [:]
     ) -> MyDayInputs {
         .init(events: events, reminders: reminders, weather: weather, travel: travel,
               digestUpdates: digestUpdates,
-              sourceStates: states)
+              sourceStates: states,
+              dismissals: dismissals)
+    }
+
+    private func allDayEvent(_ id: String = "holiday", title: String = "Holiday") -> MyDayCalendarEvent {
+        MyDayCalendarEvent(id: id, title: title, startDate: date(0),
+                           endDate: date(0, day: 31), isAllDay: true, location: nil)
     }
 
     func testPriorityPolicyPutsImmediateCommitmentThenOverdueAndDueItems() {
@@ -189,13 +196,111 @@ final class MyDayComposerTests: XCTestCase {
     }
 
     func testAllDayEventIsUpcomingRatherThanImmediate() {
-        let start = date(0)
-        let allDay = MyDayCalendarEvent(id: "holiday", title: "Holiday", startDate: start,
-                                        endDate: date(0, day: 31), isAllDay: true, location: nil)
         let snapshot = MyDayComposer(calendar: calendar).compose(
-            inputs: inputs(events: [allDay]), now: date(9))
+            inputs: inputs(events: [allDayEvent()]), now: date(9))
         XCTAssertEqual(snapshot.items.first?.urgency, .upcoming)
         XCTAssertEqual(snapshot.items.first?.detail, "All day")
+    }
+
+    /// "I know it's this bloke's birthday, but I don't need to know it all day." An all-day event
+    /// today is briefing information: worth a slot over breakfast, noise by lunchtime, because
+    /// there is nothing to do about it and nothing that changes.
+    func testATodayAllDayEventHoldsASlotInTheMorningOnly() {
+        let composer = MyDayComposer(calendar: calendar)
+
+        let morning = composer.compose(inputs: inputs(events: [allDayEvent()]), now: date(9))
+        XCTAssertEqual(morning.period, .morning)
+        XCTAssertEqual(morning.items.map(\.id.rawValue), ["holiday"])
+
+        for hour in [14, 20] {
+            let later = composer.compose(inputs: inputs(events: [allDayEvent()]), now: date(hour))
+            XCTAssertFalse(later.items.contains { $0.id.rawValue == "holiday" },
+                           "The all-day row is still holding a slot at \(hour):00")
+        }
+    }
+
+    /// The headline counts what the card is willing to show, so the sentence and the rows tell the
+    /// same story rather than the headline insisting on a commitment with no row behind it.
+    func testTheHeadlineCountsATodayAllDayEventOnlyWhileItHasASlot() {
+        let composer = MyDayComposer(calendar: calendar)
+
+        let morning = composer.compose(inputs: inputs(events: [allDayEvent()]), now: date(9))
+        XCTAssertFalse(morning.headline.contains("clear"),
+                       "A morning with an all-day event is not a clear day")
+
+        let afternoon = composer.compose(inputs: inputs(events: [allDayEvent()]), now: date(14))
+        XCTAssertTrue(afternoon.items.isEmpty)
+        XCTAssertTrue(afternoon.headline.contains("clear"),
+                      "The headline still counts a commitment the card refuses to show")
+    }
+
+    /// Tomorrow's all-day events are a different question — the evening preview is forward-looking,
+    /// and this is the guard that the morning-only rule did not reach into it.
+    func testTomorrowsAllDayEventStillPreviewsInTheEvening() {
+        let tomorrow = MyDayCalendarEvent(id: "trip", title: "Trip", startDate: date(0, day: 31),
+                                          endDate: date(0, day: 32), isAllDay: true, location: nil)
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [tomorrow]), now: date(20))
+        XCTAssertEqual(snapshot.period, .evening)
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["trip", "prepare:trip"])
+        XCTAssertTrue(snapshot.items[0].detail?.contains("all day") == true)
+    }
+
+    // MARK: - Cleared rows
+
+    /// The invariant the whole dismissal design is for: clearing a row hides it from the card and
+    /// destroys nothing. The event is still in the compose inputs — still gathered, still there for
+    /// the headline and for travel — and only the ranked rows lose it.
+    func testDismissingAnEventHidesTheRowAndKeepsTheEvent() {
+        let meeting = event("standup", at: 10)
+        let composed = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [meeting]), now: date(9))
+        guard let row = composed.items.first(where: { $0.id.rawValue == "standup" }) else {
+            return XCTFail("The event did not compose into a row to begin with")
+        }
+
+        let dismissals = [row.id.dismissalKey: row.dismissalFingerprint]
+        let after = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [meeting], dismissals: dismissals), now: date(9))
+
+        XCTAssertFalse(after.items.contains { $0.id.rawValue == "standup" },
+                       "The cleared row is still on the card")
+        // The event itself never left: the same inputs still carry it, and the headline still
+        // counts the commitment, because clearing a row is a statement about a card.
+        XCTAssertTrue(after.headline.contains("1"), "The event was erased, not just un-shown")
+    }
+
+    /// A cleared row frees its slot rather than leaving a hole — which is what a wearer clearing
+    /// clutter is actually asking for.
+    func testAClearedRowFreesItsSlotForTheNextOne() {
+        let events = (0..<7).map { event("e\($0)", at: 9 + $0) }
+        let composer = MyDayComposer(calendar: calendar)
+        let full = composer.compose(inputs: inputs(events: events), now: date(8))
+        XCTAssertEqual(full.items.count, 6, "The fixture should be at the item cap")
+
+        guard let first = full.items.first else { return XCTFail("No rows") }
+        let after = composer.compose(
+            inputs: inputs(events: events,
+                           dismissals: [first.id.dismissalKey: first.dismissalFingerprint]),
+            now: date(8))
+        XCTAssertEqual(after.items.count, 6)
+        XCTAssertFalse(after.items.contains { $0.id == first.id })
+    }
+
+    /// A dismissal is pinned to the row's content as well as its id, so a rescheduled meeting is
+    /// new news and comes back rather than staying cleared under the same EventKit identifier.
+    func testARescheduledEventComesBackAfterBeingCleared() {
+        let original = event("standup", at: 10)
+        let composer = MyDayComposer(calendar: calendar)
+        guard let row = composer.compose(inputs: inputs(events: [original]), now: date(9))
+            .items.first else { return XCTFail("No row") }
+        let dismissals = [row.id.dismissalKey: row.dismissalFingerprint]
+
+        let moved = event("standup", at: 15)
+        let after = composer.compose(inputs: inputs(events: [moved], dismissals: dismissals),
+                                     now: date(9))
+        XCTAssertTrue(after.items.contains { $0.id.rawValue == "standup" },
+                      "A rescheduled event stayed hidden under a stale dismissal")
     }
 
     func testDateOnlyReminderDueTodayIsNotOverdue() {

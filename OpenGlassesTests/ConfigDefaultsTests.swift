@@ -8,7 +8,7 @@ final class ConfigDefaultsTests: XCTestCase {
 
     private let keys = [
         "silentMode", "glassesOnlyAudio", "audioOnlyMode", "memoryNudgesEnabled",
-        "showAllQuickActions", "siriAskOpensApp", "mcpServerEnabled", "accessibilityModeEnabled",
+        "siriAskOpensApp", "mcpServerEnabled", "accessibilityModeEnabled",
         // Cohort 2
         "usePhoneMicForTranslation", "glassesDisplayEnabled", "intentClassifierEnabled",
         "llmComplexityClassifierEnabled", "agentOnboardingComplete", "contextualEmbeddingEnabled",
@@ -34,7 +34,6 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(Config.glassesOnlyAudio)
         XCTAssertFalse(Config.audioOnlyMode)
         XCTAssertFalse(Config.memoryNudgesEnabled)
-        XCTAssertFalse(Config.showAllQuickActions)
         XCTAssertFalse(Config.siriAskOpensApp)
         XCTAssertFalse(Config.mcpServerEnabled)
         XCTAssertFalse(Config.accessibilityModeEnabled)
@@ -62,7 +61,6 @@ final class ConfigDefaultsTests: XCTestCase {
         assertRoundTrip("glassesOnlyAudio", set: Config.setGlassesOnlyAudio, get: { Config.glassesOnlyAudio })
         assertRoundTrip("audioOnlyMode", set: Config.setAudioOnlyMode, get: { Config.audioOnlyMode })
         assertRoundTrip("memoryNudgesEnabled", set: Config.setMemoryNudgesEnabled, get: { Config.memoryNudgesEnabled })
-        assertRoundTrip("showAllQuickActions", set: Config.setShowAllQuickActions, get: { Config.showAllQuickActions })
         assertRoundTrip("siriAskOpensApp", set: Config.setSiriAskOpensApp, get: { Config.siriAskOpensApp })
         assertRoundTrip("mcpServerEnabled", set: Config.setMCPServerEnabled, get: { Config.mcpServerEnabled })
         assertRoundTrip("accessibilityModeEnabled", set: Config.setAccessibilityModeEnabled, get: { Config.accessibilityModeEnabled })

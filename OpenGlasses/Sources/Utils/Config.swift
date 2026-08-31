@@ -1709,11 +1709,6 @@ struct Config {
         return merged
     }
 
-    /// Whether to show all quick actions on the Voice tab, or only the top 4.
-    @UserDefaultsBacked("showAllQuickActions", default: false) static var showAllQuickActions: Bool
-
-    static func setShowAllQuickActions(_ show: Bool) { showAllQuickActions = show }
-
     // MARK: - Speech Recognition Locale
 
     /// Which locale the speech features (wake word, transcription, captions, rewind, teleprompter)

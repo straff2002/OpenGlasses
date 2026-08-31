@@ -1,3 +1,4 @@
+import EventKit
 import SwiftUI
 
 /// On-demand phone surface for the same deterministic snapshot used by voice and Siri.
@@ -86,7 +87,11 @@ struct MyDayView: View {
             OGSection(header: "Next") {
                 ForEach(Array(snapshot.items.enumerated()), id: \.element.id) { index, item in
                     if index > 0 { OGDivider() }
-                    itemRow(item)
+                    MyDaySwipeToClear(label: item.title) {
+                        Task { await service.dismiss(item) }
+                    } content: {
+                        itemRow(item)
+                    }
                 }
             }
         }
@@ -240,6 +245,11 @@ struct MyDayHomeView: View {
     @Environment(\.appAccent) private var accent
     @State private var showDetail = false
 
+    /// The user's own collapse, remembered across launches. Distinct from `compact`, which the
+    /// session state imposes for as long as the mic is open: this one is a choice, so it outranks
+    /// the compact form and holds until the user reverses it.
+    @AppStorage("myDayCollapsed") private var isCollapsed = false
+
     var body: some View {
         Group {
             if isEnabled {
@@ -253,9 +263,39 @@ struct MyDayHomeView: View {
             guard isEnabled else { return }
             if case .idle = service.state { _ = await service.refresh() }
         }
+        // The card is meant to be current, and until now nothing made it so: `nextRefreshAt` only
+        // ever *labelled* a snapshot stale, and the sole automatic refresh was the first load. Two
+        // cheap signals cover the day — coming back to the app, and the calendar changing under it.
+        // Both are cheap because a dismissal is persisted, so recomposing often costs the wearer
+        // nothing: a cleared row does not come back, and genuinely new information is not delayed.
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshIfStale()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+            refreshInBackground()
+        }
         .sheet(isPresented: $showDetail) {
             MyDayView(service: service)
         }
+    }
+
+    /// Only when the snapshot has aged past the interval it advertises — coming back to the app for
+    /// five seconds should not re-hit EventKit.
+    private func refreshIfStale() {
+        guard isEnabled else { return }
+        if case .loaded(let snapshot) = service.state,
+           let next = snapshot.nextRefreshAt, Date() < next { return }
+        refreshInBackground()
+    }
+
+    /// `channel: nil` — this is the card keeping itself current, not the wearer asking for a
+    /// briefing, and the metrics should not read as though they did.
+    private func refreshInBackground() {
+        guard isEnabled else { return }
+        // EventKit posts its change notification in bursts; a refresh already in flight is enough.
+        if case .loading = service.state { return }
+        Task { _ = await service.refresh(channel: nil) }
     }
 
     private var setupCard: some View {
@@ -289,45 +329,91 @@ struct MyDayHomeView: View {
     private var enabledCard: some View {
         OGCard {
             VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    Label("My Day", systemImage: "sun.max.fill")
-                        .font(.headline)
-                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                header
 
-                    Spacer(minLength: 8)
+                if !isCollapsed {
+                    Rectangle()
+                        .fill(OGTheme.hairline)
+                        .frame(height: 0.5)
+                        .accessibilityHidden(true)
 
-                    Button {
-                        Task { _ = await service.refresh() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(accent)
-                    .accessibilityLabel("Refresh My Day")
-
-                    Button {
-                        showDetail = true
-                    } label: {
-                        Image(systemName: "arrow.up.right")
-                            .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(accent)
-                    .accessibilityLabel("Open full My Day")
+                    stateContent
                 }
-                .padding(.leading, 16)
-                .padding(.trailing, 6)
-                .padding(.vertical, 6)
-
-                Rectangle()
-                    .fill(OGTheme.hairline)
-                    .frame(height: 0.5)
-                    .accessibilityHidden(true)
-
-                stateContent
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: isCollapsed)
+    }
+
+    /// The card's one always-present row. Collapsed, it is the whole card — the title, today's
+    /// headline if there is one, and the chevron back out. The header itself toggles, because a
+    /// 24 pt chevron is a poor target for the gesture people actually reach for.
+    private var header: some View {
+        HStack(spacing: 8) {
+            Label("My Day", systemImage: "sun.max.fill")
+                .font(.headline)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                .layoutPriority(1)
+
+            if isCollapsed, let headline = collapsedHeadline {
+                Text(headline)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: 8)
+
+            if !isCollapsed {
+                Button {
+                    Task { _ = await service.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(accent)
+                .accessibilityLabel("Refresh My Day")
+
+                Button {
+                    showDetail = true
+                } label: {
+                    Image(systemName: "arrow.up.right")
+                        .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(accent)
+                .accessibilityLabel("Open full My Day")
+            }
+
+            Button {
+                isCollapsed.toggle()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel(isCollapsed ? "Expand My Day" : "Collapse My Day")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        // The row's empty space toggles too, but only the empty space: `contentShape` on the HStack
+        // would swallow the buttons beside it, so the gesture rides the background instead.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { isCollapsed.toggle() }
+        )
+    }
+
+    /// The one line a collapsed card can still afford. Only when the snapshot is loaded — a
+    /// collapsed card should never be the place a "Building your day…" spinner hides.
+    private var collapsedHeadline: String? {
+        guard case .loaded(let snapshot) = service.state else { return nil }
+        return snapshot.headline
     }
 
     @ViewBuilder
@@ -361,32 +447,36 @@ struct MyDayHomeView: View {
             } else {
                 let visibleItems = Array(snapshot.items.prefix(compact ? 1 : 3))
                 ForEach(visibleItems) { item in
-                    Button {
-                        showDetail = true
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: icon(for: item.kind))
-                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-                                .frame(width: 20)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                    .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if !compact, let detail = item.detail {
-                                    Text(detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                    MyDaySwipeToClear(label: item.title) {
+                        Task { await service.dismiss(item) }
+                    } content: {
+                        Button {
+                            showDetail = true
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: icon(for: item.kind))
+                                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                    .frame(width: 20)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
+                                        .foregroundStyle(.primary)
                                         .fixedSize(horizontal: false, vertical: true)
+                                    if !compact, let detail = item.detail {
+                                        Text(detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
+                                Spacer(minLength: 4)
                             }
-                            Spacer(minLength: 4)
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens My Day")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens My Day")
                 }
 
                 if !compact, snapshot.items.count > visibleItems.count {

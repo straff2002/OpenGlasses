@@ -199,6 +199,10 @@ struct MyDayInputs: Equatable, Sendable {
     let travel: MyDayTravelEstimate?
     let digestUpdates: [MyDayDigestUpdate]
     let sourceStates: [MyDaySourceState]
+    /// Rows the wearer cleared from today's card, as storage key → fingerprint. Note what this is
+    /// *not*: it never reaches a source, so a cleared row is still gathered, still counted where
+    /// counting is honest, and still in `events`/`reminders` here. Only the ranking drops it.
+    let dismissals: [String: String]
 
     init(
         events: [MyDayCalendarEvent],
@@ -206,7 +210,8 @@ struct MyDayInputs: Equatable, Sendable {
         weather: MyDayWeather?,
         travel: MyDayTravelEstimate? = nil,
         digestUpdates: [MyDayDigestUpdate] = [],
-        sourceStates: [MyDaySourceState]
+        sourceStates: [MyDaySourceState],
+        dismissals: [String: String] = [:]
     ) {
         self.events = events
         self.reminders = reminders
@@ -214,6 +219,7 @@ struct MyDayInputs: Equatable, Sendable {
         self.travel = travel
         self.digestUpdates = digestUpdates
         self.sourceStates = sourceStates
+        self.dismissals = dismissals
     }
 }
 

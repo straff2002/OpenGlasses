@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// Floating transcript cards — shows what user said and what the AI responded.
-/// Positioned above the bottom control bar, fading in/out as content arrives.
-/// Tap any card to see the full response in a detail sheet.
+/// The conversation itself — what the user said and what the assistant answered — as the dock
+/// panel's conversation page. Tap a card to see the full response in a detail sheet.
+///
+/// This used to sit in the conversation zone above the dock and carried the error card with it. The
+/// error card stayed behind as `SessionNoticeOverlay` when the transcript moved into the panel, and
+/// that split is load-bearing: the panel pages now, and a failure the wearer has to see must never
+/// be one swipe away from invisible. The conversation pages; notices do not.
+///
+/// Cards are flat here rather than glass — the panel is the glass, the same rule its tiles follow.
 struct TranscriptOverlay: View {
-    /// The single surface every subsystem posts to — see `AppNotice` for why it exists.
-    @ObservedObject private var notices = NoticeCenter.shared
-
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
@@ -35,22 +38,6 @@ struct TranscriptOverlay: View {
         return appState.llmService.activeModelName
     }
 
-    /// A camera condition the wearer can clear (a doff pausing the stream). Ranks below a real
-    /// error but above silence — the failure mode it replaces was a UI reading "Streaming" with
-    /// the camera off.
-    private var noticeText: String? { notices.current?.text }
-
-    private var errorText: String? {
-        // The session's error is the more specific one, but its *absence* must not hide an
-        // app-level failure: the camera button only exists in a live session and reports there,
-        // so returning session-only made "start streaming" fail silently (device-traced).
-        if isGemini { return SessionErrorCopy.text(sessionError: session.errorMessage,
-                                                   appError: appState.errorMessage) ?? noticeText }
-        if isOpenAI { return SessionErrorCopy.text(sessionError: openAISession.errorMessage,
-                                                   appError: appState.errorMessage) ?? noticeText }
-        return appState.errorMessage ?? noticeText
-    }
-
     var body: some View {
         VStack(spacing: 8) {
             // Session compaction indicator — gateway trimmed context
@@ -74,11 +61,6 @@ struct TranscriptOverlay: View {
                 .accessibilityLabel("Context trimmed by gateway")
             }
 
-            if let error = errorText, !error.isEmpty {
-                transcriptCard(label: "Error", text: error, accent: OGTheme.error, style: .error)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
             if !aiText.isEmpty {
                 transcriptCard(label: aiLabel, text: aiText, accent: accent, style: .ai)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -88,8 +70,17 @@ struct TranscriptOverlay: View {
                 transcriptCard(label: "You", text: userText, accent: .primary, style: .user)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            if aiText.isEmpty && userText.isEmpty && !appState.openClawBridge.sessionCompacted {
+                // The page exists before anything has been said, so it says so rather than
+                // presenting as a panel that failed to load.
+                Text("Nothing said yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+            }
         }
-        .padding(.horizontal, 16)
         .animation(.easeInOut(duration: 0.3), value: userText)
         .animation(.easeInOut(duration: 0.3), value: aiText)
         .animation(.easeInOut(duration: 0.3), value: appState.openClawBridge.sessionCompacted)
@@ -98,9 +89,84 @@ struct TranscriptOverlay: View {
         }
     }
 
-    // MARK: - Card Styles
+    private func transcriptCard(label: String, text: String, accent: Color,
+                                style: TranscriptCard.Style) -> some View {
+        // Flat: this card lives on the dock panel, and the panel is the glass.
+        TranscriptCard(label: label, text: text, accent: accent, style: style, onGlass: false) {
+            expandedCard = ExpandedCard(label: label, text: text, accent: accent)
+        }
+    }
+}
 
-    private enum CardStyle {
+// MARK: - Session notices
+
+/// Errors and camera conditions, kept in the conversation zone when the transcript moved into the
+/// dock's paging panel.
+///
+/// Deliberately not a page. An error is the one thing on this surface the wearer did not ask to
+/// see and must not miss — a photo capture that failed, a stream that stopped — and a page can be
+/// swiped away from. It stays where it cannot be navigated out of.
+struct SessionNoticeOverlay: View {
+    /// The single surface every subsystem posts to — see `AppNotice` for why it exists.
+    @ObservedObject private var notices = NoticeCenter.shared
+
+    @EnvironmentObject var appState: AppState
+    @ObservedObject var session: GeminiLiveSessionManager
+    @ObservedObject var openAISession: OpenAIRealtimeSessionManager
+
+    @State private var expandedCard: ExpandedCard?
+
+    private var isGemini: Bool { appState.currentMode == .geminiLive }
+    private var isOpenAI: Bool { appState.currentMode == .openaiRealtime }
+
+    /// A camera condition the wearer can clear (a doff pausing the stream). Ranks below a real
+    /// error but above silence — the failure mode it replaces was a UI reading "Streaming" with
+    /// the camera off.
+    private var noticeText: String? { notices.current?.text }
+
+    private var errorText: String? {
+        // The session's error is the more specific one, but its *absence* must not hide an
+        // app-level failure: the camera button only exists in a live session and reports there,
+        // so returning session-only made "start streaming" fail silently (device-traced).
+        if isGemini { return SessionErrorCopy.text(sessionError: session.errorMessage,
+                                                   appError: appState.errorMessage) ?? noticeText }
+        if isOpenAI { return SessionErrorCopy.text(sessionError: openAISession.errorMessage,
+                                                   appError: appState.errorMessage) ?? noticeText }
+        return appState.errorMessage ?? noticeText
+    }
+
+    var body: some View {
+        Group {
+            if let error = errorText, !error.isEmpty {
+                TranscriptCard(label: "Error", text: error, accent: OGTheme.error,
+                               style: .error, onGlass: true) {
+                    expandedCard = ExpandedCard(label: "Error", text: error, accent: OGTheme.error)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.horizontal, 16)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: errorText)
+        .sheet(item: $expandedCard) { card in
+            TranscriptDetailView(label: card.label, text: card.text, accent: card.accent)
+        }
+    }
+}
+
+// MARK: - Card
+
+/// One transcript or notice card. `onGlass` is the only difference between the two homes: on the
+/// ambience a card carries its own glass, and on the dock panel it is flat, because the panel
+/// already is the glass and stacking the two reads as a card floating inside a card.
+private struct TranscriptCard: View {
+    let label: String
+    let text: String
+    let accent: Color
+    let style: Style
+    let onGlass: Bool
+    let onTap: () -> Void
+
+    enum Style {
         case ai, user, error
 
         var verticalPadding: CGFloat {
@@ -146,7 +212,7 @@ struct TranscriptOverlay: View {
         }
     }
 
-    private func transcriptCard(label: String, text: String, accent: Color, style: CardStyle) -> some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
                 if style == .ai {
@@ -178,11 +244,16 @@ struct TranscriptOverlay: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, style.verticalPadding)
-        .glassEffect(in: .rect(cornerRadius: 12))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            expandedCard = ExpandedCard(label: label, text: text, accent: accent)
+        .background {
+            if onGlass {
+                Color.clear.glassEffect(in: .rect(cornerRadius: 12))
+            } else {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(OGTheme.card)
+            }
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
         // `children: .combine` then `.accessibilityLabel` *replaces* what was combined, so the
         // card announced who was talking and never what they said — the transcript, the one
         // thing on this card worth reading, was unreachable. The speaker is the name, the words
