@@ -70,6 +70,11 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         XCTAssertTrue(liveLine.waitForExistence(timeout: 60),
                       "The live caption line does not name itself as the current line")
 
+        XCTAssertFalse(
+            app.staticTexts["Put what matters next here instead of an animation."].exists,
+            "My Day is still occupying the conversation zone while live captions need its height"
+        )
+
         audit(app, screen: "Session surface — captions overlay",
               deferring: [.contrastThroughGlass, .focusableCaptionHistory])
     }
