@@ -100,6 +100,21 @@ struct DiagnosticsSupportView: View {
                 .buttonStyle(.plain)
             }
 
+            OGSection(
+                header: "Diagnostics File",
+                footer: "A list of what the app did — event names, counts, durations and outcomes from this session only. You read the whole file before it is written, and it is deleted as soon as you've sent it."
+            ) {
+                NavigationLink {
+                    DiagnosticExportView()
+                } label: {
+                    OGRow(
+                        "Export Diagnostics", icon: "doc.text.magnifyingglass",
+                        subtitle: "Preview every line, then share the file"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
             OGSection(footer: "The Discord is the fastest way to ask a question or share what you've built.") {
                 Button {
                     UIApplication.shared.open(Self.discordURL)

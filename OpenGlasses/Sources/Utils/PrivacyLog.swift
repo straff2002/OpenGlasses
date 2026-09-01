@@ -110,7 +110,54 @@ enum PrivacyLog {
     static func emit(_ event: PrivacyEvent) -> PrivacyEvent {
         let line = PrivacyEventEncoder.encode(event)
         loggers[event.category]?.log("\(line, privacy: .public)")
+        for tap in currentTaps() { tap(event, line) }
         return event
+    }
+
+    // MARK: - Taps
+    //
+    // A second reader of the same encoded line. This exists for two callers and takes no new
+    // risk from either: the in-memory diagnostics ring the wearer can export, and the canary
+    // fixtures that drive a subsystem and assert nothing recognisable came out the other end.
+    //
+    // The tap is handed the event *and the exact string the OS received* — not the raw
+    // arguments a call site passed — so a tap cannot see anything the log does not already
+    // contain, and an export built from taps can never be broader than the log itself.
+
+    /// Handle for removing a tap. Opaque so a caller cannot forge or enumerate one.
+    struct TapToken: Hashable {
+        fileprivate let id: UUID
+    }
+
+    private static let tapLock = NSLock()
+    private nonisolated(unsafe) static var taps: [UUID: (PrivacyEvent, String) -> Void] = [:]
+    /// Rebuilt on add/remove so the emit path copies a reference rather than rebuilding an array
+    /// on every event — this runs on the camera and audio paths.
+    private nonisolated(unsafe) static var tapList: [(PrivacyEvent, String) -> Void] = []
+
+    /// Observe every event from now on. Returns the token that stops it again.
+    static func addTap(_ tap: @escaping (PrivacyEvent, String) -> Void) -> TapToken {
+        let token = TapToken(id: UUID())
+        tapLock.lock()
+        taps[token.id] = tap
+        tapList = Array(taps.values)
+        tapLock.unlock()
+        return token
+    }
+
+    static func removeTap(_ token: TapToken) {
+        tapLock.lock()
+        taps.removeValue(forKey: token.id)
+        tapList = Array(taps.values)
+        tapLock.unlock()
+    }
+
+    /// Snapshot under the lock, call outside it: a tap that logs (the ring does not, but a test
+    /// sink might) would otherwise re-enter `emit` while the lock is held.
+    private static func currentTaps() -> [(PrivacyEvent, String) -> Void] {
+        tapLock.lock()
+        defer { tapLock.unlock() }
+        return tapList
     }
 
     // MARK: - Debug-only content escape hatch
@@ -1517,6 +1564,10 @@ enum PrivacyLog {
         /// The out-of-process `URLSession` the model hub downloads through. Its session
         /// identifier is app-chosen and its file is a model weight, so neither is named.
         case backgroundDownload
+        /// The wearer exporting the diagnostic ring. The bundle's own contents are structured
+        /// events that were already logged, so the lifecycle is what is recorded here: a lease
+        /// made, shared, released, or scavenged after a crash. Never the file, never its bytes.
+        case diagnosticsExport
     }
 
     enum TransferEvent: String {
@@ -1526,6 +1577,7 @@ enum PrivacyLog {
         case donationFailed, purgeFailed
         case attemptsExhausted, permanentlyFailed
         case sessionResumed, sessionCompleted
+        case shareStarted, shareEnded, released, scavenged
     }
 
     /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its
