@@ -87,7 +87,7 @@ class AudioRecordingService: ObservableObject {
         // Live transcription
         if autoTranscribe, let captions = ambientCaptionService {
             if !captions.isActive { captions.start() }
-            NSLog("[AudioRecording] Live transcription enabled")
+            PrivacyLog.speech(.meetingNotes, .started, detail: PrivacyToken("liveTranscription"))
 
             if let assistant = meetingAssistant, let llmClosure {
                 assistant.start(captionService: captions, llm: llmClosure)
@@ -102,7 +102,10 @@ class AudioRecordingService: ObservableObject {
             }
         }
 
-        NSLog("[AudioRecording] Started → %@", url.lastPathComponent)
+        // The filename is derived from the recording's own title/timestamp — an identifier
+        // for a recording of the wearer's surroundings, so it is fingerprinted, never quoted.
+        PrivacyLog.audio(.recording, .captureStarted,
+                         device: PrivateIdentifier(url.lastPathComponent))
     }
 
     /// Stop recording and return the saved file URL (Documents/Recordings/).
@@ -160,10 +163,11 @@ class AudioRecordingService: ObservableObject {
         let dest = recDir.appendingPathComponent(src.lastPathComponent)
         do {
             try FileManager.default.moveItem(at: src, to: dest)
-            NSLog("[AudioRecording] Saved → %@", dest.path)
+            PrivacyLog.audio(.recording, .engineStopped,
+                             device: PrivateIdentifier(dest.lastPathComponent))
             return dest
         } catch {
-            NSLog("[AudioRecording] Save failed: %@", error.localizedDescription)
+            PrivacyLog.audio(.recording, .sessionConfigureFailed, error: SafeErrorSummary(error))
             return src
         }
     }

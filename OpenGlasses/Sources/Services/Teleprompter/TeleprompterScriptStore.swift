@@ -134,7 +134,8 @@ final class TeleprompterScriptStore: ObservableObject {
     @discardableResult
     private func save() -> Bool {
         guard !saveBlocked else {
-            NSLog("[TeleprompterScriptStore] Save skipped — last load failed to read the existing file")
+            PrivacyLog.conversation(.teleprompterScripts, .saveSkipped,
+                                    detail: PrivacyToken("loadFailed"))
             return false
         }
         do {
@@ -142,7 +143,8 @@ final class TeleprompterScriptStore: ObservableObject {
             try data.write(to: fileURL, options: .atomic)
             return true
         } catch {
-            NSLog("[TeleprompterScriptStore] Save failed: %@", error.localizedDescription)
+            PrivacyLog.conversation(.teleprompterScripts, .saveFailed,
+                                    error: SafeErrorSummary(error))
             return false
         }
     }

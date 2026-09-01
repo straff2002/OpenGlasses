@@ -31,13 +31,13 @@ enum AudioSessionActivator {
             configure(session)
             try session.setActive(true, options: [])
         } catch {
-            NSLog("[Audio] Preferred session config failed (mode %@): %@ — retrying with .default",
-                  mode.rawValue, error.localizedDescription)
+            PrivacyLog.audio(.session, .sessionConfigureFailed,
+                             detail: PrivacyToken(mode.rawValue), error: SafeErrorSummary(error))
             do {
                 try session.setCategory(category, mode: .default, options: [.defaultToSpeaker])
                 configure(session)
                 try session.setActive(true, options: [])
-                NSLog("[Audio] Activated with fallback (.default)")
+                PrivacyLog.audio(.session, .sessionFallbackActivated)
             } catch {
                 throw AudioSessionError.activationFailed(error.localizedDescription)
             }

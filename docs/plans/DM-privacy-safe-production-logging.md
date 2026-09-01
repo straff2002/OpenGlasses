@@ -3,7 +3,8 @@
 **Status:** 🚧 P0 shipped (2026-09-01) — `PrivacyLog` + `SafeErrorSummary` landed, all named leak
 sites emit metadata only, and the P1 scanner runs in report-only mode with a checked-in ledger
 ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). **P1 batch 1 (authentication/networking)
-migrated (2026-09-01): 872 → 794 sites, 127 → 113 files.** P1 batches 2–5, P2 and P3 outstanding.
+migrated (2026-09-01): 872 → 794 sites, 127 → 113 files. P1 batch 2 (conversation/model/audio)
+migrated (2026-09-01): 794 → 461 sites, 113 → 75 files.** P1 batches 3–5, P2 and P3 outstanding.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -158,6 +159,84 @@ Keychain finding: the two sites logged key *names* and `OSStatus`, never values.
 omitted rather than fingerprinted — they come from a small fixed dictionary of provider names, so a
 hash would not anonymise them while still saying which credentials the wearer holds.
 
+
+### Batch 2 — conversation/model/audio ✅ (2026-09-01)
+
+Thirty-five files, 333 sites, all to zero.
+
+| Metric | After batch 1 | After batch 2 |
+|---|---|---|
+| Direct `NSLog`/`print` sites | 794 / 113 files | 461 / 75 files |
+| Content/credential-named interpolations | 31 | 19 |
+| `localizedDescription` in log calls | 101 | 59 |
+| Allowlisted files / sites | 0 / 0 | 0 / 0 |
+
+Migrated: `WakeWordService` (46), `LLMService` (35), `TextToSpeechService` (26),
+`Audio/RealtimeAudioEngine` (25), `GeminiLive/GeminiLiveSessionManager` (24),
+`LocalLLMService` (19), `ConversationStore` (19), `NativeTools/NativeToolRouter` (17),
+`TranscriptionService` (14), `AmbientCaptionService` (12),
+`OpenAIRealtime/OpenAIRealtimeSessionManager` (10), `BackgroundVoiceService` (10),
+`LiveTranslationService` (9), `Audio/AudioSessionCoordinator` (8),
+`NativeTools/WebSearchTool` (6), `AudioCapture/StandaloneMicTapService` (6),
+`MeetingAssistantService` (5), `AudioRecordingService` (4), `IntentClassifier` (4),
+`ConversationEncryptionService` (3), `AudioCapture/CaptureAudioRouter` (3),
+`MemoryRewindService` (3), and fifteen one- and two-site files:
+`Teleprompter/TeleprompterScriptStore`, `OpenAIRealtime/OpenAIRealtimeService`,
+`GeminiLive/GeminiLiveService`, `GeminiLive/GeminiLiveModelCatalog`, `GeminiLive/FrameThrottler`,
+`BroadcastChat/TwitchChatClient`, `BroadcastChat/BroadcastChatReadbackService`,
+`Audio/AudioSessionActivator`, `ASR/OnDeviceASREngine`,
+`Translation/OnDeviceTranslationProvider`, `Translation/GeminiTranslationProvider`,
+`AudioCapture/CaptureAudioNormalizer`, `LLM/ToolLoopDriver`,
+`Diarization/DeepgramSTTService`, `NativeTools/ToolAuthorizationEventLog`,
+`Live/TurnAdmissionPolicy` (a doc comment quoting a deleted `print`).
+
+Beyond the named ledger files, the batch added the ones that are plainly this domain and were
+sitting in the same call paths: `NativeToolRouter` and `ToolLoopDriver` (the tool loop named in the
+batch's own scope line), `BackgroundVoiceService`, `LiveTranslationService`, `IntentClassifier`,
+`MeetingAssistantService`, `MemoryRewindService`, `OnDeviceASREngine`, both translation providers,
+`AudioSessionActivator`, `CaptureAudioNormalizer`, `FrameThrottler`, `TurnAdmissionPolicy` and
+`ToolAuthorizationEventLog`.
+
+Facade additions: categories `speech`, `audio`, `model`, `conversation`; events
+`wakeWord`/`speech`/`tts`, `audio`, `model`/`modelCompaction`/`localModel`, `conversation`,
+`toolGate`/`toolDispatch`/`toolRun`/`toolAuthorizationRefused`/`webSearch`, a `broadcastChat`
+stream channel, and a widened `realtimeSession` covering the session managers' camera, audio-mode
+and tool-pause plumbing. Model *ids* are public catalog tokens; model *configuration names* are
+fingerprinted. Audio port *types* are tokens, port *names* are fingerprints. Language tags are
+public.
+
+What this removed, beyond the raw call count: the always-on wake-word listener logged the
+**recognised transcript** on five separate paths — stop command, wake-phrase barge-in,
+voice-activity barge-in, detection, fuzzy match — plus the persona names and the entire
+contextual-boost list of configured wake phrases, which is to say it wrote down what the wearer said
+whether or not they were addressing the app. `LLMService` logged the model's reasoning trace, the
+custom endpoint's `baseURL`, provider error bodies (which quote the prompt back, and on a moderation
+refusal quote the exact phrase objected to) and the on-device tool call with its arguments.
+`TextToSpeechService` logged the sentence it was about to speak, and the iOS voice by name.
+`LiveTranslationService` logged both halves — the utterance and its translation.
+`AmbientCaptionService` and `OnDeviceASREngine` logged the transcripts their artifact filters
+rejected (failing a quality check does not make a transcript less private). `NativeToolRouter`
+logged the confirmation summary, the gateway task description and 200 characters of every tool
+result. `ConversationStore` logged thread ids and persona ids in the clear.
+
+`ToolLogContent.redacted` is deleted. It returned the text unchanged in DEBUG and a character count
+in Release — the same "a redactor is not authorisation to log content" trap `LogRedaction` was, and
+its three callers in `NativeToolRouter` were the ones logging the tool result and the confirmation
+copy. A test asserts no batch-2 file references it.
+
+Judgement calls: `PrivacyToken(String(describing: reason))` is used for OS enum cases
+(`AVAudioSession.RouteChangeReason`) — a fixed Apple vocabulary, not app data. MLX prompt tensor
+shapes are kept, rendered `1x842`, because the text-vs-vision factory shape mismatch is a fatal
+Metal crash diagnosed from exactly that number. The client-VAD RMS is dropped: it measures how
+loudly the wearer was speaking, and the interrupt firing is the diagnosable fact. No
+`ENABLE_CONTENT_LOGGING` sites were added — every audio-plumbing site that looked like it needed
+one turned out to be describable as a route, a format, a count or a lease owner.
+
+Deliberately deferred, with the batch they belong to: `SemanticMemoryStore`, `Memory/*`,
+`AgentDocumentStore`, `RAG/DocumentStore` and the offline sync/queue pair (persistence — batch 4);
+`Accessibility/*`, `FaceRecognitionService`, `LookCloselyTool`, `DocumentScanTool` (vision — batch
+3); `AgentScheduler`, `BroadcastService`, `VideoRecordingService`, `MetaCameraBackend`,
+`OpenGlassesApp` (device/lifecycle — batch 5).
 
 Generate and check in a classification ledger with one row per logging site/category, then migrate in
 bounded PRs:

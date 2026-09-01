@@ -104,8 +104,8 @@ class FrameThrottler {
         lastFrameTime = now
         forwardedCount += 1
         if forwardedCount <= 3 || forwardedCount % 10 == 0 {
-            NSLog("[FrameThrottler] Forwarding frame #%d (received %d total, dedupRatio %.2f)",
-                  forwardedCount, receivedCount, dedupRatio)
+            PrivacyLog.realtimeSession(.gemini, .frameForwarded, count: forwardedCount,
+                                       total: receivedCount)
         }
         onThrottledFrame?(image)
         if isKeyframe { onKeyframe?(image) }

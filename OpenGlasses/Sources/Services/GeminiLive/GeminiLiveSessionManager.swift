@@ -71,26 +71,28 @@ class GeminiLiveSessionManager: ObservableObject {
         guard isActive else {
             droppedNotActive += 1
             if droppedNotActive <= 3 {
-                NSLog("[Session] submitVideoFrame dropped — not active (count: %d)", droppedNotActive)
+                PrivacyLog.realtimeSession(.gemini, .frameDropped,
+                                           detail: PrivacyToken("notActive"), count: droppedNotActive)
             }
             return
         }
         if !isCameraStreaming {
             isCameraStreaming = true
-            NSLog("[Session] First camera frame received — camera streaming confirmed active")
+            PrivacyLog.realtimeSession(.gemini, .firstCameraFrame)
         }
         guard connectionState == .ready else {
             droppedNotReady += 1
             if droppedNotReady <= 5 || droppedNotReady % 30 == 0 {
-                NSLog("[Session] submitVideoFrame dropped — state: %@ (count: %d)",
-                      String(describing: connectionState), droppedNotReady)
+                PrivacyLog.realtimeSession(.gemini, .frameDropped,
+                                           detail: PrivacyToken("notReady"),
+                                           state: PrivacyToken(String(describing: connectionState)),
+                                           count: droppedNotReady)
             }
             return
         }
         submittedFrameCount += 1
         if submittedFrameCount <= 3 || submittedFrameCount % 30 == 0 {
-            NSLog("[Session] submitVideoFrame #%d forwarded to throttler (%dx%d)",
-                  submittedFrameCount, Int(image.size.width), Int(image.size.height))
+            PrivacyLog.realtimeSession(.gemini, .frameForwarded, count: submittedFrameCount)
         }
         // Stretch the frame interval under battery/thermal pressure (Plan BV P2). Same-actor read,
         // refreshed per submitted frame so a posture change takes effect immediately.
@@ -126,26 +128,28 @@ class GeminiLiveSessionManager: ObservableObject {
         // than waiting for the first frame (which may take seconds after permission approval).
         if let startCamera = onRequestStartCamera {
             let cameraOk = await startCamera()
-            NSLog("[Session] Camera streaming start result: %@", cameraOk ? "success" : "failed (will work audio-only)")
+            PrivacyLog.realtimeSession(.gemini, .cameraStarted, success: cameraOk)
             if cameraOk {
                 isCameraStreaming = true
             }
         }
-        NSLog("[Session] Building system instruction — isCameraStreaming: %@", isCameraStreaming ? "YES" : "NO")
 
         // Configure Gemini with system instruction, vision context, location, and tools.
         // Only declare OpenClaw tools if the gateway is actually connected (prevents Gemini
         // from attempting tool calls that will fail when gateway is unreachable).
         let systemInstruction = buildSystemInstruction()
-        NSLog("[Session] System instruction built — length: %d chars, camera streaming: %@",
-              systemInstruction.count, isCameraStreaming ? "YES" : "NO")
+        // The instruction embeds location, personas and memory context — its length is what a
+        // context-overflow report needs, and all of it that may be persisted.
+        PrivacyLog.realtimeSession(.gemini, .systemInstructionBuilt,
+                                   detail: PrivacyToken(isCameraStreaming ? "vision" : "audioOnly"),
+                                   characters: systemInstruction.count)
         let openClawConnected = openClawBridge?.connectionState == .connected
         // BK P0: expose the gateway `execute` tool only when it's an active agentic capability
         // (configured AND Agent Mode on) — Gemini Live had the same isOpenClawConfigured-only gap
         // as Direct mode, handing the model an execute schema + full-machine-access prompt.
         let includeOpenClaw = Config.isOpenClawAgentActive && openClawConnected
         if Config.isOpenClawAgentActive && !openClawConnected {
-            NSLog("[Session] OpenClaw configured but not connected — omitting execute tool declaration")
+            PrivacyLog.realtimeSession(.gemini, .gatewayToolOmitted)
         }
         let toolDefs = ToolDeclarations.allDeclarations(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
         geminiService.configure(systemInstruction: systemInstruction, toolDeclarations: toolDefs)
@@ -238,7 +242,7 @@ class GeminiLiveSessionManager: ObservableObject {
         geminiService.onReconnected = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
-                NSLog("[Session] Reconnected — re-configuring session")
+                PrivacyLog.realtimeSession(.gemini, .reconnected)
                 // Re-configure with current settings (including fresh location)
                 let includeOpenClaw = Config.isOpenClawAgentActive   // BK P0: gate on Agent Mode too
                 var toolDefs = ToolDeclarations.allDeclarations(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
@@ -258,7 +262,8 @@ class GeminiLiveSessionManager: ObservableObject {
                 do {
                     try self.audioManager.startCapture()
                 } catch {
-                    NSLog("[Session] Failed to restart audio after reconnect: %@", error.localizedDescription)
+                    PrivacyLog.realtimeSession(.gemini, .audioRestartFailed,
+                                               error: SafeErrorSummary(error))
                 }
                 // Re-start frame capture
                 self.startFrameCapture()
@@ -286,12 +291,12 @@ class GeminiLiveSessionManager: ObservableObject {
             // (VisionClaw issue #11: tool-call stability during Gemini Live)
             toolCallRouter?.onToolExecutionStarted = { [weak self] in
                 guard let self else { return }
-                NSLog("[Session] Tool execution started — pausing frame submission")
+                PrivacyLog.realtimeSession(.gemini, .toolExecutionPaused)
                 self.frameThrottler.pause()
             }
             toolCallRouter?.onToolExecutionFinished = { [weak self] in
                 guard let self else { return }
-                NSLog("[Session] Tool execution finished — resuming frame submission")
+                PrivacyLog.realtimeSession(.gemini, .toolExecutionResumed)
                 self.frameThrottler.resume()
             }
 
@@ -361,7 +366,8 @@ class GeminiLiveSessionManager: ObservableObject {
         // Audio setup — use iPhone mode when camera NOT streaming (no glasses connected),
         // use glasses/videoChat mode when camera IS streaming (mic is on remote device)
         useIPhoneAudioMode = !isCameraStreaming
-        NSLog("[Session] Audio mode: %@", useIPhoneAudioMode ? "iPhone (voiceChat)" : "Glasses (videoChat)")
+        PrivacyLog.realtimeSession(.gemini, .audioModeSelected,
+                                   detail: PrivacyToken(useIPhoneAudioMode ? "iPhone" : "glasses"))
         do {
             try await audioManager.setupAudioSession(useIPhoneMode: useIPhoneAudioMode)
         } catch {
@@ -376,8 +382,9 @@ class GeminiLiveSessionManager: ObservableObject {
         // Immediately sync connection state so submitVideoFrame doesn't block
         // waiting for the next 100ms poll cycle
         connectionState = geminiService.connectionState
-        NSLog("[Session] Post-connect state: %@, videoFramesSent: %d",
-              String(describing: connectionState), geminiService.videoFramesSent)
+        PrivacyLog.realtimeSession(.gemini, .postConnectState,
+                                   state: PrivacyToken(String(describing: connectionState)),
+                                   count: geminiService.videoFramesSent)
 
         if !setupOk {
             var errorStateMessage: String?
@@ -412,29 +419,29 @@ class GeminiLiveSessionManager: ObservableObject {
         // try again now that Gemini is connected (SDK has had more time to register).
         // VisionClaw avoids this by starting camera separately before Gemini.
         if !isCameraStreaming, let startCamera = onRequestStartCamera {
-            NSLog("[Session] Camera was not streaming — retrying after Gemini connect...")
             let cameraOk = await startCamera()
+            PrivacyLog.realtimeSession(.gemini, .lateCameraRetried, success: cameraOk)
             if cameraOk {
                 isCameraStreaming = true
-                NSLog("[Session] Late camera start succeeded! Reconfiguring for vision...")
                 // Reconfigure Gemini with the vision prompt now that camera works
                 let updatedInstruction = buildSystemInstruction()
                 let visionNow = updatedInstruction.contains("You CAN see")
-                NSLog("[Session] Reconfigured — vision enabled: %@", visionNow ? "YES" : "NO")
+                PrivacyLog.realtimeSession(.gemini, .visionReconfigured, success: visionNow)
                 // Switch to glasses audio mode since camera implies glasses are connected
                 if !useIPhoneAudioMode {
-                    NSLog("[Session] Already in glasses audio mode")
+                    PrivacyLog.realtimeSession(.gemini, .audioModeUnchanged,
+                                               detail: PrivacyToken("glasses"))
                 } else {
                     useIPhoneAudioMode = false
-                    NSLog("[Session] Switching to glasses audio mode (videoChat)")
+                    PrivacyLog.realtimeSession(.gemini, .audioModeSwitched,
+                                               detail: PrivacyToken("glasses"))
                     do {
                         try await audioManager.setupAudioSession(useIPhoneMode: false)
                     } catch {
-                        NSLog("[Session] Audio mode switch failed: %@", error.localizedDescription)
+                        PrivacyLog.realtimeSession(.gemini, .audioModeSwitchFailed,
+                                                   error: SafeErrorSummary(error))
                     }
                 }
-            } else {
-                NSLog("[Session] Late camera retry also failed — continuing audio-only")
             }
         }
 
@@ -443,8 +450,11 @@ class GeminiLiveSessionManager: ObservableObject {
     }
 
     func stopSession() {
-        NSLog("[Session] stopSession — submitted: %d, droppedNotActive: %d, droppedNotReady: %d",
-              submittedFrameCount, droppedNotActive, droppedNotReady)
+        PrivacyLog.realtimeSession(.gemini, .sessionStopped, count: submittedFrameCount)
+        PrivacyLog.realtimeSession(.gemini, .frameDropped, detail: PrivacyToken("notActive"),
+                                   count: droppedNotActive)
+        PrivacyLog.realtimeSession(.gemini, .frameDropped, detail: PrivacyToken("notReady"),
+                                   count: droppedNotReady)
         toolCallRouter?.cancelAll()
         toolCallRouter = nil
         frameTimer?.cancel()
@@ -606,7 +616,7 @@ class GeminiLiveSessionManager: ObservableObject {
     /// This is a fallback polling mechanism — the primary path is direct push via submitVideoFrame().
     private func startFrameCapture() {
         frameTimer?.cancel()
-        NSLog("[Session] Starting frame capture polling (fallback for direct push)")
+        PrivacyLog.realtimeSession(.gemini, .framePollingStarted)
         frameTimer = Task { [weak self] in
             guard let self else { return }
             var pollCount = 0
@@ -614,7 +624,7 @@ class GeminiLiveSessionManager: ObservableObject {
                 if let image = await self.onRequestVideoFrame?() {
                     pollCount += 1
                     if pollCount <= 3 || pollCount % 10 == 0 {
-                        NSLog("[Session] Polled frame #%d from camera", pollCount)
+                        PrivacyLog.realtimeSession(.gemini, .framePolled, count: pollCount)
                     }
                     self.frameThrottler.submit(image)
                 }

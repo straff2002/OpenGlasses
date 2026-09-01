@@ -55,7 +55,7 @@ class MemoryRewindService: ObservableObject {
             self?.refreshDuration()
         }
 
-        print("⏪ Memory rewind started (keeping \(Int(maxBufferMinutes)) min)")
+        PrivacyLog.speech(.memoryRewind, .started, count: Int(maxBufferMinutes))
     }
 
     func stop() {
@@ -69,7 +69,7 @@ class MemoryRewindService: ObservableObject {
         }
         bufferStartTime = nil
         bufferDurationMinutes = 0
-        print("⏪ Memory rewind stopped")
+        PrivacyLog.speech(.memoryRewind, .stopped)
     }
 
     // nonisolated: only touches ingest-queue state and hops to @MainActor for the UI update,
@@ -108,7 +108,8 @@ class MemoryRewindService: ObservableObject {
             return "No audio buffered yet. Keep it running for a bit."
         }
 
-        print("⏪ Rewinding \(String(format: "%.1f", minutesToTranscribe)) min (\(recentAudio.count) bytes)...")
+        PrivacyLog.speech(.memoryRewind, .started, count: Int(minutesToTranscribe),
+                          bytes: recentAudio.count, detail: PrivacyToken("transcribe"))
 
         // Convert raw PCM data to a WAV file for speech recognition
         let wavData = createWAV(from: recentAudio, sampleRate: rate)

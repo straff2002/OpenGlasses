@@ -115,9 +115,10 @@ class ConversationStore: ObservableObject {
         }
 
         activeThreadId = savedId
-        NSLog("[ConversationStore] Restored active session %@ (%d messages, %.0f min old)",
-              savedId, thread.messages.count,
-              Date().timeIntervalSince(thread.updatedAt) / 60)
+        PrivacyLog.conversation(.conversations, .sessionRestored,
+                                thread: PrivateIdentifier(savedId),
+                                count: thread.messages.count,
+                                minutes: Int(Date().timeIntervalSince(thread.updatedAt) / 60))
     }
 
     /// Persist the active thread ID for session restoration.
@@ -143,7 +144,11 @@ class ConversationStore: ObservableObject {
             save()
         }
         persistActiveSession()
-        NSLog("[ConversationStore] Started thread %@ (project %@)", thread.id, personaId ?? "global")
+        // The persona id is omitted rather than fingerprinted: the set is small and the wearer
+        // named them, so a hash would still say which assistant they were talking to.
+        PrivacyLog.conversation(.conversations, .threadStarted,
+                                thread: PrivateIdentifier(thread.id),
+                                detail: PrivacyToken(personaId == nil ? "global" : "persona"))
         return thread
     }
 
@@ -208,7 +213,7 @@ class ConversationStore: ObservableObject {
         save()
         activeThreadId = nil
         persistActiveSession()
-        NSLog("[ConversationStore] Ended thread")
+        PrivacyLog.conversation(.conversations, .threadEnded)
     }
 
     /// Give a still-default thread a title derived from its first user message. Safe to call
@@ -246,7 +251,9 @@ class ConversationStore: ObservableObject {
     func resumeThread(_ threadId: String) -> ConversationThread? {
         guard let thread = threads.first(where: { $0.id == threadId }) else { return nil }
         activeThreadId = threadId
-        NSLog("[ConversationStore] Resumed thread %@ (%d messages)", threadId, thread.messages.count)
+        PrivacyLog.conversation(.conversations, .threadResumed,
+                                thread: PrivateIdentifier(threadId),
+                                count: thread.messages.count)
         return thread
     }
 
@@ -267,7 +274,8 @@ class ConversationStore: ObservableObject {
         guard let idx = threads.firstIndex(where: { $0.id == threadId }) else { return }
         threads[idx].compressedSummary = summary
         save()
-        NSLog("[ConversationStore] Updated compressed summary for thread %@ (%d chars)", threadId, summary.count)
+        PrivacyLog.conversation(.conversations, .summaryUpdated,
+                                thread: PrivateIdentifier(threadId), characters: summary.count)
     }
 
     /// Delete a thread.
@@ -389,10 +397,11 @@ class ConversationStore: ObservableObject {
             }
             Config.setConversationEncryptionEnabled(true)
             isLocked = false
-            NSLog("[ConversationStore] Encryption enabled")
+            PrivacyLog.conversation(.conversations, .encryptionEnabled)
             return true
         } catch {
-            NSLog("[ConversationStore] Failed to enable encryption: %@", error.localizedDescription)
+            PrivacyLog.conversation(.conversations, .encryptionFailed,
+                                    detail: PrivacyToken("enable"), error: SafeErrorSummary(error))
             return false
         }
     }
@@ -412,10 +421,11 @@ class ConversationStore: ObservableObject {
             await encryption.deleteKey()
             Config.setConversationEncryptionEnabled(false)
             isLocked = false
-            NSLog("[ConversationStore] Encryption disabled")
+            PrivacyLog.conversation(.conversations, .encryptionDisabled)
             return true
         } catch {
-            NSLog("[ConversationStore] Failed to disable encryption: %@", error.localizedDescription)
+            PrivacyLog.conversation(.conversations, .encryptionFailed,
+                                    detail: PrivacyToken("disable"), error: SafeErrorSummary(error))
             return false
         }
     }
@@ -433,7 +443,8 @@ class ConversationStore: ObservableObject {
             recallCoordinator?.storeDidUnlock(threads: threads)
             return true
         } catch {
-            NSLog("[ConversationStore] Unlock failed: %@", error.localizedDescription)
+            PrivacyLog.conversation(.conversations, .unlockFailed,
+                                    error: SafeErrorSummary(error))
             return false
         }
     }
@@ -445,7 +456,7 @@ class ConversationStore: ObservableObject {
         threads = []
         activeThreadId = nil
         isLocked = true
-        NSLog("[ConversationStore] Locked")
+        PrivacyLog.conversation(.conversations, .locked)
     }
 
     /// iOS can revoke access to complete-file-protected data independently of the app's optional
@@ -469,12 +480,14 @@ class ConversationStore: ObservableObject {
         // writing now would encrypt that over the user's full history. Same for the async
         // encrypted-load window, which also runs with `isLocked == true`.
         guard !isLocked else {
-            NSLog("[ConversationStore] Save skipped — store is locked")
+            PrivacyLog.conversation(.conversations, .saveSkipped,
+                                    detail: PrivacyToken("locked"))
             return false
         }
         // After a failed read of an existing file, the on-disk data may be intact — never write.
         guard !saveBlocked else {
-            NSLog("[ConversationStore] Save skipped — last load failed to read the existing file")
+            PrivacyLog.conversation(.conversations, .saveSkipped,
+                                    detail: PrivacyToken("loadFailed"))
             return false
         }
         do {
@@ -497,8 +510,9 @@ class ConversationStore: ObservableObject {
                         // The existing ciphertext on disk is untouched — `encrypt` throws before
                         // the write, and a failed unlock no longer rotates the key out from under
                         // it. This save is simply dropped; the next one retries.
-                        NSLog("[ConversationStore] Encrypted save skipped, history on disk intact: %@",
-                              error.localizedDescription)
+                        PrivacyLog.conversation(.conversations, .saveSkipped,
+                                                detail: PrivacyToken("encryptFailed"),
+                                                error: SafeErrorSummary(error))
                     }
                 }
                 return true
@@ -510,7 +524,7 @@ class ConversationStore: ObservableObject {
                 return true
             }
         } catch {
-            NSLog("[ConversationStore] Save failed: %@", error.localizedDescription)
+            PrivacyLog.conversation(.conversations, .saveFailed, error: SafeErrorSummary(error))
             return false
         }
     }
@@ -531,10 +545,11 @@ class ConversationStore: ObservableObject {
                     self?.saveBlocked = false
                     self?.isLocked = false
                     self?.recallCoordinator?.storeDidUnlock(threads: decoded)
-                    NSLog("[ConversationStore] Loaded %d encrypted threads", decoded.count)
+                    PrivacyLog.conversation(.conversations, .loaded, count: decoded.count,
+                                            detail: PrivacyToken("encrypted"))
                 } catch {
                     self?.isLocked = true
-                    NSLog("[ConversationStore] Conversations locked — awaiting authentication")
+                    PrivacyLog.conversation(.conversations, .awaitingAuthentication)
                 }
             }
             return
@@ -544,11 +559,12 @@ class ConversationStore: ObservableObject {
         case .loaded(let decoded):
             threads = decoded
             saveBlocked = false
-            NSLog("[ConversationStore] Loaded %d threads", decoded.count)
+            PrivacyLog.conversation(.conversations, .loaded, count: decoded.count,
+                                    detail: PrivacyToken("plaintext"))
         case .recovered(let decoded, _):
             threads = decoded
             saveBlocked = false
-            NSLog("[ConversationStore] Recovered %d threads (original blob backed up)", decoded.count)
+            PrivacyLog.conversation(.conversations, .recovered, count: decoded.count)
         case .corrupt:
             // Original preserved in StoreRecovery — start fresh rather than crash-loop.
             threads = []

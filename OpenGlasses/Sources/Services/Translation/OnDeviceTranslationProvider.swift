@@ -72,7 +72,8 @@ final class OnDeviceTranslationProvider: TranslationCaptionProvider {
             transcript = try await asr.transcribe(samples: samples, sampleRate: sampleRate,
                                                   expectedLocaleIdentifier: "auto")
         } catch {
-            NSLog("[Translation] on-device ASR failed: %@", error.localizedDescription)
+            PrivacyLog.speech(.liveTranslation, .recognitionFailed,
+                              detail: PrivacyToken("onDevice"), error: SafeErrorSummary(error))
             return
         }
         guard !transcript.isEmpty, running else { return }
@@ -97,7 +98,8 @@ final class OnDeviceTranslationProvider: TranslationCaptionProvider {
         } catch {
             // Fail open: the untranslated transcript is still a caption (and says so via
             // `language`), a silent drop is a lost utterance.
-            NSLog("[Translation] on-device translate failed: %@", error.localizedDescription)
+            PrivacyLog.speech(.liveTranslation, .translationUnavailable,
+                              detail: PrivacyToken("onDevice"), error: SafeErrorSummary(error))
             guard running else { return }
             onSegment?(TranslationSegment(text: transcript, isFinal: true, language: detected))
         }

@@ -38,7 +38,7 @@ class BackgroundVoiceService: NSObject, ObservableObject {
     /// The system will keep the audio session alive even when the app is backgrounded.
     func startBackgroundSession() {
         guard activeCallUUID == nil else {
-            NSLog("[BackgroundVoice] Session already active")
+            PrivacyLog.audio(.backgroundVoice, .callReported, detail: PrivacyToken("alreadyActive"))
             return
         }
 
@@ -57,13 +57,13 @@ class BackgroundVoiceService: NSObject, ObservableObject {
 
         provider?.reportNewIncomingCall(with: uuid, update: update) { error in
             if let error {
-                NSLog("[BackgroundVoice] Failed to report call: %@", error.localizedDescription)
+                PrivacyLog.audio(.backgroundVoice, .callFailed, error: SafeErrorSummary(error))
                 Task { @MainActor in
                     self.activeCallUUID = nil
                     self.isBackgroundSessionActive = false
                 }
             } else {
-                NSLog("[BackgroundVoice] Background voice session started (UUID: %@)", uuid.uuidString)
+                PrivacyLog.audio(.backgroundVoice, .callReported)
                 Task { @MainActor in
                     self.isBackgroundSessionActive = true
                 }
@@ -80,9 +80,10 @@ class BackgroundVoiceService: NSObject, ObservableObject {
 
         callController?.request(transaction) { error in
             if let error {
-                NSLog("[BackgroundVoice] Failed to end call: %@", error.localizedDescription)
+                PrivacyLog.audio(.backgroundVoice, .callFailed, detail: PrivacyToken("end"),
+                                 error: SafeErrorSummary(error))
             } else {
-                NSLog("[BackgroundVoice] Background voice session ended")
+                PrivacyLog.audio(.backgroundVoice, .callEnded)
             }
         }
 
@@ -95,7 +96,7 @@ class BackgroundVoiceService: NSObject, ObservableObject {
 
 extension BackgroundVoiceService: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
-        NSLog("[BackgroundVoice] Provider reset")
+        PrivacyLog.audio(.backgroundVoice, .providerReset)
         Task { @MainActor in
             self.activeCallUUID = nil
             self.isBackgroundSessionActive = false
@@ -104,12 +105,12 @@ extension BackgroundVoiceService: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         // Auto-answer — this is a fake call to keep audio alive
-        NSLog("[BackgroundVoice] Call answered (auto)")
+        PrivacyLog.audio(.backgroundVoice, .callAnswered)
         action.fulfill()
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        NSLog("[BackgroundVoice] Call ended")
+        PrivacyLog.audio(.backgroundVoice, .callEnded, detail: PrivacyToken("provider"))
         action.fulfill()
         Task { @MainActor in
             self.activeCallUUID = nil
@@ -122,10 +123,10 @@ extension BackgroundVoiceService: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        NSLog("[BackgroundVoice] Audio session activated by CallKit")
+        PrivacyLog.audio(.backgroundVoice, .leaseAcquired, detail: PrivacyToken("callKit"))
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        NSLog("[BackgroundVoice] Audio session deactivated by CallKit")
+        PrivacyLog.audio(.backgroundVoice, .leaseReleased, detail: PrivacyToken("callKit"))
     }
 }

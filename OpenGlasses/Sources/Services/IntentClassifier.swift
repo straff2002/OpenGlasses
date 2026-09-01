@@ -103,17 +103,22 @@ class IntentClassifier {
 
             let cleaned = result.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             if cleaned.contains("RESPOND") {
-                NSLog("[IntentClassifier] RESPOND for: %@", transcript.prefix(60).description)
+                PrivacyLog.model(.classified, characters: transcript.count,
+                                 detail: PrivacyToken(PrivacyLog.ModelClassification.respond.rawValue))
                 return .respond
             } else if cleaned.contains("IGNORE") {
-                NSLog("[IntentClassifier] IGNORE for: %@", transcript.prefix(60).description)
+                PrivacyLog.model(.classified, characters: transcript.count,
+                                 detail: PrivacyToken(PrivacyLog.ModelClassification.ignore.rawValue))
                 return .ignore
             } else {
-                NSLog("[IntentClassifier] Uncertain response: %@", cleaned)
+                // The classifier answered off-vocabulary; its answer is a rewrite of the
+                // utterance as often as not, so only the verdict is recorded.
+                PrivacyLog.model(.classified, characters: transcript.count,
+                                 detail: PrivacyToken(PrivacyLog.ModelClassification.uncertain.rawValue))
                 return .uncertain
             }
         } catch {
-            NSLog("[IntentClassifier] Error: %@", error.localizedDescription)
+            PrivacyLog.model(.classificationFailed, error: SafeErrorSummary(error))
             return .uncertain
         }
     }

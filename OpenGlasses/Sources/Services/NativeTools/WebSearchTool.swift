@@ -79,7 +79,8 @@ struct WebSearchTool: NativeTool {
             let (data, response) = try await session.data(for: request)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                print("🔍 Perplexity failed (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)), falling back to DuckDuckGo")
+                PrivacyLog.webSearch(.perplexity, succeeded: false,
+                                     status: (response as? HTTPURLResponse)?.statusCode ?? 0)
                 return nil // Fall back to DuckDuckGo
             }
 
@@ -100,7 +101,7 @@ struct WebSearchTool: NativeTool {
             return "Search result for \"\(query)\" (via Perplexity): \(result)"
 
         } catch {
-            print("🔍 Perplexity error: \(error.localizedDescription), falling back to DuckDuckGo")
+            PrivacyLog.webSearch(.perplexity, succeeded: false, error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -133,7 +134,8 @@ struct WebSearchTool: NativeTool {
             let (data, response) = try await session.data(for: request)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                print("🔍 Tavily failed (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)), falling back to DuckDuckGo")
+                PrivacyLog.webSearch(.tavily, succeeded: false,
+                                     status: (response as? HTTPURLResponse)?.statusCode ?? 0)
                 return nil // Fall back to DuckDuckGo
             }
 
@@ -161,7 +163,7 @@ struct WebSearchTool: NativeTool {
             return "Search result for \"\(query)\" (via Tavily): \(result)"
 
         } catch {
-            print("🔍 Tavily error: \(error.localizedDescription), falling back to DuckDuckGo")
+            PrivacyLog.webSearch(.tavily, succeeded: false, error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -189,7 +191,8 @@ struct WebSearchTool: NativeTool {
             let (data, response) = try await session.data(for: request)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                print("🔍 Brave failed (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)), falling back to DuckDuckGo")
+                PrivacyLog.webSearch(.brave, succeeded: false,
+                                     status: (response as? HTTPURLResponse)?.statusCode ?? 0)
                 return nil
             }
 
@@ -221,7 +224,7 @@ struct WebSearchTool: NativeTool {
             return "Search result for \"\(query)\" (via Brave): \(result)"
 
         } catch {
-            print("🔍 Brave error: \(error.localizedDescription), falling back to DuckDuckGo")
+            PrivacyLog.webSearch(.brave, succeeded: false, error: SafeErrorSummary(error))
             return nil
         }
     }

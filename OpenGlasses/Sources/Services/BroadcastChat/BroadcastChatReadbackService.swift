@@ -52,7 +52,7 @@ final class BroadcastChatReadbackService {
         pumpTimer = Timer.scheduledTimer(withTimeInterval: Self.pumpInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.pumpOnce() }
         }
-        NSLog("[ChatReadback] started for #%@", channel)
+        PrivacyLog.stream(.broadcastChat, .started, session: PrivateIdentifier(channel))
     }
 
     func stop() {
@@ -62,7 +62,7 @@ final class BroadcastChatReadbackService {
         pumpTimer = nil
         client.stop()
         policy.reset()
-        NSLog("[ChatReadback] stopped")
+        PrivacyLog.stream(.broadcastChat, .stopped)
     }
 
     // MARK: - Pump (tested)

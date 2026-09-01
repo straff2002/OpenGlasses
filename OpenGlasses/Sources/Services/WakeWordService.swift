@@ -125,14 +125,14 @@ class WakeWordService: NSObject, ObservableObject {
         let callObserver = CXCallObserver()
         let hasActiveCall = callObserver.calls.contains { $0.hasConnected && !$0.hasEnded && !$0.isOnHold }
         guard !hasActiveCall else {
-            print("🎤 Active call detected — skipping audio pause")
+            PrivacyLog.audio(.wakeWord, .pauseSkippedActiveCall)
             return
         }
         // BJ PR2: mutate the refcount synchronously *before* the first await, so nested
         // beginPause/endPause still nest cleanly across the suspension point below.
         pauseHoldCount += 1
         guard pauseHoldCount == 1 else {
-            print("🎤 Audio already paused (hold count \(pauseHoldCount))")
+            PrivacyLog.audio(.wakeWord, .otherAudioHeld, count: pauseHoldCount)
             return
         }
         // Omitting mixWithOthers/duckOthers causes iOS to interrupt (pause) other audio apps
@@ -152,8 +152,8 @@ class WakeWordService: NSObject, ObservableObject {
         }
         if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
         preferConfiguredMicIfAvailable(session)
-        let outRoute = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
-        print("🎤 Pausing other audio for active listening — output route: \(outRoute)")
+        PrivacyLog.audio(.wakeWord, .otherAudioPaused,
+                         route: PrivacyToken(session.currentRoute.outputs.first?.portType.rawValue ?? "none"))
     }
 
     /// Restore other audio (podcasts, music) after active listening ends.
@@ -164,7 +164,7 @@ class WakeWordService: NSObject, ObservableObject {
         // BJ PR2: decrement synchronously before any await (see pauseOtherAudio).
         pauseHoldCount -= 1
         guard pauseHoldCount == 0 else {
-            print("🎤 Audio still held by \(pauseHoldCount) other holder(s) — not resuming yet")
+            PrivacyLog.audio(.wakeWord, .otherAudioHeld, count: pauseHoldCount)
             return
         }
         let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
@@ -175,7 +175,7 @@ class WakeWordService: NSObject, ObservableObject {
         try? await AudioSessionCoordinator.shared.reconfigure(
             category: .playAndRecord, mode: .default, options: options,
             activeOptions: .notifyOthersOnDeactivation)
-        print("🎤 Restored audio mix — other apps can resume")
+        PrivacyLog.audio(.wakeWord, .otherAudioResumed)
     }
 
     /// Force release of any held pauses — used when listening is toggled off entirely.
@@ -200,16 +200,19 @@ class WakeWordService: NSObject, ObservableObject {
         let ports = inputs.map { (name: $0.portName, type: $0.portType) }
         guard let index = MicRoutePolicy.preferredInputIndex(for: route, ports: ports) else {
             if route == .headset {
-                print("🎤 No non-glasses Bluetooth mic found — headset route stays on the iPhone mic")
+                PrivacyLog.audio(.wakeWord, .noMatchingInput, route: PrivacyToken(route.rawValue))
             }
             return
         }
         let input = inputs[index]
         do {
             try session.setPreferredInput(input)
-            print("🎤 Preferred \(route.rawValue) mic input: \(input.portName) (\(input.portType.rawValue))")
+            PrivacyLog.audio(.wakeWord, .preferredInputSet, route: PrivacyToken(route.rawValue),
+                             device: PrivateIdentifier(input.portName),
+                             detail: PrivacyToken(input.portType.rawValue))
         } catch {
-            print("🎤 Could not set \(route.rawValue) mic as preferred input: \(error.localizedDescription)")
+            PrivacyLog.audio(.wakeWord, .preferredInputFailed, route: PrivacyToken(route.rawValue),
+                             error: SafeErrorSummary(error))
         }
     }
 
@@ -246,27 +249,25 @@ class WakeWordService: NSObject, ObservableObject {
                 category: category, mode: mode, options: options,
                 activeOptions: .notifyOthersOnDeactivation)
         } catch {
-            print("🎤 Failed to configure audio session: \(error)")
+            PrivacyLog.audio(.wakeWord, .sessionConfigureFailed, error: SafeErrorSummary(error))
             return
         }
         audioSessionConfigured = true
 
         let audioSession = AVAudioSession.sharedInstance()
         if carPlayMode {
-            print("🎤 CarPlay mode: .playAndRecord + .voiceChat (voice control active)")
+            PrivacyLog.audio(.wakeWord, .modeSelected, detail: PrivacyToken("carPlayVoiceChat"))
         } else {
             preferConfiguredMicIfAvailable(audioSession)
-            print("🎤 Mic source: \(Config.micRoute.rawValue)")
+            PrivacyLog.audio(.wakeWord, .modeSelected, route: PrivacyToken(Config.micRoute.rawValue))
         }
 
+        // Port *types* only. A port name is the wearer's own device name — "Greig's Ray-Ban
+        // Meta" — and naming both ends of the route would say who they are and what they own.
         let route = audioSession.currentRoute
-        for input in route.inputs {
-            print("🎤 Audio input: \(input.portName) (\(input.portType.rawValue))")
-        }
-        for output in route.outputs {
-            print("🔊 Audio output: \(output.portName) (\(output.portType.rawValue))")
-        }
-        print("🎤 Audio session configured: .playAndRecord with Bluetooth")
+        PrivacyLog.audio(.wakeWord, .sessionConfigured,
+                         route: PrivacyToken(route.inputs.first?.portType.rawValue ?? "none"),
+                         detail: PrivacyToken(route.outputs.first?.portType.rawValue ?? "none"))
 
         // Handle audio interruptions + route changes. Tokens are owned and removed before any
         // re-registration (Plan BE) — the old code discarded them, leaking a fresh pair on
@@ -303,7 +304,7 @@ class WakeWordService: NSObject, ObservableObject {
 
         switch type {
         case .began:
-            print("🎤 Audio interrupted (phone call, Siri, etc.)")
+            PrivacyLog.audio(.wakeWord, .interruptionBegan)
             stopListening()
         case .ended:
             // Don't fight a live session (Plan BE). If a Gemini/OpenAI realtime session now owns the
@@ -312,14 +313,16 @@ class WakeWordService: NSObject, ObservableObject {
             // second engine contending for the mic. Only reclaim when wake word is the owner.
             let owner = AudioSessionCoordinator.shared.currentOwner
             guard owner == nil || owner == .wakeWord else {
-                print("🎤 Audio interruption ended — NOT restarting; session owned by \(owner!.rawValue)")
+                PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
+                                 owner: PrivacyToken(owner?.rawValue ?? "unknown"))
                 return
             }
             // Only restart if Bluetooth (glasses) route is available
             let route = AVAudioSession.sharedInstance().currentRoute
             let hasBluetooth = route.inputs.contains { $0.portType == .bluetoothHFP }
             if hasBluetooth {
-                print("🎤 Audio interruption ended — restarting listener (Bluetooth active)")
+                PrivacyLog.audio(.wakeWord, .interruptionEnded,
+                                 detail: PrivacyToken("bluetoothActive"))
                 // BJ PR2: reactivate off-main through the coordinator (was a main-thread setActive),
                 // then restart — one Task so the reactivate precedes the listener start.
                 Task {
@@ -327,7 +330,8 @@ class WakeWordService: NSObject, ObservableObject {
                     try? await startListening()
                 }
             } else {
-                print("🎤 Audio interruption ended — NOT restarting (no Bluetooth)")
+                PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
+                                 detail: PrivacyToken("noBluetooth"))
             }
         @unknown default:
             break
@@ -340,15 +344,16 @@ class WakeWordService: NSObject, ObservableObject {
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
         let route = AVAudioSession.sharedInstance().currentRoute
-        let inputName = route.inputs.first?.portName ?? "none"
-        let outputName = route.outputs.first?.portName ?? "none"
-        print("🎤 Audio route changed: reason=\(reason.rawValue) input=\(inputName) output=\(outputName)")
+        PrivacyLog.audio(.wakeWord, .routeChanged,
+                         route: PrivacyToken(route.inputs.first?.portType.rawValue ?? "none"),
+                         detail: PrivacyToken(String(describing: reason)))
 
         switch reason {
         case .oldDeviceUnavailable:
             // Bluetooth device disconnected — kill the engine so it's recreated fresh
             let lostBluetooth = !route.inputs.contains { $0.portType == .bluetoothHFP }
-            print("🎤 Bluetooth device disconnected — stopping audio engine (BT lost: \(lostBluetooth))")
+            PrivacyLog.audio(.wakeWord, .deviceDisconnected,
+                             detail: PrivacyToken(lostBluetooth ? "bluetoothLost" : "bluetoothRetained"))
             cleanupAudioEngine()
             isListening = false
             if lostBluetooth {
@@ -359,7 +364,7 @@ class WakeWordService: NSObject, ObservableObject {
             let newRoute = AVAudioSession.sharedInstance().currentRoute
             let isBluetooth = newRoute.inputs.contains { $0.portType == .bluetoothHFP }
             if isBluetooth {
-                print("🎤 Bluetooth device reconnected — restarting with fresh engine")
+                PrivacyLog.audio(.wakeWord, .deviceReconnected)
                 cleanupAudioEngine()
                 isListening = false
                 onBluetoothReconnected?()
@@ -370,14 +375,15 @@ class WakeWordService: NSObject, ObservableObject {
                     try? await startListening()
                 }
             } else {
-                print("🎤 New audio device (non-Bluetooth) — NOT restarting mic for privacy")
+                PrivacyLog.audio(.wakeWord, .deviceIgnored)
             }
         case .override, .categoryChange:
             // Check if format is still valid — if not, rebuild engine
             if let engine = audioEngine {
                 let format = engine.inputNode.outputFormat(forBus: 0)
                 if format.sampleRate == 0 || format.channelCount == 0 {
-                    print("🎤 Audio format invalid after route change — rebuilding engine")
+                    PrivacyLog.audio(.wakeWord, .formatInvalid,
+                                     detail: PrivacyToken("routeChange"))
                     cleanupAudioEngine()
                     isListening = false
                 }
@@ -395,7 +401,7 @@ class WakeWordService: NSObject, ObservableObject {
         // mic is never held for constant listening. On-demand triggers (Action Button →
         // startDirectTranscription) bypass this and still work.
         if Config.silentMode {
-            print("🎤 Push-to-Talk mode — skipping always-on wake-word listener")
+            PrivacyLog.wakeWord(.listenerSkippedPushToTalk)
             return
         }
         stopFired = false
@@ -424,11 +430,12 @@ class WakeWordService: NSObject, ObservableObject {
             do {
                 try startRecognition()
                 isListening = true
-                print("🎤 Wake word listening (attempt \(attempt))")
+                PrivacyLog.wakeWord(.listenerStarted, attempt: attempt)
                 return
             } catch {
                 lastError = error
-                print("🎤 WakeWord: attempt \(attempt) failed: \(error.localizedDescription)")
+                PrivacyLog.wakeWord(.listenAttemptFailed, attempt: attempt,
+                                    error: SafeErrorSummary(error))
                 cleanupAudioEngine()
                 // CoreAudio '!pla' (2003329396): the AVAudioSession lost activation — usually a
                 // Bluetooth route flap mid-start (device-traced: Action-button intent in the
@@ -463,11 +470,11 @@ class WakeWordService: NSObject, ObservableObject {
             // The deactivation itself runs off-main on the coordinator's sessionIOQueue (BJ PR1).
             sessionLease = nil
             AudioSessionCoordinator.shared.release(lease)
-            print("🎤 Audio session released (CarPlay voice ended)")
+            PrivacyLog.audio(.wakeWord, .sessionReleased)
         } else {
             // BJ PR2: rare no-lease fallback — deactivate off-main via the coordinator too.
             await AudioSessionCoordinator.shared.deactivateOffMain()
-            print("🎤 Audio session deactivated (CarPlay voice ended)")
+            PrivacyLog.audio(.wakeWord, .sessionDeactivated)
         }
     }
 
@@ -485,7 +492,7 @@ class WakeWordService: NSObject, ObservableObject {
     func ensureAudioEngineRunning() async throws {
         if let engine = audioEngine, engine.isRunning { return }
         // Engine is nil or stopped — restart it (without starting recognition)
-        print("🎤 Audio engine not running — restarting for shared use")
+        PrivacyLog.audio(.wakeWord, .engineRestarted, detail: PrivacyToken("sharedUse"))
         try await startListening()
         // Pause recognition so only the buffer forwarder is active. Mark the cancel as
         // intentional so its error callback doesn't auto-restart a competing recognizer
@@ -581,24 +588,26 @@ class WakeWordService: NSObject, ObservableObject {
         let canDoOnDevice = speechRecognizer?.supportsOnDeviceRecognition ?? false
         recognitionRequest.requiresOnDeviceRecognition = wantsOnDevice && canDoOnDevice
         if wantsOnDevice && !canDoOnDevice {
-            print("🎤 On-device wake recognition unsupported for this locale — using server recognition")
+            PrivacyLog.wakeWord(.onDeviceUnavailable)
         }
         recognitionRequest.taskHint = .search  // Short phrase detection
         // Boost recognition of all persona wake phrases
         let personaPhrases = Config.allActiveWakePhrases
         let contextPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
         recognitionRequest.contextualStrings = contextPhrases
-        let personaNames = Config.enabledPersonas.map(\.name)
-        print("🎤 Personas: \(personaNames), contextualStrings: \(contextPhrases)")
+        // The contextual-boost list *is* the wake phrases, and the persona names beside them are
+        // what the wearer called their assistants — often a real name. Only how many there are.
+        PrivacyLog.wakeWord(.contextConfigured, count: contextPhrases.count)
 
         // Reuse existing engine if it's already running AND has a valid format
         if let engine = audioEngine, engine.isRunning {
             let format = engine.inputNode.outputFormat(forBus: 0)
             if format.sampleRate > 0 && format.channelCount > 0 {
-                print("🎤 Reusing existing audio engine")
+                PrivacyLog.audio(.wakeWord, .engineReused)
             } else {
                 // Engine is running but format is invalid (Bluetooth route lost)
-                print("🎤 Running engine has invalid format (\(format.sampleRate)Hz, \(format.channelCount)ch) — rebuilding")
+                PrivacyLog.audio(.wakeWord, .formatInvalid, detail: PrivacyToken("running"),
+                                 hertz: Int(format.sampleRate), channels: Int(format.channelCount))
                 engine.stop()
                 engine.inputNode.removeTap(onBus: 0)
                 audioEngine = nil
@@ -631,11 +640,14 @@ class WakeWordService: NSObject, ObservableObject {
         // Validate format before installing tap — prevents crash on invalid Bluetooth route
         guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
             audioEngine = nil
-            print("🎤 Audio format invalid (\(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch) — cannot start engine")
+            PrivacyLog.audio(.wakeWord, .formatInvalid, detail: PrivacyToken("engineStart"),
+                             hertz: Int(recordingFormat.sampleRate),
+                             channels: Int(recordingFormat.channelCount))
             throw WakeWordError.configurationError("Audio input format invalid — is Bluetooth connected?")
         }
 
-        print("🎤 New audio engine: \(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch")
+        PrivacyLog.audio(.wakeWord, .engineStarted, hertz: Int(recordingFormat.sampleRate),
+                         channels: Int(recordingFormat.channelCount))
 
         // The tap runs on the Core Audio render thread. It must NOT touch any @MainActor state —
         // it reads everything it needs from the lock-guarded `tapState` box (Plan BE).
@@ -679,13 +691,13 @@ class WakeWordService: NSObject, ObservableObject {
                 guard let self else { return }
                 self.silenceReported = true
                 self.pausedForSilence = true
-                NSLog("[WakeWord] Sustained silence detected (%d buffers) — glasses likely in case", count)
+                PrivacyLog.wakeWord(.sustainedSilence, count: count)
                 self.onSilenceDetected?()
             }
         case .resumed:
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                NSLog("[WakeWord] Audio resumed after silence — glasses active again")
+                PrivacyLog.wakeWord(.audioResumed)
                 self.silenceReported = false
                 self.pausedForSilence = false
                 self.onAudioResumed?()
@@ -709,7 +721,7 @@ class WakeWordService: NSObject, ObservableObject {
                 restartRecognition()
                 return
             }
-            print("🎤 Recognition error: \(error.localizedDescription)")
+            PrivacyLog.wakeWord(.recognitionFailed, error: SafeErrorSummary(error))
             restartRecognition()
             return
         }
@@ -722,7 +734,7 @@ class WakeWordService: NSObject, ObservableObject {
         if listenForStop && !stopFired {
             // Explicit stop command
             if containsStopPhrase(transcript) {
-                print("🛑 Stop command detected in: '\(transcript)'")
+                PrivacyLog.wakeWord(.stopCommand)
                 stopFired = true
                 pauseRecognition()
                 onStopCommand?()
@@ -731,7 +743,7 @@ class WakeWordService: NSObject, ObservableObject {
 
             // Wake word during TTS — interrupt and start new conversation
             if let matched = matchedWakePhrase(transcript) {
-                print("⚡ Barge-in (wake word): '\(matched)' during TTS")
+                PrivacyLog.wakeWord(.bargeIn, trigger: .wakePhrase)
                 stopFired = true
                 wakeWordFired = true
                 pauseRecognition()
@@ -747,7 +759,7 @@ class WakeWordService: NSObject, ObservableObject {
             let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             let wordCount = trimmed.split(separator: " ").count
             if wordCount >= 2 {
-                print("⚡ Barge-in (voice activity): '\(trimmed)' during TTS")
+                PrivacyLog.wakeWord(.bargeIn, trigger: .voiceActivity, count: wordCount)
                 stopFired = true
                 pauseRecognition()
                 onBargeIn?(trimmed)
@@ -759,7 +771,7 @@ class WakeWordService: NSObject, ObservableObject {
         if let matched = matchedWakePhrase(transcript) {
             if !wakeWordFired {
                 // Normal wake word detection (not during TTS)
-                print("🎤 Wake word detected: '\(matched)' in: '\(transcript)'")
+                PrivacyLog.wakeWord(.detected)
                 wakeWordFired = true
                 handleWakeWordDetected(matchedPhrase: matched)
             }
@@ -814,7 +826,7 @@ class WakeWordService: NSObject, ObservableObject {
                 // Allow up to 2 character edits for short phrases, 3 for longer ones
                 let threshold = phrase.count <= 10 ? 2 : 3
                 if distance <= threshold && distance > 0 {
-                    print("🎤 Fuzzy wake word match: '\(window)' ≈ '\(phrase)' (distance: \(distance))")
+                    PrivacyLog.wakeWord(.fuzzyDetected, distance: distance)
                     return primary
                 }
             }
@@ -877,16 +889,14 @@ class WakeWordService: NSObject, ObservableObject {
         if let engine = audioEngine {
             let format = engine.inputNode.outputFormat(forBus: 0)
             if format.sampleRate == 0 || format.channelCount == 0 {
-                print("🎤 Engine format invalid — cleaning up for fresh start")
+                PrivacyLog.audio(.wakeWord, .formatInvalid, detail: PrivacyToken("preflight"))
                 cleanupAudioEngine()
             }
         }
 
-        if hasBluetooth {
-            print("🎤 Bluetooth route active — reconfiguring audio session")
-        } else {
-            print("🎤 No Bluetooth route — reconfiguring audio session for built-in mic")
-        }
+        PrivacyLog.audio(.wakeWord, .routeChanged,
+                         route: PrivacyToken(hasBluetooth ? "bluetooth" : "builtIn"),
+                         detail: PrivacyToken("reconfigure"))
 
         // Force reconfigure to pick up new route
         audioSessionConfigured = false

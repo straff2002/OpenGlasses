@@ -199,7 +199,10 @@ func runToolLoop(
             if let reason = outcome.yieldReason {
                 adapter.appendToolResults(outcomes)
                 setStatus(.yielded(call.name))
-                NSLog("[LLMService] Yielding to human: %@", reason)
+                // The yield reason is written by the tool for the wearer to read — it names
+                // whatever the model was about to do on their behalf.
+                PrivacyLog.model(.yieldedToHuman, characters: reason.count,
+                                 detail: PrivacyToken(call.name))
                 return reason
             }
         }

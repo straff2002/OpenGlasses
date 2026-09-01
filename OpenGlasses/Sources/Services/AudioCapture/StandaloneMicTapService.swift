@@ -73,7 +73,7 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
             sessionLease = try await AudioSessionCoordinator.shared.acquireOffMain(
                 .captureAudio, category: .playAndRecord, mode: .default, options: options)
         } catch {
-            NSLog("[CaptureAudio] Session acquire failed: %@", error.localizedDescription)
+            PrivacyLog.audio(.captureTap, .sessionAcquireFailed, error: SafeErrorSummary(error))
             throw error
         }
         preferConfiguredMicIfAvailable(AVAudioSession.sharedInstance())
@@ -85,7 +85,7 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
             throw error
         }
         isRunning = true
-        NSLog("[CaptureAudio] Standalone mic tap started")
+        PrivacyLog.audio(.captureTap, .captureStarted)
     }
 
     func stop() {
@@ -97,7 +97,7 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
         engine = nil
         isRunning = false
         releaseSession()
-        NSLog("[CaptureAudio] Standalone mic tap stopped")
+        PrivacyLog.audio(.captureTap, .engineStopped)
     }
 
     // MARK: - Consumers
@@ -122,8 +122,8 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
         // Validate before installing — a stale/absent Bluetooth route reports a zero format and
         // installing a tap with it crashes rather than failing.
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            NSLog("[CaptureAudio] Input format invalid (%.0fHz, %uch) — cannot start",
-                  format.sampleRate, format.channelCount)
+            PrivacyLog.audio(.captureTap, .formatInvalid, hertz: Int(format.sampleRate),
+                             channels: Int(format.channelCount))
             throw StandaloneMicTapError.invalidInputFormat(
                 sampleRate: format.sampleRate, channels: format.channelCount)
         }
@@ -147,7 +147,8 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
             throw StandaloneMicTapError.engineDidNotStart
         }
         self.engine = engine
-        NSLog("[CaptureAudio] Engine running: %.0fHz, %uch", format.sampleRate, format.channelCount)
+        PrivacyLog.audio(.captureTap, .engineStarted, hertz: Int(format.sampleRate),
+                         channels: Int(format.channelCount))
     }
 
     /// Release our session claim. The coordinator deactivates only if we are still the current
@@ -169,7 +170,8 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
         do {
             try session.setPreferredInput(inputs[index])
         } catch {
-            NSLog("[CaptureAudio] Could not prefer %@ mic: %@", route.rawValue, error.localizedDescription)
+            PrivacyLog.audio(.captureTap, .preferredInputFailed,
+                             route: PrivacyToken(route.rawValue), error: SafeErrorSummary(error))
         }
     }
 }
