@@ -98,8 +98,10 @@ final class ExpertStreamBridge: ExpertBridge {
         }
         roomURL = try await transport.start(framePublisher: framePublisher)
         active = transport
-        NSLog("[ExpertBridge] Streaming via %@ for session %@ (expert %@): %@",
-              transport.displayName, sessionId, expertId ?? "-", roomURL ?? "-")
+        // The room URL is a capability to the live camera feed and the expert id names a person;
+        // the transport kind and a session fingerprint are what a bridge fault is traced with.
+        PrivacyLog.stream(.expertBridge, .started, detail: PrivacyToken(kind.rawValue),
+                          session: PrivateIdentifier(sessionId))
     }
 
     func disconnect() async {

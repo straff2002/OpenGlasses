@@ -123,7 +123,10 @@ enum KeychainService {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess else {
             if status != errSecItemNotFound {
-                NSLog("[Keychain] read failed for %@: %d", key, Int(status))
+                // The account name is omitted, not hashed: it comes from a small fixed dictionary
+                // of provider names, so a fingerprint would not anonymise it, and naming it would
+                // say which credentials this wearer holds.
+                PrivacyLog.keychainFailed(.read, status: Int(status))
             }
             return nil
         }
@@ -148,7 +151,7 @@ enum KeychainService {
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         if status != errSecSuccess {
-            NSLog("[Keychain] write failed for %@: %d", key, Int(status))
+            PrivacyLog.keychainFailed(.write, status: Int(status))
         }
         return status == errSecSuccess
     }

@@ -78,7 +78,9 @@ class WebRTCStreamingService: ObservableObject {
         // Start heartbeat to maintain connection and track viewers
         startHeartbeat()
 
-        print("📡 WebRTC streaming started: \(viewerURL)")
+        // The viewer URL embeds the room code — a bearer capability to the wearer's live
+        // camera. It is handed to the user, never to a log.
+        PrivacyLog.stream(.viewerBroadcast, .started)
         return viewerURL
     }
 
@@ -108,7 +110,7 @@ class WebRTCStreamingService: ObservableObject {
         streamURL = ""
         roomId = ""
 
-        print("📡 WebRTC streaming stopped")
+        PrivacyLog.stream(.viewerBroadcast, .stopped)
     }
 
     // MARK: - WebSocket Connection
@@ -145,7 +147,7 @@ class WebRTCStreamingService: ObservableObject {
                     self?.handleMessage(message)
                     self?.receiveMessages() // Continue listening
                 case .failure(let error):
-                    print("📡 WebSocket receive error: \(error)")
+                    PrivacyLog.stream(.viewerBroadcast, .receiveFailed, error: SafeErrorSummary(error))
                     if self?.isStreaming == true {
                         // Attempt reconnect
                         self?.reconnect()
@@ -167,10 +169,10 @@ class WebRTCStreamingService: ObservableObject {
                 viewerCount = json["count"] as? Int ?? 0
             case "viewer_joined":
                 viewerCount += 1
-                print("📡 Viewer joined (total: \(viewerCount))")
+                PrivacyLog.stream(.viewerBroadcast, .viewerJoined, count: viewerCount)
             case "viewer_left":
                 viewerCount = max(0, viewerCount - 1)
-                print("📡 Viewer left (total: \(viewerCount))")
+                PrivacyLog.stream(.viewerBroadcast, .viewerLeft, count: viewerCount)
             case "error":
                 errorMessage = json["message"] as? String ?? "Unknown error"
             default:
@@ -239,7 +241,7 @@ class WebRTCStreamingService: ObservableObject {
             }
             ws.send(message) { [weak self] error in
                 self?.sendGate.withLock { $0 = false }
-                if let error = error { print("📡 Frame send error: \(error)") }
+                if let error { PrivacyLog.stream(.viewerBroadcast, .sendFailed, error: SafeErrorSummary(error)) }
             }
         }
     }
@@ -263,7 +265,7 @@ class WebRTCStreamingService: ObservableObject {
               let str = String(data: data, encoding: .utf8) else { return }
         webSocket?.send(.string(str)) { error in
             if let error = error {
-                print("📡 WebSocket send error: \(error)")
+                PrivacyLog.stream(.viewerBroadcast, .sendFailed, error: SafeErrorSummary(error))
             }
         }
     }

@@ -6,13 +6,11 @@
     46  OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift
     35  OpenGlasses/Sources/Services/LLMService.swift
     26  OpenGlasses/Sources/Services/TextToSpeechService.swift
-    25  OpenGlasses/Sources/Services/OpenClawBridge.swift
     25  OpenGlasses/Sources/Services/Audio/RealtimeAudioEngine.swift
     24  OpenGlasses/Sources/Services/GeminiLive/GeminiLiveSessionManager.swift
     19  OpenGlasses/Sources/Services/LocalLLMService.swift
     19  OpenGlasses/Sources/Services/ConversationStore.swift
     17  OpenGlasses/Sources/Services/SemanticMemoryStore.swift
-    17  OpenGlasses/Sources/Services/OpenClawEventClient.swift
     17  OpenGlasses/Sources/Services/NativeTools/NativeToolRouter.swift
     17  OpenGlasses/Sources/Services/BroadcastService.swift
     15  OpenGlasses/Sources/Services/VideoRecordingService.swift
@@ -28,7 +26,6 @@
      8  OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift
      8  OpenGlasses/Sources/Services/LiveActivityManager.swift
      8  OpenGlasses/Sources/Services/Audio/AudioSessionCoordinator.swift
-     7  OpenGlasses/Sources/Services/WebRTCStreamingService.swift
      7  OpenGlasses/Sources/Services/StoreKitService.swift
      7  OpenGlasses/Sources/Services/Persistence/JSONStore.swift
      7  OpenGlasses/Sources/Services/HIPAAComplianceService.swift
@@ -36,8 +33,6 @@
      7  OpenGlasses/Sources/Services/Accessibility/SceneNarrationService.swift
      6  OpenGlasses/Sources/Services/ProactiveAlertService.swift
      6  OpenGlasses/Sources/Services/NativeTools/WebSearchTool.swift
-     6  OpenGlasses/Sources/Services/MCPServer/MCPGlassesServer.swift
-     6  OpenGlasses/Sources/Services/MCPClient.swift
      6  OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift
      6  OpenGlasses/Sources/Services/ClawHubService.swift
      6  OpenGlasses/Sources/Services/AudioCapture/StandaloneMicTapService.swift
@@ -55,14 +50,11 @@
      4  OpenGlasses/Sources/Services/GlassesConnectionService.swift
      4  OpenGlasses/Sources/Services/AudioRecordingService.swift
      4  OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift
-     3  OpenGlasses/Sources/Utils/Config.swift
      3  OpenGlasses/Sources/Services/Triggers/MediaTriggerService.swift
      3  OpenGlasses/Sources/Services/Study/StudyStore.swift
      3  OpenGlasses/Sources/Services/SkillPacks/SkillPackStore.swift
      3  OpenGlasses/Sources/Services/PhoneVideoSource.swift
      3  OpenGlasses/Sources/Services/MemoryRewindService.swift
-     3  OpenGlasses/Sources/Services/FieldAssist/WebRTCPeerTransport.swift
-     3  OpenGlasses/Sources/Services/Display/WebHUD/WebHUDMirrorServer.swift
      3  OpenGlasses/Sources/Services/ConversationEncryptionService.swift
      3  OpenGlasses/Sources/Services/AudioCapture/CaptureAudioRouter.swift
      2  OpenGlasses/Sources/Services/WearablesBootstrap.swift
@@ -78,10 +70,8 @@
      2  OpenGlasses/Sources/Services/NativeTools/OperationJournal.swift
      2  OpenGlasses/Sources/Services/NativeTools/GeofenceTool.swift
      2  OpenGlasses/Sources/Services/NativeTools/CapturePhotoTool.swift
-     2  OpenGlasses/Sources/Services/ModelFetcher.swift
      2  OpenGlasses/Sources/Services/MedicalExportService.swift
      2  OpenGlasses/Sources/Services/LiveCoachService.swift
-     2  OpenGlasses/Sources/Services/KeychainService.swift
      2  OpenGlasses/Sources/Services/GeminiLive/GeminiLiveService.swift
      2  OpenGlasses/Sources/Services/GeminiLive/GeminiLiveModelCatalog.swift
      2  OpenGlasses/Sources/Services/CameraService.swift
@@ -109,15 +99,11 @@
      1  OpenGlasses/Sources/Services/NativeTools/FitnessCoachingTool.swift
      1  OpenGlasses/Sources/Services/Memory/ConversationRecallCoordinator.swift
      1  OpenGlasses/Sources/Services/Memory/ConversationIndex.swift
-     1  OpenGlasses/Sources/Services/MCP/MCPTransport.swift
      1  OpenGlasses/Sources/Services/Live/TurnAdmissionPolicy.swift
      1  OpenGlasses/Sources/Services/LLM/ToolLoopDriver.swift
      1  OpenGlasses/Sources/Services/HealthSafety/HealthSafetyAdvisor.swift
      1  OpenGlasses/Sources/Services/GlassesDisplayService.swift
      1  OpenGlasses/Sources/Services/GeminiLive/FrameThrottler.swift
-     1  OpenGlasses/Sources/Services/FieldAssist/ExpertStreamTransport.swift
-     1  OpenGlasses/Sources/Services/FieldAssist/ExpertBridge.swift
-     1  OpenGlasses/Sources/Services/FieldAssist/EscalationCoordinator.swift
      1  OpenGlasses/Sources/Services/Diarization/DeepgramSTTService.swift
      1  OpenGlasses/Sources/Services/Device/MetaTelemetryBlock.swift
      1  OpenGlasses/Sources/Services/Brain/BrainStore.swift
@@ -129,4 +115,4 @@
      1  OpenGlasses/Sources/App/Views/BottomControlBar.swift
      1  OpenGlasses/Sources/App/Views/AgenticFeaturesView.swift
 
-# TOTAL 872 sites across 127 files
+# TOTAL 794 sites across 113 files

@@ -13,10 +13,10 @@ import Foundation
 /// - truncating a prefix bounds volume, not sensitivity.
 ///
 /// The production logging API is `PrivacyLog`, whose types make content structurally impossible
-/// rather than filtered. New logging goes there. The remaining callers here are the OpenClaw
-/// gateway connect path (`OpenClawBridge`, `OpenClawEventClient`), which still log URLs and
-/// handshake bodies and are queued for migration with the rest of the authentication/networking
-/// tier; `Scripts/check-privacy-logging.sh` counts them.
+/// rather than filtered. New logging goes there. **Nothing in production Sources calls this
+/// today**: the four gateway connect-path callers (`OpenClawBridge`, `OpenClawEventClient`) that
+/// pushed URLs and handshake bodies through it were migrated to typed gateway events, which is
+/// the outcome this file's warning was pointing at. It stays for the P3 diagnostics export.
 enum LogRedaction {
     static let mask = "***"
 

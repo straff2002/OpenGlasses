@@ -45,7 +45,7 @@ final class MCPClient: ObservableObject {
             tools.append(contentsOf: serverTools)
         }
         discoveredTools = tools
-        print("🔌 MCP: discovered \(tools.count) tools from \(servers.filter(\.enabled).count) servers")
+        PrivacyLog.mcpDiscovery(tools: tools.count, servers: servers.filter(\.enabled).count)
     }
 
     /// Discover tools from a single MCP server.
@@ -61,7 +61,7 @@ final class MCPClient: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let result = json["result"] as? [String: Any],
               let toolsArray = result["tools"] as? [[String: Any]] else {
-            print("⚠️ MCP: failed to discover tools from \(server.label)")
+            PrivacyLog.mcpFailed(.discovery, server: PrivateIdentifier(server.id))
             return []
         }
 
@@ -80,10 +80,12 @@ final class MCPClient: ObservableObject {
             // Discovery-time tool-poisoning scan (Plan R): attacker-authored definitions are
             // screened before they can ever be offered to the model.
             tool.trust = ToolDefinitionScanner.scan(tool, nativeNames: nativeNames)
-            if case .blocked(let reason) = tool.trust {
-                print("🛡️ MCP: blocked tool '\(name)' from \(server.label): \(reason)")
-            } else if case .quarantined(let reason) = tool.trust {
-                print("🛡️ MCP: quarantined tool '\(name)' from \(server.label): \(reason)")
+            // The scanner's reason quotes the attacker-authored definition it objected to, so the
+            // verdict is logged and the reason stays in the trust UI.
+            if case .blocked = tool.trust {
+                PrivacyLog.mcpToolScreened(.blocked, tool: name, server: PrivateIdentifier(server.id))
+            } else if case .quarantined = tool.trust {
+                PrivacyLog.mcpToolScreened(.quarantined, tool: name, server: PrivateIdentifier(server.id))
             }
             return tool
         }
@@ -105,10 +107,11 @@ final class MCPClient: ObservableObject {
     /// Record an outbound egress-screen decision for the trust UI / audit. Caps the log.
     func recordEgress(serverLabel: String, toolName: String, verdict: EgressVerdict) {
         let action: EgressDecision.Action
+        let logged: PrivacyLog.MCPEgressAction
         switch verdict {
-        case .block:  action = .blocked
-        case .redact: action = .redacted
-        case .allow:  action = .allowed
+        case .block:  action = .blocked;  logged = .blocked
+        case .redact: action = .redacted; logged = .redacted
+        case .allow:  action = .allowed;  logged = .allowed
         }
         recentEgressDecisions.insert(
             EgressDecision(serverLabel: serverLabel, toolName: toolName, action: action, hits: verdict.hits),
@@ -116,7 +119,10 @@ final class MCPClient: ObservableObject {
         if recentEgressDecisions.count > 20 {
             recentEgressDecisions.removeLast(recentEgressDecisions.count - 20)
         }
-        print("🛡️ MCP egress \(action.rawValue) for \(toolName)@\(serverLabel): \(verdict.hits.joined(separator: ","))")
+        // The pattern names that fired describe the content that was about to leave the device,
+        // so the count goes to the log; the names themselves stay in the on-device trust UI.
+        PrivacyLog.mcpEgress(logged, tool: toolName, server: PrivateIdentifier(serverLabel),
+                             hits: verdict.hits.count)
     }
 
     /// Perform the actual `tools/call` network request. Egress screening is applied by the
@@ -221,7 +227,8 @@ final class MCPClient: ObservableObject {
         do {
             return try await transport.request(payload, server: server)
         } catch {
-            print("⚠️ MCP transport error from \(server.label) (\(server.transport.rawValue)): \(error.localizedDescription)")
+            PrivacyLog.mcpFailed(.transport, server: PrivateIdentifier(server.id),
+                                 SafeErrorSummary(error))
             throw error
         }
     }

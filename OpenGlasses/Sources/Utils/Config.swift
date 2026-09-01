@@ -101,9 +101,9 @@ struct Config {
 
         if allMigrated {
             defaults.set(true, forKey: secretsMigratedKey)
-            NSLog("[Config] Migrated provider secrets from UserDefaults to Keychain")
+            PrivacyLog.configMigration(.providerSecrets, .completed)
         } else {
-            NSLog("[Config] Secret migration incomplete — will retry on next launch")
+            PrivacyLog.configMigration(.providerSecrets, .deferred)
         }
     }
 
@@ -1848,7 +1848,7 @@ struct Config {
                 )
                 // Persist the migration so it only happens once
                 setSavedGateways([legacy])
-                NSLog("[Config] Migrated legacy OpenClaw config to gateway system")
+                PrivacyLog.configMigration(.gatewayConfig, .completed)
                 return [legacy]
             }
             return []

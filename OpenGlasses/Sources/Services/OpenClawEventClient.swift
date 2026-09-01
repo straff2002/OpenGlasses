@@ -28,7 +28,7 @@ class OpenClawEventClient {
         // an autonomous background action on untrusted content — gate the whole loop on Agent Mode,
         // not just the outbound `delegateTask` leg it can reach.
         guard Config.isOpenClawAgentActive else {
-            NSLog("[OpenClawWS] Not an active agentic gateway (configured + Agent Mode), skipping")
+            PrivacyLog.gatewayConnection(.inactive)
             return
         }
         shouldReconnect = true
@@ -46,7 +46,7 @@ class OpenClawEventClient {
         session?.invalidateAndCancel()
         session = nil
         onPairingStatusChange?(.disconnected)
-        NSLog("[OpenClawWS] Disconnected")
+        PrivacyLog.gatewayConnection(.disconnected)
     }
 
     /// Begin device pairing with a setup code: store it on the active gateway and reconnect, so
@@ -67,7 +67,7 @@ class OpenClawEventClient {
     private func establishConnection() {
         // Use the new multi-gateway config; fall back to legacy if needed
         guard let gateway = Self.activeGateway() else {
-            NSLog("[OpenClawWS] No configured gateway found, skipping")
+            PrivacyLog.gatewayConnection(.notConfigured)
             return
         }
         currentGateway = gateway
@@ -75,7 +75,7 @@ class OpenClawEventClient {
 
         let wsURL = Self.webSocketURL(for: gateway)
         guard let url = URL(string: wsURL) else {
-            NSLog("[OpenClawWS] Invalid URL: %@", wsURL)
+            PrivacyLog.gatewayConnection(.endpointMalformed, peer: PrivateIdentifier(gateway.id))
             return
         }
 
@@ -88,7 +88,8 @@ class OpenClawEventClient {
         webSocketTask = session?.webSocketTask(with: request)
         webSocketTask?.resume()
 
-        NSLog("[OpenClawWS] Connecting to %@ (gateway: %@)", LogRedaction.redact(url.absoluteString), gateway.name)
+        PrivacyLog.gatewayConnection(.connecting, transport: Self.transport(for: gateway),
+                                     peer: PrivateIdentifier(gateway.id))
         startReceiving()
     }
 
@@ -132,6 +133,15 @@ class OpenClawEventClient {
         }
     }
 
+    /// Which leg `webSocketURL(for:)` will pick — mirrors its branch, for logging only.
+    private static func transport(for gateway: GatewayConfig) -> PrivacyLog.GatewayTransport {
+        switch gateway.connectionModeEnum {
+        case .tunnel: return .tunnel
+        case .lan: return .lan
+        case .auto: return gateway.tunnelHost.isEmpty ? .lan : .tunnel
+        }
+    }
+
     // The gateway token is presented in the `connect` handshake (see `sendConnectHandshake`),
     // never in the URL — keeping it out of the query string prevents it leaking into device,
     // proxy, and server access logs.
@@ -167,7 +177,7 @@ class OpenClawEventClient {
                 }
                 self.startReceiving()
             case .failure(let error):
-                NSLog("[OpenClawWS] Receive error: %@", error.localizedDescription)
+                PrivacyLog.gatewayFailed(.receive, SafeErrorSummary(error))
                 self.isConnected = false
                 self.scheduleReconnect()
             }
@@ -182,7 +192,7 @@ class OpenClawEventClient {
         if type == "event" {
             handleEvent(json)
         } else if type == "res" {
-            handleConnectResponse(json, rawText: text)
+            handleConnectResponse(json)
         } else if type == "req" {
             handleRequestFrame(json)
         }
@@ -208,7 +218,7 @@ class OpenClawEventClient {
               let string = String(data: data, encoding: .utf8) else { return }
         webSocketTask?.send(.string(string)) { error in
             if let error {
-                NSLog("[OpenClawWS] Reply send error: %@", error.localizedDescription)
+                PrivacyLog.gatewayFailed(.send, SafeErrorSummary(error))
             }
         }
     }
@@ -229,30 +239,32 @@ class OpenClawEventClient {
             "event": "device.event",
             "payload": body,
         ])
-        NSLog("[OpenClawWS] Sent device.event type=%@", type)
+        PrivacyLog.gatewayConnection(.deviceEventSent, detail: PrivacyToken(type))
     }
 
     /// Map a connect `res` to a pairing outcome: persist a freshly-issued device token, update
     /// connection state, and surface the status. Pure interpretation lives in
     /// `PairingResponseInterpreter`; this applies its side effects.
-    private func handleConnectResponse(_ json: [String: Any], rawText: String) {
+    private func handleConnectResponse(_ json: [String: Any]) {
         let outcome = PairingResponseInterpreter.interpretResponse(json)
 
         if let token = outcome.deviceToken, let gatewayId = currentGateway?.id {
             Config.setDeviceCredentials(gatewayId: gatewayId, deviceToken: token)
-            NSLog("[OpenClawWS] Device paired — per-device token saved")
+            PrivacyLog.gatewayConnection(.devicePaired, peer: PrivateIdentifier(gatewayId))
         }
 
         switch outcome.status {
         case .paired:
             isConnected = true
             reconnectDelay = 2
-            NSLog("[OpenClawWS] Connected and authenticated")
+            PrivacyLog.gatewayConnection(.connected)
             sendDeviceEvent(type: "connection", payload: ["status": "connected"])
         case .waitingApproval:
-            NSLog("[OpenClawWS] Device pairing pending — awaiting approval on the gateway")
-        case .error(let msg):
-            NSLog("[OpenClawWS] Connect failed: %@ (full response: %@)", msg, LogRedaction.redact(rawText))
+            PrivacyLog.gatewayConnection(.pairingPending)
+        case .error:
+            // The interpreter's message and the raw frame are both the gateway's own prose —
+            // the frame additionally echoes the credential we just presented.
+            PrivacyLog.gatewayConnection(.authRejected)
         case .disconnected, .connecting:
             break
         }
@@ -271,7 +283,7 @@ class OpenClawEventClient {
             if let outcome = PairingResponseInterpreter.interpretPairedEvent(payload),
                let token = outcome.deviceToken, let gatewayId = currentGateway?.id {
                 Config.setDeviceCredentials(gatewayId: gatewayId, deviceToken: token)
-                NSLog("[OpenClawWS] Device paired via event — token saved")
+                PrivacyLog.gatewayConnection(.devicePaired, peer: PrivateIdentifier(gatewayId))
                 onPairingStatusChange?(.paired)
             }
         case "heartbeat":
@@ -319,9 +331,10 @@ class OpenClawEventClient {
 
         guard let data = try? JSONSerialization.data(withJSONObject: connectMsg),
               let string = String(data: data, encoding: .utf8) else { return }
+        PrivacyLog.gatewayConnection(.handshakeSent)
         webSocketTask?.send(.string(string)) { error in
             if let error {
-                NSLog("[OpenClawWS] Handshake send error: %@", error.localizedDescription)
+                PrivacyLog.gatewayFailed(.handshake, SafeErrorSummary(error))
             }
         }
     }
@@ -334,7 +347,8 @@ class OpenClawEventClient {
         let silent = payload["silent"] as? Bool ?? false
         guard !silent else { return }
 
-        NSLog("[OpenClawWS] Heartbeat notification: %@", String(preview.prefix(100)))
+        // The preview is spoken to the wearer; it is the notification's content, not metadata.
+        PrivacyLog.gatewayNotification(.heartbeat, characters: preview.count)
         onNotification?(preview)
     }
 
@@ -347,7 +361,7 @@ class OpenClawEventClient {
             ?? ""
         guard !summary.isEmpty else { return }
 
-        NSLog("[OpenClawWS] Cron result (%d chars): %@", summary.count, String(summary.prefix(100)))
+        PrivacyLog.gatewayNotification(.cronResult, characters: summary.count)
         onNotification?(summary)
     }
 
@@ -357,7 +371,7 @@ class OpenClawEventClient {
         // The socket is load-bearing for inbound remote invoke (Plan BH), so we keep retrying
         // forever — but connection state is surfaced via `onPairingStatusChange`, never silent.
         let delay = reconnectDelay * Double.random(in: 0.8...1.2)
-        NSLog("[OpenClawWS] Reconnecting in %.1fs", delay)
+        PrivacyLog.gatewayReconnectScheduled(delaySeconds: delay)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.shouldReconnect else { return }
             self.reconnectDelay = min(self.reconnectDelay * 2, self.maxReconnectDelay)

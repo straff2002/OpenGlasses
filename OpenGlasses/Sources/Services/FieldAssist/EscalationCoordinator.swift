@@ -84,7 +84,7 @@ final class EscalationCoordinator: ObservableObject {
             try await bridge.connect(sessionId: sessionService.activeSession?.id ?? "no-session", expertId: expertId)
             liveMedia = bridge.isConnected
         } catch {
-            NSLog("[Escalation] Live bridge unavailable: %@", error.localizedDescription)
+            PrivacyLog.stream(.expertBridge, .expertBridgeUnavailable, error: SafeErrorSummary(error))
         }
         state = .expertConnected(expertId: expertId)
         return (state, liveMedia)

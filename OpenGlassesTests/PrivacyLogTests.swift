@@ -75,7 +75,27 @@ final class PrivacyLogTests: XCTestCase {
                                 verdict: .failed, action: PrivacyToken(text),
                                 error: SafeErrorSummary(MaliciousError())),
             PrivacyLog.authFailed(.claude, .tokenRefresh, SafeErrorSummary(MaliciousError())),
+            PrivacyLog.keychainFailed(.read, status: -25300),
+            PrivacyLog.configMigration(.providerSecrets, .completed),
             PrivacyLog.requestFailed(.homeAssistant, .http(status: 503)),
+            PrivacyLog.gatewayConnection(.connecting, transport: .lan,
+                                         peer: PrivateIdentifier(text), count: 3,
+                                         detail: PrivacyToken(text)),
+            PrivacyLog.gatewayReconnectScheduled(delaySeconds: 4.2),
+            PrivacyLog.gatewayHealth(.tunnel, reachable: false, status: 503),
+            PrivacyLog.gatewayOperation(text, outcome: .failed, count: 2, characters: text.count),
+            PrivacyLog.gatewayNotification(.cronResult, characters: text.count),
+            PrivacyLog.gatewayFailed(.handshake, SafeErrorSummary(MaliciousError())),
+            PrivacyLog.mcpDiscovery(tools: 4, servers: 2),
+            PrivacyLog.mcpToolScreened(.blocked, tool: text, server: PrivateIdentifier(text)),
+            PrivacyLog.mcpEgress(.redacted, tool: text, server: PrivateIdentifier(text), hits: 3),
+            PrivacyLog.mcpFailed(.transport, server: PrivateIdentifier(text),
+                                 SafeErrorSummary(MaliciousError())),
+            PrivacyLog.mcpServer(.requestRejected, port: 8765, route: .unknown,
+                                 error: .http(status: 401)),
+            PrivacyLog.stream(.viewerBroadcast, .started, detail: PrivacyToken(text), count: 2,
+                              session: PrivateIdentifier(text),
+                              error: SafeErrorSummary(MaliciousError())),
         ]
     }
 
@@ -256,6 +276,29 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/GoogleOAuthService.swift",
     ]
 
+    /// P1 batch 1 — the authentication / networking / gateway / MCP / stream tier.
+    ///
+    /// Unlike the P0 list, these are asserted to contain *no* direct log call at all. The batch's
+    /// stated target is zero for exactly these paths, and the checked-in ledger baseline says the
+    /// same thing, so a regression here shows up as a failing test before it shows up as a number
+    /// creeping back into the ledger.
+    private static let batchOneFiles = [
+        "OpenGlasses/Sources/Services/OpenClawBridge.swift",
+        "OpenGlasses/Sources/Services/OpenClawEventClient.swift",
+        "OpenGlasses/Sources/Services/MCPClient.swift",
+        "OpenGlasses/Sources/Services/MCP/MCPTransport.swift",
+        "OpenGlasses/Sources/Services/MCPServer/MCPGlassesServer.swift",
+        "OpenGlasses/Sources/Services/KeychainService.swift",
+        "OpenGlasses/Sources/Utils/Config.swift",
+        "OpenGlasses/Sources/Services/ModelFetcher.swift",
+        "OpenGlasses/Sources/Services/WebRTCStreamingService.swift",
+        "OpenGlasses/Sources/Services/Display/WebHUD/WebHUDMirrorServer.swift",
+        "OpenGlasses/Sources/Services/FieldAssist/WebRTCPeerTransport.swift",
+        "OpenGlasses/Sources/Services/FieldAssist/ExpertStreamTransport.swift",
+        "OpenGlasses/Sources/Services/FieldAssist/ExpertBridge.swift",
+        "OpenGlasses/Sources/Services/FieldAssist/EscalationCoordinator.swift",
+    ]
+
     private func sourceText(_ relativePath: String) throws -> String {
         let url = Self.repoRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
@@ -294,6 +337,35 @@ final class PrivacyLogTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testBatchOneFilesHaveNoDirectLogCalls() throws {
+        for path in Self.batchOneFiles {
+            let source = try sourceText(path)
+            XCTAssertTrue(source.contains("PrivacyLog."),
+                          "\(path): sanity — a migrated file should be emitting typed events")
+            for line in loggingLines(in: source) {
+                XCTFail("\(path): a direct log call survives in a migrated file:\n\(line)")
+            }
+            // The two-shape redactor is not authorisation to log a URL or a handshake body; the
+            // gateway path used it and no longer may.
+            XCTAssertFalse(source.contains("LogRedaction."),
+                           "\(path): LogRedaction is export-diagnostics defence-in-depth, not a "
+                               + "way to log content from a live network path")
+        }
+    }
+
+    /// A path arrives from the network, so it is attacker-chosen text. It must be classified into
+    /// the fixed endpoint set, never quoted into the rejection log.
+    @MainActor
+    func testUnknownServerPathIsClassifiedRatherThanQuoted() {
+        let hostile = "/../../etc/passwd?token=SENTINELTOKEN"
+        XCTAssertEqual(MCPGlassesServer.route(for: hostile), .unknown)
+        XCTAssertEqual(MCPGlassesServer.route(for: "/see_glasses"), .seeGlasses)
+        let line = PrivacyEventEncoder.encode(
+            PrivacyLog.mcpServer(.requestRejected, route: MCPGlassesServer.route(for: hostile)))
+        XCTAssertFalse(line.contains("SENTINEL"), line)
+        XCTAssertTrue(line.contains("route=unknown"), line)
     }
 
     /// The callback region of the app entry point: the wearables callback handler, and the
@@ -351,6 +423,26 @@ final class PrivacyLogTests: XCTestCase {
             ("OpenGlasses/Sources/App/OpenGlassesApp.swift",
              ["Received URL callback", "handleUrl result:", "handleUrl failed:",
               "Ignored untrusted deep link", "Refused skillpack link"]),
+            // P1 batch 1: the gateway health probe logged the endpoint and the response body, the
+            // connect path logged the handshake frame, and the notification path logged the text
+            // that was about to be read aloud.
+            ("OpenGlasses/Sources/Services/OpenClawBridge.swift",
+             ["Health %@", "WS received:", "Sending connect:", "Task result:", "Task failed:"]),
+            ("OpenGlasses/Sources/Services/OpenClawEventClient.swift",
+             ["Invalid URL:", "Connecting to %@", "full response:", "Heartbeat notification:",
+              "Cron result"]),
+            ("OpenGlasses/Sources/Services/MCPClient.swift",
+             ["blocked tool '", "quarantined tool '", "MCP egress "]),
+            ("OpenGlasses/Sources/Services/MCPServer/MCPGlassesServer.swift",
+             ["Rejected unauthorized", "(display) %@"]),
+            ("OpenGlasses/Sources/Services/KeychainService.swift",
+             ["read failed for %@", "write failed for %@"]),
+            ("OpenGlasses/Sources/Services/WebRTCStreamingService.swift",
+             ["streaming started:"]),
+            ("OpenGlasses/Sources/Services/FieldAssist/ExpertBridge.swift",
+             ["Paging expert pool"]),
+            ("OpenGlasses/Sources/Services/FieldAssist/ExpertStreamTransport.swift",
+             ["Streaming via %@"]),
         ]
         for (path, statements) in removed {
             let source = try sourceText(path)

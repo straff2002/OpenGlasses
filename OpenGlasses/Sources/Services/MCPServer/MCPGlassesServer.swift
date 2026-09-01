@@ -93,8 +93,12 @@ final class MCPGlassesServer: ObservableObject {
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor in
                     switch state {
-                    case .ready: self?.isRunning = true; NSLog("[MCPServer] Listening on :%d", Int(self?.port ?? 0))
-                    case .failed(let error): NSLog("[MCPServer] Failed: %@", error.localizedDescription); self?.stop()
+                    case .ready:
+                        self?.isRunning = true
+                        PrivacyLog.mcpServer(.listening, port: Int(self?.port ?? 0))
+                    case .failed(let error):
+                        PrivacyLog.mcpServer(.startFailed, error: SafeErrorSummary(error))
+                        self?.stop()
                     case .cancelled: self?.isRunning = false
                     default: break
                     }
@@ -102,7 +106,7 @@ final class MCPGlassesServer: ObservableObject {
             }
             listener.start(queue: .global(qos: .userInitiated))
         } catch {
-            NSLog("[MCPServer] Could not start: %@", error.localizedDescription)
+            PrivacyLog.mcpServer(.startFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -110,7 +114,7 @@ final class MCPGlassesServer: ObservableObject {
         listener?.cancel()
         listener = nil
         isRunning = false
-        NSLog("[MCPServer] Stopped")
+        PrivacyLog.mcpServer(.stopped)
     }
 
     func toggle(camera: CameraService, tts: TextToSpeechService) {
@@ -164,7 +168,9 @@ final class MCPGlassesServer: ObservableObject {
 
     private func route(_ request: HTTPRequest) async -> Data {
         guard Self.isAuthorized(bearer: request.bearerToken, expected: accessToken) else {
-            NSLog("[MCPServer] Rejected unauthorized %@ %@", request.method, request.path)
+            // The path arrives from the network, so it is classified rather than quoted: an
+            // unauthorised caller chooses it, and a scanner's path is attacker-supplied text.
+            PrivacyLog.mcpServer(.requestRejected, route: Self.route(for: request.path))
             return Self.httpResponse(status: "401 Unauthorized",
                                      json: ["error": "missing or invalid bearer token"])
         }
@@ -177,6 +183,17 @@ final class MCPGlassesServer: ObservableObject {
             return await sendToGlasses(body: request.body)
         default:
             return Self.httpResponse(status: "404 Not Found", json: ["error": "unknown endpoint"])
+        }
+    }
+
+    /// Classify a request path into the fixed endpoint set, for logging. Anything else is
+    /// `unknown` — the raw path never leaves this function.
+    static func route(for path: String) -> PrivacyLog.MCPRoute {
+        switch path {
+        case "/see_glasses": return .seeGlasses
+        case "/glasses_status": return .glassesStatus
+        case "/send_to_glasses": return .sendToGlasses
+        default: return .unknown
         }
     }
 
@@ -217,8 +234,9 @@ final class MCPGlassesServer: ObservableObject {
             return Self.httpResponse(status: "400 Bad Request", json: ["error": "expected {text, mode}"])
         }
         let mode = (json["mode"] as? String) ?? "tts"
-        // No display surface yet — both modes speak; "display" is logged for the future display app.
-        if mode == "display" { NSLog("[MCPServer] (display) %@", text) }
+        // No display surface yet — both modes speak. The "display" text used to be logged whole;
+        // it is a message a LAN peer sends to the wearer, so only the fact is recorded.
+        if mode == "display" { PrivacyLog.mcpServer(.forwardUnsupported, route: .sendToGlasses) }
         await tts?.speak(text, urgency: .low)
         return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode])
     }

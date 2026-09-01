@@ -127,13 +127,13 @@ enum ModelFetcher {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-                NSLog("[ChatGPT] Models fetch failed: HTTP %d", code)
+                PrivacyLog.requestFailed(.modelCatalog, .http(status: code))
                 return .httpError(code)
             }
             let models = parseChatGPTModels(data)
             return models.isEmpty ? .emptyCatalog : .models(models)
         } catch {
-            NSLog("[ChatGPT] Models fetch failed: %@", error.localizedDescription)
+            PrivacyLog.requestFailed(.modelCatalog, SafeErrorSummary(error))
             return .networkError(error.localizedDescription)
         }
     }

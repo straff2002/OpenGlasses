@@ -46,6 +46,12 @@ enum PrivacyLog {
         case auth
         /// Transport-level request failures, below the operation that asked for them.
         case network
+        /// The agent gateway link: endpoint selection, socket lifecycle, pairing, protocol calls.
+        case gateway
+        /// Model Context Protocol — both the client we run and the local server we expose.
+        case mcp
+        /// Outbound media links: viewer broadcast, expert bridge, HUD mirror, their signalling.
+        case stream
     }
 
     // MARK: - Sink
@@ -54,7 +60,8 @@ enum PrivacyLog {
 
     private static let loggers: [Category: Logger] = {
         var made: [Category: Logger] = [:]
-        for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network] {
+        for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network,
+                         .gateway, .mcp, .stream] {
             made[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
         return made
@@ -379,9 +386,237 @@ enum PrivacyLog {
         ]))
     }
 
+    /// Which keychain access failed, and with which `OSStatus`.
+    ///
+    /// The key *name* is deliberately absent. It is drawn from a small fixed dictionary of
+    /// provider names, so hashing it would not anonymise anything (the plan says as much), and
+    /// naming it in a log would say which credentials this wearer holds. The operation plus the
+    /// status is what a keychain fault is actually diagnosed from.
+    enum KeychainOperation: String { case read, write }
+
+    @discardableResult
+    static func keychainFailed(_ operation: KeychainOperation, status: Int) -> PrivacyEvent {
+        return emit(.init(.auth, .keychainFailed, [
+            .init(.operation, .token(PrivacyToken(operation.rawValue))),
+            .init(.status, .count(status)),
+        ]))
+    }
+
+    /// A one-time move of stored configuration. Never what moved — only that it did.
+    enum ConfigMigration: String { case providerSecrets, gatewayConfig }
+    enum MigrationOutcome: String { case completed, deferred }
+
+    @discardableResult
+    static func configMigration(_ migration: ConfigMigration, _ outcome: MigrationOutcome) -> PrivacyEvent {
+        return emit(.init(.auth, .configMigration, [
+            .init(.migration, .token(PrivacyToken(migration.rawValue))),
+            .init(.outcome, .token(PrivacyToken(outcome.rawValue))),
+        ]))
+    }
+
+    // MARK: - Gateway
+    //
+    // Everything about the gateway link is either a state transition or an identifier. The
+    // endpoint itself never appears: a LAN URL names the wearer's home network and a tunnel URL
+    // names their host, and both are routinely presented alongside a bearer token. `LogRedaction`
+    // used to stand in for this — it masks two token shapes and nothing else, which is why the
+    // four sites that called it are migrated here rather than kept.
+
+    /// Which leg of the link is in use. Not *which* host — only LAN versus remote.
+    enum GatewayTransport: String { case lan, tunnel, unknown }
+
+    enum GatewayConnectionEvent: String {
+        case notConfigured, inactive
+        case endpointResolved, endpointUnreachable, endpointCacheDropped, endpointMalformed, failover
+        case connecting, connected, disconnected, reconnectScheduled
+        case challengeReceived, handshakeSent, authRejected
+        case sessionRotated, sessionCompacted
+        case devicePaired, pairingPending
+        case deviceEventSent
+    }
+
+    /// `peer` is which gateway — a private identifier, so it is fingerprinted: enough to tell two
+    /// gateways apart across a failover, not enough to name either or say where it lives.
+    @discardableResult
+    static func gatewayConnection(_ event: GatewayConnectionEvent,
+                                  transport: GatewayTransport? = nil,
+                                  peer: PrivateIdentifier? = nil,
+                                  count: Int? = nil,
+                                  detail: PrivacyToken? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let transport { fields.append(.init(.transport, .token(PrivacyToken(transport.rawValue)))) }
+        if let peer { fields.append(.init(.peer, .identifier(peer))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        return emit(.init(.gateway, .gatewayConnection, fields))
+    }
+
+    @discardableResult
+    static func gatewayReconnectScheduled(delaySeconds: Double) -> PrivacyEvent {
+        return emit(.init(.gateway, .gatewayConnection, [
+            .init(.event, .token(PrivacyToken(GatewayConnectionEvent.reconnectScheduled.rawValue))),
+            .init(.delay, .seconds(delaySeconds)),
+        ]))
+    }
+
+    /// The health probe's verdict. The probe's response body was previously logged whole; a
+    /// gateway body carries session titles and agent output, so only the status survives.
+    @discardableResult
+    static func gatewayHealth(_ transport: GatewayTransport, reachable: Bool,
+                              status: Int? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.transport, .token(PrivacyToken(transport.rawValue))),
+            .init(.success, .flag(reachable)),
+        ]
+        if let status { fields.append(.init(.status, .count(status))) }
+        return emit(.init(.gateway, .gatewayHealth, fields))
+    }
+
+    enum GatewayOutcome: String { case succeeded, rejected, unsupported, failed }
+
+    /// A protocol call: `sessions.send`, `cron.create`, `tools.available`. The method name is a
+    /// fixed vocabulary defined by the protocol, so it is public operation class. Its params and
+    /// its result are the task text and the agent's answer, so neither has a parameter here —
+    /// `characters` is how much came back, which is what a truncation report needs.
+    @discardableResult
+    static func gatewayOperation(_ method: String, outcome: GatewayOutcome,
+                                 count: Int? = nil, characters: Int? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.method, .token(PrivacyToken(method))),
+            .init(.outcome, .token(PrivacyToken(outcome.rawValue))),
+        ]
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        return emit(.init(.gateway, .gatewayOperation, fields))
+    }
+
+    /// An unsolicited push from the gateway. The preview text *is* the notification — it is read
+    /// aloud to the wearer — so its length is the only thing recorded.
+    enum GatewayNotificationKind: String { case heartbeat, cronResult }
+
+    @discardableResult
+    static func gatewayNotification(_ kind: GatewayNotificationKind, characters: Int) -> PrivacyEvent {
+        return emit(.init(.gateway, .gatewayNotification, [
+            .init(.kind, .token(PrivacyToken(kind.rawValue))),
+            .init(.characters, .count(characters)),
+        ]))
+    }
+
+    enum GatewayPhase: String { case health, handshake, receive, send, request }
+
+    @discardableResult
+    static func gatewayFailed(_ phase: GatewayPhase, _ summary: SafeErrorSummary) -> PrivacyEvent {
+        return emit(.init(.gateway, .gatewayFailed, [
+            .init(.phase, .token(PrivacyToken(phase.rawValue))),
+            .init(.error, .summary(summary)),
+        ]))
+    }
+
+    // MARK: - MCP
+
+    /// Server labels are user-chosen and often name an employer or a household, so they are
+    /// fingerprinted. Tool names are the protocol's public vocabulary and are kept as tokens.
+    @discardableResult
+    static func mcpDiscovery(tools: Int, servers: Int) -> PrivacyEvent {
+        return emit(.init(.mcp, .mcpDiscovery, [
+            .init(.count, .count(tools)),
+            .init(.servers, .count(servers)),
+        ]))
+    }
+
+    /// A discovery-time trust verdict. The scanner's `reason` is free-form prose built from an
+    /// attacker-authored tool description, so the verdict is kept and the reason is not.
+    enum MCPToolVerdict: String { case blocked, quarantined }
+
+    @discardableResult
+    static func mcpToolScreened(_ verdict: MCPToolVerdict, tool: String,
+                                server: PrivateIdentifier) -> PrivacyEvent {
+        return emit(.init(.mcp, .mcpToolScreened, [
+            .init(.verdict, .token(PrivacyToken(verdict.rawValue))),
+            .init(.tool, .token(PrivacyToken(tool))),
+            .init(.server, .identifier(server)),
+        ]))
+    }
+
+    /// An outbound egress-screen decision. The pattern names that fired describe the *content*
+    /// that was about to leave, so the count goes to the log and the names stay in the trust UI.
+    enum MCPEgressAction: String { case allowed, redacted, blocked }
+
+    @discardableResult
+    static func mcpEgress(_ action: MCPEgressAction, tool: String, server: PrivateIdentifier,
+                          hits: Int) -> PrivacyEvent {
+        return emit(.init(.mcp, .mcpEgress, [
+            .init(.action, .token(PrivacyToken(action.rawValue))),
+            .init(.tool, .token(PrivacyToken(tool))),
+            .init(.server, .identifier(server)),
+            .init(.count, .count(hits)),
+        ]))
+    }
+
+    enum MCPPhase: String { case discovery, transport, sessionInit }
+
+    @discardableResult
+    static func mcpFailed(_ phase: MCPPhase, server: PrivateIdentifier,
+                          _ summary: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.phase, .token(PrivacyToken(phase.rawValue))),
+            .init(.server, .identifier(server)),
+        ]
+        if let summary { fields.append(.init(.error, .summary(summary))) }
+        return emit(.init(.mcp, .mcpFailed, fields))
+    }
+
+    /// The local server we expose on the LAN.
+    enum MCPServerEvent: String {
+        case listening, stopped, startFailed, requestRejected, forwardUnsupported
+    }
+
+    /// The request path is classified rather than quoted: it arrives from the network, so an
+    /// unknown path is attacker-supplied text.
+    enum MCPRoute: String { case seeGlasses, glassesStatus, sendToGlasses, unknown }
+
+    @discardableResult
+    static func mcpServer(_ event: MCPServerEvent, port: Int? = nil, route: MCPRoute? = nil,
+                          error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let port { fields.append(.init(.port, .count(port))) }
+        if let route { fields.append(.init(.route, .token(PrivacyToken(route.rawValue)))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.mcp, .mcpServer, fields))
+    }
+
+    // MARK: - Streams
+
+    /// Which outbound link. A room URL is a bearer capability — anyone holding it watches the
+    /// wearer's camera — so no method here accepts one.
+    enum StreamChannel: String { case viewerBroadcast, expertBridge, hudMirror, signaling }
+
+    enum StreamEvent: String {
+        case started, stopped, listening, startFailed
+        case viewerJoined, viewerLeft
+        case expertPaged, expertBridgeUnavailable
+        case negotiationFailed, sendFailed, receiveFailed
+    }
+
+    @discardableResult
+    static func stream(_ channel: StreamChannel, _ event: StreamEvent,
+                       detail: PrivacyToken? = nil, count: Int? = nil,
+                       session: PrivateIdentifier? = nil,
+                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.channel, .token(PrivacyToken(channel.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let session { fields.append(.init(.session, .identifier(session))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.stream, .stream, fields))
+    }
+
     // MARK: - Network
 
-    enum NetworkSubsystem: String { case homeAssistant, contextFetch }
+    enum NetworkSubsystem: String { case homeAssistant, contextFetch, modelCatalog }
 
     @discardableResult
     static func requestFailed(_ subsystem: NetworkSubsystem, _ summary: SafeErrorSummary) -> PrivacyEvent {
@@ -471,8 +706,11 @@ struct PrivacyEvent: Equatable {
         case qrScanned, qrFetchBlocked, qrFetchLoaded
         case homeOperation, homeEntityResolved, homeFallback
         case deepLink
-        case authFailed
+        case authFailed, keychainFailed, configMigration
         case requestFailed
+        case gatewayConnection, gatewayHealth, gatewayOperation, gatewayNotification, gatewayFailed
+        case mcpDiscovery, mcpToolScreened, mcpEgress, mcpFailed, mcpServer
+        case stream
     }
 
     /// Field keys are closed too, so a reader can rely on the shape of a category's lines.
@@ -484,6 +722,10 @@ struct PrivacyEvent: Equatable {
         case operation, success, match
         case route, source, verdict, action
         case subsystem, error
+        case status, migration
+        case transport, peer, method
+        case server, servers, port
+        case channel, session
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is
