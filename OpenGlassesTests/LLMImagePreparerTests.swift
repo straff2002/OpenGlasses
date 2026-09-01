@@ -135,20 +135,28 @@ final class LLMImagePreparerTests: XCTestCase {
     }
 
     /// Noise defeats JPEG's entropy coding, so this actually lands over the byte caps a flat
-    /// colour would sail under.
+    /// colour would sail under. Filled as a raw pixel buffer (deterministic xorshift) rather
+    /// than per-pixel CoreGraphics fills, which took minutes at 12 MP.
     private func noisyJPEG(width: Int, height: Int) -> Data {
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        let image = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { ctx in
-            for y in stride(from: 0, to: height, by: 2) {
-                for x in stride(from: 0, to: width, by: 2) {
-                    UIColor(hue: CGFloat((x &* 7 &+ y &* 13) % 360) / 360,
-                            saturation: 1, brightness: 1, alpha: 1).setFill()
-                    ctx.fill(CGRect(x: x, y: y, width: 2, height: 2))
-                }
+        let bytesPerRow = width * 4
+        var pixels = Data(count: bytesPerRow * height)
+        pixels.withUnsafeMutableBytes { buffer in
+            let words = buffer.bindMemory(to: UInt64.self)
+            var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+            for i in words.indices {
+                state ^= state << 13
+                state ^= state >> 7
+                state ^= state << 17
+                words[i] = state
             }
         }
-        return image.jpegData(compressionQuality: 1.0)!
+        let cg = CGImage(width: width, height: height,
+                         bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                         space: CGColorSpaceCreateDeviceRGB(),
+                         bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                         provider: CGDataProvider(data: pixels as CFData)!,
+                         decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        return UIImage(cgImage: cg).jpegData(compressionQuality: 1.0)!
     }
 
     func testRealFramesAreNotDegenerate() {
