@@ -291,6 +291,8 @@ See exactly what data the AI receives and what network calls are made.
 | **Network Activity** | All HTTP requests categorized by Meta/AI/App/Other |
 | **Offline Mode** | One toggle disables all internet-requiring tools |
 
+**No telemetry — ours or the SDK's.** OpenGlasses has no developer backend and no account, so no usage analytics and no crash reports ever reach us — in any build. The glasses SDK collects its own (connection sessions, camera streams, permission checks, crashes) and uploads them to Meta by default; the app opts out in its `Info.plist` *and* blocks those uploads from leaving the phone, because an opt-out is only a request to a closed-source binary. Settings shows whether anything had to be blocked, and the self-test in Diagnostics & Support shows how much. Pairing still contacts Meta once to verify the app may talk to your glasses — that's what makes the connection work, and it carries no usage data.
+
 The agentic path is hardened against **prompt injection** — untrusted content (web pages, scanned text, tool output) can't hijack the assistant into running sensitive tools. High-impact actions stay behind explicit confirmation and the agent-mode gate.
 
 ### Camera & Streaming

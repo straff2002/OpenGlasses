@@ -114,6 +114,14 @@ Notes from the field:
   `URLProtocol` before `Wearables.configure()` that answers that endpoint locally and counts what
   it stopped. Attestation (`/wearables/attestation/challenge`) shares the host and is deliberately
   **not** blocked — it gates device access.
+- **Telemetry posture for any newly linked SDK: off by default, disclosed by exception, never
+  silent.** Before a new third-party dependency ships, review what it sends home by default and
+  either disable it or disclose it — in `PrivacyInfo.xcprivacy` *and* the in-app privacy copy, in
+  the same PR. A vendor default is not consent, and an undisclosed egress contradicts the manifest's
+  "no analytics, crash-reporting, or advertising SDK" claim the moment it starts. The pairing is
+  enforced by `TelemetryOptOutGuardTests`, which also checks the `MWDAT` opt-out keys in the
+  authored `Info.plist` and that `MetaTelemetryBlock.install()` still precedes
+  `Wearables.configure()`.
 
 ## Links
 
