@@ -43,13 +43,14 @@ class ToolCallRouter {
         let callId = call.id
         let callName = call.name
 
-        NSLog("[ToolCall] Received: %@ (id: %@) args: %@",
-              callName, callId, ToolLogContent.redacted(String(describing: call.args)))
+        // Metadata only: which tool, correlated by a fingerprint of the call id. The arguments are
+        // the actual message being sent / note being saved / address being navigated to.
+        PrivacyLog.toolCallReceived(name: callName, invocation: callId)
 
         // Plan BR P1: refuse suspended/runaway calls without executing — the message rides
         // back as the tool error so the model learns in-band and informs the user.
         if case .suspended(let message) = breaker.admit(toolName: callName) {
-            NSLog("[ToolCall] Breaker refused %@ (id: %@)", callName, callId)
+            PrivacyLog.toolCallRefused(name: callName, invocation: callId)
             sendResponse(buildToolResponse(callId: callId, name: callName, result: .failure(message)))
             return
         }
@@ -62,7 +63,7 @@ class ToolCallRouter {
                 try? await Task.sleep(for: Self.ackDelay)
                 guard let self, !Task.isCancelled, self.inFlightTasks[callId] != nil else { return }
                 self.ackedCallIds.insert(callId)
-                NSLog("[ToolCall] %@ (id: %@) still running — sending non-blocking ack", callName, callId)
+                PrivacyLog.toolCallAcked(name: callName, invocation: callId)
                 sendResponse(Self.toolResponse(
                     callId: callId, name: callName,
                     payload: ["result": "Still working — the result will follow."],
@@ -71,6 +72,7 @@ class ToolCallRouter {
         }
 
         let argsKey = ToolCallBreaker.argsKey(call.args)
+        let startedAt = Date()
         let task = Task { @MainActor in
             // Route through NativeToolRouter first (handles native → MCP → OpenClaw cascade)
             var outcome: ToolExecutionOutcome
@@ -94,7 +96,7 @@ class ToolCallRouter {
             self.onToolExecutionFinished?()
 
             guard !Task.isCancelled else {
-                NSLog("[ToolCall] Task %@ was cancelled, skipping response", callId)
+                PrivacyLog.toolCallCancelled(invocation: callId)
                 return
             }
 
@@ -114,8 +116,10 @@ class ToolCallRouter {
                 }
             }
 
-            NSLog("[ToolCall] Result for %@ (id: %@): %@",
-                  callName, callId, ToolLogContent.redacted(String(describing: outcome)))
+            // Shape of the call, not its answer: the outcome's own text is the tool's output.
+            PrivacyLog.toolCallCompleted(
+                name: callName, invocation: callId, outcome: outcome.privacyOutcome,
+                durationMs: Int(Date().timeIntervalSince(startedAt) * 1000))
 
             let response = self.buildToolResponse(callId: callId, name: callName,
                                                   result: outcome.toolResult)
@@ -131,7 +135,7 @@ class ToolCallRouter {
     func cancelToolCalls(ids: [String]) {
         for id in ids {
             if let task = inFlightTasks[id] {
-                NSLog("[ToolCall] Cancelling in-flight call: %@", id)
+                PrivacyLog.toolCallCancelled(invocation: id)
                 task.cancel()
                 inFlightTasks.removeValue(forKey: id)
             }
@@ -143,7 +147,7 @@ class ToolCallRouter {
 
     func cancelAll() {
         for (id, task) in inFlightTasks {
-            NSLog("[ToolCall] Cancelling in-flight call: %@", id)
+            PrivacyLog.toolCallCancelled(invocation: id)
             task.cancel()
         }
         inFlightTasks.removeAll()
@@ -218,5 +222,20 @@ class ToolCallRouter {
                 "functionResponses": [functionResponse]
             ]
         ]
+    }
+}
+
+// MARK: - Logging adapter
+
+extension ToolExecutionOutcome {
+    /// The outcome's class with its reason/value text left behind — the text is the tool's own
+    /// output, which never reaches a log.
+    var privacyOutcome: PrivacyLog.ToolOutcome {
+        switch self {
+        case .completed: return .completed
+        case .rejected: return .rejected
+        case .failedBeforeExecution: return .failedBeforeExecution
+        case .outcomeUnknown: return .outcomeUnknown
+        }
     }
 }

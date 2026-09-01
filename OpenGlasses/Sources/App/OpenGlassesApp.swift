@@ -13,8 +13,25 @@ extension Notification.Name {
     static let onboardingCompleted = Notification.Name("onboardingCompleted")
 }
 
+/// Which door an inbound link knocked on. Deliberately a kind rather than the URL: an auth
+/// callback carries a one-time code in its query and a universal link names the host the wearer
+/// came from, both of which are secret/private-identifier class.
+private func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
+    switch url.host {
+    case "shortcut-result", "shortcut-cancel", "shortcut-error": return .shortcutCallback
+    case "skillpack": return .skillPack
+    case "persona": return .persona
+    case "connect", "disconnect": return .connect
+    case "action": return .capture
+    case "listen": return .listen
+    case "quickaction": return .quickAction
+    default: return .other
+    }
+}
+
 private func processWearablesCallbackURL(_ url: URL, source: String) {
-    NSLog("[OpenGlasses] [\(source)] Received URL callback: \(url.absoluteString)")
+    let sourceToken = PrivacyToken(source)
+    PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .received)
     Task { @MainActor in
         AppStateProvider.shared?.recordCallback(url: url, source: source)
     }
@@ -22,17 +39,23 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
         // Meta AI can deliver a callback at any time, including before anything else has needed
         // the SDK. Configure on demand — without this, handleUrl traps rather than throwing.
         guard WearablesBootstrap.ensureConfigured() else {
-            NSLog("[OpenGlasses] [\(source)] Wearables SDK unavailable — dropping URL callback")
+            PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken,
+                                verdict: .sdkUnavailable)
             AppStateProvider.shared?.addDebugEvent("Dropped \(source) callback: SDK unavailable")
             return
         }
         do {
             let result = try await Wearables.shared.handleUrl(url)
-            NSLog("[OpenGlasses] [\(source)] handleUrl result: \(String(describing: result))")
-            AppStateProvider.shared?.addDebugEvent("handleUrl success from \(source): \(String(describing: result))")
+            PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .handled,
+                                action: PrivacyToken.caseName(of: result))
+            AppStateProvider.shared?.addDebugEvent(
+                "handleUrl success from \(source): \(PrivacyToken.caseName(of: result)?.description ?? "ok")")
         } catch {
-            NSLog("[OpenGlasses] [\(source)] handleUrl failed: \(error.localizedDescription)")
-            AppStateProvider.shared?.addDebugEvent("handleUrl failed from \(source): \(error.localizedDescription)")
+            // The SDK's description of a failed callback quotes the callback — summary only.
+            let summary = SafeErrorSummary(error)
+            PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .failed,
+                                error: summary)
+            AppStateProvider.shared?.addDebugEvent("handleUrl failed from \(source): \(summary)")
         }
     }
 }
@@ -249,8 +272,9 @@ struct OpenGlassesApp: App {
                     if url.scheme == "openglasses",
                        DeepLinkTrust.requiresTrustedCaller(host: url.host, action: url.lastPathComponent),
                        !DeepLinkTrust.isTrusted(url) {
-                        NSLog("[OpenGlasses] Ignored untrusted deep link: %@/%@",
-                              url.host ?? "?", url.lastPathComponent)
+                        PrivacyLog.deepLink(route: privacyRoute(for: url),
+                                            source: PrivacyToken("SwiftUI"), verdict: .untrusted,
+                                            action: PrivacyToken(url.lastPathComponent))
                         return
                     }
 
@@ -266,7 +290,8 @@ struct OpenGlassesApp: App {
                                 await appState.skillPackSideload.handle(request)
                             }
                         case .failure(let error):
-                            NSLog("[OpenGlasses] Refused skillpack link: %@", String(describing: error))
+                            PrivacyLog.deepLink(route: .skillPack, source: PrivacyToken("SwiftUI"),
+                                                verdict: .malformed, error: .refused(error))
                         }
                         return
                     }
