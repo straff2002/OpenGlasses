@@ -331,7 +331,7 @@ final class ReadingSessionStore: ObservableObject {
 
     private func persistReferences() {
         guard !referencesSaveBlocked else {
-            NSLog("[ReadingSessionStore] Reference save skipped — last load failed to read the existing file")
+            PrivacyLog.store(.readingSessions, .saveSkipped, slot: PrivacyToken("reading_references"))
             return
         }
         do {
@@ -339,7 +339,8 @@ final class ReadingSessionStore: ObservableObject {
             try JSONEncoder().encode(references).write(to: referencesURL, options: .atomic)
             protectIfNeeded(referencesURL)
         } catch {
-            NSLog("[ReadingSessionStore] reference persist failed: %@", error.localizedDescription)
+            PrivacyLog.store(.readingSessions, .saveFailed, slot: PrivacyToken("reading_references"),
+                             error: SafeErrorSummary(error))
         }
     }
 
@@ -364,7 +365,7 @@ final class ReadingSessionStore: ObservableObject {
 
     private func persist() {
         guard !saveBlocked else {
-            NSLog("[ReadingSessionStore] Save skipped — last load failed to read the existing file")
+            PrivacyLog.store(.readingSessions, .saveSkipped, slot: PrivacyToken("reading_sessions"))
             return
         }
         do {
@@ -372,7 +373,8 @@ final class ReadingSessionStore: ObservableObject {
             try JSONEncoder().encode(sessions).write(to: sessionsURL, options: .atomic)
             protectIfNeeded(sessionsURL)
         } catch {
-            NSLog("[ReadingSessionStore] persist failed: %@", error.localizedDescription)
+            PrivacyLog.store(.readingSessions, .saveFailed, slot: PrivacyToken("reading_sessions"),
+                             error: SafeErrorSummary(error))
         }
     }
 

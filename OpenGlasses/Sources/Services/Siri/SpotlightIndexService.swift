@@ -136,8 +136,12 @@ final class SpotlightIndexService {
             }
             saveSnapshot(IndexPlanner.snapshot(records))
         } catch {
-            // Leave the snapshot untouched — the next refresh retries the same delta.
-            print("⚠️ Spotlight donation failed: \(error.localizedDescription)")
+            // Leave the snapshot untouched — the next refresh retries the same delta. The delta
+            // is made of note and conversation titles on their way into the OS index, so the
+            // event carries how many moved, never which.
+            PrivacyLog.transfer(.spotlightIndex, .donationFailed,
+                                count: plan.upserts.count, total: plan.deletions.count,
+                                error: SafeErrorSummary(error))
         }
     }
 
@@ -147,7 +151,7 @@ final class SpotlightIndexService {
             try await indexer.deleteAll()
             saveSnapshot([:])
         } catch {
-            print("⚠️ Spotlight purge failed: \(error.localizedDescription)")
+            PrivacyLog.transfer(.spotlightIndex, .purgeFailed, error: SafeErrorSummary(error))
         }
     }
 

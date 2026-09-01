@@ -5,8 +5,9 @@ sites emit metadata only, and the P1 scanner runs in report-only mode with a che
 ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). **P1 batch 1 (authentication/networking)
 migrated (2026-09-01): 872 → 794 sites, 127 → 113 files. P1 batch 2 (conversation/model/audio)
 migrated (2026-09-01): 794 → 461 sites, 113 → 75 files. P1 batch 3
-(vision/home/medical/location) migrated (2026-09-01): 461 → 319 sites, 75 → 45 files.**
-P1 batches 4–5, P2 and P3 outstanding.
+(vision/home/medical/location) migrated (2026-09-01): 461 → 319 sites, 75 → 45 files. P1 batch 4
+(persistence/import/export) migrated (2026-09-01): 319 → 250 sites, 45 → 24 files.**
+P1 batch 5, P2 and P3 outstanding.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -314,6 +315,84 @@ Deliberately deferred, with the batch they belong to: `Reading/ReadingSessionSto
 are persona names, a thread id, a playbook name and **a tool result printed verbatim** — a real
 content leak, but a conversation-path one, so it goes with the file rather than being pulled
 forward. `HomeGridCatalog` is the app's home *screen* tile arrangement, not home automation.
+
+### Batch 4 — persistence/import/export ✅ (2026-09-01)
+
+Twenty-one files, 69 sites, all to zero.
+
+| Metric | After batch 3 | After batch 4 |
+|---|---|---|
+| Direct `NSLog`/`print` sites | 319 / 45 files | 250 / 24 files |
+| Content/credential-named interpolations | 16 | 13 |
+| `localizedDescription` in log calls | 37 | 22 |
+| Allowlisted files / sites | 0 / 0 | 0 / 0 |
+
+Migrated: `SemanticMemoryStore` (17), `Persistence/JSONStore` (7), `AgentDocumentStore` (6),
+`ClawHubService` (6, deferred here from batch 1), `RAG/DocumentStore` (5),
+`Reading/ReadingSessionStore` (4), `Study/StudyStore` (3), `SkillPacks/SkillPackStore` (3), and
+thirteen one- and two-site files: `NativeTools/OperationJournal`, `Offline/SyncEngine`,
+`Offline/OfflineQueue`, `RecordingFiler`, `RecordedSessionStore`, `Memory/ConversationIndex`,
+`Memory/ConversationRecallCoordinator`, `Brain/BrainStore`, `Skills/EvolvedSkillStore`,
+`Usage/UsageStore`, `PlaybookStore`, `AgentDataExporter`, `Siri/SpotlightIndexService`.
+
+Facade additions: categories `store` and `transfer`; events `store` (a `StoreName` role, a
+`StoreEvent`, an optional slot/scope, counts) and `transfer` (a `TransferChannel`, a
+`TransferEvent`, a fingerprinted item, a version, an op kind, a signed flag, counts).
+`SafeErrorSummary` gains `.storage` and `sqlite(code:extended:)`, and its `DecodingError` branch
+now carries the coding-path **depth**.
+
+What this removed, beyond the raw call count: `SemanticMemoryStore` wrote **the memory key and its
+value** to the device log on every single `remember` — the wearer's remembered facts, in the clear,
+in the one sink that outlives everything else — plus each agent diary line (80 characters of it),
+the key of every memory evicted for going over budget, and the persona id whose memories were
+cleared. `AgentDocumentStore` logged the whole fact appended to the agent's memory document, which
+is the same content by another route. `RAG/DocumentStore` logged the **title of every ingested
+document** — of a scanned letter, a report, a prescription. `JSONStore` named the backup file it
+had just written for a corrupt blob and passed the read failure's `localizedDescription` through;
+it is the salvage path every JSON-backed store funnels into, so a decode error quoted there quotes
+the records of all of them. `RecordedSessionStore` logged a recording's full sandbox path,
+`RecordingFiler` the source and destination filenames, `AgentDataExporter` the export archive's
+name, and six SQLite stores their database paths.
+
+Judgement calls. **Filenames are user content when user-derived**, so no method in either new
+category takes a path or a name: a document title becomes a filename, and an export archive's
+entries are conversation titles with an extension on them. What survives instead is the store's
+*role*, which is a fixed vocabulary of seventeen slots defined in `PrivacyLog` itself.
+`JSONStore`'s `name` argument is the one place a role arrives as a `String`; every call site passes
+a literal from a fixed set, and `testJSONStoreSlotNamesAreLiterals` pins that — a store named from
+user input would be identifier-shaped and would survive `PrivacyToken`'s shape filter.
+
+**Salvage errors** report which slot, how many records were salvaged and how many were in the file,
+and never the decode error's payload: a `DecodingError`'s description quotes the JSON it choked on.
+`SafeErrorSummary` reduces it to a case name plus the coding path's **depth** — never its keys,
+because in a `[String: T]` blob (several of these stores are exactly that) the keys are the wearer's
+own strings, while the depth still distinguishes "the whole file is not JSON" from "one field of
+one record is the wrong type". **SQLite** faults report `sqlite3_errcode` and
+`sqlite3_extended_errcode`, a fixed numeric vocabulary, and never `sqlite3_errmsg`, which on a
+prepare failure quotes the offending statement — and this app's stores are where memory keys and
+document chunks live. A test asserts no batch-4 file references `sqlite3_errmsg` at all.
+
+A memory's **namespace** is a persona id, so the pool (`global`/`persona`) is logged and the
+persona is not — the batch-2 precedent for persona ids over the general "namespaces as
+fingerprints" habit, on the plan's own low-entropy rule. **Skill identity** goes the strict way: a
+hub slug and a pack id are community-authored and describe what the wearer went looking for, so
+they are fingerprinted, while a pack's *version* stays a readable token and its signed/unsigned
+verdict stays a flag. Queue and sync events keep the op kind (`OfflineQueue.OpKind`, a fixed enum),
+the retry tier and a fingerprinted op id; the sink's failure `reason` is prose composed by whatever
+refused the operation, so it has no parameter. No `ENABLE_CONTENT_LOGGING` sites were added; the
+count across four batches is still zero.
+
+Deliberately deferred to batch 5, with reasons. `AgentNotificationQueue` (7) is a persisted queue,
+but it is the delivery half of `AgentScheduler` (13, already deferred) and belongs with it.
+`ShortcutCallbackManager` (4) is worth naming: it prints **200 characters of the shortcut's output
+verbatim**, which becomes tool output the model reads — a real content leak, but a
+callback/lifecycle one, so it goes with the deep-link tier the way batch 3 left `CarPlaySceneDelegate`
+where it was. `App/Views/PersonaPickerSheet` (4) is UI (persona names) but carries the app's only
+**Field Assist vault id** log line, and a vault id names a customer — flagged here so batch 5 does
+not treat that file as four cosmetic persona prints. The four remaining tool-path strays
+(`YieldToHumanTool`, `ShazamTool`, `PlaybookTool`, `AgentHarness/AgentSessionService`, one site
+each) are batch-2 domain leftovers; `YieldToHumanTool` and `PlaybookTool` log a model-authored
+reason string. Everything else on the ledger is now operational UI/device.
 
 Generate and check in a classification ledger with one row per logging site/category, then migrate in
 bounded PRs:

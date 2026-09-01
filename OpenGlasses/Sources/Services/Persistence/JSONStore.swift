@@ -6,6 +6,11 @@ import Foundation
 /// first producing an on-disk backup.** Every JSON store loads through one of these helpers and
 /// switches on the result instead of `try?`-collapsing "no data yet", "data I couldn't read",
 /// and "data I couldn't decode" into one silent empty state.
+///
+/// **`name` is a slot, not a filename.** Every call site passes a string literal from a fixed
+/// vocabulary (`conversations`, `study_decks`, `skillpacks`, …), which is why the salvage events
+/// may log it as a `PrivacyToken` — a store named from user input would be a fingerprint of what
+/// the wearer keeps. `PrivacyLogTests.testJSONStoreSlotNamesAreLiterals` pins that contract.
 enum JSONStore {
 
     /// Outcome of loading a persisted JSON blob.
@@ -60,10 +65,13 @@ enum JSONStore {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
-            NSLog("[JSONStore] Backed up undecodable %@ blob to %@", name, url.lastPathComponent)
+            // The backup's filename is `<slot>-<timestamp>`, and the slot is already in the event;
+            // the timestamp says when this happened, which the log line's own clock says better.
+            PrivacyLog.store(.jsonBlob, .backedUp, slot: PrivacyToken(name), bytes: data.count)
             return url
         } catch {
-            NSLog("[JSONStore] FAILED to back up %@ blob: %@", name, error.localizedDescription)
+            PrivacyLog.store(.jsonBlob, .backupFailed, slot: PrivacyToken(name),
+                             bytes: data.count, error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -83,10 +91,13 @@ enum JSONStore {
         let backup = backUp(data, name: name, directory: backupDirectory)
         if let salvaged = try? decoder.decode([FailableDecodable<T>].self, from: data) {
             let values = salvaged.compactMap(\.value)
-            NSLog("[JSONStore] %@: strict decode failed; salvaged %d/%d elements", name, values.count, salvaged.count)
+            PrivacyLog.store(.jsonBlob, .salvaged, slot: PrivacyToken(name),
+                             count: values.count, total: salvaged.count,
+                             detail: PrivacyToken("elements"))
             return .recovered(values, backup: backup)
         }
-        NSLog("[JSONStore] %@: blob undecodable — starting fresh (original preserved)", name)
+        PrivacyLog.store(.jsonBlob, .blobUndecodable, slot: PrivacyToken(name),
+                         detail: PrivacyToken("elements"))
         return .corrupt(backup: backup)
     }
 
@@ -102,10 +113,13 @@ enum JSONStore {
         let backup = backUp(data, name: name, directory: backupDirectory)
         if let salvaged = try? decoder.decode([String: FailableDecodable<V>].self, from: data) {
             let values = salvaged.compactMapValues(\.value)
-            NSLog("[JSONStore] %@: strict decode failed; salvaged %d/%d entries", name, values.count, salvaged.count)
+            PrivacyLog.store(.jsonBlob, .salvaged, slot: PrivacyToken(name),
+                             count: values.count, total: salvaged.count,
+                             detail: PrivacyToken("entries"))
             return .recovered(values, backup: backup)
         }
-        NSLog("[JSONStore] %@: blob undecodable — starting fresh (original preserved)", name)
+        PrivacyLog.store(.jsonBlob, .blobUndecodable, slot: PrivacyToken(name),
+                         detail: PrivacyToken("entries"))
         return .corrupt(backup: backup)
     }
 
@@ -157,8 +171,11 @@ enum JSONStore {
         do {
             return .success(try Data(contentsOf: url))
         } catch {
-            NSLog("[JSONStore] %@: file exists but read failed (%@) — leaving it untouched",
-                  name, error.localizedDescription)
+            // The file is left untouched — that decision is the important one and it is what the
+            // event records. The path is not logged: it ends in the slot's own filename, and for
+            // the document-backed stores that name is derived from something the wearer titled.
+            PrivacyLog.store(.jsonBlob, .readFailed, slot: PrivacyToken(name),
+                             error: SafeErrorSummary(error))
             return .failure(.unreadable(error))
         }
     }

@@ -70,6 +70,12 @@ enum PrivacyLog {
         /// Where the wearer is. Coordinates, place names and region identifiers have no
         /// parameter anywhere in this category.
         case location
+        /// Local persistence: what a store did, how much of it, and how a damaged blob was
+        /// salvaged. Never a record, a key, a value, or a file's name.
+        case store
+        /// Data crossing the app's boundary: import, export, share, and the drain that hands the
+        /// offline queue to the network. Manifest counts and format classes only.
+        case transfer
     }
 
     // MARK: - Sink
@@ -80,7 +86,7 @@ enum PrivacyLog {
         var made: [Category: Logger] = [:]
         for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network,
                          .gateway, .mcp, .stream, .speech, .audio, .model, .conversation,
-                         .vision, .medical, .location] {
+                         .vision, .medical, .location, .store, .transfer] {
             made[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
         return made
@@ -1355,6 +1361,121 @@ enum PrivacyLog {
         return emit(.init(.conversation, .conversation, fields))
     }
 
+    // MARK: - Persistence
+    //
+    // A store's *role* is public — there are seventeen of them and the set is fixed in this file,
+    // so saying which one failed is how a persistence fault is diagnosed at all. Everything a
+    // store holds is not: a memory key and its value are the facts the wearer asked to be
+    // remembered, a diary line is what the agent wrote about their day, a document name is the
+    // title of something they scanned, and a *filename* is frequently one of those titles with an
+    // extension on it. So no method here takes a path, a name, a key, or a record.
+    //
+    // The salvage paths are the sharp edge and the reason this section is worded so tightly.
+    // `JSONStore` backs up a blob it could not decode and then salvages what it can, and the
+    // useful facts are which slot, how many records survived and how many were in the file. The
+    // decode error is not one of them: a `DecodingError`'s description quotes the JSON it choked
+    // on, which is the record. `SafeErrorSummary` reduces it to a case name and a coding-path
+    // *depth* — never a key name, because a dictionary's keys are data.
+
+    /// Which store. Roles, not files — every one of these is a fixed slot in the app, and a store
+    /// whose name came from the wearer would have to be fingerprinted instead.
+    ///
+    /// `jsonBlob` is the shared load/salvage helper the JSON-backed stores route through; the slot
+    /// it was working on arrives as `slot`, and a test pins that every call site passes a literal
+    /// from a fixed set rather than a value.
+    enum StoreName: String {
+        case jsonBlob
+        case semanticMemory, brain, ragDocuments, agentDocuments
+        case conversationIndex, conversationRecall
+        case evolvedSkills, usage, playbooks, operationJournal
+        case readingSessions, studyDecks, recordedSessions, skillPacks, skillHub
+        case offlineQueue
+    }
+
+    /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,
+    /// wearer-visible set — so which *pool* was written survives and which persona does not, per
+    /// the plan's rule against hashing a low-entropy dictionary.
+    enum StoreScope: String { case global, persona }
+
+    enum StoreEvent: String {
+        case opened, openFailed, queryFailed
+        case loadFailed, readFailed, unreadablePreserved, preserveFailed
+        case saved, saveFailed, saveSkipped
+        case backedUp, backupFailed, salvaged, blobUndecodable
+        case recordWritten, writeFailed, cleared, evicted, deleteFailed
+        case migrated, legacyRetired, legacyRetireFailed
+        case ingested, reembedded, appended, recovered
+    }
+
+    @discardableResult
+    static func store(_ store: StoreName, _ event: StoreEvent,
+                      slot: PrivacyToken? = nil, scope: StoreScope? = nil,
+                      count: Int? = nil, total: Int? = nil, characters: Int? = nil,
+                      bytes: Int? = nil, detail: PrivacyToken? = nil,
+                      error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.store, .token(PrivacyToken(store.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let slot { fields.append(.init(.slot, .token(slot))) }
+        if let scope { fields.append(.init(.scope, .token(PrivacyToken(scope.rawValue)))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let total { fields.append(.init(.total, .count(total))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.store, .store, fields))
+    }
+
+    // MARK: - Import / export / sync
+    //
+    // The boundary crossings. A manifest count, a format class, a byte size and a retry tier are
+    // public; an entry name, an archive path and a queued operation's payload are not.
+    //
+    // Skill identity is the judgement call here and it goes the strict way: a hub skill's slug and
+    // a pack's id are community-authored, chosen by whoever published them and installed because
+    // the wearer went looking for that subject, so they are fingerprinted rather than kept. The
+    // *version* stays a token — it is published metadata that says nothing about who installed it.
+
+    enum TransferChannel: String {
+        case skillPack, skillHub, agentExport, recordingFile, spotlightIndex, offlineSync
+    }
+
+    enum TransferEvent: String {
+        case installed, removed, imported, quarantined, catalogueEmpty
+        case exported
+        case fileFailed, copyFailed
+        case donationFailed, purgeFailed
+        case attemptsExhausted, permanentlyFailed
+    }
+
+    /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its
+    /// payload. `item` is an op id or a skill identity, fingerprinted. The sink's failure `reason`
+    /// is free-form prose composed by whatever refused the operation, so it has no parameter.
+    @discardableResult
+    static func transfer(_ channel: TransferChannel, _ event: TransferEvent,
+                         item: PrivateIdentifier? = nil, version: PrivacyToken? = nil,
+                         operation: PrivacyToken? = nil, signed: Bool? = nil,
+                         count: Int? = nil, total: Int? = nil, attempt: Int? = nil,
+                         bytes: Int? = nil,
+                         error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.channel, .token(PrivacyToken(channel.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let item { fields.append(.init(.item, .identifier(item))) }
+        if let version { fields.append(.init(.version, .token(version))) }
+        if let operation { fields.append(.init(.operation, .token(operation))) }
+        if let signed { fields.append(.init(.signed, .flag(signed))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let total { fields.append(.init(.total, .count(total))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.transfer, .transfer, fields))
+    }
+
     // MARK: - Network
 
     enum NetworkSubsystem: String { case homeAssistant, contextFetch, modelCatalog }
@@ -1459,6 +1580,7 @@ struct PrivacyEvent: Equatable {
         case conversation
         case camera, photoLibrary, vision, face
         case homeBridge, medical, location, proactiveAlert
+        case store, transfer
     }
 
     /// Field keys are closed too, so a reader can rely on the shape of a category's lines.
@@ -1482,6 +1604,7 @@ struct PrivacyEvent: Equatable {
         case store, thread, minutes
         case resolution, frameRate, width, height
         case posture, percent, extraction, confidence, days
+        case slot, scope, version, signed
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

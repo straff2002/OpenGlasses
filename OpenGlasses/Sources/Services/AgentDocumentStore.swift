@@ -301,8 +301,12 @@ class AgentDocumentStore: ObservableObject {
                 // Transient read failure: serve the default in-memory, but leave the file alone —
                 // treating this as "first run" would clobber the agent's accumulated documents.
                 unreadable.insert(type)
-                NSLog("[AgentDocs] Read failed for %@ (%@) — keeping the file untouched",
-                      type.filename, error.localizedDescription)
+                // `type` is the app's own three-document vocabulary (soul/skills/memory), so
+                // naming which one failed is public; the document's *content* is the agent's
+                // accumulated notes about the wearer and never appears.
+                PrivacyLog.store(.agentDocuments, .readFailed,
+                                 slot: PrivacyToken(type.rawValue),
+                                 error: SafeErrorSummary(error))
                 return type.defaultContent
             }
         }
@@ -323,10 +327,12 @@ class AgentDocumentStore: ObservableObject {
             let aside = url.appendingPathExtension("unreadable-\(formatter.string(from: Date()))")
             do {
                 try FileManager.default.moveItem(at: url, to: aside)
-                NSLog("[AgentDocs] Preserved unreadable %@ as %@", type.filename, aside.lastPathComponent)
+                PrivacyLog.store(.agentDocuments, .unreadablePreserved,
+                                 slot: PrivacyToken(type.rawValue))
             } catch {
-                NSLog("[AgentDocs] Could not preserve unreadable %@ (%@) — keeping edit in-memory only",
-                      type.filename, error.localizedDescription)
+                PrivacyLog.store(.agentDocuments, .preserveFailed,
+                                 slot: PrivacyToken(type.rawValue),
+                                 error: SafeErrorSummary(error))
                 switch type {
                 case .soul: soul = content
                 case .skills: skills = content
@@ -339,14 +345,16 @@ class AgentDocumentStore: ObservableObject {
         do {
             try content.write(to: url, atomically: true, encoding: .utf8)
         } catch {
-            NSLog("[AgentDocs] Save failed for %@: %@", type.filename, error.localizedDescription)
+            PrivacyLog.store(.agentDocuments, .saveFailed, slot: PrivacyToken(type.rawValue),
+                             error: SafeErrorSummary(error))
         }
         switch type {
         case .soul: soul = content
         case .skills: skills = content
         case .memory: memory = content
         }
-        NSLog("[AgentDocs] Saved %@: %d chars", type.filename, content.count)
+        PrivacyLog.store(.agentDocuments, .saved, slot: PrivacyToken(type.rawValue),
+                         characters: content.count)
     }
 
     func content(for type: DocumentType) -> String {
@@ -391,6 +399,9 @@ class AgentDocumentStore: ObservableObject {
         let entry = "\n- \(trimmed) *(learned \(timestamp))*"
         memory += entry
         save(.memory, content: memory)
-        NSLog("[AgentDocs] Memory appended: %@", trimmed)
+        // The fact itself is what the agent learned about the wearer — the single most
+        // content-bearing line in this file. Its length is all that survives.
+        PrivacyLog.store(.agentDocuments, .appended, slot: PrivacyToken(DocumentType.memory.rawValue),
+                         characters: trimmed.count)
     }
 }

@@ -86,7 +86,9 @@ class AgentDataExporter {
         // Clean up temp directory
         try? fm.removeItem(at: tempDir)
 
-        NSLog("[Export] Created: %@", zipURL.lastPathComponent)
+        // The archive's name and the entry names inside it are the wearer's own data by another
+        // route — a conversation title becomes a filename. Only the fact that one was written.
+        PrivacyLog.transfer(.agentExport, .exported)
         return zipURL
     }
 }

@@ -195,7 +195,8 @@ struct RecallIndexMigration {
             do {
                 try fileManager.removeItem(at: url)
             } catch {
-                NSLog("[ConversationRecall] Legacy recall index removal failed")
+                PrivacyLog.store(.conversationRecall, .legacyRetireFailed,
+                                 error: SafeErrorSummary(error))
                 return false
             }
         }

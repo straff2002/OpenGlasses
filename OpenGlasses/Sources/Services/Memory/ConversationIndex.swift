@@ -16,7 +16,9 @@ final class ConversationIndex: @unchecked Sendable {
 
     private init(sqlitePath: String, useWAL: Bool) {
         if sqlite3_open(sqlitePath, &db) != SQLITE_OK {
-            NSLog("[ConversationIndex] Failed to open database")
+            PrivacyLog.store(.conversationIndex, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         if useWAL { exec("PRAGMA journal_mode=WAL") }
         exec("PRAGMA synchronous=NORMAL")

@@ -56,7 +56,7 @@ final class DocumentStore: ObservableObject {
         openDatabase()
         createTables()
         refresh()
-        NSLog("[DocumentStore] Init — %d documents", documents.count)
+        PrivacyLog.store(.ragDocuments, .opened, count: documents.count)
     }
 
     // MARK: - Public API
@@ -93,7 +93,11 @@ final class DocumentStore: ObservableObject {
         }
 
         refresh()
-        NSLog("[DocumentStore] Ingested '%@' — %d chunks, %d chars", safeName, chunks.count, cleaned.count)
+        // The document's name is its title — of a scanned letter, a report, a prescription — and
+        // the chunk text is the document itself. What an ingest fault needs is how many chunks
+        // came out of how much text.
+        PrivacyLog.store(.ragDocuments, .ingested, count: chunks.count,
+                         characters: cleaned.count, detail: PrivacyToken(sourceType))
         return documents.first { $0.id == docId }
     }
 
@@ -186,7 +190,7 @@ final class DocumentStore: ObservableObject {
         exec("DELETE FROM doc_chunks")
         exec("DELETE FROM documents")
         refresh()
-        NSLog("[DocumentStore] Cleared all documents")
+        PrivacyLog.store(.ragDocuments, .cleared)
     }
 
     // MARK: - Embedding migration
@@ -225,7 +229,11 @@ final class DocumentStore: ObservableObject {
             progress?(done, rows.count)
             await Task.yield()
         }
-        if done > 0 { NSLog("[DocumentStore] Re-embedded %d outdated chunk(s) → %@", done, current.tag) }
+        // The embedder's version tag is a build constant, not a property of what was embedded.
+        if done > 0 {
+            PrivacyLog.store(.ragDocuments, .reembedded, count: done,
+                             detail: PrivacyToken(current.tag))
+        }
         return done
     }
 
@@ -252,7 +260,9 @@ final class DocumentStore: ObservableObject {
 
     private func openDatabase() {
         if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
-            NSLog("[DocumentStore] Failed to open database at %@", dbURL.path)
+            PrivacyLog.store(.ragDocuments, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         exec("PRAGMA journal_mode=WAL")
         exec("PRAGMA synchronous=NORMAL")

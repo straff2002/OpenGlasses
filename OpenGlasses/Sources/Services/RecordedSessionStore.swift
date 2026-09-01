@@ -102,7 +102,7 @@ final class RecordedSessionStore: ObservableObject {
                     try fileManager.removeItem(at: fileURL)
                 }
             } catch {
-                NSLog("[RecordedSessionStore] Could not delete audio %@: %@", fileURL.path, error.localizedDescription)
+                PrivacyLog.store(.recordedSessions, .deleteFailed, error: SafeErrorSummary(error))
             }
         }
 
@@ -139,7 +139,7 @@ final class RecordedSessionStore: ObservableObject {
             let data = try JSONEncoder().encode(sessions)
             try data.write(to: storageURL, options: .atomic)
         } catch {
-            NSLog("[RecordedSessionStore] Persistence failed: %@", error.localizedDescription)
+            PrivacyLog.store(.recordedSessions, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 
