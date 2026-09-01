@@ -94,7 +94,8 @@ final class TwitchChatClient {
         sock.send("CAP REQ :twitch.tv/tags twitch.tv/commands")
         sock.send("NICK justinfan\(Int.random(in: 10_000...99_999))")
         sock.send("JOIN #\(channel)")
-        NSLog("[TwitchChat] joined #%@ (anonymous read-only)", channel)
+        // The channel is the wearer's own broadcast identity — fingerprinted, never named.
+        PrivacyLog.stream(.broadcastChat, .joined, session: PrivateIdentifier(channel))
     }
 
     private func scheduleReconnect() {
@@ -103,7 +104,8 @@ final class TwitchChatClient {
         socket = nil
         reconnectAttempt += 1
         let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 60)   // 1, 2, 4, … capped 60 s
-        NSLog("[TwitchChat] connection lost — reconnect #%d in %.0fs", reconnectAttempt, delay)
+        PrivacyLog.stream(.broadcastChat, .reconnectScheduled, attempt: reconnectAttempt,
+                          delaySeconds: delay)
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))

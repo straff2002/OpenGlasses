@@ -67,7 +67,7 @@ class MeetingAssistantService: ObservableObject {
             }
         }
 
-        NSLog("[MeetingAssistant] Started")
+        PrivacyLog.speech(.meetingNotes, .started)
     }
 
     /// Stop the assistant and clean up resources.
@@ -79,7 +79,7 @@ class MeetingAssistantService: ObservableObject {
         timerTask?.cancel()
         timerTask = nil
         llm = nil
-        NSLog("[MeetingAssistant] Stopped")
+        PrivacyLog.speech(.meetingNotes, .stopped)
     }
 
     // MARK: - Caption ingestion
@@ -142,9 +142,10 @@ class MeetingAssistantService: ObservableObject {
             let response = try await llm(prompt)
             lastSummary = response
             postNotification(body: response)
-            NSLog("[MeetingAssistant] Analysis complete (%d chars)", response.count)
+            PrivacyLog.speech(.meetingNotes, .analysisCompleted, characters: response.count)
         } catch {
-            NSLog("[MeetingAssistant] LLM error: %@", error.localizedDescription)
+            PrivacyLog.model(.requestFailed, detail: PrivacyToken("meetingSummary"),
+                             error: SafeErrorSummary(error))
         }
     }
 
@@ -166,7 +167,9 @@ class MeetingAssistantService: ObservableObject {
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                NSLog("[MeetingAssistant] Notification error: %@", error.localizedDescription)
+                PrivacyLog.speech(.meetingNotes, .sendFailed,
+                                  detail: PrivacyToken("notification"),
+                                  error: SafeErrorSummary(error))
             }
         }
     }

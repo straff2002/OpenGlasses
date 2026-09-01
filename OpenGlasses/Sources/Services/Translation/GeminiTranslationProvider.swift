@@ -69,7 +69,9 @@ final class GeminiTranslationProvider: ObservableObject, TranslationCaptionProvi
         Task { [weak self] in
             guard let self else { return }
             let ok = await self.service.connect()
-            if !ok { NSLog("[Translation] Gemini session failed to connect") }
+            if !ok {
+                PrivacyLog.speech(.liveTranslation, .sessionFailed, detail: PrivacyToken("cloud"))
+            }
         }
     }
 

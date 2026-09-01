@@ -69,7 +69,7 @@ final class OnDeviceASREngine {
         // family decodes silence as training-corpus boilerplate (and skipping saves the
         // inference cost).
         guard TranscriptGuard.passesEnergyGate(samples: samples) else {
-            NSLog("[ASR] Energy gate: buffer is silence — skipping recognition")
+            PrivacyLog.speech(.onDeviceASR, .silenceGated)
             return ""
         }
         #if SHERPA_ONNX_ENABLED
@@ -87,7 +87,9 @@ final class OnDeviceASREngine {
         // BS P1: drop unmistakable artifact shapes (boilerplate, degenerate repetition,
         // script mismatch vs the caller's expected locale).
         guard let kept = TranscriptGuard.filter(raw, expectedLocaleIdentifier: expectedLocaleIdentifier) else {
-            NSLog("[ASR] Artifact filter dropped transcript: %@", String(raw.prefix(60)))
+            PrivacyLog.speech(.onDeviceASR, .artifactDropped,
+                              language: PrivacyToken(expectedLocaleIdentifier),
+                              characters: raw.count)
             return ""
         }
         return kept

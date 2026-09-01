@@ -125,7 +125,10 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
         let summary = "Capture audio source → \(arbiter.source.rawValue) "
                     + "(listening: \(wakeListening ? "on" : "off"), "
                     + "capturing: \(conditions.captureActive ? "yes" : "no"))"
-        NSLog("[CaptureAudio] %@", summary)
+        PrivacyLog.audio(.captureRouter, .routeChanged,
+                         route: PrivacyToken(arbiter.source.rawValue),
+                         detail: PrivacyToken((wakeListening ? "listening" : "idle")
+                                              + (conditions.captureActive ? "-capturing" : "")))
         onDebugEvent?(summary)
         run(commands)
     }
@@ -159,7 +162,8 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
             wakeTap?.removeAudioBufferConsumer(id: Self.sourceConsumerId)
         case .startStandalone:
             guard let standalone else {
-                NSLog("[CaptureAudio] No standalone engine — capture stays video-only while listening is off")
+                PrivacyLog.audio(.captureRouter, .engineStartFailed,
+                                 detail: PrivacyToken("noStandaloneEngine"))
                 onDebugEvent?("Capture audio: no standalone engine — video-only while listening is off")
                 return
             }
@@ -168,7 +172,8 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
                 try await standalone.start()
             } catch {
                 standalone.removeAudioBufferConsumer(id: Self.sourceConsumerId)
-                NSLog("[CaptureAudio] Standalone engine failed to start: %@", error.localizedDescription)
+                PrivacyLog.audio(.captureRouter, .engineStartFailed,
+                                 error: SafeErrorSummary(error))
                 onDebugEvent?("Capture audio engine failed to start: \(error.localizedDescription)")
             }
         case .stopStandalone:

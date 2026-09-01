@@ -52,7 +52,10 @@ final class PrivacyLogTests: XCTestCase {
             PrivacyLog.toolCallCancelled(invocation: text),
             PrivacyLog.toolCallCompleted(name: text, invocation: text,
                                          outcome: .completed, durationMs: 1234),
-            PrivacyLog.realtimeSession(.openai, .sessionCreated, detail: PrivacyToken(text)),
+            PrivacyLog.realtimeSession(.openai, .sessionCreated, detail: PrivacyToken(text),
+                                       state: PrivacyToken(text), count: 4, total: 9,
+                                       characters: text.count, success: false,
+                                       error: SafeErrorSummary(MaliciousError())),
             PrivacyLog.realtimeUtterance(.gemini, direction: .input, characters: text.count),
             PrivacyLog.realtimeMedia(.gemini, kind: .streamedFrame, kilobytes: 42, sequence: 7),
             PrivacyLog.realtimeSendSkipped(.openai, kind: .text, reason: .notReady,
@@ -94,8 +97,56 @@ final class PrivacyLogTests: XCTestCase {
             PrivacyLog.mcpServer(.requestRejected, port: 8765, route: .unknown,
                                  error: .http(status: 401)),
             PrivacyLog.stream(.viewerBroadcast, .started, detail: PrivacyToken(text), count: 2,
-                              session: PrivateIdentifier(text),
+                              session: PrivateIdentifier(text), attempt: 3, delaySeconds: 2,
                               error: SafeErrorSummary(MaliciousError())),
+            // P1 batch 2 — conversation / model / audio.
+            PrivacyLog.toolGate(.confirmationRequired, tool: text, detail: PrivacyToken(text)),
+            PrivacyLog.toolDispatch(.gateway, tool: text),
+            PrivacyLog.toolRun(.succeeded, tool: text, seconds: 1.5, count: 1,
+                               characters: text.count, detail: PrivacyToken(text),
+                               error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.toolAuthorizationRefused(verdict: text, tool: text, origin: text,
+                                                depth: 1, invocation: text),
+            PrivacyLog.webSearch(.perplexity, succeeded: false, status: 503, results: 0,
+                                 error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.wakeWord(.fuzzyDetected, trigger: .wakePhrase, attempt: 1, count: 2,
+                                distance: 2, error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.speech(.ambientCaptions, .transcriptDelivered,
+                              language: PrivacyToken(text), characters: text.count, count: 1,
+                              seconds: 2, bytes: text.utf8.count, detail: PrivacyToken(text),
+                              error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.tts(.speaking, engine: PrivacyToken(text), characters: text.count,
+                           bytes: 4096, seconds: 1.2, quality: 2,
+                           voice: PrivateIdentifier(text), status: 200, success: true,
+                           detail: PrivacyToken(text),
+                           error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.audio(.wakeWord, .routeChanged, owner: PrivacyToken(text),
+                             route: PrivacyToken(text), device: PrivateIdentifier(text),
+                             detail: PrivacyToken(text), hertz: 48_000, channels: 1,
+                             bytes: 320, milliseconds: 40, count: 2,
+                             error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.model(.turnStarted, provider: PrivacyToken(text),
+                             model: PrivacyToken(text),
+                             configuration: PrivateIdentifier(text), attempt: 1, count: 2,
+                             total: 3, characters: text.count, tokens: 900, status: 429,
+                             bytes: 2048, seconds: 0.5, success: false,
+                             detail: PrivacyToken(text),
+                             error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.modelCompaction(messagesBefore: 40, messagesAfter: 12,
+                                       tokensBefore: 9000, tokensAfter: 2200, signals: 3,
+                                       detail: PrivacyToken(text)),
+            PrivacyLog.localModel(.tokenShape, model: PrivacyToken(text), vision: true,
+                                  count: 1, total: 2, characters: text.count, tokens: 842,
+                                  shape: PrivacyToken(text), megabytes: 1200,
+                                  cacheMegabytes: 300, footprintMegabytes: 2100,
+                                  headroomMegabytes: 900, kilobytes: 64,
+                                  tool: PrivacyToken(text), detail: PrivacyToken(text),
+                                  error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.conversation(.conversations, .threadResumed,
+                                    thread: PrivateIdentifier(text), count: 12,
+                                    characters: text.count, minutes: 7,
+                                    detail: PrivacyToken(text),
+                                    error: SafeErrorSummary(MaliciousError())),
         ]
     }
 
@@ -111,6 +162,43 @@ final class PrivacyLogTests: XCTestCase {
 
     /// The sentinels are only meaningful if the events actually carry something. Without this, a
     /// facade that encoded the empty string would pass the test above.
+    /// The specific shape a caption or a spoken reply takes on its way to the log: a transcript
+    /// goes in, a character count comes out. This is the canary the batch-2 domains are judged on,
+    /// asserted end to end through the real methods rather than on the encoder alone.
+    func testTranscriptSentinelSurvivesOnlyAsALength() {
+        let spoken = Sentinel.transcript
+        let caption = PrivacyEventEncoder.encode(
+            PrivacyLog.speech(.ambientCaptions, .transcriptDelivered,
+                              language: PrivacyToken("en-NZ"), characters: spoken.count))
+        XCTAssertFalse(caption.contains("SENTINEL"), caption)
+        XCTAssertFalse(caption.lowercased().contains("biopsy"), caption)
+        XCTAssertTrue(caption.contains("characters=\(spoken.count)"), caption)
+        XCTAssertTrue(caption.contains("language=en-NZ"), caption)
+
+        let reply = PrivacyEventEncoder.encode(
+            PrivacyLog.tts(.speaking, engine: PrivacyToken("elevenLabs"),
+                           characters: spoken.count))
+        XCTAssertFalse(reply.contains("SENTINEL"), reply)
+        XCTAssertTrue(reply.contains("characters=\(spoken.count)"), reply)
+
+        // Wake-word detection carries no text at all — not even a length, since the phrase that
+        // matched is a fixed short string and its length would narrow the vocabulary.
+        let wake = PrivacyEventEncoder.encode(PrivacyLog.wakeWord(.detected))
+        XCTAssertEqual(wake, "[speech] wakeWord event=detected")
+    }
+
+    /// A model configuration name is wearer-authored; a model id is a catalog name. The pair has
+    /// to come out on opposite sides of the classification in the same line.
+    func testModelIdIsKeptWhileConfigurationNameIsFingerprinted() {
+        let line = PrivacyEventEncoder.encode(
+            PrivacyLog.model(.turnStarted, provider: PrivacyToken("anthropic"),
+                             model: PrivacyToken("claude-opus-4"),
+                             configuration: PrivateIdentifier("Dr Alvarez clinic notes")))
+        XCTAssertTrue(line.contains("model=claude-opus-4"), line)
+        XCTAssertFalse(line.contains("Alvarez"), line)
+        XCTAssertTrue(line.contains("configuration=#"), line)
+    }
+
     func testEncodedEventsCarryTheirMetadata() {
         let event = PrivacyLog.toolCallCompleted(name: "send_message", invocation: "call-9f2",
                                                  outcome: .rejected, durationMs: 1234)
@@ -299,6 +387,52 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/FieldAssist/EscalationCoordinator.swift",
     ]
 
+    /// P1 batch 2 — conversation / model / audio. Same contract as batch 1: zero direct log
+    /// calls, and the file must be emitting typed events instead.
+    ///
+    /// `WakeWordService` and `LLMService` are the two that matter most here. The first logged the
+    /// recognised transcript on five separate paths (stop command, both barge-in kinds, detection,
+    /// fuzzy match) plus the persona names and every configured wake phrase; the second logged the
+    /// model's reasoning trace, provider error bodies, and the on-device tool call with its
+    /// arguments.
+    private static let batchTwoFiles = [
+        "OpenGlasses/Sources/Services/WakeWordService.swift",
+        "OpenGlasses/Sources/Services/LLMService.swift",
+        "OpenGlasses/Sources/Services/TextToSpeechService.swift",
+        "OpenGlasses/Sources/Services/Audio/RealtimeAudioEngine.swift",
+        "OpenGlasses/Sources/Services/Audio/AudioSessionCoordinator.swift",
+        "OpenGlasses/Sources/Services/Audio/AudioSessionActivator.swift",
+        "OpenGlasses/Sources/Services/GeminiLive/GeminiLiveSessionManager.swift",
+        "OpenGlasses/Sources/Services/GeminiLive/GeminiLiveModelCatalog.swift",
+        "OpenGlasses/Sources/Services/GeminiLive/FrameThrottler.swift",
+        "OpenGlasses/Sources/Services/OpenAIRealtime/OpenAIRealtimeSessionManager.swift",
+        "OpenGlasses/Sources/Services/LocalLLMService.swift",
+        "OpenGlasses/Sources/Services/LLM/ToolLoopDriver.swift",
+        "OpenGlasses/Sources/Services/ConversationStore.swift",
+        "OpenGlasses/Sources/Services/ConversationEncryptionService.swift",
+        "OpenGlasses/Sources/Services/TranscriptionService.swift",
+        "OpenGlasses/Sources/Services/AmbientCaptionService.swift",
+        "OpenGlasses/Sources/Services/LiveTranslationService.swift",
+        "OpenGlasses/Sources/Services/Translation/OnDeviceTranslationProvider.swift",
+        "OpenGlasses/Sources/Services/Translation/GeminiTranslationProvider.swift",
+        "OpenGlasses/Sources/Services/ASR/OnDeviceASREngine.swift",
+        "OpenGlasses/Sources/Services/Diarization/DeepgramSTTService.swift",
+        "OpenGlasses/Sources/Services/MemoryRewindService.swift",
+        "OpenGlasses/Sources/Services/MeetingAssistantService.swift",
+        "OpenGlasses/Sources/Services/IntentClassifier.swift",
+        "OpenGlasses/Sources/Services/BackgroundVoiceService.swift",
+        "OpenGlasses/Sources/Services/AudioRecordingService.swift",
+        "OpenGlasses/Sources/Services/AudioCapture/StandaloneMicTapService.swift",
+        "OpenGlasses/Sources/Services/AudioCapture/CaptureAudioRouter.swift",
+        "OpenGlasses/Sources/Services/AudioCapture/CaptureAudioNormalizer.swift",
+        "OpenGlasses/Sources/Services/NativeTools/NativeToolRouter.swift",
+        "OpenGlasses/Sources/Services/NativeTools/ToolAuthorizationEventLog.swift",
+        "OpenGlasses/Sources/Services/NativeTools/WebSearchTool.swift",
+        "OpenGlasses/Sources/Services/Teleprompter/TeleprompterScriptStore.swift",
+        "OpenGlasses/Sources/Services/BroadcastChat/TwitchChatClient.swift",
+        "OpenGlasses/Sources/Services/BroadcastChat/BroadcastChatReadbackService.swift",
+    ]
+
     private func sourceText(_ relativePath: String) throws -> String {
         let url = Self.repoRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
@@ -352,6 +486,23 @@ final class PrivacyLogTests: XCTestCase {
             XCTAssertFalse(source.contains("LogRedaction."),
                            "\(path): LogRedaction is export-diagnostics defence-in-depth, not a "
                                + "way to log content from a live network path")
+        }
+    }
+
+    func testBatchTwoFilesHaveNoDirectLogCalls() throws {
+        for path in Self.batchTwoFiles {
+            let source = try sourceText(path)
+            XCTAssertTrue(source.contains("PrivacyLog."),
+                          "\(path): sanity — a migrated file should be emitting typed events")
+            for line in loggingLines(in: source) {
+                XCTFail("\(path): a direct log call survives in a migrated file:\n\(line)")
+            }
+            // `ToolLogContent.redacted` passed content straight through in DEBUG and shortened it
+            // to a count in Release — the same "a redactor is not authorisation" trap
+            // `LogRedaction` was. It is deleted; nothing may reintroduce a caller.
+            XCTAssertFalse(source.contains("ToolLogContent"),
+                           "\(path): ToolLogContent was removed — content goes to the log as a "
+                               + "count through PrivacyLog, not through a debug passthrough")
         }
     }
 
@@ -443,6 +594,36 @@ final class PrivacyLogTests: XCTestCase {
              ["Paging expert pool"]),
             ("OpenGlasses/Sources/Services/FieldAssist/ExpertStreamTransport.swift",
              ["Streaming via %@"]),
+            // P1 batch 2: the wake-word listener logged the recognised transcript on every path
+            // that fired, plus the persona names and the full contextual-boost list; the LLM
+            // service logged the reasoning trace, provider error bodies and the on-device tool
+            // call with its arguments; TTS logged the sentence it was about to speak; the
+            // translator logged both the utterance and its translation.
+            ("OpenGlasses/Sources/Services/WakeWordService.swift",
+             ["Stop command detected in:", "Barge-in (wake word):", "Barge-in (voice activity):",
+              "Wake word detected:", "Fuzzy wake word match:", "Personas:"]),
+            ("OpenGlasses/Sources/Services/LLMService.swift",
+             ["🤖 Using model:", "Think: %@", "raw error response", "Local model tool call:",
+              "Dropping malformed tool_call (no function.name): %@", "🧠 Cloud agent:"]),
+            ("OpenGlasses/Sources/Services/TextToSpeechService.swift",
+             ["TTS: Speaking", "ElevenLabs: Error", "Using voice"]),
+            ("OpenGlasses/Sources/Services/LiveTranslationService.swift",
+             ["→\\(targetLanguage)]"]),
+            ("OpenGlasses/Sources/Services/AmbientCaptionService.swift",
+             ["Artifact filter dropped caption: %@"]),
+            ("OpenGlasses/Sources/Services/ASR/OnDeviceASREngine.swift",
+             ["Artifact filter dropped transcript: %@"]),
+            ("OpenGlasses/Sources/Services/TranscriptionService.swift",
+             ["Transcription complete, sending:", "On-device transcription:"]),
+            ("OpenGlasses/Sources/Services/NativeTools/NativeToolRouter.swift",
+             ["Delegating to OpenClaw: %@(%@)", "succeeded in %.1fs: %@",
+              "Confirmation required for %@: %@"]),
+            ("OpenGlasses/Sources/Services/IntentClassifier.swift",
+             ["RESPOND for: %@", "IGNORE for: %@", "Uncertain response: %@"]),
+            ("OpenGlasses/Sources/Services/LocalLLMService.swift",
+             ["think block: %d chars — %@"]),
+            ("OpenGlasses/Sources/Services/ConversationStore.swift",
+             ["Started thread %@ (project %@)"]),
         ]
         for (path, statements) in removed {
             let source = try sourceText(path)
@@ -461,9 +642,12 @@ final class PrivacyLogTests: XCTestCase {
         XCTAssertTrue(router.contains("PrivacyLog.toolCallReceived"),
                       "sanity: the migrated call should be visible to the scan")
 
-        let gemini = try sourceText("OpenGlasses/Sources/Services/GeminiLive/GeminiLiveService.swift")
-        XCTAssertFalse(loggingLines(in: gemini).isEmpty,
-                       "sanity: this file still has content-free NSLog lines, so the line scanner "
+        // A file no batch has reached yet, so the line scanner must find something in it. If this
+        // ever goes to zero legitimately (batch 5 covers it), move the anchor rather than delete
+        // the check — an empty result would otherwise mean the matcher matches nothing at all.
+        let unmigrated = try sourceText("OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift")
+        XCTAssertFalse(loggingLines(in: unmigrated).isEmpty,
+                       "sanity: this file still has direct NSLog lines, so the line scanner "
                            + "must be finding some — an empty result would mean it matches nothing")
     }
 

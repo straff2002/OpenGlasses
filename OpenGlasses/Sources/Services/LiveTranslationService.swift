@@ -48,7 +48,8 @@ final class LiveTranslationService: ObservableObject {
         }
 
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
-            print("⚠️ LiveTranslation: Speech recognizer not available for \(locale.identifier)")
+            PrivacyLog.speech(.liveTranslation, .recognizerUnavailable,
+                              language: PrivacyToken(locale.identifier))
             return
         }
 
@@ -71,11 +72,12 @@ final class LiveTranslationService: ObservableObject {
             guard reason == .oldDeviceUnavailable || reason == .newDeviceAvailable else { return }
             Task { @MainActor in
                 guard let self, self.isActive else { return }
-                print("🌍 LiveTranslation: audio route changed — rebuilding engine")
+                PrivacyLog.audio(.translation, .routeChanged)
                 self.restartListening()
             }
         }
-        print("🌍 Live translation started: \(source) → \(target)")
+        PrivacyLog.speech(.liveTranslation, .started, language: PrivacyToken(source),
+                          detail: PrivacyToken(target))
     }
 
     func stop() {
@@ -96,7 +98,7 @@ final class LiveTranslationService: ObservableObject {
             coexistToken = nil
             AudioSessionCoordinator.shared.endCoexisting(token)
         }
-        print("🌍 Live translation stopped. \(translationCount) translations.")
+        PrivacyLog.speech(.liveTranslation, .stopped, count: translationCount)
     }
 
     // MARK: - Speech Recognition
@@ -115,9 +117,11 @@ final class LiveTranslationService: ObservableObject {
             // BJ PR2 follow-up: the blocking setCategory→setActive runs off-main via the coordinator.
             try await AudioSessionCoordinator.shared.reconfigure(
                 category: .playAndRecord, mode: .default, options: options)
-            print("🌍 Translation mic source: \(usePhoneMic ? "iPhone" : "glasses (Bluetooth)")")
+            PrivacyLog.audio(.translation, .modeSelected,
+                             detail: PrivacyToken(usePhoneMic ? "iPhone" : "glasses"))
         } catch {
-            print("⚠️ LiveTranslation: audio session error: \(error)")
+            PrivacyLog.audio(.translation, .sessionConfigureFailed,
+                             error: SafeErrorSummary(error))
         }
 
         let engine = AVAudioEngine()
@@ -131,7 +135,7 @@ final class LiveTranslationService: ObservableObject {
         // Bluetooth transition can briefly report a zero format, and installing then crashes.
         // Same guard as WakeWordService; retry via the normal restart path.
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
-            print("⚠️ LiveTranslation: invalid input format (route transition?) — retrying")
+            PrivacyLog.audio(.translation, .formatInvalid)
             if isActive { restartListening() }
             return
         }
@@ -144,7 +148,7 @@ final class LiveTranslationService: ObservableObject {
         do {
             try engine.start()
         } catch {
-            print("⚠️ LiveTranslation: Audio engine failed: \(error)")
+            PrivacyLog.audio(.translation, .engineStartFailed, error: SafeErrorSummary(error))
             isActive = false
             return
         }
@@ -233,7 +237,11 @@ final class LiveTranslationService: ObservableObject {
         lastTranslation = translation
         translationCount += 1
 
-        print("🌍 [\(detectedLang)→\(targetLanguage)] \(trimmed.prefix(40))… → \(translation.prefix(40))…")
+        // Both halves were user content: the utterance and its translation. Language tags are
+        // a property of the session, so those stay; the sentences do not.
+        PrivacyLog.speech(.liveTranslation, .translated, language: PrivacyToken(detectedLang),
+                          characters: trimmed.count, count: translation.count,
+                          detail: PrivacyToken(targetLanguage))
         onTranslation?(translation)
     }
 

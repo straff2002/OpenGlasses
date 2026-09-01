@@ -173,7 +173,8 @@ class GeminiLiveService: ObservableObject {
                 let reasonStr = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "no reason"
                 Task { @MainActor in
                     guard self.generationGate.isCurrent(gen) else {
-                        NSLog("[WS] Ignoring stale close (superseded connection)")
+                        PrivacyLog.realtimeSession(.gemini, .unhandledEvent,
+                                                   detail: PrivacyToken("staleClose"))
                         return
                     }
                     self.resolveConnect(success: false)
@@ -194,7 +195,8 @@ class GeminiLiveService: ObservableObject {
                 let msg = error?.localizedDescription ?? "Unknown error"
                 Task { @MainActor in
                     guard self.generationGate.isCurrent(gen) else {
-                        NSLog("[WS] Ignoring stale error (superseded connection)")
+                        PrivacyLog.realtimeSession(.gemini, .unhandledEvent,
+                                                   detail: PrivacyToken("staleError"))
                         return
                     }
                     self.resolveConnect(success: false)

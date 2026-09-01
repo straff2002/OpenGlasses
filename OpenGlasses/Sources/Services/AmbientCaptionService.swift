@@ -133,7 +133,7 @@ class AmbientCaptionService: ObservableObject {
     func start() {
         guard !isActive else { return }
         guard let recognizer = recognizer, recognizer.isAvailable else {
-            print("🎙️ Captions: Speech recognizer not available")
+            PrivacyLog.speech(.ambientCaptions, .recognizerUnavailable)
             return
         }
 
@@ -141,7 +141,7 @@ class AmbientCaptionService: ObservableObject {
         currentCaption = ""
         startRecognitionSession()
         syncTranscribing()
-        print("🎙️ Ambient captions started")
+        PrivacyLog.speech(.ambientCaptions, .started)
     }
 
     func stop() {
@@ -151,7 +151,7 @@ class AmbientCaptionService: ObservableObject {
         currentCaption = ""
         glassesDisplay?.clear()
         syncTranscribing()
-        print("🎙️ Ambient captions stopped")
+        PrivacyLog.speech(.ambientCaptions, .stopped)
     }
 
     /// Presence-aware suspend (Plan W v2): a user-started caption stream pauses only when the user is
@@ -164,7 +164,7 @@ class AmbientCaptionService: ObservableObject {
         currentCaption = ""
         glassesDisplay?.clear()
         syncTranscribing()
-        print("🎙️ Ambient captions suspended (presence away)")
+        PrivacyLog.speech(.ambientCaptions, .suspended, detail: PrivacyToken("presenceAway"))
     }
 
     /// Resume a presence-suspended caption stream when the user returns. No-op otherwise.
@@ -173,7 +173,7 @@ class AmbientCaptionService: ObservableObject {
         presenceSuspended = false
         startRecognitionSession()
         syncTranscribing()
-        print("🎙️ Ambient captions resumed (presence)")
+        PrivacyLog.speech(.ambientCaptions, .resumed, detail: PrivacyToken("presence"))
     }
 
     /// Fire `onTranscribingChanged` if the live-session state actually changed. Called from every
@@ -195,7 +195,7 @@ class AmbientCaptionService: ObservableObject {
         guard isActive, !presenceSuspended else { return }
         stopRecognitionSession()
         startRecognitionSession()
-        print("🎙️ Ambient captions reconfigured (mode change)")
+        PrivacyLog.speech(.ambientCaptions, .reconfigured, detail: PrivacyToken("modeChange"))
     }
 
     func clearHistory() {
@@ -283,7 +283,8 @@ class AmbientCaptionService: ObservableObject {
                             self.restartAfterDelay()
                         }
                     } else if nsError.code != 216 { // 216 = cancelled
-                        print("🎙️ Captions error: \(error.localizedDescription)")
+                        PrivacyLog.speech(.ambientCaptions, .recognitionFailed,
+                                          error: SafeErrorSummary(error))
                         if self.isActive {
                             self.restartAfterDelay()
                         }
@@ -314,7 +315,8 @@ class AmbientCaptionService: ObservableObject {
             do {
                 try translator.start(direction: direction)
             } catch {
-                NSLog("[Captions] Cloud translation unavailable (%@)", error.localizedDescription)
+                PrivacyLog.speech(.liveTranslation, .providerUnavailable,
+                                  detail: PrivacyToken("cloud"), error: SafeErrorSummary(error))
                 return false
             }
             self.translator = translator
@@ -333,7 +335,8 @@ class AmbientCaptionService: ObservableObject {
             do {
                 try provider.start(direction: direction)
             } catch {
-                NSLog("[Captions] On-device translation unavailable (%@)", error.localizedDescription)
+                PrivacyLog.speech(.liveTranslation, .providerUnavailable,
+                                  detail: PrivacyToken("onDevice"), error: SafeErrorSummary(error))
                 return false
             }
             onDeviceTranslator = provider
@@ -343,8 +346,8 @@ class AmbientCaptionService: ObservableObject {
             }
             return true
 
-        case .unavailable(let reason):
-            NSLog("[Captions] Translation unavailable: %@ — plain transcription", reason)
+        case .unavailable:
+            PrivacyLog.speech(.liveTranslation, .translationUnavailable)
             return false
         }
     }
@@ -440,7 +443,7 @@ class AmbientCaptionService: ObservableObject {
         if captionHistory.count > maxHistory {
             captionHistory = Array(captionHistory.prefix(maxHistory))
         }
-        print("🎙️ Visual note inserted into caption history")
+        PrivacyLog.speech(.ambientCaptions, .noteInserted)
     }
 
     /// Hold the endpoint for the debounce window; commit only if no more tokens arrive (Plan BY).
@@ -469,7 +472,10 @@ class AmbientCaptionService: ObservableObject {
         // STT locale would flag every caption as a CJK hallucination (BY P2).
         let locale = expectedLocale ?? Config.speechRecognitionLocale
         guard TranscriptGuard.filter(text, expectedLocaleIdentifier: locale) != nil else {
-            NSLog("[Captions] Artifact filter dropped caption: %@", String(text.prefix(60)))
+            // The rejected text is still a transcript of what someone near the wearer said;
+            // failing a quality filter does not reclassify it.
+            PrivacyLog.speech(.ambientCaptions, .artifactDropped,
+                              language: PrivacyToken(locale), characters: text.count)
             return
         }
 

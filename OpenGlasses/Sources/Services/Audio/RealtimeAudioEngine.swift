@@ -209,7 +209,8 @@ final class RealtimeAudioEngine {
         }
         applyRoutePolicy(session, useIPhoneMode: useIPhoneMode)
         installSessionObservers()
-        NSLog("%@ Session mode: %@", config.logPrefix, useIPhoneMode ? "voiceChat (iPhone)" : "videoChat (glasses)")
+        PrivacyLog.audio(.realtime, .modeSelected, owner: PrivacyToken(config.owner.rawValue),
+                         detail: PrivacyToken(useIPhoneMode ? "voiceChat-iPhone" : "videoChat-glasses"))
     }
 
     /// Start capturing microphone audio and sending chunks via `onAudioCaptured`.
@@ -253,9 +254,10 @@ final class RealtimeAudioEngine {
         let needsResample = inputNativeFormat.sampleRate != config.inputSampleRate
             || inputNativeFormat.channelCount != config.channels
 
-        NSLog("%@ Native input: %.0fHz %dch, needs resample: %@", config.logPrefix,
-              inputNativeFormat.sampleRate, inputNativeFormat.channelCount,
-              needsResample ? "YES" : "NO")
+        PrivacyLog.audio(.realtime, .formatNegotiated, owner: PrivacyToken(config.owner.rawValue),
+                         detail: PrivacyToken(needsResample ? "resampling" : "native"),
+                         hertz: Int(inputNativeFormat.sampleRate),
+                         channels: Int(inputNativeFormat.channelCount))
 
         // CW P1: remember what the tap and converter below are built for, so recovery can tell a
         // stopped engine (restartable, playback survives) from a re-routed one (must rebuild).
@@ -311,7 +313,10 @@ final class RealtimeAudioEngine {
                 if rms > vad.amplitudeThreshold {
                     self.consecutiveHighFrames += 1
                     if self.consecutiveHighFrames >= vad.requiredHighFrames {
-                        NSLog("%@ Client VAD interrupt (RMS: %.4f)", self.config.logPrefix, rms)
+                        // The RMS itself is a measurement of how loudly the wearer was
+                        // speaking; the interrupt firing is the diagnosable fact.
+                        PrivacyLog.audio(.realtime, .clientVoiceInterrupt, owner: PrivacyToken(self.config.owner.rawValue),
+                                         count: vad.requiredHighFrames)
                         self.consecutiveHighFrames = 0
                         self.onVoiceInterrupt?()
                     }
@@ -338,7 +343,8 @@ final class RealtimeAudioEngine {
             playerNode.play()
             isCapturing = true
             // The first question on any field report is which tier this capture reached.
-            NSLog("%@ Capture started — duplex tier: %@", config.logPrefix, duplexCapability.rawValue)
+            PrivacyLog.audio(.realtime, .captureStarted, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken(duplexCapability.rawValue))
         } catch {
             tearDownEngineGraphOnQueue(flushPendingAudio: false)
             throw error
@@ -368,8 +374,8 @@ final class RealtimeAudioEngine {
         do {
             try audioEngine.inputNode.setVoiceProcessingEnabled(true)
         } catch {
-            NSLog("%@ Voice processing enable failed (%@) — falling back to half-duplex",
-                  config.logPrefix, error.localizedDescription)
+            PrivacyLog.audio(.realtime, .voiceProcessingFailed, owner: PrivacyToken(config.owner.rawValue),
+                             error: SafeErrorSummary(error))
             replaceEngineOnQueue()
             return
         }
@@ -379,9 +385,8 @@ final class RealtimeAudioEngine {
                                             channelCount: format.channelCount) {
         case .usable:
             duplexCapability = .echoCancelled
-        case .deadIO(let reason):
-            NSLog("%@ Voice processing came up dead (%@) — rebuilding without it",
-                  config.logPrefix, reason)
+        case .deadIO:
+            PrivacyLog.audio(.realtime, .voiceProcessingDead, owner: PrivacyToken(config.owner.rawValue))
             replaceEngineOnQueue()
         }
     }
@@ -433,8 +438,8 @@ final class RealtimeAudioEngine {
         // can no longer disagree about what a dead engine means.
         if !audioEngine.isRunning {
             guard recoverGraphOnQueue(trigger: .schedulingDiscovery) else {
-                NSLog("%@ Playback graph unusable — dropping %d bytes",
-                      config.logPrefix, data.count)
+                PrivacyLog.audio(.realtime, .playbackDropped, owner: PrivacyToken(config.owner.rawValue),
+                                 detail: PrivacyToken("graphUnusable"), bytes: data.count)
                 return
             }
         }
@@ -471,7 +476,8 @@ final class RealtimeAudioEngine {
             interleaved: false,
             context: "playback"
         ) else {
-            NSLog("%@ Invalid playback format — dropping %d bytes", config.logPrefix, pcm.count)
+            PrivacyLog.audio(.realtime, .playbackDropped, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken("invalidPlaybackFormat"), bytes: pcm.count)
             return false
         }
 
@@ -526,10 +532,10 @@ final class RealtimeAudioEngine {
                 lost &+= UInt64(entry.frames)
             }
         }
-        NSLog("%@ Carried %d ms of queued playback across the rebuild",
-              config.logPrefix,
-              PendingPlaybackMirror.milliseconds(frames: restored, sampleRate: config.outputSampleRate))
-        if lost > 0 { reportPlaybackLoss(frames: lost, context: "re-schedule failed") }
+        PrivacyLog.audio(.realtime, .playbackCarried, owner: PrivacyToken(config.owner.rawValue),
+                         milliseconds: PendingPlaybackMirror.milliseconds(
+                            frames: restored, sampleRate: config.outputSampleRate))
+        if lost > 0 { reportPlaybackLoss(frames: lost, context: "rescheduleFailed") }
     }
 
     /// Announce playback that was scheduled and never heard (CW P2).
@@ -540,7 +546,8 @@ final class RealtimeAudioEngine {
     private func reportPlaybackLoss(frames: UInt64, context: String) {
         guard frames > 0 else { return }
         let ms = PendingPlaybackMirror.milliseconds(frames: frames, sampleRate: config.outputSampleRate)
-        NSLog("%@ Discarded %d ms of unplayed audio (%@)", config.logPrefix, ms, context)
+        PrivacyLog.audio(.realtime, .playbackDiscarded, owner: PrivacyToken(config.owner.rawValue),
+                         detail: PrivacyToken(context), milliseconds: ms)
         onPlaybackDiscarded?(ms)
     }
 
@@ -638,9 +645,9 @@ final class RealtimeAudioEngine {
             case .pause:
                 // Keep `isCapturing` true through the pause so the matching `.ended` resumes.
                 self.audioEngine.pause()
-                NSLog("%@ Interruption began — engine paused", self.config.logPrefix)
+                PrivacyLog.audio(.realtime, .interruptionBegan, owner: PrivacyToken(self.config.owner.rawValue))
             case .resume:
-                NSLog("%@ Interruption ended — resuming", self.config.logPrefix)
+                PrivacyLog.audio(.realtime, .interruptionEnded, owner: PrivacyToken(self.config.owner.rawValue))
                 self.resumeAfterInterruptionOnQueue()
             case .resetGraph:
                 self.recoverGraphOnQueue(trigger: .routeChange)
@@ -661,7 +668,8 @@ final class RealtimeAudioEngine {
                 // CW P1: the session policy says the route moved; how much of the graph that
                 // actually costs is a separate question, and a glasses HFP mic arriving at session
                 // start (`.newDeviceAvailable`) usually costs nothing but a `start()`.
-                NSLog("%@ Route changed (reason %lu) — recovering engine", self.config.logPrefix, raw)
+                PrivacyLog.audio(.realtime, .routeChanged, owner: PrivacyToken(self.config.owner.rawValue),
+                                 detail: PrivacyToken(String(describing: reason)))
                 self.recoverGraphOnQueue(trigger: .routeChange)
             }
         }
@@ -672,8 +680,8 @@ final class RealtimeAudioEngine {
         // call must not stomp whoever acquired it meanwhile (wake word, the other realtime engine).
         let owner = AudioSessionCoordinator.shared.currentOwner
         guard AudioInterruptionPolicy.mayResume(engineOwner: config.owner, currentOwner: owner) else {
-            NSLog("%@ Interruption ended — NOT resuming; session owned by %@",
-                  config.logPrefix, owner?.rawValue ?? "nobody")
+            PrivacyLog.audio(.realtime, .interruptionEndedNotResuming, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken(owner?.rawValue ?? "nobody"))
             return
         }
         let session = AVAudioSession.sharedInstance()
@@ -685,9 +693,10 @@ final class RealtimeAudioEngine {
             if isCapturing, isPlayerNodeAttached, !playerNode.isPlaying {
                 playerNode.play()
             }
-            NSLog("%@ Resumed after interruption", config.logPrefix)
+            PrivacyLog.audio(.realtime, .resumed, owner: PrivacyToken(config.owner.rawValue))
         } catch {
-            NSLog("%@ Resume failed: %@ — recovering", config.logPrefix, error.localizedDescription)
+            PrivacyLog.audio(.realtime, .resumeFailed, owner: PrivacyToken(config.owner.rawValue),
+                             error: SafeErrorSummary(error))
             recoverGraphOnQueue(trigger: .interruptionEnded)
         }
     }
@@ -731,33 +740,34 @@ final class RealtimeAudioEngine {
                 // signature `VoiceProcessingProbe` already screens for at capture start. Reporting
                 // success here would leave a deaf engine running and nothing else would notice.
                 let live = audioEngine.inputNode.outputFormat(forBus: 0)
-                if case .deadIO(let reason) = VoiceProcessingProbe.verdict(
+                if case .deadIO = VoiceProcessingProbe.verdict(
                     sampleRate: live.sampleRate, channelCount: live.channelCount
                 ) {
-                    NSLog("%@ Graph restarted deaf (%@) — escalating to rebuild",
-                          config.logPrefix, reason)
+                    PrivacyLog.audio(.realtime, .engineRestartedDeaf, owner: PrivacyToken(config.owner.rawValue),
+                                     detail: PrivacyToken(trigger.rawValue))
                     carriedPlayback = pendingPlayback.drain()
                     attemptAudioResetOnQueue()
                     return false
                 }
                 if isPlayerNodeAttached, !playerNode.isPlaying { playerNode.play() }
-                NSLog("%@ Graph restarted after %@ — queued playback preserved",
-                      config.logPrefix, trigger.rawValue)
+                PrivacyLog.audio(.realtime, .engineRestarted, owner: PrivacyToken(config.owner.rawValue),
+                                 detail: PrivacyToken(trigger.rawValue))
                 return true
             } catch {
                 // A restart that will not start is a broken graph after all; fall through to the
                 // heavier path rather than reporting a success nobody can hear. The queue comes
                 // with us — the graph is being replaced, not the audio abandoned.
-                NSLog("%@ Graph restart failed (%@) — rebuilding", config.logPrefix,
-                      error.localizedDescription)
+                PrivacyLog.audio(.realtime, .engineRestartFailed, owner: PrivacyToken(config.owner.rawValue),
+                                 detail: PrivacyToken(trigger.rawValue),
+                                 error: SafeErrorSummary(error))
                 carriedPlayback = pendingPlayback.drain()
                 attemptAudioResetOnQueue()
                 return false
             }
 
         case .rebuild(let carryPlayback):
-            NSLog("%@ Rebuilding graph after %@ (carry playback: %@)", config.logPrefix,
-                  trigger.rawValue, carryPlayback ? "yes" : "no")
+            PrivacyLog.audio(.realtime, .engineRebuilt, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken(trigger.rawValue + (carryPlayback ? "-carry" : "-drop")))
             if carryPlayback {
                 // Take the queue off the doomed player node before the teardown detaches it;
                 // `rescheduleCarriedPlaybackOnQueue` puts it on the new one.
@@ -766,7 +776,7 @@ final class RealtimeAudioEngine {
                 // The buffers no longer match the graph they were built for, so they cannot come
                 // along — but the wearer not hearing them is a fact the backend has to be told.
                 reportPlaybackLoss(frames: pendingPlayback.discardAll(),
-                                   context: "format changed under queued playback")
+                                   context: "formatChangedUnderQueue")
             }
             attemptAudioResetOnQueue()
             return false
@@ -790,9 +800,10 @@ final class RealtimeAudioEngine {
                 do {
                     try await self.setupAudioSession(useIPhoneMode: mode)
                     try self.startCapture()
-                    NSLog("%@ Audio reset successful", self.config.logPrefix)
+                    PrivacyLog.audio(.realtime, .resetSucceeded, owner: PrivacyToken(self.config.owner.rawValue))
                 } catch {
-                    NSLog("%@ Audio reset failed: %@", self.config.logPrefix, error.localizedDescription)
+                    PrivacyLog.audio(.realtime, .resetFailed, owner: PrivacyToken(self.config.owner.rawValue),
+                                     error: SafeErrorSummary(error))
                 }
                 // CW P2: runs on both paths. On success it re-schedules the carried buffers onto
                 // the new player node; on failure it reports them lost. Either way the queue does
@@ -856,16 +867,20 @@ final class RealtimeAudioEngine {
            let input = session.availableInputs?.first(where: { $0.portType == portType }) {
             do {
                 try session.setPreferredInput(input)
-                NSLog("%@ Preferred input: %@ (%@)", config.logPrefix, input.portName, portType.rawValue)
+                PrivacyLog.audio(.realtime, .preferredInputSet, owner: PrivacyToken(config.owner.rawValue),
+                                 device: PrivateIdentifier(input.portName),
+                                 detail: PrivacyToken(portType.rawValue))
             } catch {
-                NSLog("%@ Could not set preferred input: %@", config.logPrefix, error.localizedDescription)
+                PrivacyLog.audio(.realtime, .preferredInputFailed, owner: PrivacyToken(config.owner.rawValue),
+                                 error: SafeErrorSummary(error))
             }
         }
         if decision.overrideToSpeaker {
             try? session.overrideOutputAudioPort(.speaker)
         }
-        if let message = decision.fallbackMessage {
-            NSLog("%@ %@", config.logPrefix, message)
+        if decision.fallbackMessage != nil {
+            PrivacyLog.audio(.realtime, .noMatchingInput, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken("glassesAudioUnavailable"))
         }
     }
 

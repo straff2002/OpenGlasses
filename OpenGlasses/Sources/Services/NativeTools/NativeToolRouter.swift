@@ -134,26 +134,27 @@ final class NativeToolRouter: ToolExecutionAuthority {
             return .rejected(reason: message)
 
         case .block(let message):
-            NSLog("[NativeToolRouter] Safety supervisor BLOCKED %@", name)
+            PrivacyLog.toolGate(.blockedBySafety, tool: name)
             return .rejected(reason: message)
 
         case .hold(let summary, let message):
             onActionHeld?(summary)
-            NSLog("[NativeToolRouter] Held %@ for re-engagement (autonomy=%@)", name,
-                  safetyContext.autonomy.rawValue)
+            PrivacyLog.toolGate(.heldForReengagement, tool: name,
+                                detail: PrivacyToken(safetyContext.autonomy.rawValue))
             return .rejected(reason: message)
 
         case .confirm(let summary):
             guard let coordinator = confirmationCoordinator else {
                 // No confirmation UI wired (e.g. headless): fail closed rather than actuate blind.
-                NSLog("[NativeToolRouter] No confirmation coordinator; refusing %@", name)
+                PrivacyLog.toolGate(.noConfirmationCoordinator, tool: name)
                 return .rejected(reason: ToolAuthorizationPolicy.unavailableConfirmationMessage(name))
             }
-            NSLog("[NativeToolRouter] Confirmation required for %@: %@", name,
-                  ToolLogContent.redacted(summary))
+            // The confirmation summary quotes the arguments back ("send \'meet at 8\' to …"),
+            // which is the very thing the gate is holding — so the tool name is all that is kept.
+            PrivacyLog.toolGate(.confirmationRequired, tool: name)
             let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
             guard approved else {
-                NSLog("[NativeToolRouter] User declined %@", name)
+                PrivacyLog.toolGate(.declinedByUser, tool: name)
                 return .rejected(reason: ToolAuthorizationPolicy.declineMessage(name))
             }
         }
@@ -172,7 +173,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
         // 1. Check native tools first.
         if let tool = registry.tool(named: name) {
-            NSLog("[NativeToolRouter] Executing native tool: %@", name)
+            PrivacyLog.toolDispatch(.native, tool: name)
             return await dispatch(call, semantics: tool.executionSemantics,
                                   reportProgress: reportProgress) { key in
                 // The executing call is task-local so a tool that composes another one names its
@@ -207,11 +208,12 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 mcp.recordEgress(serverLabel: server.label, toolName: tool.name, verdict: verdict)
             }
             if let reason = verdict.blockReason {
-                NSLog("[NativeToolRouter] Egress screen withheld MCP tool %@: %@", name, reason)
+                // The screen's reason names the patterns it matched *in the arguments*.
+                PrivacyLog.toolGate(.egressWithheld, tool: name)
                 return .rejected(reason: "The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
             }
             let outboundArgs = verdict.redactedArgs ?? args
-            NSLog("[NativeToolRouter] Executing MCP tool: %@", name)
+            PrivacyLog.toolDispatch(.mcp, tool: name)
             // A third-party server's tool declares nothing about itself, so it gets the same
             // assumption an unclassified native tool gets: it reached outside, we can't stop it,
             // and we don't know what a timeout left behind.
@@ -226,8 +228,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // an autonomous action, so it needs Agent Mode on, not just a configured gateway).
         if let bridge = openClawBridge, Config.isOpenClawAgentActive {
             let taskDesc = args["task"] as? String ?? String(describing: args)
-            NSLog("[NativeToolRouter] Delegating to OpenClaw: %@(%@)", name,
-                  ToolLogContent.redacted(String(taskDesc.prefix(100))))
+            // The task description is the request being handed to the gateway agent — the
+            // wearer's instruction in full.
+            PrivacyLog.toolDispatch(.gateway, tool: name)
             // The bridge answers authoritatively or not at all — it has no timeout race of its own.
             return ToolExecutionOutcome(await bridge.delegateTask(task: taskDesc, toolName: name))
         }
@@ -260,9 +263,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
         switch journal.admit(call: call, semantics: semantics, key: key, at: Date()) {
         case .duplicate(let existing):
             let advice = OperationRetryPolicy.advice(for: existing, semantics: semantics)
-            NSLog("[NativeToolRouter] %@ already journaled as %@ — not run again (%@)",
-                  name, existing.state.rawValue,
-                  advice.allowsAutomaticRetry ? "repeatable" : "needs reconciliation before retry")
+            PrivacyLog.toolGate(.alreadyJournaled, tool: name,
+                                detail: PrivacyToken(existing.state.rawValue
+                                                     + (advice.allowsAutomaticRetry ? "-repeatable" : "-needsReconcile")))
             return journal.replayOutcome(for: existing)
 
         case .proceed(let record):
@@ -288,8 +291,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
             case .recorded(let record):
                 self.onOperationStatusChange?(record)
             case .late(let record):
-                NSLog("[NativeToolRouter] Operation for %@ resolved late as %@", record.toolName,
-                      record.state.rawValue)
+                PrivacyLog.toolRun(.resolvedLate, tool: record.toolName,
+                                   detail: PrivacyToken(record.state.rawValue))
                 self.onOperationStatusChange?(record)
             case .unknownOperation:
                 break
@@ -313,7 +316,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
             settled += 1
         }
         if settled > 0 {
-            NSLog("[NativeToolRouter] Reconciled %d interrupted operation(s)", settled)
+            PrivacyLog.toolRun(.reconciled, count: settled)
         }
         return settled
     }
@@ -344,7 +347,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
                 guard !Task.isCancelled else { break }
                 elapsed += 10
-                NSLog("[NativeToolRouter] Tool %@ still running after %ds", name, elapsed)
+                PrivacyLog.toolRun(.stillRunning, tool: name, seconds: Double(elapsed))
                 if reportProgress { self?.onLongRunningUpdate?(elapsed) }
             }
         }
@@ -391,8 +394,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
                     journalSink?(finished)
                     continuation.resume(returning: finished)
                 } else {
-                    NSLog("[NativeToolRouter] Tool %@ finished after it timed out — its effect landed late",
-                          name)
+                    PrivacyLog.toolRun(.lateCompletion, tool: name)
                     journalSink?(finished)
                 }
             }
@@ -420,16 +422,18 @@ final class NativeToolRouter: ToolExecutionAuthority {
         let duration = Date().timeIntervalSince(startTime)
         switch outcome {
         case .completed(let text):
-            NSLog("[NativeToolRouter] Tool %@ succeeded in %.1fs: %@", name, duration,
-                  ToolLogContent.redacted(String(text.prefix(200))))
+            // A tool result describes the wearer's world back to them — a message body, a
+            // health reading, a home entity's state. Length only.
+            PrivacyLog.toolRun(.succeeded, tool: name, seconds: duration, characters: text.count)
         case .outcomeUnknown:
             // Not a failure and not a success: the effect may still be in flight. Nothing is fed to
             // the skill-gap signal, and nothing may retry it automatically.
-            NSLog("[NativeToolRouter] Tool %@ outcome unknown after %.1fs (%@ / %@)", name, duration,
-                  semantics.effect.rawValue, semantics.cancellation.rawValue)
+            PrivacyLog.toolRun(.outcomeUnknown, tool: name, seconds: duration,
+                               detail: PrivacyToken(semantics.effect.rawValue + "-"
+                                                    + semantics.cancellation.rawValue))
         case .rejected(let reason), .failedBeforeExecution(let reason):
-            NSLog("[NativeToolRouter] Tool %@ failed in %.1fs: %@", name, duration,
-                  ToolLogContent.redacted(reason))
+            PrivacyLog.toolRun(.failed, tool: name, seconds: duration,
+                               characters: reason.count)
             // Skill Self-Evolution (Plan AW): a genuine tool-execution error is a skill-gap signal.
             // Record it off the critical path; the service is Agent-Mode-gated and re-checks. Timeouts
             // and intentional outcomes are filtered out so the proposal bank stays clean.

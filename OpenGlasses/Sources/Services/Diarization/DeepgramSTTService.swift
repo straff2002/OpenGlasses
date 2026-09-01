@@ -68,7 +68,9 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
         let data = PCMConverter.linear16Mono(from: buffer)
         guard !data.isEmpty else { return }
         task.send(.data(data)) { error in
-            if let error { NSLog("[Deepgram] send error: %@", error.localizedDescription) }
+            if let error {
+                PrivacyLog.speech(.diarization, .sendFailed, error: SafeErrorSummary(error))
+            }
         }
     }
 

@@ -507,7 +507,7 @@ class LLMService: ObservableObject {
             if pendingHistoryClear {
                 pendingHistoryClear = false
                 clearHistory()
-                NSLog("[LLMService] History cleared (deferred new-topic request)")
+                PrivacyLog.model(.historyCleared, detail: PrivacyToken("deferredNewTopic"))
             }
         }
 
@@ -584,11 +584,16 @@ class LLMService: ObservableObject {
             fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text)
         }
 
-        var toolsLabel = ""
-        if hasNativeTools && !smallContext { toolsLabel += " [NativeTools]" }
-        if includeOpenClaw && !smallContext { toolsLabel += " [OpenClaw]" }
-        if smallContext { toolsLabel += " [SmallContext]" }
-        print("🤖 Using model: \(modelConfig.name) (\(modelConfig.model) via \(provider.displayName))\(toolsLabel)")
+        // The model *id* is a public catalog name; the configuration *name* is whatever the
+        // wearer typed when they set it up, so it is fingerprinted rather than quoted.
+        var capabilities: [String] = []
+        if hasNativeTools && !smallContext { capabilities.append("nativeTools") }
+        if includeOpenClaw && !smallContext { capabilities.append("openClaw") }
+        if smallContext { capabilities.append("smallContext") }
+        PrivacyLog.model(.turnStarted, provider: PrivacyToken(provider.rawValue),
+                         model: PrivacyToken(modelConfig.model),
+                         configuration: PrivateIdentifier(modelConfig.name),
+                         detail: PrivacyToken(capabilities.joined(separator: "-")))
 
         // Plan-then-execute (Plan S): for a multi-step request in agent mode, plan deliberately and
         // run each step through the supervisor-gated router, instead of the single-shot tool loop.
@@ -602,7 +607,7 @@ class LLMService: ObservableObject {
                 trimHistory()
                 return summary
             }
-            print("🧭 Agent plan loop yielded no plan — falling back to single-shot")
+            PrivacyLog.model(.planLoopEmpty)
         }
 
         // Image hygiene for EVERY provider, not just Anthropic (where the request builder
@@ -639,7 +644,10 @@ class LLMService: ObservableObject {
         let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
         lastReasoning = reasoning
         if let reasoning {
-            NSLog("[LLMService] Think: %@", String(reasoning.prefix(200)))
+            // A reasoning trace is the model thinking about what the wearer just said — the same
+            // class as the transcript itself. Its length is the useful part (a runaway thinking
+            // pass is a length problem), and the only part kept.
+            PrivacyLog.model(.reasoningProduced, characters: reasoning.count)
         }
         return spoken
     }
@@ -685,7 +693,8 @@ class LLMService: ObservableObject {
             onSwitch: { from, to, failure in
                 // Rewind the partial UI stream and log the hop; P2c narrates it out loud.
                 onStreamReset?()
-                print("🔀 Model cascade: \(from.id) → \(to.id) (\(failure))")
+                PrivacyLog.model(.cascadeSwitched, configuration: PrivateIdentifier(to.id),
+                                 detail: PrivacyToken.caseName(of: failure))
                 await onModelSwitch?(savedById[from.id], savedById[to.id], failure)
             },
             attempt: { [weak self] candidate in
@@ -735,8 +744,8 @@ class LLMService: ObservableObject {
         runner.onStep = { [weak self] index, total, step in self?.onAgentStep?(index, total, step) }
 
         guard let result = await runner.run(request: request, availableTools: available) else { return nil }
-        NSLog("[LLMService] Agent plan ran %d/%d steps (aborted=%@)",
-              result.completedSteps, result.totalSteps, result.aborted ? "yes" : "no")
+        PrivacyLog.model(.planLoopCompleted, count: result.completedSteps,
+                         total: result.totalSteps, success: !result.aborted)
         return result.summary
     }
 
@@ -799,8 +808,8 @@ class LLMService: ObservableObject {
         }
         // Compact immediately if the restored history is too large for the context window
         compressContextWindowIfNeeded()
-        NSLog("[LLM] Loaded %d messages from conversation history (%d after compaction)",
-              messages.count, conversationHistory.count)
+        PrivacyLog.model(.historyLoaded, count: conversationHistory.count,
+                         total: messages.count)
     }
 
     /// Compress the context window when estimated token count exceeds the budget.
@@ -875,8 +884,10 @@ class LLMService: ObservableObject {
             return total + max(content.count / 4, 50)
         }
 
-        NSLog("[LLM] Context compacted: %d → %d messages (~%d → ~%d tokens, %d signals preserved)",
-              originalCount, conversationHistory.count, estimatedTokens, newTokens, signals.count)
+        PrivacyLog.modelCompaction(messagesBefore: originalCount,
+                                   messagesAfter: conversationHistory.count,
+                                   tokensBefore: estimatedTokens, tokensAfter: newTokens,
+                                   signals: signals.count, detail: PrivacyToken("heuristic"))
     }
 
     // MARK: - LLM-Based Compression
@@ -906,8 +917,10 @@ class LLMService: ObservableObject {
                 let content = msg["content"] as? String ?? ""
                 return total + max(content.count / 4, 50)
             }
-            NSLog("[LLM] LLM-compressed: %d → %d messages (~%d → ~%d tokens)",
-                  originalCount, conversationHistory.count, estimatedTokens, newTokens)
+            PrivacyLog.modelCompaction(messagesBefore: originalCount,
+                                       messagesAfter: conversationHistory.count,
+                                       tokensBefore: estimatedTokens, tokensAfter: newTokens,
+                                       detail: PrivacyToken("summarised"))
 
             // Persist the summary to the active conversation thread
             if let store = conversationStore, let threadId = store.activeThreadId {
@@ -917,7 +930,7 @@ class LLMService: ObservableObject {
         }
 
         // Fallback to heuristic compression
-        NSLog("[LLM] LLM summarization failed, falling back to heuristic compression")
+        PrivacyLog.model(.compressionFailed, detail: PrivacyToken("summarisation"))
         compressContextWindowIfNeeded()
     }
 
@@ -1042,7 +1055,8 @@ class LLMService: ObservableObject {
                 return nil
             }
         } catch {
-            NSLog("[LLM] Summarization request failed: %@", error.localizedDescription)
+            PrivacyLog.model(.requestFailed, detail: PrivacyToken("summarise"),
+                             error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -1148,7 +1162,8 @@ class LLMService: ObservableObject {
                 return nil
             }
         } catch {
-            NSLog("[LLM] analyzeFrame request failed: %@", error.localizedDescription)
+            PrivacyLog.model(.requestFailed, detail: PrivacyToken("analyzeFrame"),
+                             error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -1257,7 +1272,8 @@ class LLMService: ObservableObject {
                 return nil
             }
         } catch {
-            NSLog("[LLM] analyzeFrameStructured request failed: %@", error.localizedDescription)
+            PrivacyLog.model(.requestFailed, detail: PrivacyToken("analyzeFrameStructured"),
+                             error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -1352,7 +1368,8 @@ class LLMService: ObservableObject {
                 return AssessmentJSON.object(fromText: text)
             }
         } catch {
-            NSLog("[LLM] completeStructured request failed: %@", error.localizedDescription)
+            PrivacyLog.model(.requestFailed, detail: PrivacyToken("completeStructured"),
+                             error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -1529,7 +1546,8 @@ class LLMService: ObservableObject {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorMsg = (errorJson["error"] as? [String: Any])?["message"] as? String {
-                            print("❌ Anthropic API error \(statusCode): \(errorMsg)")
+                            PrivacyLog.model(.apiError, provider: PrivacyToken("anthropic"),
+                                             status: statusCode)
                             throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: errorMsg)
                         }
                         throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: nil)
@@ -1671,7 +1689,7 @@ class LLMService: ObservableObject {
             ]
             conversationHistory.append(["role": "user", "content": content])
         } else if imageData != nil && !supportsVision {
-            print("🖼️ Skipping image for model \(config.model) — vision disabled for this model configuration")
+            PrivacyLog.model(.imageSkipped, model: PrivacyToken(config.model))
             // Drop the image but keep the text, and inform the model
             conversationHistory.append(["role": "user", "content": text + "\n[System note: The user attempted to send an image, but the current model (\(config.model)) does not support image analysis.]"])
         } else {
@@ -1738,11 +1756,15 @@ class LLMService: ObservableObject {
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 request.timeoutInterval = 60 // 60s timeout to prevent app freezing
 
-                // Debug: log request details (redact base64 images)
+                // Shape of the request, not its contents — and not `baseURL` either: a custom
+                // endpoint URL is the wearer's own server, often on their home network.
                 let messageCount = (body["messages"] as? [[String: Any]])?.count ?? 0
                 let hasImage = imageData != nil && supportsVision
                 let bodySize = request.httpBody?.count ?? 0
-                print("🌐 \(provider.displayName) request: model=\(config.model) url=\(baseURL) messages=\(messageCount) hasImage=\(hasImage) bodySize=\(bodySize)")
+                PrivacyLog.model(.requestSent, provider: PrivacyToken(provider.rawValue),
+                                 model: PrivacyToken(config.model), count: messageCount,
+                                 bytes: bodySize,
+                                 detail: PrivacyToken(hasImage ? "withImage" : "textOnly"))
 
                 // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
                 // the reconstructed `message` (content + tool_calls) feeds the shared tool loop unchanged.
@@ -1750,7 +1772,7 @@ class LLMService: ObservableObject {
                 // Retry-without-tools for `.custom` (some Ollama/LM Studio builds 400 on the
                 // `tools` array): strip it, remember for the session, and re-send once.
                 func retryRequestWithoutTools() throws -> URLRequest {
-                    NSLog("[LLMService] custom endpoint rejected tools payload — retrying without tools")
+                    PrivacyLog.model(.toolsPayloadRejected, provider: PrivacyToken("custom"))
                     Self.customEndpointRejectsTools = true
                     body.removeValue(forKey: "tools")
                     var retried = request
@@ -1787,17 +1809,18 @@ class LLMService: ObservableObject {
                     guard let httpResponse = response as? HTTPURLResponse,
                           httpResponse.statusCode == 200 else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        let rawBody = String(data: data, encoding: .utf8) ?? "(non-utf8)"
-                        print("❌ \(provider.displayName) raw error response (\(statusCode)): \(rawBody.prefix(500))")
+                        // A provider error body quotes the request back — the prompt, and on a
+                        // moderation refusal the exact phrase it objected to. Status and size only;
+                        // the message still reaches the user through the thrown error.
+                        PrivacyLog.model(.apiError, provider: PrivacyToken(provider.rawValue),
+                                         status: statusCode, bytes: data.count)
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorObj = errorJson["error"] as? [String: Any],
                            let errorMsg = errorObj["message"] as? String {
-                            print("❌ \(provider.displayName) API error \(statusCode): \(errorMsg)")
                             throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
                         }
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorMsg = errorJson["error"] as? String {
-                            print("❌ \(provider.displayName) error \(statusCode): \(errorMsg)")
                             throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
                         }
                         throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: nil)
@@ -1821,8 +1844,8 @@ class LLMService: ObservableObject {
                         // reply while the server had returned a perfectly good tool_call.
                         guard let function = toolCall["function"] as? [String: Any],
                               let functionName = function["name"] as? String else {
-                            NSLog("[LLMService] Dropping malformed tool_call (no function.name): %@",
-                                  String(String(describing: toolCall).prefix(200)))
+                            PrivacyLog.model(.toolCallDropped,
+                                             detail: PrivacyToken("missingFunctionName"))
                             continue
                         }
                         let callId = (toolCall["id"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "call_\(index)"
@@ -1835,9 +1858,8 @@ class LLMService: ObservableObject {
                     }
                     // One log line per turn: what was parsed vs what the server sent — the seam
                     // where a "tool_call returned but nothing executed" bug is diagnosed.
-                    NSLog("[LLMService] %@ turn: %d/%d tool call(s) parsed%@", provider.displayName,
-                          toolCalls.count, calls.count,
-                          toolCalls.isEmpty ? "" : " → " + toolCalls.map(\.name).joined(separator: ", "))
+                    PrivacyLog.model(.toolCallsParsed, provider: PrivacyToken(provider.rawValue),
+                                     count: toolCalls.count, total: calls.count)
                 }
                 let text = message["content"] as? String ?? ""
                 return AssistantTurn(text: text, toolCalls: toolCalls, payload: message)
@@ -1944,7 +1966,8 @@ class LLMService: ObservableObject {
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                     guard status == 200 else {
                         let bodyText = String(data: data, encoding: .utf8) ?? ""
-                        NSLog("[LLMService] ChatGPT backend error %d: %@", status, String(bodyText.prefix(300)))
+                        PrivacyLog.model(.apiError, provider: PrivacyToken("chatgpt"),
+                                         status: status, bytes: data.count)
                         throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: String(bodyText.prefix(300)))
                     }
                     responseJSON = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
@@ -1953,8 +1976,8 @@ class LLMService: ObservableObject {
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
                 // The parse-vs-sent diagnostic seam — where "tool_call returned but nothing
                 // executed" bugs get caught.
-                NSLog("[LLMService] ChatGPT turn: %d tool call(s) parsed%@", parsed.toolCalls.count,
-                      parsed.toolCalls.isEmpty ? "" : " → " + parsed.toolCalls.map(\.name).joined(separator: ", "))
+                PrivacyLog.model(.toolCallsParsed, provider: PrivacyToken("chatgpt"),
+                                 count: parsed.toolCalls.count)
                 self.recordUsage(provider: .chatgpt, model: config.model, json: responseJSON)
                 return AssistantTurn(text: parsed.text, toolCalls: parsed.toolCalls, payload: responseJSON)
             },
@@ -2134,7 +2157,8 @@ class LLMService: ObservableObject {
                 failures += 1
                 guard !tokenFlag.delivered, Self.isTransientSSEError(error),
                       let delay = policy.delay(forAttempt: failures) else { throw error }
-                print("🔁 SSE transient failure (attempt \(failures)) — retrying in \(delay)s: \(error.localizedDescription)")
+                PrivacyLog.model(.streamRetry, attempt: failures, seconds: delay,
+                                 error: SafeErrorSummary(error))
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
@@ -2150,10 +2174,10 @@ class LLMService: ObservableObject {
         guard http.statusCode == 200 else {
             var data = Data()
             for try await b in bytes { data.append(b) }
-            let raw = String(data: data, encoding: .utf8) ?? "(non-utf8)"
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-            print("❌ \(provider.displayName) stream error \(http.statusCode): \(raw.prefix(300))")
+            PrivacyLog.model(.streamError, provider: PrivacyToken(provider.rawValue),
+                             status: http.statusCode, bytes: data.count)
             throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg)
         }
 
@@ -2426,7 +2450,8 @@ class LLMService: ObservableObject {
                     if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let errorObj = errorJson["error"] as? [String: Any],
                        let errorMsg = errorObj["message"] as? String {
-                        print("❌ Gemini API error \(statusCode): \(errorMsg)")
+                        PrivacyLog.model(.apiError, provider: PrivacyToken("gemini"),
+                                         status: statusCode)
                         throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: errorMsg)
                     }
                     throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: nil)
@@ -2484,9 +2509,8 @@ class LLMService: ObservableObject {
                     // behaviour, terrible observability — a systematic defect (an unbounded
                     // thinking pass eating the whole allowance) would read as ordinary model
                     // churn. Mark it distinctly on the way past so it can be found in a log.
-                    NSLog("[CO-EmptyCompletion] Gemini returned zero output tokens on a %@ turn — "
-                          + "cascading. If this repeats, suspect the thinking/answer budget split.",
-                          includeTools ? "tool" : "plain")
+                    PrivacyLog.model(.emptyCompletion, provider: PrivacyToken("gemini"),
+                                     detail: PrivacyToken(includeTools ? "tool" : "plain"))
                     throw LLMError.invalidResponse("Gemini")
                 }
                 self.conversationHistory.append(["role": "assistant", "content": turn.text])
@@ -2742,10 +2766,10 @@ class LLMService: ObservableObject {
             // Propagate .backgrounded unwrapped so callers (e.g. AgentScheduler) can
             // tell "can't run on-device in background" apart from a real failure and
             // defer rather than consuming the scheduled run.
-            print("❌ Local model generation failed: \(error)")
+            PrivacyLog.localModel(.generationFailed, error: SafeErrorSummary(error))
             throw error
         } catch {
-            print("❌ Local model generation failed: \(error)")
+            PrivacyLog.localModel(.generationFailed, error: SafeErrorSummary(error))
             throw LLMError.invalidResponse("Local model error: \(error.localizedDescription)")
         }
 
@@ -2758,7 +2782,7 @@ class LLMService: ObservableObject {
         // (or a direct answer) — bounded, never loops.
         if parsedCall == nil, includeTools, nativeToolRouter != nil,
            Self.announcesToolIntent(response) || Self.asksUserForLocation(response) {
-            print("🔁 Local model stalled (announcement/location ask-back) — corrective regen")
+            PrivacyLog.localModel(.stalled)
             let correction = Self.asksUserForLocation(response)
                 ? "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
                 : "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
@@ -2779,7 +2803,7 @@ class LLMService: ObservableObject {
            let router = nativeToolRouter {
 
             // Execute the tool
-            print("🔧 Local model tool call: \(toolName)(\(toolArgs))")
+            PrivacyLog.localModel(.toolCall, tool: PrivacyToken(toolName))
             toolCallStatus = .executing(toolName)
             // Plan CU P1: the on-device path is deliberately not on `runToolLoop` (see the comment
             // above `sendLocal`), so its single tool round trip needs its own bracket. The
@@ -2914,7 +2938,9 @@ class LLMService: ObservableObject {
                 memoryContext: memoryContext,
                 turn: text
             )
-            print("🧠 Cloud agent: \(cloudConfig.name)")
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(cloudConfig.model),
+                             configuration: PrivateIdentifier(cloudConfig.name),
+                             detail: PrivacyToken("cloud"))
             return try await sendCloud(text, systemPrompt: fullPrompt, config: cloudConfig, includeTools: hasNativeTools)
         }
 
@@ -2938,7 +2964,8 @@ class LLMService: ObservableObject {
             model: agentModelId,
             baseURL: ""
         )
-        print("🧠 Local agent: \(agentModelId)")
+        PrivacyLog.model(.agentSelected, model: PrivacyToken(agentModelId),
+                         detail: PrivacyToken("local"))
         return try await sendLocal(text, systemPrompt: leanPrompt, config: localConfig, includeTools: hasNativeTools)
     }
 

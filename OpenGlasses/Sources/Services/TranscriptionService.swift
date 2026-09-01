@@ -30,8 +30,9 @@ class TranscriptionService: ObservableObject {
     func noteAssistantSpoke(_ text: String?) {
         let window = SpeechContinuationPolicy.silenceWindow(afterSpeaking: text)
         if window != silenceThreshold {
-            NSLog("[CO] Silence window %.1fs → %.1fs (question-shaped: %@)",
-                  silenceThreshold, window, window > SpeechContinuationPolicy.baseWindow ? "yes" : "no")
+            PrivacyLog.speech(.dictation, .reconfigured, seconds: window,
+                              detail: PrivacyToken(window > SpeechContinuationPolicy.baseWindow
+                                                   ? "questionShaped" : "base"))
         }
         silenceThreshold = window
     }
@@ -126,10 +127,10 @@ class TranscriptionService: ObservableObject {
         Task { @MainActor in
             do {
                 try await setupAndStartRecording()
-                print("🎙️ Recording started...")
+                PrivacyLog.speech(.dictation, .started)
                 startNoSpeechTimer()
             } catch {
-                print("🎙️ Recording setup failed: \(error)")
+                PrivacyLog.speech(.dictation, .engineFailed, error: SafeErrorSummary(error))
                 errorMessage = error.localizedDescription
                 isRecording = false
             }
@@ -174,10 +175,10 @@ class TranscriptionService: ObservableObject {
         if !currentTranscription.isEmpty {
             let finalText = currentTranscription
             currentTranscription = ""
-            print("📤 Transcription complete, sending: \(finalText)")
+            PrivacyLog.speech(.dictation, .transcriptDelivered, characters: finalText.count)
             onTranscriptionComplete?(finalText)
         } else if !didReceiveSpeech {
-            print("🤫 No speech detected, silence timeout")
+            PrivacyLog.speech(.dictation, .noSpeechDetected, detail: PrivacyToken("silenceWindow"))
             onSilenceTimeout?()
         }
     }
@@ -187,7 +188,8 @@ class TranscriptionService: ObservableObject {
         noSpeechTimer = Timer.scheduledTimer(withTimeInterval: noSpeechTimeout, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.isRecording, !self.didReceiveSpeech else { return }
-                print("🤫 No speech after \(self.noSpeechTimeout)s, stopping")
+                PrivacyLog.speech(.dictation, .noSpeechDetected, seconds: self.noSpeechTimeout,
+                                  detail: PrivacyToken("timeout"))
                 self.stopRecording()
             }
         }
@@ -211,7 +213,7 @@ class TranscriptionService: ObservableObject {
         // Try to reuse the shared audio engine from WakeWordService
         // This avoids stopping/starting the engine which fails in background
         if let provider = sharedAudioEngineProvider, provider.getAudioEngine() != nil {
-            print("🎙️ Reusing shared audio engine via buffer forwarding")
+            PrivacyLog.speech(.dictation, .engineShared)
             // Capture request directly — the closure is @Sendable so can't access @MainActor self
             let request = recognitionRequest
             provider.setAudioBufferForwarder { buffer in
@@ -219,7 +221,7 @@ class TranscriptionService: ObservableObject {
             }
         } else {
             // Fallback: create our own engine (works in foreground only)
-            print("🎙️ Creating dedicated audio engine (no shared engine available)")
+            PrivacyLog.speech(.dictation, .engineDedicated)
             let audioEngine = AVAudioEngine()
             let inputNode = audioEngine.inputNode
             let recordingFormat = inputNode.outputFormat(forBus: 0)
@@ -277,10 +279,10 @@ class TranscriptionService: ObservableObject {
         }
 
         if let provider = sharedAudioEngineProvider, provider.getAudioEngine() != nil {
-            print("🎙️ On-device ASR: reusing shared audio engine")
+            PrivacyLog.speech(.onDeviceASR, .engineShared)
             provider.setAudioBufferForwarder { buffer in accumulate(buffer) }
         } else {
-            print("🎙️ On-device ASR: dedicated audio engine")
+            PrivacyLog.speech(.onDeviceASR, .engineDedicated)
             let audioEngine = AVAudioEngine()
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
@@ -306,15 +308,15 @@ class TranscriptionService: ObservableObject {
             do {
                 let text = try await onDeviceEngine.transcribe(samples: samples, sampleRate: rate)
                 if text.isEmpty {
-                    print("🤫 On-device ASR: no speech recognized")
+                    PrivacyLog.speech(.onDeviceASR, .noSpeechDetected)
                     onSilenceTimeout?()
                 } else {
-                    print("📤 On-device transcription: \(text)")
+                    PrivacyLog.speech(.onDeviceASR, .transcriptDelivered, characters: text.count)
                     currentTranscription = ""
                     onTranscriptionComplete?(text)
                 }
             } catch {
-                print("🎙️ On-device ASR failed: \(error)")
+                PrivacyLog.speech(.onDeviceASR, .recognitionFailed, error: SafeErrorSummary(error))
                 errorMessage = error.localizedDescription
                 onSilenceTimeout?()
             }
@@ -338,7 +340,7 @@ class TranscriptionService: ObservableObject {
         }
 
         if let error = error {
-            print("Transcription error: \(error.localizedDescription)")
+            PrivacyLog.speech(.dictation, .recognitionFailed, error: SafeErrorSummary(error))
             cleanupEngine()
             stopRecording()
         }

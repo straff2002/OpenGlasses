@@ -62,9 +62,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if let body = String(data: data, encoding: .utf8) {
-                print("🔊 ElevenLabs voices error \(code): \(body)")
-            }
+            PrivacyLog.tts(.voicesRequestFailed, engine: PrivacyToken("elevenLabs"),
+                           bytes: data.count, status: code)
             throw TTSError.apiError(statusCode: code)
         }
         return try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data).voices
@@ -131,7 +130,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Reset the ElevenLabs quota cache (call when API key changes or credits are added).
     func resetElevenLabsQuota() {
         elevenLabsQuotaExhausted = false
-        print("🔊 ElevenLabs: Quota cache reset")
+        PrivacyLog.tts(.quotaCacheReset, engine: PrivacyToken("elevenLabs"))
     }
 
     /// Speaks `text` with a verbal urgency: higher urgency speeds up the iOS voice and prepends a
@@ -177,7 +176,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         // Silence if glasses-only mode is on and glasses aren't connected
         if Config.glassesOnlyAudio && !glassesConnected {
-            print("🔊 TTS: Suppressed — glasses not connected (glasses-only mode)")
+            PrivacyLog.tts(.suppressed, detail: PrivacyToken("glassesOnlyAudio"))
             return
         }
 
@@ -212,7 +211,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         // Check cancellation after the sleep — a newer speak() may have started
         guard !Task.isCancelled, gen == speechGeneration else {
-            print("🔊 TTS: Skipped — generation changed or task cancelled (gen=\(gen) current=\(speechGeneration))")
+            PrivacyLog.tts(.staleGeneration, detail: PrivacyToken("beforeStart"))
             return
         }
 
@@ -222,7 +221,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Wrap the actual speech work in a trackable task
         let task = Task { @MainActor [weak self] in
             guard let self, gen == self.speechGeneration else {
-                print("🔊 TTS: Task skipped — generation stale")
+                PrivacyLog.tts(.staleGeneration, detail: PrivacyToken("beforeTask"))
                 return
             }
             await self.speakThroughEngineChain(text: text, urgency: urgency, generation: gen)
@@ -236,7 +235,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         if gen == speechGeneration {
             isSpeaking = false
             await endPause()
-            print("🔊 TTS: Finished speaking")
+            PrivacyLog.tts(.finished)
         }
     }
 
@@ -261,11 +260,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             availability: availability,
             urgency: urgency
         )
-        print("🔊 TTS: Speaking \(text.prefix(60))... chain=\(chain.map(\.rawValue).joined(separator: "→"))\(elevenLabsQuotaExhausted ? " (ElevenLabs quota exhausted)" : "")")
+        // The utterance is the assistant's half of the conversation — as private as the
+        // wearer's half — so only its length goes to the log. The chain is public operation
+        // class and is the thing an "it came out in the wrong voice" report actually needs.
+        PrivacyLog.tts(.speaking, engine: PrivacyToken(chain.map(\.rawValue).joined(separator: "-")),
+                       characters: text.count,
+                       detail: PrivacyToken(elevenLabsQuotaExhausted ? "quotaExhausted" : "quotaOk"))
 
         for engine in chain {
             guard !Task.isCancelled, gen == speechGeneration else {
-                print("🔊 TTS: Cancelled mid-chain")
+                PrivacyLog.tts(.cancelled, detail: PrivacyToken("midChain"))
                 return
             }
             do {
@@ -287,15 +291,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 }
                 return  // engine succeeded
             } catch is CancellationError {
-                print("🔊 TTS: Cancelled")
+                PrivacyLog.tts(.cancelled)
                 return
             } catch {
                 // Only advance to the next engine if we weren't cancelled AND this is still current.
                 guard !Task.isCancelled, gen == speechGeneration else {
-                    print("🔊 TTS: Cancelled during fallback")
+                    PrivacyLog.tts(.cancelled, detail: PrivacyToken("duringFallback"))
                     return
                 }
-                print("🔊 TTS: \(engine.rawValue) failed (\(error)), trying next engine")
+                PrivacyLog.tts(.engineFallback, engine: PrivacyToken(engine.rawValue),
+                               error: SafeErrorSummary(error))
                 continue
             }
         }
@@ -382,7 +387,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             player.volume = 0.45
             Self.prepareAndPlayOffMain(player)
         } catch {
-            print("🔊 Photo tone failed: \(error)")
+            PrivacyLog.tts(.toneFailed, detail: PrivacyToken("photo"), error: SafeErrorSummary(error))
         }
     }
 
@@ -410,7 +415,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             player.volume = 0.7
             Self.prepareAndPlayOffMain(player)
         } catch {
-            print("🔊 Disconnect tone failed: \(error)")
+            PrivacyLog.tts(.toneFailed, detail: PrivacyToken("disconnect"), error: SafeErrorSummary(error))
             // Single-note fallback
             playTone(frequency: 330, duration: 0.15)
         }
@@ -434,7 +439,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             player.volume = 0.7
             Self.prepareAndPlayOffMain(player)
         } catch {
-            print("🔊 Tone failed: \(error)")
+            PrivacyLog.tts(.toneFailed, detail: PrivacyToken("simple"), error: SafeErrorSummary(error))
             AudioServicesPlaySystemSound(1054)
         }
     }
@@ -599,13 +604,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        print("🔊 ElevenLabs: Requesting speech for \(text.count) chars...")
+        PrivacyLog.tts(.requested, engine: PrivacyToken("elevenLabs"), characters: text.count)
         let startTime = Date()
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         let elapsed = Date().timeIntervalSince(startTime)
-        print("🔊 ElevenLabs: Received \(data.count) bytes in \(String(format: "%.1f", elapsed))s")
+        PrivacyLog.tts(.received, engine: PrivacyToken("elevenLabs"), bytes: data.count,
+                       seconds: elapsed)
 
         // Check cancellation after network wait — a newer speak() may have started
         try Task.checkCancellation()
@@ -613,11 +619,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            PrivacyLog.tts(.engineFailed, engine: PrivacyToken("elevenLabs"), status: statusCode)
             if let errorStr = String(data: data, encoding: .utf8) {
-                print("🔊 ElevenLabs: Error \(statusCode): \(errorStr)")
                 // Cache quota exhaustion so we skip ElevenLabs for the rest of this session
                 if errorStr.contains("quota_exceeded") {
-                    print("🔊 ElevenLabs: Quota exhausted — switching to iOS voice for this session")
+                    PrivacyLog.tts(.quotaExhausted, engine: PrivacyToken("elevenLabs"))
                     elevenLabsQuotaExhausted = true
                 }
             }
@@ -633,7 +639,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // This closes the race where stopSpeaking() ran before audioPlayer was assigned.
         guard !Task.isCancelled else { return }
         guard !Config.glassesOnlyAudio || glassesConnected else {
-            print("🔊 TTS: Discarding downloaded audio — glasses not connected (glasses-only mode)")
+            PrivacyLog.tts(.discarded, detail: PrivacyToken("glassesOnlyAudio"))
             return
         }
 
@@ -656,7 +662,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             // that the iOS-voice path (a real `didStart`) does not share, so cross-engine
             // first-audio comparisons carry it.
             if started { TurnRecorder.markPlaybackStart(at: Date()) }
-            print("🔊 ElevenLabs: Playing audio (\(String(format: "%.1f", player.duration))s)")
+            PrivacyLog.tts(.playing, engine: PrivacyToken("elevenLabs"),
+                           seconds: player.duration, success: started)
         }
     }
 
@@ -668,7 +675,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Pick the best available English voice: premium > enhanced > default
         let voice = Self.bestAvailableVoice()
         utterance.voice = voice
-        print("🔊 iOS TTS: Using voice \(voice?.name ?? "system default") (\(voice?.identifier ?? "nil"), quality=\(voice?.quality.rawValue ?? -1))")
+        // A voice identifier is treated as an identifier, not a catalog name: a wearer who has
+        // installed a custom or personal voice is identifiable by it.
+        PrivacyLog.tts(.voiceSelected, engine: PrivacyToken("system"),
+                       quality: voice?.quality.rawValue ?? -1,
+                       voice: voice.map { PrivateIdentifier($0.identifier) })
 
         let scaledRate = AVSpeechUtteranceDefaultSpeechRate * activeRateMultiplier
         utterance.rate = min(max(scaledRate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
@@ -729,7 +740,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         let finishedAt = Date()
         Task { @MainActor in
-            print("🔊 iOS TTS: didFinish")
+            PrivacyLog.tts(.playbackFinished, engine: PrivacyToken("system"), success: true)
             TurnRecorder.markPlaybackEnd(at: finishedAt)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
@@ -738,7 +749,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            print("🔊 iOS TTS: didCancel")
+            PrivacyLog.tts(.cancelled, engine: PrivacyToken("system"))
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -827,7 +838,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 }
             }
         } catch {
-            print("🔊 Thinking sound error: \(error)")
+            PrivacyLog.tts(.toneFailed, detail: PrivacyToken("thinking"), error: SafeErrorSummary(error))
         }
     }
 
@@ -847,7 +858,7 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         let finishedAt = Date()
         Task { @MainActor in
-            print("🔊 ElevenLabs: Playback finished (success=\(flag))")
+            PrivacyLog.tts(.playbackFinished, engine: PrivacyToken("elevenLabs"), success: flag)
             // Plan CU P1: only the clean finish is `spokeDone`. The decode-error path below resumes
             // the same continuation the same way, so the *caller* can't tell them apart — which is
             // exactly why the mark has to be made here and not where the continuation resumes.
@@ -860,7 +871,8 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
-            print("🔊 ElevenLabs: Decode error: \(error?.localizedDescription ?? "unknown")")
+            PrivacyLog.tts(.decodeFailed, engine: PrivacyToken("elevenLabs"),
+                           error: error.map(SafeErrorSummary.init))
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil

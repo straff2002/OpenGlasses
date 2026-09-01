@@ -110,7 +110,7 @@ actor ConversationEncryptionService {
             throw EncryptionError.keychainError("Failed to store key: \(status)")
         }
 
-        NSLog("[Encryption] Created new ChaCha20-Poly1305 key in Keychain")
+        PrivacyLog.conversation(.conversations, .keyCreated)
         return key
     }
 
@@ -165,7 +165,7 @@ actor ConversationEncryptionService {
             kSecAttrService as String: keychainService,
         ]
         SecItemDelete(query as CFDictionary)
-        NSLog("[Encryption] Deleted encryption key from Keychain")
+        PrivacyLog.conversation(.conversations, .keyDeleted)
     }
 
     // MARK: - Migration Helpers
@@ -179,7 +179,7 @@ actor ConversationEncryptionService {
         var output = Data("OGENC1".utf8) // 6-byte magic header
         output.append(encrypted)
         try output.write(to: url, options: .atomic)
-        NSLog("[Encryption] Encrypted file at %@", url.lastPathComponent)
+        PrivacyLog.conversation(.conversations, .fileEncrypted)
     }
 
     /// Decrypt an encrypted file and return the plaintext data.

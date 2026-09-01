@@ -6,7 +6,7 @@ import Foundation
 ///
 /// ```swift
 /// guard !self.isProcessing else {
-///     print("⚠️ Transcription ignored - already processing")
+///     // …logged "Transcription ignored - already processing" and returned
 ///     return
 /// }
 /// ```

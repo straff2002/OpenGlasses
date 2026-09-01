@@ -63,7 +63,7 @@ final class AudioSessionCoordinator: @unchecked Sendable {
     func beginCoexisting(_ owner: AudioSessionOwner) -> UUID {
         let token = UUID()
         stateQueue.sync { ledger.beginCoexisting(owner, token: token) }
-        NSLog("[AudioCoordinator] coexisting hold begin: %@", owner.rawValue)
+        PrivacyLog.audio(.coordinator, .leaseHeld, owner: PrivacyToken(owner.rawValue))
         return token
     }
 
@@ -80,7 +80,7 @@ final class AudioSessionCoordinator: @unchecked Sendable {
     @discardableResult
     func assumeOwnership(_ owner: AudioSessionOwner) -> AudioSessionLease {
         let lease = stateQueue.sync { ledger.acquire(owner, token: UUID()).lease }
-        NSLog("[AudioCoordinator] ownership assumed by %@ (self-activated)", owner.rawValue)
+        PrivacyLog.audio(.coordinator, .leaseAssumed, owner: PrivacyToken(owner.rawValue))
         return lease
     }
 
@@ -110,7 +110,8 @@ final class AudioSessionCoordinator: @unchecked Sendable {
                 options: options,
                 configure: configure
             )
-            NSLog("[AudioCoordinator] acquired by %@", owner.rawValue)
+            PrivacyLog.audio(.coordinator, .leaseAcquired, owner: PrivacyToken(owner.rawValue),
+                             detail: PrivacyToken("main"))
             return lease
         } catch {
             rollBack(lease)
@@ -136,7 +137,8 @@ final class AudioSessionCoordinator: @unchecked Sendable {
                 try AudioSessionActivator.activate(
                     self.session, category: category, mode: mode, options: options, configure: configure)
             }
-            NSLog("[AudioCoordinator] acquired off-main by %@", owner.rawValue)
+            PrivacyLog.audio(.coordinator, .leaseAcquired, owner: PrivacyToken(owner.rawValue),
+                             detail: PrivacyToken("offMain"))
             return lease
         } catch {
             rollBack(lease)
@@ -194,19 +196,23 @@ final class AudioSessionCoordinator: @unchecked Sendable {
                 // live session out from under them (the race the single queue + this guard close).
                 let stillFree = stateQueue.sync { ledger.current == nil }
                 guard stillFree else {
-                    NSLog("[AudioCoordinator] deactivate suppressed — re-acquired since %@ released",
-                          lease.owner.rawValue)
+                    PrivacyLog.audio(.coordinator, .leaseSuppressed,
+                                     owner: PrivacyToken(lease.owner.rawValue))
                     return
                 }
                 do {
                     try session.setActive(false, options: .notifyOthersOnDeactivation)
-                    NSLog("[AudioCoordinator] deactivated (released by %@)", lease.owner.rawValue)
+                    PrivacyLog.audio(.coordinator, .leaseReleased,
+                                     owner: PrivacyToken(lease.owner.rawValue))
                 } catch {
-                    NSLog("[AudioCoordinator] deactivate failed (%@): %@", lease.owner.rawValue, error.localizedDescription)
+                    PrivacyLog.audio(.coordinator, .leaseDeactivateFailed,
+                                     owner: PrivacyToken(lease.owner.rawValue),
+                                     error: SafeErrorSummary(error))
                 }
             }
         case .superseded(let by):
-            NSLog("[AudioCoordinator] stale release ignored: %@ superseded by %@", lease.owner.rawValue, by.rawValue)
+            PrivacyLog.audio(.coordinator, .leaseStale, owner: PrivacyToken(lease.owner.rawValue),
+                             detail: PrivacyToken(by.rawValue))
         case .alreadyReleased:
             break
         }

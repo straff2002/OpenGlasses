@@ -61,7 +61,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         guard isActive, connectionState == .ready else { return }
         if !isCameraStreaming {
             isCameraStreaming = true
-            NSLog("[OpenAI Session] First camera frame — streaming confirmed")
+            PrivacyLog.realtimeSession(.openai, .firstCameraFrame)
         }
         submittedFrameCount += 1
         // Stretch the frame interval under battery/thermal pressure (Plan BV P2); same-actor read.
@@ -86,7 +86,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         if let startCamera = onRequestStartCamera {
             let cameraOk = await startCamera()
             if cameraOk { isCameraStreaming = true }
-            NSLog("[OpenAI Session] Camera start: %@", cameraOk ? "success" : "failed")
+            PrivacyLog.realtimeSession(.openai, .cameraStarted, success: cameraOk)
         }
 
         // Build system instruction
@@ -116,7 +116,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         audioManager.onVoiceInterrupt = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
-                NSLog("[OpenAI Session] Client-side voice interrupt triggered")
+                PrivacyLog.realtimeSession(.openai, .userInterrupted)
                 self.realtimeService.cancelResponse()
             }
         }
@@ -146,8 +146,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             guard lostMilliseconds > 0 else { return }
             Task { @MainActor in
                 guard let self else { return }
-                NSLog("[OpenAI Session] %d ms of reply audio lost to an audio-graph rebuild — truncating",
-                      lostMilliseconds)
+                PrivacyLog.audio(.realtime, .playbackDiscarded,
+                                 owner: PrivacyToken("openAIRealtime"),
+                                 detail: PrivacyToken("graphRebuild"),
+                                 milliseconds: lostMilliseconds)
                 self.realtimeService.cancelResponse()
             }
         }
@@ -209,11 +211,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         realtimeService.onReconnected = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
-                NSLog("[OpenAI Session] Reconnected")
+                PrivacyLog.realtimeSession(.openai, .reconnected)
                 do {
                     try self.audioManager.startCapture()
                 } catch {
-                    NSLog("[OpenAI Session] Audio restart failed: %@", error.localizedDescription)
+                    PrivacyLog.realtimeSession(.openai, .audioRestartFailed,
+                                               error: SafeErrorSummary(error))
                 }
                 self.startFrameCapture()
             }
@@ -250,7 +253,8 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
         // Audio setup
         useIPhoneAudioMode = !isCameraStreaming
-        NSLog("[OpenAI Session] Audio mode: %@", useIPhoneAudioMode ? "iPhone" : "Glasses")
+        PrivacyLog.realtimeSession(.openai, .audioModeSelected,
+                                   detail: PrivacyToken(useIPhoneAudioMode ? "iPhone" : "glasses"))
         do {
             try await audioManager.setupAudioSession(useIPhoneMode: useIPhoneAudioMode)
         } catch {
@@ -298,11 +302,15 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             if cameraOk {
                 isCameraStreaming = true
                 if !useIPhoneAudioMode {
-                    NSLog("[OpenAI Session] Already in glasses audio mode")
+                    PrivacyLog.realtimeSession(.openai, .audioModeUnchanged,
+                                               detail: PrivacyToken("glasses"))
                 } else {
                     useIPhoneAudioMode = false
                     do { try await audioManager.setupAudioSession(useIPhoneMode: false) }
-                    catch { NSLog("[OpenAI Session] Audio mode switch failed: %@", error.localizedDescription) }
+                    catch {
+                        PrivacyLog.realtimeSession(.openai, .audioModeSwitchFailed,
+                                                   error: SafeErrorSummary(error))
+                    }
                 }
             }
         }
@@ -311,7 +319,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     }
 
     func stopSession() {
-        NSLog("[OpenAI Session] stopSession — frames: %d", submittedFrameCount)
+        PrivacyLog.realtimeSession(.openai, .sessionStopped, count: submittedFrameCount)
         frameTimer?.cancel()
         frameTimer = nil
         audioManager.stopCapture()

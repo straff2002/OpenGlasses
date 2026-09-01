@@ -52,6 +52,14 @@ enum PrivacyLog {
         case mcp
         /// Outbound media links: viewer broadcast, expert bridge, HUD mirror, their signalling.
         case stream
+        /// Wake word, recognition, transcription, captions, translation, speech synthesis.
+        case speech
+        /// The audio graph beneath all of it: sessions, routes, engines, interruptions.
+        case audio
+        /// Model turns — cloud and on-device — their lifecycle, cost and failures.
+        case model
+        /// Stored conversation history and its encryption.
+        case conversation
     }
 
     // MARK: - Sink
@@ -61,7 +69,7 @@ enum PrivacyLog {
     private static let loggers: [Category: Logger] = {
         var made: [Category: Logger] = [:]
         for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network,
-                         .gateway, .mcp, .stream] {
+                         .gateway, .mcp, .stream, .speech, .audio, .model, .conversation] {
             made[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
         return made
@@ -140,15 +148,116 @@ enum PrivacyLog {
         ]))
     }
 
+    /// Why a tool did not run, decided before anything executed.
+    ///
+    /// The reason strings behind these verdicts are not kept. The safety supervisor's reason, the
+    /// confirmation prompt and the egress screen's explanation are each built from the tool's own
+    /// arguments — "send 'meet at 8' to Dr Alvarez?" — so quoting one would log the argument the
+    /// gate exists to hold back.
+    enum ToolGateVerdict: String {
+        case blockedBySafety, heldForReengagement, noConfirmationCoordinator
+        case confirmationRequired, declinedByUser, egressWithheld, alreadyJournaled
+    }
+
+    @discardableResult
+    static func toolGate(_ verdict: ToolGateVerdict, tool: String,
+                         detail: PrivacyToken? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.verdict, .token(PrivacyToken(verdict.rawValue))),
+            .init(.tool, .token(PrivacyToken(tool))),
+        ]
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        return emit(.init(.tools, .toolGate, fields))
+    }
+
+    /// One refusal, as recorded in the authorization ring.
+    ///
+    /// The verdict is `ToolAuthorizationPolicy`'s own fixed vocabulary and the invocation arrives
+    /// already fingerprinted, so this is the one tool event whose fields are all pre-classified by
+    /// the caller — it still goes through the vocabulary filter.
+    @discardableResult
+    static func toolAuthorizationRefused(verdict: String, tool: String, origin: String,
+                                         depth: Int, invocation: String) -> PrivacyEvent {
+        return emit(.init(.tools, .toolAuthorizationRefused, [
+            .init(.verdict, .token(PrivacyToken(verdict))),
+            .init(.tool, .token(PrivacyToken(tool))),
+            .init(.source, .token(PrivacyToken(origin))),
+            .init(.count, .count(depth)),
+            .init(.invocation, .token(PrivacyToken(invocation))),
+        ]))
+    }
+
+    /// Which executor took the call. Tool names are the app's own fixed vocabulary.
+    enum ToolRoute: String { case native, mcp, gateway }
+
+    @discardableResult
+    static func toolDispatch(_ route: ToolRoute, tool: String) -> PrivacyEvent {
+        return emit(.init(.tools, .toolDispatch, [
+            .init(.route, .token(PrivacyToken(route.rawValue))),
+            .init(.tool, .token(PrivacyToken(tool))),
+        ]))
+    }
+
+    /// What happened to a dispatched call. `characters` is how much the tool returned; the return
+    /// value itself is the tool's answer about the wearer's world and has no parameter here.
+    enum ToolRunEvent: String {
+        case succeeded, failed, outcomeUnknown
+        case stillRunning, lateCompletion, resolvedLate, reconciled
+    }
+
+    @discardableResult
+    static func toolRun(_ event: ToolRunEvent, tool: String? = nil, seconds: Double? = nil,
+                        count: Int? = nil, characters: Int? = nil,
+                        detail: PrivacyToken? = nil,
+                        error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let tool { fields.append(.init(.tool, .token(PrivacyToken(tool)))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.tools, .toolRun, fields))
+    }
+
+    /// A web search ran. The query is the wearer's question — the most sensitive string a search
+    /// tool ever holds, and the one thing a search log is always tempted to include — so the
+    /// provider, the verdict and the size of the answer are all that survive.
+    enum SearchProvider: String { case perplexity, tavily, brave, duckDuckGo }
+
+    @discardableResult
+    static func webSearch(_ provider: SearchProvider, succeeded: Bool, status: Int? = nil,
+                          results: Int? = nil, error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.provider, .token(PrivacyToken(provider.rawValue))),
+            .init(.success, .flag(succeeded)),
+        ]
+        if let status { fields.append(.init(.status, .count(status))) }
+        if let results { fields.append(.init(.count, .count(results))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.tools, .webSearch, fields))
+    }
+
     // MARK: - Realtime sessions
 
     enum RealtimeProvider: String { case openai, gemini }
 
     /// State transitions and protocol milestones. No case carries model or user text.
+    ///
+    /// The session-manager half of this vocabulary (camera, audio mode, tool pausing) describes a
+    /// live session's *plumbing*. The system instruction is the one thing here that could carry
+    /// content — it embeds the wearer's location, personas and memory context — so it appears only
+    /// as `characters`.
     enum RealtimeSessionEvent: String {
-        case sessionCreated, sessionConfigured, sessionUpdateSent
+        case sessionCreated, sessionConfigured, sessionUpdateSent, sessionStopped
         case userInterrupted, intentionalDisconnect, reconnected
         case modelSubstituted, unhandledEvent
+        case cameraStarted, firstCameraFrame, frameForwarded, frameDropped, framePolled
+        case framePollingStarted, lateCameraRetried, visionReconfigured
+        case systemInstructionBuilt, gatewayToolOmitted
+        case audioModeSelected, audioModeUnchanged, audioModeSwitched, audioModeSwitchFailed
+        case audioRestartFailed, toolExecutionPaused, toolExecutionResumed
+        case postConnectState
     }
 
     enum UtteranceDirection: String { case input, output }
@@ -159,12 +268,21 @@ enum PrivacyLog {
 
     @discardableResult
     static func realtimeSession(_ provider: RealtimeProvider, _ event: RealtimeSessionEvent,
-                                detail: PrivacyToken? = nil) -> PrivacyEvent {
+                                detail: PrivacyToken? = nil, state: PrivacyToken? = nil,
+                                count: Int? = nil, total: Int? = nil, characters: Int? = nil,
+                                success: Bool? = nil,
+                                error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.provider, .token(PrivacyToken(provider.rawValue))),
             .init(.event, .token(PrivacyToken(event.rawValue))),
         ]
         if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let state { fields.append(.init(.state, .token(state))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let total { fields.append(.init(.total, .count(total))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.realtime, .realtimeSession, fields))
     }
 
@@ -589,19 +707,27 @@ enum PrivacyLog {
 
     /// Which outbound link. A room URL is a bearer capability — anyone holding it watches the
     /// wearer's camera — so no method here accepts one.
-    enum StreamChannel: String { case viewerBroadcast, expertBridge, hudMirror, signaling }
+    /// `broadcastChat` is the inbound half of a live broadcast. Chat messages are written by
+    /// strangers *about* the wearer and read aloud into their ear; the channel name identifies
+    /// the wearer's own broadcast account. Neither has a parameter — the channel arrives as a
+    /// `session` fingerprint and a message only ever as a count.
+    enum StreamChannel: String {
+        case viewerBroadcast, expertBridge, hudMirror, signaling, broadcastChat
+    }
 
     enum StreamEvent: String {
         case started, stopped, listening, startFailed
         case viewerJoined, viewerLeft
         case expertPaged, expertBridgeUnavailable
         case negotiationFailed, sendFailed, receiveFailed
+        case joined, connectionLost, reconnectScheduled
     }
 
     @discardableResult
     static func stream(_ channel: StreamChannel, _ event: StreamEvent,
                        detail: PrivacyToken? = nil, count: Int? = nil,
-                       session: PrivateIdentifier? = nil,
+                       session: PrivateIdentifier? = nil, attempt: Int? = nil,
+                       delaySeconds: Double? = nil,
                        error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.channel, .token(PrivacyToken(channel.rawValue))),
@@ -610,8 +736,326 @@ enum PrivacyLog {
         if let detail { fields.append(.init(.detail, .token(detail))) }
         if let count { fields.append(.init(.count, .count(count))) }
         if let session { fields.append(.init(.session, .identifier(session))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let delaySeconds { fields.append(.init(.delay, .seconds(delaySeconds))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.stream, .stream, fields))
+    }
+
+    // MARK: - Speech in
+    //
+    // Everything the wearer says is user content, and a wake-word listener hears it continuously
+    // whether or not it was addressed. What is left after the words are removed still describes
+    // the subsystem completely: which engine ran, which direction audio was flowing, how much of
+    // it there was, and what failed.
+
+    /// Wake-word detection is an event, not a phrase.
+    ///
+    /// The matched phrase, the transcript it sat in, the persona names and the contextual-boost
+    /// list are all user content or wearer-authored configuration — a wake phrase is usually a
+    /// name — so none of them has a parameter here. `distance` is the fuzzy matcher's edit
+    /// distance: a small integer confidence bucket, not a fragment of what was heard.
+    enum WakeEvent: String {
+        case listenerStarted, listenerSkippedPushToTalk, listenAttemptFailed
+        case onDeviceUnavailable, contextConfigured
+        case detected, fuzzyDetected, bargeIn, stopCommand
+        case recognitionFailed, sustainedSilence, audioResumed
+    }
+
+    /// What interrupted the assistant mid-sentence: the wake phrase again, or simply the fact
+    /// that the wearer had started talking.
+    enum BargeInTrigger: String { case wakePhrase, voiceActivity }
+
+    @discardableResult
+    static func wakeWord(_ event: WakeEvent, trigger: BargeInTrigger? = nil,
+                         attempt: Int? = nil, count: Int? = nil, distance: Int? = nil,
+                         error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let trigger { fields.append(.init(.kind, .token(PrivacyToken(trigger.rawValue)))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let distance { fields.append(.init(.distance, .count(distance))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.speech, .wakeWord, fields))
+    }
+
+    /// Which listener produced the transcript. Naming the channel is what makes a caption-path
+    /// fault distinguishable from a dictation-path fault without quoting either transcript.
+    enum SpeechChannel: String {
+        case dictation, onDeviceASR, ambientCaptions, liveTranslation, meetingNotes
+        case memoryRewind, diarization, intentClassifier
+    }
+
+    enum SpeechEvent: String {
+        case started, stopped, suspended, resumed, reconfigured
+        case recognizerUnavailable, engineShared, engineDedicated, engineRebuilt
+        case engineFailed, sessionFailed
+        case transcriptDelivered, noSpeechDetected, recognitionFailed
+        case artifactDropped, silenceGated, noteInserted
+        case translated, translationUnavailable, providerUnavailable
+        case sendFailed, analysisCompleted
+    }
+
+    /// `language` is a BCP-47 tag — a property of the session, not of what was said — so it is
+    /// public operation class. `characters` is how long the transcript was; the transcript has no
+    /// parameter, and neither does the artifact filter's rejected text (it is a transcript that
+    /// merely failed a quality check, which does not make it any less what the wearer said).
+    @discardableResult
+    static func speech(_ channel: SpeechChannel, _ event: SpeechEvent,
+                       language: PrivacyToken? = nil, characters: Int? = nil,
+                       count: Int? = nil, seconds: Double? = nil, bytes: Int? = nil,
+                       detail: PrivacyToken? = nil,
+                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.channel, .token(PrivacyToken(channel.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let language { fields.append(.init(.language, .token(language))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.speech, .speech, fields))
+    }
+
+    // MARK: - Speech out
+
+    enum TTSEvent: String {
+        case speaking, finished, cancelled, suppressed, staleGeneration, discarded
+        case engineFailed, engineFallback
+        case requested, received, playing, playbackFinished, decodeFailed
+        case voiceSelected, quotaExhausted, quotaCacheReset, toneFailed, voicesRequestFailed
+    }
+
+    /// The spoken text is the assistant answering the wearer — the other half of the transcript,
+    /// and no less private for having been generated — so only its length survives. A voice id
+    /// identifies a purchased or cloned voice and is fingerprinted; the engine that rendered it,
+    /// and the fallback chain it belongs to, are public operation class.
+    @discardableResult
+    static func tts(_ event: TTSEvent, engine: PrivacyToken? = nil, characters: Int? = nil,
+                    bytes: Int? = nil, seconds: Double? = nil, quality: Int? = nil,
+                    voice: PrivateIdentifier? = nil, status: Int? = nil, success: Bool? = nil,
+                    detail: PrivacyToken? = nil,
+                    error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let engine { fields.append(.init(.engine, .token(engine))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let quality { fields.append(.init(.quality, .count(quality))) }
+        if let voice { fields.append(.init(.voice, .identifier(voice))) }
+        if let status { fields.append(.init(.status, .count(status))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.speech, .tts, fields))
+    }
+
+    // MARK: - Audio plumbing
+    //
+    // Route, format and interruption events are public operation class, and this app's audio
+    // graph is genuinely hard to diagnose without them — half the hard-won behaviour in the
+    // capture path was found by reading these lines off a device. Port *names* are the exception:
+    // "Greig's Ray-Ban Meta" names a person and their hardware, so a device is a fingerprint
+    // while its port *type* (`BluetoothLE`, `BuiltInMic`) is a token.
+
+    enum AudioSubsystem: String {
+        case wakeWord, realtime, coordinator, captureTap, captureRouter
+        case recording, translation, backgroundVoice, session
+    }
+
+    enum AudioEvent: String {
+        case sessionConfigured, sessionConfigureFailed, sessionFallbackActivated
+        case sessionReleased, sessionDeactivated, sessionAcquireFailed
+        case otherAudioPaused, otherAudioResumed, otherAudioHeld, pauseSkippedActiveCall
+        case routeChanged, preferredInputSet, preferredInputFailed, noMatchingInput
+        case interruptionBegan, interruptionEnded, interruptionEndedNotResuming
+        case resumed, resumeFailed, resetSucceeded, resetFailed
+        case engineStarted, engineStopped, engineReused, engineRebuilt, engineRestarted
+        case engineRestartFailed, engineRestartedDeaf, engineStartFailed
+        case formatInvalid, formatNegotiated, conversionFailed
+        case deviceDisconnected, deviceReconnected, deviceIgnored
+        case playbackDropped, playbackCarried, playbackDiscarded
+        case voiceProcessingFailed, voiceProcessingDead
+        case captureStarted, clientVoiceInterrupt, modeSelected
+        case leaseHeld, leaseAssumed, leaseAcquired, leaseReleased
+        case leaseStale, leaseSuppressed, leaseDeactivateFailed
+        case callReported, callFailed, callAnswered, callEnded, providerReset
+    }
+
+    @discardableResult
+    static func audio(_ subsystem: AudioSubsystem, _ event: AudioEvent,
+                      owner: PrivacyToken? = nil, route: PrivacyToken? = nil,
+                      device: PrivateIdentifier? = nil, detail: PrivacyToken? = nil,
+                      hertz: Int? = nil, channels: Int? = nil, bytes: Int? = nil,
+                      milliseconds: Int? = nil, count: Int? = nil,
+                      error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.subsystem, .token(PrivacyToken(subsystem.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let owner { fields.append(.init(.owner, .token(owner))) }
+        if let route { fields.append(.init(.route, .token(route))) }
+        if let device { fields.append(.init(.device, .identifier(device))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let hertz { fields.append(.init(.hertz, .count(hertz))) }
+        if let channels { fields.append(.init(.channels, .count(channels))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let milliseconds { fields.append(.init(.duration, .milliseconds(milliseconds))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.audio, .audio, fields))
+    }
+
+    // MARK: - Models
+    //
+    // A model *id* (`claude-opus-4`, `gemini-2.0-flash`) is a public catalog name and stays a
+    // token. A model *configuration name* is typed by the wearer — "Work Claude", "Clinic
+    // summariser" — so it is fingerprinted. Prompts, reasoning traces, completions, tool
+    // arguments and server error bodies have no parameter at all: the whole turn is user content
+    // and the useful diagnostics are its shape, not its substance.
+
+    enum ModelEvent: String {
+        case turnStarted, turnCompleted, requestSent
+        case historyLoaded, historyCleared, compressionFailed
+        case planLoopEmpty, planLoopCompleted, cascadeSwitched
+        case apiError, streamError, streamRetry, requestFailed
+        case toolCallsParsed, toolCallDropped, toolsPayloadRejected, yieldedToHuman
+        case emptyCompletion, imageSkipped, reasoningProduced
+        case agentSelected, catalogDiscovered, catalogUnavailable
+        case classified, classificationFailed, analysisCompleted
+    }
+
+    /// How an utterance was classified. The utterance itself, and the classifier's free-form
+    /// answer when it did not fit the vocabulary, are both user content.
+    enum ModelClassification: String { case respond, ignore, uncertain }
+
+    @discardableResult
+    static func model(_ event: ModelEvent, provider: PrivacyToken? = nil,
+                      model: PrivacyToken? = nil, configuration: PrivateIdentifier? = nil,
+                      attempt: Int? = nil, count: Int? = nil, total: Int? = nil,
+                      characters: Int? = nil, tokens: Int? = nil, status: Int? = nil,
+                      bytes: Int? = nil, seconds: Double? = nil, success: Bool? = nil,
+                      detail: PrivacyToken? = nil,
+                      error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let provider { fields.append(.init(.provider, .token(provider))) }
+        if let model { fields.append(.init(.model, .token(model))) }
+        if let configuration { fields.append(.init(.configuration, .identifier(configuration))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let total { fields.append(.init(.total, .count(total))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let tokens { fields.append(.init(.tokens, .count(tokens))) }
+        if let status { fields.append(.init(.status, .count(status))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.model, .model, fields))
+    }
+
+    /// History compaction, which is the one model event whose whole point is a before/after pair.
+    /// Four counts and a preserved-signal count say everything a compaction bug needs; the
+    /// messages that were dropped or summarised are the conversation itself.
+    @discardableResult
+    static func modelCompaction(messagesBefore: Int, messagesAfter: Int,
+                                tokensBefore: Int, tokensAfter: Int,
+                                signals: Int? = nil, detail: PrivacyToken? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.messagesBefore, .count(messagesBefore)),
+            .init(.messagesAfter, .count(messagesAfter)),
+            .init(.tokensBefore, .count(tokensBefore)),
+            .init(.tokensAfter, .count(tokensAfter)),
+        ]
+        if let signals { fields.append(.init(.signals, .count(signals))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        return emit(.init(.model, .modelCompaction, fields))
+    }
+
+    /// On-device inference. Model ids here are catalog ids from the app's own model list, so they
+    /// are public; the generated text, the prompt it answered and the tool arguments it produced
+    /// are not. Memory figures are the reason these lines exist at all — an MLX model that will
+    /// not load is diagnosed from footprint, not from what it was asked.
+    enum LocalModelEvent: String {
+        case downloaded, downloadCancelled, deleted, tempsSwept
+        case loaded, loadFailed, unloaded, visionDemoted, imageRefused
+        case generationStarted, generationCompleted, generationFailed, stalled
+        case historyTrimmed, toolCall, reasoningProduced, tokenShape
+    }
+
+    /// `shape` is the prompt tensor's dimensions rendered as `1x842` — the diagnostic that
+    /// distinguishes a text-factory model fed a batched tensor (a fatal Metal crash) from a
+    /// correct load. It is numbers about the prompt, never any of it.
+    @discardableResult
+    static func localModel(_ event: LocalModelEvent, model: PrivacyToken? = nil,
+                           vision: Bool? = nil, count: Int? = nil, total: Int? = nil,
+                           characters: Int? = nil, tokens: Int? = nil, shape: PrivacyToken? = nil,
+                           megabytes: Int? = nil, cacheMegabytes: Int? = nil,
+                           footprintMegabytes: Int? = nil, headroomMegabytes: Int? = nil,
+                           kilobytes: Int? = nil,
+                           tool: PrivacyToken? = nil, detail: PrivacyToken? = nil,
+                           error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let model { fields.append(.init(.model, .token(model))) }
+        if let vision { fields.append(.init(.vision, .flag(vision))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let total { fields.append(.init(.total, .count(total))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let tokens { fields.append(.init(.tokens, .count(tokens))) }
+        if let shape { fields.append(.init(.shape, .token(shape))) }
+        if let megabytes { fields.append(.init(.megabytes, .count(megabytes))) }
+        if let cacheMegabytes { fields.append(.init(.cacheMegabytes, .count(cacheMegabytes))) }
+        if let footprintMegabytes {
+            fields.append(.init(.footprintMegabytes, .count(footprintMegabytes)))
+        }
+        if let headroomMegabytes {
+            fields.append(.init(.headroomMegabytes, .count(headroomMegabytes)))
+        }
+        if let kilobytes { fields.append(.init(.kilobytes, .count(kilobytes))) }
+        if let tool { fields.append(.init(.tool, .token(tool))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.model, .localModel, fields))
+    }
+
+    // MARK: - Conversation history
+
+    /// Which store. Both hold text the wearer wrote or spoke, which is why they share a category.
+    enum ContentStore: String { case conversations, teleprompterScripts }
+
+    /// Thread titles and message bodies are the conversation itself. A thread *id* is a private
+    /// identifier and is fingerprinted — enough to follow one thread across a session's log,
+    /// not enough to name it. Persona/project ids are omitted rather than hashed: the set is
+    /// small and wearer-visible, so a fingerprint would not anonymise which persona was in use.
+    enum ConversationEvent: String {
+        case sessionRestored, threadStarted, threadEnded, threadResumed, summaryUpdated
+        case loaded, recovered, saveSkipped, saveFailed
+        case encryptionEnabled, encryptionDisabled, encryptionFailed
+        case unlockFailed, locked, awaitingAuthentication
+        case keyCreated, keyDeleted, fileEncrypted
+    }
+
+    @discardableResult
+    static func conversation(_ store: ContentStore, _ event: ConversationEvent,
+                             thread: PrivateIdentifier? = nil, count: Int? = nil,
+                             characters: Int? = nil, minutes: Int? = nil,
+                             detail: PrivacyToken? = nil,
+                             error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.store, .token(PrivacyToken(store.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let thread { fields.append(.init(.thread, .identifier(thread))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let minutes { fields.append(.init(.minutes, .count(minutes))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.conversation, .conversation, fields))
     }
 
     // MARK: - Network
@@ -711,6 +1155,11 @@ struct PrivacyEvent: Equatable {
         case gatewayConnection, gatewayHealth, gatewayOperation, gatewayNotification, gatewayFailed
         case mcpDiscovery, mcpToolScreened, mcpEgress, mcpFailed, mcpServer
         case stream
+        case toolGate, toolDispatch, toolRun, toolAuthorizationRefused, webSearch
+        case wakeWord, speech, tts
+        case audio
+        case model, modelCompaction, localModel
+        case conversation
     }
 
     /// Field keys are closed too, so a reader can rely on the shape of a category's lines.
@@ -726,6 +1175,12 @@ struct PrivacyEvent: Equatable {
         case transport, peer, method
         case server, servers, port
         case channel, session
+        case distance, language, engine, voice, quality, elapsed
+        case device, owner, hertz, channels
+        case model, configuration, tokens, megabytes, total, vision, shape
+        case cacheMegabytes, footprintMegabytes, headroomMegabytes
+        case messagesBefore, messagesAfter, tokensBefore, tokensAfter, signals
+        case store, thread, minutes
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

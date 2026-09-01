@@ -69,7 +69,9 @@ final class LocalLLMService: ObservableObject {
             freed += Int64((try? item.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
             try? FileManager.default.removeItem(at: item)
         }
-        if freed > 0 { NSLog("🧹 LocalLLM: swept %lld MB of orphaned download temps", freed / 1_048_576) }
+        if freed > 0 {
+            PrivacyLog.localModel(.tempsSwept, megabytes: Int(freed / 1_048_576))
+        }
     }()
 
     // MARK: - Recommended Models
@@ -256,12 +258,12 @@ final class LocalLLMService: ObservableObject {
         do {
             try await task.value
         } catch is CancellationError {
-            print("🚫 Model download cancelled: \(modelId)")
+            PrivacyLog.localModel(.downloadCancelled, model: PrivacyToken(modelId))
             throw CancellationError()
         }
 
         downloadProgress = 1.0
-        print("✅ Local model downloaded: \(modelId)")
+        PrivacyLog.localModel(.downloaded, model: PrivacyToken(modelId))
     }
 
     /// Cancel any in-progress download and reset state (BK P5). Now that the download runs inside
@@ -350,8 +352,8 @@ final class LocalLLMService: ObservableObject {
                 // mapping is still a perfectly good text model: demote for this run and load
                 // through the text factory. Image turns then get the honest refusal instead
                 // of a broken load.
-                NSLog("[LocalLLM] VLM load failed for %@ — demoting to text factory: %@",
-                      modelId, error.localizedDescription)
+                PrivacyLog.localModel(.visionDemoted, model: PrivacyToken(modelId),
+                                      error: SafeErrorSummary(error))
                 visionDemotedModelIds.insert(modelId)
                 modelContainer = try await load(with: LLMModelFactory.shared)
                 loadedViaVLMFactory = false
@@ -363,7 +365,7 @@ final class LocalLLMService: ObservableObject {
 
         loadedModelId = modelId
         isModelLoaded = true
-        print("✅ Local model loaded: \(modelId) (vision: \(loadedViaVLMFactory))")
+        PrivacyLog.localModel(.loaded, model: PrivacyToken(modelId), vision: loadedViaVLMFactory)
     }
 
     /// Unload model from memory.
@@ -379,7 +381,7 @@ final class LocalLLMService: ObservableObject {
             // never-loaded service (unit tests on the simulator) never touches Metal.
             Memory.clearCache()
         }
-        print("🔄 Local model unloaded")
+        PrivacyLog.localModel(.unloaded)
     }
 
     // MARK: - Generation
@@ -438,8 +440,7 @@ final class LocalLLMService: ObservableObject {
             // model DURING the turn, and the VLM→text demotion happens after the guard already
             // passed. Refuse honestly — silently answering text-only about an image the model
             // never saw is the exact hallucination the vision guard exists to prevent.
-            NSLog("[LocalLLM] Image supplied to a text-factory model (%@) — refusing honestly",
-                  loadedModelId ?? "?")
+            PrivacyLog.localModel(.imageRefused, model: PrivacyToken(loadedModelId ?? "unknown"))
             return Self.visionWeightsUnavailableMessage
         }
 
@@ -461,8 +462,8 @@ final class LocalLLMService: ObservableObject {
                 return tokenizer.encode(text: text, addSpecialTokens: false).count
             }
             if trimmedHistory.count < history.count {
-                NSLog("🔬 LocalLLM.generate trimmed history %d→%d turns to fit budget %d",
-                      history.count, trimmedHistory.count, budget)
+                PrivacyLog.localModel(.historyTrimmed, count: trimmedHistory.count,
+                                      total: history.count, tokens: budget)
             }
             return try await generateGemma4Turn(
                 userMessage: userMessage, systemPrompt: systemPrompt,
@@ -511,8 +512,8 @@ final class LocalLLMService: ObservableObject {
             history: history, budget: budget
         ) { try tokenize($0).count }
         if trimmedHistory.count < history.count {
-            NSLog("🔬 LocalLLM.generate trimmed history %d→%d turns to fit budget %d",
-                  history.count, trimmedHistory.count, budget)
+            PrivacyLog.localModel(.historyTrimmed, count: trimmedHistory.count,
+                                  total: history.count, tokens: budget)
         }
         let tokens = try tokenize(trimmedHistory)
 
@@ -531,9 +532,11 @@ final class LocalLLMService: ObservableObject {
         // Keyed off the factory that ACTUALLY loaded the model, never the id's nominal
         // capability — after a VLM→text demotion, a (1, L) batch here is the fatal crash.
         let tokenIDs = Self.tokenBatch(tokens, isVisionModel: loadedViaVLMFactory)
-        // NSLog (not print) so it survives a fatal MLX crash in the unified log,
+        // Emitted before the prefill so it survives a fatal MLX crash in the unified log,
         // confirming what shape reaches the model.
-        NSLog("🔬 LocalLLM.generate model=%@ tokenIDs.shape=%@ count=%d", loadedModelId ?? "?", "\(tokenIDs.shape)", tokens.count)
+        PrivacyLog.localModel(.tokenShape, model: PrivacyToken(loadedModelId ?? "unknown"),
+                              tokens: tokens.count,
+                              shape: PrivacyToken(tokenIDs.shape.map(String.init).joined(separator: "x")))
 
         let input = LMInput(text: .init(tokens: tokenIDs))
 
@@ -605,9 +608,9 @@ final class LocalLLMService: ObservableObject {
         }
         // Memory telemetry per turn — footprint should now stay flat across questions;
         // before the cacheLimit cap it grew ~0.7 GB per turn until the Jetsam kill.
-        NSLog("🔬 LocalLLM.generate done — mlx active=%dMB cache=%dMB, app footprint=%dMB",
-              Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576,
-              Int(MemoryHeadroom.appFootprintBytes() / 1_048_576))
+        PrivacyLog.localModel(.generationCompleted, megabytes: Memory.activeMemory / 1_048_576,
+                              cacheMegabytes: Memory.cacheMemory / 1_048_576,
+                              footprintMegabytes: Int(MemoryHeadroom.appFootprintBytes() / 1_048_576))
 
         // Strip the think block from the RETURNED text too, at this layer rather than in
         // LLMService: every consumer (tool-call parsing, corrective regens, uncertainty
@@ -620,8 +623,7 @@ final class LocalLLMService: ObservableObject {
             let (spoken, reasoning) = ThinkStreamFilter.strip(output)
             lastReasoning = reasoning
             if let reasoning {
-                NSLog("🔬 LocalLLM.generate think block: %d chars — %@",
-                      reasoning.count, String(reasoning.prefix(160)))
+                PrivacyLog.localModel(.reasoningProduced, characters: reasoning.count)
             }
             return spoken
         }
@@ -675,10 +677,13 @@ final class LocalLLMService: ObservableObject {
             let headroom = MemoryHeadroom.availableBytes()
             let plan = LocalModelBudget.multimodalTurnPlan(
                 for: loadedModelId, marketingRAMGB: Self.marketingRAMGB, availableBytes: headroom)
-            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ image=%dKB ram=%.0fGB headroom=%dMB footprint=%dMB fullPrompt=%@ refuse=%@",
-                  loadedModelId ?? "?", photo.count / 1024, Self.marketingRAMGB,
-                  headroom / 1_048_576, MemoryHeadroom.appFootprintBytes() / 1_048_576,
-                  plan.keepsFullSystemPrompt ? "yes" : "no", plan.refusesImage ? "yes" : "no")
+            PrivacyLog.localModel(.generationStarted,
+                                  model: PrivacyToken(loadedModelId ?? "unknown"),
+                                  footprintMegabytes: Int(MemoryHeadroom.appFootprintBytes() / 1_048_576),
+                                  headroomMegabytes: Int(headroom / 1_048_576),
+                                  kilobytes: photo.count / 1024,
+                                  detail: PrivacyToken((plan.keepsFullSystemPrompt ? "fullPrompt" : "compactPrompt")
+                                                       + (plan.refusesImage ? "-refused" : "")))
             // Say so rather than starting a prefill that ends as a process kill. A photo turn on
             // an already-resident multi-gigabyte model crossed the per-process cap on a 12 GB
             // phone and took the app to the home screen with no error and no recording of why.
@@ -692,7 +697,9 @@ final class LocalLLMService: ObservableObject {
             effectiveSystem = systemPrompt
             effectiveHistory = history
             imageLongEdge = 0
-            NSLog("🔬 LocalLLM.generateGemma4Turn model=%@ text-only", loadedModelId ?? "?")
+            PrivacyLog.localModel(.generationStarted,
+                                  model: PrivacyToken(loadedModelId ?? "unknown"),
+                                  detail: PrivacyToken("textOnly"))
         }
 
         let report = LockedGenerationReport()
@@ -743,8 +750,9 @@ final class LocalLLMService: ObservableObject {
                                               mask: ones(like: promptArray).asType(.int8)))
             }
 
-            NSLog("🔬 LocalLLM.generateGemma4Turn tokenIDs.shape=%@ count=%d",
-                  "\(lmInput.text.tokens.shape)", lmInput.text.tokens.size)
+            PrivacyLog.localModel(.tokenShape, tokens: lmInput.text.tokens.size,
+                                  shape: PrivacyToken(lmInput.text.tokens.shape
+                                                        .map(String.init).joined(separator: "x")))
 
             let stream = try MLXLMCommon.generate(
                 input: lmInput, parameters: parameters, context: context)
@@ -768,8 +776,9 @@ final class LocalLLMService: ObservableObject {
         if let completion = report.completion {
             TurnRecorder.addGeneration(tokens: completion.generationTokenCount, seconds: completion.generateTime)
         }
-        NSLog("🔬 LocalLLM.generateGemma4Turn done — mlx active=%dMB cache=%dMB",
-              Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
+        PrivacyLog.localModel(.generationCompleted, megabytes: Memory.activeMemory / 1_048_576,
+                              cacheMegabytes: Memory.cacheMemory / 1_048_576,
+                              detail: PrivacyToken("gemma4Turn"))
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -809,8 +818,10 @@ final class LocalLLMService: ObservableObject {
             availableBytes: MemoryHeadroom.availableBytes())
         guard !visionPlan.refusesImage else { throw LocalLLMError.insufficientMemoryForPhoto }
         let visionLongEdge = visionPlan.imageLongEdge
-        NSLog("🔬 LocalLLM.generateVisionTurn model=%@ image=%dKB longEdge=%d", loadedModelId ?? "?",
-              imageData.count / 1024, visionLongEdge)
+        PrivacyLog.localModel(.generationStarted,
+                              model: PrivacyToken(loadedModelId ?? "unknown"),
+                              count: visionLongEdge, kilobytes: imageData.count / 1024,
+                              detail: PrivacyToken("visionTurn"))
         // `UserInput` (and the `CIImage` inside it) isn't `Sendable`, so it's built *inside* the
         // `@Sendable` closure from Sendable ingredients only — the image data, the prompt strings
         // and the history — rather than constructed out here and captured across the boundary.
@@ -857,8 +868,9 @@ final class LocalLLMService: ObservableObject {
         if let completion = report.completion {
             TurnRecorder.addGeneration(tokens: completion.generationTokenCount, seconds: completion.generateTime)
         }
-        NSLog("🔬 LocalLLM.generateVisionTurn done — mlx active=%dMB cache=%dMB",
-              Memory.activeMemory / 1_048_576, Memory.cacheMemory / 1_048_576)
+        PrivacyLog.localModel(.generationCompleted, megabytes: Memory.activeMemory / 1_048_576,
+                              cacheMegabytes: Memory.cacheMemory / 1_048_576,
+                              detail: PrivacyToken("visionTurn"))
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -1006,7 +1018,7 @@ final class LocalLLMService: ObservableObject {
         let path = modelPath(modelId)
         if FileManager.default.fileExists(atPath: path.path) {
             try FileManager.default.removeItem(at: path)
-            print("🗑️ Deleted local model: \(modelId)")
+            PrivacyLog.localModel(.deleted, model: PrivacyToken(modelId))
         }
     }
 

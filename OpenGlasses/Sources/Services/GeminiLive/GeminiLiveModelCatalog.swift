@@ -36,11 +36,12 @@ actor GeminiLiveModelCatalog {
             if !found.isEmpty {
                 cache[apiKey] = found
                 Self.store(found, for: apiKey)
-                NSLog("[GeminiLive] %d live-capable models discovered via %@", found.count, version)
+                PrivacyLog.model(.catalogDiscovered, provider: PrivacyToken("gemini"),
+                                 count: found.count, detail: PrivacyToken(version))
                 return found
             }
         }
-        NSLog("[GeminiLive] Could not discover live models — using the offline fallback")
+        PrivacyLog.model(.catalogUnavailable, provider: PrivacyToken("gemini"))
         return []
     }
 

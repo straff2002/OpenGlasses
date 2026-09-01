@@ -141,7 +141,9 @@ final class CaptureAudioNormalizer: @unchecked Sendable {
         case .haveData, .inputRanDry:
             return output.frameLength > 0 ? output : nil
         case .endOfStream, .error:
-            if let error { NSLog("[CaptureAudio] Conversion failed: %@", error.localizedDescription) }
+            if let error {
+                PrivacyLog.audio(.captureRouter, .conversionFailed, error: SafeErrorSummary(error))
+            }
             return nil
         @unknown default:
             return nil
