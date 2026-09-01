@@ -80,8 +80,12 @@ final class WebHUDMirrorServer: ObservableObject {
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor in
                     switch state {
-                    case .ready: self?.isRunning = true; NSLog("[HUDMirror] Listening on :%d", Int(Self.port))
-                    case .failed(let error): NSLog("[HUDMirror] Failed: %@", error.localizedDescription); self?.stop()
+                    case .ready:
+                        self?.isRunning = true
+                        PrivacyLog.stream(.hudMirror, .listening, count: Int(Self.port))
+                    case .failed(let error):
+                        PrivacyLog.stream(.hudMirror, .startFailed, error: SafeErrorSummary(error))
+                        self?.stop()
                     case .cancelled: self?.isRunning = false
                     default: break
                     }
@@ -89,7 +93,7 @@ final class WebHUDMirrorServer: ObservableObject {
             }
             listener.start(queue: .global(qos: .userInitiated))
         } catch {
-            NSLog("[HUDMirror] Could not start: %@", error.localizedDescription)
+            PrivacyLog.stream(.hudMirror, .startFailed, error: SafeErrorSummary(error))
         }
     }
 

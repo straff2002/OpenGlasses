@@ -182,7 +182,8 @@ struct HTTPTransport: MCPTransport {
                                     sessionID: sessionID.isEmpty ? nil : sessionID)
         } catch {
             Self.setSession("", for: server.id)
-            print("⚠️ MCP: session init failed for \(server.label), proceeding without session: \(error.localizedDescription)")
+            PrivacyLog.mcpFailed(.sessionInit, server: PrivateIdentifier(server.id),
+                                 SafeErrorSummary(error))
         }
     }
 

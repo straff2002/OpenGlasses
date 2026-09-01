@@ -2,7 +2,8 @@
 
 **Status:** 🚧 P0 shipped (2026-09-01) — `PrivacyLog` + `SafeErrorSummary` landed, all named leak
 sites emit metadata only, and the P1 scanner runs in report-only mode with a checked-in ledger
-baseline ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). P1–P3 outstanding.
+([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). **P1 batch 1 (authentication/networking)
+migrated (2026-09-01): 872 → 794 sites, 127 → 113 files.** P1 batches 2–5, P2 and P3 outstanding.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -116,6 +117,46 @@ Baseline at P0 completion (`docs/plans/DM-ledger-baseline.txt`, `--ledger`):
 
 The largest single item is `OpenGlassesApp.swift` at 136 sites (only its callback handling was in
 P0 scope), then `WakeWordService` and `MetaCameraBackend` at 46 each.
+
+### Batch 1 — authentication/networking ✅ (2026-09-01)
+
+Fourteen files, 78 sites, all to zero; the ledger is regenerated from the same script.
+
+| Metric | P0 baseline | After batch 1 |
+|---|---|---|
+| Direct `NSLog`/`print` sites | 872 / 127 files | 794 / 113 files |
+| Content/credential-named interpolations | 45 | 31 |
+| `localizedDescription` in log calls | 120 | 101 |
+| Allowlisted files / sites | 0 / 0 | 0 / 0 |
+
+Migrated: `OpenClawBridge` (25), `OpenClawEventClient` (17), `WebRTCStreamingService` (7),
+`MCPClient` (6), `MCPGlassesServer` (6), `Config` secret/gateway migrations (3),
+`WebHUDMirrorServer` (3), `WebRTCPeerTransport` (3), `KeychainService` (2), `ModelFetcher` (2),
+`MCPTransport` (1), `ExpertStreamTransport` (1), `ExpertBridge` (1), `EscalationCoordinator` (1).
+The three OAuth services were already at zero after P0 and were re-swept.
+
+Facade additions: categories `gateway`, `mcp`, `stream`; events `gatewayConnection`/`gatewayHealth`/
+`gatewayOperation`/`gatewayNotification`/`gatewayFailed`, `mcpDiscovery`/`mcpToolScreened`/
+`mcpEgress`/`mcpFailed`/`mcpServer`, `stream`, `keychainFailed`, `configMigration`, and a
+`modelCatalog` network subsystem. Gateway and MCP server identity is a `PrivateIdentifier`;
+protocol method names and tool names are public operation class.
+
+What this removed, beyond the raw call count: the gateway health probe logged its endpoint **and
+the response body**, the connect path logged the handshake frame (bearer token and signed device
+identity, through a redactor that masks two token shapes), `sessions.send` logged the agent's reply
+to the wearer, the heartbeat and cron paths logged the text about to be spoken, the viewer-broadcast
+and expert-bridge paths logged **room URLs** — bearer capabilities to a live camera — and the MCP
+local server logged unauthenticated request paths verbatim. `LogRedaction` now has no production
+caller; its four gateway callers were the last, and its doc no longer points at them.
+
+Deliberately deferred, with the batch they belong to: `ClawHubService` and the offline
+sync/queue pair (persistence/import — batch 4), `WebSearchTool` and the broadcast-chat clients
+(query and message content — batch 2), `HomeAssistantEntityCache` (home — batch 3),
+`DeepgramSTTService` (audio — batch 2), `BroadcastService` (media/device — batch 5).
+
+Keychain finding: the two sites logged key *names* and `OSStatus`, never values. The names are now
+omitted rather than fingerprinted — they come from a small fixed dictionary of provider names, so a
+hash would not anonymise them while still saying which credentials the wearer holds.
 
 
 Generate and check in a classification ledger with one row per logging site/category, then migrate in

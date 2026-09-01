@@ -70,8 +70,9 @@ protocol ExpertNotifier {
 /// Stub notifier: logs the page and reports success without contacting anyone (used by tests).
 struct StubExpertNotifier: ExpertNotifier {
     func notifyExpertPool(reason: String, assetId: String?, sessionId: String, roomURL: String?) async throws -> Bool {
-        NSLog("[Escalation] (stub) Paging expert pool — session=%@ asset=%@ reason=%@ room=%@",
-              sessionId, assetId ?? "-", reason, roomURL ?? "-")
+        // The reason is the technician's own words and the room URL is a live-camera capability;
+        // the stub records only that a page was raised, against a session fingerprint.
+        PrivacyLog.stream(.expertBridge, .expertPaged, session: PrivateIdentifier(sessionId))
         return true
     }
 }

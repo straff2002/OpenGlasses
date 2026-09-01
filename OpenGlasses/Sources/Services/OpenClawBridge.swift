@@ -102,7 +102,8 @@ class OpenClawBridge: ObservableObject {
                     cachedEndpoint = endpoint
                     activeGateway = gateway
                     activeGatewayName = gateway.name
-                    NSLog("[Gateway] Resolved %@ (%@) → %@", gateway.name, gateway.gatewayProvider.displayName, endpoint)
+                    PrivacyLog.gatewayConnection(.endpointResolved, transport: currentTransport,
+                                                 peer: PrivateIdentifier(gateway.id))
                     return endpoint
                 }
             }
@@ -112,7 +113,7 @@ class OpenClawBridge: ObservableObject {
             cachedEndpoint = fallback
             activeGateway = first
             activeGatewayName = first.name
-            NSLog("[Gateway] None reachable, falling back to %@ → %@", first.name, fallback)
+            PrivacyLog.gatewayConnection(.endpointUnreachable, peer: PrivateIdentifier(first.id))
             return fallback
         }
 
@@ -135,11 +136,13 @@ class OpenClawBridge: ObservableObject {
             resolvedConnection = .tunnel
             return tunnelURL
         case .auto:
-            if !lanURL.isEmpty, await isReachable(baseURL: lanURL, token: gateway.token, session: lanPingSession) {
+            if !lanURL.isEmpty, await isReachable(baseURL: lanURL, token: gateway.token,
+                                                  session: lanPingSession, transport: .lan) {
                 resolvedConnection = .lan
                 return lanURL
             }
-            if !tunnelURL.isEmpty, await isReachable(baseURL: tunnelURL, token: gateway.token, session: pingSession) {
+            if !tunnelURL.isEmpty, await isReachable(baseURL: tunnelURL, token: gateway.token,
+                                                    session: pingSession, transport: .tunnel) {
                 resolvedConnection = .tunnel
                 return tunnelURL
             }
@@ -164,12 +167,14 @@ class OpenClawBridge: ObservableObject {
             resolvedConnection = .tunnel
             return tunnelURL
         case .auto:
-            if await isReachable(baseURL: lanURL, token: Config.openClawGatewayToken, session: lanPingSession) {
+            if await isReachable(baseURL: lanURL, token: Config.openClawGatewayToken,
+                                 session: lanPingSession, transport: .lan) {
                 cachedEndpoint = lanURL
                 resolvedConnection = .lan
                 return lanURL
             }
-            if !tunnelURL.isEmpty, await isReachable(baseURL: tunnelURL, token: Config.openClawGatewayToken, session: pingSession) {
+            if !tunnelURL.isEmpty, await isReachable(baseURL: tunnelURL, token: Config.openClawGatewayToken,
+                                                     session: pingSession, transport: .tunnel) {
                 cachedEndpoint = tunnelURL
                 resolvedConnection = .tunnel
                 return tunnelURL
@@ -189,7 +194,7 @@ class OpenClawBridge: ObservableObject {
                idx + 1 < gateways.count {
                 let next = gateways[idx + 1]
                 let url = !next.tunnelURL.isEmpty ? next.tunnelURL : next.lanURL
-                NSLog("[Gateway] Failing over from %@ to %@", current.name, next.name)
+                PrivacyLog.gatewayConnection(.failover, peer: PrivateIdentifier(next.id))
                 return url
             }
         }
@@ -223,7 +228,7 @@ class OpenClawBridge: ObservableObject {
     private func noteWSFailure() {
         consecutiveWSFailures += 1
         guard consecutiveWSFailures >= Self.maxWSFailuresBeforeEndpointReset else { return }
-        NSLog("[OpenClaw] %d consecutive WS failures — dropping cached endpoint to re-probe", consecutiveWSFailures)
+        PrivacyLog.gatewayConnection(.endpointCacheDropped, count: consecutiveWSFailures)
         consecutiveWSFailures = 0
         cachedEndpoint = nil
         resolvedConnection = nil
@@ -234,8 +239,18 @@ class OpenClawBridge: ObservableObject {
         activeGateway?.token ?? Config.openClawGatewayToken
     }
 
+    /// The leg the bridge currently believes it is on, for logging. `unknown` until resolution.
+    private var currentTransport: PrivacyLog.GatewayTransport {
+        switch resolvedConnection {
+        case .lan: return .lan
+        case .tunnel: return .tunnel
+        case nil: return .unknown
+        }
+    }
+
     /// Check reachability using /health endpoint
-    private func isReachable(baseURL: String, token: String? = nil, session: URLSession) async -> Bool {
+    private func isReachable(baseURL: String, token: String? = nil, session: URLSession,
+                             transport: PrivacyLog.GatewayTransport = .unknown) async -> Bool {
         let normalized = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
         guard let url = URL(string: "\(normalized)/health") else { return false }
         var request = URLRequest(url: url)
@@ -243,14 +258,14 @@ class OpenClawBridge: ObservableObject {
         let authToken = token ?? activeToken
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await session.data(for: request)
+            let (_, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                NSLog("[OpenClaw] Health %@ → HTTP %d (%@)", url.absoluteString, http.statusCode, String(body.prefix(100)))
-                return (200...299).contains(http.statusCode)
+                let healthy = (200...299).contains(http.statusCode)
+                PrivacyLog.gatewayHealth(transport, reachable: healthy, status: http.statusCode)
+                return healthy
             }
         } catch {
-            NSLog("[OpenClaw] Health %@ failed: %@", url.absoluteString, error.localizedDescription)
+            PrivacyLog.gatewayFailed(.health, SafeErrorSummary(error))
         }
         return false
     }
@@ -274,20 +289,19 @@ class OpenClawBridge: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(activeToken)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await pingSession.data(for: request)
+            let (_, response) = try await pingSession.data(for: request)
             if let http = response as? HTTPURLResponse {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                NSLog("[OpenClaw] Health %@ → HTTP %d (%@)", url.absoluteString, http.statusCode, body)
-                if (200...299).contains(http.statusCode) {
+                let healthy = (200...299).contains(http.statusCode)
+                PrivacyLog.gatewayHealth(currentTransport, reachable: healthy, status: http.statusCode)
+                if healthy {
                     connectionState = .connected
-                    NSLog("[OpenClaw] Gateway connected via %@", resolvedConnection?.label ?? "unknown")
                     return
                 }
                 connectionState = .unreachable("HTTP \(http.statusCode)")
                 return
             }
         } catch {
-            NSLog("[OpenClaw] Health check failed: %@", error.localizedDescription)
+            PrivacyLog.gatewayFailed(.health, SafeErrorSummary(error))
         }
         connectionState = .unreachable("Gateway not responding")
     }
@@ -302,7 +316,7 @@ class OpenClawBridge: ObservableObject {
         let next = UserDefaults.standard.integer(forKey: Self.sessionGenerationKey) + 1
         UserDefaults.standard.set(next, forKey: Self.sessionGenerationKey)
         sessionKey = Self.newSessionKey()
-        NSLog("[OpenClaw] New session: %@", sessionKey)
+        PrivacyLog.gatewayConnection(.sessionRotated, count: next)
     }
 
     nonisolated static let messageChannel = "glass"
@@ -335,7 +349,7 @@ class OpenClawBridge: ObservableObject {
             throw NSError(domain: "OpenClaw", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid WebSocket URL"])
         }
 
-        NSLog("[OpenClaw] WS connecting to %@", LogRedaction.redact(url.absoluteString))
+        PrivacyLog.gatewayConnection(.connecting, transport: currentTransport)
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         wsSession = URLSession(configuration: config)
@@ -353,7 +367,7 @@ class OpenClawBridge: ObservableObject {
         // Wait for connect.challenge and pull its nonce — signing it into the device-identity
         // block is what earns real scopes on remote gateways (token-only can be zero-scoped).
         let challengeMsg = try await receiveMessage()
-        NSLog("[OpenClaw] WS received: %@", String(challengeMsg.prefix(100)))
+        PrivacyLog.gatewayConnection(.challengeReceived)
         var challengeNonce: String?
         if let data = challengeMsg.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -379,7 +393,10 @@ class OpenClawBridge: ObservableObject {
 
         let connectData = try JSONSerialization.data(withJSONObject: connectMsg)
         let connectJSON = String(data: connectData, encoding: .utf8)!
-        NSLog("[OpenClawWS] Sending connect: %@", LogRedaction.redact(String(connectJSON.prefix(500))))
+        // The handshake body carries the gateway token and the signed device-identity block.
+        // `LogRedaction` masked two token shapes of it and let the rest through; nothing about
+        // the frame is loggable, so only the fact that it was sent is.
+        PrivacyLog.gatewayConnection(.handshakeSent, count: connectJSON.count)
         try await webSocketTask!.send(.string(connectJSON))
 
         // Wait for connect response
@@ -390,14 +407,14 @@ class OpenClawBridge: ObservableObject {
             wsConnected = true
             sessionCompacted = false
             consecutiveWSFailures = 0
-            NSLog("[OpenClaw] WS connected as node with capabilities")
+            PrivacyLog.gatewayConnection(.connected, transport: currentTransport)
             startReceiveLoop()
 
             // Query available tools from gateway (fire-and-forget, non-blocking)
             Task { await queryAvailableTools() }
             onGatewayConnected?()
         } else {
-            NSLog("[OpenClaw] WS connect failed: %@", String(response.prefix(300)))
+            PrivacyLog.gatewayConnection(.authRejected)
             noteWSFailure()
             throw NSError(domain: "OpenClaw", code: -2, userInfo: [NSLocalizedDescriptionKey: "WebSocket auth failed: \(String(response.prefix(200)))"])
         }
@@ -448,7 +465,7 @@ class OpenClawBridge: ObservableObject {
                         case "session.compacted", "session.truncated":
                             await MainActor.run {
                                 self.sessionCompacted = true
-                                NSLog("[OpenClaw] Session compacted by gateway")
+                                PrivacyLog.gatewayConnection(.sessionCompacted)
                             }
                         case "session.chunk", "stream.chunk":
                             // Streaming partial result — forward to TTS for early speech
@@ -462,7 +479,7 @@ class OpenClawBridge: ObservableObject {
                         }
                     }
                 } catch {
-                    NSLog("[OpenClaw] WS receive error: %@", error.localizedDescription)
+                    PrivacyLog.gatewayFailed(.receive, SafeErrorSummary(error))
                     await MainActor.run {
                         self.wsConnected = false
                         // Fail all pending requests
@@ -555,13 +572,14 @@ class OpenClawBridge: ObservableObject {
                let payload = response["payload"] as? [String: Any],
                let tools = payload["tools"] as? [[String: String]] {
                 availableGatewayTools = tools
-                NSLog("[OpenClaw] Gateway has %d tools available", tools.count)
+                PrivacyLog.gatewayOperation("tools.available", outcome: .succeeded, count: tools.count)
             } else {
                 // Gateway may not support tools.available — not an error
-                NSLog("[OpenClaw] tools.available not supported or empty")
+                PrivacyLog.gatewayOperation("tools.available", outcome: .unsupported)
             }
         } catch {
-            NSLog("[OpenClaw] tools.available query failed: %@", error.localizedDescription)
+            PrivacyLog.gatewayOperation("tools.available", outcome: .failed)
+            PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
         }
     }
 
@@ -585,7 +603,7 @@ class OpenClawBridge: ObservableObject {
             if let ok = response["ok"] as? Bool, ok {
                 let payload = response["payload"] as? [String: Any]
                 let id = payload?["id"] as? String ?? "unknown"
-                NSLog("[OpenClaw] Cron job created: %@", id)
+                PrivacyLog.gatewayOperation("cron.create", outcome: .succeeded)
                 return .success("Cron job created (id: \(id))")
             }
             let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
@@ -761,14 +779,17 @@ class OpenClawBridge: ObservableObject {
                 // Extract result — sessions.send may return the run result directly
                 if let payload = response["payload"] as? [String: Any],
                    let content = payload["content"] as? String {
-                    NSLog("[OpenClaw] Task result: %@", String(content.prefix(200)))
+                    // The content is the agent's answer to the wearer — user content. Only its
+                    // size is recorded, which is what a truncation or empty-reply report needs.
+                    PrivacyLog.gatewayOperation("sessions.send", outcome: .succeeded,
+                                                characters: content.count)
                     lastToolCallStatus = .completed(toolName)
                     return .success(content)
                 }
                 // Some responses just acknowledge the send — the actual result comes via events
                 if let payload = response["payload"] as? [String: Any],
                    let runId = payload["runId"] as? String {
-                    NSLog("[OpenClaw] Task dispatched, runId: %@", runId)
+                    PrivacyLog.gatewayOperation("sessions.send", outcome: .succeeded)
                     lastToolCallStatus = .completed(toolName)
                     return .success("Task dispatched (runId: \(runId))")
                 }
@@ -778,7 +799,10 @@ class OpenClawBridge: ObservableObject {
                 let error = response["error"] as? [String: Any]
                 let code = error?["code"] as? String ?? "unknown"
                 let message = error?["message"] as? String ?? "Unknown error"
-                NSLog("[OpenClaw] Task failed: %@ - %@", code, message)
+                // The gateway's `message` is free-form prose about the failed task; the `code` is
+                // its machine vocabulary and is the only half that can be summarised.
+                PrivacyLog.gatewayOperation("sessions.send", outcome: .rejected)
+                PrivacyLog.gatewayFailed(.request, .remote(code: code))
 
                 if message.contains("missing scope") {
                     lastToolCallStatus = .failed(toolName, "Token needs write permissions")
@@ -789,7 +813,8 @@ class OpenClawBridge: ObservableObject {
                 return .failure("Gateway error: \(message)")
             }
         } catch {
-            NSLog("[OpenClaw] Task error: %@", error.localizedDescription)
+            PrivacyLog.gatewayOperation("sessions.send", outcome: .failed)
+            PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
             // Reconnect on next attempt
             disconnectWebSocket()
             lastToolCallStatus = .failed(toolName, error.localizedDescription)

@@ -34,7 +34,7 @@ final class ExpertSignalingClient {
         guard let data = try? JSONEncoder().encode(message),
               let text = String(data: data, encoding: .utf8) else { return }
         task.send(.string(text)) { error in
-            if let error { NSLog("[Signaling] send error: %@", error.localizedDescription) }
+            if let error { PrivacyLog.stream(.signaling, .sendFailed, error: SafeErrorSummary(error)) }
         }
     }
 
@@ -47,7 +47,7 @@ final class ExpertSignalingClient {
             guard let self else { return }
             switch result {
             case .failure(let error):
-                NSLog("[Signaling] receive error: %@", error.localizedDescription)
+                PrivacyLog.stream(.signaling, .receiveFailed, error: SafeErrorSummary(error))
                 return
             case .success(let message):
                 if case .string(let text) = message,
@@ -200,7 +200,9 @@ final class WebRTCPeerTransport: ExpertStreamTransport {
         case .answer:
             if let sdp = message.sdp {
                 pc.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { error in
-                    if let error { NSLog("[WebRTC] setRemoteDescription error: %@", error.localizedDescription) }
+                    if let error {
+                        PrivacyLog.stream(.expertBridge, .negotiationFailed, error: SafeErrorSummary(error))
+                    }
                 }
             }
         case .candidate:
