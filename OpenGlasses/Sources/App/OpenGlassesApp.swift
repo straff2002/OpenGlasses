@@ -16,7 +16,9 @@ extension Notification.Name {
 /// Which door an inbound link knocked on. Deliberately a kind rather than the URL: an auth
 /// callback carries a one-time code in its query and a universal link names the host the wearer
 /// came from, both of which are secret/private-identifier class.
-private func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
+/// Internal rather than private so the canary fixtures can drive the real classifier with a
+/// callback URL that carries a recognisable token, instead of a copy of its `switch`.
+func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
     switch url.host {
     case "shortcut-result", "shortcut-cancel", "shortcut-error": return .shortcutCallback
     case "skillpack": return .skillPack
@@ -165,6 +167,11 @@ struct OpenGlassesApp: App {
         // without the launch argument — first, because everything below reads what it seeds.
         UITestSupport.applyLaunchState()
         #endif
+        // Start the in-memory diagnostic ring before anything else can log, so a launch-time fault
+        // is in the buffer a wearer would export. It records the *encoded* events — the same lines
+        // the OS log already receives — so this collects nothing new; only exporting it needs
+        // consent, and that is a preview the wearer reads in full.
+        DiagnosticRing.shared.attach()
         // Read how this launch found the disk before anything below writes to it. Both migrations
         // that follow write defaults keys this reads, and the question it answers — "did this
         // install's preferences survive, or only its Keychain?" — is only answerable now.
@@ -233,6 +240,8 @@ struct OpenGlassesApp: App {
                 #endif
                 // Crash recovery: remove clinical export sessions a previous run abandoned.
                 appState.medicalExportService.leases.scavenge()
+                // Same, for a diagnostics bundle whose share never finished.
+                DiagnosticExportCoordinator.shared.scavenge()
                 // Plan BQ: refresh Siri's phrase predictions for the parameterized
                 // shortcuts (persona + action catalog) against current runtime data.
                 OpenGlassesShortcuts.updateAppShortcutParameters()
@@ -1215,6 +1224,9 @@ class AppState: ObservableObject, AppStateProtocol {
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.medicalExportService.leases.handleBackground() }
+            // A diagnostics bundle is the same bargain: written for one share, gone when the
+            // screen that asked for it is.
+            Task { @MainActor in DiagnosticExportCoordinator.shared.handleBackground() }
         }
 
         // Hands-free "new topic" — the new_topic tool posts this; clear the LLM's context

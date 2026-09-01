@@ -28,26 +28,44 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-/// Supplies a protected clinical export to the share sheet: the file keeps its generic on-disk
-/// name, while the UI is offered the human-readable one as the item's title/subject.
-final class MedicalExportActivityItem: NSObject, UIActivityItemSource {
-    private let lease: MedicalExportLease
+/// Supplies a protected export to the share sheet: the file keeps its generic on-disk name, while
+/// the UI is offered the human-readable one as the item's title/subject. Used by both protected
+/// export paths — clinical bundles and the diagnostics bundle — because the property that matters
+/// (the filename never carries the title) is the same for both.
+class ProtectedExportActivityItem: NSObject, UIActivityItemSource {
+    private let fileURL: URL
+    private let displayName: String
 
-    init(lease: MedicalExportLease) {
-        self.lease = lease
+    init(fileURL: URL, displayName: String) {
+        self.fileURL = fileURL
+        self.displayName = displayName
     }
 
     func activityViewControllerPlaceholderItem(_ controller: UIActivityViewController) -> Any {
-        lease.fileURL
+        fileURL
     }
 
     func activityViewController(_ controller: UIActivityViewController,
                                 itemForActivityType type: UIActivity.ActivityType?) -> Any? {
-        lease.fileURL
+        fileURL
     }
 
     func activityViewController(_ controller: UIActivityViewController,
                                 subjectForActivityType type: UIActivity.ActivityType?) -> String {
-        lease.displayName
+        displayName
+    }
+}
+
+/// A protected clinical export, by its lease.
+final class MedicalExportActivityItem: ProtectedExportActivityItem {
+    init(lease: MedicalExportLease) {
+        super.init(fileURL: lease.fileURL, displayName: lease.displayName)
+    }
+}
+
+/// A diagnostics bundle, by its lease.
+final class DiagnosticExportActivityItem: ProtectedExportActivityItem {
+    init(lease: DiagnosticExportLease) {
+        super.init(fileURL: lease.fileURL, displayName: lease.displayName)
     }
 }

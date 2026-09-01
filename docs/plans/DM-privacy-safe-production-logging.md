@@ -1,13 +1,14 @@
 # Plan DM — Privacy-Safe Production Logging
 
-**Status:** 🚧 P0 ✅, **P1 ✅ — the ledger reads zero**, P2.1/P2.2/P2.4 ✅ (all 2026-09-01).
+**Status:** ✅ **Complete** — P0, P1 (the ledger reads zero), P2.1–P2.5 and P3 all shipped
+(2026-09-01 / 2026-09-02).
 `PrivacyLog` + `SafeErrorSummary` landed at P0; five P1 batches took the source tree from
 **872 direct `NSLog`/`print` sites across 127 files to 0 across 0 files**
 (872 → 794 → 461 → 319 → 250 → 0), and the scanner is now a **blocking gate** rather than a
 report. The ledger ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)) stays checked in at zero
-as the historical record. Outstanding: **P2.3** (adversarial canary fixtures driven through each
-subsystem), **P2.5** (privacy-led review rule for any new value-bearing event), and **P3**
-(consented diagnostics export).
+as the historical record. P2.3 added `PrivacyCanaryTests` — a shared canary corpus driven through
+the real subsystems, not the facade — P2.5 states the review rule below, and P3 shipped the
+`DiagnosticRing` + previewed, protected diagnostics export.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -488,7 +489,7 @@ does not anonymize a small dictionary. Omit it.
 transcript/url/token/key/cookie fields, and use of `localizedDescription` in log calls. It also emits a
 reviewable allowlist diff so developers cannot bypass it with a new wrapper.
 
-## P2 — CI enforcement and privacy regression fixtures 🚧
+## P2 — CI enforcement and privacy regression fixtures ✅
 
 1. **✅ (2026-09-01)** Add a required CI job (`Scripts/check-privacy-logging.sh` or a SwiftSyntax rule)
    over Sources. Prefer syntax analysis for call/member identity; use `rg` as an additional blunt
@@ -496,12 +497,13 @@ reviewable allowlist diff so developers cannot bypass it with a new wrapper.
 2. **✅ (2026-09-01)** Mark `PrivacyLog` field wrappers with distinct types: `PublicMetric`,
    `PrivateIdentifier`, and internal `NeverLog`. Sensitive domain models should not conform to logging
    protocols or `CustomStringConvertible` merely for diagnostics.
-3. 🟠 Build adversarial fixtures containing recognizable canary tokens in prompts, QR values, callback
-   URLs, medical fields, tool arguments/results, and server errors. Drive each subsystem and assert the
-   structured event sink never receives a canary.
+3. **✅ (2026-09-02)** Build adversarial fixtures containing recognizable canary tokens in prompts, QR
+   values, callback URLs, medical fields, tool arguments/results, and server errors. Drive each
+   subsystem and assert the structured event sink never receives a canary.
 4. **✅ (2026-09-01), with a stated gap.** Add a Release-build symbol/string check proving
    content-logging labels and format strings are absent.
-5. 🟠 Require a privacy-led review for any new event carrying a value rather than a count/enum.
+5. **✅ (2026-09-02)** Require a privacy-led review for any new event carrying a value rather than a
+   count/enum. The rule is stated below.
 
 ### What shipped at P2
 
@@ -552,22 +554,137 @@ parses. **The gap, named:** this reasons about source, not about a linked binary
 build the unit suite does not have. P2.4 is recorded as shipped in this form, not as the binary
 check the line originally described.
 
-**Still open.** P2.3 (canary fixtures driven end-to-end through each subsystem, as opposed to
-through the facade — the current sentinel tests prove the *encoder* never emits supplied content,
-not that a live QR scan cannot reach it by another route) and P2.5 (the review rule, which is
-process rather than code).
+**P2.3 — the canaries are driven through the subsystems, not the facade.**
+`OpenGlassesTests/PrivacyCanaryTests.swift` holds one shared corpus (a credential, a URL with an
+identifier and a token in its query, a spoken phrase, an enrolled person, a home entity, a
+medication, a document title, a tool-argument blob, a tool result — every one containing the
+literal `CANARY`) and a table of **probes**, each of which takes real app code and feeds it
+canary-bearing input. Adding a canary is one line; adding a subsystem is one entry.
 
-## P3 — User-controlled diagnostic export 🟡
+Capture is `PrivacyLog.addTap`, a tap added at P3 for the diagnostics ring and reused here, so the
+assertion reads **the exact line the OS log received** rather than a re-encoding of the arguments
+a call site passed. Every probe asserts three things: that it logged at all, that it reached the
+event it was aiming at, and that no canary — nor the bare stem — appears anywhere in the captured
+lines.
 
-1. Keep normal production logging minimal. For bug reports, create a separate in-memory diagnostic
-   collector with a short ring buffer of approved structured events.
-2. Export only after an explicit preview/consent step. Show categories and timestamps, run redaction as
-   a final safety layer, and never include conversation content, tokens, QR values, medical content, or
-   raw URLs.
-3. Reuse the protected export-session pattern from Plan DC/[[DL-medical-secret-and-export-lifecycle]];
-   delete the bundle on share completion/cancel and scavenge after crashes.
-4. Document retention and OS log limitations honestly. Do not claim that `.private` fields make it safe
-   to submit arbitrary content to the logging system.
+Driven: the **tool path** (`NativeToolRouter` + `NativeToolRegistry` with a fixture tool whose
+result and thrown error are canaries, and `ToolAuthorizationEventLog` over a canary invocation id
+and canary arguments); **QR** (`QRContextTool.execute` on both `URLFetchGuard` refusals — the
+scheme probe puts the canary *inside the rejection's payload*, and the rejection is
+`CustomStringConvertible`, which is the trap `PrivacyToken.caseName` exists for); the **callback
+route classifier** (`privacyRoute(for:)`, which P0 made pure and this change made `internal`,
+driven with shortcut/persona/wearables callbacks carrying codes and transcripts); **captions**
+(`AmbientCaptionService.insertVisualNote`); **speech synthesis** (`TextToSpeechService.speak`
+through the glasses-only suppression path, the one real entry into `speak` that logs without
+producing audio); the **home bridge** (`HomeAssistantEntityCache.refreshIfNeeded` against a canary
+endpoint and a canary token); the **face database** (a `known_faces.json` full of canary-named
+people, and then a corrupt one, both loaded by the real `FaceRecognitionService`); **JSON salvage**
+(`JSONStore.loadArray`/`loadDictionary`/`backUp` over a blob whose keys and values are canaries,
+one record of the wrong shape); the **protected export path** (`MedicalExportFileStore` and the new
+diagnostics coordinator with a canary display name); and **server errors** at their real call
+sites (a `URLError` carrying the failing URL, a provider error whose `localizedDescription` is a
+URL plus a response body, an `NSError`, a `DecodingError` over canary JSON).
+
+**What the fixtures found, honestly.** Four probes failed on their first run. Three were the
+fixtures' own naming — a tool *name* is public operation class and is logged on purpose, so a
+fixture tool called `canary_probe` "leaked" by design, as did an error *type* named
+`CanaryServerError`. They were renamed, and the episode is the point: a canary belongs only in a
+slot the classification table calls content, and planting one in a public field tests nothing.
+The fourth was real and is now pinned rather than papered over —
+`testIdentifierShapedValuesInVocabularySlotsAreNotFilteredOut` asserts that an identifier-shaped
+canary passed as a remote peer's error *code* survives `PrivacyToken`, because that type is a shape
+filter and not a secret detector. The compensating control is unchanged: no call site builds one
+from a credential, and the scanner flags the ones that could.
+
+**Not driven headless, and why.** The **realtime** message handlers (`GeminiLiveService` and
+`OpenAIRealtimeService`) are `private` methods on `@MainActor` classes behind a live WebSocket;
+there is no seam that accepts a server frame, and adding one to reach them would be inventing a
+path the app does not have. Their utterance events are covered at the facade by `PrivacyLogTests`
+and by the source scan that proves those call sites pass `characters:` and never the text. The
+**Home Assistant fuzzy matcher** is likewise only reachable through a populated cache, which is
+populated only by a network fetch the actor builds its own `URLSession` for; the canary drives the
+fetch and its failure path, not the match. Both are stated here rather than implied to be covered.
+
+**P2.5 — the review rule.** *Any new `PrivacyLog` event, or new parameter on an existing one, that
+carries a **value** rather than a count, a duration, a flag, a fixed-vocabulary token or a
+`PrivateIdentifier` requires privacy-led review before it merges — and the reviewer's question is
+not "is this value safe?" but "which row of the classification table is it, and why does the
+diagnostic need the value rather than its shape?"* In practice the answer is nearly always a
+count, a class or a fingerprint, and every migration batch above that decided otherwise wrote the
+reasoning down as a named judgement call. The rule has a structural backstop that makes it hard to bypass by
+accident: `PrivacyEvent.Value` has seven cases and no `case text(String)`, so a value-bearing field
+cannot be added without adding a case to that enum — a one-line diff in `PrivacyLog.swift` that no
+reviewer can miss — and the blocking scanner independently fails any log call that interpolates a
+content- or credential-named identifier or reads `localizedDescription`. This item is marked
+shipped as a policy with those two backstops, not as an automated gate: "a human with privacy
+context looked at this" is not a thing CI can assert.
+
+## P3 — User-controlled diagnostic export ✅ (2026-09-02)
+
+1. **✅** Keep normal production logging minimal. For bug reports, create a separate in-memory
+   diagnostic collector with a short ring buffer of approved structured events.
+2. **✅** Export only after an explicit preview/consent step. Show categories and timestamps, run
+   redaction as a final safety layer, and never include conversation content, tokens, QR values,
+   medical content, or raw URLs.
+3. **✅** Reuse the protected export-session pattern from Plan
+   DC/[[DL-medical-secret-and-export-lifecycle]]; delete the bundle on share completion/cancel and
+   scavenge after crashes.
+4. **✅** Document retention and OS log limitations honestly. Do not claim that `.private` fields
+   make it safe to submit arbitrary content to the logging system.
+
+### What shipped at P3
+
+**The tap.** `PrivacyLog` gained `addTap`/`removeTap`, called from `emit` after the OS log. A tap
+is handed the event *and the exact encoded line*, never the arguments a call site passed, so a tap
+can never see more than the log already contains and an export built from taps can never be broader
+than the log itself. Taps are snapshotted under a lock and invoked outside it, so a tap that logs
+cannot deadlock `emit`.
+
+**The ring.** `Services/Diagnostics/DiagnosticRing.swift` — 500 entries, oldest dropped, each a
+timestamp plus the encoded line plus its category and event name. Pure and lock-guarded, so
+bounding, ordering and concurrent writes are unit tests rather than assumptions. It is attached at
+the top of `OpenGlassesApp.init`, before the migrations, so a launch-time fault is in the buffer a
+wearer would export. **On by default and with no opt-out is defensible precisely because it
+collects nothing new**: it holds lines the OS log already received, of a type system that has no
+parameter for content. There is no persistence — the buffer dies with the process, so an export
+can only ever describe the session being reported on, and there is no file for anything else to
+find later.
+
+**The document.** `DiagnosticExportBuilder` is pure and produces one `body` string; the preview
+screen renders that string and the file receives it byte for byte, which is asserted
+(`testTheFileHoldsExactlyThePreviewedBytes`) rather than promised. The header travels *in the file*,
+because a bundle outlives the screen it was approved on: what it is, what it cannot contain and
+why, that fingerprints are one-way, that only this session is present — and the P3.4 sentence, that
+marking a log field private hides it from other readers on the device but does not make a value
+safe to send, "so this app does not put values in log fields and then rely on that." The last thing
+the builder does is run `LogRedaction` over the assembled body. Nothing that reaches it should
+contain a token, and this is the role P0.5 explicitly kept that redactor for: defence in depth over
+text the wearer has chosen to send, never a licence to log content.
+
+**The session.** `DL`'s protected-export mechanism was **generalised rather than copied**:
+`Services/Export/ProtectedExportFileStore.swift` now owns the session directory under
+`Library/Caches/<root>/<UUID>/`, the protect-before-write ordering, complete file protection,
+backup exclusion, the `.complete` marker, the crash-recovery scavenge and the containment checks.
+`MedicalExportFileStore` became a thin adapter over it (formats, clinical error vocabulary,
+display-name fallback) and its whole public API, and the DL test suite that pins it, are unchanged.
+`DiagnosticExportCoordinator` is a small sibling of `MedicalExportLeaseCoordinator` rather than a
+generalisation of it, because what differs between the two is policy — a clinical bundle has
+formats, an audit trail and a compliance revoke; a diagnostics bundle has one format and none of
+that — while the part worth having exactly one of is the mechanism. Bundles are released on
+completion *and* cancellation *and* failure, on leaving the preview screen without sharing, on
+backgrounding when no share holds them, and by a launch scavenge past the one-hour window.
+
+**The surface.** Settings → Diagnostics & Support → **Export Diagnostics**: the count of events
+held, the honest description, the entire file in a monospaced preview, and only then the button.
+The share sheet is the existing `ShareSheet` with a completion handler, and the item source became
+`ProtectedExportActivityItem` so the clinical and diagnostics bundles share the property that
+matters — the on-disk name is a UUID and the readable name is offered to the UI only.
+
+**Device-pending.** The share-sheet completion handler is the only signal that a provider is done
+with the file, and `UIActivityViewController`'s behaviour with an AirDropped or Mail-attached file
+is not exercised by the simulator suite; the coordinator's release path is tested directly for all
+three outcomes instead. Whether iOS itself keeps a copy of a file handed to a share extension is
+outside this app's control and is the reason the bundle carries its own explanation.
 
 ---
 
@@ -586,9 +703,10 @@ Complete when:
 - ✅ all verified leak sites emit metadata only;
 - ✅ production Sources contain no unapproved `NSLog`, `print`, or free-form logging facade
   (0 sites / 0 files, 0 allowlisted, enforced by a blocking script and by the unit suite);
-- 🟠 canary fixtures cover tool, realtime, QR, callback, home, medical, and network errors
-  (facade-level sentinels ship; end-to-end subsystem fixtures are P2.3);
+- ✅ canary fixtures cover tool, QR, callback, home, medical, store and network errors, driven
+  through the subsystems themselves; realtime and the home fuzzy matcher are covered at the facade
+  and by source scan only, for the reasons stated under P2.3;
 - ✅ a Release build contains no debug content-logging implementation (structurally proven; a
   binary `strings` check remains);
-- 🟠 diagnostics export is explicit, previewable, protected, and short-lived (P3);
+- ✅ diagnostics export is explicit, previewable, protected, and short-lived;
 - ✅ privacy CI and the full unit suite are green.
