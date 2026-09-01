@@ -59,7 +59,7 @@ final class NavigationAssistService: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
         }
-        NSLog("[NavAssist] Started")
+        PrivacyLog.vision(.navigationAssist, .started)
         return true
     }
 
@@ -69,7 +69,7 @@ final class NavigationAssistService: ObservableObject {
         timer?.invalidate()
         timer = nil
         glassesDisplay?.clear()
-        NSLog("[NavAssist] Stopped")
+        PrivacyLog.vision(.navigationAssist, .stopped)
     }
 
     // MARK: - Loop

@@ -43,7 +43,7 @@ final class AssistiveModeService: ObservableObject {
         self.tts = tts
         isActive = true
         throttle.reset()   // first analysis runs immediately
-        NSLog("[AssistiveMode] Started (interval %.0fs)", interval)
+        PrivacyLog.vision(.assistiveMode, .started, seconds: interval)
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
         }
@@ -56,7 +56,7 @@ final class AssistiveModeService: ObservableObject {
         timer?.invalidate()
         timer = nil
         pendingTranscription = nil
-        NSLog("[AssistiveMode] Stopped")
+        PrivacyLog.vision(.assistiveMode, .stopped)
     }
 
     func toggle(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {

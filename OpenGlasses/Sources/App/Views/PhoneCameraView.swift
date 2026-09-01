@@ -171,7 +171,7 @@ final class PhoneCameraController: NSObject, ObservableObject, @unchecked Sendab
                 device.unlockForConfiguration()
                 DispatchQueue.main.async { self.zoomFactor = clamped }
             } catch {
-                NSLog("[PhoneCamera] Zoom lock failed: %@", error.localizedDescription)
+                PrivacyLog.camera(.phone, .streamError, error: SafeErrorSummary(error))
             }
         }
     }

@@ -267,7 +267,7 @@ final class WalkingRouteService: ObservableObject {
                 self.beginGuiding(route: route, origin: origin.coordinate,
                                   destination: destination, name: self.destinationName)
             } catch {
-                NSLog("[Navigation] Reroute failed: %@", error.localizedDescription)
+                PrivacyLog.location(.rerouteFailed, error: SafeErrorSummary(error))
                 self.speak?("I couldn't find a new route.", .medium)
             }
         }

@@ -41,7 +41,7 @@ struct OCRService {
             let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
-                    NSLog("[OCRService] OCR error: %@", error.localizedDescription)
+                    PrivacyLog.vision(.ocr, .recognitionFailed, error: SafeErrorSummary(error))
                     return continuation.resume(returning: Result(text: "", blocks: []))
                 }
                 guard let observations = request.results as? [VNRecognizedTextObservation] else {
@@ -77,7 +77,7 @@ struct OCRService {
             do {
                 try handler.perform([request])
             } catch {
-                NSLog("[OCRService] VNImageRequestHandler error: %@", error.localizedDescription)
+                PrivacyLog.vision(.ocr, .recognitionFailed, error: SafeErrorSummary(error))
                 continuation.resume(returning: Result(text: "", blocks: []))
             }
         }

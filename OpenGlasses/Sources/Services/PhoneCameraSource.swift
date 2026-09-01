@@ -45,7 +45,7 @@ final class PhoneCameraSource: NSObject, PhoneCameraCapturing, @unchecked Sendab
             }
         }
         stop()
-        NSLog("[PhoneCamera] Captured %d bytes from iPhone back camera", data.count)
+        PrivacyLog.camera(.phone, .photoCaptured, bytes: data.count)
         return data
     }
 

@@ -56,10 +56,11 @@ enum GlassesPhotoAlbumPolicy {
         return nsError.domain == PHPhotosErrorDomain && nsError.code == albumAlreadyExistsCode
     }
 
-    /// A word for an authorization status, for the diagnostics log. "Photo library access denied"
-    /// was the only thing a failed save ever said, which cannot tell apart a wearer who declined,
-    /// a device where the library is restricted, and a prompt that was never presented at all —
-    /// the three cases that look identical from the outside and need completely different answers.
+    /// A word for an authorization status, for the on-screen diagnostics panel. "Photo library
+    /// access denied" was the only thing a failed save ever said, which cannot tell apart a wearer
+    /// who declined, a device where the library is restricted, and a prompt that was never
+    /// presented at all — three cases that look identical from the outside and need completely
+    /// different answers.
     static func describe(_ status: PHAuthorizationStatus) -> String {
         switch status {
         case .authorized: return "authorized"
@@ -68,6 +69,20 @@ enum GlassesPhotoAlbumPolicy {
         case .restricted: return "restricted"
         case .notDetermined: return "not determined"
         @unknown default: return "unknown"
+        }
+    }
+
+    /// The same distinction in the logging vocabulary: one word, no spaces, so `PrivacyToken`
+    /// keeps it rather than dropping "not determined" as sentence-shaped. It lives beside
+    /// `describe` so the panel's prose and the log's token cannot drift apart.
+    static func statusToken(_ status: PHAuthorizationStatus) -> PrivacyToken {
+        switch status {
+        case .authorized: return PrivacyToken("authorized")
+        case .limited: return PrivacyToken("limited")
+        case .denied: return PrivacyToken("denied")
+        case .restricted: return PrivacyToken("restricted")
+        case .notDetermined: return PrivacyToken("notDetermined")
+        @unknown default: return PrivacyToken("unknown")
         }
     }
 }
@@ -125,6 +140,8 @@ enum GlassesPhotoAlbum {
     static func saveImage(_ image: UIImage) async -> PhotoLibrarySaveResult {
         let status = await ensureCanSave()
         guard GlassesPhotoAlbumPolicy.canSave(status) else {
+            PrivacyLog.photoLibrary(.saveNotPermitted, asset: .image,
+                                    status: GlassesPhotoAlbumPolicy.statusToken(status))
             report("Photo library \(GlassesPhotoAlbumPolicy.describe(status)) — image not saved")
             return .notPermitted(status)
         }
@@ -135,6 +152,7 @@ enum GlassesPhotoAlbum {
         // point at the next capability. Recorded here rather than at any one call
         // site because every route into the album passes through this function.
         if saved { SettingsJourneyStore.note(.firstPhotoCaptured) }
+        PrivacyLog.photoLibrary(saved ? .saved : .saveFailed, asset: .image)
         report(saved ? "Photo saved to the \(albumName) album" : "Photo library save failed")
         return saved ? .saved : .failed
     }
@@ -145,12 +163,15 @@ enum GlassesPhotoAlbum {
     static func saveVideo(at url: URL) async -> PhotoLibrarySaveResult {
         let status = await ensureCanSave()
         guard GlassesPhotoAlbumPolicy.canSave(status) else {
+            PrivacyLog.photoLibrary(.saveNotPermitted, asset: .video,
+                                    status: GlassesPhotoAlbumPolicy.statusToken(status))
             report("Photo library \(GlassesPhotoAlbumPolicy.describe(status)) — recording not saved")
             return .notPermitted(status)
         }
         let saved = await saveTargetingAlbum {
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
         }
+        PrivacyLog.photoLibrary(saved ? .saved : .saveFailed, asset: .video)
         report(saved ? "Recording saved to the \(albumName) album" : "Photo library save failed")
         return saved ? .saved : .failed
     }
@@ -167,14 +188,19 @@ enum GlassesPhotoAlbum {
     private static func ensureCanSave() async -> PHAuthorizationStatus {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .notDetermined else { return status }
+        PrivacyLog.photoLibrary(.authorizationRequested)
         report("Asking for photo library access")
         let requested = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        PrivacyLog.photoLibrary(.authorizationSettled,
+                                status: GlassesPhotoAlbumPolicy.statusToken(requested))
         report("Photo library access \(GlassesPhotoAlbumPolicy.describe(requested))")
         return requested
     }
 
+    /// The on-screen diagnostics line. It carries prose for a human reading the debug panel on
+    /// their own device; the device log gets the typed event instead, emitted at each call site
+    /// where the outcome is known.
     private static func report(_ message: String) {
-        NSLog("[PhotoAlbum] %@", message)
         onDebugEvent?(message)
     }
 
@@ -191,7 +217,7 @@ enum GlassesPhotoAlbum {
         // whole change block, taking the asset with it. Forget it and save the asset loose rather
         // than lose the capture; the next save re-resolves from scratch.
         forgetCachedAlbum()
-        NSLog("[PhotoAlbum] Retrying save without album targeting")
+        PrivacyLog.photoLibrary(.albumRetriedUntargeted)
         return await commit(album: nil, makeRequest: makeRequest)
     }
 
@@ -210,11 +236,11 @@ enum GlassesPhotoAlbum {
                 }
             }
         } catch {
-            NSLog("[PhotoAlbum] Save failed: %@", error.localizedDescription)
+            PrivacyLog.photoLibrary(.saveFailed, error: SafeErrorSummary(error))
             return false
         }
         if !built.value {
-            NSLog("[PhotoAlbum] No change request could be built for that asset")
+            PrivacyLog.photoLibrary(.changeRequestUnbuildable)
         }
         return built.value
     }
@@ -279,7 +305,7 @@ enum GlassesPhotoAlbum {
                 cacheAlbumID(existing.localIdentifier)
                 return existing
             }
-            NSLog("[PhotoAlbum] Failed to create album: %@", error.localizedDescription)
+            PrivacyLog.photoLibrary(.albumCreateFailed, error: SafeErrorSummary(error))
             return nil
         }
 

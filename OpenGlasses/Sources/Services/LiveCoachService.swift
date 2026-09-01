@@ -112,7 +112,8 @@ final class LiveCoachService: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
         }
-        NSLog("[LiveCoach] Started domain=%@ interval=%.0fs", domain.rawValue, interval)
+        PrivacyLog.vision(.liveCoach, .started, seconds: interval,
+                          detail: PrivacyToken(domain.rawValue))
         return true
     }
 
@@ -122,7 +123,7 @@ final class LiveCoachService: ObservableObject {
         timer?.invalidate()
         timer = nil
         startedAt = nil
-        NSLog("[LiveCoach] Stopped")
+        PrivacyLog.vision(.liveCoach, .stopped)
     }
 
     func statusSummary() -> String {

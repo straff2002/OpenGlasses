@@ -29,7 +29,7 @@ struct CapturePhotoTool: NativeTool {
             let data = LLMImagePreparer.prepared(raw)   // keep under Anthropic's 5 MB inline cap
             let base64 = data.base64EncodedString()
             let sizeKB = data.count / 1024
-            NSLog("[CapturePhoto] Using latest frame (%d KB)", sizeKB)
+            PrivacyLog.camera(.glasses, .captureFallbackUsed, kilobytes: sizeKB)
             return "[IMAGE_CAPTURED:\(base64)] Photo captured successfully (\(sizeKB) KB). Analyze the image to respond to the user."
         }
 
@@ -38,7 +38,7 @@ struct CapturePhotoTool: NativeTool {
             let photoData = LLMImagePreparer.prepared(try await cameraService.capturePhoto())
             let base64 = photoData.base64EncodedString()
             let sizeKB = photoData.count / 1024
-            NSLog("[CapturePhoto] Captured photo (%d KB)", sizeKB)
+            PrivacyLog.camera(.glasses, .photoCaptured, kilobytes: sizeKB)
             return "[IMAGE_CAPTURED:\(base64)] Photo captured successfully (\(sizeKB) KB). Analyze the image to respond to the user."
         } catch {
             return "Could not capture photo: \(error.localizedDescription). Make sure the glasses are connected and camera is active."

@@ -113,7 +113,7 @@ class LocationService: NSObject, ObservableObject {
         Task { @MainActor [weak self] in
             guard let place = await GeocodingHelper.reverseGeocode(location) else { return }
             self?.geocodedPlace = place.cityState ?? place.fullAddress
-            print("📍 Location: \(self?.geocodedPlace ?? "unknown")")
+            PrivacyLog.location(.placeResolved)
         }
     }
 }
@@ -149,13 +149,13 @@ extension LocationService: CLLocationManagerDelegate {
             case .authorizedWhenInUse, .authorizedAlways:
                 self.isAuthorized = true
                 manager.startUpdatingLocation()
-                print("📍 Location authorized")
+                PrivacyLog.location(.authorized)
                 // BK P1: geofences deferred while permission was pending can arm now.
                 if status == .authorizedAlways { self.onBecameAuthorizedAlways?() }
             case .denied, .restricted:
                 self.isAuthorized = false
                 self.locationError = "Location access denied"
-                print("📍 Location denied")
+                PrivacyLog.location(.denied)
             default:
                 break
             }
@@ -164,7 +164,7 @@ extension LocationService: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
-            print("📍 Location error: \(error.localizedDescription)")
+            PrivacyLog.location(.updateFailed, error: SafeErrorSummary(error))
             self.locationError = error.localizedDescription
         }
     }
@@ -181,7 +181,7 @@ extension LocationService: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         Task { @MainActor in
-            print("📍 Region monitoring failed for \(region?.identifier ?? "?"): \(error.localizedDescription)")
+            PrivacyLog.location(.regionMonitoringFailed, error: SafeErrorSummary(error))
             self.locationError = "Region monitoring failed: \(error.localizedDescription)"
         }
     }

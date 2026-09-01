@@ -75,7 +75,7 @@ final class LookCloselyTool: NativeTool {
             posture: posture(),
             secondsSinceLastCapture: lastCaptureAt.map { Date().timeIntervalSince($0) })
         if case .declineWithReason(let reason) = decision {
-            NSLog("[LookClosely] Declined: %@", reason)
+            PrivacyLog.vision(.lookClosely, .declined)
             return reason
         }
 
@@ -85,10 +85,10 @@ final class LookCloselyTool: NativeTool {
                 try await captureSharpFrame()
             }
         } catch is TimeoutError {
-            NSLog("[LookClosely] Capture timed out after %@", String(describing: Self.captureTimeout))
+            PrivacyLog.vision(.lookClosely, .captureTimedOut)
             return "Couldn't get a sharp frame — the camera did not deliver a photo in time. Answer from the streamed view and say fine detail may be missing."
         } catch {
-            NSLog("[LookClosely] Capture failed: %@", error.localizedDescription)
+            PrivacyLog.vision(.lookClosely, .captureFailed, error: SafeErrorSummary(error))
             return "Couldn't get a sharp frame (\(error.localizedDescription)). Answer from the streamed view and say fine detail may be missing."
         }
 
@@ -97,7 +97,7 @@ final class LookCloselyTool: NativeTool {
         // Ordering is the contract: the image must be in the model's view before the function
         // result telling it to read that image.
         injector.injectSharpImage(jpegData: jpeg)
-        NSLog("[LookClosely] Injected %d KB sharp frame", jpeg.count / 1024)
+        PrivacyLog.vision(.lookClosely, .frameInjected, kilobytes: jpeg.count / 1024)
         return LookCloselyPolicy.sharpFrameInstruction
     }
 

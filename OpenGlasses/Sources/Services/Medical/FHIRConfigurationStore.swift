@@ -216,20 +216,20 @@ final class FHIRConfigurationStore {
             let storedCredential = try credentials.load(serverID: config.serverID) ?? FHIRCredential()
             let storedContext = try contexts.loadContext(serverID: config.serverID) ?? FHIRPrivateContext()
             guard storedCredential == credential, storedContext == context else {
-                NSLog("[MedicalExport] Credential migration verification failed — retrying next launch")
+                PrivacyLog.medical(.fhir, .migrationUnverified)
                 return .failed
             }
 
             save(config)
             defaults.removeObject(forKey: Self.legacyConfigurationKey)
             defaults.set(Self.migrationVersion, forKey: Self.migrationVersionKey)
-            NSLog("[MedicalExport] Migrated FHIR credentials out of preferences into protected storage")
+            PrivacyLog.medical(.fhir, .credentialsMigrated)
             return .migrated
         } catch KeychainService.KeychainError.unavailable {
-            NSLog("[MedicalExport] Credential migration deferred — protected storage unavailable")
+            PrivacyLog.medical(.fhir, .migrationDeferred)
             return .deferred
         } catch {
-            NSLog("[MedicalExport] Credential migration failed — retrying next launch")
+            PrivacyLog.medical(.fhir, .migrationFailed)
             return .failed
         }
     }

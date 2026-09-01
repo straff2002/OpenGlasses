@@ -247,7 +247,7 @@ final class SceneNarrationService: ObservableObject {
     private func passesCameraGate() -> Bool {
         if case let .unavailable(reason) = cameraAvailability() {
             unavailableReason = reason
-            NSLog("[SceneNarration] Refused — %@", reason)
+            PrivacyLog.vision(.sceneNarration, .refused)
             announce(NarrationVoiceNotices.refusalCopy(reason))
             return false
         }
@@ -267,7 +267,8 @@ final class SceneNarrationService: ObservableObject {
             return true
         }
         unavailableReason = refusal
-        NSLog("[SceneNarration] Refused on power posture %@", powerPosture().label)
+        PrivacyLog.vision(.sceneNarration, .powerRefused,
+                          posture: PrivacyToken.caseName(of: powerPosture()))
         announce(refusal)
         return false
     }
@@ -308,16 +309,17 @@ final class SceneNarrationService: ObservableObject {
         }
 
         if let began = transition.haltBegan {
-            NSLog("[SceneNarration] Halted — %@", began.rawValue)
+            PrivacyLog.vision(.sceneNarration, .halted, reason: PrivacyToken(began.rawValue))
         }
         if let ended = transition.haltEnded {
-            NSLog("[SceneNarration] Resumed after %@", ended.rawValue)
+            PrivacyLog.vision(.sceneNarration, .resumed, reason: PrivacyToken(ended.rawValue))
         }
         if let began = transition.silenceBegan {
-            NSLog("[SceneNarration] Quiet (still watching) — %@", began.rawValue)
+            PrivacyLog.vision(.sceneNarration, .quieted, reason: PrivacyToken(began.rawValue))
         }
         if let ended = transition.silenceEnded {
-            NSLog("[SceneNarration] Speaking again after %@", ended.rawValue)
+            PrivacyLog.vision(.sceneNarration, .speakingAgain,
+                              reason: PrivacyToken(ended.rawValue))
         }
 
         // Plan CV P3: say why, to the wearer who was being spoken to. `NarrationVoiceNotices`
@@ -413,7 +415,7 @@ final class SceneNarrationService: ObservableObject {
             self.apply(.stop)
             self.isStartingCamera = false
             self.unavailableReason = failure
-            NSLog("[SceneNarration] Camera claim failed — %@", failure)
+            PrivacyLog.vision(.sceneNarration, .cameraClaimFailed)
             self.announce(NarrationVoiceNotices.refusalCopy(failure))
         }
     }
