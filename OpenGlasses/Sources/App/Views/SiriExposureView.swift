@@ -20,13 +20,28 @@ struct SiriExposureView: View {
                     .foregroundStyle(.secondary)
             }
 
+            actionButtonHint
+
             Section("Built-in Actions") {
                 ForEach(BuiltinSiriAction.all) { builtin in
                     Toggle(builtin.displayName, isOn: builtinBinding(builtin.id))
                 }
             }
 
-            let harvested = harvestedEntries
+            let grid = harvestedEntries.filter { $0.kind == .gridAction }
+            if !grid.isEmpty {
+                Section {
+                    ForEach(grid, id: \.id) { action in
+                        Toggle(action.title, isOn: capabilityBinding(action.id))
+                    }
+                } header: {
+                    Text("Actions on Your Grid")
+                } footer: {
+                    Text("The tiles on the Voice tab — the shipped ones and your own speed dial. Turning one on lets you run it by voice; it runs exactly what the tile runs. Taking a tile off the grid doesn't turn this off.")
+                }
+            }
+
+            let harvested = harvestedEntries.filter { $0.kind != .gridAction }
             if !harvested.isEmpty {
                 Section {
                     ForEach(harvested, id: \.id) { capability in
@@ -98,6 +113,27 @@ struct SiriExposureView: View {
                 }
                 save()
             }
+        }
+    }
+
+    /// Discoverability is the actual barrier: everything needed to put an action on the iPhone's
+    /// Action Button already shipped, and nobody found it. One line, and the path to type into
+    /// Settings.
+    private var actionButtonHint: some View {
+        Section {
+            Label {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Use with the Action Button")
+                        .font(.subheadline.weight(.semibold))
+                    Text("iPhone Settings → Action Button → Shortcut → Run Action, then pick any action you've turned on here.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "button.horizontal.top.press")
+                    .accessibilityHidden(true)
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 

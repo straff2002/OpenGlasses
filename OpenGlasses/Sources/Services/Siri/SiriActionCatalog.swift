@@ -100,15 +100,33 @@ enum CapabilityHarvester {
         flows: [(id: String, title: String)] = [],
         procedures: [(id: String, title: String)] = [],
         playbooks: [(id: String, name: String)] = [],
-        customTools: [CustomToolDefinition] = []
+        customTools: [CustomToolDefinition] = [],
+        gridEntries: [HomeGridEntry] = []
     ) -> [HarvestedCapability] {
         var out: [HarvestedCapability] = []
         out += flows.map { .init(kind: .captureFlow, capabilityId: $0.id, title: $0.title) }
         out += procedures.map { .init(kind: .procedure, capabilityId: $0.id, title: $0.title) }
         out += playbooks.map { .init(kind: .playbook, capabilityId: $0.id, title: $0.name) }
         out += customTools.map { .init(kind: .customTool, capabilityId: $0.name, title: $0.name) }
+        // The grid's tiles, by the id the grid itself uses. A tile's label is the name the wearer
+        // already reads on it, so the spoken name and the drawn one cannot drift apart.
+        out += gridEntries.map { .init(kind: .gridAction, capabilityId: $0.id, title: $0.label) }
         return out
     }
+}
+
+/// Why one App Shortcut covers an unbounded catalog.
+///
+/// iOS exports at most ten `AppShortcut`s per app, and they are compiled in — a shortcut per
+/// exposed action would have run out at the eleventh and cannot be added at runtime anyway. The
+/// parameterized `RunGlassesActionIntent` takes exactly one of those ten slots and resolves its
+/// `SiriActionEntity` against runtime data, so harvesting the grid, the speed dial, or anything
+/// else costs nothing at the cap. Both numbers live here so a test can hold them together.
+enum SiriShortcutBudget {
+    /// iOS's ceiling on statically-declared App Shortcuts.
+    static let systemCap = 10
+    /// Slots the parameterized catalog occupies, whatever the catalog holds.
+    static let slotsUsedByCatalog = 1
 }
 
 /// The merged, gated catalog the entity query and Settings UI both consume.

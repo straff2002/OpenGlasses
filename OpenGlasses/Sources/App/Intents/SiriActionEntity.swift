@@ -47,7 +47,10 @@ enum SiriActionCatalogProvider {
             flows: flows,
             procedures: procedures,
             playbooks: playbooks,
-            customTools: Config.customTools
+            customTools: Config.customTools,
+            // The whole grid, not the arranged subset: a tile taken off the bar is still the
+            // wearer's action, and a hardware button bound to it keeps working.
+            gridEntries: HomeGridCatalog.available(quickActions: Config.quickActions)
         )
         return SiriActionCatalog(
             config: Config.siriExposure,

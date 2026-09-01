@@ -17,8 +17,22 @@ struct DockLayoutEditPage: View {
     /// The legacy control-only order, still honoured as the fallback ordering for controls an
     /// arrangement has not placed yet.
     @AppStorage("dockItemOrder") private var dockOrder = ""
+    /// Not read for its value — `Config.quickActions` owns that, with its merges and its
+    /// per-read injection. This is the republish: the speed dial is a plain `UserDefaults` blob,
+    /// so without observing the key a tile created on this page would not appear until something
+    /// else redrew the panel.
+    @AppStorage("quickActions") private var quickActionsBeacon = Data()
 
     @Environment(\.appAccent) private var accent
+
+    @State private var editing: EditorTarget?
+
+    /// What the creation sheet is doing. `Identifiable` so one `.sheet(item:)` serves both, and
+    /// the sheet is never presented against a stale action.
+    private struct EditorTarget: Identifiable {
+        let action: QuickAction?
+        var id: String { action?.id ?? "new" }
+    }
 
     private var quickActions: [QuickAction] { Config.quickActions }
     private var controlOrder: [DockItem] { DockLayout.decode(dockOrder) }
@@ -48,6 +62,8 @@ struct DockLayoutEditPage: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 6) {
+                addRow
+
                 let slots = onGrid
                 ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
                     row(slot, index: index, count: slots.count)
@@ -73,22 +89,75 @@ struct DockLayoutEditPage: View {
             .padding(.horizontal, 2)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .sheet(item: $editing) { target in
+            HomeActionEditorSheet(
+                existing: target.action,
+                onSave: SpeedDialWriter.save,
+                onDelete: target.action.map { _ in SpeedDialWriter.delete })
+        }
+    }
+
+    // MARK: - Creating and editing
+
+    private var addRow: some View {
+        Button {
+            editing = EditorTarget(action: nil)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(accent)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+                Text("New Action")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color(.label))
+                Spacer(minLength: 4)
+            }
+            .padding(.leading, 8)
+            .frame(minHeight: OGMetrics.minTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(OGTheme.card)
+        )
+        .accessibilityLabel("New action")
+        .accessibilityHint("Double-tap to make an action: a name, an icon, and what to ask.")
     }
 
     // MARK: - Rows
 
     private func row(_ slot: DockSlot, index: Int, count: Int) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: slot.editorIcon)
-                .font(.footnote)
-                .foregroundStyle(Color(.label))
-                .frame(width: 22)
-                .accessibilityHidden(true)
+            // The name is the edit control — a fourth button would not fit the panel's width, and
+            // a row that opens what it names is the idiom the rest of the app uses. Built-ins are
+            // shipped in code, so theirs opens nothing and says why.
+            Button {
+                if let action = editableAction(slot) { editing = EditorTarget(action: action) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: slot.editorIcon)
+                        .font(.footnote)
+                        .foregroundStyle(Color(.label))
+                        .frame(width: 22)
+                        .accessibilityHidden(true)
 
-            Text(slot.editorLabel)
-                .font(.footnote)
-                .foregroundStyle(Color(.label))
-                .lineLimit(1)
+                    Text(slot.editorLabel)
+                        .font(.footnote)
+                        .foregroundStyle(Color(.label))
+                        .lineLimit(1)
+                }
+                .frame(minHeight: OGMetrics.minTouchTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(editableAction(slot) == nil)
+            .accessibilityLabel(slot.editorLabel)
+            .accessibilityHint(editableAction(slot) != nil
+                               ? "Double-tap to edit or delete this action."
+                               : "Built in. It can be moved or taken off the bar, but not changed.")
 
             Spacer(minLength: 4)
 
@@ -120,6 +189,13 @@ struct DockLayoutEditPage: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(OGTheme.card)
         )
+    }
+
+    /// The speed-dial action behind a slot, when this editor is allowed to rewrite it. Controls
+    /// and the shipped grid actions have none.
+    private func editableAction(_ slot: DockSlot) -> QuickAction? {
+        guard case .action(let entry) = slot else { return nil }
+        return SpeedDialEditor.editableAction(for: entry)
     }
 
     private func nudge(_ slot: DockSlot, by delta: Int, symbol: String,

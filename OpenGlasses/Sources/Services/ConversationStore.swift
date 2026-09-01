@@ -282,8 +282,32 @@ class ConversationStore: ObservableObject {
     func deleteThread(_ threadId: String) {
         guard threads.contains(where: { $0.id == threadId }) else { return }
         threads.removeAll { $0.id == threadId }
-        if activeThreadId == threadId { activeThreadId = nil }
+        if activeThreadId == threadId {
+            activeThreadId = nil
+            persistActiveSession()
+        }
         saveAndProject(.threadDelete(id: threadId))
+        PrivacyLog.conversation(.conversations, .threadsDeleted,
+                                thread: PrivateIdentifier(threadId), count: 1)
+    }
+
+    /// Delete every thread.
+    ///
+    /// Real deletion, like `deleteThread`: the threads leave memory, the file is rewritten from
+    /// the now-empty list through the same `save()` that owns encryption, and the recall
+    /// projection is rebuilt from nothing. It touches this store only — the brain, user memory
+    /// and every other index have their own controls, and the confirm copy says so.
+    /// - Returns: how many threads were removed.
+    @discardableResult
+    func deleteAllThreads() -> Int {
+        let removed = threads.count
+        guard removed > 0 else { return 0 }
+        threads.removeAll()
+        activeThreadId = nil
+        persistActiveSession()
+        saveAndProject(.storeReplaced)
+        PrivacyLog.conversation(.conversations, .threadsDeleted, count: removed)
+        return removed
     }
 
     /// Remove the message with `messageId` and every message after it in the thread. Used by the

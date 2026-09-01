@@ -71,6 +71,9 @@ struct BottomControlBar: View {
     @AppStorage("dockItemOrder") private var dockOrder = ""
     /// The one arrangement: controls and content actions, order and hidden set.
     @AppStorage("homeGridArrangement") private var storedArrangement = ""
+    /// Not read for its value — `Config.quickActions` owns that. This is the republish, so an
+    /// action made on the edit page appears on the grid the moment the sheet closes.
+    @AppStorage("quickActions") private var quickActionsBeacon = Data()
     /// My Day's own state, read rather than plumbed. The panel's resting height is a function of
     /// what the surface above it needs, and these two keys are exactly that signal — a collapsed or
     /// unconfigured My Day hands back the height the fourth row needs.
@@ -219,12 +222,18 @@ struct BottomControlBar: View {
 
     // MARK: - Pages
 
+    /// The transcript, and above it the header that says *which* conversation it is. The header
+    /// does not scroll with the transcript: "start a new one" and "go back to an earlier one" have
+    /// to be reachable from the bottom of a long reply, not just the top.
     private var conversationPage: some View {
-        ScrollView(.vertical) {
-            TranscriptOverlay(session: session, openAISession: openAISession)
-                .padding(.horizontal, 2)
+        VStack(spacing: 6) {
+            ConversationPageHeader(store: appState.conversationStore)
+            ScrollView(.vertical) {
+                TranscriptOverlay(session: session, openAISession: openAISession)
+                    .padding(.horizontal, 2)
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
 
     /// The one grid: controls and content actions, wrapping into rows and scrolling vertically past
