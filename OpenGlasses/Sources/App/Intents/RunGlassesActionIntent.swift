@@ -103,8 +103,30 @@ enum SiriActionDispatcher {
                     "playbook", args: ["action": "start", "playbook_id": id], appState: appState)
             case .customTool:
                 return await IntentSupport.runTool(id, args: [:], appState: appState)
+            case .gridAction:
+                return await runGridAction(id, appState: appState)
             }
         }
+    }
+
+    /// A grid tile, run by the id the grid itself uses, through the grid's own dispatcher.
+    ///
+    /// No second execution path: `HomeGridDispatcher` is what a tap on the tile calls, and
+    /// `AppState` is the same `HomeGridSession` conformance the dock passes it. What a phrase or a
+    /// hardware button can do is therefore exactly what the tile could do, by construction.
+    private static func runGridAction(_ id: String, appState: AppState) async -> String {
+        guard let entry = HomeGridCatalog.entry(id: id, quickActions: Config.quickActions) else {
+            return "That action is no longer on your grid."
+        }
+        await HomeGridDispatcher.run(entry, on: appState)
+        // Speed-dial actions that aren't prompts (a light, a shortcut) leave no reply to read —
+        // the tile's own name is the honest acknowledgement rather than a stale earlier answer.
+        let answer = appState.lastResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        if case .quickAction(let action) = entry,
+           action.type != .prompt, action.type != .photoThenPrompt {
+            return "\(action.label) done."
+        }
+        return answer.isEmpty ? "\(entry.label) done." : answer
     }
 
     static func parseArgs(_ json: String) -> [String: Any] {

@@ -189,10 +189,10 @@ struct ChatThreadView: View {
     }
 
     /// Make this thread the one new messages append to, and load its history into the LLM context.
+    /// One seam, shared with the dock's conversation page — resuming has to mean the same thing
+    /// wherever it is asked for.
     private func activateThread() {
-        guard store.activeThreadId != threadId else { return }
-        _ = store.resumeThread(threadId)
-        appState.llmService.loadConversationHistory(store.replayMessages(for: threadId))
+        appState.activateConversationThread(threadId)
     }
 
     private func send(_ text: String, _ image: Data?) {

@@ -14,6 +14,15 @@ enum SiriCapabilityKind: String, Codable, CaseIterable {
     case procedure
     case playbook
     case customTool = "custom_tool"
+    /// A tile on the Voice tab's grid — a shipped action or one of the wearer's speed-dial
+    /// actions — keyed by its `HomeGridEntry.id` ("builtin:…" / "quick:…").
+    ///
+    /// Deliberately a *capability kind* rather than a new binding case: the grid's actions are
+    /// harvested exactly like capture flows and playbooks, so they inherit the same storage
+    /// (`enabledCapabilityIds`), the same default-off rule, and the same curation screen —
+    /// and `SiriExposureConfig`'s stored shape does not change, so an exposure saved by an
+    /// earlier build still decodes.
+    case gridAction = "grid_action"
 
     var displayLabel: String {
         switch self {
@@ -21,6 +30,7 @@ enum SiriCapabilityKind: String, Codable, CaseIterable {
         case .procedure: return "Procedure"
         case .playbook: return "Playbook"
         case .customTool: return "Custom Tool"
+        case .gridAction: return "Grid Action"
         }
     }
 }
@@ -49,6 +59,10 @@ enum SiriActionBinding: Codable, Equatable {
             case .procedure: return "procedure_runner"
             case .playbook: return "playbook"
             case .customTool: return id // custom tools are registered under their own name
+            // A grid tile is a canned *turn*, not a tool call: it reaches the assistant through
+            // the same seam the wearer's own typing does, and whatever tool the model then picks
+            // goes through the router's gates like any other. There is no single tool to name.
+            case .gridAction: return nil
             }
         }
     }

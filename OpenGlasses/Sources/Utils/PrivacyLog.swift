@@ -1409,6 +1409,7 @@ enum PrivacyLog {
     /// small and wearer-visible, so a fingerprint would not anonymise which persona was in use.
     enum ConversationEvent: String {
         case sessionRestored, threadStarted, threadEnded, threadResumed, summaryUpdated
+        case threadsDeleted
         case loaded, recovered, saveSkipped, saveFailed
         case encryptionEnabled, encryptionDisabled, encryptionFailed
         case unlockFailed, locked, awaitingAuthentication

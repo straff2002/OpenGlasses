@@ -149,6 +149,29 @@ final class HomeGridTests: XCTestCase {
         XCTAssertTrue(session.photoPrompts.isEmpty)
     }
 
+    // MARK: - Resolution by id (Plan EB: the currency the voice surfaces speak)
+
+    /// Every entry resolves back from its own id — the ids a Siri phrase and an Action Button
+    /// press carry.
+    func testEveryEntryResolvesFromItsOwnId() {
+        for entry in HomeGridCatalog.available(quickActions: speedDial) {
+            XCTAssertEqual(HomeGridCatalog.entry(id: entry.id, quickActions: speedDial), entry)
+        }
+        XCTAssertNil(HomeGridCatalog.entry(id: "quick:gone", quickActions: speedDial))
+        XCTAssertNil(HomeGridCatalog.entry(id: "builtin:nope", quickActions: speedDial))
+    }
+
+    /// Resolution ignores the arrangement: a tile taken off the bar is still the wearer's action,
+    /// and a hardware button bound to it has to keep working. Hiding is layout, not revocation.
+    func testAHiddenTileStillResolvesById() {
+        var arrangement = HomeGridArrangement()
+        arrangement.hidden = ["quick:describe"]
+        XCTAssertFalse(HomeGridCatalog.entries(arrangement: arrangement, quickActions: speedDial)
+            .contains { $0.id == "quick:describe" })
+        XCTAssertEqual(HomeGridCatalog.entry(id: "quick:describe", quickActions: speedDial),
+                       .quickAction(speedDial[0]))
+    }
+
     // MARK: - P3: the arrangement
 
     func testTheDefaultGridIsTheBuiltInsThenTheSpeedDial() {

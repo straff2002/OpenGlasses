@@ -158,6 +158,15 @@ enum HomeGridCatalog {
             + quickActions.map(HomeGridEntry.quickAction)
     }
 
+    /// One entry by the id the grid, the arrangement, and now the voice surfaces all use.
+    ///
+    /// Resolution is against the *catalog*, not the arrangement: a tile the wearer took off the
+    /// grid is still their action, and a hardware button or a spoken phrase bound to it must keep
+    /// working. Hiding a tile is a layout choice, never a revocation.
+    static func entry(id: String, quickActions: [QuickAction]) -> HomeGridEntry? {
+        available(quickActions: quickActions).first { $0.id == id }
+    }
+
     /// The grid an arrangement resolves to, against what this build actually has: the stored order
     /// wins, unknown and duplicate ids vanish, hidden entries stay off, and anything available the
     /// order never mentioned appends in catalog order.

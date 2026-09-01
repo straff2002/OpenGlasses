@@ -1,8 +1,58 @@
 import SwiftUI
 import Intents
 
-/// Settings view for managing quick action speed dial buttons.
+/// Settings → Quick Actions: three links, and no editing of its own.
+///
+/// Actions are edited where they live — on the Voice tab's grid and in its editor — so this screen
+/// is a signpost rather than a second, divergent form. What did not move is here explicitly:
+/// the advanced action kinds (Home Assistant service calls, running a saved shortcut, opening an
+/// app by URL scheme, the meeting-record toggle) and the template gallery keep a screen of their
+/// own, because nothing on the grid's sheet can express them.
 struct QuickActionsSettingsView: View {
+    var body: some View {
+        List {
+            Section {
+                NavigationLink {
+                    DockLayoutEditorView()
+                } label: {
+                    Label("Actions & Bar Layout", systemImage: "square.grid.2x2")
+                }
+            } footer: {
+                Text("Make, edit and arrange the actions on the Voice tab — the same editor the bar itself opens.")
+            }
+
+            Section {
+                NavigationLink {
+                    SiriExposureView()
+                } label: {
+                    Label("Siri & Search", systemImage: "mic.badge.plus")
+                }
+            } footer: {
+                Text("Choose which actions can be run by voice, and put one on the iPhone's Action Button.")
+            }
+
+            Section {
+                NavigationLink {
+                    AdvancedQuickActionsView()
+                } label: {
+                    Label("Advanced Actions", systemImage: "slider.horizontal.3")
+                }
+            } footer: {
+                Text("Smart-home service calls, saved shortcuts, opening another app, and the ready-made templates.")
+            }
+        }
+        .navigationTitle("Quick Actions")
+        .ogFormStyle()
+    }
+}
+
+/// The speed dial's advanced kinds, kept whole.
+///
+/// This is the form Quick Actions used to be. It stays because the grid's own editor deliberately
+/// only makes canned turns: a Home Assistant call, a saved shortcut, a URL-scheme app launch and
+/// the meeting-record toggle are real capabilities the speed dial has always had, and retiring
+/// them silently would have taken working actions off people's bars.
+struct AdvancedQuickActionsView: View {
     @State private var actions: [QuickAction] = Config.quickActions
     @State private var editingAction: QuickAction?
     @State private var showAddSheet = false
@@ -81,8 +131,10 @@ struct QuickActionsSettingsView: View {
                         .accessibilityHint("Double-tap to edit")
                     }
                     .onDelete { indexSet in
-                        actions.remove(atOffsets: indexSet)
-                        Config.setQuickActions(actions)
+                        // Through the same seam the grid's editor uses, so a deleted action's
+                        // voice exposure is revoked here too rather than left orphaned.
+                        for id in indexSet.map({ actions[$0].id }) { SpeedDialWriter.delete(id) }
+                        actions = Config.quickActions
                     }
                     .onMove { from, to in
                         actions.move(fromOffsets: from, toOffset: to)
@@ -91,23 +143,8 @@ struct QuickActionsSettingsView: View {
                 } header: {
                     Text("Speed Dial")
                 } footer: {
-                    Text("Every action you can reach by voice, from the widget, the watch, and the in-lens launcher. Which of them also sit on the Voice tab's bar is arranged in Bar Layout below.")
+                    Text("Every action you can reach by voice, from the widget, the watch, and the in-lens launcher. Which of them sit on the Voice tab's bar is arranged in its editor.")
                 }
-            }
-
-            // MARK: - Bar Layout
-            // One editor for the dock's one grid: the controls (Plan CL made those
-            // arrangeable) and the content actions now share an ordered list, because
-            // the move people wanted — a tile beside a control — neither list could
-            // express on its own.
-            Section {
-                NavigationLink {
-                    DockLayoutEditorView()
-                } label: {
-                    Label("Bar Layout", systemImage: "square.grid.2x2")
-                }
-            } footer: {
-                Text("Arrange the Voice tab's bottom bar — controls and actions in one grid. Taking a tile off never deletes the action, and controls always stay.")
             }
 
             // MARK: - Templates (below user actions)
@@ -150,15 +187,15 @@ struct QuickActionsSettingsView: View {
                 }
             }
         }
-        .navigationTitle("Quick Actions")
+        .navigationTitle("Advanced Actions")
         .ogFormStyle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showAddSheet = true } label: { Image(systemName: "plus") }
             }
             ToolbarItem(placement: .topBarLeading) {
-                // Reorders and deletes the speed dial above; the bar's own order lives behind
-                // Bar Layout, which has its own edit mode.
+                // Reorders and deletes the speed dial above; the bar's own order lives in the
+                // grid editor, which has its own edit mode.
                 EditButton()
             }
         }
@@ -283,18 +320,9 @@ struct QuickActionEditorView: View {
     @State private var shortcutName = ""
     @State private var urlScheme = ""
 
-    private let iconOptions: [(String, String)] = [
-        ("star", "Star"), ("eye", "Describe"), ("camera", "Camera"),
-        ("calendar", "Calendar"), ("checklist", "Checklist"), ("lightbulb", "Light On"),
-        ("lightbulb.slash", "Light Off"), ("house", "Home"), ("lock", "Lock"),
-        ("lock.open", "Unlock"), ("thermometer", "Climate"), ("fan", "Fan"),
-        ("music.note", "Music"), ("phone", "Phone"), ("message", "Message"),
-        ("envelope", "Email"), ("globe", "Web"), ("map", "Map"),
-        ("location", "Location"), ("bell", "Alert"), ("alarm", "Alarm"),
-        ("timer", "Timer"), ("brain", "AI"), ("wand.and.stars", "Magic"),
-        ("fork.knife", "Food"), ("cart", "Shopping"), ("car", "Drive"),
-        ("airplane", "Travel"), ("figure.walk", "Walk"), ("text.viewfinder", "Read"),
-    ]
+    /// One curated set, shared with the grid's own editor — two icon rows that drifted apart
+    /// would mean the same action offered different glyphs depending on where it was made.
+    private var iconOptions: [(symbol: String, name: String)] { HomeActionIcons.curated }
 
     /// Common HA services grouped by domain
     private static let commonServices: [(domain: String, services: [(id: String, label: String)])] = [
@@ -363,7 +391,7 @@ struct QuickActionEditorView: View {
                     // Icon picker as a horizontal scroll
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(iconOptions, id: \.0) { name, label in
+                            ForEach(iconOptions, id: \.symbol) { name, label in
                                 Button {
                                     icon = name
                                 } label: {

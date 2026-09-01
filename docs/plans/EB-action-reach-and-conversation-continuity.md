@@ -1,6 +1,12 @@
 # Plan EB — Action Reach & Conversation Continuity
 
-**Status:** 📋 Planned (2026-09-01)
+**Status:** 🟠 P1–P3 implemented, automated suite green (2026-09-01) — grid built-ins and the
+speed dial harvest into the Siri catalog as `grid_action` capabilities (default off, one shared
+App Shortcut slot), creation/editing/deletion of speed-dial actions moved onto the grid's editors
+with atomic exposure revocation, Settings → Quick Actions demoted to links (advanced kinds kept on
+their own screen), and the conversation page gained an active-thread header, carry-on, switcher,
+and confirmed single/all deletion. Device eyes still wanted on the panel header at accessibility
+text sizes and on an Action-Button-bound grid action.
 **Origin:** On-device use of the shipped Plan EA home surface (2026-09-01): the grid's actions stop
 at the app's edge, creating a new action means a trip through a Settings screen that is not up to
 the job, and the pager's conversation page is read-only — a reply can be read but the conversation
