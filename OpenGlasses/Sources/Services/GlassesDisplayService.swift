@@ -340,7 +340,9 @@ final class GlassesDisplayService: ObservableObject {
     private func handleRenderError(_ error: Error) {
         // Don't spam logs for the expected "no display" no-op path.
         if case GlassesDisplayError.noDisplay = error { return }
-        NSLog("[Display] HUD render failed: %@", String(describing: error))
+        PrivacyLog.device(.hud, .renderFailed, error: SafeErrorSummary(error))
+        // The on-screen diagnostics panel is a different sink with a different audience — the
+        // wearer chose to open it — so it keeps the readable text the device log does not.
         onDebugEvent?("HUD error: \(String(describing: error))")
         // Drop references so the next render rebuilds the transport from scratch.
         activeBackend.resetAfterError()

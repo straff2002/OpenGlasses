@@ -1,14 +1,21 @@
-# Privacy-logging allowlist — files whose direct NSLog/print sites are knowingly deferred.
+# Privacy-logging allowlist — files whose direct NSLog/print sites are knowingly exempt.
 #
-# One repo-relative path per line. Blank lines and '#' comments ignored.
+# Format: one repo-relative path per line, each followed by a `# reason`. Blank lines and
+# whole-line '#' comments are ignored. A path with no reason FAILS the gate — an unexplained
+# exemption is exactly what this file exists to prevent.
 #
-# This list exists so that deferring a file is a reviewable diff rather than a silently smaller
-# number: Scripts/check-privacy-logging.sh reports allowlisted files and their site counts
-# separately, and never subtracts them from the headline total.
+#   OpenGlasses/Sources/Some/Shim.swift  # why PrivacyLog genuinely cannot be used here
+#
+# Scripts/check-privacy-logging.sh reports allowlisted files and their site counts separately
+# and never subtracts them from the headline total, so adding a line is a reviewable diff rather
+# than a silently smaller number. `PrivacyLogTests` reads this same file, so the gate and the
+# unit suite cannot disagree about what is exempt.
 #
 # Rules for adding a line:
-#   1. The file's logging must already be content-free, or
+#   1. The file's logging must already be content-free, AND
 #   2. it must be a platform shim that genuinely cannot use PrivacyLog.
-# "We haven't got to it yet" is not a reason to allowlist — that is what the ledger is for.
+# "We haven't got to it yet" is not a reason — the ledger was for that, and it is now zero.
+# Every entry here is a privacy review flag; expect this list to stay empty.
 #
-# Empty on purpose at P0. The six named leak sites were fixed rather than allowlisted.
+# Empty at P0 (the named leak sites were fixed, not allowlisted) and still empty at the end of
+# P1: all 872 sites were migrated or deleted, and no platform shim needed an exemption.

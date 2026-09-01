@@ -10,20 +10,36 @@ class WatchConnectivityManager: NSObject, ObservableObject {
 
     private var session: WCSession?
 
+    /// The watch protocol's fixed command vocabulary.
+    ///
+    /// A command arrives as a dictionary value from the paired device, so it is *classified*
+    /// against this set rather than quoted — an unrecognised string is peer-supplied text, and
+    /// the same rule the local MCP server applies to an unknown request path applies here. The
+    /// message's other fields (an `ask` command carries the wearer's question, a `quickAction`
+    /// its label) are never logged at all.
+    nonisolated static func commandToken(_ raw: String) -> PrivacyToken? {
+        let known: Set<String> = [
+            "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
+            "ask", "persona", "connect", "disconnect", "sleep", "status",
+            "quickAction", "resumeThread",
+        ]
+        return known.contains(raw) ? PrivacyToken(raw) : nil
+    }
+
     override init() {
         super.init()
     }
 
     func activate() {
         guard WCSession.isSupported() else {
-            NSLog("[WatchConn] WCSession not supported on this device")
+            PrivacyLog.device(.watch, .unsupported)
             return
         }
         let session = WCSession.default
         session.delegate = self
         session.activate()
         self.session = session
-        NSLog("[WatchConn] Session activated")
+        PrivacyLog.device(.watch, .sessionActivated)
     }
 
     /// Send current app status to the Watch for display.
@@ -84,24 +100,24 @@ class WatchConnectivityManager: NSObject, ObservableObject {
 
 extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        NSLog("[WatchConn] Activation: %@ (error: %@)",
-              String(describing: activationState),
-              error?.localizedDescription ?? "none")
+        PrivacyLog.device(.watch, error == nil ? .sessionActivated : .activationFailed,
+                          state: PrivacyToken(String(activationState.rawValue)),
+                          error: error.map(SafeErrorSummary.init))
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
-        NSLog("[WatchConn] Session became inactive")
+        PrivacyLog.device(.watch, .sessionInactive)
     }
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        NSLog("[WatchConn] Session deactivated")
+        PrivacyLog.device(.watch, .sessionDeactivated)
         session.activate()
     }
 
     /// Handle transferUserInfo payloads from Watch complications (no reply handler).
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         guard let command = userInfo["command"] as? String else { return }
-        NSLog("[WatchConn] Received userInfo command: %@", command)
+        PrivacyLog.device(.watch, .commandReceived, command: Self.commandToken(command))
 
         // Synthesize a fake message and dispatch through the same Task path.
         // Complications use transferUserInfo so there is no reply handler — use a no-op.
@@ -138,7 +154,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 await appState.toggleRecording()
 
             default:
-                NSLog("[WatchConn] Unknown userInfo command: %@", command)
+                PrivacyLog.device(.watch, .commandUnknown)
             }
 
             self.sendStatusUpdate()
@@ -153,7 +169,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
             return
         }
 
-        NSLog("[WatchConn] Received command: %@", command)
+        PrivacyLog.device(.watch, .commandReceived, command: Self.commandToken(command))
 
         Task { @MainActor in
             guard let appState = self.appState else {
@@ -238,7 +254,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 if isRecording {
                     // Stop transcription-only recording
                     appState.transcriptionService.stopRecording()
-                    NSLog("[WatchConn] Transcription recording stopped via Watch")
+                    PrivacyLog.device(.watch, .commandHandled,
+                                      command: PrivacyToken("toggleRecord"), success: false)
                     replyHandler([
                         "status": "stopped",
                         "isRecording": false
@@ -247,7 +264,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     // Start transcription-only recording (no LLM, no wake word)
                     appState.wakeWordService.stopListening()
                     appState.transcriptionService.startRecording()
-                    NSLog("[WatchConn] Transcription recording started via Watch")
+                    PrivacyLog.device(.watch, .commandHandled,
+                                      command: PrivacyToken("toggleRecord"), success: true)
                     replyHandler([
                         "status": "recording",
                         "isRecording": true

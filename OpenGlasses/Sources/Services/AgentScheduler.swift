@@ -67,7 +67,7 @@ class AgentScheduler: ObservableObject {
         guard Config.agentModeEnabled else { return }
         guard timer == nil else { return }
 
-        NSLog("[AgentScheduler] Starting")
+        PrivacyLog.agent(.scheduler, .started)
         scheduleNextCheck()
 
         // Run onboarding check immediately if needed
@@ -89,8 +89,9 @@ class AgentScheduler: ObservableObject {
             ? TimeInterval(Config.agentConnectedInterval * 60)
             : TimeInterval(Config.agentDisconnectedInterval * 60)
 
-        NSLog("[AgentScheduler] Next check in %.0f min (%@)",
-              interval / 60, connected ? "connected" : "disconnected")
+        PrivacyLog.agent(.scheduler, .checkScheduled,
+                         reason: PrivacyToken(connected ? "connected" : "disconnected"),
+                         minutes: Int(interval / 60))
 
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
@@ -104,7 +105,7 @@ class AgentScheduler: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
-        NSLog("[AgentScheduler] Stopped")
+        PrivacyLog.agent(.scheduler, .stopped)
     }
 
     // MARK: - Onboarding
@@ -115,7 +116,7 @@ class AgentScheduler: ObservableObject {
         guard !Config.agentOnboardingComplete else { return }
         guard !appState.isProcessing, !appState.isListening else { return }
 
-        NSLog("[AgentScheduler] Running onboarding")
+        PrivacyLog.agent(.scheduler, .onboardingRun)
 
         let onboardingPrompt = """
         This is your first interaction with your new wearer. You don't know anything about them yet.
@@ -151,7 +152,12 @@ class AgentScheduler: ObservableObject {
                 if now.timeIntervalSince(lastRun) < interval { continue }
             }
 
-            NSLog("[AgentScheduler] Running task: %@ (model: %@)", task.name, task.modelId ?? "default")
+            // A task's name is the wearer's own instruction to their agent ("check whether the
+            // clinic replied"), so which task ran is not written down; the model it was pinned
+            // to is a catalog id and is.
+            PrivacyLog.agent(.scheduler, .taskStarted,
+                             model: task.modelId.map(PrivacyToken.init),
+                             minutes: task.intervalMinutes)
             let outcome = await executeTask(task)
             if outcome == .deferred {
                 // On-device model can't run while backgrounded — don't mark it run;
@@ -188,11 +194,13 @@ class AgentScheduler: ObservableObject {
             Config.setActivePresetId(persona.presetId)
             appState.llmService.refreshActiveModel()
             personaName = persona.name
-            NSLog("[AgentScheduler] Switched to persona: %@ (model: %@)", persona.name, persona.modelId)
+            // Persona names are omitted rather than fingerprinted: the set is small and
+            // wearer-visible, so a stable hash would not anonymise which persona was in use.
+            PrivacyLog.agent(.scheduler, .personaSwitched, model: PrivacyToken(persona.modelId))
         } else if let modelId = task.modelId {
             Config.setActiveModelId(modelId)
             appState.llmService.refreshActiveModel()
-            NSLog("[AgentScheduler] Switched to model: %@", modelId)
+            PrivacyLog.agent(.scheduler, .modelSwitched, model: PrivacyToken(modelId))
         }
 
         // Run the task
@@ -202,7 +210,7 @@ class AgentScheduler: ObservableObject {
         if task.personaId != nil || task.modelId != nil {
             Config.setActiveModelId(previousModelId)
             appState.llmService.refreshActiveModel()
-            NSLog("[AgentScheduler] Restored model: %@", previousModelId)
+            PrivacyLog.agent(.scheduler, .modelRestored, model: PrivacyToken(previousModelId))
         }
 
         return outcome
@@ -219,7 +227,7 @@ class AgentScheduler: ObservableObject {
         if let local = appState.llmService.localLLMService,
            let active = Config.activeModel, active.llmProvider == .local,
            !(local.isModelLoaded && local.loadedModelId == active.model) {
-            NSLog("[AgentScheduler] On-device model not loaded — deferring scheduled task (won't auto-load on launch)")
+            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("modelNotLoaded"))
             return .deferred
         }
 
@@ -256,7 +264,7 @@ class AgentScheduler: ObservableObject {
             // Check if the agent decided there's nothing to report
             let trimmed = processed.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed == "[NOTHING]" || trimmed.lowercased().contains("[nothing]") {
-                NSLog("[AgentScheduler] Task complete — nothing to report")
+                PrivacyLog.agent(.scheduler, .taskProducedNothing)
                 return .completed
             }
 
@@ -272,14 +280,16 @@ class AgentScheduler: ObservableObject {
                 )
             }
 
-            NSLog("[AgentScheduler] Task complete: %@", String(processed.prefix(100)))
+            // The response is what the agent found out about the wearer's day — the single most
+            // content-bearing string this file holds — so only its length survives.
+            PrivacyLog.agent(.scheduler, .taskCompleted, characters: processed.count)
             return .completed
         } catch LocalLLMError.backgrounded {
             // On-device model can't run while backgrounded — defer, don't consume the run.
-            NSLog("[AgentScheduler] Deferred — on-device model can't run in the background; will retry when foregrounded")
+            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("backgrounded"))
             return .deferred
         } catch {
-            NSLog("[AgentScheduler] Task failed: %@", error.localizedDescription)
+            PrivacyLog.agent(.scheduler, .taskFailed, error: SafeErrorSummary(error))
             return .completed
         }
     }

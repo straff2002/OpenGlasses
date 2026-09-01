@@ -88,7 +88,7 @@ final class MediaTriggerService {
             claimer.claim { [weak self] command in
                 self?.handleRemoteCommand(command)
             }
-            NSLog("[MediaTrigger] claimed Now Playing")
+            PrivacyLog.device(.nowPlaying, .claimed)
         case .release:
             releaseClaim()
         case .defer:
@@ -175,7 +175,7 @@ final class MediaTriggerService {
         guard isClaimed else { return }
         isClaimed = false
         claimer.release()
-        NSLog("[MediaTrigger] released Now Playing")
+        PrivacyLog.device(.nowPlaying, .released)
     }
 }
 
@@ -239,7 +239,7 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
                 silent.play()
             }
         } catch {
-            NSLog("[MediaTrigger] silent player failed: %@", error.localizedDescription)
+            PrivacyLog.device(.nowPlaying, .startFailed, error: SafeErrorSummary(error))
             release()
         }
     }

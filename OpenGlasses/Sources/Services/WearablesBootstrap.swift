@@ -58,12 +58,14 @@ enum WearablesBootstrap {
             try Wearables.configure()
             isConfigured = true
             failureReason = nil
-            NSLog("[Wearables] SDK configured")
+            PrivacyLog.device(.sdk, .configured)
         } catch {
             isConfigured = false
+            // Kept for the on-screen diagnostics surfaces, which the wearer opens deliberately.
+            // The device log gets the bounded summary instead: a configure() failure's
+            // description names the bundle, the app id and the credential it rejected.
             failureReason = error.localizedDescription
-            NSLog("[Wearables] configure() failed — glasses features unavailable: %@",
-                  error.localizedDescription)
+            PrivacyLog.device(.sdk, .unavailable, error: SafeErrorSummary(error))
         }
         return isConfigured
     }

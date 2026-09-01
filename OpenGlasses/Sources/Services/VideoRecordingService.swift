@@ -318,7 +318,7 @@ class VideoRecordingService: ObservableObject {
                 captions.start()
             }
             // Snapshot the caption history count so we only capture new entries
-            NSLog("[Recording] Auto-transcription enabled")
+            PrivacyLog.recording(.autoTranscriptionEnabled)
 
             // Start live meeting assistant if wired up
             if let assistant = meetingAssistant, let llmClosure = llmClosure {
@@ -343,10 +343,12 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        let bitrateSource = bitrate == nil ? "derived" : "override"
-        NSLog("[Recording] Started (video+audio) → \(url.lastPathComponent) "
-              + "(\(encodedWidth)x\(encodedHeight) @ \(Int(encodedFrameRate.rounded()))fps, "
-              + "\(videoBitrate) bps \(bitrateSource))")
+        // The filename is a session and a date and the path is the sandbox; the geometry, rate
+        // and bitrate are the encoder settings a "why does this file look wrong" report needs.
+        PrivacyLog.recording(.started, width: encodedWidth, height: encodedHeight,
+                             frameRate: Int(encodedFrameRate.rounded()),
+                             count: videoBitrate,
+                             detail: PrivacyToken(bitrate == nil ? "derived" : "override"))
         hipaaService?.log(action: "RECORDING_STARTED", detail: "Video+audio recording started")
     }
 
@@ -354,7 +356,7 @@ class VideoRecordingService: ObservableObject {
     /// to the stall is kept), then tell the caller so it can be announced.
     private func autoStopForStalledStream() async {
         let duration = formattedDuration
-        NSLog("[Recording] No frames for %.0fs — auto-stopping (glasses stream died)", Self.frameStallSeconds)
+        PrivacyLog.recording(.autoStopped, seconds: Self.frameStallSeconds)
         let url = await stopRecording()
         guard url != nil else {
             onAutoStopped?("The glasses stopped sending video and the recording could not be saved.")
@@ -406,20 +408,23 @@ class VideoRecordingService: ObservableObject {
             }
             if writer.status == .failed {
                 writerFailure = writer.error?.localizedDescription ?? "the recording could not be finished"
-                NSLog("[Recording] Writer failed: %@", writerFailure ?? "unknown")
+                // `writerFailure` is the writer's own description, kept for the wearer-facing
+                // save note; the log gets the bounded summary.
+                PrivacyLog.recording(.writerFailed,
+                                     error: writer.error.map(SafeErrorSummary.init))
             }
         } else {
             writerFailure = "the recording could not be finished"
-            NSLog("[Recording] Stopped with no writer — filing whatever reached disk")
+            PrivacyLog.recording(.noWriter)
         }
         if mismatchedAudioBuffers > 0 {
-            NSLog("[Recording] Dropped %d audio buffer(s) in an unexpected format", mismatchedAudioBuffers)
+            PrivacyLog.recording(.audioBuffersDropped, count: mismatchedAudioBuffers)
             onDebugEvent?("Recording dropped \(mismatchedAudioBuffers) mis-formatted audio buffer(s)")
         }
 
         let temporaryURL = outputURL
-        NSLog("[Recording] Finished → %@ (%.1fs, %lld frames)",
-              temporaryURL?.lastPathComponent ?? "nil", recordingDuration, frameCount)
+        PrivacyLog.recording(.finished, count: Int(frameCount), seconds: recordingDuration,
+                             success: temporaryURL != nil)
 
         // Get the file out of tmp/ before anything else can go wrong with it. Everything below
         // — the transcript sidecar, file protection, the URL handed back for sharing — works
@@ -460,7 +465,8 @@ class VideoRecordingService: ObservableObject {
 
             let transcriptURL = videoURL.deletingPathExtension().appendingPathExtension("txt")
             try? fullTranscript.write(to: transcriptURL, atomically: true, encoding: .utf8)
-            NSLog("[Recording] Transcript saved → %@", transcriptURL.lastPathComponent)
+            // A transcript sidecar's name is the video's, and its contents are the meeting.
+            PrivacyLog.recording(.transcriptSaved, characters: fullTranscript.count)
 
             // Also save to Documents for Files app access and agent sharing
             saveTranscriptToDocuments(fullTranscript, date: recordingStartDate ?? Date())
@@ -489,7 +495,7 @@ class VideoRecordingService: ObservableObject {
         self.pixelBufferPool = nil
 
         if savedTranscribe {
-            NSLog("[Recording] Transcript: %d characters", recordingTranscript.count)
+            PrivacyLog.recording(.transcriptCaptured, characters: recordingTranscript.count)
         }
 
         return url
@@ -545,7 +551,7 @@ class VideoRecordingService: ObservableObject {
             outcome.savedToPhotos = result.didSave
             if case .notPermitted = result { outcome.photosNotPermitted = true }
         } else if wantsPhotos {
-            NSLog("[Recording] Nothing on disk to hand to Photos")
+            PrivacyLog.recording(.nothingOnDisk)
         }
 
         if let copyURL = outcome.folderCopyURL {
@@ -556,9 +562,8 @@ class VideoRecordingService: ObservableObject {
         let photosState = outcome.savedToPhotos
             ? "yes"
             : (outcome.photosNotPermitted ? "not permitted" : (wantsPhotos ? "failed" : "off"))
-        NSLog("[Recording] Filed → %@ (photos: %@, folder copy: %@)",
-              outcome.primaryURL.path, photosState,
-              outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")
+        PrivacyLog.recording(.filed, success: outcome.savedToPhotos,
+                             detail: PrivacyToken(photosState.replacingOccurrences(of: " ", with: "-")))
         // The chokepoint every recording passes through, so the next diagnostics report of this
         // class carries the answer instead of a launch trace.
         onDebugEvent?("Recording filed — app folder: \(outcome.savedToLibrary ? "yes" : "no"), "
@@ -594,9 +599,9 @@ class VideoRecordingService: ObservableObject {
             try transcript.write(to: fileURL, atomically: true, encoding: .utf8)
             hipaaService?.protectFile(at: fileURL)
             hipaaService?.log(action: "TRANSCRIPT_SAVED", detail: fileName)
-            NSLog("[Recording] Transcript saved → %@", fileURL.path)
+            PrivacyLog.recording(.transcriptSaved, characters: transcript.count)
         } catch {
-            NSLog("[Recording] Failed to save transcript: %@", error.localizedDescription)
+            PrivacyLog.recording(.transcriptSaveFailed, error: SafeErrorSummary(error))
         }
 
         // Release security scope if we started it
@@ -687,9 +692,11 @@ class VideoRecordingService: ObservableObject {
             guard CaptureAudioFormatMatch.matches(incoming, locked) else {
                 mismatchedAudioBuffers += 1
                 if mismatchedAudioBuffers == 1 {
-                    NSLog("[Recording] Audio format changed mid-file (%.0fHz/%uch → %.0fHz/%uch) — dropping buffers rather than failing the writer",
-                          locked.mSampleRate, locked.mChannelsPerFrame,
-                          incoming.mSampleRate, incoming.mChannelsPerFrame)
+                    PrivacyLog.recording(.audioFormatChanged,
+                                         hertz: Int(incoming.mSampleRate),
+                                         channels: Int(incoming.mChannelsPerFrame),
+                                         detail: PrivacyToken("from-\(Int(locked.mSampleRate))hz-"
+                                                              + "\(locked.mChannelsPerFrame)ch"))
                 }
                 return
             }
@@ -762,8 +769,8 @@ class VideoRecordingService: ObservableObject {
         )
 
         if !audioInput.append(sb) {
-            NSLog("[Recording] Audio append rejected: %@",
-                  appendWriter?.error?.localizedDescription ?? "unknown")
+            PrivacyLog.recording(.audioAppendRejected,
+                                 error: appendWriter?.error.map(SafeErrorSummary.init))
         }
     }
 

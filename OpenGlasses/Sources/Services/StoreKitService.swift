@@ -89,9 +89,9 @@ class StoreKitService: ObservableObject {
             let loaded = try await Product.products(for: Self.allProductIds)
             // Sort: annual first (better value), then monthly
             products = loaded.sorted { a, _ in a.id == Self.medicalAnnualId }
-            NSLog("[StoreKit] Loaded %d products", products.count)
+            PrivacyLog.purchase(.catalogLoaded, count: products.count)
         } catch {
-            NSLog("[StoreKit] Failed to load products: %@", error.localizedDescription)
+            PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -110,21 +110,22 @@ class StoreKitService: ObservableObject {
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
                 await checkSubscriptionStatus()
-                NSLog("[StoreKit] Purchase activated: %@", product.id)
+                PrivacyLog.purchase(.activated, product: PrivacyToken(product.id))
 
             case .userCancelled:
-                NSLog("[StoreKit] Purchase cancelled by user")
+                PrivacyLog.purchase(.cancelled, product: PrivacyToken(product.id))
 
             case .pending:
-                NSLog("[StoreKit] Purchase pending (Ask to Buy, etc.)")
+                PrivacyLog.purchase(.pending, product: PrivacyToken(product.id))
                 purchaseError = "Purchase is pending approval."
 
             @unknown default:
-                NSLog("[StoreKit] Unknown purchase result")
+                PrivacyLog.purchase(.resultUnknown, product: PrivacyToken(product.id))
             }
         } catch {
             purchaseError = "Purchase failed: \(error.localizedDescription)"
-            NSLog("[StoreKit] Purchase failed: %@", error.localizedDescription)
+            PrivacyLog.purchase(.failed, product: PrivacyToken(product.id),
+                                error: SafeErrorSummary(error))
         }
 
         isPurchasing = false

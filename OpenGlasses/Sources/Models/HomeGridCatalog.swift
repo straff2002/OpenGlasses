@@ -390,15 +390,18 @@ enum HomeGridStore {
             return Decoded(arrangement: .default, droppedIds: [])
         }
         guard let stored = try? JSONDecoder().decode(HomeGridArrangement.self, from: data) else {
-            NSLog("[HomeGrid] Stored arrangement did not decode; falling back to the shipped order")
+            PrivacyLog.store(.homeGrid, .blobUndecodable)
             return Decoded(arrangement: .default, droppedIds: [])
         }
 
         let known = Set(available)
         let dropped = (stored.order + stored.hidden).filter { !known.contains($0) }
         if !dropped.isEmpty {
-            NSLog("[HomeGrid] Dropping %d entries this build has no action for: %@",
-                  dropped.count, dropped.joined(separator: ", "))
+            // The ids themselves come out of a stored blob rather than this build's catalogue, so
+            // they are decoded data rather than a vocabulary this file controls; the count is
+            // what says "an arrangement from a newer build was salvaged".
+            PrivacyLog.store(.homeGrid, .salvaged, count: dropped.count,
+                             total: stored.order.count + stored.hidden.count)
         }
 
         // A record from a version this build doesn't know is still just two lists of ids, so it is

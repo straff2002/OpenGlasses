@@ -38,7 +38,7 @@ final class ShazamTool: NativeTool, @unchecked Sendable {
             return "I couldn't identify the song. Make sure music is playing clearly."
 
         case .error(let error, _):
-            NSLog("[ShazamTool] Error: %@", error.localizedDescription)
+            PrivacyLog.toolRun(.failed, tool: name, error: SafeErrorSummary(error))
             return "I couldn't identify the song right now. Make sure the app has microphone access and music is playing clearly."
         }
     }
