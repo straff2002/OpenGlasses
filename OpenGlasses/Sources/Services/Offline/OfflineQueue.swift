@@ -15,7 +15,9 @@ final class OfflineQueue {
             .urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent("offline_queue.sqlite")
         if sqlite3_open(url.path, &db) != SQLITE_OK {
-            NSLog("[OfflineQueue] Failed to open database at %@", url.path)
+            PrivacyLog.store(.offlineQueue, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         exec("PRAGMA journal_mode=WAL")
         exec("PRAGMA synchronous=NORMAL")

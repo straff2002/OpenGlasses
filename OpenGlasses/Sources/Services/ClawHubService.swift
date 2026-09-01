@@ -162,7 +162,7 @@ actor ClawHubService {
         }
 
         // Browse is empty — use curated search queries to populate the store
-        NSLog("[ClawHub] Browse empty, falling back to curated searches")
+        PrivacyLog.transfer(.skillHub, .catalogueEmpty)
         return try await fetchCuratedSkills(limit: limit)
     }
 
@@ -529,14 +529,17 @@ class InstalledSkillStore: ObservableObject {
         installedSkills.removeAll { $0.slug == skill.slug }
         installedSkills.append(installed)
         save()
-        NSLog("[ClawHub] Installed skill: %@", skill.slug)
+        // A slug names a published skill, but *which* skills someone installs describes what
+        // they do and what they are interested in, so it is a fingerprint rather than a token.
+        PrivacyLog.transfer(.skillHub, .installed, item: PrivateIdentifier(skill.slug),
+                            version: PrivacyToken(installed.version))
     }
 
     /// Uninstall a skill.
     func uninstall(slug: String) {
         installedSkills.removeAll { $0.slug == slug }
         save()
-        NSLog("[ClawHub] Uninstalled skill: %@", slug)
+        PrivacyLog.transfer(.skillHub, .removed, item: PrivateIdentifier(slug))
     }
 
     /// Toggle a skill on/off without removing it.
@@ -600,7 +603,7 @@ class InstalledSkillStore: ObservableObject {
             installedSkills.append(imported)
         }
         save()
-        NSLog("[ClawHub] Imported %d skill(s) (disabled pending review)", items.count)
+        PrivacyLog.transfer(.skillHub, .imported, count: items.count)
         return items.count
     }
 
@@ -657,7 +660,7 @@ class InstalledSkillStore: ObservableObject {
             let data = try JSONEncoder().encode(installedSkills)
             try data.write(to: storageURL, options: .atomic)
         } catch {
-            NSLog("[ClawHub] Failed to save: %@", error.localizedDescription)
+            PrivacyLog.store(.skillHub, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -667,7 +670,7 @@ class InstalledSkillStore: ObservableObject {
             let data = try Data(contentsOf: storageURL)
             installedSkills = try JSONDecoder().decode([InstalledSkill].self, from: data)
         } catch {
-            NSLog("[ClawHub] Failed to load: %@", error.localizedDescription)
+            PrivacyLog.store(.skillHub, .loadFailed, error: SafeErrorSummary(error))
         }
     }
 

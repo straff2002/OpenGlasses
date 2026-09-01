@@ -28,12 +28,17 @@ final class PrivacyLogTests: XCTestCase {
         /// device in a named room of their house.
         static let personName = "Dr SENTINEL Alvarez"
         static let entityName = "light.SENTINEL_master_bedroom"
+        /// The batch-4 shapes: a document the wearer titled (which becomes a filename), and a
+        /// memory the agent was asked to keep.
+        static let documentTitle = "SENTINEL biopsy results — Dr Alvarez, March.pdf"
+        static let memoryValue = "SENTINEL daughter's birthday is the 3rd of April"
 
         /// `entityName` is deliberately absent: it is identifier-shaped, so `PrivacyToken` keeps
         /// it — the type's stated limit, pinned by `testTokenIsAShapeFilterNotASecretDetector`.
         /// The protection for an entity id is that no method takes one, which is asserted
         /// directly in `testRegulatedNamesHaveNoParameterAtAll`.
-        static let all = [transcript, toolArgs, url, secret, cookie, personName]
+        static let all = [transcript, toolArgs, url, secret, cookie, personName,
+                          documentTitle, memoryValue]
     }
 
     /// An error whose description is exactly the thing that must never be logged.
@@ -182,6 +187,16 @@ final class PrivacyLogTests: XCTestCase {
                                 error: SafeErrorSummary(MaliciousError())),
             PrivacyLog.proactiveAlert(.delivered, characters: text.count, count: 3,
                                       seconds: 60),
+            // P1 batch 4 — persistence / import / export.
+            PrivacyLog.store(.jsonBlob, .salvaged, slot: PrivacyToken(text), scope: .persona,
+                             count: 11, total: 14, characters: text.count,
+                             bytes: text.utf8.count, detail: PrivacyToken(text),
+                             error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.transfer(.skillPack, .installed, item: PrivateIdentifier(text),
+                                version: PrivacyToken(text), operation: PrivacyToken(text),
+                                signed: false, count: 4, total: 9, attempt: 2,
+                                bytes: text.utf8.count,
+                                error: SafeErrorSummary(MaliciousError())),
         ]
     }
 
@@ -266,6 +281,121 @@ final class PrivacyLogTests: XCTestCase {
                            "an entity must not be smuggled in as a fingerprint either: \(line)")
         }
         XCTAssertTrue(homeLines.last?.contains("count=42") == true, "\(homeLines)")
+    }
+
+    /// The batch-4 canary, on the two shapes a store holds at the moment it logs.
+    ///
+    /// A document title is user content that becomes a *filename* — which is why "just log the
+    /// path" is the persistent temptation in this tier and why no method takes one. A memory value
+    /// is the fact the wearer asked to be kept; `SemanticMemoryStore` used to write the key and
+    /// the value out on every single `remember`.
+    func testStoredContentSurvivesOnlyAsShapeAndScope() {
+        let ingest = PrivacyEventEncoder.encode(
+            PrivacyLog.store(.ragDocuments, .ingested, count: 14,
+                             characters: Sentinel.documentTitle.count,
+                             detail: PrivacyToken("scan")))
+        XCTAssertFalse(ingest.contains("SENTINEL"), ingest)
+        XCTAssertFalse(ingest.lowercased().contains("biopsy"), ingest)
+        XCTAssertFalse(ingest.contains(".pdf"), "a filename must not reach the log: \(ingest)")
+        XCTAssertEqual(ingest, "[store] store store=ragDocuments event=ingested count=14 "
+                       + "characters=\(Sentinel.documentTitle.count) detail=scan")
+
+        // A remembered fact: the pool it went into survives, the key and the value do not — not
+        // even fingerprinted, since a stable hash of "daughter's birthday" is that memory's name.
+        let remembered = PrivacyEventEncoder.encode(
+            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .persona,
+                             characters: Sentinel.memoryValue.count))
+        XCTAssertFalse(remembered.contains("SENTINEL"), remembered)
+        XCTAssertFalse(remembered.contains("birthday"), remembered)
+        XCTAssertFalse(remembered.contains("#"),
+                       "a memory must not be smuggled in as a fingerprint either: \(remembered)")
+        XCTAssertEqual(remembered, "[store] store store=semanticMemory event=recordWritten "
+                       + "scope=persona characters=\(Sentinel.memoryValue.count)")
+    }
+
+    /// The salvage path's canary, driven through the real `JSONStore` helper.
+    ///
+    /// A `DecodingError` quotes the JSON it choked on — that is what makes the corrupt-blob path
+    /// the sharpest edge in this batch, because the blob *is* the records. The event that reports
+    /// the salvage must say which slot and how many survived, and the summary built from the
+    /// decode failure must reduce to a case name and a coding-path depth: never a key (a
+    /// dictionary's keys are the wearer's own strings) and never the offending value.
+    func testDecodeFailureOverSentinelJSONReportsOnlyCountsAndDepth() throws {
+        struct Row: Codable, Equatable { let id: Int }
+
+        let blob = Data("""
+        [{"id":1},{"id":"\(Sentinel.documentTitle)"},{"id":3}]
+        """.utf8)
+        let backupDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("PrivacyLogTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: backupDirectory) }
+
+        let result = JSONStore.decodeArray(Row.self, from: blob, name: "conversations",
+                                           backupDirectory: backupDirectory)
+        guard case .recovered(let rows, let backup) = result else {
+            return XCTFail("expected element-wise salvage, got \(result)")
+        }
+        XCTAssertEqual(rows, [Row(id: 1), Row(id: 3)])
+
+        // The backup filename is the slot plus a timestamp — the preserved bytes carry the
+        // sentinel, the name that points at them must not.
+        XCTAssertFalse(backup?.lastPathComponent.contains("SENTINEL") ?? false,
+                       "\(backup?.lastPathComponent ?? "nil")")
+
+        // The event the salvage emits, and the summary of the failure that caused it.
+        let salvage = PrivacyEventEncoder.encode(
+            PrivacyLog.store(.jsonBlob, .salvaged, slot: PrivacyToken("conversations"),
+                             count: rows.count, total: 3, detail: PrivacyToken("elements")))
+        XCTAssertFalse(salvage.contains("SENTINEL"), salvage)
+        XCTAssertEqual(salvage, "[store] store store=jsonBlob event=salvaged slot=conversations "
+                       + "count=2 total=3 detail=elements")
+
+        var decodeFailure: Error?
+        do { _ = try JSONDecoder().decode([Row].self, from: blob) } catch { decodeFailure = error }
+        let error = try XCTUnwrap(decodeFailure)
+        let reported = PrivacyEventEncoder.encode(
+            PrivacyLog.store(.jsonBlob, .readFailed, slot: PrivacyToken("conversations"),
+                             error: SafeErrorSummary(error)))
+        XCTAssertFalse(reported.contains("SENTINEL"), reported)
+        XCTAssertFalse(reported.lowercased().contains("biopsy"), reported)
+        XCTAssertFalse(reported.contains("id"),
+                       "the coding path names a key, which in a dictionary blob is data: \(reported)")
+        XCTAssertTrue(reported.contains("error=decoding(typeMismatch)#"), reported)
+    }
+
+    /// A coding path is a list of keys; only its length is safe to record.
+    func testDecodingErrorReportsPathDepthNotPathKeys() {
+        let context = DecodingError.Context(
+            codingPath: [SentinelKey(stringValue: Sentinel.documentTitle),
+                         SentinelKey(stringValue: "SENTINELCHILD")],
+            debugDescription: "SENTINEL value 42")
+        let summary = SafeErrorSummary(DecodingError.keyNotFound(
+            SentinelKey(stringValue: "SENTINELMISSING"), context))
+        XCTAssertEqual(summary.category, .decoding)
+        XCTAssertFalse(summary.description.contains("SENTINEL"), summary.description)
+        XCTAssertEqual(summary.description, "decoding(keyNotFound)#2")
+    }
+
+    /// A coding key whose name is the thing that must not be logged.
+    private struct SentinelKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    /// SQLite's result codes are a fixed numeric vocabulary and are kept; `sqlite3_errmsg` is not,
+    /// because on a prepare failure it quotes the SQL — and this app's SQL is where memory keys
+    /// and document chunks live.
+    func testSQLiteSummaryCarriesCodesNotMessages() {
+        XCTAssertEqual(SafeErrorSummary.sqlite(code: 11, extended: 267).description,
+                       "storage(sqlite.267)#11")
+        XCTAssertEqual(SafeErrorSummary.sqlite(code: 14).description, "storage(sqlite)#14")
+        let line = PrivacyEventEncoder.encode(
+            PrivacyLog.store(.semanticMemory, .queryFailed, detail: PrivacyToken("prepare"),
+                             error: .sqlite(code: 1, extended: 1)))
+        XCTAssertFalse(line.contains("SENTINEL"), line)
+        XCTAssertTrue(line.contains("error=storage(sqlite.1)#1"), line)
     }
 
     /// The similarity score is a biometric measurement, so it is banded before it is logged.
@@ -568,6 +698,37 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/Navigation/WalkingRouteService.swift",
     ]
 
+    /// P1 batch 4 — persistence / import / export / share. Same contract: zero direct log calls.
+    ///
+    /// The two that matter most are `SemanticMemoryStore`, which wrote every remembered key *and
+    /// its value* to the device log on each `remember` and the agent's diary line on each write,
+    /// and `AgentDocumentStore`, which logged the whole fact appended to the agent's memory
+    /// document. `JSONStore` is the structural one: it is the salvage path every JSON-backed store
+    /// funnels through, so a decode error quoted there would quote the records of all of them.
+    private static let batchFourFiles = [
+        "OpenGlasses/Sources/Services/Persistence/JSONStore.swift",
+        "OpenGlasses/Sources/Services/SemanticMemoryStore.swift",
+        "OpenGlasses/Sources/Services/AgentDocumentStore.swift",
+        "OpenGlasses/Sources/Services/RAG/DocumentStore.swift",
+        "OpenGlasses/Sources/Services/ClawHubService.swift",
+        "OpenGlasses/Sources/Services/SkillPacks/SkillPackStore.swift",
+        "OpenGlasses/Sources/Services/Reading/ReadingSessionStore.swift",
+        "OpenGlasses/Sources/Services/Study/StudyStore.swift",
+        "OpenGlasses/Sources/Services/PlaybookStore.swift",
+        "OpenGlasses/Sources/Services/RecordedSessionStore.swift",
+        "OpenGlasses/Sources/Services/RecordingFiler.swift",
+        "OpenGlasses/Sources/Services/NativeTools/OperationJournal.swift",
+        "OpenGlasses/Sources/Services/Offline/OfflineQueue.swift",
+        "OpenGlasses/Sources/Services/Offline/SyncEngine.swift",
+        "OpenGlasses/Sources/Services/Memory/ConversationIndex.swift",
+        "OpenGlasses/Sources/Services/Memory/ConversationRecallCoordinator.swift",
+        "OpenGlasses/Sources/Services/Brain/BrainStore.swift",
+        "OpenGlasses/Sources/Services/Skills/EvolvedSkillStore.swift",
+        "OpenGlasses/Sources/Services/Usage/UsageStore.swift",
+        "OpenGlasses/Sources/Services/AgentDataExporter.swift",
+        "OpenGlasses/Sources/Services/Siri/SpotlightIndexService.swift",
+    ]
+
     private func sourceText(_ relativePath: String) throws -> String {
         let url = Self.repoRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
@@ -652,6 +813,45 @@ final class PrivacyLogTests: XCTestCase {
         }
     }
 
+    func testBatchFourFilesHaveNoDirectLogCalls() throws {
+        for path in Self.batchFourFiles {
+            let source = try sourceText(path)
+            XCTAssertTrue(source.contains("PrivacyLog."),
+                          "\(path): sanity — a migrated file should be emitting typed events")
+            for line in loggingLines(in: source) {
+                XCTFail("\(path): a direct log call survives in a migrated file:\n\(line)")
+            }
+            // `sqlite3_errmsg` quotes the statement it failed on, and this app interpolates memory
+            // keys and document ids into SQL. The codes are the approved substitute.
+            XCTAssertFalse(source.contains("sqlite3_errmsg"),
+                           "\(path): a SQLite message quotes the failing statement — log "
+                               + "sqlite3_errcode/sqlite3_extended_errcode instead")
+        }
+    }
+
+    /// `JSONStore` logs its `name` argument as a token, which is only sound because that argument
+    /// is a slot from a fixed vocabulary at every call site. A store named from a document title
+    /// would be identifier-shaped, so `PrivacyToken` would keep it — the type is a shape filter,
+    /// not a secret detector. This is the check that keeps the assumption true.
+    func testJSONStoreSlotNamesAreLiterals() throws {
+        let sources = try FileManager.default
+            .subpathsOfDirectory(atPath: Self.repoRoot.appendingPathComponent("OpenGlasses/Sources").path)
+            .filter { $0.hasSuffix(".swift") }
+            .map { "OpenGlasses/Sources/\($0)" }
+        var callSites = 0
+        for path in sources where path != "OpenGlasses/Sources/Services/Persistence/JSONStore.swift" {
+            let source = try sourceText(path)
+            guard source.contains("JSONStore.") else { continue }
+            for line in source.split(separator: "\n").map(String.init) where line.contains("name: ") {
+                guard line.contains("JSONStore.") else { continue }
+                callSites += 1
+                XCTAssertNotNil(line.range(of: #"name: "[a-z_]+""#, options: .regularExpression),
+                                "\(path): JSONStore's slot name must be a literal, not a value:\n\(line)")
+            }
+        }
+        XCTAssertGreaterThan(callSites, 5, "sanity: the scan should be finding the store's callers")
+    }
+
     /// The names this batch is about, pinned by their identifiers rather than by a log statement:
     /// a recognised person, a home entity, a geocoded place and an accessory must not be formatted
     /// into anything the migrated files hand to `PrivacyLog`.
@@ -671,6 +871,20 @@ final class PrivacyLogTests: XCTestCase {
              ["message", "title", "notes"]),
             ("OpenGlasses/Sources/Services/HIPAAComplianceService.swift",
              ["detail", "lastPathComponent"]),
+            // P1 batch 4: a stored record, and the filename it is kept under.
+            ("OpenGlasses/Sources/Services/SemanticMemoryStore.swift",
+             ["keyName", "value", "pid", "namespace"]),
+            ("OpenGlasses/Sources/Services/AgentDocumentStore.swift",
+             ["content", "trimmed", "filename", "lastPathComponent"]),
+            ("OpenGlasses/Sources/Services/RAG/DocumentStore.swift",
+             ["safeName", "dbURL", "path"]),
+            ("OpenGlasses/Sources/Services/Persistence/JSONStore.swift",
+             ["url", "lastPathComponent", "data"]),
+            ("OpenGlasses/Sources/Services/RecordingFiler.swift",
+             ["source", "destination", "folderURL", "lastPathComponent"]),
+            ("OpenGlasses/Sources/Services/Offline/SyncEngine.swift", ["reason", "payload"]),
+            ("OpenGlasses/Sources/Services/AgentDataExporter.swift",
+             ["zipURL", "exportName", "lastPathComponent"]),
         ]
         for (path, values) in forbidden {
             let source = try sourceText(path)
@@ -860,6 +1074,29 @@ final class PrivacyLogTests: XCTestCase {
              ["Refused — %@", "Camera claim failed — %@"]),
             ("OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift",
              ["Creating session bound to device %@", "📸 Photo captured:"]),
+            // P1 batch 4: the memory store wrote every remembered key and its value, and each
+            // diary line, into the device log; the agent document store logged the fact it had
+            // just been asked to remember; the RAG store logged the title of every ingested
+            // document; and the SQLite stores logged their file paths and `sqlite3_errmsg`,
+            // which on a prepare failure quotes the statement that broke.
+            ("OpenGlasses/Sources/Services/SemanticMemoryStore.swift",
+             ["Persona: %@ = %@", "Global: %@ = %@", "Diary: %@", "Evicted (over budget): %@",
+              "Cleared persona memories for %@", "prepare failed:", "step failed:"]),
+            ("OpenGlasses/Sources/Services/AgentDocumentStore.swift",
+             ["Memory appended: %@", "Saved %@: %d chars"]),
+            ("OpenGlasses/Sources/Services/RAG/DocumentStore.swift",
+             ["Ingested '%@'", "Failed to open database at %@"]),
+            ("OpenGlasses/Sources/Services/Persistence/JSONStore.swift",
+             ["Backed up undecodable %@ blob to %@", "file exists but read failed"]),
+            ("OpenGlasses/Sources/Services/ClawHubService.swift",
+             ["Installed skill: %@", "Uninstalled skill: %@"]),
+            ("OpenGlasses/Sources/Services/SkillPacks/SkillPackStore.swift",
+             ["Quarantined %d action(s) in %@: %@"]),
+            ("OpenGlasses/Sources/Services/RecordedSessionStore.swift",
+             ["Could not delete audio %@"]),
+            ("OpenGlasses/Sources/Services/Offline/SyncEngine.swift",
+             ["failed after %d attempts: %@", "permanently failed: %@"]),
+            ("OpenGlasses/Sources/Services/AgentDataExporter.swift", ["Created: %@"]),
         ]
         for (path, statements) in removed {
             let source = try sourceText(path)
@@ -882,7 +1119,8 @@ final class PrivacyLogTests: XCTestCase {
         // ever goes to zero legitimately (batch 4 covers it), move the anchor rather than delete
         // the check — an empty result would otherwise mean the matcher matches nothing at all.
         // It was `MetaCameraBackend` until batch 3 took that file to zero.
-        let unmigrated = try sourceText("OpenGlasses/Sources/Services/SemanticMemoryStore.swift")
+        // It was `MetaCameraBackend` until batch 3, then `SemanticMemoryStore` until batch 4.
+        let unmigrated = try sourceText("OpenGlasses/Sources/App/OpenGlassesApp.swift")
         XCTAssertFalse(loggingLines(in: unmigrated).isEmpty,
                        "sanity: this file still has direct NSLog lines, so the line scanner "
                            + "must be finding some — an empty result would mean it matches nothing")

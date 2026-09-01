@@ -32,6 +32,9 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         case clientError
         /// An app-side policy refusal (an SSRF guard, a trust gate) rather than a transport fault.
         case refused
+        /// Local storage: a database that would not open, a statement that would not run, a blob
+        /// that would not read. Distinct from `decoding`, which is the shape of the bytes.
+        case storage
         case unknown
     }
 
@@ -75,7 +78,8 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         }
         if let decoding = error as? DecodingError {
             self.init(category: .decoding,
-                      detail: PrivacyToken.caseName(of: decoding) ?? PrivacyToken("DecodingError"))
+                      detail: PrivacyToken.caseName(of: decoding) ?? PrivacyToken("DecodingError"),
+                      code: Self.codingPathDepth(of: decoding))
             return
         }
 
@@ -118,6 +122,38 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
     static func remote(code: String?) -> SafeErrorSummary {
         SafeErrorSummary(category: .badServerResponse,
                          detail: code.map(PrivacyToken.init) ?? PrivacyToken("unknown"))
+    }
+
+    /// A SQLite fault. The result code and its extended code are a fixed numeric vocabulary
+    /// defined by the library, so both are public.
+    ///
+    /// `sqlite3_errmsg` is not, and that is the whole reason this exists: on a prepare failure it
+    /// quotes the offending SQL, and this app's stores are where memory keys, diary text and
+    /// document chunks live. A message like `near "s": syntax error` is a fragment of the value
+    /// that broke the statement — which is precisely the class of bug these lines are read for,
+    /// and precisely the content that must not be written down.
+    static func sqlite(code: Int32, extended: Int32? = nil) -> SafeErrorSummary {
+        let detail = extended.map { PrivacyToken("sqlite.\($0)") } ?? PrivacyToken("sqlite")
+        return SafeErrorSummary(category: .storage, detail: detail, code: Int(code))
+    }
+
+    /// How deep in the document the decoder was when it gave up — never *where*.
+    ///
+    /// The coding path is a list of keys, and a key is only safe when it is a fixed `CodingKeys`
+    /// name. In a `[String: T]` blob — which several of these stores are — the keys are the
+    /// wearer's own strings, so the path is data. Its length is not: it distinguishes "the whole
+    /// file is not JSON" from "one field of one record is the wrong type", which is the only thing
+    /// a salvage report needs from it.
+    private static func codingPathDepth(of error: DecodingError) -> Int? {
+        switch error {
+        case .typeMismatch(_, let context),
+             .valueNotFound(_, let context),
+             .keyNotFound(_, let context),
+             .dataCorrupted(let context):
+            return context.codingPath.count
+        @unknown default:
+            return nil
+        }
     }
 
     private static func category(for code: URLError.Code) -> Category {

@@ -77,7 +77,7 @@ final class StudyStore: ObservableObject {
 
     private func persistDecks() {
         guard !decksSaveBlocked else {
-            NSLog("[StudyStore] Deck save skipped — last load failed to read the existing file")
+            PrivacyLog.store(.studyDecks, .saveSkipped, slot: PrivacyToken("study_decks"))
             return
         }
         write(decks, to: decksURL)
@@ -85,7 +85,7 @@ final class StudyStore: ObservableObject {
 
     private func persistReviews() {
         guard !reviewsSaveBlocked else {
-            NSLog("[StudyStore] Review save skipped — last load failed to read the existing file")
+            PrivacyLog.store(.studyDecks, .saveSkipped, slot: PrivacyToken("study_reviews"))
             return
         }
         write(reviews, to: reviewsURL)
@@ -96,7 +96,7 @@ final class StudyStore: ObservableObject {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             try JSONEncoder().encode(value).write(to: url, options: .atomic)
         } catch {
-            NSLog("[StudyStore] persist failed: %@", error.localizedDescription)
+            PrivacyLog.store(.studyDecks, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 }

@@ -354,8 +354,10 @@ final class ProtectedOperationJournal: OperationJournal {
             rows[index].state = .unknown
             rows[index].updatedAt = now
             rows[index].recoveredFromRestart = true
-            NSLog("[OperationJournal] Recovered interrupted operation for %@ as unknown",
-                  rows[index].toolName)
+            // The tool name is the app's own fixed vocabulary; the operation's arguments — who
+            // a message was going to and what it said — are in the row and stay there.
+            PrivacyLog.store(.operationJournal, .recovered,
+                             detail: PrivacyToken(rows[index].toolName))
         }
     }
 
@@ -413,7 +415,7 @@ final class ProtectedOperationJournal: OperationJournal {
             values.isExcludedFromBackup = true
             try? url.setResourceValues(values)
         } catch {
-            NSLog("[OperationJournal] persist failed: %@", error.localizedDescription)
+            PrivacyLog.store(.operationJournal, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 

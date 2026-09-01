@@ -14,7 +14,9 @@ final class UsageStore {
             .urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent("usage.sqlite")
         if sqlite3_open(url.path, &db) != SQLITE_OK {
-            NSLog("[UsageStore] Failed to open database at %@", url.path)
+            PrivacyLog.store(.usage, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         exec("PRAGMA journal_mode=WAL")
         exec("PRAGMA synchronous=NORMAL")

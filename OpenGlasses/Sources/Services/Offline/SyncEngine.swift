@@ -98,17 +98,25 @@ final class SyncEngine: ObservableObject {
                     queue.mark(op.id, state: .conflict)
                     conflicts += 1
                     onConflict?(op, reason)
-                case .transient(let reason):
+                case .transient:
                     let attempts = op.attempts + 1
                     if attempts >= maxAttempts {
                         queue.mark(op.id, state: .failed, attempts: attempts)
-                        NSLog("[SyncEngine] op %@ failed after %d attempts: %@", op.id, attempts, reason)
+                        // `reason` is composed by whichever sink refused the operation and can
+                        // quote the payload back; the op's kind and its retry tier are what a
+                        // stuck queue is diagnosed from.
+                        PrivacyLog.transfer(.offlineSync, .attemptsExhausted,
+                                            item: PrivateIdentifier(op.id),
+                                            operation: PrivacyToken(op.kind.rawValue),
+                                            attempt: attempts)
                     } else {
                         retry.append((op.id, attempts))   // re-armed below, once the drain is done
                     }
-                case .permanent(let reason):
+                case .permanent:
                     queue.mark(op.id, state: .failed)
-                    NSLog("[SyncEngine] op %@ permanently failed: %@", op.id, reason)
+                    PrivacyLog.transfer(.offlineSync, .permanentlyFailed,
+                                        item: PrivateIdentifier(op.id),
+                                        operation: PrivacyToken(op.kind.rawValue))
                 }
             }
         }

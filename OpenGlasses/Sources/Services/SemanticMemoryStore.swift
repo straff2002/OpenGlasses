@@ -87,7 +87,7 @@ class SemanticMemoryStore: ObservableObject {
         createTables()
         migrateFromLegacyJSONIfNeeded()
         refreshGlobalCache()
-        NSLog("[SemanticMemory] Init — %d global memories", memories.count)
+        PrivacyLog.store(.semanticMemory, .opened, scope: .global, count: memories.count)
     }
 
     // MARK: - Public API (legacy key-value compatible)
@@ -102,21 +102,23 @@ class SemanticMemoryStore: ObservableObject {
         if activePersonaId != nil {
             if personaMemories[k] == value { return true }
             guard upsert(key: k, value: value, namespace: ns) else {
-                NSLog("[SemanticMemory] FAILED to persist persona memory %@", k)
+                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .persona)
                 return false
             }
             refreshPersonaCache()
             trim(namespace: ns, maxChars: maxPersonaChars)
-            NSLog("[SemanticMemory] Persona: %@ = %@", k, value)
+            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .persona,
+                             characters: value.count)
         } else {
             if memories[k] == value { return true }
             guard upsert(key: k, value: value, namespace: "global") else {
-                NSLog("[SemanticMemory] FAILED to persist global memory %@", k)
+                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
                 return false
             }
             refreshGlobalCache()
             trim(namespace: "global", maxChars: maxGlobalChars)
-            NSLog("[SemanticMemory] Global: %@ = %@", k, value)
+            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
+                             characters: value.count)
         }
         pushToGateway(key: k, value: value)
         return true
@@ -128,12 +130,13 @@ class SemanticMemoryStore: ObservableObject {
         guard !k.isEmpty, !value.isEmpty else { return false }
         if memories[k] == value { return true }
         guard upsert(key: k, value: value, namespace: "global") else {
-            NSLog("[SemanticMemory] FAILED to persist global memory %@", k)
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
             return false
         }
         refreshGlobalCache()
         trim(namespace: "global", maxChars: maxGlobalChars)
-        NSLog("[SemanticMemory] Global: %@ = %@", k, value)
+        PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
+                         characters: value.count)
         pushToGateway(key: k, value: value)
         return true
     }
@@ -162,14 +165,14 @@ class SemanticMemoryStore: ObservableObject {
         personaMemories.removeAll()
         exec("DELETE FROM memories")
         exec("DELETE FROM diary")
-        NSLog("[SemanticMemory] Cleared all")
+        PrivacyLog.store(.semanticMemory, .cleared)
     }
 
     func clearPersonaMemories() {
         guard let pid = activePersonaId else { return }
         personaMemories.removeAll()
         run("DELETE FROM memories WHERE namespace = ?", [.text(pid)])
-        NSLog("[SemanticMemory] Cleared persona memories for %@", pid)
+        PrivacyLog.store(.semanticMemory, .cleared, scope: .persona)
     }
 
     // MARK: - System Prompt Context
@@ -296,7 +299,8 @@ class SemanticMemoryStore: ObservableObject {
         if let vec = embed(text) {
             writeDiaryEmbedding(id: id, vec: vec)
         }
-        NSLog("[SemanticMemory] Diary: %@", String(text.prefix(80)))
+        PrivacyLog.store(.semanticMemory, .appended, characters: text.count,
+                         detail: PrivacyToken("diary"))
     }
 
     func readDiary(limit: Int = 10) -> [DiaryEntry] {
@@ -462,7 +466,9 @@ class SemanticMemoryStore: ObservableObject {
 
     private func openDatabase() {
         if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
-            NSLog("[SemanticMemory] Failed to open database")
+            PrivacyLog.store(.semanticMemory, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         exec("PRAGMA journal_mode=WAL")
         exec("PRAGMA synchronous=NORMAL")
@@ -674,6 +680,9 @@ class SemanticMemoryStore: ObservableObject {
     // MARK: - Private: Trim
 
     private func trim(namespace: String, maxChars: Int) {
+        // The pool, not the persona: a namespace is a persona id, which is a small wearer-visible
+        // set that a hash would not anonymise.
+        let isGlobal = namespace == "global"
         let rows = fetchAllMemories(namespace: namespace)
         var total = rows.reduce(0) { $0 + $1.keyName.count + $1.value.count }
         guard total > maxChars else { return }
@@ -682,7 +691,8 @@ class SemanticMemoryStore: ObservableObject {
             guard total > maxChars else { break }
             total -= row.keyName.count + row.value.count
             deleteMemory(key: row.keyName, namespace: namespace)
-            NSLog("[SemanticMemory] Evicted (over budget): %@", row.keyName)
+            PrivacyLog.store(.semanticMemory, .evicted, scope: isGlobal ? .global : .persona,
+                             characters: row.keyName.count + row.value.count)
         }
         if namespace == "global" { refreshGlobalCache() }
         else { refreshPersonaCache() }
@@ -703,7 +713,7 @@ class SemanticMemoryStore: ObservableObject {
         // never re-import. (It used to linger forever: `clearAll()` + relaunch resurrected every
         // "forgotten" memory from it.)
         if !dict.isEmpty, fetchAllMemories(namespace: "global").isEmpty {
-            NSLog("[SemanticMemory] Migrating %d legacy memories", dict.count)
+            PrivacyLog.store(.semanticMemory, .migrated, scope: .global, count: dict.count)
             for (key, value) in dict { upsert(key: key, value: value, namespace: "global") }
             refreshGlobalCache()
         }
@@ -711,9 +721,10 @@ class SemanticMemoryStore: ObservableObject {
         try? FileManager.default.removeItem(at: retired)
         do {
             try FileManager.default.moveItem(at: legacyURL, to: retired)
-            NSLog("[SemanticMemory] Retired legacy memory file")
+            PrivacyLog.store(.semanticMemory, .legacyRetired)
         } catch {
-            NSLog("[SemanticMemory] Could not retire legacy memory file: %@", error.localizedDescription)
+            PrivacyLog.store(.semanticMemory, .legacyRetireFailed,
+                             error: SafeErrorSummary(error))
         }
     }
 
@@ -792,7 +803,9 @@ class SemanticMemoryStore: ObservableObject {
     private func run(_ sql: String, _ binds: [SQLValue]) -> Bool {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            NSLog("[SemanticMemory] prepare failed: %@", String(cString: sqlite3_errmsg(db)))
+            PrivacyLog.store(.semanticMemory, .queryFailed, detail: PrivacyToken("prepare"),
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
             return false
         }
         defer { sqlite3_finalize(stmt) }
@@ -805,7 +818,9 @@ class SemanticMemoryStore: ObservableObject {
         }
         let ok = sqlite3_step(stmt) == SQLITE_DONE
         if !ok {
-            NSLog("[SemanticMemory] step failed: %@", String(cString: sqlite3_errmsg(db)))
+            PrivacyLog.store(.semanticMemory, .queryFailed, detail: PrivacyToken("step"),
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         return ok
     }

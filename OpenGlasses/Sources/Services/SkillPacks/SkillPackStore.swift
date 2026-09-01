@@ -147,9 +147,12 @@ final class SkillPackStore: ObservableObject {
         }
         manifestCache[manifest.id] = manifest
         save()
-        NSLog("[SkillPacks] Installed %@ %@ (%d actions, %@)",
-              manifest.id, manifest.version, manifest.actions.count,
-              signatureVerified ? "signed" : "UNSIGNED")
+        // A pack id is community-authored and says what the wearer installed, so it is a
+        // fingerprint; the version is published metadata and stays readable. Whether the bundle
+        // was signed is the fact this line exists for.
+        PrivacyLog.transfer(.skillPack, .installed, item: PrivateIdentifier(manifest.id),
+                            version: PrivacyToken(manifest.version),
+                            signed: signatureVerified, count: manifest.actions.count)
         return .installed(warnings: warnings)
     }
 
@@ -177,8 +180,10 @@ final class SkillPackStore: ObservableObject {
         guard installedPacks[index].quarantinedActions != normalized else { return }
         installedPacks[index].quarantinedActions = normalized
         if let normalized {
-            NSLog("[SkillPacks] Quarantined %d action(s) in %@: %@",
-                  normalized.count, id, normalized.joined(separator: ", "))
+            // The action names are the pack author's own vocabulary and go into the trust UI,
+            // not the device log; how many were held back is what a merge fault needs.
+            PrivacyLog.transfer(.skillPack, .quarantined, item: PrivateIdentifier(id),
+                                count: normalized.count)
         }
         save()
     }
@@ -226,7 +231,7 @@ final class SkillPackStore: ObservableObject {
             let data = try JSONEncoder().encode(installedPacks)
             try data.write(to: stateURL, options: .atomic)
         } catch {
-            NSLog("[SkillPacks] state save failed: %@", error.localizedDescription)
+            PrivacyLog.store(.skillPacks, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 }

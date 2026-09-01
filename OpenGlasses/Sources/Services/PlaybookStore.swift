@@ -689,7 +689,7 @@ class PlaybookStore: ObservableObject {
             let data = try JSONEncoder().encode(playbooks)
             UserDefaults.standard.set(data, forKey: storageKey)
         } catch {
-            NSLog("[PlaybookStore] Save failed: %@", error.localizedDescription)
+            PrivacyLog.store(.playbooks, .saveFailed, error: SafeErrorSummary(error))
         }
     }
 

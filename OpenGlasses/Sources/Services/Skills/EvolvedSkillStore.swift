@@ -119,7 +119,9 @@ final class EvolvedSkillStore: ObservableObject {
 
     private func openDatabase() {
         if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
-            NSLog("[EvolvedSkillStore] Failed to open database at %@", dbURL.path)
+            PrivacyLog.store(.evolvedSkills, .openFailed,
+                             error: .sqlite(code: sqlite3_errcode(db),
+                                            extended: sqlite3_extended_errcode(db)))
         }
         exec("PRAGMA journal_mode=WAL")
     }

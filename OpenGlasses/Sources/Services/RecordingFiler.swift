@@ -216,9 +216,9 @@ struct RecordingFiler {
             outcome.primaryURL = destination
             outcome.savedToLibrary = true
         } catch {
-            NSLog("[RecordingFiler] Could not file %@ into %@: %@",
-                  source.lastPathComponent, recordingsDirectory.lastPathComponent,
-                  error.localizedDescription)
+            // The recording's filename is derived from the session it captured; the destination
+            // is the app's own folder. Which step failed, and why, is the diagnosable part.
+            PrivacyLog.transfer(.recordingFile, .fileFailed, error: SafeErrorSummary(error))
         }
 
         // 2. The user's chosen folder, if they picked one. A copy, not a move — the app folder
@@ -235,8 +235,9 @@ struct RecordingFiler {
                 // safety net is the location we want to name and protect.
                 if !outcome.savedToLibrary { outcome.primaryURL = destination }
             } catch {
-                NSLog("[RecordingFiler] Could not copy to the chosen folder: %@",
-                      error.localizedDescription)
+                // The chosen folder is a security-scoped location the wearer picked — often
+                // iCloud Drive or a named project folder — so the path never reaches the log.
+                PrivacyLog.transfer(.recordingFile, .copyFailed, error: SafeErrorSummary(error))
             }
         }
 
