@@ -957,12 +957,12 @@ struct HardwarePrivacyView: View {
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
-                    info: "The glasses SDK collects its own usage analytics — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out, and additionally blocks those uploads from leaving your phone. There is nothing to turn on: it is off in every build. Pairing your glasses still contacts Meta once to verify the app is allowed to talk to them, which is what makes the connection work and carries no usage data."
+                    info: "OpenGlasses collects nothing of its own: no developer backend, no account, so no usage analytics and no crash reports ever reach us, in any build. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
                 )
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. The glasses SDK's own analytics are disabled and blocked.")
+                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses sends no analytics and no crash reports to its developer, and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {
