@@ -120,8 +120,10 @@ enum MetaTelemetryBlock {
     fileprivate static func recordBlock(_ url: URL?) {
         blockedCount += 1
         if blockedCount == 1 {
-            NSLog("[MetaTelemetryBlock] blocked SDK telemetry upload to %@ (plist opt-out did not take)",
-                  url?.absoluteString ?? "?")
+            // The URL is deliberately not logged: the interceptor only ever sees the one
+            // hard-coded telemetry endpoint, and a telemetry upload's query is the SDK's own
+            // session and device identifiers.
+            PrivacyLog.device(.sdk, .telemetryBlocked, count: blockedCount)
         }
     }
 

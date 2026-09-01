@@ -1155,7 +1155,9 @@ struct OnboardingView: View {
         // and the user can still reconnect from Settings.
         _ = WearablesBootstrap.ensureConfigured()
         bluetoothConfigured = true
-        NSLog("[Onboarding] Wearables SDK %@", WearablesBootstrap.statusDescription)
+        // `statusDescription` embeds the SDK's own failure text, which names the bundle and the
+        // credential it rejected — it belongs to the diagnostics panel, not the device log.
+        PrivacyLog.device(.sdk, WearablesBootstrap.isConfigured ? .configured : .unavailable)
         announcePermission("Bluetooth", granted: true)
     }
 

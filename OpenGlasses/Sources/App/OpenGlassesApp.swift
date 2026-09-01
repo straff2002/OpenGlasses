@@ -108,7 +108,7 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
-        print("📥 Background URLSession event for: \(identifier)")
+        PrivacyLog.transfer(.backgroundDownload, .sessionResumed)
         // The Hub library's background session delegate handles the actual download completion.
         // We just need to store the completion handler so the system knows we processed the event.
         BackgroundSessionCompletionStore.shared.completionHandler = completionHandler
@@ -125,7 +125,7 @@ final class BackgroundSessionCompletionStore {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     handler()
                     self.completionHandler = nil
-                    print("📥 Background session completion handler called")
+                    PrivacyLog.transfer(.backgroundDownload, .sessionCompleted)
                 }
             }
         }
@@ -384,10 +384,10 @@ struct OpenGlassesApp: App {
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 if appState.isConnected {
-                    print("📱 App moved to background — keeping audio alive (glasses connected)")
+                    PrivacyLog.app(.backgrounded, detail: PrivacyToken("glassesConnected"))
                     appState.optimizeForBackground()
                 } else {
-                    print("📱 App moved to background — stopping mic/camera (no glasses)")
+                    PrivacyLog.app(.backgrounded, detail: PrivacyToken("noGlasses"))
                     appState.wakeWordService.stopListening()
                     appState.releaseFramePin(trigger: .cameraTeardown)   // Plan CE
                     Task { await appState.cameraService.stopStreaming() }
@@ -399,7 +399,7 @@ struct OpenGlassesApp: App {
                 // Re-lock for HIPAA — requires biometric to re-enter
                 if Config.hipaaMode { isHipaaLocked = true }
             case .active:
-                print("📱 App became active")
+                PrivacyLog.app(.becameActive)
                 appState.restoreFromBackground()
                 SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
@@ -433,7 +433,7 @@ struct OpenGlassesApp: App {
                         guard WearablesBootstrap.ensureConfigured() else { return }
                         let state = Wearables.shared.registrationState
                         if state.rawValue < 3 {
-                            print("📋 Registration dropped to \(state.rawValue) after background — waiting for natural reconnect...")
+                            PrivacyLog.device(.glasses, .registrationDropped, state: PrivacyToken(String(state.rawValue)))
                         }
                     }
                 }
@@ -447,7 +447,6 @@ struct OpenGlassesApp: App {
                         }
 
                         if !appState.wakeWordService.isListening && !appState.isListening && appState.isConnected && !appState.micMuted && !Config.silentMode {
-                            print("🎤 Restarting wake word listener after foreground...")
                             // Re-configure audio session in case Bluetooth route changed
                             await appState.wakeWordService.reconfigureAudioSessionIfNeeded()
                             // Small delay for route to stabilize after foregrounding
@@ -465,41 +464,31 @@ struct OpenGlassesApp: App {
     }
 
     private func configureWearables() {
-        NSLog("[OpenGlasses] Logging active")
+        PrivacyLog.app(.loggingActive)
         // Single owner of configure(); safe to call more than once.
         guard WearablesBootstrap.ensureConfigured() else {
-            NSLog("[OpenGlasses] Wearables SDK unavailable — glasses features disabled this launch")
+            PrivacyLog.app(.sdkUnavailable)
             return
         }
-        NSLog("[OpenGlasses] Meta Wearables SDK configured successfully")
+        PrivacyLog.app(.sdkConfigured)
         let state = Wearables.shared.registrationState
-        NSLog("[OpenGlasses] Registration state: \(state.rawValue)")
-        let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
-        let mwdat = Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any]
-        if let mwdat {
-            NSLog("[OpenGlasses] MWDAT keys: \(mwdat.keys.sorted().joined(separator: ", "))")
-        } else {
-            NSLog("[OpenGlasses] MWDAT dictionary missing from Info.plist")
-        }
-        let appLinkURL = mwdat?["AppLinkURLScheme"] as? String
-        let metaAppID = mwdat?["MetaAppID"] as? String
+        PrivacyLog.device(.glasses, .registrationState,
+                          state: PrivacyToken(String(state.rawValue)))
 
-        NSLog("[OpenGlasses] Bundle ID: \(bundleId)")
-        NSLog("[OpenGlasses] AppLinkURLScheme (Universal Link): \(appLinkURL ?? "nil")")
-        NSLog("[OpenGlasses] MetaAppID: \(metaAppID ?? "nil")")
-
-        // DAT 0.9.0 removed the public `Configuration(bundle:)` parser, so log the raw
-        // MWDAT dictionary fields the SDK reads instead (same diagnostic intent: catch a
-        // placeholder or build-setting-substitution miss before it bites registration).
-        let clientToken = mwdat?["ClientToken"] as? String
-        let teamID = mwdat?["TeamID"] as? String
-        NSLog("[OpenGlasses] Config clientTokenPresent=\(clientToken?.isEmpty == false)")
-        NSLog("[OpenGlasses] Config teamID=\(teamID ?? "nil")")
-        // A placeholder/unsubstituted credential doesn't fail loudly — it stalls registration
+        // The SDK's own credentials used to be dumped here in full: the bundle id, the universal
+        // link scheme, the Meta app id, the team id, and a presence flag for the client token.
+        // A client token is a secret; the app id, team id and callback scheme name the developer
+        // account and the app's own inbound door. None of them belongs in a device log, and none
+        // of them was ever the diagnostic — the *verdict* below is.
+        //
+        // A placeholder or unsubstituted credential doesn't fail loudly: it stalls registration
         // below the state that gates the camera permission prompt, which reads as "the Connect
-        // button does nothing". Name it here so it's the first suspect, not the last.
-        if let problem = MWDATConfigCheck.message(for: MWDATConfigCheck.validate(mwdat)) {
-            NSLog("[OpenGlasses] ⚠️ %@", problem)
+        // button does nothing". `MWDATConfigCheck.Status` names that condition without quoting
+        // any value; its human message stays on the diagnostics surfaces that show it.
+        let mwdat = Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any]
+        let status = MWDATConfigCheck.validate(mwdat)
+        if !status.isUsable {
+            PrivacyLog.device(.sdk, .configProblem, state: PrivacyToken.caseName(of: status))
         }
     }
 }
@@ -537,14 +526,14 @@ class AppState: ObservableObject, AppStateProtocol {
                 Task { await cameraService.stopStreaming() }
                 speechService.stopSpeaking()
 
-                NSLog("[Privacy] Glasses disconnected — stopped mic, sessions, camera. Agent continues.")
+                PrivacyLog.device(.glasses, .disconnected)
             } else if isConnected && !oldValue {
                 // Smart connect: glasses just came on (e.g. mid text-only session). Hand
                 // audio + wake word off to them — the mirror of the teardown above. iOS
                 // routes audio output to the Bluetooth device automatically, but the
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
                 speechService.playConnectTone()
-                NSLog("[SmartConnect] Glasses connected — switching audio + wake word to glasses")
+                PrivacyLog.device(.glasses, .connected)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     // Let the Bluetooth audio link settle before grabbing the mic.
@@ -573,11 +562,11 @@ class AppState: ObservableObject, AppStateProtocol {
             if micMuted {
                 wakeWordService.stopListening()
                 isListening = false
-                NSLog("[Privacy] Mic muted by user")
+                PrivacyLog.app(.micMuted)
             } else if isConnected {
                 Task {
                     try? await wakeWordService.startListening()
-                    NSLog("[Privacy] Mic unmuted — restarted listener")
+                    PrivacyLog.app(.micUnmuted)
                 }
             }
         }
@@ -799,7 +788,7 @@ class AppState: ObservableObject, AppStateProtocol {
         guard let held = heldUtterance else { return }
         heldUtterance = nil
         guard TurnAdmissionPolicy.heldUtteranceIsStillFresh(heldAt: held.heldAt) else {
-            NSLog("[CO] Dropped a held utterance that went stale: %@", held.text)
+            PrivacyLog.app(.utteranceStaleDropped, characters: held.text.count)
             return
         }
         // Plan CU P1: the replay is a brand-new turn, but the wearer has been waiting since the
@@ -958,8 +947,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // announcement arriving minutes later would be worse than the uncertainty it replaces.
         nativeToolRouter.onOperationStatusChange = { record in
             guard record.resolvedLate else { return }
-            NSLog("[AppState] Operation for %@ settled as %@ after the turn ended",
-                  record.toolName, record.state.rawValue)
+            PrivacyLog.app(.operationSettledLate,
+                           state: PrivacyToken(record.state.rawValue),
+                           tool: PrivacyToken(record.toolName))
         }
         // Anything a previous process left in flight is unknown until a tool that can check says
         // otherwise. Off the launch path; nothing waits on it.
@@ -1237,7 +1227,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if Config.conversationPersistenceEnabled {
                     self.conversationStore.startThread(mode: self.currentMode.rawValue, personaId: self.activePersona?.id)
                 }
-                NSLog("[AppState] New topic — conversation context cleared")
+                PrivacyLog.app(.conversationCleared)
             }
         }
 
@@ -1298,15 +1288,15 @@ class AppState: ObservableObject, AppStateProtocol {
         let cameraStartHandler: () async -> Bool = { [weak self] in
             guard let self else { return false }
             if self.cameraService.isStreaming {
-                NSLog("[App] Camera already streaming")
+                PrivacyLog.camera(.glasses, .started, detail: PrivacyToken("alreadyStreaming"))
                 return true
             }
             do {
                 try await self.cameraService.startStreaming()
-                NSLog("[App] Camera streaming started on session request")
+                PrivacyLog.camera(.glasses, .started, detail: PrivacyToken("sessionRequest"))
                 return true
             } catch {
-                NSLog("[App] Camera streaming failed: %@", error.localizedDescription)
+                PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                 return false
             }
         }
@@ -1419,8 +1409,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // Same bounded encoding every other outbound image uses — no second size policy.
             let prepared = LLMImagePreparer.prepared(raw)
             guard !LLMImagePreparer.isDegenerate(prepared) else {
-                NSLog("[CN] Refusing to attach a degenerate frame — a blank tells the agent the "
-                      + "camera saw nothing, which is worse than sending no image at all.")
+                // A blank tells the agent the camera saw nothing, which is worse than sending
+                // no image at all.
+                PrivacyLog.camera(.glasses, .frameRejected, detail: PrivacyToken("degenerate"))
                 return nil
             }
             return AgentTaskAttachment(jpeg: prepared, source: source, pixelSize: frame.size)
@@ -1686,7 +1677,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         do {
                             try await cameraService.startStreaming()
                         } catch {
-                            NSLog("[App] Camera streaming failed to start: %@", error.localizedDescription)
+                            PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                         }
                     }
 
@@ -1708,10 +1699,10 @@ class AppState: ObservableObject, AppStateProtocol {
                             injectPinnedFrame()
                             framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
                         }
-                        NSLog("[App] Mode-switch redial connected (%@)", target.rawValue)
+                        PrivacyLog.app(.modeSwitchRedialed, detail: PrivacyToken(target.rawValue))
                     } else {
-                        NSLog("[App] Mode-switch redial failed (%@) — error surfaced via session state",
-                              target.rawValue)
+                        PrivacyLog.app(.modeSwitchRedialFailed,
+                                       detail: PrivacyToken(target.rawValue))
                     }
                 }
             }
@@ -1735,7 +1726,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 do {
                     try await cameraService.startStreaming()
                 } catch {
-                    NSLog("[App] Camera streaming auto-start failed: %@", error.localizedDescription)
+                    PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                 }
             }
         }
@@ -1756,11 +1747,11 @@ class AppState: ObservableObject, AppStateProtocol {
             if modelBeforeFieldSession == nil { modelBeforeFieldSession = Config.activeModelId }
             Config.setActiveModelId(modelId)
             llmService.refreshActiveModel()
-            NSLog("[FieldAssist] Session started — using vault model %@", modelId)
+            PrivacyLog.app(.fieldSessionStarted, model: PrivacyToken(modelId))
         } else if let prev = modelBeforeFieldSession {
             Config.setActiveModelId(prev)
             llmService.refreshActiveModel()
-            NSLog("[FieldAssist] Session ended — restored model %@", prev)
+            PrivacyLog.app(.fieldSessionEnded, model: PrivacyToken(prev))
             modelBeforeFieldSession = nil
         }
     }
@@ -1934,7 +1925,7 @@ class AppState: ObservableObject, AppStateProtocol {
         hudLauncher.startNavigation = { [weak self] destination in
             Task {
                 do { _ = try await self?.walkingRoute.start(destination: destination) }
-                catch { NSLog("[Navigation] Launcher start failed: %@", error.localizedDescription) }
+                catch { PrivacyLog.location(.routeStartFailed, error: SafeErrorSummary(error)) }
             }
         }
 
@@ -1981,19 +1972,18 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self = self else { return }
                 self.noteUserInteraction()   // Plan W: a wake word is an explicit engagement
                 guard !self.inConversation && !self.isProcessing else {
-                    print("⚠️ Wake word ignored - already in conversation")
+                    PrivacyLog.app(.alreadyProcessing, detail: PrivacyToken("wakeWord"))
                     return
                 }
                 // Assistive Mode (A3) owns the camera + LLM loop while active — suppress the
                 // normal wake-word turn so the two pipelines don't contend.
                 guard !AssistiveModeService.shared.isActive else {
-                    print("🧭 Wake word ignored - Assistive Mode active")
+                    PrivacyLog.app(.alreadyProcessing, detail: PrivacyToken("assistiveMode"))
                     return
                 }
                 // Route to the persona that owns this wake phrase
                 if let persona = Config.persona(forPhrase: matchedPhrase) {
                     self.applyPersonaRouting(persona)
-                    print("🎭 Persona activated: \(persona.name) (model: \(persona.modelId.isEmpty ? "user's current" : persona.modelId))")
                 }
                 await self.handleWakeWordDetected()
             }
@@ -2051,7 +2041,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return }
                 if self.isConnected {
                     self.isConnected = false
-                    NSLog("[Privacy] Bluetooth audio lost — marking glasses disconnected")
+                    PrivacyLog.device(.glasses, .disconnected, state: PrivacyToken("bluetoothLost"))
                 }
             }
         }
@@ -2063,7 +2053,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.glassesIdle = true
                 self.wakeWordService.stopListening()
                 self.isListening = false
-                NSLog("[Privacy] Glasses idle (in case?) — mic off. Will restart on BT route change.")
+                PrivacyLog.device(.glasses, .idle)
 
                 // Start auto-sleep countdown
                 self.startAutoSleepTimer()
@@ -2076,7 +2066,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return }
                 self.cancelAutoSleepTimer()
                 self.glassesIdle = false
-                NSLog("[Privacy] Glasses active again — resuming")
+                PrivacyLog.device(.glasses, .active)
             }
         }
 
@@ -2086,7 +2076,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return }
                 self.cancelAutoSleepTimer()
                 self.glassesIdle = false
-                NSLog("[Privacy] Bluetooth reconnected — clearing idle state")
+                PrivacyLog.device(.glasses, .reconnected)
             }
         }
 
@@ -2121,13 +2111,14 @@ class AppState: ObservableObject, AppStateProtocol {
                     self.heldUtterance = (text: text, heldAt: Date())
                     self.speechService.playTone(frequency: 660, duration: 0.06)
                     self.glassesDisplay.flash("⏳ Got it — one sec")
-                    NSLog("[CO] Held an utterance while a turn was in flight: %@", text)
+                    PrivacyLog.app(.utteranceHeld, characters: text.count)
 
                 case .rejectWithCue(let reason):
                     guard reason != .emptyUtterance else { return }
                     self.speechService.playTone(frequency: 330, duration: 0.12)
                     self.glassesDisplay.flash("⚠️ Didn't catch that — say it again")
-                    NSLog("[CO] Rejected an utterance (%@): %@", String(describing: reason), text)
+                    PrivacyLog.app(.utteranceRejected, detail: PrivacyToken.caseName(of: reason),
+                                   characters: text.count)
                 }
             }
         }
@@ -2136,7 +2127,7 @@ class AppState: ObservableObject, AppStateProtocol {
         transcriptionService.onSilenceTimeout = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                print("💤 User silent — ending conversation, back to wake word")
+                PrivacyLog.app(.conversationEnded, detail: PrivacyToken("silence"))
                 await self.returnToWakeWord()
             }
         }
@@ -2170,7 +2161,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 Task { @MainActor in
                     guard let self, self.isConnected else { return }
                     self.isConnected = false
-                    NSLog("[Privacy] Bluetooth audio route lost — marking glasses disconnected")
+                    PrivacyLog.device(.glasses, .disconnected, state: PrivacyToken("routeLost"))
                 }
             }
         }
@@ -2189,7 +2180,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 let now = Date()
                 let fmt = DateFormatter()
                 fmt.dateFormat = "HH:mm:ss.SSS"
-                print("📋 Devices changed: \(deviceIds) at \(fmt.string(from: now))")
+                PrivacyLog.device(.glasses, .deviceListChanged, count: deviceIds.count)
                 self.addDebugEvent("Devices changed: \(deviceIds.count) at \(fmt.string(from: now))")
                 if !deviceIds.isEmpty {
                     let wasDisconnected = !self.isConnected
@@ -2216,7 +2207,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 } else if self.isConnected {
                     // Glasses powered off or Bluetooth disconnected
                     self.isConnected = false
-                    NSLog("[Glasses] Device list empty — glasses disconnected")
+                    PrivacyLog.device(.glasses, .deviceListEmpty)
                 }
             }
         }
@@ -2228,7 +2219,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let regToken = Wearables.shared.addRegistrationStateListener { [weak self] newState in
             Task { @MainActor in
                 guard let self else { return }
-                print("📋 Registration state changed: \(newState.rawValue)")
+                PrivacyLog.device(.glasses, .registrationState, state: PrivacyToken(String(newState.rawValue)))
                 self.addDebugEvent("Registration state -> \(newState.rawValue)")
                 self.registrationStateRaw = newState.rawValue
                 if newState.rawValue >= 3 {
@@ -2250,13 +2241,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Check initial state
         let initialState = Wearables.shared.registrationState
-        print("📋 Initial registration state: \(initialState.rawValue)")
+        PrivacyLog.device(.glasses, .registrationState, state: PrivacyToken(String(initialState.rawValue)))
         addDebugEvent("Initial registration state: \(initialState.rawValue)")
         registrationStateRaw = initialState.rawValue
         if initialState.rawValue >= 3 {
             hasEverRegistered = true
             isConnected = true
-            print("📋 Already registered on launch")
+            PrivacyLog.device(.glasses, .alreadyRegistered)
         }
     }
 
@@ -2277,7 +2268,6 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             let state = Wearables.shared.registrationState
             self.registrationStateRaw = state.rawValue
-            print("📋 Launch state check: state=\(state.rawValue)")
             self.addDebugEvent("Launch state check: state=\(state.rawValue)")
 
             if state.rawValue >= 3 {
@@ -2408,7 +2398,7 @@ class AppState: ObservableObject, AppStateProtocol {
         do {
             try await Wearables.shared.startRegistration()
         } catch {
-            print("📋 Manual registration start failed: \(error)")
+            PrivacyLog.device(.glasses, .registrationFailed, error: SafeErrorSummary(error))
             addDebugEvent("Manual registration start failed: \(error.localizedDescription)")
         }
 
@@ -2480,17 +2470,14 @@ class AppState: ObservableObject, AppStateProtocol {
 
             // Don't auto-start in silent mode — saves battery, user uses tap-to-talk
             if Config.silentMode {
-                print("🔇 Silent mode — skipping wake word auto-start (battery saver)")
                 return
             }
 
             if !wakeWordService.isListening {
-                print("🎤 Auto-starting wake word listener...")
                 do {
                     try await wakeWordService.startListening()
-                    print("✅ Wake word listener auto-started")
                 } catch {
-                    print("⚠️ Auto-start failed: \(error.localizedDescription)")
+                    PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
                     // Not fatal — user can still use Test Microphone button
                 }
             }
@@ -2498,13 +2485,12 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     func stopSpeakingAndResume() {
-        print("🛑 User tapped stop")
+        PrivacyLog.app(.playbackStopped)
         speechService.stopSpeaking()
         isProcessing = false
         speechService.stopThinkingSound()
         // Stay in conversation — listen for follow-up right away
         if inConversation {
-            print("💬 Listening for follow-up after stop...")
             isListening = true
             transcriptionService.startRecording()
         } else {
@@ -2515,7 +2501,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Handle voice-activity barge-in: user started speaking during TTS.
     /// Stop the current response and process the barge-in text as a new query.
     func handleBargeIn(_ bargeInText: String) {
-        print("⚡ Barge-in: '\(bargeInText)' — stopping TTS and processing")
+        PrivacyLog.app(.bargeIn, characters: bargeInText.count)
         // Plan CU P1: read before `stopSpeaking()` clears it. A barge-in over playback is a turn
         // that worked and was cut short — its stage times are sound data. A barge-in while the
         // model is still generating is a turn that never delivered, and the cancellation path tags
@@ -2558,7 +2544,7 @@ class AppState: ObservableObject, AppStateProtocol {
             if isConnected {
                 Task { try? await wakeWordService.startListening() }
             }
-            NSLog("[Listening] Enabled")
+            PrivacyLog.app(.listeningEnabled)
         } else {
             // Stop everything: wake word, transcription, TTS, Live Activity — including any
             // in-flight LLM turn, whose finish stage would otherwise resume listening.
@@ -2574,7 +2560,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = false
             inConversation = false
             activePersona = nil
-            NSLog("[Listening] Disabled")
+            PrivacyLog.app(.listeningDisabled)
         }
     }
 
@@ -2593,7 +2579,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Cancel current LLM processing or TTS playback and return to wake word listening.
     func cancelCurrentResponse() {
-        print("🛑 User cancelled response")
+        PrivacyLog.app(.responseCancelled)
         currentLLMTask?.cancel()
         currentLLMTask = nil
         speechService.stopSpeaking()
@@ -2678,7 +2664,6 @@ class AppState: ObservableObject, AppStateProtocol {
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
-            print("📸 Photo + prompt: \(prompt)")
 
             let rawResponse = try await llmService.sendMessage(
                 prompt,
@@ -2749,7 +2734,7 @@ class AppState: ObservableObject, AppStateProtocol {
             } catch {
                 // Backgrounded, already generating, or the model went away mid-loop. All of these
                 // mean "no description this tick", not an error worth putting in the wearer's ear.
-                NSLog("[SceneNarration] Description failed: %@", error.localizedDescription)
+                PrivacyLog.vision(.sceneNarration, .recognitionFailed, error: SafeErrorSummary(error))
                 return nil
             }
         }
@@ -2884,7 +2869,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Recheck before surrendering to the phone camera: the flag can be stale (auto-
             // sleep fired, a Disconnect tap, a dropped link) while the glasses sit on the
             // user's face. One bounded reconnect attempt — the same path the hero capsule uses.
-            NSLog("[Photo] Glasses flagged disconnected — rechecking before phone fallback")
+            PrivacyLog.camera(.glasses, .captureFallbackUsed, detail: PrivacyToken("reconnectFirst"))
             await glassesService.connect()
             for _ in 0..<20 where !isConnected {   // up to 5s
                 try? await Task.sleep(nanoseconds: 250_000_000)
@@ -2906,7 +2891,6 @@ class AppState: ObservableObject, AppStateProtocol {
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
-            print("📸 Manual photo captured, sending to LLM for analysis")
 
             let prompt = "Describe what you see in this image."
             let rawResponse = try await llmService.sendMessage(
@@ -2927,7 +2911,6 @@ class AppState: ObservableObject, AppStateProtocol {
                 conversationStore.appendMessage(role: "user", content: "[Photo taken manually]")
                 conversationStore.appendMessage(role: "assistant", content: response)
             }
-            print("🤖 \(llmService.activeModelName) (vision): \(response)")
 
             isProcessing = false
             speechService.stopThinkingSound()
@@ -3022,9 +3005,9 @@ class AppState: ObservableObject, AppStateProtocol {
             speechService.playPhotoTone()
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
-            NSLog("[SilentPhoto] Saved to %@", filename)
+            PrivacyLog.photoLibrary(.saved, asset: .image)
         } catch {
-            NSLog("[SilentPhoto] Failed: %@", error.localizedDescription)
+            PrivacyLog.photoLibrary(.saveFailed, asset: .image, error: SafeErrorSummary(error))
         }
     }
 
@@ -3108,7 +3091,7 @@ class AppState: ObservableObject, AppStateProtocol {
         guard Config.broadcastChatReadbackEnabled else { return }
         let channel = Config.broadcastChatChannel.trimmingCharacters(in: .whitespaces)
         guard !channel.isEmpty else {
-            NSLog("[ChatReadback] enabled but no channel configured — skipping")
+            PrivacyLog.app(.chatReadbackUnconfigured)
             return
         }
         chatReadback.ttsBusy = { [weak self] in
@@ -3135,12 +3118,12 @@ class AppState: ObservableObject, AppStateProtocol {
     func optimizeForBackground() {
         let isStreaming = broadcastService.isBroadcasting || webRTCStreaming.isStreaming
         guard isStreaming else {
-            print("📱 Background: no active streams — normal background behavior")
+            PrivacyLog.app(.backgroundOptimizationSkipped)
             return
         }
 
         isBackgroundOptimized = true
-        print("📱 Background: active stream detected — optimizing for encoding")
+        PrivacyLog.app(.backgroundOptimized)
 
         // Pause proactive alerts (non-essential background work)
         proactiveAlerts.pauseAlerts()
@@ -3159,7 +3142,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func restoreFromBackground() {
         guard isBackgroundOptimized else { return }
         isBackgroundOptimized = false
-        print("📱 Foreground: restoring normal resource allocation")
+        PrivacyLog.app(.foregroundRestored)
 
         proactiveAlerts.resumeAlerts()
         faceRecognition.restoreFrequency()
@@ -3372,7 +3355,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // their interval; more consumers (camera snapshot-first, local-model tier) adopt it as
         // their device passes land.
         let postureToken = power.$posture.sink { posture in
-            NSLog("[Power] posture → %@", posture.label)
+            PrivacyLog.app(.powerPosture, detail: PrivacyToken.caseName(of: posture))
         }
         cancellables.append(postureToken)
 
@@ -3446,7 +3429,6 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Called from Action Button intent or manual mic button.
     /// Transcription will check for persona names in the spoken text.
     func startDirectTranscription() {
-        print("🎤 Action Button: starting direct transcription (no wake word)")
         addDebugEvent("ActionButton: direct transcription requested (bg=\(UIApplication.shared.applicationState == .background))")
         Task {
             // Configure audio (uses glasses mic if connected, phone mic otherwise)
@@ -3471,7 +3453,6 @@ class AppState: ObservableObject, AppStateProtocol {
     private(set) var manuallyTriggered: Bool = false
 
     func handleWakeWordDetected(manual: Bool = false) async {
-        print("🎤 \(manual ? "Tap-to-talk" : "Wake word") detected! Starting conversation...")
         manuallyTriggered = manual
         // The engine-before-listening ordering lives (tested) in ConversationStartSequence.
         await ConversationStartSequence.run(.init(
@@ -3507,8 +3488,9 @@ class AppState: ObservableObject, AppStateProtocol {
     private func authorises(_ command: VoiceCommandParser.Command, _ text: String) -> Bool {
         guard let match = voiceCommandParser.match(command, in: text) else { return false }
         if let rule = match.demotedBy {
-            NSLog("[Voice] %@ candidate demoted by %@ (%d tokens) — routing as speech",
-                  command.rawValue, rule.rawValue, PhraseMatcher.tokenize(text).count)
+            PrivacyLog.app(.voiceCommandDemoted, detail: PrivacyToken(command.rawValue),
+                           state: PrivacyToken(rule.rawValue),
+                           count: PhraseMatcher.tokenize(text).count)
             addDebugEvent("Voice \(command.rawValue) demoted: \(rule.rawValue)")
         }
         return match.authorises
@@ -3551,7 +3533,7 @@ class AppState: ObservableObject, AppStateProtocol {
             VoiceCommandHandler(label: "teleprompter") { [weak self] text in
                 guard let self, self.teleprompterService.isActive,
                       self.teleprompterService.handleVoiceCommand(text) else { return false }
-                print("📜 Teleprompter command handled: \(text)")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("teleprompter"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -3560,7 +3542,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // so these short commands aren't filtered.
             VoiceCommandHandler(label: "hud-task") { [weak self] text in
                 guard let self, await self.hudRouter.handleVoiceCommand(text) else { return false }
-                print("🎯 HUD task command handled: \(text)")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudTask"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -3569,14 +3551,14 @@ class AppState: ObservableObject, AppStateProtocol {
             // inside the menu navigates instead of re-opening the root.
             VoiceCommandHandler(label: "hud-launcher-select") { [weak self] text in
                 guard let self, self.hudLauncher.handleVoiceSelection(text) else { return false }
-                print("🎛 HUD launcher voice selection: \(text)")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudLauncherSelect"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
             // HUD launcher (Display Phase 4 / Plan Y): "menu" opens the band-navigable launcher.
             VoiceCommandHandler(label: "hud-launcher-open") { [weak self] text in
                 guard let self, HUDLauncher.isOpenCommand(text), self.hudLauncher.hasContent else { return false }
-                print("🎛 HUD launcher opened")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudLauncherOpen"))
                 self.hudLauncher.open()
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
@@ -3586,7 +3568,7 @@ class AppState: ObservableObject, AppStateProtocol {
             VoiceCommandHandler(label: "digest-briefing") { [weak self] text in
                 guard let self, Config.digestEnabled,
                       HUDVoiceCommand.parse(text) == .briefing else { return false }
-                print("📋 Digest briefing requested")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("digestBriefing"))
                 await self.notificationDigest.presentGlance()
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
@@ -3597,7 +3579,7 @@ class AppState: ObservableObject, AppStateProtocol {
                       !self.isPhotoCommand(text), !self.isStopCommand(text), !self.isGoodbyeCommand(text)
                 else { return false }
                 guard await self.intentClassifier.classify(transcript: text) == .ignore else { return false }
-                print("🚫 Intent classifier: IGNORE — not responding")
+                PrivacyLog.app(.intentIgnored)
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -3613,16 +3595,15 @@ class AppState: ObservableObject, AppStateProtocol {
             // "stop" — interrupt TTS, stay in conversation
             VoiceCommandHandler(label: "stop") { [weak self] text in
                 guard let self, self.isStopCommand(text) else { return false }
-                print("🛑 Voice command: stop")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("stop"))
                 self.speechService.stopSpeaking()
-                if self.inConversation { print("💬 Stopped — listening for next question...") }
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
             // "goodbye" — end conversation, back to wake word
             VoiceCommandHandler(label: "goodbye") { [weak self] text in
                 guard let self, self.isGoodbyeCommand(text) else { return false }
-                print("👋 Voice command: goodbye")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("goodbye"))
                 self.speechService.stopSpeaking()
                 self.inConversation = false
                 self.lastResponse = "Goodbye!"
@@ -3633,7 +3614,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // "take a picture" — capture photo from glasses camera, describe via the vision LLM
             VoiceCommandHandler(label: "photo") { [weak self] text in
                 guard let self, self.isPhotoCommand(text) else { return false }
-                print("📸 Voice command: take a picture")
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("photo"))
                 self.isProcessing = true
                 // Start capture immediately — play the shutter tone, no spoken "taking a picture"
                 self.speechService.playAcknowledgmentTone()
@@ -3649,7 +3630,6 @@ class AppState: ObservableObject, AppStateProtocol {
                             try Task.checkCancellation()
                             // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                             self.cameraService.restoreAudioForWakeWord()
-                            print("📸 Photo captured, sending to LLM with prompt: \(query)")
 
                             return try await self.llmService.sendMessage(
                                 query,
@@ -3671,7 +3651,6 @@ class AppState: ObservableObject, AppStateProtocol {
                             if Config.conversationPersistenceEnabled {
                                 self.conversationStore.appendMessage(role: "assistant", content: response)
                             }
-                            print("🤖 \(self.llmService.activeModelName) (vision): \(response)")
 
                             // If an audio or video recording is active, inject the description
                             // into the caption history so the meeting assistant has visual context.
@@ -3686,11 +3665,11 @@ class AppState: ObservableObject, AppStateProtocol {
                             self.stopStopListener()
                         },
                         onCancelled: {
-                            print("🛑 Photo/LLM task cancelled")
+                            PrivacyLog.app(.turnCancelled, detail: PrivacyToken("photo"))
                         },
                         onError: { error in
                             self.cameraService.restoreAudioForWakeWord()
-                            print("📸 Photo capture failed: \(error)")
+                            PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
                             self.lastResponse = "Photo failed: \(error.localizedDescription)"
                             // Speak a human sentence; raw error internals (DecodingError
                             // paths, model module trees) go to the log only — live-traced:
@@ -3746,7 +3725,8 @@ class AppState: ObservableObject, AppStateProtocol {
         framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         glassesDisplay.flash("📌 Pinned")
-        NSLog("[FramePin] Pinned frame (%.0f×%.0f)", frame.size.width, frame.size.height)
+        PrivacyLog.camera(.glasses, .framePinned,
+                          width: Int(frame.size.width), height: Int(frame.size.height))
         return true
     }
 
@@ -3762,7 +3742,8 @@ class AppState: ObservableObject, AppStateProtocol {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             glassesDisplay.flash("Pin released")
         }
-        NSLog("[FramePin] Released (%@)", String(describing: trigger))
+        PrivacyLog.camera(.glasses, .framePinReleased,
+                          detail: PrivacyToken.caseName(of: trigger))
     }
 
     /// Sharp-inject the pinned frame into the active live session (no-op outside live modes —
@@ -3822,7 +3803,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Attempt to activate the camera and capture a frame for smart camera.
     /// Returns nil on failure (doesn't crash the flow — text-only fallback).
     private func smartCameraCapture(reason: String) async -> Data? {
-        print("📷 Smart Camera: activating (\(reason))")
+        PrivacyLog.camera(.glasses, .captureRequested)
 
         // If camera is already streaming, just grab the frame — but never a degenerate
         // placeholder (don't restart a running stream over a bad frame; just send no image).
@@ -3847,16 +3828,16 @@ class AppState: ObservableObject, AppStateProtocol {
             if let frame = cameraService.latestFrame,
                let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
                !LLMImagePreparer.isDegenerate(data) {
-                print("📷 Smart Camera: captured frame")
+                PrivacyLog.camera(.glasses, .frameReceived)
                 return data
             }
             // Try photo capture as fallback
             let photoData = try await cameraService.capturePhoto()
             cameraService.restoreAudioForWakeWord()
-            print("📷 Smart Camera: captured photo")
+            PrivacyLog.camera(.glasses, .photoCaptured)
             return photoData
         } catch {
-            print("📷 Smart Camera: capture failed — \(error.localizedDescription)")
+            PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
             return nil
         }
     }
@@ -3911,11 +3892,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // suspended on the coordinator.
         if toolConfirmationCoordinator.pending != nil, toolConfirmationCoordinator.resolveByVoice(text) {
             currentTranscription = text
-            print("🛡️ Consent prompt answered by voice: \(text)")
+            PrivacyLog.app(.consentAnsweredByVoice)
             return
         }
         guard !isProcessing else {
-            print("⚠️ Already processing, ignoring: \(text)")
+            PrivacyLog.app(.alreadyProcessing)
             return
         }
 
@@ -3923,7 +3904,7 @@ class AppState: ObservableObject, AppStateProtocol {
         isListening = false
         errorMessage = nil
         speechService.playEndListeningTone()
-        print("📝 Transcription: \(text)")
+        PrivacyLog.speech(.dictation, .transcriptDelivered, characters: text.count)
         addDebugEvent("Transcription: \(String(text.prefix(80)))")
 
         // Pre-LLM voice-command chain (Plan BG P2): teleprompter, HUD task card, HUD launcher
@@ -3952,7 +3933,6 @@ class AppState: ObservableObject, AppStateProtocol {
                let persona = personas.first(where: { $0.id == match.personaId }) {
                 if persona.id != activePersona?.id {
                     applyPersonaRouting(persona)
-                    print("🎭 Persona detected in transcription: \(persona.name)")
                 }
                 query = match.query
             }
@@ -3980,7 +3960,8 @@ class AppState: ObservableObject, AppStateProtocol {
             .messages.filter({ $0.role == "user" }).count ?? 0
         let hasImage = isPhotoCommand(query) // pre-check; smartCamera may override below
         let classification = conversationClassifier.classify(query, hasImage: hasImage, conversationTurnCount: turnCount)
-        print("🧭 Classified: complexity=\(String(format: "%.2f", classification.complexity)) tier=\(classification.modelTier.rawValue) direct=\(classification.directToolCall?.toolName ?? "none")")
+        PrivacyLog.app(.turnClassified, detail: PrivacyToken(classification.modelTier.rawValue),
+                       tool: classification.directToolCall.map { PrivacyToken($0.toolName) })
 
         // Tier 0: Direct tool call — skip LLM entirely
         if let directCall = classification.directToolCall,
@@ -4001,7 +3982,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if case .completed(let result) = outcome {
                 TurnRecorder.addToolTime(since: toolStartedAt)
                 lastResponse = result
-                print("⚡ Direct tool call: \(directCall.toolName) → \(result)")
+                PrivacyLog.app(.directToolAnswered, tool: PrivacyToken(directCall.toolName),
+                               characters: result.count)
 
                 // Follow-up continuity: the LLM never saw this exchange (tier-0 bypasses
                 // it) — record it in the model's history so "what about tomorrow?" can
@@ -4021,7 +4003,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // policy refusal lands here too, and re-reaches the same gate through the model —
                 // never around it. An unresolved outcome falls through as well: the classifier's
                 // allowlist is read-only, so there is no side effect the model could duplicate.
-                print("⚠️ Direct tool call did not answer, falling back to LLM: \(outcome.text)")
+                PrivacyLog.app(.directToolFellBack, tool: PrivacyToken(directCall.toolName))
                 // Plan CU P1: the LLM turn below answers this same utterance, so seal this attempt
                 // as its own abandoned record and hand back the stamps it claimed. Sealed here
                 // rather than at the gate below, which `isProcessing = false` is about to skip.
@@ -4061,12 +4043,14 @@ class AppState: ObservableObject, AppStateProtocol {
         ) {
         case .localAgent:
             useLocalAgent = true
-            print("🧠 Routing to agent model (fast tier, agentic mode)\(agentIsCloud ? " [cloud]" : " [on-device]")")
+            PrivacyLog.model(.agentSelected,
+                             detail: PrivacyToken(agentIsCloud ? "cloud" : "onDevice"))
         case .switchModel(let id):
             originalModelId = Config.activeModelId
             Config.setActiveModelId(id)
             llmService.refreshActiveModel()
-            print("🧭 Model routed: \(classification.modelTier.rawValue) → \(tierModel?.name ?? id)")
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(id),
+                             detail: PrivacyToken(classification.modelTier.rawValue))
             // BK P2c: narrate the auto-routing switch too, so the principle holds everywhere a model
             // changes under the user (not just on failure). Speaks before the thinking sound starts.
             if Config.narrateModelSwitchesEnabled, let dest = tierModel {
@@ -4171,7 +4155,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             guard Config.modelCascadeEnabled,
                                   ModelFallbackChain.classify(error) != .terminalForTurn,
                                   !Task.isCancelled else { throw error }
-                            print("🔀 Local agent failed (\(error)) — cascading to cloud")
+                            PrivacyLog.model(.cascadeSwitched, error: SafeErrorSummary(error))
                             rawResponse = try await cloudCascade()
                         }
                     } else {
@@ -4194,7 +4178,6 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 accept: { [self] response in
                     lastResponse = response
-                    print("🤖 \(llmService.activeModelName): \(response)")
 
                     // Save to conversation store
                     if Config.conversationPersistenceEnabled {
@@ -4208,7 +4191,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     stopStopListener()
                 },
                 onCancelled: {
-                    print("🛑 LLM turn cancelled")
+                    PrivacyLog.app(.turnCancelled)
                 },
                 onError: { [self] error in
                     errorMessage = "Failed to get response: \(error.localizedDescription)"
@@ -4230,7 +4213,6 @@ class AppState: ObservableObject, AppStateProtocol {
                     // After responding, stay in conversation — listen for follow-up
                     isProcessing = false
                     speechService.stopThinkingSound()
-                    if inConversation { print("💬 Continuing conversation — listening for follow-up...") }
                     await resumeListeningOrReturnToWakeWord(ensureEngine: true)
                 }
             ))
@@ -4341,7 +4323,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 onCancelled: { [self] in
                     streamingTurn = nil
-                    print("🛑 Text turn cancelled")
+                    PrivacyLog.app(.turnCancelled, detail: PrivacyToken("text"))
                 },
                 onError: { [self] error in
                     streamingTurn = nil
@@ -4462,9 +4444,8 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             do {
                 try await wakeWordService.startListening()
-                print("🎤 Stop listener active during TTS")
             } catch {
-                print("⚠️ Could not start stop listener: \(error)")
+                PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
             }
         }
     }
@@ -4638,8 +4619,9 @@ class AppState: ObservableObject, AppStateProtocol {
         let trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count > 5 else { return }
 
-        NSLog("[OpenClaw] Triaging notification (%d chars): %@",
-              trimmed.count, String(trimmed.prefix(120)))
+        // The notification body is what the wearer's agent was told about their world — the
+        // one string this whole path exists to reason over, and never a log field.
+        PrivacyLog.gatewayNotification(.triage, characters: trimmed.count)
 
         let triagePrompt = """
         An automated task from OpenClaw (a background service) produced this output:
@@ -4679,20 +4661,22 @@ class AppState: ObservableObject, AppStateProtocol {
             let cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if cleaned.uppercased() == "SKIP" || cleaned.uppercased().hasPrefix("SKIP") {
-                NSLog("[OpenClaw] Agent triaged as skip")
+                PrivacyLog.gatewayOperation("triage.skip", outcome: .succeeded)
                 return
             }
 
             if cleaned.uppercased().hasPrefix("CLARIFY:") {
                 let question = String(cleaned.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines)
-                NSLog("[OpenClaw] Agent requesting clarification: %@", question)
+                PrivacyLog.gatewayOperation("triage.clarify", outcome: .succeeded,
+                                           characters: question.count)
                 await clarifyWithOpenClaw(originalMessage: trimmed, question: question)
                 return
             }
 
             if cleaned.uppercased().hasPrefix("FIX:") {
                 let instruction = String(cleaned.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
-                NSLog("[OpenClaw] Agent requesting fix: %@", instruction)
+                PrivacyLog.gatewayOperation("triage.fix", outcome: .succeeded,
+                                           characters: instruction.count)
                 await requestOpenClawFix(originalMessage: trimmed, instruction: instruction)
                 return
             }
@@ -4705,14 +4689,14 @@ class AppState: ObservableObject, AppStateProtocol {
                 priority: .medium
             )
         } catch {
-            NSLog("[OpenClaw] Triage failed: %@ — dropping", error.localizedDescription)
+            PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
         }
     }
 
     /// Query OpenClaw for clarification on a confusing notification, then re-triage.
     private func clarifyWithOpenClaw(originalMessage: String, question: String) async {
         guard Config.isOpenClawConfigured else {
-            NSLog("[OpenClaw] Can't clarify — OpenClaw not configured")
+            PrivacyLog.gatewayConnection(.notConfigured)
             return
         }
 
@@ -4730,7 +4714,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         switch result {
         case .success(let clarification):
-            NSLog("[OpenClaw] Clarification received: %@", String(clarification.prefix(200)))
+            PrivacyLog.gatewayOperation("triage.clarify", outcome: .succeeded,
+                                       characters: clarification.count)
 
             // Now summarize the clarified version for the user
             let summaryPrompt = """
@@ -4763,11 +4748,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     priority: .medium
                 )
             } catch {
-                NSLog("[OpenClaw] Summary after clarification failed: %@", error.localizedDescription)
+                PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
             }
 
-        case .failure(let error):
-            NSLog("[OpenClaw] Clarification request failed: %@", error)
+        case .failure:
+            // The failure is a prose string composed by whatever refused the call — the same
+            // shape batch 4 left without a parameter on the offline sink.
+            PrivacyLog.gatewayOperation("triage.clarify", outcome: .failed)
         }
     }
 
@@ -4790,7 +4777,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         switch result {
         case .success(let response):
-            NSLog("[OpenClaw] Fix response: %@", String(response.prefix(200)))
+            PrivacyLog.gatewayOperation("triage.fix", outcome: .succeeded,
+                                       characters: response.count)
             // Only tell the user if the fix is noteworthy
             let briefCheck = response.lowercased()
             let isNoteworthy = briefCheck.contains("fixed") ||
@@ -4807,8 +4795,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     priority: .low
                 )
             }
-        case .failure(let error):
-            NSLog("[OpenClaw] Fix request failed: %@", error)
+        case .failure:
+            PrivacyLog.gatewayOperation("triage.fix", outcome: .failed)
         }
     }
 
@@ -4862,10 +4850,10 @@ class AppState: ObservableObject, AppStateProtocol {
             let seconds = UInt64(minutes) * 60
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
             guard let self, !Task.isCancelled, self.glassesIdle, self.isConnected else { return }
-            NSLog("[AutoSleep] Glasses idle for %d min — disconnecting", minutes)
+            PrivacyLog.device(.glasses, .autoSleepFired, minutes: minutes)
             self.disconnectGlasses()
         }
-        NSLog("[AutoSleep] Timer started: %d minutes", minutes)
+        PrivacyLog.device(.glasses, .autoSleepArmed, minutes: minutes)
     }
 
     private func cancelAutoSleepTimer() {
@@ -4913,7 +4901,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Update live activity
         liveActivityManager.end()
 
-        NSLog("[OpenGlasses] Quick disconnect — all glasses services stopped")
+        PrivacyLog.app(.quickDisconnect)
     }
 
     func returnToWakeWord() async {
@@ -4943,30 +4931,29 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         // The master toggle wins over every restart rule below.
         if !listeningEnabled {
-            print("🔇 Listening disabled — wake word listener stays off")
+            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("masterOff"))
             return
         }
         // In silent mode, don't restart wake word UNLESS we just finished an
         // active conversation — the user was just talking, so they expect the
         // mic to come back for the next wake word.
         if Config.silentMode && !wasInConversation {
-            print("🔇 Silent mode — wake word listener stays off (no active conversation)")
+            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("silentMode"))
             return
         }
         // Don't restart mic on phone speaker when glasses are disconnected
         if !isConnected {
-            print("🔇 Glasses disconnected — wake word listener stays off for privacy")
+            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("disconnected"))
             return
         }
         if micMuted {
-            print("🔇 Mic muted — wake word listener stays off")
+            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("micMuted"))
             return
         }
         do {
             try await wakeWordService.startListening()
-            print("✅ Wake word restarted")
         } catch {
-            print("❌ Failed to restart listener: \(error)")
+            PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
             errorMessage = "Tap Test Microphone to restart"
         }
     }

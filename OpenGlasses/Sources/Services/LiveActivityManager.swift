@@ -18,7 +18,8 @@ class LiveActivityManager {
         Task {
             for activity in Activity<GlassesActivityAttributes>.activities {
                 await activity.end(.init(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
-                NSLog("[LiveActivity] Ended stale activity: %@", activity.id)
+                PrivacyLog.device(.liveActivity, .staleEnded,
+                                  item: PrivateIdentifier(activity.id))
             }
         }
     }
@@ -29,16 +30,17 @@ class LiveActivityManager {
         for activity in Activity<GlassesActivityAttributes>.activities where activity.id != currentActivity?.id {
             Task {
                 await activity.end(.init(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
-                NSLog("[LiveActivity] Cleaned up stale activity: %@", activity.id)
+                PrivacyLog.device(.liveActivity, .staleEnded,
+                                  item: PrivateIdentifier(activity.id))
             }
         }
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            NSLog("[LiveActivity] Activities not enabled")
+            PrivacyLog.device(.liveActivity, .notEnabled)
             return
         }
         guard currentActivity == nil else {
-            NSLog("[LiveActivity] Already running")
+            PrivacyLog.device(.liveActivity, .alreadyRunning)
             return
         }
 
@@ -65,9 +67,9 @@ class LiveActivityManager {
                 pushType: nil
             )
             currentActivity = activity
-            NSLog("[LiveActivity] Started: %@", activity.id)
+            PrivacyLog.device(.liveActivity, .started, item: PrivateIdentifier(activity.id))
         } catch {
-            NSLog("[LiveActivity] Failed to start: %@", error.localizedDescription)
+            PrivacyLog.device(.liveActivity, .startFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -122,7 +124,7 @@ class LiveActivityManager {
         if let activity = currentActivity {
             Task {
                 await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
-                NSLog("[LiveActivity] Ended tracked activity")
+                PrivacyLog.device(.liveActivity, .ended)
             }
             currentActivity = nil
         }
@@ -131,7 +133,8 @@ class LiveActivityManager {
         Task {
             for activity in Activity<GlassesActivityAttributes>.activities {
                 await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
-                NSLog("[LiveActivity] Ended stale activity: %@", activity.id)
+                PrivacyLog.device(.liveActivity, .staleEnded,
+                                  item: PrivateIdentifier(activity.id))
             }
         }
     }

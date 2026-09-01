@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 #
-# Privacy-logging scanner — REPORT ONLY (always exits 0).
+# Privacy-logging gate — BLOCKING by default (Plan DM P2).
 #
-# Counts what production sources still log directly, and flags the two shapes that most often
+# Fails the build if production sources log directly, and flags the two shapes that most often
 # turn a diagnostic line into a data leak: a log call interpolating a variable named after user
 # content or a credential, and a log call reading `localizedDescription`.
 #
 # It is deliberately blunt: it matches text, not syntax, so it over-reports (a comment mentioning
-# NSLog counts) and under-reports (a wrapper that hides the call). That is the right trade while
-# it is a report — the number is a ledger, not a verdict. Syntax analysis is the P2 job, at which
-# point this becomes a gate. Until then it prints a summary CI can parse and watch trend down.
+# NSLog counts) and under-reports (a wrapper that hides the call). That trade is the reason the
+# unit suite carries the structural half — `PrivacyLogTests` scans the migrated files and asserts
+# the encoder never emits supplied content — while this script is the cheap, global backstop that
+# every future file inherits without anyone remembering to add it to a list.
 #
 # Usage:
-#   Scripts/check-privacy-logging.sh            # full report
-#   Scripts/check-privacy-logging.sh --ledger   # per-file counts only (the checked-in baseline)
+#   Scripts/check-privacy-logging.sh            # gate: nonzero exit on any finding
+#   Scripts/check-privacy-logging.sh --report    # the old report-only behaviour, always exits 0
+#   Scripts/check-privacy-logging.sh --ledger    # per-file counts only (the checked-in ledger)
 #
-# Allowlist: Scripts/privacy-logging-allowlist.txt — one path per line, '#' comments. Allowlisted
-# files are counted and reported separately, never silently dropped, so growing the allowlist
-# shows up as a reviewable diff rather than a quietly shrinking number.
+# Allowlist: Scripts/privacy-logging-allowlist.txt — one path per line, each followed by a
+# `# reason`. Allowlisted files are counted and reported separately and do not fail the gate, so
+# growing the allowlist shows up as a reviewable diff rather than a quietly shrinking number. A
+# line without a reason is itself a failure: an unexplained exemption is the thing this file
+# exists to prevent.
 
 set -uo pipefail
 
@@ -25,8 +29,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCES="$REPO_ROOT/OpenGlasses/Sources"
 ALLOWLIST="$REPO_ROOT/Scripts/privacy-logging-allowlist.txt"
 
-LEDGER_ONLY=0
-[ "${1:-}" = "--ledger" ] && LEDGER_ONLY=1
+MODE="gate"
+case "${1:-}" in
+  --ledger) MODE="ledger" ;;
+  --report) MODE="report" ;;
+  "") ;;
+  *) echo "check-privacy-logging: unknown option '$1' (use --report or --ledger)"; exit 2 ;;
+esac
 
 if [ ! -d "$SOURCES" ]; then
   echo "check-privacy-logging: no sources at $SOURCES — nothing to scan."
@@ -39,9 +48,39 @@ DIRECT_RE='(^|[^A-Za-z0-9_.])(NSLog|print)\('
 # anywhere on a logging line — blunt on purpose; a false positive costs a glance.
 RISKY_RE='(args|arguments|result|results|transcript|payload|prompt|url|urlString|absoluteString|token|apiKey|key|secret|cookie|entityId|responseBody|rawText)'
 
+# --- allowlist ------------------------------------------------------------------------------------
+
+allowlist_paths=""
+allowlist_unexplained=""
+if [ -f "$ALLOWLIST" ]; then
+  while IFS= read -r raw; do
+    # Strip a leading comment line or a blank line.
+    case "$raw" in
+      ''|'#'*) continue ;;
+    esac
+    path="${raw%%#*}"
+    path="$(printf '%s' "$path" | sed 's/[[:space:]]*$//;s/^[[:space:]]*//')"
+    [ -z "$path" ] && continue
+    allowlist_paths="${allowlist_paths}${path}"$'\n'
+    case "$raw" in
+      *'#'*) ;;
+      *) allowlist_unexplained="${allowlist_unexplained}${path}"$'\n' ;;
+    esac
+  done < "$ALLOWLIST"
+fi
+
 is_allowlisted() {
-  [ -f "$ALLOWLIST" ] || return 1
-  grep -qxF "$1" <(grep -v '^[[:space:]]*#' "$ALLOWLIST" | grep -v '^[[:space:]]*$')
+  [ -n "$allowlist_paths" ] || return 1
+  printf '%s' "$allowlist_paths" | grep -qxF "$1"
+}
+
+# Drop every hit whose `path:line:` prefix names an allowlisted file.
+filter_allowlisted() {
+  if [ -z "$allowlist_paths" ]; then cat; return; fi
+  while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    is_allowlisted "${hit%%:*}" || printf '%s\n' "$hit"
+  done
 }
 
 # --- per-file direct-logging counts -------------------------------------------------------------
@@ -58,8 +97,8 @@ done < <(find "$SOURCES" -name '*.swift' -type f | sort)
 total_sites=$(awk '{ s += $1 } END { print s + 0 }' "$tmp_counts")
 total_files=$(wc -l < "$tmp_counts" | tr -d ' ')
 
-if [ "$LEDGER_ONLY" -eq 1 ]; then
-  echo "# Privacy-logging ledger baseline — direct NSLog/print sites under OpenGlasses/Sources"
+if [ "$MODE" = "ledger" ]; then
+  echo "# Privacy-logging ledger — direct NSLog/print sites under OpenGlasses/Sources"
   echo "# Generated by Scripts/check-privacy-logging.sh --ledger"
   echo "# sites  file"
   sort -rn "$tmp_counts"
@@ -68,13 +107,39 @@ if [ "$LEDGER_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-echo "=============================================================================="
-echo " Privacy logging report (report-only — this script never fails a build yet)"
-echo "=============================================================================="
+# Split the per-file counts into allowlisted and blocking.
+allowlisted_files=0
+allowlisted_sites=0
+blocking_files=0
+blocking_sites=0
+blocking_table=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  count=$(printf '%s' "$line" | awk '{ print $1 }')
+  rel=$(printf '%s' "$line" | awk '{ print $2 }')
+  if is_allowlisted "$rel"; then
+    allowlisted_files=$((allowlisted_files + 1))
+    allowlisted_sites=$((allowlisted_sites + count))
+  else
+    blocking_files=$((blocking_files + 1))
+    blocking_sites=$((blocking_sites + count))
+    blocking_table="${blocking_table}${line}"$'\n'
+  fi
+done < <(sort -rn "$tmp_counts")
+
+if [ "$MODE" = "gate" ]; then
+  echo "=============================================================================="
+  echo " Privacy logging gate"
+  echo "=============================================================================="
+else
+  echo "=============================================================================="
+  echo " Privacy logging report (report-only — this invocation never fails a build)"
+  echo "=============================================================================="
+fi
 echo
 echo "-- Direct NSLog/print sites, worst files first --------------------------------"
-sort -rn "$tmp_counts" | head -25
-echo "   ... $total_files files in total (use --ledger for the full table)"
+printf '%s' "$blocking_table" | head -25
+echo "   ($blocking_sites sites across $blocking_files files; use --ledger for the full table)"
 echo
 
 # --- content-shaped interpolation ---------------------------------------------------------------
@@ -82,7 +147,7 @@ echo
 echo "-- Log calls interpolating content/credential-named identifiers ---------------"
 risky_hits=$(grep -REn "$DIRECT_RE" --include='*.swift' "$SOURCES" \
   | grep -Eiw "$RISKY_RE" \
-  | sed "s|^$REPO_ROOT/||" || true)
+  | sed "s|^$REPO_ROOT/||" | filter_allowlisted || true)
 risky_count=$(printf '%s' "$risky_hits" | grep -c . || true)
 printf '%s\n' "$risky_hits" | head -40
 echo "   ($risky_count flagged)"
@@ -93,32 +158,56 @@ echo
 echo "-- Log calls reading localizedDescription -------------------------------------"
 desc_hits=$(grep -REn "$DIRECT_RE" --include='*.swift' "$SOURCES" \
   | grep -F 'localizedDescription' \
-  | sed "s|^$REPO_ROOT/||" || true)
+  | sed "s|^$REPO_ROOT/||" | filter_allowlisted || true)
 desc_count=$(printf '%s' "$desc_hits" | grep -c . || true)
 printf '%s\n' "$desc_hits" | head -40
 echo "   ($desc_count flagged)"
 echo
 
-# --- allowlist ------------------------------------------------------------------------------------
+# --- summary --------------------------------------------------------------------------------------
 
-allowlisted_files=0
-allowlisted_sites=0
-if [ -f "$ALLOWLIST" ]; then
-  while IFS= read -r count rel; do
-    if is_allowlisted "$rel"; then
-      allowlisted_files=$((allowlisted_files + 1))
-      allowlisted_sites=$((allowlisted_sites + count))
-    fi
-  done < <(awk '{ print $1, $2 }' "$tmp_counts")
-fi
+unexplained_count=$(printf '%s' "$allowlist_unexplained" | grep -c . || true)
 
 echo "-- Summary --------------------------------------------------------------------"
 echo "PRIVACY_LOG_DIRECT_SITES=$total_sites"
 echo "PRIVACY_LOG_DIRECT_FILES=$total_files"
+echo "PRIVACY_LOG_BLOCKING_SITES=$blocking_sites"
 echo "PRIVACY_LOG_RISKY_INTERPOLATIONS=$risky_count"
 echo "PRIVACY_LOG_LOCALIZED_DESCRIPTION=$desc_count"
 echo "PRIVACY_LOG_ALLOWLISTED_FILES=$allowlisted_files"
 echo "PRIVACY_LOG_ALLOWLISTED_SITES=$allowlisted_sites"
+echo "PRIVACY_LOG_ALLOWLIST_WITHOUT_REASON=$unexplained_count"
 echo
-echo "Report only — exiting 0. The gate lands with P2, once the ledger is near zero."
-exit 0
+
+if [ "$MODE" = "report" ]; then
+  echo "Report only — exiting 0."
+  exit 0
+fi
+
+failed=0
+if [ "$blocking_sites" -gt 0 ]; then
+  echo "FAIL: $blocking_sites direct NSLog/print site(s) in $blocking_files file(s)."
+  echo "      Production sources log through PrivacyLog's typed events. See"
+  echo "      OpenGlasses/Sources/Utils/PrivacyLog.swift and docs/plans/DM-privacy-safe-production-logging.md."
+  failed=1
+fi
+if [ "$risky_count" -gt 0 ]; then
+  echo "FAIL: $risky_count log call(s) interpolate a content- or credential-named value."
+  failed=1
+fi
+if [ "$desc_count" -gt 0 ]; then
+  echo "FAIL: $desc_count log call(s) read localizedDescription. Use SafeErrorSummary instead —"
+  echo "      a description can embed the URL, the response body, or the value that failed."
+  failed=1
+fi
+if [ "$unexplained_count" -gt 0 ]; then
+  echo "FAIL: $unexplained_count allowlist entr(ies) carry no '# reason'. An unexplained"
+  echo "      exemption is exactly what the allowlist exists to prevent:"
+  printf '%s' "$allowlist_unexplained" | sed 's/^/        /'
+  failed=1
+fi
+
+if [ "$failed" -eq 0 ]; then
+  echo "PASS: no direct logging, no content-shaped interpolation, no localizedDescription."
+fi
+exit "$failed"

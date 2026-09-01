@@ -76,8 +76,12 @@ class AgentNotificationQueue: ObservableObject {
             pendingCount = queue.filter { !$0.delivered }.count
             save()
             onQueued?(notification)
-            NSLog("[AgentQueue] Queued: %@ (priority: %@, pending: %d)",
-                  source, priority.rawValue, pendingCount)
+            // The message is what the agent has to tell the wearer and the source label is
+            // free-form caller text, so the queue records the priority band and how deep the
+            // queue got — which is what a "it never spoke" or "it spoke twice" report needs.
+            PrivacyLog.agent(.notifications, .queued,
+                             priority: PrivacyToken(priority.rawValue),
+                             count: pendingCount, characters: message.count)
         }
     }
 
@@ -91,7 +95,7 @@ class AgentNotificationQueue: ObservableObject {
         queue.removeAll { $0.isStale || $0.delivered }
         let removed = before - queue.count
         if removed > 0 {
-            NSLog("[AgentQueue] Pruned %d stale notifications", removed)
+            PrivacyLog.agent(.notifications, .pruned, count: removed)
         }
 
         guard !queue.isEmpty else {
@@ -100,7 +104,7 @@ class AgentNotificationQueue: ObservableObject {
             return
         }
 
-        NSLog("[AgentQueue] Delivering %d queued notifications", queue.count)
+        PrivacyLog.agent(.notifications, .deliveryStarted, count: queue.count)
 
         // Deliver queued notifications
         Task {
@@ -135,7 +139,7 @@ class AgentNotificationQueue: ObservableObject {
 
         // Don't speak to glasses in the case
         guard !appState.glassesIdle else {
-            NSLog("[AgentQueue] Skipping delivery — glasses idle (in case)")
+            PrivacyLog.agent(.notifications, .deliverySkipped, reason: PrivacyToken("glassesIdle"))
             return
         }
 
@@ -148,7 +152,7 @@ class AgentNotificationQueue: ObservableObject {
             let framed = AsyncDeliveryPhrasing.resultInstruction(question: nil, answer: message)
             injector.injectText(framed, completeTurn: true)
             appState.lastResponse = message
-            NSLog("[AgentQueue] Delivered via live session injection")
+            PrivacyLog.agent(.notifications, .deliveredViaSession, characters: message.count)
             return
         }
 
@@ -176,8 +180,7 @@ class AgentNotificationQueue: ObservableObject {
 
         if waitForResponse {
             // Turn on mic — the active persona's wake word is now listening
-            NSLog("[AgentQueue] Waiting for operator response (persona: %@)...",
-                  personaName ?? "default")
+            PrivacyLog.agent(.notifications, .awaitingOperator)
             appState.inConversation = true
             appState.isListening = true
             appState.transcriptionService.startRecording()
@@ -221,7 +224,7 @@ class AgentNotificationQueue: ObservableObject {
             appState.transcriptionService.startRecording()
         } catch {
             appState.speechService.stopThinkingSound()
-            NSLog("[AgentQueue] Summary failed: %@", error.localizedDescription)
+            PrivacyLog.agent(.notifications, .summaryFailed, error: SafeErrorSummary(error))
         }
     }
 

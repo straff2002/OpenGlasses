@@ -526,7 +526,8 @@ struct BottomControlBar: View {
                     Task {
                         do { try await appState.cameraService.startStreaming() }
                         catch {
-                            NSLog("[Camera] startStreaming failed: %@", error.localizedDescription)
+                            PrivacyLog.camera(.glasses, .sessionAttemptFailed,
+                                              error: SafeErrorSummary(error))
                             appState.errorMessage = "Camera: \(error.localizedDescription)"
                             NoticeCenter.shared.post("Camera: \(error.localizedDescription)",
                                                      severity: .error, source: .camera)

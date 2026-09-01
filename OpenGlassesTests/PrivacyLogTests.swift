@@ -197,6 +197,32 @@ final class PrivacyLogTests: XCTestCase {
                                 signed: false, count: 4, total: 9, attempt: 2,
                                 bytes: text.utf8.count,
                                 error: SafeErrorSummary(MaliciousError())),
+            // P1 batch 5 — operational UI / device.
+            PrivacyLog.recording(.finished, width: 1920, height: 1080, frameRate: 30,
+                                 count: 5400, characters: text.count, seconds: 180,
+                                 hertz: 48_000, channels: 1, success: true,
+                                 detail: PrivacyToken(text),
+                                 error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.stream(.rtmpBroadcast, .bitrateAdjusted, detail: PrivacyToken(text),
+                              count: 2, session: PrivateIdentifier(text), attempt: 1,
+                              delaySeconds: 2, seconds: 30, width: 1280, height: 720,
+                              frameRate: 30, bitrate: 2_500_000, measuredBitrate: 1_900_000,
+                              bytes: 4096, error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.device(.glasses, .registrationState, state: PrivacyToken(text),
+                              command: PrivacyToken(text), item: PrivateIdentifier(text),
+                              count: 2, minutes: 15, success: false,
+                              error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.agent(.scheduler, .taskCompleted, model: PrivacyToken(text),
+                             priority: PrivacyToken(text), reason: PrivacyToken(text),
+                             count: 3, characters: text.count, minutes: 30,
+                             error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.purchase(.failed, product: PrivacyToken(text), count: 2,
+                                error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.app(.turnClassified, detail: PrivacyToken(text),
+                           state: PrivacyToken(text), tool: PrivacyToken(text),
+                           model: PrivacyToken(text), item: PrivateIdentifier(text),
+                           count: 4, characters: text.count, success: true,
+                           error: SafeErrorSummary(MaliciousError())),
         ]
     }
 
@@ -729,6 +755,43 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/Siri/SpotlightIndexService.swift",
     ]
 
+    /// P1 batch 5 — operational UI / device. The batch that took the ledger to zero.
+    ///
+    /// `OpenGlassesApp.swift` is the headline: 136 sites, of which most were progress narration
+    /// and were deleted outright, and the rest carried the wearer's transcript, the assistant's
+    /// answer, a direct tool call's result, the notification an agent was asked to triage, and
+    /// the SDK credentials the launch path dumped from the Info.plist. The other named leaks:
+    /// `ShortcutCallbackManager` printed 200 characters of a shortcut's output verbatim,
+    /// `PersonaPickerSheet` printed the Field Assist **vault id** (which names a customer),
+    /// `CarPlaySceneDelegate` printed a persona, a thread id, a playbook name and a tool result,
+    /// and `BroadcastService` printed the RTMP destination and a prefix of the **stream key**.
+    private static let batchFiveFiles = [
+        "OpenGlasses/Sources/App/OpenGlassesApp.swift",
+        "OpenGlasses/Sources/App/CarPlaySceneDelegate.swift",
+        "OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift",
+        "OpenGlasses/Sources/App/Views/OnboardingView.swift",
+        "OpenGlasses/Sources/App/Views/BottomControlBar.swift",
+        "OpenGlasses/Sources/App/Views/AgenticFeaturesView.swift",
+        "OpenGlasses/Sources/Services/BroadcastService.swift",
+        "OpenGlasses/Sources/Services/VideoRecordingService.swift",
+        "OpenGlasses/Sources/Services/AgentScheduler.swift",
+        "OpenGlasses/Sources/Services/AgentNotificationQueue.swift",
+        "OpenGlasses/Sources/Services/AgentHarness/AgentSessionService.swift",
+        "OpenGlasses/Sources/Services/WatchConnectivityManager.swift",
+        "OpenGlasses/Sources/Services/LiveActivityManager.swift",
+        "OpenGlasses/Sources/Services/StoreKitService.swift",
+        "OpenGlasses/Sources/Services/ShortcutCallbackManager.swift",
+        "OpenGlasses/Sources/Services/GlassesConnectionService.swift",
+        "OpenGlasses/Sources/Services/GlassesDisplayService.swift",
+        "OpenGlasses/Sources/Services/WearablesBootstrap.swift",
+        "OpenGlasses/Sources/Services/Device/MetaTelemetryBlock.swift",
+        "OpenGlasses/Sources/Services/Triggers/MediaTriggerService.swift",
+        "OpenGlasses/Sources/Models/HomeGridCatalog.swift",
+        "OpenGlasses/Sources/Services/NativeTools/YieldToHumanTool.swift",
+        "OpenGlasses/Sources/Services/NativeTools/PlaybookTool.swift",
+        "OpenGlasses/Sources/Services/NativeTools/ShazamTool.swift",
+    ]
+
     private func sourceText(_ relativePath: String) throws -> String {
         let url = Self.repoRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
@@ -829,6 +892,118 @@ final class PrivacyLogTests: XCTestCase {
         }
     }
 
+    func testBatchFiveFilesHaveNoDirectLogCalls() throws {
+        for path in Self.batchFiveFiles {
+            let source = try sourceText(path)
+            XCTAssertTrue(source.contains("PrivacyLog."),
+                          "\(path): sanity — a migrated file should be emitting typed events")
+            for line in loggingLines(in: source) {
+                XCTFail("\(path): a direct log call survives in a migrated file:\n\(line)")
+            }
+        }
+    }
+
+    // MARK: - The global gate (P2.1 / P2.2)
+    //
+    // The ledger reached zero with batch 5, so the scan stops being a per-batch list and becomes
+    // a property of the whole tree. This is the same contract `Scripts/check-privacy-logging.sh`
+    // enforces in CI, run in-process: `Foundation.Process` is unavailable on iOS, so the suite
+    // cannot shell out to the script from the simulator. Instead it re-implements the script's
+    // three checks over the same sources and reads the same allowlist file, and a separate test
+    // pins the script's default mode so the two halves cannot silently diverge.
+
+    private func allSourceFiles() throws -> [String] {
+        try FileManager.default
+            .subpathsOfDirectory(atPath: Self.repoRoot.appendingPathComponent("OpenGlasses/Sources").path)
+            .filter { $0.hasSuffix(".swift") }
+            .map { "OpenGlasses/Sources/\($0)" }
+            .sorted()
+    }
+
+    /// Paths exempted by `Scripts/privacy-logging-allowlist.txt`, and whether each carried a
+    /// reason. The gate treats a reason-less entry as a failure, and so does this.
+    private func allowlist() throws -> [(path: String, hasReason: Bool)] {
+        let url = Self.repoRoot.appendingPathComponent("Scripts/privacy-logging-allowlist.txt")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+            .compactMap { raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return nil }
+                let path = String(trimmed.prefix(while: { $0 != "#" }))
+                    .trimmingCharacters(in: .whitespaces)
+                guard !path.isEmpty else { return nil }
+                return (path, trimmed.contains("#"))
+            }
+    }
+
+    /// No file under `OpenGlasses/Sources` may call `NSLog` or `print` directly.
+    ///
+    /// This is the check that makes every future PR inherit the gate with no list to update: a
+    /// new file that logs directly fails here on the day it is written, whether or not anyone
+    /// remembers Plan DM exists.
+    func testNoProductionSourceLogsDirectly() throws {
+        let exempt = Set(try allowlist().map(\.path))
+        var offenders: [String] = []
+        for path in try allSourceFiles() where !exempt.contains(path) {
+            for line in loggingLines(in: try sourceText(path)) {
+                offenders.append("\(path): \(line.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertEqual(offenders, [],
+                       "Production sources log through PrivacyLog's typed events. "
+                           + "\(offenders.count) direct call(s):\n" + offenders.joined(separator: "\n"))
+    }
+
+    /// The two shapes that turn a diagnostic line into a leak, checked tree-wide rather than
+    /// per batch. Vacuous while the tree has no direct log calls at all — deliberately so: it is
+    /// the check that catches an allowlisted shim being handed content later.
+    func testNoLogCallCarriesContentOrLocalizedDescription() throws {
+        var offenders: [String] = []
+        for path in try allSourceFiles() {
+            for line in loggingLines(in: try sourceText(path)) {
+                if line.contains("localizedDescription") {
+                    offenders.append("\(path): localizedDescription — use SafeErrorSummary:\n\(line)")
+                }
+                for name in Self.contentNames where line.contains(name) {
+                    offenders.append("\(path): interpolates '\(name)':\n\(line)")
+                }
+            }
+        }
+        XCTAssertEqual(offenders, [], offenders.joined(separator: "\n"))
+    }
+
+    /// Every allowlist entry is a privacy review flag, so every one must say why it exists.
+    func testEveryAllowlistEntryCarriesAReason() throws {
+        for entry in try allowlist() {
+            XCTAssertTrue(entry.hasReason,
+                          "\(entry.path) is allowlisted with no '# reason'. An unexplained "
+                              + "exemption is what the allowlist exists to prevent.")
+        }
+    }
+
+    /// The script and this file are two halves of one gate. If the script quietly reverted to
+    /// report-only, CI would go green on a tree the suite still refuses — so the default mode is
+    /// pinned here rather than trusted.
+    func testTheGateScriptIsBlockingByDefault() throws {
+        let script = try sourceText("Scripts/check-privacy-logging.sh")
+        XCTAssertTrue(script.contains("MODE=\"gate\""),
+                      "the scanner's default mode must be the blocking gate, not a report")
+        XCTAssertTrue(script.contains("exit \"$failed\""),
+                      "the gate must exit with its failure count")
+        XCTAssertTrue(script.contains("--report"),
+                      "the report-only mode must stay available for trending")
+        XCTAssertFalse(script.contains("Report only — exiting 0. The gate lands with P2"),
+                       "the P1 report-only banner must be gone")
+    }
+
+    /// The ledger stays checked in as the historical record, and it says zero.
+    func testTheCheckedInLedgerReadsZero() throws {
+        let ledger = try sourceText("docs/plans/DM-ledger-baseline.txt")
+        XCTAssertTrue(ledger.contains("# TOTAL 0 sites across 0 files"),
+                      "the ledger must record the migration's end state:\n\(ledger)")
+    }
+
     /// `JSONStore` logs its `name` argument as a token, which is only sound because that argument
     /// is a slot from a fixed vocabulary at every call site. A store named from a document title
     /// would be identifier-shaped, so `PrivacyToken` would keep it — the type is a shape filter,
@@ -885,6 +1060,25 @@ final class PrivacyLogTests: XCTestCase {
             ("OpenGlasses/Sources/Services/Offline/SyncEngine.swift", ["reason", "payload"]),
             ("OpenGlasses/Sources/Services/AgentDataExporter.swift",
              ["zipURL", "exportName", "lastPathComponent"]),
+            // P1 batch 5: a stream key, a vault id in the clear, a scheduled task's title, a
+            // notification body, a shortcut's output, and the recording's own file.
+            ("OpenGlasses/Sources/Services/BroadcastService.swift",
+             ["streamName", "connectionURL", "streamKey", "rtmpURL", "message", "reason"]),
+            ("OpenGlasses/Sources/Services/VideoRecordingService.swift",
+             ["lastPathComponent", "fileURL", "transcriptURL", "recordingTranscript",
+              "outputURL", "writerFailure"]),
+            ("OpenGlasses/Sources/Services/AgentScheduler.swift",
+             ["task.name", "persona.name", "processed", "prompt"]),
+            ("OpenGlasses/Sources/Services/AgentNotificationQueue.swift",
+             ["personaName", "source", "spokenMessage"]),
+            ("OpenGlasses/Sources/Services/ShortcutCallbackManager.swift",
+             ["output", "url.host", "absoluteString"]),
+            ("OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift",
+             ["persona.name", "procedure.id", "vaultName", "soulText"]),
+            ("OpenGlasses/Sources/App/CarPlaySceneDelegate.swift",
+             ["persona.name", "playbook.name", "result"]),
+            ("OpenGlasses/Sources/Services/WatchConnectivityManager.swift",
+             ["message[", "userInfo["]),
         ]
         for (path, values) in forbidden {
             let source = try sourceText(path)
@@ -1097,6 +1291,43 @@ final class PrivacyLogTests: XCTestCase {
             ("OpenGlasses/Sources/Services/Offline/SyncEngine.swift",
              ["failed after %d attempts: %@", "permanently failed: %@"]),
             ("OpenGlasses/Sources/Services/AgentDataExporter.swift", ["Created: %@"]),
+            // P1 batch 5: the app entry point dumped the SDK's Info.plist credentials at every
+            // launch (a client token is a secret; the app id, team id and universal-link scheme
+            // name the developer account and the app's own callback door), printed the wearer's
+            // transcript, the assistant's answer, a direct tool call's result and the
+            // notification an agent was asked to triage; the shortcut callback printed 200
+            // characters of a shortcut's output; CarPlay printed a persona, a thread id, a
+            // playbook name and a tool result; the persona sheet printed the Field Assist vault
+            // id; and the broadcaster printed the RTMP destination and a prefix of the stream key.
+            ("OpenGlasses/Sources/App/OpenGlassesApp.swift",
+             ["Config clientTokenPresent", "Config teamID", "MetaAppID:", "Bundle ID:",
+              "AppLinkURLScheme (Universal Link)", "MWDAT keys:",
+              "📝 Transcription:", "(vision): \\(response)", "⚡ Direct tool call:",
+              "Triaging notification", "Clarification received:", "Fix response:",
+              "Held an utterance while a turn was in flight: %@",
+              "Dropped a held utterance that went stale: %@",
+              "📸 Photo + prompt:", "[SilentPhoto] Saved to %@", "📋 Devices changed:"]),
+            ("OpenGlasses/Sources/Services/ShortcutCallbackManager.swift",
+             ["Result: %@", "Error: %@"]),
+            ("OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift",
+             ["Started session on %@", "Manually activated persona:"]),
+            ("OpenGlasses/Sources/App/CarPlaySceneDelegate.swift",
+             ["Resuming conversation \\(threadId)", "Activating playbook", "CarPlay: \\(result)"]),
+            ("OpenGlasses/Sources/Services/BroadcastService.swift",
+             ["Connecting to %@/%@", "Publishing as '%@'", "Nothing sent after %.0fs — %@",
+              "Connection lost (%@)"]),
+            ("OpenGlasses/Sources/Services/VideoRecordingService.swift",
+             ["Transcript saved → %@", "Finished → %@", "Filed → %@", "Started (video+audio) →"]),
+            ("OpenGlasses/Sources/Services/AgentScheduler.swift",
+             ["Running task: %@", "Switched to persona: %@", "Task complete: %@"]),
+            ("OpenGlasses/Sources/Services/AgentNotificationQueue.swift",
+             ["Queued: %@", "Waiting for operator response (persona: %@)"]),
+            ("OpenGlasses/Sources/Services/Device/MetaTelemetryBlock.swift",
+             ["blocked SDK telemetry upload to %@"]),
+            ("OpenGlasses/Sources/Services/WearablesBootstrap.swift",
+             ["configure() failed — glasses features unavailable: %@"]),
+            ("OpenGlasses/Sources/App/Views/OnboardingView.swift",
+             ["Wearables SDK %@"]),
         ]
         for (path, statements) in removed {
             let source = try sourceText(path)
@@ -1115,15 +1346,24 @@ final class PrivacyLogTests: XCTestCase {
         XCTAssertTrue(router.contains("PrivacyLog.toolCallReceived"),
                       "sanity: the migrated call should be visible to the scan")
 
-        // A file no batch has reached yet, so the line scanner must find something in it. If this
-        // ever goes to zero legitimately (batch 4 covers it), move the anchor rather than delete
-        // the check — an empty result would otherwise mean the matcher matches nothing at all.
-        // It was `MetaCameraBackend` until batch 3 took that file to zero.
-        // It was `MetaCameraBackend` until batch 3, then `SemanticMemoryStore` until batch 4.
-        let unmigrated = try sourceText("OpenGlasses/Sources/App/OpenGlassesApp.swift")
-        XCTAssertFalse(loggingLines(in: unmigrated).isEmpty,
-                       "sanity: this file still has direct NSLog lines, so the line scanner "
-                           + "must be finding some — an empty result would mean it matches nothing")
+        // The line scanner must still match a direct log call, or every scan above passes
+        // vacuously. Until batch 5 this was anchored on whichever file had not been migrated yet
+        // (`MetaCameraBackend`, then `SemanticMemoryStore`, then `OpenGlassesApp`). The ledger is
+        // now zero, so there is no such file left and the matcher is exercised against fixtures
+        // instead — including the shapes it must *not* match.
+        let fixture = """
+        NSLog("plain")
+        print("bare")
+            NSLog("indented %@", x)
+        // NSLog("a comment still counts — the scanner is deliberately blunt")
+        stream.print("not a bare print")
+        debugPrint("also not")
+        sprint("nor this")
+        let noise = 1
+        """
+        XCTAssertEqual(loggingLines(in: fixture).count, 4,
+                       "the line scanner must match bare NSLog/print (and the comment the "
+                           + "scanner deliberately over-reports), and nothing else")
     }
 
     // MARK: - Build settings
@@ -1136,6 +1376,57 @@ final class PrivacyLogTests: XCTestCase {
             XCTAssertFalse(text.contains("ENABLE_CONTENT_LOGGING"),
                            "\(spec) defines ENABLE_CONTENT_LOGGING — the debug content hatch must "
                                + "never be switched on in a checked-in build configuration")
+        }
+    }
+
+    /// P2.4 — the content-logging label and the only method that could emit it are wholly inside
+    /// the `#if DEBUG && ENABLE_CONTENT_LOGGING` region, and nothing outside `PrivacyLog` calls it.
+    ///
+    /// Together with the test above (the flag is defined in no checked-in configuration), that is
+    /// a structural proof that a Release build compiles neither the method nor its format string:
+    /// the compiler cannot emit what it never parses. **Stated limit:** this reasons about the
+    /// source, not about a linked binary. A `strings`-over-the-Release-archive check would be the
+    /// stronger statement, and it needs a Release build the unit suite does not have — P2.4 is
+    /// recorded as shipped in this form, with that gap named rather than papered over.
+    func testContentLoggingHatchIsConfinedToItsCompilationRegion() throws {
+        let source = try sourceText("OpenGlasses/Sources/Utils/PrivacyLog.swift")
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        var guarded = false
+        var sawRegion = false
+        var strayLines: [String] = []
+        for line in lines {
+            if line.contains("#if DEBUG && ENABLE_CONTENT_LOGGING") {
+                guarded = true
+                sawRegion = true
+                continue
+            }
+            if guarded, line.trimmingCharacters(in: .whitespaces) == "#endif" {
+                guarded = false
+                continue
+            }
+            guard !guarded else { continue }
+            if line.contains("debugContent") || line.contains("CONTENT-LOG") {
+                // The section comment above the region names it; a `//` line is prose, not code.
+                guard line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else {
+                    strayLines.append(line)
+                    continue
+                }
+            }
+        }
+        XCTAssertTrue(sawRegion, "PrivacyLog no longer guards its content hatch — check the #if")
+        XCTAssertEqual(strayLines, [],
+                       "the content-logging hatch escaped its compilation region:\n"
+                           + strayLines.joined(separator: "\n"))
+
+        // And nothing anywhere else may call it: a caller outside the region would fail to
+        // compile in Release, which is a build break rather than a leak — but it would also mean
+        // someone thought the hatch was usable.
+        for path in try allSourceFiles()
+        where path != "OpenGlasses/Sources/Utils/PrivacyLog.swift" {
+            XCTAssertFalse(try sourceText(path).contains("debugContent"),
+                           "\(path) references PrivacyLog.debugContent — the hatch is a local, "
+                               + "uncommitted debugging aid, not an API")
         }
     }
 }

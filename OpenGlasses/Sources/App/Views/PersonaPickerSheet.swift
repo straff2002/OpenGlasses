@@ -116,7 +116,6 @@ struct PersonaPickerSheet: View {
         Config.setActivePresetId(persona.presetId)
         appState.llmService.refreshActiveModel()
         appState.llmService.clearHistory()
-        print("🎭 Manually activated persona: \(persona.name)")
         dismiss()
     }
 
@@ -433,7 +432,10 @@ struct PersonaPickerTab: View {
             }
             _ = try svc.startSession(vaultId: faVaultId, assetId: nil)
             _ = try svc.startProcedure(id: procedure.id)
-            NSLog("[FieldAssist] Started session on %@ + procedure %@", faVaultId, procedure.id)
+            // A vault id names the customer whose procedures are loaded, and a procedure id is
+            // that customer's own document catalogue — so the vault is fingerprinted (enough to
+            // tell two sessions apart) and the procedure is not logged at all.
+            PrivacyLog.app(.fieldSessionStarted, item: PrivateIdentifier(faVaultId))
         } catch {
             sessionError = error.localizedDescription
         }
@@ -446,7 +448,6 @@ struct PersonaPickerTab: View {
         Config.setActivePresetId(persona.presetId)
         appState.llmService.refreshActiveModel()
         appState.llmService.clearHistory()
-        print("🎭 Activated persona: \(persona.name)")
     }
 
     private func installAndActivate(_ template: Persona) {
@@ -643,7 +644,6 @@ struct PersonaDetailView: View {
         let trimmed = soulText.trimmingCharacters(in: .whitespacesAndNewlines)
         personas[idx].soulOverride = trimmed.isEmpty ? nil : trimmed
         Config.setSavedPersonas(personas)
-        print("🎭 Saved personality for \(persona.name)")
     }
 }
 

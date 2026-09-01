@@ -1,13 +1,13 @@
 # Plan DM — Privacy-Safe Production Logging
 
-**Status:** 🚧 P0 shipped (2026-09-01) — `PrivacyLog` + `SafeErrorSummary` landed, all named leak
-sites emit metadata only, and the P1 scanner runs in report-only mode with a checked-in ledger
-([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). **P1 batch 1 (authentication/networking)
-migrated (2026-09-01): 872 → 794 sites, 127 → 113 files. P1 batch 2 (conversation/model/audio)
-migrated (2026-09-01): 794 → 461 sites, 113 → 75 files. P1 batch 3
-(vision/home/medical/location) migrated (2026-09-01): 461 → 319 sites, 75 → 45 files. P1 batch 4
-(persistence/import/export) migrated (2026-09-01): 319 → 250 sites, 45 → 24 files.**
-P1 batch 5, P2 and P3 outstanding.
+**Status:** 🚧 P0 ✅, **P1 ✅ — the ledger reads zero**, P2.1/P2.2/P2.4 ✅ (all 2026-09-01).
+`PrivacyLog` + `SafeErrorSummary` landed at P0; five P1 batches took the source tree from
+**872 direct `NSLog`/`print` sites across 127 files to 0 across 0 files**
+(872 → 794 → 461 → 319 → 250 → 0), and the scanner is now a **blocking gate** rather than a
+report. The ledger ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)) stays checked in at zero
+as the historical record. Outstanding: **P2.3** (adversarial canary fixtures driven through each
+subsystem), **P2.5** (privacy-led review rule for any new value-bearing event), and **P3**
+(consented diagnostics export).
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -103,12 +103,14 @@ identifier-shaped value survives it. A test pins that behaviour rather than impl
 the compensating control is that no call site builds a token from a credential, and the scanner
 flags the ones that could.
 
-## P1 — Inventory and migrate the entire source tree 🚧
+## P1 — Inventory and migrate the entire source tree ✅ (2026-09-01)
 
-**Report-only scanner shipped (2026-09-01):** `Scripts/check-privacy-logging.sh` (+
-`Scripts/privacy-logging-allowlist.txt`, empty at P0) counts direct `NSLog`/`print` sites, flags
-log calls interpolating content/credential-named identifiers, flags `localizedDescription` in log
-calls, and prints a `PRIVACY_LOG_*` summary for CI to trend. It always exits 0 until P2.
+**Scanner shipped report-only at P0 (2026-09-01), flipped to blocking at P2 (2026-09-01):**
+`Scripts/check-privacy-logging.sh` (+ `Scripts/privacy-logging-allowlist.txt`, empty throughout)
+counts direct `NSLog`/`print` sites, flags log calls interpolating content/credential-named
+identifiers, flags `localizedDescription` in log calls, and prints a `PRIVACY_LOG_*` summary for
+CI to trend. It exited 0 for the whole of P1 so the number could be a ledger rather than a
+verdict; it now exits nonzero on any finding. See P2 below.
 
 Baseline at P0 completion (`docs/plans/DM-ledger-baseline.txt`, `--ledger`):
 
@@ -394,6 +396,78 @@ not treat that file as four cosmetic persona prints. The four remaining tool-pat
 each) are batch-2 domain leftovers; `YieldToHumanTool` and `PlaybookTool` log a model-authored
 reason string. Everything else on the ledger is now operational UI/device.
 
+### Batch 5 — operational UI/device ✅ (2026-09-01) — **the ledger reaches zero**
+
+Twenty-four files, 250 sites, all to zero. Nothing was allowlisted.
+
+| Metric | After batch 4 | After batch 5 |
+|---|---|---|
+| Direct `NSLog`/`print` sites | 250 / 24 files | **0 / 0 files** |
+| Content/credential-named interpolations | 13 | **0** |
+| `localizedDescription` in log calls | 22 | **0** |
+| Allowlisted files / sites | 0 / 0 | **0 / 0** |
+
+Migrated: `App/OpenGlassesApp` (136), `BroadcastService` (17), `VideoRecordingService` (15),
+`AgentScheduler` (13), `WatchConnectivityManager` (10), `App/CarPlaySceneDelegate` (9),
+`LiveActivityManager` (8), `StoreKitService` (7), `AgentNotificationQueue` (7),
+`ShortcutCallbackManager` (4), `GlassesConnectionService` (4), `App/Views/PersonaPickerSheet` (4),
+`Triggers/MediaTriggerService` (3), `WearablesBootstrap` (2), `Models/HomeGridCatalog` (2), and
+nine one-site files: `NativeTools/YieldToHumanTool`, `NativeTools/PlaybookTool`,
+`NativeTools/ShazamTool`, `AgentHarness/AgentSessionService`, `GlassesDisplayService`,
+`Device/MetaTelemetryBlock`, `App/Views/OnboardingView`, `App/Views/BottomControlBar`,
+`App/Views/AgenticFeaturesView`.
+
+Facade additions: categories `device`, `agent`, `commerce`; events `device` (a `DeviceSurface`, a
+`DeviceEvent`, a state, a classified command, a fingerprinted activity id, counts, minutes),
+`agent` (a channel, an event, a model, a priority band, a fixed reason, counts), `purchase`,
+`recording` (in `capture`), and `app` (in `lifecycle`). `StreamChannel` gains `rtmpBroadcast` and
+`stream()` gains the encoder's geometry, frame rate, bitrate, measured bitrate and queue depth.
+`TransferChannel` gains `backgroundDownload`; `StoreName` gains `homeGrid`; `CameraEvent` gains
+`frameRejected`/`framePinned`/`framePinReleased`; `GatewayNotificationKind` gains `triage`.
+
+What this removed, beyond the raw call count. `OpenGlassesApp.swift` printed **the SDK's
+Info.plist credentials on every launch** — the client token's presence, the team id, the Meta app
+id, the bundle id and the universal-link scheme. A client token is a secret and the rest name the
+developer account and the app's own inbound callback door; none of them was ever the diagnostic,
+which is `MWDATConfigCheck`'s verdict, and that is what survives. The same file printed the
+wearer's **transcription** on receipt, the assistant's **answer** on three paths, a **direct tool
+call's result**, the utterances the turn-admission policy held or rejected, the photo prompt, the
+saved photo's filename, the connected **device ids**, and — on the OpenClaw triage path — the
+inbound notification, the model's clarification question, its fix instruction, and both replies at
+200 characters each. `BroadcastService` logged the RTMP destination **and the first eight
+characters of the stream key**: a stream key is a bearer credential that lets whoever holds it
+publish as the wearer to the wearer's own channel until it is rotated, and it was also embedded in
+the stall-policy sentence the same file logged. `ShortcutCallbackManager` printed 200 characters
+of a shortcut's output verbatim — output that then becomes tool text the model reads.
+`PersonaPickerSheet` printed the Field Assist **vault id**, the one identifier in this app that
+names someone other than the wearer. `CarPlaySceneDelegate` printed a persona name, a thread id, a
+playbook name and a tool result. `AgentScheduler` printed each scheduled task's name (the wearer's
+own instruction to their agent) and 100 characters of what it found; `AgentNotificationQueue`
+printed the queue source and the persona it was waiting on. `VideoRecordingService` printed the
+recording's filename, its transcript sidecar's name and the transcript path.
+`WearablesBootstrap`/`OnboardingView` passed the SDK failure's `localizedDescription` through, once
+directly and once laundered through a `statusDescription` that embeds it.
+
+Judgement calls. **Most of the 136 were deleted, not converted** — progress narration ("App became
+active", "Auto-starting wake word listener…", "Wake word restarted") tells a reader nothing a state
+transition does not. What was kept is the handful of facts that make "why did it not listen / why
+did it pick that model / why did nothing happen" answerable: the listening master switch and each
+*reason* the wake-word listener declined to restart, the routing tier and the model id it chose,
+the glasses link's state machine, and the auto-sleep timer. **A peer-supplied command name is
+classified, not quoted**: `WatchConnectivityManager.commandToken` checks the incoming string
+against the watch protocol's fixed vocabulary and returns `nil` otherwise, the same treatment the
+local MCP server gives an unknown request path — a `PrivacyToken` would have kept an
+identifier-shaped string from the paired device. **A StoreKit product id stays a readable token**:
+it is this app's own published catalogue, and which product failed to unlock is the entire content
+of a purchase bug report; nothing else from a transaction (receipt, transaction id, account, price)
+appears. A **Live Activity id** is system-generated and high-entropy, so it is fingerprinted, while
+a **persona name** is omitted on the batch-2 precedent. `HomeGridCatalog`'s dropped tile ids come
+out of a stored blob rather than this build's catalogue, so they are decoded data and only the
+count survives. No `ENABLE_CONTENT_LOGGING` sites were added; the count across five batches is
+still **zero**.
+
+### The migration, end to end
+
 Generate and check in a classification ledger with one row per logging site/category, then migrate in
 bounded PRs:
 
@@ -414,18 +488,74 @@ does not anonymize a small dictionary. Omit it.
 transcript/url/token/key/cookie fields, and use of `localizedDescription` in log calls. It also emits a
 reviewable allowlist diff so developers cannot bypass it with a new wrapper.
 
-## P2 — CI enforcement and privacy regression fixtures 🟠
+## P2 — CI enforcement and privacy regression fixtures 🚧
 
-1. Add a required CI job (`scripts/check-privacy-logging.sh` or a SwiftSyntax rule) over Sources. Prefer
-   syntax analysis for call/member identity; use `rg` as an additional blunt guard, not the only test.
-2. Mark `PrivacyLog` field wrappers with distinct types: `PublicMetric`, `PrivateIdentifier`, and
-   internal `NeverLog`. Sensitive domain models should not conform to logging protocols or
-   `CustomStringConvertible` merely for diagnostics.
-3. Build adversarial fixtures containing recognizable canary tokens in prompts, QR values, callback
+1. **✅ (2026-09-01)** Add a required CI job (`Scripts/check-privacy-logging.sh` or a SwiftSyntax rule)
+   over Sources. Prefer syntax analysis for call/member identity; use `rg` as an additional blunt
+   guard, not the only test.
+2. **✅ (2026-09-01)** Mark `PrivacyLog` field wrappers with distinct types: `PublicMetric`,
+   `PrivateIdentifier`, and internal `NeverLog`. Sensitive domain models should not conform to logging
+   protocols or `CustomStringConvertible` merely for diagnostics.
+3. 🟠 Build adversarial fixtures containing recognizable canary tokens in prompts, QR values, callback
    URLs, medical fields, tool arguments/results, and server errors. Drive each subsystem and assert the
    structured event sink never receives a canary.
-4. Add a Release-build symbol/string check proving content-logging labels and format strings are absent.
-5. Require a privacy-led review for any new event carrying a value rather than a count/enum.
+4. **✅ (2026-09-01), with a stated gap.** Add a Release-build symbol/string check proving
+   content-logging labels and format strings are absent.
+5. 🟠 Require a privacy-led review for any new event carrying a value rather than a count/enum.
+
+### What shipped at P2
+
+**P2.1 — the gate is blocking.** `Scripts/check-privacy-logging.sh` now defaults to a gate: it exits
+nonzero on any direct `NSLog`/`print` site, any log call interpolating a content- or
+credential-named identifier, any log call reading `localizedDescription`, or any allowlist entry
+without a reason. `--report` keeps the report-only output for trending and `--ledger` keeps the
+per-file table; an unknown flag exits 2 rather than silently passing. The allowlist format gained a
+required `# reason` per line — an unexplained exemption is the one thing the allowlist exists to
+prevent — and the script filters allowlisted files out of all three checks rather than only the
+headline count.
+
+The gate was verified by probe rather than by inspection: a temporary source file containing
+`NSLog("probe %@ %@", url, error.localizedDescription)` made all three checks fail (exit 1);
+allowlisting it without a reason still failed (exit 1, on the reason rule); allowlisting it with a
+reason passed (exit 0) while still reporting it as an exempt site. The probe was then deleted.
+
+**P2.2 — the unit suite carries the same gate.** `PrivacyLogTests` gains a tree-wide scan
+(`testNoProductionSourceLogsDirectly`, `testNoLogCallCarriesContentOrLocalizedDescription`,
+`testEveryAllowlistEntryCarriesAReason`) that walks every `.swift` under `OpenGlasses/Sources` and
+reads the same allowlist file, so a new file that logs directly fails on the day it is written —
+no list to update, no CI configuration change, and the batch lists become a historical record
+rather than the mechanism.
+
+**Stated limit, deliberately.** The test re-implements the script's checks in-process rather than
+shelling out to it: `Foundation.Process` is unavailable on iOS and the suite runs in the simulator,
+so "a unit test invokes the script" is not literally possible here. The two halves are kept honest
+by `testTheGateScriptIsBlockingByDefault`, which pins the script's default mode, its failure exit
+and the continued existence of `--report`, and would fail if the script quietly reverted to
+report-only while CI stayed green. `testTheCheckedInLedgerReadsZero` pins the ledger's end state.
+
+**P2.2's second half — typed field wrappers.** This was already true at P0 and is now pinned:
+`PrivacyEvent.Value` has exactly seven cases and **no `case text(String)`**, so `PublicMetric`
+(count/milliseconds/seconds/flag) and `PrivateIdentifier` are the only shapes a value can take, and
+"`NeverLog`" is expressed as the absence of a parameter rather than as a marker type — a value that
+must never be logged has nowhere to arrive. `PrivacyToken.caseName` refuses to describe a
+`CustomStringConvertible` enum precisely so that a type conforming for diagnostics cannot leak
+through it.
+
+**P2.4 — the debug hatch cannot reach a Release build.**
+`testContentLoggingHatchIsConfinedToItsCompilationRegion` asserts that the `debugContent` method
+and its `⚠️ CONTENT-LOG` label appear only inside `#if DEBUG && ENABLE_CONTENT_LOGGING`, and that no
+file outside `PrivacyLog.swift` references `debugContent` at all. With the existing
+`testContentLoggingIsEnabledInNoBuildConfiguration` (the flag is defined in none of the four
+checked-in XcodeGen specs), that is a structural proof: the compiler cannot emit a string it never
+parses. **The gap, named:** this reasons about source, not about a linked binary. A
+`strings`/`nm` check over a Release archive would be the stronger statement and needs a Release
+build the unit suite does not have. P2.4 is recorded as shipped in this form, not as the binary
+check the line originally described.
+
+**Still open.** P2.3 (canary fixtures driven end-to-end through each subsystem, as opposed to
+through the facade — the current sentinel tests prove the *encoder* never emits supplied content,
+not that a live QR scan cannot reach it by another route) and P2.5 (the review rule, which is
+process rather than code).
 
 ## P3 — User-controlled diagnostic export 🟡
 
@@ -447,11 +577,18 @@ P0 ships first without waiting for the full inventory. P1 can land subsystem by 
 rule from P2 first runs in report-only mode and becomes required once the ledger reaches zero raw sites.
 A rollback may reduce or disable logging; it must not restore content-bearing statements.
 
+That sequencing held: the scanner exited 0 through all five P1 batches, and the gate was flipped in
+the same change that took the ledger to zero — so the gate has never been red on `main`, and
+nothing had to be allowlisted to make it green.
+
 Complete when:
 
-- all verified leak sites emit metadata only;
-- production Sources contain no unapproved `NSLog`, `print`, or free-form logging facade;
-- canary fixtures cover tool, realtime, QR, callback, home, medical, and network errors;
-- a Release build contains no debug content-logging implementation;
-- diagnostics export is explicit, previewable, protected, and short-lived; and
-- privacy CI and the full unit suite are green.
+- ✅ all verified leak sites emit metadata only;
+- ✅ production Sources contain no unapproved `NSLog`, `print`, or free-form logging facade
+  (0 sites / 0 files, 0 allowlisted, enforced by a blocking script and by the unit suite);
+- 🟠 canary fixtures cover tool, realtime, QR, callback, home, medical, and network errors
+  (facade-level sentinels ship; end-to-end subsystem fixtures are P2.3);
+- ✅ a Release build contains no debug content-logging implementation (structurally proven; a
+  binary `strings` check remains);
+- 🟠 diagnostics export is explicit, previewable, protected, and short-lived (P3);
+- ✅ privacy CI and the full unit suite are green.

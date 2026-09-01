@@ -98,7 +98,8 @@ final class AgentSessionService: ObservableObject {
         let attachment = resolveAttachment?(decision)
         let dispatchedPrompt = AgentAttachmentPhrasing.prompt(prompt, attaching: attachment?.source)
         if case .skip(let reason) = decision {
-            NSLog("[CN] Dispatching without a frame (%@)", reason.rawValue)
+            PrivacyLog.agent(.session, .dispatchedWithoutFrame,
+                             reason: PrivacyToken(reason.rawValue))
         }
 
         do {

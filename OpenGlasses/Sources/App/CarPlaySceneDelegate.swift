@@ -21,7 +21,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
-        print("🚗 CarPlay connected")
+        PrivacyLog.device(.carPlay, .connected)
 
         Task { @MainActor in
             AppStateProvider.shared?.carPlayConnected = true
@@ -137,7 +137,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func startVoice() {
         guard !isVoiceActive else { return }
         isVoiceActive = true
-        print("🚗 CarPlay: Starting voice input")
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("startVoice"))
 
         let states: [CPVoiceControlState] = [
             CPVoiceControlState(
@@ -178,7 +178,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func stopVoice() {
         guard isVoiceActive else { return }
         isVoiceActive = false
-        print("🚗 CarPlay: Stopping voice input")
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopVoice"))
 
         voiceControlTemplate = nil
         interfaceController?.dismissTemplate(animated: true, completion: nil)
@@ -200,7 +200,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     // MARK: - Actions
 
     private func switchPersona(_ persona: Persona) {
-        print("🚗 CarPlay: Switching to persona '\(persona.name)'")
+        // Persona names are omitted, not fingerprinted — a small wearer-visible set.
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("switchPersona"))
         Task { @MainActor in
             guard let appState = AppStateProvider.shared else { return }
             appState.activePersona = persona
@@ -212,7 +213,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     private func startNewConversation() {
-        print("🚗 CarPlay: Starting new conversation")
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("newConversation"))
         Task { @MainActor in
             AppStateProvider.shared?.conversationStore.endThread()
         }
@@ -220,7 +221,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     private func resumeConversation(threadId: String) {
-        print("🚗 CarPlay: Resuming conversation \(threadId)")
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("resumeThread"),
+                          item: PrivateIdentifier(threadId))
         Task { @MainActor in
             guard let appState = AppStateProvider.shared else { return }
             appState.conversationStore.endThread()
@@ -230,11 +232,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     private func activatePlaybook(_ playbook: Playbook) {
-        print("🚗 CarPlay: Activating playbook '\(playbook.name)'")
+        // A playbook's name is the wearer's own procedure title.
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("activatePlaybook"))
         Task { @MainActor in
             guard let appState = AppStateProvider.shared else { return }
-            let result = appState.playbookStore.startPlaybook(playbook.id)
-            print("🚗 CarPlay: \(result)")
+            // The store's return value is the playbook's first step, composed for the wearer —
+            // the same class of string the tool router stopped printing in batch 2.
+            _ = appState.playbookStore.startPlaybook(playbook.id)
         }
         startVoice()
     }
@@ -351,7 +355,7 @@ extension CarPlaySceneDelegate {
         _ templateApplicationScene: CPTemplateApplicationScene,
         didDisconnect interfaceController: CPInterfaceController
     ) {
-        print("🚗 CarPlay disconnected")
+        PrivacyLog.device(.carPlay, .disconnected)
         Task { @MainActor in
             AppStateProvider.shared?.carPlayConnected = false
         }

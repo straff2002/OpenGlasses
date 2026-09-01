@@ -70,7 +70,8 @@ class GlassesConnectionService: ObservableObject {
         startObserving()
         connectionStatus = "Registering..."
         let stateBefore = Wearables.shared.registrationState
-        print("📋 Registration state before: \(stateBefore)")
+        PrivacyLog.device(.glasses, .registrationStarted,
+                          state: PrivacyToken(String(stateBefore.rawValue)))
 
         do {
             do {
@@ -82,7 +83,7 @@ class GlassesConnectionService: ObservableObject {
                 // and get "Connection failed: User is already registered" each time: the one state
                 // from which reconnecting is guaranteed possible was the one state we refused to
                 // reconnect from. Device-traced 2026-08-23, after a glasses disconnect mid-reply.
-                print("📋 Already registered — continuing to connect")
+                PrivacyLog.device(.glasses, .alreadyRegistered)
             }
 
             // Poll registration state. `startRegistration()` returns before the user approves the
@@ -97,12 +98,13 @@ class GlassesConnectionService: ObservableObject {
                 stateAfter = Wearables.shared.registrationState
             }
 
-            print("✅ startRegistration() succeeded, state: \(stateAfter)")
+            PrivacyLog.device(.glasses, .registrationState,
+                              state: PrivacyToken(String(stateAfter.rawValue)))
             connectionStatus = RegistrationFlow.status(stateRaw: stateAfter.rawValue)
         } catch {
             // `startRegistration()` uses typed throws, so every error reaching this catch is a
             // `RegistrationError`; testing the type again is both redundant and a Swift 6 warning.
-            print("❌ startRegistration() failed: \(error)")
+            PrivacyLog.device(.glasses, .registrationFailed, error: SafeErrorSummary(error))
             let message = RegistrationFlow.registrationErrorMessage(error)
             connectionStatus = message
             NoticeCenter.shared.post(message, severity: .error, source: .glasses)

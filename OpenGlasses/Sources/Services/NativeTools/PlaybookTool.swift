@@ -172,7 +172,10 @@ struct PlaybookTool: NativeTool {
                 return "Provide new steps as an array of step titles for the replan."
             }
             let newSteps = stepTitles.map { PlaybookStep(title: $0) }
-            NSLog("[PlaybookTool] Replanning: %@ — %d new steps", reason, newSteps.count)
+            // Both halves are content: the reason is the model's account of why the plan changed,
+            // and a step title is the wearer's task in the model's words.
+            PrivacyLog.agent(.playbook, .replanned,
+                             count: newSteps.count, characters: reason.count)
             return await MainActor.run { store.replaceRemainingSteps(newSteps) }
 
         case "insert_step":

@@ -81,8 +81,9 @@ class ShortcutCallbackManager {
             // Either nothing is pending, or this came from something other than the shortcut we
             // launched. Never resolve on it — whatever it carries becomes tool output the model
             // reads.
-            NSLog("[ShortcutCallback] Ignored callback with missing or mismatched token: %@",
-                  url.host ?? "?")
+            PrivacyLog.deepLink(route: .shortcutCallback,
+                                source: PrivacyToken("shortcuts"),
+                                verdict: .untrusted)
             return
         }
 
@@ -94,16 +95,25 @@ class ShortcutCallbackManager {
         switch host {
         case "shortcut-result":
             let result = output ?? "Shortcut completed successfully."
-            NSLog("[ShortcutCallback] Result: %@", String(result.prefix(200)))
+            // The output is whatever the shortcut produced — a calendar, a note, a query against
+            // the wearer's own data — and it becomes tool output the model reads. Its length is
+            // the only part of it a truncation or empty-result report needs.
+            PrivacyLog.deepLink(route: .shortcutCallback, source: PrivacyToken("shortcuts"),
+                                verdict: .handled, action: PrivacyToken("result"))
+            PrivacyLog.toolRun(.succeeded, tool: "run_shortcut", characters: result.count)
             resume(with: result)
 
         case "shortcut-cancel":
-            NSLog("[ShortcutCallback] Cancelled")
+            PrivacyLog.deepLink(route: .shortcutCallback, source: PrivacyToken("shortcuts"),
+                                verdict: .handled, action: PrivacyToken("cancelled"))
             resume(with: "Shortcut was cancelled.")
 
         case "shortcut-error":
             let error = output ?? "Shortcut encountered an error."
-            NSLog("[ShortcutCallback] Error: %@", error)
+            // The error string is composed by the shortcut and routinely quotes the input it
+            // choked on, so it is the same class as the result.
+            PrivacyLog.deepLink(route: .shortcutCallback, source: PrivacyToken("shortcuts"),
+                                verdict: .failed, action: PrivacyToken("error"))
             resume(with: "Shortcut error: \(error)")
 
         default:

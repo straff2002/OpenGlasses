@@ -160,7 +160,10 @@ class BroadcastService: ObservableObject {
         }
         streamName = streamKey
 
-        NSLog("[Broadcast] Connecting to %@/%@", connectionURL, String(streamName.prefix(8)) + "...")
+        // Neither half of an RTMP destination is loggable: the ingest URL names the platform and
+        // the wearer's own channel, and the stream key is a bearer credential that lets anyone
+        // holding it publish as them. A prefix of a key is still a fragment of a credential.
+        PrivacyLog.stream(.rtmpBroadcast, .connecting)
 
         // CY: a broadcast that has begun wants a connection until the wearer says otherwise.
         wantsConnection = true
@@ -173,7 +176,7 @@ class BroadcastService: ObservableObject {
         do {
             try await connectAndPublish()
         } catch {
-            NSLog("[Broadcast] Connection failed: %@", error.localizedDescription)
+            PrivacyLog.stream(.rtmpBroadcast, .startFailed, error: SafeErrorSummary(error))
             // The *first* connect still fails loudly rather than retrying: nothing is live yet,
             // the wearer is looking at the button they just pressed, and a wrong URL or key would
             // otherwise spend five minutes in a backoff loop before saying so.
@@ -220,9 +223,9 @@ class BroadcastService: ObservableObject {
             provider.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
                 self?.appendAudio(buffer)
             }
-            NSLog("[Broadcast] Mic audio attached")
+            PrivacyLog.stream(.rtmpBroadcast, .audioAttached)
         } else {
-            NSLog("[Broadcast] No audio provider — stream is video-only")
+            PrivacyLog.stream(.rtmpBroadcast, .audioUnavailable)
         }
     }
 
@@ -251,8 +254,10 @@ class BroadcastService: ObservableObject {
             override: Config.broadcastBitrateOverride
         )
         let keyframeSeconds = Config.broadcastKeyframeIntervalSeconds
-        NSLog("[Broadcast] Encoding \(outputWidth)x\(outputHeight) @ "
-              + "\(Int(targetFPS.rounded()))fps, \(ceiling) bps, keyframe \(keyframeSeconds)s")
+        PrivacyLog.stream(.rtmpBroadcast, .encoderConfigured,
+                          seconds: Double(keyframeSeconds),
+                          width: outputWidth, height: outputHeight,
+                          frameRate: Int(targetFPS.rounded()), bitrate: ceiling)
         try await stream.setVideoSettings(VideoCodecSettings(
             videoSize: CGSize(width: outputWidth, height: outputHeight),
             bitRate: ceiling,
@@ -283,7 +288,7 @@ class BroadcastService: ObservableObject {
 
         // Connect to RTMP server
         _ = try await connection.connect(connectionURL)
-        NSLog("[Broadcast] Connected to RTMP server")
+        PrivacyLog.stream(.rtmpBroadcast, .connected)
 
         // Encoder priming: send one blank frame before publish. This prevents a 0x0-metadata race
         // where the ingest sees the stream before it sees a frame size.
@@ -291,13 +296,13 @@ class BroadcastService: ObservableObject {
                                                            height: outputHeight,
                                                            timescale: frameTimescale) {
             await mixer.append(primingBuffer)
-            NSLog("[Broadcast] Encoder primed with blank frame")
+            PrivacyLog.stream(.rtmpBroadcast, .encoderPrimed)
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms for encoder to process
         }
 
         // Start publishing
         _ = try await stream.publish(streamName)
-        NSLog("[Broadcast] Live! Publishing as '%@'", streamName.prefix(8).description)
+        PrivacyLog.stream(.rtmpBroadcast, .publishing)
 
         // CY: bitrate control. The transport reports outbound throughput and queue depth roughly
         // once a second; the strategy turns that into a `BroadcastPressureSample` and applies
@@ -404,7 +409,8 @@ class BroadcastService: ObservableObject {
         // A drop is reported by both status streams; only the first one starts a reconnect.
         guard machine.apply(.dropped) else { return }
 
-        NSLog("[Broadcast] Connection lost (%@) — reconnecting", reason)
+        // The reason is prose composed by whichever status stream reported the drop.
+        PrivacyLog.stream(.rtmpBroadcast, .connectionLost)
         // Whatever killed it, this attempt's silence clock stops with it; the next attempt sets
         // its own when it publishes.
         liveSince = nil
@@ -418,7 +424,8 @@ class BroadcastService: ObservableObject {
         case .retry(let attempt, let delay):
             machine.apply(.retry(attempt: attempt))
             publishHealth()
-            NSLog("[Broadcast] Reconnect #%d in %.0fs", attempt, delay)
+            PrivacyLog.stream(.rtmpBroadcast, .reconnectScheduled,
+                              attempt: attempt, delaySeconds: delay)
             scheduleReconnect(after: delay)
         }
     }
@@ -436,10 +443,10 @@ class BroadcastService: ObservableObject {
         guard wantsConnection, isBroadcasting else { return }
         do {
             try await connectAndPublish()
-            NSLog("[Broadcast] Reconnected")
+            PrivacyLog.stream(.rtmpBroadcast, .reconnected)
             markLive()
         } catch {
-            NSLog("[Broadcast] Reconnect attempt failed: %@", error.localizedDescription)
+            PrivacyLog.stream(.rtmpBroadcast, .reconnectFailed, error: SafeErrorSummary(error))
             cancelStatusObservation()
             teardownConnectionObjects()
             switch reconnectPolicy.connectionLost(now: Date()) {
@@ -456,7 +463,9 @@ class BroadcastService: ObservableObject {
     /// Give up on this broadcast: report it, and stop everything the way a manual stop would.
     private func fail(reason: String) {
         guard wantsConnection else { return }
-        NSLog("[Broadcast] Failed: %@", reason)
+        // `reason` is the sentence shown to the wearer, so the event says which failure it was
+        // and the copy stays on screen.
+        PrivacyLog.stream(.rtmpBroadcast, .failed)
         machine.apply(.fail(reason))
         let failedState = machine.state
         broadcastError = reason
@@ -522,7 +531,8 @@ class BroadcastService: ObservableObject {
         mainSourceMirror = source
         latestSecondaryFrame = nil
         startPhoneSourceIfNeeded()
-        NSLog("[Broadcast] Source switched to %@", source.rawValue)
+        PrivacyLog.stream(.rtmpBroadcast, .sourceSwitched,
+                          detail: PrivacyToken(source.rawValue))
         return true
     }
 
@@ -585,7 +595,7 @@ class BroadcastService: ObservableObject {
         machine.apply(.stop)
         health = BroadcastHealth(state: machine.state)
         sessionState = machine.state
-        NSLog("[Broadcast] Stopped after %d frames", frameCount)
+        PrivacyLog.stream(.rtmpBroadcast, .stopped, count: frameCount)
     }
 
     /// Formatted broadcast duration string (MM:SS)
@@ -628,7 +638,8 @@ class BroadcastService: ObservableObject {
         guard verdict == .stalled else { return }
         self.liveSince = nil   // this attempt is spent; the next one starts its own clock
         let message = BroadcastStallPolicy.stalledMessage(target: connectionURL)
-        NSLog("[Broadcast] Nothing sent after %.0fs — %@", BroadcastStallPolicy.stallSeconds, message)
+        // `message` is the stall advice, and it is composed *around* the destination URL.
+        PrivacyLog.stream(.rtmpBroadcast, .stalled, seconds: BroadcastStallPolicy.stallSeconds)
         onDebugEvent?("Broadcast published but wrote 0 bytes in \(Int(BroadcastStallPolicy.stallSeconds))s — reconnecting")
         broadcastError = message
         handleConnectionLoss(reason: "published but nothing reached the server")
@@ -864,8 +875,9 @@ final actor BroadcastBitRateController: StreamBitRateStrategy {
         case .stepDown(let bitrate), .stepUp(let bitrate):
             settings.bitRate = bitrate
             try? await stream.setVideoSettings(settings)
-            NSLog("[Broadcast] Bitrate → %d bps (measured %d bps, queue %d B)",
-                  bitrate, sample.measuredBitrate, sample.queuedBytes)
+            PrivacyLog.stream(.rtmpBroadcast, .bitrateAdjusted, bitrate: bitrate,
+                              measuredBitrate: sample.measuredBitrate,
+                              bytes: sample.queuedBytes)
             onSample(bitrate, sample.measuredBitrate, report.totalBytesOut)
         }
     }

@@ -380,7 +380,7 @@ struct AgenticFeaturesView: View {
             exportURL = url
             showShareSheet = true
         } catch {
-            NSLog("[Export] Failed: %@", error.localizedDescription)
+            PrivacyLog.transfer(.agentExport, .fileFailed, error: SafeErrorSummary(error))
         }
     }
 }

@@ -76,6 +76,17 @@ enum PrivacyLog {
         /// Data crossing the app's boundary: import, export, share, and the drain that hands the
         /// offline queue to the network. Manifest counts and format classes only.
         case transfer
+        /// The glasses link and the app's other surfaces — the watch, the car, the lock screen,
+        /// the in-lens HUD, the Now Playing slot. Link states and surface lifecycle; never a
+        /// device id in the clear, never the content a surface was asked to show.
+        case device
+        /// Work the app schedules and delivers on the wearer's behalf: the task scheduler, the
+        /// notification queue that speaks its results, the agent's own session plumbing. Task
+        /// titles and notification bodies are the wearer's day — kind, count and outcome only.
+        case agent
+        /// Purchases and entitlements. Product ids are this app's own published catalog; nothing
+        /// about the buyer, the receipt, or the payment ever appears.
+        case commerce
     }
 
     // MARK: - Sink
@@ -86,7 +97,8 @@ enum PrivacyLog {
         var made: [Category: Logger] = [:]
         for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network,
                          .gateway, .mcp, .stream, .speech, .audio, .model, .conversation,
-                         .vision, .medical, .location, .store, .transfer] {
+                         .vision, .medical, .location, .store, .transfer,
+                         .device, .agent, .commerce] {
             made[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
         return made
@@ -467,7 +479,7 @@ enum PrivacyLog {
         case warmupAborted, warmupNudged, warmupSessionStopped, warmupAttemptFailed, warmupRetry
         case streamingReached, firstFrameTimedOut, waitAttemptFailed, streamError
         case started, stopped, suspended, resumed, unavailable, configured
-        case frameReceived, frameStale
+        case frameReceived, frameStale, frameRejected, framePinned, framePinReleased
         case captureRequested, captureRejected, captureTimedOut, captureFallbackUsed
         case photoReceived, photoUnexpected, photoCaptured, photoNotSaved
         case stallDetected, stallRecovery, stallRecovered, stallRecoveryFailed
@@ -521,6 +533,46 @@ enum PrivacyLog {
         if let status { fields.append(.init(.state, .token(status))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.capture, .photoLibrary, fields))
+    }
+
+    // MARK: - Local recording
+    //
+    // A recording is the camera and the microphone written to a file, so the two things a
+    // recording log is always tempted to name are exactly the two it may not: the *file*, whose
+    // name is a session and a date and whose path is the sandbox, and the *transcript*, which is
+    // the whole point of the auto-transcription pass. Geometry, frame rate, duration, frame and
+    // buffer counts and the audio format are the shape of the pipeline and stay — a writer that
+    // fails mid-file, or an audio format that changes underneath it, is diagnosed from those.
+
+    enum RecordingEvent: String {
+        case started, autoStopped, finished, filed, nothingOnDisk, fileFailed
+        case writerFailed, noWriter
+        case audioFormatChanged, audioBuffersDropped, audioAppendRejected
+        case autoTranscriptionEnabled, transcriptCaptured, transcriptSaved, transcriptSaveFailed
+    }
+
+    /// `success` is whether the file reached the photo library; `count` is frames or buffers,
+    /// `characters` is how long a transcript was. Neither the file nor the transcript has a
+    /// parameter.
+    @discardableResult
+    static func recording(_ event: RecordingEvent, width: Int? = nil, height: Int? = nil,
+                          frameRate: Int? = nil, count: Int? = nil, characters: Int? = nil,
+                          seconds: Double? = nil, hertz: Int? = nil, channels: Int? = nil,
+                          success: Bool? = nil, detail: PrivacyToken? = nil,
+                          error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let width { fields.append(.init(.width, .count(width))) }
+        if let height { fields.append(.init(.height, .count(height))) }
+        if let frameRate { fields.append(.init(.frameRate, .count(frameRate))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let hertz { fields.append(.init(.hertz, .count(hertz))) }
+        if let channels { fields.append(.init(.channels, .count(channels))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.capture, .recording, fields))
     }
 
     // MARK: - Vision
@@ -734,7 +786,7 @@ enum PrivacyLog {
     enum LocationEvent: String {
         case authorized, denied, updateFailed, placeResolved
         case regionMonitoringFailed, geofencesRestored, geofenceEntered, geofenceExited
-        case rerouteFailed
+        case rerouteFailed, routeStartFailed
     }
 
     @discardableResult
@@ -913,7 +965,7 @@ enum PrivacyLog {
 
     /// An unsolicited push from the gateway. The preview text *is* the notification — it is read
     /// aloud to the wearer — so its length is the only thing recorded.
-    enum GatewayNotificationKind: String { case heartbeat, cronResult }
+    enum GatewayNotificationKind: String { case heartbeat, cronResult, triage }
 
     @discardableResult
     static func gatewayNotification(_ kind: GatewayNotificationKind, characters: Int) -> PrivacyEvent {
@@ -1014,8 +1066,14 @@ enum PrivacyLog {
     /// strangers *about* the wearer and read aloud into their ear; the channel name identifies
     /// the wearer's own broadcast account. Neither has a parameter — the channel arrives as a
     /// `session` fingerprint and a message only ever as a count.
+    ///
+    /// `rtmpBroadcast` is the sharpest of the five. An RTMP destination is an ingest URL plus a
+    /// **stream key**, and the key is a bearer credential: anyone holding it can publish as the
+    /// wearer, to the wearer's own channel, for as long as it is not rotated. Neither half has a
+    /// parameter here — not the URL, not the key, not a prefix of the key, and not the stall
+    /// policy's advice sentence, which is composed *around* the destination URL.
     enum StreamChannel: String {
-        case viewerBroadcast, expertBridge, hudMirror, signaling, broadcastChat
+        case viewerBroadcast, expertBridge, hudMirror, signaling, broadcastChat, rtmpBroadcast
     }
 
     enum StreamEvent: String {
@@ -1024,13 +1082,21 @@ enum PrivacyLog {
         case expertPaged, expertBridgeUnavailable
         case negotiationFailed, sendFailed, receiveFailed
         case joined, connectionLost, reconnectScheduled
+        case connecting, connected, publishing, reconnected, reconnectFailed, failed, stalled
+        case encoderConfigured, encoderPrimed, audioAttached, audioUnavailable
+        case sourceSwitched, bitrateAdjusted
     }
 
+    /// Geometry, frame rate, bitrate and queue depth are the whole diagnostic vocabulary of a
+    /// live encoder and are public operation class. `detail` carries a source kind or a state,
+    /// never a destination.
     @discardableResult
     static func stream(_ channel: StreamChannel, _ event: StreamEvent,
                        detail: PrivacyToken? = nil, count: Int? = nil,
                        session: PrivateIdentifier? = nil, attempt: Int? = nil,
-                       delaySeconds: Double? = nil,
+                       delaySeconds: Double? = nil, seconds: Double? = nil,
+                       width: Int? = nil, height: Int? = nil, frameRate: Int? = nil,
+                       bitrate: Int? = nil, measuredBitrate: Int? = nil, bytes: Int? = nil,
                        error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.channel, .token(PrivacyToken(channel.rawValue))),
@@ -1041,6 +1107,13 @@ enum PrivacyLog {
         if let session { fields.append(.init(.session, .identifier(session))) }
         if let attempt { fields.append(.init(.attempt, .count(attempt))) }
         if let delaySeconds { fields.append(.init(.delay, .seconds(delaySeconds))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let width { fields.append(.init(.width, .count(width))) }
+        if let height { fields.append(.init(.height, .count(height))) }
+        if let frameRate { fields.append(.init(.frameRate, .count(frameRate))) }
+        if let bitrate { fields.append(.init(.bitrate, .count(bitrate))) }
+        if let measuredBitrate { fields.append(.init(.measuredBitrate, .count(measuredBitrate))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.stream, .stream, fields))
     }
@@ -1389,7 +1462,7 @@ enum PrivacyLog {
         case conversationIndex, conversationRecall
         case evolvedSkills, usage, playbooks, operationJournal
         case readingSessions, studyDecks, recordedSessions, skillPacks, skillHub
-        case offlineQueue
+        case offlineQueue, homeGrid
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,
@@ -1440,6 +1513,9 @@ enum PrivacyLog {
 
     enum TransferChannel: String {
         case skillPack, skillHub, agentExport, recordingFile, spotlightIndex, offlineSync
+        /// The out-of-process `URLSession` the model hub downloads through. Its session
+        /// identifier is app-chosen and its file is a model weight, so neither is named.
+        case backgroundDownload
     }
 
     enum TransferEvent: String {
@@ -1448,6 +1524,7 @@ enum PrivacyLog {
         case fileFailed, copyFailed
         case donationFailed, purgeFailed
         case attemptsExhausted, permanentlyFailed
+        case sessionResumed, sessionCompleted
     }
 
     /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its
@@ -1474,6 +1551,176 @@ enum PrivacyLog {
         if let bytes { fields.append(.init(.bytes, .count(bytes))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.transfer, .transfer, fields))
+    }
+
+    // MARK: - Devices and surfaces
+    //
+    // The glasses link is the app's central operational fact and the reason most of these lines
+    // exist: "the Connect button does nothing" is diagnosed from registration states, device-list
+    // transitions and Bluetooth route changes, none of which describe the wearer.
+    //
+    // What does describe them, and is therefore absent: the **device id** (it names a particular
+    // pair of glasses on a particular face — it arrives fingerprinted or as a count), the
+    // **Info.plist credentials** the SDK bootstrap used to dump verbatim (a client token is a
+    // secret, an app id and a team id name the developer account, and a universal-link scheme is
+    // the app's own callback door), the **command payload** a watch or a car sends, and the
+    // **content a surface was asked to show** — a HUD card, a CarPlay row, a Live Activity's
+    // state are all composed from the conversation.
+    enum DeviceSurface: String {
+        case glasses, watch, carPlay, liveActivity, hud, nowPlaying, sdk
+    }
+
+    enum DeviceEvent: String {
+        case configured, unavailable, unsupported, configProblem
+        case registrationState, registrationStarted, registrationFailed, registrationDropped
+        case alreadyRegistered
+        case connected, disconnected, reconnected, idle, active
+        case deviceListChanged, deviceListEmpty
+        case autoSleepArmed, autoSleepFired
+        case sessionActivated, sessionInactive, sessionDeactivated, activationFailed
+        case commandReceived, commandUnknown, commandHandled
+        case started, stopped, ended, staleEnded, startFailed, notEnabled, alreadyRunning
+        case renderFailed, claimed, released
+        case telemetryBlocked
+    }
+
+    /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is
+    /// a *known* command name from the app's own watch/car protocol; an unrecognised one is
+    /// reported as `commandUnknown` with no name, because an unknown command is text that arrived
+    /// from a peer. `item` is a system-generated activity id, fingerprinted.
+    @discardableResult
+    static func device(_ surface: DeviceSurface, _ event: DeviceEvent,
+                       state: PrivacyToken? = nil, command: PrivacyToken? = nil,
+                       item: PrivateIdentifier? = nil, count: Int? = nil,
+                       minutes: Int? = nil, success: Bool? = nil,
+                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.surface, .token(PrivacyToken(surface.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let state { fields.append(.init(.state, .token(state))) }
+        if let command { fields.append(.init(.command, .token(command))) }
+        if let item { fields.append(.init(.item, .identifier(item))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let minutes { fields.append(.init(.minutes, .count(minutes))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.device, .device, fields))
+    }
+
+    // MARK: - Scheduled and delivered agent work
+    //
+    // A scheduled task's *name* is the wearer's instruction to their agent ("check whether the
+    // clinic replied"), a queued notification's body is what the agent found, and the summary the
+    // queue speaks is the same content one transform later. All three are user content and none
+    // has a parameter. What survives is which channel, which lifecycle event, how many items were
+    // involved, how long a result was, and the model that ran — a catalog id, public.
+    //
+    // Persona identity is omitted rather than fingerprinted, on the batch-2 precedent: the set is
+    // small and wearer-visible, so a stable hash of "the persona used most" anonymises nothing.
+
+    enum AgentChannel: String { case scheduler, notifications, session, playbook }
+
+    enum AgentEvent: String {
+        case started, stopped, checkScheduled, onboardingRun
+        case taskStarted, taskCompleted, taskFailed, taskDeferred, taskProducedNothing
+        case personaSwitched, modelSwitched, modelRestored
+        case queued, pruned, deliveryStarted, deliverySkipped, deliveredViaSession
+        case awaitingOperator, summaryFailed
+        case dispatchedWithoutFrame, replanned, yieldedToHuman
+    }
+
+    /// `priority` and `reason` are fixed app enums (`AgentNotification.Priority`, the dispatcher's
+    /// no-frame reason). A model-authored reason string — the one a `yield_to_human` or a playbook
+    /// `replan` carries — is model output about the wearer's task, so it arrives as `characters`.
+    @discardableResult
+    static func agent(_ channel: AgentChannel, _ event: AgentEvent,
+                      model: PrivacyToken? = nil, priority: PrivacyToken? = nil,
+                      reason: PrivacyToken? = nil, count: Int? = nil, characters: Int? = nil,
+                      minutes: Int? = nil, error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.channel, .token(PrivacyToken(channel.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let model { fields.append(.init(.model, .token(model))) }
+        if let priority { fields.append(.init(.priority, .token(priority))) }
+        if let reason { fields.append(.init(.reason, .token(reason))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let minutes { fields.append(.init(.minutes, .count(minutes))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.agent, .agent, fields))
+    }
+
+    // MARK: - Purchases
+
+    /// A product id is this app's own published catalog entry, so it is a token — which product
+    /// failed to unlock is the entire content of a purchase bug report. Nothing else from a
+    /// transaction appears: no receipt, no transaction id, no account, no price, no territory.
+    enum PurchaseEvent: String {
+        case catalogLoaded, catalogFailed
+        case activated, cancelled, pending, resultUnknown, failed
+    }
+
+    @discardableResult
+    static func purchase(_ event: PurchaseEvent, product: PrivacyToken? = nil,
+                         count: Int? = nil, error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let product { fields.append(.init(.product, .token(product))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.commerce, .purchase, fields))
+    }
+
+    // MARK: - App lifecycle
+    //
+    // The app entry point's own chatter: process transitions, the listening master switch, turn
+    // bookkeeping and the routing decisions above a turn. Most of what was here before was
+    // progress narration and is simply gone; what remains is the handful of facts that make a
+    // "why did it not listen / why did it pick that model / why did nothing happen" report
+    // answerable.
+    //
+    // A turn's *text* never appears in any of it: not the transcript, not the utterance an
+    // admission policy held or rejected, not a voice command's wording, not a direct tool call's
+    // result, and not the answer that was spoken back.
+
+    enum AppEvent: String {
+        case loggingActive, sdkConfigured, sdkUnavailable
+        case backgrounded, foregrounded, becameActive
+        case backgroundOptimized, backgroundOptimizationSkipped, foregroundRestored
+        case listeningEnabled, listeningDisabled, micMuted, micUnmuted
+        case conversationCleared, conversationEnded
+        case turnCancelled, responseCancelled, playbackStopped, alreadyProcessing
+        case utteranceHeld, utteranceRejected, utteranceStaleDropped
+        case bargeIn, consentAnsweredByVoice
+        case voiceCommandHandled, voiceCommandDemoted, intentIgnored
+        case turnClassified, directToolAnswered, directToolFellBack, turnCompleted
+        case modeSwitchRedialed, modeSwitchRedialFailed
+        case fieldSessionStarted, fieldSessionEnded
+        case operationSettledLate, chatReadbackUnconfigured, powerPosture
+        case quickDisconnect
+    }
+
+    /// `detail` and `state` are fixed app vocabularies — a routing tier, a command label, a power
+    /// posture, a mode. `item` is a Field Assist vault identity, fingerprinted: a vault id names
+    /// the customer whose procedures are loaded, which is the one identifier this file holds that
+    /// is about someone other than the wearer.
+    @discardableResult
+    static func app(_ event: AppEvent, detail: PrivacyToken? = nil, state: PrivacyToken? = nil,
+                    tool: PrivacyToken? = nil, model: PrivacyToken? = nil,
+                    item: PrivateIdentifier? = nil, count: Int? = nil, characters: Int? = nil,
+                    success: Bool? = nil, error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let state { fields.append(.init(.state, .token(state))) }
+        if let tool { fields.append(.init(.tool, .token(tool))) }
+        if let model { fields.append(.init(.model, .token(model))) }
+        if let item { fields.append(.init(.item, .identifier(item))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let success { fields.append(.init(.success, .flag(success))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.lifecycle, .app, fields))
     }
 
     // MARK: - Network
@@ -1581,6 +1828,7 @@ struct PrivacyEvent: Equatable {
         case camera, photoLibrary, vision, face
         case homeBridge, medical, location, proactiveAlert
         case store, transfer
+        case recording, device, agent, purchase, app
     }
 
     /// Field keys are closed too, so a reader can rely on the shape of a category's lines.
@@ -1605,6 +1853,7 @@ struct PrivacyEvent: Equatable {
         case resolution, frameRate, width, height
         case posture, percent, extraction, confidence, days
         case slot, scope, version, signed
+        case surface, command, product, priority, bitrate, measuredBitrate
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

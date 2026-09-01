@@ -41,7 +41,10 @@ struct YieldToHumanTool: NativeTool {
         }
         response += "\nWaiting for you to say \"done\" or \"continue\" when ready."
 
-        NSLog("[YieldToHuman] Yielding control: %@", reason)
+        // The reason is written by the model about the wearer's task — "I can't reach the clinic's
+        // booking page, take over" — so it is model output, user-content class. That control was
+        // handed back, and how much the model said about why, is the diagnosable part.
+        PrivacyLog.agent(.session, .yieldedToHuman, characters: reason.count)
         return response
     }
 }
