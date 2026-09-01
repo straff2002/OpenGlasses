@@ -59,7 +59,8 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
         }
 
         let authStatus = homeManager.authorizationStatus
-        NSLog("[HomeKit] Auth status: %d, homes: %d", authStatus.rawValue, homeManager.homes.count)
+        PrivacyLog.homeBridge(.homeKit, .authorizationChanged, status: Int(authStatus.rawValue),
+                              count: homeManager.homes.count)
         // Accept if authorized OR if we have homes (auth may lag behind on some iOS versions)
         if !authStatus.contains(.authorized) && homeManager.homes.isEmpty {
             return "HomeKit access not authorized. Please enable Home Data for OpenGlasses in Settings → Privacy & Security → HomeKit. (Auth status: \(authStatus.rawValue))"
@@ -69,14 +70,15 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
         var home: HMHome? = homeManager.homes.first
         if home == nil {
             for attempt in 1...3 {
-                print("🏠 No homes yet (attempt \(attempt)/3), waiting...")
+                PrivacyLog.homeBridge(.homeKit, .waitingForHomes, attempt: attempt)
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 home = homeManager.homes.first
                 if home != nil { break }
             }
         }
         guard let home else {
-            print("🏠 No homes found. Auth: \(homeManager.authorizationStatus.rawValue)")
+            PrivacyLog.homeBridge(.homeKit, .homesUnavailable,
+                                  status: Int(homeManager.authorizationStatus.rawValue))
             return "No HomeKit home found. Open the Apple Home app and make sure you have a home set up with accessories."
         }
 
@@ -157,7 +159,8 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
         do {
             try await characteristic.readValue()
         } catch {
-            NSLog("[HomeKit] Read before write failed for %@: %@", accessory.name, error.localizedDescription)
+            PrivacyLog.homeBridge(.homeKit, .readBeforeWriteFailed,
+                                  error: SafeErrorSummary(error))
         }
 
         let newValue: Bool
@@ -322,7 +325,7 @@ private class HomeKitManager: NSObject, HMHomeManagerDelegate {
         let manager = HMHomeManager()
         manager.delegate = self
         self.homeManager = manager
-        print("🏠 HomeKit manager initialized on main thread")
+        PrivacyLog.homeBridge(.homeKit, .managerInitialized)
     }
 
     func ensureReady() async {
@@ -342,7 +345,7 @@ private class HomeKitManager: NSObject, HMHomeManagerDelegate {
                 // If still waiting, force-resume
                 if !self.isReady {
                     self.isReady = true
-                    print("⚠️ HomeKit timed out waiting for homes — proceeding anyway")
+                    PrivacyLog.homeBridge(.homeKit, .homesTimedOut)
                     for waiter in self.waiters {
                         waiter.resume()
                     }
@@ -354,7 +357,9 @@ private class HomeKitManager: NSObject, HMHomeManagerDelegate {
 
     // HMHomeManagerDelegate
     func homeManagerDidUpdateHomes(_ manager: HMHomeManager) {
-        print("🏠 HomeKit homes updated: \(manager.homes.count) homes, auth: \(manager.authorizationStatus.rawValue)")
+        PrivacyLog.homeBridge(.homeKit, .homesUpdated,
+                              status: Int(manager.authorizationStatus.rawValue),
+                              count: manager.homes.count)
         isReady = true
         for waiter in waiters {
             waiter.resume()
@@ -363,7 +368,7 @@ private class HomeKitManager: NSObject, HMHomeManagerDelegate {
     }
 
     func homeManager(_ manager: HMHomeManager, didUpdate status: HMHomeManagerAuthorizationStatus) {
-        print("🏠 HomeKit auth status: \(status.rawValue)")
+        PrivacyLog.homeBridge(.homeKit, .authorizationChanged, status: Int(status.rawValue))
         if status.contains(.authorized) && !isReady {
             // Auth granted — homes should follow shortly, but mark ready if we have homes
             if !manager.homes.isEmpty {

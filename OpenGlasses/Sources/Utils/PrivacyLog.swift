@@ -60,6 +60,16 @@ enum PrivacyLog {
         case model
         /// Stored conversation history and its encryption.
         case conversation
+        /// What the cameras were asked to see: OCR, scene narration, faces, sign language.
+        /// Everything recognised here is regulated or user content — this category carries
+        /// counts and outcomes only.
+        case vision
+        /// Clinical operations: protected storage, the audit trail's own faults, exports.
+        /// A clinical value, a medication, a condition or an export's contents never appear.
+        case medical
+        /// Where the wearer is. Coordinates, place names and region identifiers have no
+        /// parameter anywhere in this category.
+        case location
     }
 
     // MARK: - Sink
@@ -69,7 +79,8 @@ enum PrivacyLog {
     private static let loggers: [Category: Logger] = {
         var made: [Category: Logger] = [:]
         for category in [Category.tools, .realtime, .capture, .home, .lifecycle, .auth, .network,
-                         .gateway, .mcp, .stream, .speech, .audio, .model, .conversation] {
+                         .gateway, .mcp, .stream, .speech, .audio, .model, .conversation,
+                         .vision, .medical, .location] {
             made[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
         return made
@@ -426,6 +437,178 @@ enum PrivacyLog {
         return emit(.init(.capture, .qrFetchLoaded, fields))
     }
 
+    // MARK: - Cameras
+    //
+    // The camera plumbing is the one place in this batch where verbose logging earns its keep:
+    // the DAT session/stream lifecycle is the hardest thing in the app to diagnose without a
+    // device in hand, and states, capability transitions, resolutions and frame rates are all
+    // public operation class. What a frame *shows* is not, and no method here takes a pixel, a
+    // recognised string, or a user-facing notice — a compatibility notice and a camera-refusal
+    // message are sentences composed for the wearer, so the event says which refusal it was.
+    // The device id is a fingerprint: it names a particular pair of glasses on a particular face.
+
+    /// Which camera. `privacyFilter` is the bystander-blur pass that sits between the glasses
+    /// and every egress, and `decoder` is the video pipeline underneath both.
+    enum CameraSource: String { case glasses, phone, decoder, privacyFilter }
+
+    enum CameraEvent: String {
+        case permissionRevalidating, registrationState, notRegistered
+        case permissionRetry, permissionChecked, permissionFailed
+        case sessionBound, sessionNotStarted, sessionError, sessionAttemptFailed
+        case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
+        case resolutionFloored, sessionReset, tornDown, idleTeardown
+        case streamState, streamPausedWhileWanted, streamPausedAfterCapture
+        case warmupAborted, warmupNudged, warmupSessionStopped, warmupAttemptFailed, warmupRetry
+        case streamingReached, firstFrameTimedOut, waitAttemptFailed, streamError
+        case started, stopped, suspended, resumed, unavailable, configured
+        case frameReceived, frameStale
+        case captureRequested, captureRejected, captureTimedOut, captureFallbackUsed
+        case photoReceived, photoUnexpected, photoCaptured, photoNotSaved
+        case stallDetected, stallRecovery, stallRecovered, stallRecoveryFailed
+    }
+
+    @discardableResult
+    static func camera(_ source: CameraSource, _ event: CameraEvent,
+                       device: PrivateIdentifier? = nil, state: PrivacyToken? = nil,
+                       detail: PrivacyToken? = nil, resolution: PrivacyToken? = nil,
+                       frameRate: Int? = nil, width: Int? = nil, height: Int? = nil,
+                       attempt: Int? = nil, ofAttempts: Int? = nil, count: Int? = nil,
+                       kilobytes: Int? = nil, bytes: Int? = nil, seconds: Double? = nil,
+                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.source, .token(PrivacyToken(source.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let device { fields.append(.init(.device, .identifier(device))) }
+        if let state { fields.append(.init(.state, .token(state))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let resolution { fields.append(.init(.resolution, .token(resolution))) }
+        if let frameRate { fields.append(.init(.frameRate, .count(frameRate))) }
+        if let width { fields.append(.init(.width, .count(width))) }
+        if let height { fields.append(.init(.height, .count(height))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let ofAttempts { fields.append(.init(.ofAttempts, .count(ofAttempts))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let kilobytes { fields.append(.init(.kilobytes, .count(kilobytes))) }
+        if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.capture, .camera, fields))
+    }
+
+    /// Writes to the photo library. The album title is the app's own constant and the status is
+    /// a system authorization state, so both are public; the asset is not described at all.
+    enum PhotoLibraryEvent: String {
+        case authorizationRequested, authorizationSettled, saveNotPermitted
+        case saved, saveFailed, changeRequestUnbuildable
+        case albumRetriedUntargeted, albumCreateFailed
+    }
+
+    enum PhotoLibraryAsset: String { case image, video }
+
+    @discardableResult
+    static func photoLibrary(_ event: PhotoLibraryEvent, asset: PhotoLibraryAsset? = nil,
+                             status: PrivacyToken? = nil,
+                             error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let asset { fields.append(.init(.kind, .token(PrivacyToken(asset.rawValue)))) }
+        if let status { fields.append(.init(.state, .token(status))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.capture, .photoLibrary, fields))
+    }
+
+    // MARK: - Vision
+    //
+    // Everything these channels produce is content: OCR text is whatever the wearer pointed the
+    // glasses at (a prescription, a bank statement, a letter), a narration is a description of
+    // the room they are standing in, and a refusal notice is a sentence composed for them. So the
+    // shape of the work survives — how many text blocks, how many characters, how long it took,
+    // which gate refused — and none of the substance does.
+
+    enum VisionChannel: String {
+        case ocr, documentScan, sceneNarration, assistiveMode, navigationAssist
+        case liveCoach, lookClosely, fingerspelling
+    }
+
+    enum VisionEvent: String {
+        case started, stopped, halted, resumed, quieted, speakingAgain
+        case refused, powerRefused, cameraClaimFailed
+        case textRecognized, recognitionFailed, documentDetected, detectionFailed
+        case frameInjected, captureTimedOut, captureFailed, declined
+        case performanceSampled
+    }
+
+    /// `posture` is the power policy's own enum, `percent` is how much of the frame a detected
+    /// document filled — both are measurements of the camera, not of what it saw.
+    @discardableResult
+    static func vision(_ channel: VisionChannel, _ event: VisionEvent,
+                       reason: PrivacyToken? = nil, posture: PrivacyToken? = nil,
+                       count: Int? = nil, characters: Int? = nil, percent: Int? = nil,
+                       kilobytes: Int? = nil, milliseconds: Int? = nil,
+                       extractionMilliseconds: Int? = nil, seconds: Double? = nil,
+                       detail: PrivacyToken? = nil,
+                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.channel, .token(PrivacyToken(channel.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let reason { fields.append(.init(.reason, .token(reason))) }
+        if let posture { fields.append(.init(.posture, .token(posture))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let percent { fields.append(.init(.percent, .count(percent))) }
+        if let kilobytes { fields.append(.init(.kilobytes, .count(kilobytes))) }
+        if let milliseconds { fields.append(.init(.duration, .milliseconds(milliseconds))) }
+        if let extractionMilliseconds {
+            fields.append(.init(.extraction, .milliseconds(extractionMilliseconds)))
+        }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.vision, .vision, fields))
+    }
+
+    // MARK: - Faces
+    //
+    // A recognised name is the single most identifying string this app ever holds, and the log
+    // is the one sink that would keep it after the announcement has been spoken and forgotten.
+    // There is no name parameter here — not even fingerprinted, because the enrolled set is a
+    // handful of people and a stable hash of "the person seen most often" is an identifier in
+    // everything but spelling. What is left is the fact of a match, how many candidates were in
+    // contention, and how sure the matcher was, in three buckets.
+
+    enum FaceEvent: String {
+        case started, stopped, frequencyReduced, frequencyRestored
+        case recognized, ambiguous
+        case databaseLoaded, loadFailed, saveFailed
+    }
+
+    /// A coarse band, never the similarity itself: a raw score is a measurement of one person's
+    /// face against one enrolment, and three of them in a row would characterise the enrolment.
+    enum FaceConfidence: String {
+        case low, medium, high
+
+        init(similarity: Double) {
+            switch similarity {
+            case ..<0.7: self = .low
+            case ..<0.85: self = .medium
+            default: self = .high
+            }
+        }
+    }
+
+    @discardableResult
+    static func face(_ event: FaceEvent, confidence: FaceConfidence? = nil,
+                     candidates: Int? = nil, enrolled: Int? = nil,
+                     error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let confidence { fields.append(.init(.confidence, .token(PrivacyToken(confidence.rawValue)))) }
+        if let candidates { fields.append(.init(.count, .count(candidates))) }
+        if let enrolled { fields.append(.init(.total, .count(enrolled))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.vision, .face, fields))
+    }
+
     // MARK: - Home
 
     /// Operation classes, not commands. An entity id names a room and a device in someone's
@@ -463,6 +646,100 @@ enum PrivacyLog {
         ]))
     }
 
+    /// The plumbing beneath a home command: authorization, how many homes or entities the bridge
+    /// can see, and whether the catalogue refreshed.
+    ///
+    /// A count of entities is a fact about the wearer's house too — it says roughly how large and
+    /// how automated it is — but it is the one number that makes "the light didn't respond"
+    /// diagnosable, and it names nothing. Accessory, room, scene and entity *names* are the
+    /// regulated part and appear nowhere: they are a small, low-entropy dictionary, so they are
+    /// omitted rather than hashed.
+    enum HomeBridge: String { case homeKit, homeAssistant }
+
+    enum HomeBridgeEvent: String {
+        case managerInitialized, authorizationChanged, homesUpdated
+        case homesUnavailable, homesTimedOut, waitingForHomes
+        case readBeforeWriteFailed
+        case notConfigured, catalogueRefreshed, catalogueFetchFailed, catalogueParseFailed
+    }
+
+    @discardableResult
+    static func homeBridge(_ bridge: HomeBridge, _ event: HomeBridgeEvent,
+                           status: Int? = nil, count: Int? = nil, attempt: Int? = nil,
+                           error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.provider, .token(PrivacyToken(bridge.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let status { fields.append(.init(.status, .count(status))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let attempt { fields.append(.init(.attempt, .count(attempt))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.home, .homeBridge, fields))
+    }
+
+    // MARK: - Medical
+    //
+    // The regulated row of the classification table, at its strictest. A clinical value, a
+    // medication name, a condition, an export body and a protected file's *name* (which is
+    // frequently a date and a patient) all have no parameter here.
+    //
+    // `HIPAAComplianceService`'s audit trail is a separate, deliberate store with its own
+    // retention and export path — it keeps action and detail on purpose. What is migrated here is
+    // only its debug mirror, which copied every audit line into the device log where none of that
+    // protection applies. The action class survives (it is a fixed vocabulary of operation names);
+    // the detail does not.
+
+    enum MedicalSubsystem: String {
+        case compliance, audit, export, fhir, safetyAssessment, healthSafety, fitness
+    }
+
+    enum MedicalEvent: String {
+        case fileProtected, fileProtectionFailed
+        case auditRecorded, auditLoadFailed, auditSaveFailed
+        case retentionPurged, purgeFailed
+        case exportFailed, exportUnsupported
+        case credentialsMigrated, migrationDeferred, migrationFailed, migrationUnverified
+        case saveSkipped, persistFailed
+        case citationsWithheld, workoutSaveFailed
+    }
+
+    @discardableResult
+    static func medical(_ subsystem: MedicalSubsystem, _ event: MedicalEvent,
+                        operation: PrivacyToken? = nil, count: Int? = nil, days: Int? = nil,
+                        error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.subsystem, .token(PrivacyToken(subsystem.rawValue))),
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+        ]
+        if let operation { fields.append(.init(.operation, .token(operation))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let days { fields.append(.init(.days, .count(days))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.medical, .medical, fields))
+    }
+
+    // MARK: - Location
+    //
+    // Coordinates, a reverse-geocoded place, a geofence's name and a region identifier are all
+    // regulated: together they are the wearer's movements. A geofence event is that it fired and
+    // which way; how many are armed is the only number a monitoring fault needs.
+
+    enum LocationEvent: String {
+        case authorized, denied, updateFailed, placeResolved
+        case regionMonitoringFailed, geofencesRestored, geofenceEntered, geofenceExited
+        case rerouteFailed
+    }
+
+    @discardableResult
+    static func location(_ event: LocationEvent, count: Int? = nil,
+                         error: SafeErrorSummary? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.location, .location, fields))
+    }
+
     // MARK: - Lifecycle / inbound links
 
     /// Which door was knocked on. Never the URL: a callback URL carries auth codes in its query,
@@ -487,6 +764,26 @@ enum PrivacyLog {
         if let action { fields.append(.init(.action, .token(action))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.lifecycle, .deepLink, fields))
+    }
+
+    /// The proactive alerter's own lifecycle, and the fact that it spoke.
+    ///
+    /// The alert text is built from a calendar entry — "leave for your appointment with
+    /// Dr Alvarez in 10 minutes" — and was being written to the log in full on every delivery,
+    /// alongside the event title whenever an agenda produced a playbook. Both are user content;
+    /// how long the alert was, and how many steps the agenda had, are not.
+    enum ProactiveAlertEvent: String {
+        case started, stopped, paused, resumed, delivered, playbookCreated
+    }
+
+    @discardableResult
+    static func proactiveAlert(_ event: ProactiveAlertEvent, characters: Int? = nil,
+                               count: Int? = nil, seconds: Double? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
+        return emit(.init(.lifecycle, .proactiveAlert, fields))
     }
 
     // MARK: - Auth
@@ -1160,6 +1457,8 @@ struct PrivacyEvent: Equatable {
         case audio
         case model, modelCompaction, localModel
         case conversation
+        case camera, photoLibrary, vision, face
+        case homeBridge, medical, location, proactiveAlert
     }
 
     /// Field keys are closed too, so a reader can rely on the shape of a category's lines.
@@ -1181,6 +1480,8 @@ struct PrivacyEvent: Equatable {
         case cacheMegabytes, footprintMegabytes, headroomMegabytes
         case messagesBefore, messagesAfter, tokensBefore, tokensAfter, signals
         case store, thread, minutes
+        case resolution, frameRate, width, height
+        case posture, percent, extraction, confidence, days
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

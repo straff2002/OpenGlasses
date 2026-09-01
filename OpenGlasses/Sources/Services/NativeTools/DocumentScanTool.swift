@@ -102,7 +102,8 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
 
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
-                    NSLog("[DocumentScan] OCR error: %@", error.localizedDescription)
+                    PrivacyLog.vision(.documentScan, .recognitionFailed,
+                                      error: SafeErrorSummary(error))
                     continuation.resume(returning: "")
                     return
                 }
@@ -134,7 +135,8 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
                 }
 
                 let fullText = blocks.map(\.text).joined(separator: "\n")
-                NSLog("[DocumentScan] OCR extracted %d blocks, %d chars", blocks.count, fullText.count)
+                PrivacyLog.vision(.documentScan, .textRecognized,
+                                  count: blocks.count, characters: fullText.count)
                 continuation.resume(returning: fullText)
             }
 
@@ -144,7 +146,8 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
             do {
                 try handler.perform([request])
             } catch {
-                NSLog("[DocumentScan] VNImageRequestHandler error: %@", error.localizedDescription)
+                PrivacyLog.vision(.documentScan, .recognitionFailed,
+                                  error: SafeErrorSummary(error))
                 continuation.resume(returning: "")
             }
         }
@@ -161,7 +164,7 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
         do {
             try handler.perform([request])
         } catch {
-            NSLog("[DocumentScan] Document detection failed: %@", error.localizedDescription)
+            PrivacyLog.vision(.documentScan, .detectionFailed, error: SafeErrorSummary(error))
             return nil
         }
 
@@ -190,7 +193,7 @@ final class DocumentScanTool: NativeTool, @unchecked Sendable {
             return nil // Document fills most of frame or detection is too small
         }
 
-        NSLog("[DocumentScan] Document detected: %.0f%% of frame, cropping", ratio * 100)
+        PrivacyLog.vision(.documentScan, .documentDetected, percent: Int(ratio * 100))
         return cgImage.cropping(to: cropRect)
     }
 

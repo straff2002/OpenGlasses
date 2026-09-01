@@ -32,7 +32,7 @@ actor HomeAssistantEntityCache {
         let token = Config.homeAssistantToken
         guard !baseURL.isEmpty, !token.isEmpty,
               let url = URL(string: "\(baseURL)/api/states") else {
-            NSLog("[HA Cache] Not configured, skipping fetch")
+            PrivacyLog.homeBridge(.homeAssistant, .notConfigured)
             return
         }
 
@@ -49,11 +49,12 @@ actor HomeAssistantEntityCache {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                NSLog("[HA Cache] Fetch failed: HTTP %d", code)
+                PrivacyLog.homeBridge(.homeAssistant, .catalogueFetchFailed,
+                                      error: .http(status: code))
                 return
             }
             guard let states = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                NSLog("[HA Cache] Failed to parse response")
+                PrivacyLog.homeBridge(.homeAssistant, .catalogueParseFailed)
                 return
             }
 
@@ -66,9 +67,10 @@ actor HomeAssistantEntityCache {
                 return CachedEntity(entityId: entityId, friendlyName: friendly, domain: domain, state: state)
             }
             lastFetch = Date()
-            NSLog("[HA Cache] Cached %d entities", entities.count)
+            PrivacyLog.homeBridge(.homeAssistant, .catalogueRefreshed, count: entities.count)
         } catch {
-            NSLog("[HA Cache] Fetch error: %@", error.localizedDescription)
+            PrivacyLog.homeBridge(.homeAssistant, .catalogueFetchFailed,
+                                  error: SafeErrorSummary(error))
         }
     }
 
@@ -132,8 +134,7 @@ actor HomeAssistantEntityCache {
             return nil
         }
 
-        NSLog("[HA Cache] Fuzzy matched '%@' → %@ (score: %.1f, name: %@)",
-              query, best.entity.entityId, best.score, best.entity.friendlyName)
+        PrivacyLog.homeEntityResolved(.fuzzy)
         return best.entity.entityId
     }
 

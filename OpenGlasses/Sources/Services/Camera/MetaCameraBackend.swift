@@ -113,12 +113,12 @@ final class MetaCameraBackend: GlassesCameraBackend {
                status == .granted {
                 return
             }
-            NSLog("[Camera] Cached permission no longer granted — re-running the permission flow")
+            PrivacyLog.camera(.glasses, .permissionRevalidating)
             permissionGranted = false
         }
 
         let regState = Wearables.shared.registrationState
-        NSLog("[Camera] SDK state: %d (need 3 for camera permissions)", regState.rawValue)
+        PrivacyLog.camera(.glasses, .registrationState, count: regState.rawValue)
         events.send(.registrationProgress(regState.rawValue))
 
         // iOS Camera Permission
@@ -133,7 +133,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // Wait for full SDK registration
         let settledState = await waitForRegistration(minState: 3, timeoutSeconds: 15)
         if settledState < 3 {
-            NSLog("[Camera] State %d is not fully registered.", settledState)
+            PrivacyLog.camera(.glasses, .notRegistered, count: settledState)
             throw CameraError.sdkNotRegistered
         }
 
@@ -141,7 +141,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         let maxAttempts = 3
         for attempt in 0..<maxAttempts {
             if attempt > 0 {
-                NSLog("[Camera] Permission retry %d/%d...", attempt + 1, maxAttempts)
+                PrivacyLog.camera(.glasses, .permissionRetry,
+                                  attempt: attempt + 1, ofAttempts: maxAttempts)
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
 
@@ -150,7 +151,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 if readyState < 3 { throw CameraError.sdkNotRegistered }
 
                 let status = try await Wearables.shared.checkPermissionStatus(.camera)
-                NSLog("[Camera] checkPermissionStatus: %@", String(describing: status))
+                PrivacyLog.camera(.glasses, .permissionChecked,
+                                  state: PrivacyToken(String(describing: status)))
                 if status == .granted {
                     permissionGranted = true
                     return
@@ -161,8 +163,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 permissionGranted = true
                 return
             } catch {
-                NSLog("[Camera] Permission attempt %d/%d failed: %@",
-                      attempt + 1, maxAttempts, error.localizedDescription)
+                PrivacyLog.camera(.glasses, .permissionFailed,
+                                  attempt: attempt + 1, ofAttempts: maxAttempts,
+                                  error: SafeErrorSummary(error))
 
                 if let nsError = error as NSError?, nsError.domain == "MWDATCore.PermissionError" {
                     let currentState = Wearables.shared.registrationState.rawValue
@@ -212,7 +215,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // Bind to the specific discovered device when we know it — field-proven more
             // reliable than AutoDeviceSelector for a device whose link is mid-wake.
             if let id = knownDeviceId {
-                NSLog("[Camera] Creating session bound to device %@", id)
+                PrivacyLog.camera(.glasses, .sessionBound, device: PrivateIdentifier(id))
                 deviceSession = try Wearables.shared.createSession(
                     deviceSelector: SpecificDeviceSelector(device: id))
             } else {
@@ -251,8 +254,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         }
 
         guard deviceSession.state == .started else {
-            NSLog("[Camera] Session never reached .started (state: %@)",
-                  String(describing: deviceSession.state))
+            PrivacyLog.camera(.glasses, .sessionNotStarted,
+                              state: PrivacyToken(String(describing: deviceSession.state)))
             throw CameraError.streamNotReady
         }
 
@@ -264,7 +267,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
             concurrentGlassesVoice: continuousStreamingIntent
         )
         if effectiveResolution != Config.cameraResolution {
-            NSLog("[Camera] Resolution floored to %@ for streaming with glasses voice", effectiveResolution)
+            PrivacyLog.camera(.glasses, .resolutionFloored,
+                              resolution: PrivacyToken(effectiveResolution))
             debug("Camera: low-res floored to medium while voice is on the glasses")
         }
         let resolution: StreamingResolution = {
@@ -289,7 +293,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         activeStreamResolution = effectiveResolution
         attachListeners(to: camera.stream)
         // (session error watcher already attached above, before start)
-        NSLog("[Camera] Created persistent Camera capability (.\(effectiveResolution), \(fps)fps)")
+        PrivacyLog.camera(.glasses, .capabilityCreated,
+                          resolution: PrivacyToken(effectiveResolution), frameRate: Int(fps))
     }
 
     /// BR P2: device-level errors (incl. `.datAppOnTheGlassesUpdateRequired`) arrive on the
@@ -299,7 +304,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         sessionErrorTask = Task { [weak self] in
             for await error in session.errorStream() {
                 guard let self, !Task.isCancelled else { return }
-                NSLog("[Camera] DeviceSession error: %@", String(describing: error))
+                PrivacyLog.camera(.glasses, .sessionError, error: SafeErrorSummary(error))
                 if let notice = DATCompatibilityMessage.message(for: error) {
                     self.compatibilityNotice = notice
                     self.debug(notice)
@@ -315,7 +320,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         session.statePublisher.listen { [weak self] state in
             Task { @MainActor in
                 guard let self else { return }
-                NSLog("[Camera] State changed: %@", String(describing: state))
+                PrivacyLog.camera(.glasses, .streamState,
+                                  state: PrivacyToken(String(describing: state)))
                 let mapped: CameraStreamStatePolicy.StreamState?
                 switch state {
                 case .streaming:        mapped = .streaming
@@ -342,7 +348,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     // A paused stream is not streaming, whatever the button says. Since DAT 0.9 a
                     // doff lands here, so this is the state a wearer can actually fix — say so,
                     // stop claiming to stream, and nudge it back up.
-                    NSLog("[Camera] Stream paused while streaming was wanted — %@", notice)
+                    PrivacyLog.camera(.glasses, .streamPausedWhileWanted)
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
                     self.events.send(.status(.waiting))
@@ -363,8 +369,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 self.lastFrameTime = Date()
                 self.latestFrame = image
                 if frameCount <= 3 || frameCount % 30 == 0 {
-                    NSLog("[Camera] Video frame #%d (%dx%d)",
-                          frameCount, Int(image.size.width), Int(image.size.height))
+                    PrivacyLog.camera(.glasses, .frameReceived,
+                                      width: Int(image.size.width),
+                                      height: Int(image.size.height), count: frameCount)
                 }
                 self.events.send(.frame(image))
             }
@@ -380,7 +387,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             Task { @MainActor in
                 guard let self else { return }
                 let message = CameraErrorPolicy.message(for: error)
-                NSLog("[Camera] Error: %@", message)
+                PrivacyLog.camera(.glasses, .streamError, error: SafeErrorSummary(error))
                 self.debug("Camera error: \(message)")
                 self.lastStreamError = error
 
@@ -396,7 +403,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 if CameraErrorPolicy.abortsCapture(error), let cont = self.photoContinuation {
                     self.photoContinuation = nil
                     if let fallback = self.latestFrameAsJPEG() {
-                        NSLog("[Camera] Terminal error during capture — using latest video frame")
+                        PrivacyLog.camera(.glasses, .captureFallbackUsed)
                         cont.resume(returning: fallback)
                     } else {
                         cont.resume(throwing: CameraError.captureFailed)
@@ -431,16 +438,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // the stream needs rebuilding, and only the caller can do that. Without this, a dead
             // start spends the whole timeout going through the motions.
             if let error = lastStreamError, CameraErrorPolicy.abortsWarmup(error) {
-                NSLog("[Camera] Aborting warmup — %@ needs a stream rebuild", String(describing: error))
+                PrivacyLog.camera(.glasses, .warmupAborted, error: SafeErrorSummary(error))
                 throw CameraError.streamNotReady
             }
             if session.state == .stopped || session.state == .paused {
                 if restartNudges < 3 {
                     restartNudges += 1
-                    NSLog("[Camera] Stream stopped while warming up — restart nudge %d/3", restartNudges)
+                    PrivacyLog.camera(.glasses, .warmupNudged,
+                                      attempt: restartNudges, ofAttempts: 3)
                     session.start()
                 } else {
-                    NSLog("[Camera] Session stopped unexpectedly while waiting for streaming")
+                    PrivacyLog.camera(.glasses, .warmupSessionStopped)
                     throw CameraError.streamNotReady
                 }
             }
@@ -453,14 +461,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         // Wait for the first video frame to actually arrive — the state becomes
         // .streaming before data flows, and capturePhoto won't work until then.
-        NSLog("[Camera] Streaming state reached, waiting for first video frame...")
+        PrivacyLog.camera(.glasses, .streamingReached)
         while ContinuousClock.now < deadline {
             if latestFrame != nil { return }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
 
         // Even if no frame arrived, let the caller proceed (fallback will handle it)
-        NSLog("[Camera] No video frame arrived within timeout, proceeding anyway")
+        PrivacyLog.camera(.glasses, .firstFrameTimedOut)
     }
 
     // MARK: - Photo Capture
@@ -498,12 +506,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
             } catch {
                 if firstError == nil { firstError = error }
                 sessionError = error
-                NSLog("[Camera] ensureSession attempt %d/4 failed: %@", attempt, error.localizedDescription)
+                PrivacyLog.camera(.glasses, .sessionAttemptFailed, attempt: attempt,
+                                  ofAttempts: 4, error: SafeErrorSummary(error))
                 // A compatibility refusal (outdated glasses-side DAT app / firmware) arrives on
                 // the session error stream and kills the session before .started. Retrying can
                 // never succeed — stop churning and surface the actionable update message.
                 if let notice = compatibilityNotice {
-                    NSLog("[Camera] Compatibility refusal — aborting session retries")
+                    PrivacyLog.camera(.glasses, .incompatibleDevice)
                     throw CameraError.incompatible(notice)
                 }
                 if Self.isSessionAlreadyExists(error) {
@@ -543,7 +552,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 lastError = nil
                 break
             } catch {
-                NSLog("[Camera] Streaming wait attempt %d failed: %@", attempt, error.localizedDescription)
+                PrivacyLog.camera(.glasses, .waitAttemptFailed, attempt: attempt,
+                                  ofAttempts: 2, error: SafeErrorSummary(error))
                 lastError = error
                 if attempt < 2 {
                     // Reset session and retry
@@ -559,13 +569,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
         let photoData: Data = try await withCheckedThrowingContinuation { continuation in
             self.photoContinuation = continuation
 
-            NSLog("[Camera] Calling capturePhoto(format: .jpeg)...")
+            PrivacyLog.camera(.glasses, .captureRequested)
             let success = streamSession!.capturePhoto(format: .jpeg)
             if !success {
                 self.photoContinuation = nil
                 // capturePhoto returned false — fall back to latest video frame
                 if let fallback = self.latestFrameAsJPEG() {
-                    NSLog("[Camera] capturePhoto returned false, using latest video frame")
+                    PrivacyLog.camera(.glasses, .captureRejected, bytes: fallback.count)
                     continuation.resume(returning: fallback)
                 } else {
                     continuation.resume(throwing: CameraError.captureFailed)
@@ -580,10 +590,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 if let cont = self.photoContinuation {
                     self.photoContinuation = nil
                     if let fallback = self.latestFrameAsJPEG() {
-                        NSLog("[Camera] Photo capture timed out, using latest video frame (%d bytes)", fallback.count)
+                        PrivacyLog.camera(.glasses, .captureTimedOut, bytes: fallback.count)
                         cont.resume(returning: fallback)
                     } else {
-                        NSLog("[Camera] Photo capture timed out, no video frame available")
+                        PrivacyLog.camera(.glasses, .captureTimedOut)
                         cont.resume(throwing: CameraError.timeout)
                     }
                 }
@@ -603,7 +613,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             scheduleIdleTeardown()
         }
 
-        print("📸 Photo captured: \(photoData.count) bytes")
+        PrivacyLog.camera(.glasses, .photoCaptured, bytes: photoData.count)
         return photoData
     }
 
@@ -636,7 +646,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         default:
             session.stop()
             lastFrameTime = .distantPast
-            NSLog("[Camera] Stream paused after capture (session kept warm)")
+            PrivacyLog.camera(.glasses, .streamPausedAfterCapture)
         }
     }
 
@@ -646,18 +656,18 @@ final class MetaCameraBackend: GlassesCameraBackend {
             try? await Task.sleep(for: Self.sessionIdleGrace)
             guard let self, !Task.isCancelled else { return }
             guard !self.isStreaming, !self.isCaptureInProgress else { return }
-            NSLog("[Camera] Idle grace elapsed — tearing session down")
+            PrivacyLog.camera(.glasses, .idleTeardown)
             await self.resetSession()
         }
     }
 
     private func handlePhotoData(_ photoData: PhotoData) {
         guard let continuation = photoContinuation else {
-            NSLog("[Camera] Photo data received but no continuation waiting (timeout may have fired first)")
+            PrivacyLog.camera(.glasses, .photoUnexpected)
             return
         }
         photoContinuation = nil
-        NSLog("[Camera] Photo captured via SDK (%d bytes)", photoData.data.count)
+        PrivacyLog.camera(.glasses, .photoReceived, bytes: photoData.data.count)
         continuation.resume(returning: photoData.data)
     }
 
@@ -673,8 +683,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         guard let frame = latestFrame,
               Date().timeIntervalSince(lastFrameTime) < Self.frameFallbackMaxAge else {
             if latestFrame != nil {
-                NSLog("[Camera] Latest frame is stale (%.0fs old) — refusing frame fallback",
-                      Date().timeIntervalSince(lastFrameTime))
+                PrivacyLog.camera(.glasses, .frameStale,
+                                  seconds: Date().timeIntervalSince(lastFrameTime))
             }
             return nil
         }
@@ -711,7 +721,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         isStreaming = true
         events.send(.streamingChanged(true))
         startStallDetection()
-        NSLog("[Camera] Streaming started")
+        PrivacyLog.camera(.glasses, .started)
     }
 
     /// Bring the session up and wait for frames, retrying once through the recovery ladder.
@@ -734,13 +744,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 consecutiveRecoveryFailures = 0
                 return
             } catch {
-                NSLog("[Camera] Stream warmup attempt %d/2 failed: %@",
-                      attempt, error.localizedDescription)
+                PrivacyLog.camera(.glasses, .warmupAttemptFailed, attempt: attempt,
+                                  ofAttempts: 2, error: SafeErrorSummary(error))
                 lastError = error
                 let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
                 consecutiveRecoveryFailures += 1
                 guard attempt < 2 else { break }
-                NSLog("[Camera] Stream warmup retry (%@)", String(describing: action))
+                PrivacyLog.camera(.glasses, .warmupRetry, detail: PrivacyToken.caseName(of: action))
                 switch action {
                 case .rebuildStream: await teardownStreamOnly()
                 case .resetSession: await resetSession()
@@ -763,7 +773,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         events.send(.streamingChanged(false))
         latestFrame = nil
         events.send(.frame(nil))
-        NSLog("[Camera] Streaming stopped (session kept alive)")
+        PrivacyLog.camera(.glasses, .stopped)
     }
 
     // MARK: - HEVC Decoder Stall Detection & Auto-Recovery
@@ -790,7 +800,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
                 let elapsed = Date().timeIntervalSince(self.lastFrameTime)
                 if elapsed > 1.5 {
-                    NSLog("[Camera] ⚠️ Decoder stall detected (%.1fs since last frame) — auto-recovering", elapsed)
+                    PrivacyLog.camera(.glasses, .stallDetected, seconds: elapsed)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
                     await self.recoverFromStall()
@@ -811,7 +821,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// permission state); escalate to a full session reset only after repeated failures.
     private func recoverFromStall() async {
         let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
-        NSLog("[Camera] Stall recovery #%d (%@)", stallRecoveryCount, String(describing: action))
+        PrivacyLog.camera(.glasses, .stallRecovery, detail: PrivacyToken.caseName(of: action),
+                          count: stallRecoveryCount)
         debug("Camera stall recovery #\(stallRecoveryCount) (\(action))")
 
         switch action {
@@ -826,11 +837,12 @@ final class MetaCameraBackend: GlassesCameraBackend {
             try await waitForStreaming()
             lastFrameTime = Date()
             consecutiveRecoveryFailures = 0
-            NSLog("[Camera] Stall recovery successful — streaming resumed")
+            PrivacyLog.camera(.glasses, .stallRecovered)
         } catch {
             consecutiveRecoveryFailures += 1
-            NSLog("[Camera] Stall recovery failed (%d consecutive): %@",
-                  consecutiveRecoveryFailures, error.localizedDescription)
+            PrivacyLog.camera(.glasses, .stallRecoveryFailed,
+                              count: consecutiveRecoveryFailures,
+                              error: SafeErrorSummary(error))
             if case .rebuildStream = action {
                 // Stream-only rebuild failed — make the next attempt (or the next stall
                 // tick) escalate rather than looping at the cheap tier.
@@ -853,7 +865,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
-        NSLog("[Camera] Camera capability torn down (session retained)")
+        PrivacyLog.camera(.glasses, .capabilityTornDown)
     }
 
     /// Bounded wait for a stopped Camera to actually reach `.stopped`. The camera
@@ -866,8 +878,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
             if camera.state == .stopped { return }
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
-        NSLog("[Camera] Camera did not reach .stopped within %.0fs — proceeding",
-              Double(timeout.components.seconds))
+        PrivacyLog.camera(.glasses, .capabilityStopTimedOut,
+                          seconds: Double(timeout.components.seconds))
     }
 
     /// Reset the session completely (for error recovery).
@@ -891,7 +903,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         latestFrame = nil
         events.send(.frame(nil))
         lastFrameTime = .distantPast
-        NSLog("[Camera] Session reset")
+        PrivacyLog.camera(.glasses, .sessionReset)
     }
 
     /// Tear down everything — called on mode switch or app termination.
@@ -899,6 +911,6 @@ final class MetaCameraBackend: GlassesCameraBackend {
         await stopStreaming()
         await resetSession()
         permissionGranted = false
-        NSLog("[Camera] Torn down completely")
+        PrivacyLog.camera(.glasses, .tornDown)
     }
 }

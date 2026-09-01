@@ -62,7 +62,7 @@ final class SafetyAssessmentStore: ObservableObject {
 
     private func persist() {
         guard !saveBlocked else {
-            NSLog("[SafetyAssessmentStore] Save skipped — last load failed to read the existing file")
+            PrivacyLog.medical(.safetyAssessment, .saveSkipped)
             return
         }
         do {
@@ -70,7 +70,7 @@ final class SafetyAssessmentStore: ObservableObject {
             let data = try JSONEncoder().encode(history)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            NSLog("[SafetyAssessmentStore] persist failed: %@", error.localizedDescription)
+            PrivacyLog.medical(.safetyAssessment, .persistFailed, error: SafeErrorSummary(error))
         }
     }
 }

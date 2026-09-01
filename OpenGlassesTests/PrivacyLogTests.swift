@@ -24,8 +24,16 @@ final class PrivacyLogTests: XCTestCase {
         static let url = "https://museum.example.test/ctx?visitor=SENTINELVISITOR&token=SENTINELTOKEN"
         static let secret = "sk-ant-SENTINEL/SECRET+VALUE=="
         static let cookie = "session=SENTINELSESSION; Path=/; HttpOnly"
+        /// The two regulated shapes batch 3 exists for: a person the wearer enrolled, and a
+        /// device in a named room of their house.
+        static let personName = "Dr SENTINEL Alvarez"
+        static let entityName = "light.SENTINEL_master_bedroom"
 
-        static let all = [transcript, toolArgs, url, secret, cookie]
+        /// `entityName` is deliberately absent: it is identifier-shaped, so `PrivacyToken` keeps
+        /// it — the type's stated limit, pinned by `testTokenIsAShapeFilterNotASecretDetector`.
+        /// The protection for an entity id is that no method takes one, which is asserted
+        /// directly in `testRegulatedNamesHaveNoParameterAtAll`.
+        static let all = [transcript, toolArgs, url, secret, cookie, personName]
     }
 
     /// An error whose description is exactly the thing that must never be logged.
@@ -147,6 +155,33 @@ final class PrivacyLogTests: XCTestCase {
                                     characters: text.count, minutes: 7,
                                     detail: PrivacyToken(text),
                                     error: SafeErrorSummary(MaliciousError())),
+            // P1 batch 3 — vision / home / medical / location.
+            PrivacyLog.camera(.glasses, .streamState, device: PrivateIdentifier(text),
+                              state: PrivacyToken(text), detail: PrivacyToken(text),
+                              resolution: PrivacyToken(text), frameRate: 30,
+                              width: 1280, height: 720, attempt: 1, ofAttempts: 4,
+                              count: 12, kilobytes: 64, bytes: 65_536, seconds: 1.5,
+                              error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.photoLibrary(.saveNotPermitted, asset: .image,
+                                    status: PrivacyToken(text),
+                                    error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.vision(.ocr, .textRecognized, reason: PrivacyToken(text),
+                              posture: PrivacyToken(text), count: 4,
+                              characters: text.count, percent: 62, kilobytes: 48,
+                              milliseconds: 58, extractionMilliseconds: 34, seconds: 0.4,
+                              detail: PrivacyToken(text),
+                              error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.face(.recognized, confidence: .high, candidates: 1, enrolled: 12,
+                            error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.homeBridge(.homeKit, .homesUpdated, status: 1, count: 3, attempt: 2,
+                                  error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.medical(.audit, .auditRecorded, operation: PrivacyToken(text),
+                               count: 3, days: 30,
+                               error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.location(.geofenceEntered, count: 4,
+                                error: SafeErrorSummary(MaliciousError())),
+            PrivacyLog.proactiveAlert(.delivered, characters: text.count, count: 3,
+                                      seconds: 60),
         ]
     }
 
@@ -185,6 +220,62 @@ final class PrivacyLogTests: XCTestCase {
         // matched is a fixed short string and its length would narrow the vocabulary.
         let wake = PrivacyEventEncoder.encode(PrivacyLog.wakeWord(.detected))
         XCTAssertEqual(wake, "[speech] wakeWord event=detected")
+    }
+
+    /// The batch-3 canary, on the two shapes the classification table calls regulated.
+    ///
+    /// A recognised name and a home entity id are the values these subsystems hold at the exact
+    /// moment they log, and both used to be written out verbatim — `👤 Recognized: <name>` and
+    /// `Fuzzy matched '<query>' → <entity> (name: <friendly name>)`. Neither has a parameter now,
+    /// so the assertion is that the name cannot be passed at all: what comes back is the fact of
+    /// a match, a confidence band, and how many people are enrolled.
+    func testRegulatedNamesHaveNoParameterAtAll() {
+        let recognition = PrivacyEventEncoder.encode(
+            PrivacyLog.face(.recognized, confidence: .init(similarity: 0.91),
+                            candidates: 1, enrolled: 12))
+        XCTAssertFalse(recognition.contains("SENTINEL"), recognition)
+        XCTAssertFalse(recognition.lowercased().contains("alvarez"), recognition)
+        XCTAssertEqual(recognition,
+                       "[vision] face event=recognized confidence=high count=1 total=12")
+
+        // The ambiguous case names *several* people; it survives as how many were in contention.
+        let ambiguous = PrivacyEventEncoder.encode(PrivacyLog.face(.ambiguous, candidates: 2,
+                                                                   enrolled: 12))
+        XCTAssertEqual(ambiguous, "[vision] face event=ambiguous count=2 total=12")
+
+        // A home entity is low-entropy — a hash of "light.master_bedroom" is not anonymous — so
+        // it is omitted rather than fingerprinted, and the event says only how it resolved.
+        let resolved = PrivacyEventEncoder.encode(PrivacyLog.homeEntityResolved(.fuzzy))
+        XCTAssertFalse(resolved.contains("SENTINEL"), resolved)
+        XCTAssertFalse(resolved.contains("bedroom"), resolved)
+        XCTAssertEqual(resolved, "[home] homeEntityResolved match=fuzzy")
+
+        // Every event the home path can emit while it is holding `entityName`. None of them has
+        // anywhere to put it — including as a fingerprint, which would not anonymise a dictionary
+        // this small anyway. The count of entities is the one number that survives.
+        let homeLines = [
+            PrivacyLog.homeOperation(.callService, success: false),
+            PrivacyLog.homeFallback(.toggle),
+            PrivacyLog.homeEntityResolved(.unresolved),
+            PrivacyLog.homeBridge(.homeAssistant, .catalogueRefreshed, count: 42),
+        ].map(PrivacyEventEncoder.encode)
+        for line in homeLines {
+            XCTAssertFalse(line.contains(Sentinel.entityName), line)
+            XCTAssertFalse(line.contains("SENTINEL"), line)
+            XCTAssertFalse(line.contains("#"),
+                           "an entity must not be smuggled in as a fingerprint either: \(line)")
+        }
+        XCTAssertTrue(homeLines.last?.contains("count=42") == true, "\(homeLines)")
+    }
+
+    /// The similarity score is a biometric measurement, so it is banded before it is logged.
+    func testFaceConfidenceIsABandNotAScore() {
+        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.42), .low)
+        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.71), .medium)
+        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.97), .high)
+        let line = PrivacyEventEncoder.encode(
+            PrivacyLog.face(.recognized, confidence: .init(similarity: 0.8421)))
+        XCTAssertFalse(line.contains("0.84"), "the raw similarity must not reach the log: \(line)")
     }
 
     /// A model configuration name is wearer-authored; a model id is a catalog name. The pair has
@@ -433,6 +524,50 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/BroadcastChat/BroadcastChatReadbackService.swift",
     ]
 
+    /// P1 batch 3 — vision / home / medical / location. The strictest batch: every one of these
+    /// files holds a value the classification table calls regulated at the moment it logs.
+    ///
+    /// `MetaCameraBackend` is the bulk of it and the least sensitive part — DAT session and
+    /// stream plumbing, which is public operation class and stays, in typed form, because it is
+    /// the hardest thing in the app to diagnose without a device. The sensitive ones are small:
+    /// `FaceRecognitionService` printed the name it had just recognised, `HomeAssistantEntityCache`
+    /// printed the matched entity and its friendly name, `LocationService` printed the
+    /// reverse-geocoded place, `ProactiveAlertService` printed the whole spoken alert, and
+    /// `HIPAAComplianceService` mirrored every audit line — action *and* detail — into the device
+    /// log, where none of the audit store's protection applies.
+    private static let batchThreeFiles = [
+        "OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift",
+        "OpenGlasses/Sources/Services/CameraService.swift",
+        "OpenGlasses/Sources/Services/PhoneVideoSource.swift",
+        "OpenGlasses/Sources/Services/PhoneCameraSource.swift",
+        "OpenGlasses/Sources/Services/VideoDecoder.swift",
+        "OpenGlasses/Sources/App/Views/PhoneCameraView.swift",
+        "OpenGlasses/Sources/Services/PrivacyFilterService.swift",
+        "OpenGlasses/Sources/Services/GlassesPhotoAlbum.swift",
+        "OpenGlasses/Sources/Services/NativeTools/CapturePhotoTool.swift",
+        "OpenGlasses/Sources/Services/NativeTools/LookCloselyTool.swift",
+        "OpenGlasses/Sources/Services/NativeTools/DocumentScanTool.swift",
+        "OpenGlasses/Sources/Services/SignLanguage/FingerspellingSessionService.swift",
+        "OpenGlasses/Sources/Services/Accessibility/OCRService.swift",
+        "OpenGlasses/Sources/Services/Accessibility/SceneNarrationService.swift",
+        "OpenGlasses/Sources/Services/Accessibility/NavigationAssistService.swift",
+        "OpenGlasses/Sources/Services/Accessibility/AssistiveModeService.swift",
+        "OpenGlasses/Sources/Services/LiveCoachService.swift",
+        "OpenGlasses/Sources/Services/FaceRecognitionService.swift",
+        "OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift",
+        "OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
+        "OpenGlasses/Sources/Services/ProactiveAlertService.swift",
+        "OpenGlasses/Sources/Services/HIPAAComplianceService.swift",
+        "OpenGlasses/Sources/Services/MedicalExportService.swift",
+        "OpenGlasses/Sources/Services/Medical/FHIRConfigurationStore.swift",
+        "OpenGlasses/Sources/Services/SafetyAssessment/SafetyAssessmentStore.swift",
+        "OpenGlasses/Sources/Services/HealthSafety/HealthSafetyAdvisor.swift",
+        "OpenGlasses/Sources/Services/NativeTools/FitnessCoachingTool.swift",
+        "OpenGlasses/Sources/Services/LocationService.swift",
+        "OpenGlasses/Sources/Services/NativeTools/GeofenceTool.swift",
+        "OpenGlasses/Sources/Services/Navigation/WalkingRouteService.swift",
+    ]
+
     private func sourceText(_ relativePath: String) throws -> String {
         let url = Self.repoRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
@@ -504,6 +639,80 @@ final class PrivacyLogTests: XCTestCase {
                            "\(path): ToolLogContent was removed — content goes to the log as a "
                                + "count through PrivacyLog, not through a debug passthrough")
         }
+    }
+
+    func testBatchThreeFilesHaveNoDirectLogCalls() throws {
+        for path in Self.batchThreeFiles {
+            let source = try sourceText(path)
+            XCTAssertTrue(source.contains("PrivacyLog."),
+                          "\(path): sanity — a migrated file should be emitting typed events")
+            for line in loggingLines(in: source) {
+                XCTFail("\(path): a direct log call survives in a migrated file:\n\(line)")
+            }
+        }
+    }
+
+    /// The names this batch is about, pinned by their identifiers rather than by a log statement:
+    /// a recognised person, a home entity, a geocoded place and an accessory must not be formatted
+    /// into anything the migrated files hand to `PrivacyLog`.
+    func testRegulatedValuesAreNotPassedToTheFacade() throws {
+        let forbidden: [(String, [String])] = [
+            ("OpenGlasses/Sources/Services/FaceRecognitionService.swift",
+             ["name", "names"]),
+            ("OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
+             ["entityId", "friendlyName", "query"]),
+            ("OpenGlasses/Sources/Services/LocationService.swift",
+             ["geocodedPlace", "identifier"]),
+            ("OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift",
+             ["accessory", "deviceName"]),
+            ("OpenGlasses/Sources/Services/NativeTools/GeofenceTool.swift",
+             ["message", "reminder"]),
+            ("OpenGlasses/Sources/Services/ProactiveAlertService.swift",
+             ["message", "title", "notes"]),
+            ("OpenGlasses/Sources/Services/HIPAAComplianceService.swift",
+             ["detail", "lastPathComponent"]),
+        ]
+        for (path, values) in forbidden {
+            let source = try sourceText(path)
+            for call in privacyLogCalls(in: source) {
+                // A *count* of a private value is the approved shape — `characters:
+                // message.count` is the whole point — so `x.count` is removed before the search.
+                // What must not survive is the value itself.
+                let stripped = call.replacingOccurrences(
+                    of: #"[A-Za-z0-9_?.]+\.count"#, with: "", options: .regularExpression)
+                for value in values {
+                    XCTAssertFalse(stripped.contains(value),
+                                   "\(path): a privacy event is being handed '\(value)':\n\(call)")
+                }
+            }
+        }
+    }
+
+    /// Every `PrivacyLog.…(…)` call in a file, as complete text including its continuation lines.
+    /// A per-line scan would miss an argument that wrapped, which is exactly where a value would
+    /// hide in this codebase's formatting.
+    private func privacyLogCalls(in source: String) -> [String] {
+        var calls: [String] = []
+        var search = source.startIndex..<source.endIndex
+        while let start = source.range(of: "PrivacyLog.", range: search) {
+            var depth = 0
+            var index = start.upperBound
+            var opened = false
+            while index < source.endIndex {
+                let character = source[index]
+                if character == "(" { depth += 1; opened = true }
+                if character == ")" {
+                    depth -= 1
+                    if depth == 0 { break }
+                }
+                if !opened, character == "\n" { break }
+                index = source.index(after: index)
+            }
+            let end = index < source.endIndex ? source.index(after: index) : source.endIndex
+            calls.append(String(source[start.lowerBound..<end]))
+            search = end..<source.endIndex
+        }
+        return calls
     }
 
     /// A path arrives from the network, so it is attacker-chosen text. It must be classified into
@@ -624,6 +833,33 @@ final class PrivacyLogTests: XCTestCase {
              ["think block: %d chars — %@"]),
             ("OpenGlasses/Sources/Services/ConversationStore.swift",
              ["Started thread %@ (project %@)"]),
+            // P1 batch 3: the face recogniser printed the name it had just matched and every
+            // name in an ambiguous tie; the Home Assistant cache printed the spoken query, the
+            // matched entity id and its friendly name; HomeKit printed the accessory; the
+            // location service printed the reverse-geocoded place; the geofence printed the
+            // alert it was about to speak; the proactive alerter printed every alert and the
+            // calendar title behind a playbook; and the HIPAA audit trail mirrored its own
+            // detail line into the device log.
+            ("OpenGlasses/Sources/Services/FaceRecognitionService.swift",
+             ["👤 Recognized:", "👤 Ambiguous:"]),
+            ("OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
+             ["Fuzzy matched"]),
+            ("OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift",
+             ["Read before write failed for %@"]),
+            ("OpenGlasses/Sources/Services/LocationService.swift",
+             ["📍 Location: ", "Region monitoring failed for"]),
+            ("OpenGlasses/Sources/Services/NativeTools/GeofenceTool.swift",
+             ["Geofence triggered:"]),
+            ("OpenGlasses/Sources/Services/ProactiveAlertService.swift",
+             ["[ProactiveAlerts] %@", "Auto-created playbook from"]),
+            ("OpenGlasses/Sources/Services/HIPAAComplianceService.swift",
+             ["[HIPAA Audit] %@: %@", "Protected file: %@", "Failed to purge %@"]),
+            ("OpenGlasses/Sources/Services/HealthSafety/HealthSafetyAdvisor.swift",
+             ["from speech: %@"]),
+            ("OpenGlasses/Sources/Services/Accessibility/SceneNarrationService.swift",
+             ["Refused — %@", "Camera claim failed — %@"]),
+            ("OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift",
+             ["Creating session bound to device %@", "📸 Photo captured:"]),
         ]
         for (path, statements) in removed {
             let source = try sourceText(path)
@@ -643,9 +879,10 @@ final class PrivacyLogTests: XCTestCase {
                       "sanity: the migrated call should be visible to the scan")
 
         // A file no batch has reached yet, so the line scanner must find something in it. If this
-        // ever goes to zero legitimately (batch 5 covers it), move the anchor rather than delete
+        // ever goes to zero legitimately (batch 4 covers it), move the anchor rather than delete
         // the check — an empty result would otherwise mean the matcher matches nothing at all.
-        let unmigrated = try sourceText("OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift")
+        // It was `MetaCameraBackend` until batch 3 took that file to zero.
+        let unmigrated = try sourceText("OpenGlasses/Sources/Services/SemanticMemoryStore.swift")
         XCTAssertFalse(loggingLines(in: unmigrated).isEmpty,
                        "sanity: this file still has direct NSLog lines, so the line scanner "
                            + "must be finding some — an empty result would mean it matches nothing")

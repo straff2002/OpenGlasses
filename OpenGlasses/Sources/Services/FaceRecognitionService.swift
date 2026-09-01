@@ -82,7 +82,7 @@ class FaceRecognitionService: ObservableObject {
                 }
             }
 
-        print("👤 Face recognition started")
+        PrivacyLog.face(.started, enrolled: knownFaces.count)
     }
 
     func stop() {
@@ -90,19 +90,19 @@ class FaceRecognitionService: ObservableObject {
         frameSubscription?.cancel()
         frameSubscription = nil
         lastRecognizedName = nil
-        print("👤 Face recognition stopped")
+        PrivacyLog.face(.stopped)
     }
 
     /// Reduce processing frequency for background optimization (streaming priority).
     func reduceFrequency() {
         currentProcessEveryN = reducedProcessEveryN
-        NSLog("[FaceRecognition] Reduced to background frequency")
+        PrivacyLog.face(.frequencyReduced)
     }
 
     /// Restore normal processing frequency.
     func restoreFrequency() {
         currentProcessEveryN = normalProcessEveryN
-        NSLog("[FaceRecognition] Restored normal frequency")
+        PrivacyLog.face(.frequencyRestored)
     }
 
     /// Remember a face from the current camera frame with a name
@@ -208,7 +208,10 @@ class FaceRecognitionService: ObservableObject {
 
                             self.lastAnnouncedNames[name] = Date()
                             self.onRecognition?(name)
-                            print("👤 Recognized: \(name)")
+                            PrivacyLog.face(
+                                .recognized,
+                                confidence: .init(similarity: Double(candidate.similarity)),
+                                candidates: 1, enrolled: self.knownFaces.count)
 
                         case .ambiguous(let contenders):
                             // CO Item 1: too close to call. Say so rather than picking the leader —
@@ -221,7 +224,8 @@ class FaceRecognitionService: ObservableObject {
                             }
                             self.lastAnnouncedNames[key] = Date()
                             self.onAmbiguousRecognition?(names)
-                            print("👤 Ambiguous: \(names.joined(separator: " / "))")
+                            PrivacyLog.face(.ambiguous, candidates: names.count,
+                                            enrolled: self.knownFaces.count)
 
                         case .none:
                             continue
@@ -332,7 +336,7 @@ class FaceRecognitionService: ObservableObject {
             // Face embeddings are biometric data — encrypt at rest (accessible only while unlocked).
             try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
         } catch {
-            print("👤 Failed to save faces: \(error)")
+            PrivacyLog.face(.saveFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -341,9 +345,9 @@ class FaceRecognitionService: ObservableObject {
         do {
             let data = try Data(contentsOf: storageURL)
             knownFaces = try JSONDecoder().decode([KnownFace].self, from: data)
-            print("👤 Loaded \(knownFaces.count) known faces")
+            PrivacyLog.face(.databaseLoaded, enrolled: knownFaces.count)
         } catch {
-            print("👤 Failed to load faces: \(error)")
+            PrivacyLog.face(.loadFailed, error: SafeErrorSummary(error))
         }
     }
 }

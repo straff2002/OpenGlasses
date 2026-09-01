@@ -77,9 +77,10 @@ class HIPAAComplianceService: ObservableObject {
             var mutableURL = url
             try mutableURL.setResourceValues(resourceValues)
 
-            NSLog("[HIPAA] Protected file: %@", url.lastPathComponent)
+            PrivacyLog.medical(.compliance, .fileProtected)
         } catch {
-            NSLog("[HIPAA] Failed to protect file %@: %@", url.lastPathComponent, error.localizedDescription)
+            PrivacyLog.medical(.compliance, .fileProtectionFailed,
+                               error: SafeErrorSummary(error))
         }
     }
 
@@ -112,7 +113,7 @@ class HIPAAComplianceService: ObservableObject {
         }
 
         saveAuditLog()
-        NSLog("[HIPAA Audit] %@: %@", action, detail)
+        PrivacyLog.medical(.audit, .auditRecorded, operation: PrivacyToken(action))
     }
 
     /// Export the audit log as a formatted string for compliance review.
@@ -147,7 +148,7 @@ class HIPAAComplianceService: ObservableObject {
             let data = try Data(contentsOf: auditLogURL)
             auditLog = try JSONDecoder().decode([AuditEntry].self, from: data)
         } catch {
-            NSLog("[HIPAA] Failed to load audit log: %@", error.localizedDescription)
+            PrivacyLog.medical(.audit, .auditLoadFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -157,7 +158,7 @@ class HIPAAComplianceService: ObservableObject {
             try data.write(to: auditLogURL, options: .atomic)
             protectFile(at: auditLogURL)
         } catch {
-            NSLog("[HIPAA] Failed to save audit log: %@", error.localizedDescription)
+            PrivacyLog.medical(.audit, .auditSaveFailed, error: SafeErrorSummary(error))
         }
     }
 
@@ -183,7 +184,8 @@ class HIPAAComplianceService: ObservableObject {
 
         if purgedCount > 0 {
             log(action: "AUTO_PURGE", detail: "Purged \(purgedCount) file(s) older than \(retentionDays) days")
-            NSLog("[HIPAA] Auto-purged %d files (retention: %d days)", purgedCount, retentionDays)
+            PrivacyLog.medical(.compliance, .retentionPurged, count: purgedCount,
+                               days: retentionDays)
         }
     }
 
@@ -211,7 +213,7 @@ class HIPAAComplianceService: ObservableObject {
                 count += 1
                 log(action: "FILE_PURGED", detail: fileURL.lastPathComponent)
             } catch {
-                NSLog("[HIPAA] Failed to purge %@: %@", fileURL.lastPathComponent, error.localizedDescription)
+                PrivacyLog.medical(.compliance, .purgeFailed, error: SafeErrorSummary(error))
             }
         }
         return count

@@ -293,7 +293,8 @@ actor FingerspellingPipeline {
         guard let extraction = median(extractionSamples),
               let decode = median(decodeSamples) else { return nil }
         let summary = "landmarks \(Int(extraction)) ms · decode \(Int(decode)) ms"
-        NSLog("[CK-Perf] %@", summary)
+        PrivacyLog.vision(.fingerspelling, .performanceSampled,
+                          milliseconds: Int(decode), extractionMilliseconds: Int(extraction))
         return summary
     }
 

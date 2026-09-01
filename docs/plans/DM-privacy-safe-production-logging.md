@@ -4,7 +4,9 @@
 sites emit metadata only, and the P1 scanner runs in report-only mode with a checked-in ledger
 ([`DM-ledger-baseline.txt`](DM-ledger-baseline.txt)). **P1 batch 1 (authentication/networking)
 migrated (2026-09-01): 872 → 794 sites, 127 → 113 files. P1 batch 2 (conversation/model/audio)
-migrated (2026-09-01): 794 → 461 sites, 113 → 75 files.** P1 batches 3–5, P2 and P3 outstanding.
+migrated (2026-09-01): 794 → 461 sites, 113 → 75 files. P1 batch 3
+(vision/home/medical/location) migrated (2026-09-01): 461 → 319 sites, 75 → 45 files.**
+P1 batches 4–5, P2 and P3 outstanding.
 **Origin:** 2026-08-26 adversarial review finding 4 (High).
 **Priority:** P0 for known content leaks; complete the source-wide migration before public release.
 
@@ -77,7 +79,7 @@ Release compilation excludes debug-content methods.
 
 ### What shipped
 
-`OpenGlasses/Sources/Utils/PrivacyLog.swift` and `SafeErrorSummary.swift`. Categories are
+`OpenGlasses/Sources/Utils/PrivacyLog.swift` and `SafeErrorSummary.swift`. Categories at P0 were
 `tools`/`realtime`/`capture`/`home`/`lifecycle`/`auth`/`network`; 26 typed methods, no `log(String)`.
 A field value can only be a count, a duration, a flag, a `PrivacyToken` (bounded vocabulary word,
 dropped rather than truncated if it does not fit the shape), a `PrivateIdentifier` (SHA-256/8
@@ -100,7 +102,7 @@ identifier-shaped value survives it. A test pins that behaviour rather than impl
 the compensating control is that no call site builds a token from a credential, and the scanner
 flags the ones that could.
 
-## P1 — Inventory and migrate the entire source tree 🔴
+## P1 — Inventory and migrate the entire source tree 🚧
 
 **Report-only scanner shipped (2026-09-01):** `Scripts/check-privacy-logging.sh` (+
 `Scripts/privacy-logging-allowlist.txt`, empty at P0) counts direct `NSLog`/`print` sites, flags
@@ -237,6 +239,81 @@ Deliberately deferred, with the batch they belong to: `SemanticMemoryStore`, `Me
 `Accessibility/*`, `FaceRecognitionService`, `LookCloselyTool`, `DocumentScanTool` (vision — batch
 3); `AgentScheduler`, `BroadcastService`, `VideoRecordingService`, `MetaCameraBackend`,
 `OpenGlassesApp` (device/lifecycle — batch 5).
+
+### Batch 3 — vision/home/medical/location ✅ (2026-09-01)
+
+Thirty files, 142 sites, all to zero. The strictest batch: every file in it holds a value the
+classification table calls regulated at the moment it logs.
+
+| Metric | After batch 2 | After batch 3 |
+|---|---|---|
+| Direct `NSLog`/`print` sites | 461 / 75 files | 319 / 45 files |
+| Content/credential-named interpolations | 19 | 16 |
+| `localizedDescription` in log calls | 59 | 37 |
+| Allowlisted files / sites | 0 / 0 | 0 / 0 |
+
+Migrated: `Camera/MetaCameraBackend` (46), `FaceRecognitionService` (9), `NativeTools/HomeKitTool`
+(8), `HIPAAComplianceService` (7), `Accessibility/SceneNarrationService` (7),
+`HomeAssistantEntityCache` (6, deferred here from batch 1), `ProactiveAlertService` (6),
+`NativeTools/DocumentScanTool` (5), `GlassesPhotoAlbum` (5), `LocationService` (5),
+`NativeTools/LookCloselyTool` (4), `Medical/FHIRConfigurationStore` (4),
+`PhoneVideoSource` (3), and seventeen one- and two-site files: `CameraService`,
+`PhoneCameraSource`, `VideoDecoder`, `App/Views/PhoneCameraView`, `PrivacyFilterService`,
+`NativeTools/CapturePhotoTool`, `SignLanguage/FingerspellingSessionService`,
+`Accessibility/OCRService`, `Accessibility/NavigationAssistService`,
+`Accessibility/AssistiveModeService`, `LiveCoachService`, `MedicalExportService`,
+`SafetyAssessment/SafetyAssessmentStore`, `HealthSafety/HealthSafetyAdvisor`,
+`NativeTools/FitnessCoachingTool`, `NativeTools/GeofenceTool`, `Navigation/WalkingRouteService`.
+
+Facade additions: categories `vision`, `medical`, `location`; events `camera`/`photoLibrary`
+(capture), `vision`/`face`, `homeBridge`, `medical`, `location`, and `proactiveAlert` (lifecycle).
+The Home Assistant fuzzy matcher reuses the existing `homeEntityResolved`, which was built in P0 to
+drop exactly the entity it was logging. `PrivacyLog.FaceConfidence` is new and is the one place a
+measurement is deliberately coarsened rather than dropped: a raw similarity is a number about one
+person's face against one enrolment, so it is banded to low/medium/high at the boundary.
+
+What this removed, beyond the raw call count: `FaceRecognitionService` logged **the name it had
+just recognised**, and every name in an ambiguous tie — the most identifying string the app ever
+holds, written to a sink that outlives the announcement it was made for. `HomeAssistantEntityCache`
+logged the spoken query, the matched entity id, the score *and* the friendly name on every fuzzy
+match, which is a running record of the rooms and devices in someone's house and what they asked
+them to do. `LocationService` logged the reverse-geocoded place on every position update, so a
+device log was a movement history. `ProactiveAlertService` logged the full text of every alert
+before speaking it (calendar titles, who a meeting is with) and the event title behind any
+auto-created playbook. `HIPAAComplianceService` mirrored **its own audit trail** — action and
+detail — into the device log, where none of the audit store's file protection, retention or
+purging applies; and its file-protection path logged the protected file's name, which for this app
+is a date and a session. `HealthSafetyAdvisor` logged the withheld citation claims in full — text
+the retrieve-or-silence gate had just decided was too unverifiable to say out loud.
+`HomeKitTool` logged the accessory name on a failed read-before-write.
+
+Judgement calls. `MetaCameraBackend`'s 46 sites are DAT plumbing and nearly all survive as typed
+events rather than being deleted: stream and capability states, resolutions, frame rates, retry
+attempts and stall-recovery tiers are public operation class, and this is the hardest subsystem in
+the app to diagnose without a device in hand. Only the values were dropped — the bound device id
+became a fingerprint (batch-2 precedent), and the two user-facing strings (`CameraErrorPolicy`'s
+message and the compatibility notice) became a `SafeErrorSummary` and an event name, because both
+are sentences composed for the wearer. Frame dimensions and rates are kept; nothing describes what
+a frame showed. Scene narration's halt/silence reasons are `NarrationSessionPolicy.Interruption`
+raw values — a fixed vocabulary — and are kept, while the camera-unavailable *reason* and the
+power-refusal copy are prose and are not. `GlassesPhotoAlbum.report` now feeds only the on-screen
+diagnostics panel, which is a different sink with a different audience; the device log gets the
+typed event, and `GlassesPhotoAlbumPolicy.statusToken` sits beside `describe` so the log
+vocabulary and the human copy cannot drift. HIPAA audit *actions* (`AUTO_PURGE`, `FHIR_EXPORT`)
+survive as tokens because they are a fixed operation vocabulary; the details do not. Entity, room,
+accessory and person names are omitted rather than fingerprinted, per the plan's low-entropy rule.
+No `ENABLE_CONTENT_LOGGING` sites were added; the count across the three batches is still zero.
+
+Deliberately deferred, with the batch they belong to: `Reading/ReadingSessionStore`,
+`Study/StudyStore`, `Persistence/JSONStore`, `RAG/DocumentStore`, `AgentDocumentStore`,
+`SemanticMemoryStore`, `Memory/*`, `NativeTools/OperationJournal` and the offline sync/queue pair
+(persistence — batch 4); `CarPlaySceneDelegate`, `Models/HomeGridCatalog`,
+`Triggers/MediaTriggerService`, `BroadcastService`, `VideoRecordingService`,
+`GlassesConnectionService`, `WearablesBootstrap`, `GlassesDisplayService` and `OpenGlassesApp`
+(operational UI/device — batch 5). `CarPlaySceneDelegate` is the one worth naming: its nine sites
+are persona names, a thread id, a playbook name and **a tool result printed verbatim** — a real
+content leak, but a conversation-path one, so it goes with the file rather than being pulled
+forward. `HomeGridCatalog` is the app's home *screen* tile arrangement, not home automation.
 
 Generate and check in a classification ledger with one row per logging site/category, then migrate in
 bounded PRs:

@@ -123,6 +123,6 @@ final class VideoDecoder {
                                 (subType >> 16) & 0xFF,
                                 (subType >> 8) & 0xFF,
                                 subType & 0xFF)
-        NSLog("[VideoDecoder] Created decompression session for codec: %@", subTypeStr)
+        PrivacyLog.camera(.decoder, .configured, detail: PrivacyToken(subTypeStr))
     }
 }

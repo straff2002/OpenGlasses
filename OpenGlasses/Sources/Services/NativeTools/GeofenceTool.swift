@@ -291,7 +291,7 @@ final class GeofenceTool: NativeTool, @unchecked Sendable {
         let reminders = loadReminders()
         for reminder in reminders { registerRegion(for: reminder) }
         if !reminders.isEmpty {
-            print("📍 Restored \(reminders.count) geofence(s)")
+            PrivacyLog.location(.geofencesRestored, count: reminders.count)
         }
     }
 
@@ -303,7 +303,7 @@ final class GeofenceTool: NativeTool, @unchecked Sendable {
         let action = didEnter ? "arrived at" : "left"
         let message = reminder.message.isEmpty ? "You've \(action) \(reminder.name)." : reminder.message
 
-        print("📍 Geofence triggered: \(message)")
+        PrivacyLog.location(didEnter ? .geofenceEntered : .geofenceExited)
         onAlert?(message, .medium)
 
         // Send local notification as backup

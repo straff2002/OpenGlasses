@@ -93,7 +93,7 @@ class MedicalExportService: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         } else if !config.clientID.isEmpty {
             // SMART on FHIR OAuth flow would go here — for now, support pre-obtained tokens
-            NSLog("[MedicalExport] SMART on FHIR OAuth not yet implemented — use bearer token")
+            PrivacyLog.medical(.export, .exportUnsupported)
         }
 
         do {
@@ -269,7 +269,7 @@ class MedicalExportService: ObservableObject {
             }
             return true
         } catch {
-            NSLog("[MedicalExport] PDF creation failed: %@", error.localizedDescription)
+            PrivacyLog.medical(.export, .exportFailed, error: SafeErrorSummary(error))
             return false
         }
     }

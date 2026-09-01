@@ -65,7 +65,7 @@ final class ProactiveAlertService: ObservableObject {
             Task { @MainActor [weak self] in self?.scheduleAlertCheck() }
         }
 
-        NSLog("[ProactiveAlerts] Started — checking every %.0fs", checkInterval)
+        PrivacyLog.proactiveAlert(.started, seconds: checkInterval)
     }
 
     func stop() {
@@ -73,7 +73,7 @@ final class ProactiveAlertService: ObservableObject {
         checkTimer = nil
         isRunning = false
         alertedEventIds.removeAll()
-        NSLog("[ProactiveAlerts] Stopped")
+        PrivacyLog.proactiveAlert(.stopped)
     }
 
     /// Pause alert checking (background optimization for streaming).
@@ -81,7 +81,7 @@ final class ProactiveAlertService: ObservableObject {
         guard isRunning else { return }
         checkTimer?.invalidate()
         checkTimer = nil
-        NSLog("[ProactiveAlerts] Paused for background optimization")
+        PrivacyLog.proactiveAlert(.paused)
     }
 
     /// Resume alert checking after returning to foreground.
@@ -90,7 +90,7 @@ final class ProactiveAlertService: ObservableObject {
         checkTimer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.scheduleAlertCheck() }
         }
-        NSLog("[ProactiveAlerts] Resumed after foreground")
+        PrivacyLog.proactiveAlert(.resumed)
     }
 
     // MARK: - Alert Checking
@@ -179,7 +179,7 @@ final class ProactiveAlertService: ObservableObject {
                     let steps = parseAgendaSteps(from: notes)
                     if steps.count >= 2 {
                         onMeetingPlaybook?(title, notes, steps)
-                        NSLog("[ProactiveAlerts] Auto-created playbook from '%@' agenda (%d steps)", title, steps.count)
+                        PrivacyLog.proactiveAlert(.playbookCreated, count: steps.count)
                     }
                 }
             }
@@ -235,7 +235,7 @@ final class ProactiveAlertService: ObservableObject {
         eventDate: Date?
     ) {
         lastAlert = message
-        NSLog("[ProactiveAlerts] %@", message)
+        PrivacyLog.proactiveAlert(.delivered, characters: message.count)
 
         // Speak through TTS if callback is set
         onAlert?(message, urgency)

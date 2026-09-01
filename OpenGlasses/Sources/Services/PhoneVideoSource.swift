@@ -35,7 +35,7 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
                 .builtInWideAngleCamera, for: .video, position: position),
                 let input = try? AVCaptureDeviceInput(device: device),
                 self.captureSession.canAddInput(input) else {
-                NSLog("[PhoneVideo] No camera for position %d", position.rawValue)
+                PrivacyLog.camera(.phone, .unavailable, count: position.rawValue)
                 self.captureSession.commitConfiguration()
                 return
             }
@@ -54,7 +54,8 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
             self.captureSession.addOutput(output)
             self.captureSession.commitConfiguration()
             self.captureSession.startRunning()
-            NSLog("[PhoneVideo] Started (%@)", position == .front ? "front" : "back")
+            PrivacyLog.camera(.phone, .started,
+                              detail: PrivacyToken(position == .front ? "front" : "back"))
         }
     }
 
@@ -65,7 +66,7 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
             }
-            NSLog("[PhoneVideo] Stopped")
+            PrivacyLog.camera(.phone, .stopped)
         }
     }
 }

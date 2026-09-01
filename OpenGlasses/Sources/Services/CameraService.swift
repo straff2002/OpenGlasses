@@ -172,7 +172,7 @@ class CameraService: ObservableObject {
                 lastPhoto = image
             }
         } else {
-            NSLog("[Camera] Glasses camera unavailable — capturing from iPhone back camera")
+            PrivacyLog.camera(.glasses, .unavailable)
             data = try await phoneSource.capturePhoto()
             lastCaptureSource = .phone
         }
@@ -270,8 +270,8 @@ class CameraService: ObservableObject {
             if case .notPermitted(let status) = result {
                 // Not an error to swallow: on a fresh install this is the whole reason a capture
                 // is nowhere to be found afterwards.
-                NSLog("[Camera] Photo not saved — library %@",
-                      GlassesPhotoAlbumPolicy.describe(status))
+                PrivacyLog.camera(.glasses, .photoNotSaved,
+                                  state: GlassesPhotoAlbumPolicy.statusToken(status))
             }
         }
     }

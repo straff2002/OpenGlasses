@@ -278,7 +278,7 @@ struct FitnessCoachingTool: NativeTool {
             try await builder.finishWorkout()
             return true
         } catch {
-            print("🏋️ Failed to save workout: \(error)")
+            PrivacyLog.medical(.fitness, .workoutSaveFailed, error: SafeErrorSummary(error))
             return false
         }
     }

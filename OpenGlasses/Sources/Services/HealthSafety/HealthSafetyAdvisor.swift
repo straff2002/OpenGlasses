@@ -86,8 +86,8 @@ final class HealthSafetyAdvisor {
         // (the field-session audit log when one is active; always the console).
         let gated = CitationGate.scrub(raw)
         if !gated.queuedCitations.isEmpty {
-            NSLog("[HealthSafety] Withheld %d unretrieved citation claim(s) from speech: %@",
-                  gated.queuedCitations.count, gated.queuedCitations.joined(separator: " | "))
+            PrivacyLog.medical(.healthSafety, .citationsWithheld,
+                               count: gated.queuedCitations.count)
             FieldSessionService.shared.logAssistantMessage(
                 "Withheld unverified citation claims from health-safety advisory for \"\(query.subject)\"",
                 citations: gated.queuedCitations)

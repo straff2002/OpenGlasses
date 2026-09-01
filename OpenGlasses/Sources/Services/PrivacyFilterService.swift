@@ -110,13 +110,13 @@ class PrivacyFilterService: ObservableObject {
     /// Suspend face blurring (background optimization — no UI visible, save CPU).
     func suspend() {
         isSuspended = true
-        NSLog("[PrivacyFilter] Suspended for background optimization")
+        PrivacyLog.camera(.privacyFilter, .suspended)
     }
 
     /// Resume face blurring after returning to foreground.
     func resume() {
         isSuspended = false
-        NSLog("[PrivacyFilter] Resumed after foreground")
+        PrivacyLog.camera(.privacyFilter, .resumed)
     }
 
     /// Process a UIImage and return it with bystander faces blurred.
