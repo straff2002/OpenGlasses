@@ -71,7 +71,11 @@ struct MyDayView: View {
         .padding(.horizontal, 4)
         .accessibilityElement(children: .combine)
 
-        if snapshot.items.isEmpty {
+        // The whole day, not the card's share of it. This screen is what "See all" opens, so
+        // anything the cap held back has to be here — otherwise clearing a row is the only way to
+        // discover it existed.
+        let allItems = snapshot.allItems
+        if allItems.isEmpty {
             OGSection {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Nothing urgent", systemImage: "checkmark.circle")
@@ -85,7 +89,7 @@ struct MyDayView: View {
             }
         } else {
             OGSection(header: "Next") {
-                ForEach(Array(snapshot.items.enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(allItems.enumerated()), id: \.element.id) { index, item in
                     if index > 0 { OGDivider() }
                     MyDaySwipeToClear(label: item.title) {
                         Task { await service.dismiss(item) }
@@ -475,15 +479,29 @@ struct MyDayHomeView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        // The detail carries which Reminders list a task came from, and the
+                        // compact card does not draw it — so it is spoken explicitly rather than
+                        // left to whatever happened to be rendered.
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel([item.title, item.detail]
+                            .compactMap { $0 }
+                            .joined(separator: ", "))
+                        .accessibilityAddTraits(.isButton)
                         .accessibilityHint("Opens My Day")
                     }
                 }
 
-                if !compact, snapshot.items.count > visibleItems.count {
-                    Button("See all \(snapshot.items.count) items") {
+                // Counts the whole day, not the capped list. It used to count `items`, which is
+                // what the cap left — so a row that arrived when another was cleared looked like
+                // it had materialised, when it had been on the list the whole time and nothing on
+                // screen could say so.
+                let total = snapshot.allItems.count
+                if !compact, total > visibleItems.count {
+                    Button("See all \(total) items") {
                         showDetail = true
                     }
                     .font(.footnote.weight(.semibold))
+                    .accessibilityHint("Opens the full day. \(total - visibleItems.count) more than the card shows.")
                 }
             }
 

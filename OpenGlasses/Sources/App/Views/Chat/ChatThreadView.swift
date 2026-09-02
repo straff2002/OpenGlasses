@@ -313,7 +313,11 @@ struct ChatThreadView: View {
 
 /// Assistant bubble for an in-flight, streaming reply (on-device provider). Mirrors the
 /// assistant side of `MessageBubble` but renders live partial text with no timestamp.
-private struct StreamingBubble: View {
+///
+/// Shared with the dock's conversation page, like `MessageBubble` beside it: the two surfaces
+/// render the same conversation and a reply that looked different depending on which one you were
+/// looking at would be two designs for one thing.
+struct StreamingBubble: View {
     let text: String
 
     var body: some View {
@@ -328,8 +332,9 @@ private struct StreamingBubble: View {
     }
 }
 
-/// Three-dot "assistant is thinking" indicator shown while a reply is in flight.
-private struct TypingIndicator: View {
+/// Three-dot "assistant is thinking" indicator shown while a reply is in flight. Shared with the
+/// dock's conversation page.
+struct TypingIndicator: View {
     @State private var phase = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let timer = Timer.publish(every: 0.35, on: .main, in: .common).autoconnect()

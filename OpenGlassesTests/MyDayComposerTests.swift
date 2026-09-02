@@ -56,10 +56,102 @@ final class MyDayComposerTests: XCTestCase {
                 weather: .init(summary: "Rain this afternoon.", isDecisionRelevant: true)
             ), now: now)
 
+        // "someday" is undated, and an undated reminder is not part of a day. It stays in
+        // Reminders rather than taking a slot from something with a time on it.
         XCTAssertEqual(snapshot.items.map(\.id.rawValue),
-                       ["imminent", "overdue", "due", "current", "later", "someday"])
+                       ["imminent", "overdue", "due", "current", "later"])
         XCTAssertEqual(snapshot.items.first?.urgency, .immediate)
-        XCTAssertEqual(snapshot.items.count, 6)
+        XCTAssertEqual(snapshot.items.count, 5)
+    }
+
+    // MARK: - Which reminders belong to a day (EB device round 2)
+
+    /// The policy in one table: overdue and due-today are the day; undated and future are not.
+    func testOnlyOverdueAndDueTodayRemindersReachTheCard() {
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(reminders: [
+                reminder("someday", due: nil),
+                reminder("tomorrow", due: date(10, day: 31)),
+                reminder("today", due: date(15)),
+                reminder("overdue", due: date(8))
+            ]),
+            now: date(9)
+        )
+
+        let ids = snapshot.allItems.map(\.id.rawValue)
+        XCTAssertEqual(ids, ["overdue", "today"])
+        XCTAssertFalse(ids.contains("someday"), "An undated reminder is not a day's work")
+        XCTAssertFalse(ids.contains("tomorrow"), "Tomorrow's task displaced today's")
+    }
+
+    /// A date-only reminder for tomorrow lands exactly on the boundary the filter uses, which is
+    /// the case an off-by-one gets wrong in the direction that matters.
+    func testTomorrowsDateOnlyReminderIsNotTodays() {
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(reminders: [
+                .init(id: "tomorrow", title: "Bin day", dueDate: date(0, day: 31),
+                      hasTime: false, priority: 0)
+            ]),
+            now: date(9)
+        )
+        XCTAssertTrue(snapshot.allItems.isEmpty)
+    }
+
+    /// Which list a task came from is the difference between a legible day and a pile of titles.
+    func testAReminderSaysWhichListItCameFrom() {
+        let snapshot = MyDayComposer(calendar: calendar, locale: Locale(identifier: "en_NZ"))
+            .compose(inputs: inputs(reminders: [
+                .init(id: "milk", title: "Milk", dueDate: date(15), hasTime: true,
+                      priority: 0, listName: "Shopping"),
+                .init(id: "invoice", title: "Send the invoice", dueDate: date(8), hasTime: true,
+                      priority: 0, listName: "Work"),
+                .init(id: "unlisted", title: "Water plants", dueDate: date(0), hasTime: false,
+                      priority: 0)
+            ]), now: date(9))
+
+        let details = Dictionary(uniqueKeysWithValues:
+            snapshot.allItems.map { ($0.id.rawValue, $0.detail ?? "") })
+        XCTAssertEqual(details["invoice"], "Overdue · Work")
+        XCTAssertTrue(details["milk"]?.hasSuffix(" · Shopping") == true,
+                      "A due time lost its list: \(details["milk"] ?? "nil")")
+        XCTAssertEqual(details["unlisted"], "Due today",
+                       "A reminder with no list must not grow a stray separator")
+    }
+
+    /// The cap still decides what the card carries, but what it left out travels with the
+    /// snapshot — the difference between "a longer list" and rows materialising when one is
+    /// cleared.
+    func testWhatTheCapLeavesOutIsCarriedRatherThanLost() {
+        let reminders = (0..<8).map { reminder("r\($0)", due: date(9, minute: $0 * 5)) }
+        let snapshot = MyDayComposer(calendar: calendar, maxItems: 3)
+            .compose(inputs: inputs(reminders: reminders), now: date(8))
+
+        XCTAssertEqual(snapshot.items.count, 3)
+        XCTAssertEqual(snapshot.overflowItems.count, 5)
+        XCTAssertEqual(snapshot.allItems.count, 8)
+        XCTAssertEqual(snapshot.allItems.map(\.id.rawValue),
+                       (0..<8).map { "r\($0)" },
+                       "The overflow is the rest of the same ranking, not a re-sorted tail")
+        // And the spoken/HUD budget is untouched: those read `items`, which the cap still bounds.
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["r0", "r1", "r2"])
+    }
+
+    /// Clearing a row promotes the next one — which was always the intent — and the total the card
+    /// reports falls by exactly one, so nothing appears from nowhere.
+    func testClearingARowPromotesTheNextAndTheTotalDrops() {
+        let reminders = (0..<5).map { reminder("r\($0)", due: date(9, minute: $0 * 5)) }
+        let composer = MyDayComposer(calendar: calendar, maxItems: 3)
+        let before = composer.compose(inputs: inputs(reminders: reminders), now: date(8))
+        XCTAssertEqual(before.allItems.count, 5)
+
+        let cleared = before.items[0]
+        let after = composer.compose(
+            inputs: inputs(reminders: reminders,
+                           dismissals: [cleared.id.dismissalKey: cleared.dismissalFingerprint]),
+            now: date(8))
+
+        XCTAssertEqual(after.allItems.count, 4)
+        XCTAssertEqual(after.items.map(\.id.rawValue), ["r1", "r2", "r3"])
     }
 
     func testRoutineWeatherNeverDisplacesHigherPriorityItems() {

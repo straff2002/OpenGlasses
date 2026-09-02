@@ -91,9 +91,33 @@ struct MyDaySnapshot: Equatable, Sendable {
     let generatedAt: Date
     let period: MyDayPeriod
     let headline: String
+    /// What the card and every budgeted consumer (the spoken briefing, the digest, the HUD) draw
+    /// from: ranked, cleared rows removed, capped.
     let items: [MyDayItem]
+    /// What the cap left out, still ranked and still the wearer's day.
+    ///
+    /// It exists because the cap used to be *invisible*: clearing a row let the next-ranked one
+    /// appear, which reads as items materialising out of nowhere rather than as a list that was
+    /// always longer than the card. The full-day surface shows these; nothing that speaks or
+    /// summarises does, because that is what the cap is for.
+    let overflowItems: [MyDayItem]
     let sourceStates: [MyDaySourceState]
     let nextRefreshAt: Date?
+
+    /// Everything the day actually holds, in rank order — what "See all N" must count and open.
+    var allItems: [MyDayItem] { items + overflowItems }
+
+    init(generatedAt: Date, period: MyDayPeriod, headline: String, items: [MyDayItem],
+         overflowItems: [MyDayItem] = [], sourceStates: [MyDaySourceState],
+         nextRefreshAt: Date?) {
+        self.generatedAt = generatedAt
+        self.period = period
+        self.headline = headline
+        self.items = items
+        self.overflowItems = overflowItems
+        self.sourceStates = sourceStates
+        self.nextRefreshAt = nextRefreshAt
+    }
 }
 
 struct MyDayCalendarEvent: Equatable, Sendable {
@@ -111,6 +135,22 @@ struct MyDayReminder: Equatable, Sendable {
     let dueDate: Date?
     let hasTime: Bool
     let priority: Int
+    /// The Reminders list this came from ("Shopping", "Work").
+    ///
+    /// Carried because a day's reminders arrive from every list at once and, without it, a row is
+    /// just a title with no way to tell which part of your life it belongs to. It is the wearer's
+    /// own words: it belongs on the row and in what VoiceOver reads, and in no log line.
+    let listName: String?
+
+    init(id: String, title: String, dueDate: Date?, hasTime: Bool, priority: Int,
+         listName: String? = nil) {
+        self.id = id
+        self.title = title
+        self.dueDate = dueDate
+        self.hasTime = hasTime
+        self.priority = priority
+        self.listName = listName
+    }
 }
 
 struct MyDayWeather: Equatable, Sendable {

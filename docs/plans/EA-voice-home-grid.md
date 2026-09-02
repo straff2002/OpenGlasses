@@ -241,6 +241,36 @@ event absent from `items` but still in the inputs and the headline count; a clea
 slot; a rescheduled event returning; dismissals surviving every refresh in a day and lapsing at the
 rollover; keys namespaced by source.
 
+### P7a — Reminders are a *day's* reminders (device round 2, 2026-09-02)
+
+Phone use of the shipped card found three faults in how it treated reminders, and all three are one
+policy question: what belongs on a card called My Day.
+
+1. **Only overdue and due-today reminders enter the ranking.** The card took every incomplete
+   reminder and ranked the undated ones last, which on a real account is most of them — a "someday"
+   pile with no date attached is not a day's work, and it crowded out the things that were. Undated
+   reminders now stay in Reminders, which is the app for them; future-dated ones (previously also in
+   that last rank) are excluded outright so tomorrow's task cannot displace today's. This is the
+   morning-only all-day rule again, in the other source: **the card curates, the source app keeps
+   everything.** Nothing is completed, deleted or hidden anywhere but on the card.
+2. **A row says which list it came from.** `MyDayReminder` carries `listName`
+   (`EKReminder.calendar.title`) and the detail reads "Overdue · Work" / "Due 3:00 pm · Shopping".
+   Without it the day's reminders arrive from every list at once as a pile of bare titles with no
+   way to tell which part of your life each belongs to. A list name is the wearer's own words: it
+   belongs on the row and in what VoiceOver reads, and **in no log line** — the same rule the store
+   and home categories already follow. The compact card draws no detail, so its rows carry an
+   explicit accessibility label rather than relying on what happens to be rendered.
+3. **The cap stopped being invisible.** `items` is still ranked-then-capped, because the spoken
+   briefing, the digest and the HUD all budget against it — but what the cap left out now travels
+   with the snapshot as `overflowItems`, and the full-day screen shows `allItems`. "See all N items"
+   counts the whole day. Clearing a row promoting the next one was always the intent; it read as
+   items materialising only because nothing on screen could say the list was longer than the card.
+
+**Tests.** Undated absent, due-tomorrow absent (including the date-only boundary case), due-today
+and overdue present; the detail carries the list name and grows no stray separator without one; the
+overflow is the same ranking's tail and `items` stays bounded; clearing a row promotes the next and
+drops the reported total by exactly one.
+
 ## P8 — The clip the four-row panel caused ✅
 
 Reported from the phone as "the My Day panel is cut off at the bottom", and **reproduced in the

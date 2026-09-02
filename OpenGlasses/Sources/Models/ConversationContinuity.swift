@@ -147,6 +147,58 @@ enum ConversationContinuity {
         }
     }
 
+    // MARK: - What the page shows
+
+    /// Which of the two things the conversation page can draw belongs on screen.
+    ///
+    /// The page shipped able to draw exactly one: the live turn's two cards, built from
+    /// `AppState.currentTranscription` and `AppState.lastResponse`. Those are turn state, not
+    /// conversation state — resuming a thread changes neither — so a wearer who picked a
+    /// conversation out of the switcher got an active thread they could not see, under the empty
+    /// state. This type is the missing decision.
+    enum PageContent: Equatable {
+        /// The thread's own messages, oldest first, with the live turn appending below.
+        case history(threadId: String)
+        /// The live turn alone. A realtime session keeps its transcript in the session rather
+        /// than the store, and a wearer with conversation history switched off keeps it nowhere.
+        case liveTurn
+        /// Genuinely nothing said. The only state the empty copy belongs in.
+        case empty
+    }
+
+    /// - Parameters:
+    ///   - isRealtimeSession: Gemini Live / OpenAI Realtime. Their transcripts are the session's
+    ///     and are never persisted, so the live cards remain the only honest view there.
+    static func pageContent(
+        activeThreadId: String?,
+        activeThreadMessageCount: Int,
+        isRealtimeSession: Bool,
+        hasLiveUserText: Bool,
+        hasLiveAssistantText: Bool
+    ) -> PageContent {
+        let hasLiveText = hasLiveUserText || hasLiveAssistantText
+        if isRealtimeSession { return hasLiveText ? .liveTurn : .empty }
+        if let activeThreadId, activeThreadMessageCount > 0 {
+            return .history(threadId: activeThreadId)
+        }
+        // No thread yet, or an empty one, but something was just said: the turn that started this
+        // conversation is on screen before it has been persisted, and after a voice session has
+        // ended its thread the reply the wearer is still reading is only here.
+        return hasLiveText ? .liveTurn : .empty
+    }
+
+    /// The same decision from the live objects, so the page and its tests ask one question.
+    static func pageContent(store: ConversationStore, isRealtimeSession: Bool,
+                            liveUserText: String, liveAssistantText: String) -> PageContent {
+        pageContent(
+            activeThreadId: store.activeThreadId,
+            activeThreadMessageCount: activeThread(in: store)?.messages.count ?? 0,
+            isRealtimeSession: isRealtimeSession,
+            hasLiveUserText: !liveUserText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasLiveAssistantText: !liveAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
+    }
+
     // MARK: - VoiceOver
 
     /// A switcher row, spoken: the title, when it was last touched, and whether it is the one the

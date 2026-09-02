@@ -29,6 +29,9 @@ enum UITestSupport {
         /// My Day set up and loaded with a full card's worth of rows — the state that needs a
         /// calendar, a permission grant and a real morning to reach otherwise.
         case seedMyDay = "-OGUITestSeedMyDay"
+        /// Stored conversations, one of them long — the state the dock's conversation page needs
+        /// to be looked at at all, and which otherwise takes a real session per thread to reach.
+        case seedConversations = "-OGUITestSeedConversations"
         /// A delete-and-reinstall: the Keychain kept a provider key, `UserDefaults` kept nothing.
         case reinstall = "-OGUITestReinstall"
     }
@@ -134,6 +137,10 @@ enum UITestSupport {
             appState.myDayService.seedForUITest(seededDay())
         }
 
+        if isSet(.seedConversations) {
+            seedConversations(appState)
+        }
+
         if isSet(.seedCaptions) {
             seedCaptions(appState)
             // Re-applied on a tick rather than written once. With no glasses to talk to, the app
@@ -185,6 +192,51 @@ enum UITestSupport {
             nextRefreshAt: now.addingTimeInterval(900)
         )
     }
+
+    /// Two finished conversations, the older one long enough to have to scroll.
+    ///
+    /// Written through the store's own `startThread`/`appendMessage`, so what lands on disk is
+    /// exactly what a real session would have left — and then ended, which is the state a wearer
+    /// is actually in when they reach for the switcher: a thread worth resuming and nothing
+    /// active.
+    ///
+    /// Deterministic: the conversations file lives in Documents and outlives the defaults wipe, so
+    /// this clears before it seeds rather than piling a fresh pair on every launch.
+    @MainActor
+    private static func seedConversations(_ appState: AppState) {
+        let store = appState.conversationStore
+        guard !store.isLocked else { return }
+        store.deleteAllThreads()
+
+        store.startThread(mode: AppMode.direct.rawValue)
+        for (question, answer) in longExchange {
+            store.appendMessage(role: "user", content: question)
+            store.appendMessage(role: "assistant", content: answer)
+        }
+        store.endThread()
+
+        store.startThread(mode: AppMode.direct.rawValue)
+        store.appendMessage(role: "user", content: "What time does the hardware store close?")
+        store.appendMessage(role: "assistant",
+                            content: "It closes at 5:30 today, and it's about eleven minutes away.")
+        store.endThread()
+    }
+
+    /// Long enough that the panel's page has to scroll, with one reply that wraps to several
+    /// lines — the two things a fixed-height transcript has to survive.
+    private static let longExchange: [(String, String)] = [
+        ("What's the flashing on the roof made of?",
+         "It's galvanised steel, and the section above the valley has started to lift."),
+        ("Is that something I can fix myself?",
+         "The lifted section can be re-fastened with roofing screws and butyl tape, which is a "
+         + "morning's work if you're comfortable on the roof. The valley itself is worth leaving "
+         + "to a roofer: if the underlay below it has torn, re-fastening the flashing over the "
+         + "top just hides the leak until the next heavy rain."),
+        ("What would a roofer charge for that?",
+         "For a single valley, usually a call-out plus an hour or two of labour."),
+        ("Remind me what tape you said.",
+         "Butyl tape — the black rubbery kind, not the foil-faced flashing tape."),
+    ]
 
     /// The lines a real session would have produced. Two of the three carry a diarized speaker, so
     /// the speaker chip is on screen for the audit to measure — without one the chip never renders

@@ -46,12 +46,13 @@ struct MyDayComposer: Sendable {
         }
 
         for reminder in inputs.reminders {
-            ranked.append(reminderItem(
+            guard let item = reminderItem(
                 reminder,
                 now: now,
                 startOfToday: startOfToday,
                 startOfTomorrow: startOfTomorrow
-            ))
+            ) else { continue }
+            ranked.append(item)
         }
 
         if let weather = inputs.weather {
@@ -71,11 +72,16 @@ struct MyDayComposer: Sendable {
         // headline describing rows that are gone. Here, a cleared row also frees its slot for the
         // next-ranked one, which is what a wearer clearing clutter is asking for.
         let dismissed = inputs.dismissals
-        let items = ranked
+        let surviving = ranked
             .sorted(by: rankedOrder)
             .filter { !MyDayDismissalPolicy.isDismissed($0.item, in: dismissed) }
-            .prefix(maxItems)
             .map(\.item)
+        // The cap still decides what the card and the spoken briefing carry — but what it left
+        // out travels with the snapshot now instead of vanishing. A row appearing the moment
+        // another was cleared is the same list all along; it only looked like conjuring because
+        // nothing on screen could say how long the list was.
+        let items = Array(surviving.prefix(maxItems))
+        let overflowItems = Array(surviving.dropFirst(maxItems))
 
         return MyDaySnapshot(
             generatedAt: now,
@@ -98,6 +104,7 @@ struct MyDayComposer: Sendable {
                 items: items
             ),
             items: items,
+            overflowItems: overflowItems,
             sourceStates: inputs.sourceStates.sorted { $0.source.rawValue < $1.source.rawValue },
             nextRefreshAt: calendar.date(byAdding: .minute, value: 15, to: now)
         )
@@ -191,27 +198,43 @@ struct MyDayComposer: Sendable {
         )
     }
 
+    /// A reminder's row, or nil if it is not part of *today*.
+    ///
+    /// My Day carried every incomplete reminder, ranking the undated ones last. On a real list
+    /// that is most of them: a "someday" pile with no date attached is not a day's work, and it
+    /// crowded out the things that were. So the card takes exactly two kinds — overdue, and due
+    /// today — and everything else stays in Reminders, which is the app for it. Future-dated items
+    /// were already ranked last for the same reason and are now excluded outright, so tomorrow's
+    /// task cannot displace today's.
+    ///
+    /// This is the same contract the morning-only all-day rule set: the card curates, the source
+    /// app keeps everything.
     private func reminderItem(
         _ reminder: MyDayReminder,
         now: Date,
         startOfToday: Date,
         startOfTomorrow: Date
-    ) -> RankedItem {
-        let isOverdue = reminder.dueDate.map { due in
-            reminder.hasTime ? due < now : due < startOfToday
-        } ?? false
-        let isDueToday = reminder.dueDate.map { $0 >= startOfToday && $0 < startOfTomorrow } ?? false
-        let rank = isOverdue ? 2 : (isDueToday ? 3 : 6)
-        let urgency: MyDayUrgency = isOverdue ? .important : (isDueToday ? .upcoming : .routine)
+    ) -> RankedItem? {
+        guard let dueDate = reminder.dueDate else { return nil }
+        let isOverdue = reminder.hasTime ? dueDate < now : dueDate < startOfToday
+        let isDueToday = dueDate >= startOfToday && dueDate < startOfTomorrow
+        guard isOverdue || isDueToday else { return nil }
 
-        let detail: String?
+        let rank = isOverdue ? 2 : 3
+        let urgency: MyDayUrgency = isOverdue ? .important : .upcoming
+
+        let timing: String
         if isOverdue {
-            detail = "Overdue"
-        } else if let due = reminder.dueDate, isDueToday {
-            detail = reminder.hasTime ? "Due \(formatTime(due))" : "Due today"
+            timing = "Overdue"
         } else {
-            detail = nil
+            timing = reminder.hasTime ? "Due \(formatTime(dueDate))" : "Due today"
         }
+        // The list is the answer to "which part of my life is this?", which a bare title cannot
+        // give when the day's reminders arrive from every list at once.
+        let detail = [timing, reminder.listName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
 
         return RankedItem(
             rank: rank,

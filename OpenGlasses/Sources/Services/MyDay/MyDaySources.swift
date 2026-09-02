@@ -75,7 +75,8 @@ extension EventKitDayStore: RemindersDaySource {
                     title: $0.title,
                     dueDate: $0.dueDate,
                     hasTime: $0.hasTime,
-                    priority: $0.priority
+                    priority: $0.priority,
+                    listName: $0.listName
                 )
             }
             return .init(value: reminders, state: .available(.reminders))
