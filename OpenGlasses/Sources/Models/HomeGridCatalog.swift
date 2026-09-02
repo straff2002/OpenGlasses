@@ -209,6 +209,11 @@ enum HomeGridCatalog {
 /// tall frame rather than negotiating for one. A height that depended on the page would grow and
 /// shrink under every swipe, which is the round-4 invariant this restores rather than revises: the
 /// pager moves between pages; the frame does not move at all.
+///
+/// **Everything here is measured.** The row is the tile a tile actually drew, and what the panel
+/// subtracts from the screen is the height the surface above it actually took. Nothing in this
+/// file estimates a layout any more except the one frame before the first measurement arrives —
+/// which is what the `default…WithoutMeasurement` names mark.
 enum DockGridMetrics {
     /// `BarButton`'s height floor — the fingertip minimum, before Dynamic Type grows the content
     /// past it.
@@ -250,31 +255,36 @@ enum DockGridMetrics {
     /// where the panel guesses.
     static let defaultRowsWithoutMeasurement = 4
 
-    /// The share of the tab's height the panel takes, and the reason it is two numbers.
-    ///
-    /// It is the whole of what is left once the surface above and the capsule below have had
-    /// theirs: the status card, My Day *in whatever state the wearer left it*, and the capsule
-    /// that never pages. Two numbers because My Day's card is the one thing above the panel whose
-    /// height the wearer controls — collapsing it hands back most of a card, and the panel takes
-    /// it. Nothing else moves these: not the selected page, not how many tiles the grid holds.
-    ///
-    /// They are estimates of a layout, deliberately. The alternative is measuring the zone and
-    /// sizing the panel from it, which is the circular dependency this file's one-way rule exists
-    /// to prevent — the panel sizes itself from the screen, and the zone above takes what is left.
-    /// Both are bounded by P8's rule rather than by taste: **the surface above is never clipped at
-    /// the panel's edge.** The panel also carries the page control on top of these rows and the
-    /// capsule below it, so the share is not the whole of what the dock takes.
-    ///
-    /// Measured in the simulator on a 6.3" phone rather than chosen: a status card is ~116 pt and
-    /// a collapsed My Day ~50 pt, which is what 0.52 leaves whole with a gap under it — a greedier
-    /// number was tried first and cut the collapsed card by a few points, flush against the glass,
-    /// which is P8's exact failure. An *expanded* My Day card is ~280 pt more, and 0.24 is what
-    /// that arithmetic leaves. The asymmetry is the honest one: a phone cannot hold an open My Day
-    /// and a tall panel at once, and the collapse control is how a wearer says which they want.
-    static let heightShare: CGFloat = 0.24
-    static let heightShareWhenSurfaceAboveIsCompact: CGFloat = 0.52
+    /// The dock's own furniture, so the two views that stack it and the arithmetic that reserves
+    /// room for it cannot drift apart: 8 pt above the panel and below the capsule, 8 pt between
+    /// them, and the panel's 14 pt inset on every side.
+    static let dockOuterPadding: CGFloat = 8
+    static let dockStackSpacing: CGFloat = 8
+    static let panelInset: CGFloat = 14
 
-    /// Rows the panel is tall: as many whole ones as its share of the screen affords.
+    /// The hero capsule's glyph box and the padding around it, at the default text size — the
+    /// capsule's height before a real one has been measured, on the same terms as the tile's.
+    /// `ActionCapsule` draws 14 pt of padding above and below its content and floors the result at
+    /// the touch-target minimum.
+    static let capsuleGlyphBox: CGFloat = 22
+    static let capsuleVerticalPadding: CGFloat = 28
+
+    /// Rows the panel is tall: as many whole ones as the screen still has once everything that is
+    /// *not* a row has been measured out of it.
+    ///
+    /// `reservedHeight` is the real, rendered height of the rest of the tab — the status card, My
+    /// Day in whatever state the wearer left it, the captions and notices held below them, the
+    /// zone's own padding, and the dock's own furniture with the capsule under it. `nil` until the
+    /// first layout has reported it.
+    ///
+    /// **Measured, not apportioned.** This used to be a share of the screen — 0.24 with My Day
+    /// open, 0.52 collapsed — margined so that the tallest plausible card was never clipped. The
+    /// margin is the bug: whenever the real card came in shorter than the reservation implied, the
+    /// slack rendered as dead glass between the card's bottom and the panel's top, which is what a
+    /// phone reported (a 6.6" screen, My Day open and short, ~190 pt of nothing). Measuring closes
+    /// both failure shapes at once. Clipping is impossible by construction, because the number
+    /// subtracted *is* the height the surface drew; and the residual gap can only ever be the
+    /// sub-row remainder, which is breathing room rather than a hole.
     ///
     /// **Not a function of the page, and not a function of how many tiles there are.** Both were
     /// tried and both were wrong in the same way. Sizing per page made the frame grow and shrink
@@ -285,11 +295,16 @@ enum DockGridMetrics {
     ///
     /// Whole rows by construction: the truncation *is* the snap, and it is why a tile is never
     /// sliced across the panel's edge.
-    static func restingRows(availableHeight: CGFloat, rowHeight: CGFloat,
-                            surfaceAboveIsCompact: Bool) -> Int {
-        guard rowHeight > 0, availableHeight > 0 else { return defaultRowsWithoutMeasurement }
-        let share = surfaceAboveIsCompact ? heightShareWhenSurfaceAboveIsCompact : heightShare
-        return max(1, Int((availableHeight * share) / rowHeight))
+    static func restingRows(availableHeight: CGFloat, reservedHeight: CGFloat?,
+                            rowHeight: CGFloat) -> Int {
+        guard rowHeight > 0, availableHeight > 0, let reservedHeight else {
+            return defaultRowsWithoutMeasurement
+        }
+        let budget = availableHeight - reservedHeight
+        guard budget > 0 else { return 1 }
+        // Every row past the first also costs the gap above it. The share arithmetic divided by the
+        // row alone, and `n - 1` gaps is exactly the number of points the last row then overran by.
+        return max(1, Int((budget + rowSpacing) / (rowHeight + rowSpacing)))
     }
 
     static func rowsNeeded(slotCount: Int, columns: Int) -> Int {
