@@ -77,21 +77,26 @@ enum OGMetrics {
 
 /// Section = uppercase caption + card + optional footer, the unit hub
 /// pages repeat.
+///
+/// Header and footer are `LocalizedStringKey` so the copy written at call
+/// sites reaches the string catalog; a section whose text is computed at
+/// runtime should localize at the point the sentence is built.
 struct OGSection<Content: View>: View {
-    var header: String? = nil
-    var footer: String? = nil
+    var header: LocalizedStringKey? = nil
+    var footer: LocalizedStringKey? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let header {
-                Text(header.uppercased())
+                Text(header)
+                    .textCase(.uppercase)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 20)
                     // Read the header as written; VoiceOver spells some
                     // all-caps words out letter by letter.
-                    .accessibilityLabel(header)
+                    .accessibilityLabel(Text(header))
                     .accessibilityAddTraits(.isHeader)
             }
             OGCard(content: content)
@@ -154,10 +159,10 @@ struct OGIconTile: View {
 /// chevron. 52pt floor so one-line rows are uniform and wrapped
 /// subtitles still breathe — and comfortably past the 44pt touch minimum.
 struct OGRow<Trailing: View>: View {
-    let title: String
+    let title: Text
     var icon: String? = nil
     var mutedIcon: Bool = false
-    var subtitle: String? = nil
+    var subtitle: Text? = nil
     var showsChevron: Bool = true
     /// Fold the trailing view into the row's single VoiceOver element. True for
     /// a plain value ("Model — Claude Sonnet" is one thought); false when the
@@ -198,7 +203,7 @@ struct OGRow<Trailing: View>: View {
                 OGIconTile(systemName: icon, muted: mutedIcon)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                title
                     .font(.body)
                     .foregroundStyle(.primary)
                     // Row titles must be allowed to take every line Dynamic Type needs. Without
@@ -207,7 +212,7 @@ struct OGRow<Trailing: View>: View {
                     // accessibility audit reports as clipped category names.
                     .fixedSize(horizontal: false, vertical: true)
                 if let subtitle {
-                    Text(subtitle)
+                    subtitle
                         .font(.footnote)
                         .foregroundStyle(OGTheme.secondaryLabel)
                         .fixedSize(horizontal: false, vertical: true)
@@ -259,11 +264,34 @@ private struct OGRowAccessibility: ViewModifier {
     }
 }
 
+// Row copy follows SwiftUI's own `Text` split: a literal at the call site is a
+// `LocalizedStringKey` (so `SWIFT_EMIT_LOC_STRINGS` extraction sees it), and a
+// runtime `String` lands on the generic `StringProtocol` overload, shown
+// verbatim. Concrete beats generic in overload resolution, so literals always
+// take the localized path without call sites having to choose.
 extension OGRow {
     /// Unlabeled-title form with custom trailing content, so call sites read
     /// the same whether the trailing view is a value label or a control.
     init(
-        _ title: String,
+        _ title: LocalizedStringKey,
+        icon: String? = nil,
+        mutedIcon: Bool = false,
+        subtitle: LocalizedStringKey? = nil,
+        showsChevron: Bool = true,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.init(
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
+            showsChevron: showsChevron, combinesTrailing: false,
+            alwaysStacksTrailing: false, trailing: trailing
+        )
+    }
+
+    /// Verbatim form for titles that only exist at runtime (model names,
+    /// self-test entries). Localize the copy where the string is composed.
+    init<S: StringProtocol>(
+        _ title: S,
         icon: String? = nil,
         mutedIcon: Bool = false,
         subtitle: String? = nil,
@@ -271,7 +299,8 @@ extension OGRow {
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.init(
-            title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
             showsChevron: showsChevron, combinesTrailing: false,
             alwaysStacksTrailing: false, trailing: trailing
         )
@@ -280,7 +309,46 @@ extension OGRow {
 
 extension OGRow where Trailing == OGRowValue {
     init(
-        _ title: String,
+        _ title: LocalizedStringKey,
+        icon: String? = nil,
+        mutedIcon: Bool = false,
+        subtitle: LocalizedStringKey? = nil,
+        value: LocalizedStringKey? = nil,
+        alwaysStacksValue: Bool = false,
+        showsChevron: Bool = true
+    ) {
+        self.init(
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
+            showsChevron: showsChevron, combinesTrailing: true,
+            alwaysStacksTrailing: alwaysStacksValue,
+            trailing: { OGRowValue(value: value) }
+        )
+    }
+
+    /// Localized title beside a runtime value ("Version — 2026.8").
+    init(
+        _ title: LocalizedStringKey,
+        icon: String? = nil,
+        mutedIcon: Bool = false,
+        subtitle: LocalizedStringKey? = nil,
+        verbatimValue: String?,
+        alwaysStacksValue: Bool = false,
+        showsChevron: Bool = true
+    ) {
+        self.init(
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
+            showsChevron: showsChevron, combinesTrailing: true,
+            alwaysStacksTrailing: alwaysStacksValue,
+            trailing: { OGRowValue(verbatim: verbatimValue) }
+        )
+    }
+
+    /// Fully runtime form — the hub's category rows, whose copy comes from a
+    /// model rather than the call site.
+    init<S: StringProtocol>(
+        _ title: S,
         icon: String? = nil,
         mutedIcon: Bool = false,
         subtitle: String? = nil,
@@ -289,10 +357,11 @@ extension OGRow where Trailing == OGRowValue {
         showsChevron: Bool = true
     ) {
         self.init(
-            title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
             showsChevron: showsChevron, combinesTrailing: true,
             alwaysStacksTrailing: alwaysStacksValue,
-            trailing: { OGRowValue(value: value) }
+            trailing: { OGRowValue(verbatim: value) }
         )
     }
 }
@@ -302,16 +371,17 @@ extension OGRow where Trailing == OGToggle {
     /// trailing closure: an empty title plus `.labelsHidden()` reaches VoiceOver
     /// as an unnamed switch, and the row title never gets attached to it.
     init(
-        _ title: String,
+        _ title: LocalizedStringKey,
         isOn: Binding<Bool>,
         icon: String? = nil,
         mutedIcon: Bool = false,
-        subtitle: String? = nil
+        subtitle: LocalizedStringKey? = nil
     ) {
         self.init(
-            title: title, icon: icon, mutedIcon: mutedIcon, subtitle: subtitle,
+            title: Text(title), icon: icon, mutedIcon: mutedIcon,
+            subtitle: subtitle.map { Text($0) },
             showsChevron: false, combinesTrailing: false, alwaysStacksTrailing: false,
-            trailing: { OGToggle(label: title, isOn: isOn) }
+            trailing: { OGToggle(label: Text(title), isOn: isOn) }
         )
     }
 }
@@ -320,23 +390,33 @@ extension OGRow where Trailing == OGToggle {
 /// visually but leaves it in the accessibility tree — which is exactly what a
 /// row-titled switch wants, provided the label was ever set.
 struct OGToggle: View {
-    let label: String
+    let label: Text
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(label, isOn: $isOn)
+        Toggle(isOn: $isOn) { label }
             .labelsHidden()
     }
 }
 
 /// Trailing summary on a row ("Claude Sonnet", "On", "iPhone").
 struct OGRowValue: View {
-    let value: String?
+    let value: Text?
     @Environment(\.dynamicTypeSize) private var typeSize
+
+    init(value: LocalizedStringKey?) {
+        self.value = value.map { Text($0) }
+    }
+
+    /// For values that only exist at runtime — a version string, a count
+    /// formatted elsewhere.
+    init(verbatim value: String?) {
+        self.value = value.map { Text($0) }
+    }
 
     var body: some View {
         if let value {
-            Text(value)
+            value
                 .font(.body)
                 .foregroundStyle(OGTheme.secondaryLabel)
                 // **No cap at all**, which is only safe because of the other half of the fix.
@@ -389,14 +469,26 @@ struct OGChip: View {
 
 /// Uppercase state badge ("BETA", "OWNER").
 struct OGBadge: View {
-    let text: String
+    let text: Text
     var prominent: Bool = false
     @Environment(\.appAccent) private var accent
 
+    init(text: LocalizedStringKey, prominent: Bool = false) {
+        self.text = Text(text)
+        self.prominent = prominent
+    }
+
+    /// Verbatim form for badge copy that comes from a model.
+    init<S: StringProtocol>(text: S, prominent: Bool = false) {
+        self.text = Text(text)
+        self.prominent = prominent
+    }
+
     var body: some View {
-        Text(text.uppercased())
+        text
             .font(.caption2.weight(.bold))
             .kerning(0.4)
+            .textCase(.uppercase)
             .foregroundStyle(
                 prominent
                     ? AnyShapeStyle(OGTheme.tintedAccentLabel(accent))
@@ -462,9 +554,21 @@ struct OGStatusPill: View {
 
 /// Accent-tinted informational strip ("Stored on this iPhone only").
 struct OGNotice: View {
-    let text: String
+    let text: Text
     var systemImage: String = "lock"
     @Environment(\.appAccent) private var accent
+
+    init(text: LocalizedStringKey, systemImage: String = "lock") {
+        self.text = Text(text)
+        self.systemImage = systemImage
+    }
+
+    /// Verbatim form for a sentence composed at runtime; localize it where
+    /// it is built.
+    init<S: StringProtocol>(text: S, systemImage: String = "lock") {
+        self.text = Text(text)
+        self.systemImage = systemImage
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -472,7 +576,7 @@ struct OGNotice: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .accessibilityHidden(true)
-            Text(text)
+            text
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .fixedSize(horizontal: false, vertical: true)
@@ -487,10 +591,12 @@ struct OGNotice: View {
     }
 }
 
-/// One number + caption, for compact stat rows.
+/// One number + caption, for compact stat rows. The caption is the label and
+/// is written at the call site, so it is a `LocalizedStringKey`; the value is
+/// a number formatted elsewhere and stays verbatim.
 struct OGStatTile: View {
     let value: String
-    let caption: String
+    let caption: LocalizedStringKey
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -920,21 +1026,31 @@ struct OGStatusLabel: View {
         }
     }
 
-    let text: String
+    let text: Text
     let kind: Kind
     var systemImage: String? = nil
 
-    init(_ text: String, kind: Kind, systemImage: String? = nil) {
-        self.text = text
+    init(_ text: LocalizedStringKey, kind: Kind, systemImage: String? = nil) {
+        self.text = Text(text)
+        self.kind = kind
+        self.systemImage = systemImage
+    }
+
+    /// Verbatim form for outcomes composed at runtime (error descriptions,
+    /// measured latencies); localize the sentence where it is built.
+    init<S: StringProtocol>(_ text: S, kind: Kind, systemImage: String? = nil) {
+        self.text = Text(text)
         self.kind = kind
         self.systemImage = systemImage
     }
 
     var body: some View {
-        Label(text, systemImage: systemImage ?? kind.systemImage)
-            .font(.footnote)
-            .foregroundStyle(kind.color)
-            .fixedSize(horizontal: false, vertical: true)
+        Label { text } icon: {
+            Image(systemName: systemImage ?? kind.systemImage)
+        }
+        .font(.footnote)
+        .foregroundStyle(kind.color)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

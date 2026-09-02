@@ -106,9 +106,9 @@ struct SettingsView: View {
                 header: "About",
                 footer: "OpenGlasses © 2026 Skunkworks NZ Ltd. All rights reserved. Free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
             ) {
-                OGRow("Version", icon: "info.circle", mutedIcon: true, value: Self.appVersion, showsChevron: false)
+                OGRow("Version", icon: "info.circle", mutedIcon: true, verbatimValue: Self.appVersion, showsChevron: false)
                 OGDivider()
-                OGRow("Build", icon: "hammer", mutedIcon: true, value: Self.buildNumber, showsChevron: false)
+                OGRow("Build", icon: "hammer", mutedIcon: true, verbatimValue: Self.buildNumber, showsChevron: false)
                 OGDivider()
                 NavigationLink {
                     AttributionsView()
@@ -1024,9 +1024,12 @@ struct HardwarePrivacyView: View {
 /// nothing for the user to switch. For guarantees that are compiled in rather than configured —
 /// presenting one as a toggle would imply an "on" state the app does not offer.
 struct InfoStatusRow: View {
-    let title: String
+    /// Title and info are written at the call site, so they are
+    /// `LocalizedStringKey`s and reach the string catalog; the status is a
+    /// runtime summary and stays a `String`.
+    let title: LocalizedStringKey
     let status: String
-    let info: String
+    let info: LocalizedStringKey
 
     @State private var showInfo = false
 
@@ -1041,7 +1044,7 @@ struct InfoStatusRow: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("About \(title)")
+            .accessibilityLabel(Text("About \(Text(title))"))
             Spacer()
             Text(status)
                 .foregroundStyle(.secondary)
