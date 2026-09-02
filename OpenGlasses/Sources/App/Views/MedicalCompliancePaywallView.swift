@@ -137,7 +137,7 @@ struct MedicalCompliancePaywallView: View {
 
     // MARK: - Subviews
 
-    private func featureRow(icon: String, title: String, detail: String) -> some View {
+    private func featureRow(icon: String, title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
         OGRow(title, icon: icon, subtitle: detail, showsChevron: false) { EmptyView() }
     }
 

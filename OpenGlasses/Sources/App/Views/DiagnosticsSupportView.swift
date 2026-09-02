@@ -282,15 +282,18 @@ private struct DiagnosticsReportSheet: View {
         .tint(accent)
     }
 
-    private var maskingSummary: String {
+    // `LocalizedStringKey` rather than `String`, so these sentences reach the
+    // string catalog with their interpolations as format specifiers.
+    private var maskingSummary: LocalizedStringKey {
         report.redactionHits.isEmpty
             ? "Nothing in this report looked like a key, token, or personal identifier."
             : "Masked before you saw it: \(report.redactionHits.joined(separator: ", "))."
     }
 
-    private var linkFooter: String {
-        report.omittedLogLines > 0
-            ? "A link can't hold the whole log, so \(report.omittedLogLines) older line\(report.omittedLogLines == 1 ? "" : "s") are left out of the bug-report link. Copy or share to send the complete report."
-            : "Copy or share the report if you'd rather send it another way."
+    private var linkFooter: LocalizedStringKey {
+        if report.omittedLogLines > 0 {
+            return "A link can't hold the whole log, so \(report.omittedLogLines) older \(report.omittedLogLines == 1 ? "line is" : "lines are") left out of the bug-report link. Copy or share to send the complete report."
+        }
+        return "Copy or share the report if you'd rather send it another way."
     }
 }
