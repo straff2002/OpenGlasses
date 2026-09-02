@@ -170,6 +170,23 @@ class LLMService: ObservableObject {
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
 
+    /// Backend-neutral local-inference seam (Plan DZ P0), built lazily around whatever
+    /// `localLLMService` is set and used only while `Config.localRuntimeCoordinatorEnabled` is on.
+    ///
+    /// The coordinator's own background probe is left at its default here rather than reading
+    /// `UIApplication`: `LocalLLMService.loadModel`/`generate` already refuse in the background
+    /// with `LocalLLMError.backgrounded`, on the main actor where that state can be read safely, so
+    /// the guard that keeps Metal work out of the background is unchanged and unduplicated. A
+    /// runtime without such an internal guard supplies the probe when it lands.
+    private var localCoordinator: LocalInferenceCoordinator?
+
+    private func coordinator(for service: LocalLLMService) -> LocalInferenceCoordinator {
+        if let localCoordinator { return localCoordinator }
+        let created = LocalInferenceCoordinator(backends: [MLXLocalInferenceBackend(service: service)])
+        localCoordinator = created
+        return created
+    }
+
     /// Session the SSE streaming helpers use. Injectable purely so tests can stub `URLProtocol`
     /// and exercise the stream parsing/error paths headlessly (BM P9); production uses `.shared`.
     var streamingSession: URLSession = .shared
@@ -2703,6 +2720,22 @@ class LLMService: ObservableObject {
         return block
     }
 
+    /// The installation record the coordinator needs for an MLX model, resolved from the bundled
+    /// catalog without touching disk (Plan DZ P0).
+    ///
+    /// Built rather than read back from `LocalModelRepository` on purpose: a turn must not become
+    /// dependent on the migration having run, and a saved model id that is not in the catalog —
+    /// a retired entry, or one the user typed — resolves to a compatibility descriptor so no
+    /// configuration can be made unusable by this seam. Storage is `.legacyHubSnapshot`, which is
+    /// where MLX files actually live and where PR1 leaves them.
+    nonisolated static func mlxInstallation(forModelID modelID: String) -> InstalledLocalModel {
+        InstalledLocalModel(
+            descriptor: LocalModelCatalog.resolveDescriptor(forLegacyMLXModelID: modelID),
+            storage: .legacyHubSnapshot(
+                directoryName: LocalModelRepository.legacyDirectoryName(forModelID: modelID)),
+            installedAt: Date(timeIntervalSince1970: 0))
+    }
+
     // Unlike the cloud providers, the on-device path is deliberately NOT on the shared `runToolLoop`
     // driver (Plan BG P3). On-device models don't expose a structured tool-use API — they emit
     // `<tool_call>` markup — so this path is single-shot with a reduced tool set and one optional
@@ -2713,8 +2746,16 @@ class LLMService: ObservableObject {
             throw LLMError.missingAPIKey("Local LLM service not initialized")
         }
 
-        // Load the configured model (no auto-swap — user picks one model)
-        if !localService.isModelLoaded || localService.loadedModelId != config.model {
+        // Load the configured model (no auto-swap — user picks one model). With the DZ seam on,
+        // the same load goes through the coordinator, which owns residency across runtimes; with
+        // it off this is the call it has always been.
+        let useCoordinator = Config.localRuntimeCoordinatorEnabled
+        if useCoordinator {
+            try await coordinator(for: localService).load(
+                Self.mlxInstallation(forModelID: config.model),
+                configuration: LocalLoadConfiguration(
+                    contextLength: LocalModelBudget.contextWindow(for: config.model)))
+        } else if !localService.isModelLoaded || localService.loadedModelId != config.model {
             try await localService.loadModel(config.model)
         }
 
@@ -2742,13 +2783,41 @@ class LLMService: ObservableObject {
         do {
             // The image rides only the FIRST generation of the turn — tool-result follow-up
             // regenerations below re-answer over text, which is correct and far cheaper.
-            response = try await localService.generate(
-                userMessage: text,
-                systemPrompt: fullPrompt,
-                history: history,
-                imageData: imageData,
-                onToken: onToken
-            )
+            if useCoordinator {
+                // Identical arguments by construction: `MLXPromptAdapter.decompose` is the exact
+                // inverse of the `compose` below (pinned by round-trip tests), so what reaches
+                // `LocalLLMService.generate` through the seam is byte-for-byte what the direct
+                // call would have passed. The stream's concatenation is the authoritative text.
+                let request = LocalGenerationRequest(
+                    messages: MLXPromptAdapter.compose(systemPrompt: fullPrompt,
+                                                       history: history,
+                                                       userMessage: text),
+                    images: imageData.map { [LocalImageInput(data: $0)] } ?? [],
+                    maxOutputTokens: LocalModelBudget.generationReserve(for: config.model),
+                    previewSink: onToken)
+                do {
+                    let stream = try await coordinator(for: localService)
+                        .generate(request, expecting: LocalModelID(config.model))
+                    var assembled = ""
+                    for try await chunk in stream { assembled += chunk }
+                    response = assembled
+                } catch LocalInferenceError.visionNotAvailable {
+                    // The seam refuses an image to a model that loaded text-only; the direct path
+                    // refuses it inside `generate`. Same outcome, and deliberately the same words —
+                    // answering blind about a photo the model never saw is the failure both nets
+                    // exist to prevent.
+                    PrivacyLog.localModel(.imageRefused, model: PrivacyToken(config.model))
+                    response = LocalLLMService.visionWeightsUnavailableMessage
+                }
+            } else {
+                response = try await localService.generate(
+                    userMessage: text,
+                    systemPrompt: fullPrompt,
+                    history: history,
+                    imageData: imageData,
+                    onToken: onToken
+                )
+            }
         } catch is CancellationError {
             // BK P4: a barge-in cancels the local generation. Propagate CancellationError UNWRAPPED
             // so ConversationTurnRunner maps it to onCancelled (partial reply not spoken) instead

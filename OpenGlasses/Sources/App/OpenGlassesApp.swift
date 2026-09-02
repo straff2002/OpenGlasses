@@ -190,6 +190,12 @@ struct OpenGlassesApp: App {
         FieldAssistEntitlement.removeLegacyPreferenceKeys()
         // Carry the retired global small-context switch onto the saved cloud models it applied to.
         Config.migrateSmallContextToPerModelIfNeeded()
+        // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
+        // and idempotent: after the first success this is a single integer read. It **moves and
+        // deletes nothing** — the record points at the hub directory the weights already live in,
+        // so no model is ever redownloaded — and the version stamp is written only once every
+        // record has been read back, so an interrupted or unwritable run retries next launch.
+        LocalModelRepository().migrateIfNeeded()
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they

@@ -76,74 +76,23 @@ final class LocalLLMService: ObservableObject {
 
     // MARK: - Recommended Models
 
-    static let recommendedModels: [RecommendedModel] = [
-        // Gemma 4 — best on-device agent model
+    /// Compatibility projection of the bundled catalog (Plan DZ P0 item 4).
+    ///
+    /// The list itself now lives in `LocalModelCatalog`, which owns both the display copy and the
+    /// runtime facts a second backend needs. This accessor keeps every existing call site — the
+    /// model picker, the agentic-features sheet, the download-size estimate — working unchanged.
+    /// `LocalModelCatalogTests` pins the projection against the exact list this used to hold.
+    static let recommendedModels: [RecommendedModel] = LocalModelCatalog.entries.map {
         RecommendedModel(
-            id: "mlx-community/gemma-4-e2b-it-4bit",
-            name: "Gemma 4 E2B (Agent)",
-            estimatedSize: "3.6 GB",
-            hasVision: true,
-            hasToolCalling: true,
-            notes: "Best on-device agent — tool calling, 140+ languages, vision. Uses ~4 GB while running.",
-            minimumRAMGB: 8
-        ),
-        RecommendedModel(
-            id: "mlx-community/gemma-4-e4b-it-4bit",
-            name: "Gemma 4 E4B (Agent+)",
-            estimatedSize: "5.1 GB",
-            hasVision: true,
-            hasToolCalling: true,
-            notes: "Bigger Gemma 4 — highest-quality on-device agent, with vision. Needs a high-memory device (12 GB).",
-            minimumRAMGB: 12
-        ),
-        // Vision models (can see photos from glasses)
-        RecommendedModel(
-            id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
-            name: "SmolVLM2 2.2B (Vision)",
-            estimatedSize: "1.5 GB",
-            hasVision: true,
-            hasToolCalling: false,
-            notes: "Best small vision model — sees photos + video"
-        ),
-        RecommendedModel(
-            id: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
-            name: "SmolVLM2 500M (Vision)",
-            estimatedSize: "0.35 GB",
-            hasVision: true,
-            hasToolCalling: false,
-            notes: "Tiny vision model — basic photo understanding"
-        ),
-        // Text-only MLX models
-        RecommendedModel(
-            id: "LiquidAI/LFM2.5-2.6B-MLX-4bit",
-            name: "LFM2.5 2.6B (Reasoning)",
-            estimatedSize: "1.6 GB",
-            hasVision: false,
-            hasToolCalling: true,
-            notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
-                + "pause before speech starts), then answers with strong tool use and "
-                + "instruction following. Best quality per GB of the text-only models."
-        ),
-        RecommendedModel(
-            id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
-            name: "Qwen 2.5 3B",
-            estimatedSize: "1.8 GB",
-            hasVision: false,
-            hasToolCalling: true,
-            notes: "Strong reasoning and tool use"
-        ),
-        // (Gemma 2 2B was retired from this list in favor of the Gemma 4 pair above —
-        // vision + tools at comparable footprints. Already-downloaded copies keep working:
-        // loading is by id, and its LocalModelBudget entry remains.)
-        RecommendedModel(
-            id: "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
-            name: "Qwen 2.5 0.5B",
-            estimatedSize: "0.4 GB",
-            hasVision: false,
-            hasToolCalling: true,
-            notes: "Ultra-light, basic capability"
-        ),
-    ]
+            id: $0.descriptor.id.rawValue,
+            name: $0.descriptor.displayName,
+            estimatedSize: $0.estimatedSize,
+            hasVision: $0.descriptor.supportsVision,
+            hasToolCalling: $0.descriptor.supportsTools,
+            notes: $0.notes,
+            minimumRAMGB: $0.minimumRAMGB
+        )
+    }
 
     /// Model IDs whose checkpoints declare a vision tree, attempted through `VLMModelFactory`.
     ///
@@ -157,13 +106,9 @@ final class LocalLLMService: ObservableObject {
     /// The demotion path in `loadModel` stays as the safety net: a checkpoint that still
     /// fails weight mapping loads as a perfectly good text model, and image turns are refused
     /// honestly by the vision guard in LLMService rather than answered blind.
-    nonisolated static let visionModelIds: Set<String> = [
-        "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
-        "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
-        "mlx-community/gemma-4-e2b-it-4bit",
-        "mlx-community/gemma-4-E2B-it-4bit",
-        "mlx-community/gemma-4-e4b-it-4bit",
-    ]
+    /// Compatibility projection of `LocalModelCatalog.visionCapableModelIDs`, which is now the
+    /// single asserted source (Plan DZ P0). Same set, same behaviour.
+    nonisolated static var visionModelIds: Set<String> { LocalModelCatalog.visionCapableModelIDs }
 
     /// Models whose VLM load failed weight mapping this run and were demoted to the text
     /// factory. In-memory: a re-uploaded checkpoint gets a fresh chance next launch.
@@ -983,13 +928,11 @@ final class LocalLLMService: ObservableObject {
 
     /// Expected full-snapshot size for a catalog model (parsed from its `estimatedSize`), or nil
     /// for custom/unknown ids. Drives the byte-based download progress estimate.
-    static func expectedDownloadBytes(for modelId: String) -> Int64? {
-        guard let est = recommendedModels.first(where: { $0.id == modelId })?.estimatedSize else { return nil }
-        let cleaned = est.uppercased()
-            .replacingOccurrences(of: "GB", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        guard let gb = Double(cleaned), gb > 0 else { return nil }
-        return Int64(gb * 1_073_741_824)
+    /// `nonisolated` now that it reads only the (pure) catalog — callers outside the main actor
+    /// can ask a model's expected size without hopping.
+    nonisolated static func expectedDownloadBytes(for modelId: String) -> Int64? {
+        guard let entry = LocalModelCatalog.entry(for: LocalModelID(modelId)) else { return nil }
+        return LocalModelCatalog.bytes(fromEstimatedSize: entry.estimatedSize)
     }
 
     /// Bytes on disk attributable to an in-progress download: the partial snapshot plus

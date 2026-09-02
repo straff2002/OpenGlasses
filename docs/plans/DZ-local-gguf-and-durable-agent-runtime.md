@@ -1,8 +1,54 @@
 # Plan DZ — Local GGUF Runtime and Durable Agent Loops
 
-**Status:** 📝 Drafted (2026-08-30)
+**Status:** 🚧 In progress — **P0 / PR1 ✅ complete** (all flags off); PR2 onward not started.
 **Priority:** P1 for the text-only GGUF runtime and model acquisition path; P1 reliability work for
 scheduled tasks; P2 for memory curation; vision and skill-pack storage remain gated follow-ups.
+
+### P0 / PR1 — what actually landed, and its caveats
+
+Landed: `LocalInferenceTypes` (runtime/model identity, descriptor validation, relative-path
+containment, generation shapes), `LocalInferenceBackend`, `LocalInferenceCoordinator` (single
+residency, cancel-then-unload ordering, reentrancy refusal, foreground-only probe),
+`MLXLocalInferenceBackend` + `MLXPromptAdapter`, `LocalModelCatalog` (versioned bundled catalog,
+with `LocalLLMService.recommendedModels` / `visionModelIds` / `expectedDownloadBytes` as
+compatibility projections), `LocalModelRepository` (installation manifest + `.complete` marker +
+read-back-verified, forward-only legacy migration), backend-aware admission in `LocalModelBudget`,
+and the four feature flags — all default off.
+
+Honest caveats on the exit criteria:
+
+- **"Existing MLX models load and generate through the compatibility façade" is proved
+  structurally, not on a device.** `MLXPromptAdapter.decompose` is pinned as the exact inverse of
+  the `compose` that `sendLocal` calls, and the backend is driven against a recording fake to show
+  the MLX runtime receives byte-identical arguments. No MLX weights were loaded: the simulator
+  cannot, and the device evidence in the test plan is still outstanding.
+- **The coordinator route is flag-gated and off.** `Config.localRuntimeCoordinatorEnabled` defaults
+  false, so every shipped turn still takes the direct `LocalLLMService` call. The seam is proven,
+  not yet exercised in production.
+- **The catalog is Swift, not `Resources/LocalModelCatalog.json`.** A JSON entry's value is its
+  size/digest/revision triple, and no MLX entry has one — these are hub snapshots fetched whole,
+  with no pinned revision and no recorded digests. Writing them to JSON would be writing empty
+  fields more expensively. `installationFaults()` reports `.unpinnedRevision` for every current
+  entry precisely so this cannot become the standard for a *new* download. The JSON catalog lands
+  with PR4, which can populate it.
+- **Licence metadata is `.unverified` for every entry.** No acceptance gate existed before DZ and
+  inventing licence names for models that install today would be asserting something unchecked.
+  Curated licence text is PR4 work.
+- **Admission is additive, not rewired.** `LocalModelBudget.admit` supplies the
+  `allow` / `allowConstrained` / typed-refusal vocabulary the second runtime needs, and is pinned to
+  refuse exactly when the shipping `MemoryHeadroom.canLoad` gate does. The MLX load path still calls
+  `canLoad`; swapping it for a differently-tuned gate would have been a behaviour change wearing a
+  refactor's clothes.
+- **Legacy MLX files are discovered, never moved.** A migrated record is
+  `.legacyHubSnapshot` and points at the existing `models--org--name` directory. Relocating
+  multi-gigabyte directories is how an interrupted migration costs someone their model.
+- **The migration is the one part of PR1 that runs on every device with the flags off.** It is
+  wired into launch beside the other one-time migrations, writes only into a new `installed/`
+  subdirectory, and after its first success costs a single integer read per launch. Nothing yet
+  *consumes* the records — PR4/PR5 do — so a device that defers or fails it is in no worse a state
+  than before DZ.
+- **`LocalModelDownloadManager` / `LocalModelDownloadPlan` are not in this PR** — they belong to the
+  acquisition work in PR4 and would have no consumer here.
 
 ---
 
