@@ -78,3 +78,6 @@ Vendor/MediaPipeTasks/Frameworks/
 *.crt
 *.key
 .dd-agent/
+
+# Per-agent isolated DerivedData (worktree only)
+.dd-agent/

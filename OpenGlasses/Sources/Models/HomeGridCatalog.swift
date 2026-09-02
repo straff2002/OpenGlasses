@@ -202,6 +202,13 @@ enum HomeGridCatalog {
 /// a scroll rather than a crop. That only stays true while the row height the panel snaps to is the
 /// tile height the tile actually draws, which is why the floor and the spacing live here rather than
 /// as literals inside `BarButton`.
+///
+/// **One frame, and the page is not an input to it.** The panel is as tall as the screen affords it
+/// at all times, on every page. That started as a grid rule — whole rows, nothing sliced — and it is
+/// now also what makes the conversation page readable, because the transcript simply inherits the
+/// tall frame rather than negotiating for one. A height that depended on the page would grow and
+/// shrink under every swipe, which is the round-4 invariant this restores rather than revises: the
+/// pager moves between pages; the frame does not move at all.
 enum DockGridMetrics {
     /// `BarButton`'s height floor — the fingertip minimum, before Dynamic Type grows the content
     /// past it.
@@ -239,46 +246,55 @@ enum DockGridMetrics {
     /// Gap between tiles, in both axes.
     static let rowSpacing: CGFloat = 4
 
-    /// The most rows the grid ever rests at. Beyond that it scrolls.
-    static let defaultVisibleRows = 4
+    /// Rows to assume before anything has been measured — the first frame, and the only frame
+    /// where the panel guesses.
+    static let defaultRowsWithoutMeasurement = 4
 
-    /// The share of the tab's height the panel may take at rest, and the reason it is two numbers.
+    /// The share of the tab's height the panel takes, and the reason it is two numbers.
     ///
-    /// The panel is the bottom of a screen that still has a status card and My Day on it, and on a
-    /// phone those three cannot all have what they want: four rows plus an expanded My Day is more
-    /// than a 6.9" screen has, and the surface that lost was My Day — clipped mid-card at the
-    /// panel's edge. So the ceiling is four rows and the *floor of the screen* decides how many of
-    /// them are affordable. Collapsing My Day gives its height back, and the panel is allowed to
-    /// take it: that is what the collapse control is for, and it is the one state where a phone
-    /// genuinely affords the full four.
-    static let restingHeightShare: CGFloat = 0.20
-    static let restingHeightShareWhenSurfaceAboveIsCompact: CGFloat = 0.30
+    /// It is the whole of what is left once the surface above and the capsule below have had
+    /// theirs: the status card, My Day *in whatever state the wearer left it*, and the capsule
+    /// that never pages. Two numbers because My Day's card is the one thing above the panel whose
+    /// height the wearer controls — collapsing it hands back most of a card, and the panel takes
+    /// it. Nothing else moves these: not the selected page, not how many tiles the grid holds.
+    ///
+    /// They are estimates of a layout, deliberately. The alternative is measuring the zone and
+    /// sizing the panel from it, which is the circular dependency this file's one-way rule exists
+    /// to prevent — the panel sizes itself from the screen, and the zone above takes what is left.
+    /// Both are bounded by P8's rule rather than by taste: **the surface above is never clipped at
+    /// the panel's edge.** The panel also carries the page control on top of these rows and the
+    /// capsule below it, so the share is not the whole of what the dock takes.
+    ///
+    /// Measured in the simulator on a 6.3" phone rather than chosen: a status card is ~116 pt and
+    /// a collapsed My Day ~50 pt, which is what 0.52 leaves whole with a gap under it — a greedier
+    /// number was tried first and cut the collapsed card by a few points, flush against the glass,
+    /// which is P8's exact failure. An *expanded* My Day card is ~280 pt more, and 0.24 is what
+    /// that arithmetic leaves. The asymmetry is the honest one: a phone cannot hold an open My Day
+    /// and a tall panel at once, and the collapse control is how a wearer says which they want.
+    static let heightShare: CGFloat = 0.24
+    static let heightShareWhenSurfaceAboveIsCompact: CGFloat = 0.52
 
-    /// Rows the panel rests at: never more than the content needs, never more than the ceiling, and
-    /// never more than the screen can spare for it.
-    static func restingRows(slotCount: Int, columns: Int, availableHeight: CGFloat,
-                            rowHeight: CGFloat, surfaceAboveIsCompact: Bool) -> Int {
-        let needed = rowsNeeded(slotCount: slotCount, columns: columns)
-        guard rowHeight > 0, availableHeight > 0 else {
-            return max(1, min(defaultVisibleRows, needed))
-        }
-        let share = surfaceAboveIsCompact
-            ? restingHeightShareWhenSurfaceAboveIsCompact
-            : restingHeightShare
-        let affordable = Int((availableHeight * share) / rowHeight)
-        return max(1, min(min(defaultVisibleRows, affordable), needed))
+    /// Rows the panel is tall: as many whole ones as its share of the screen affords.
+    ///
+    /// **Not a function of the page, and not a function of how many tiles there are.** Both were
+    /// tried and both were wrong in the same way. Sizing per page made the frame grow and shrink
+    /// under every swipe; sizing to the content meant a wearer with a short grid got a short panel
+    /// — and the conversation page, which shares that frame, became a two-line window onto a
+    /// conversation. One height, held for every page, is what makes the transcript readable and
+    /// the pager honest at the same time.
+    ///
+    /// Whole rows by construction: the truncation *is* the snap, and it is why a tile is never
+    /// sliced across the panel's edge.
+    static func restingRows(availableHeight: CGFloat, rowHeight: CGFloat,
+                            surfaceAboveIsCompact: Bool) -> Int {
+        guard rowHeight > 0, availableHeight > 0 else { return defaultRowsWithoutMeasurement }
+        let share = surfaceAboveIsCompact ? heightShareWhenSurfaceAboveIsCompact : heightShare
+        return max(1, Int((availableHeight * share) / rowHeight))
     }
 
     static func rowsNeeded(slotCount: Int, columns: Int) -> Int {
         guard slotCount > 0, columns > 0 else { return 0 }
         return (slotCount + columns - 1) / columns
-    }
-
-    /// Rows the panel shows before it starts scrolling. Fewer slots than that shrink the panel —
-    /// yielding the content tiles takes rows away, and the conversation zone gets the height back.
-    static func visibleRows(slotCount: Int, columns: Int,
-                            limit: Int = defaultVisibleRows) -> Int {
-        max(1, min(limit, rowsNeeded(slotCount: slotCount, columns: columns)))
     }
 
     /// The panel's viewport for `rows` complete rows: `n` tiles and the `n - 1` gaps between them,

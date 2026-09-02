@@ -308,6 +308,55 @@ and the page dots overlapped its captions.
 **Verified on device-sized simulator across states:** expanded (3 rows, card whole, gap before the
 panel), collapsed (4 rows, all captions intact, dots clear), and the grid page's own scroll.
 
+### P8a — One tall frame, and the four-row ceiling retired (device round 3, 2026-09-02)
+
+Reported from the phone once the conversation page could finally show a conversation: *"you get a
+very small space… by having full height, the conversation can be properly reviewed."* The panel was
+sized as a **grid** — at most four rows, and fewer when the grid held fewer tiles — and the
+conversation page shares that frame, so a transcript was being read through a two-line window.
+
+The first design considered was a per-page reading height: expand on the conversation page, return
+to the row-snapped height on the others. It was **rejected before it was built**, and the reason is
+the report it would have produced next — *"it keeps growing and shrinking."* A frame that depends on
+the selected page moves under every swipe, and no amount of animating it on settle makes a surface
+that changes size three times a gesture feel still.
+
+**What shipped instead: the panel is as tall as the screen affords it, at all times, on every page.**
+
+1. **`DockGridMetrics.restingRows(availableHeight:rowHeight:surfaceAboveIsCompact:)`** — the page is
+   not a parameter and neither is the slot count. Rows are `floor(share × available ÷ rowHeight)`:
+   the four-row ceiling is gone, and so is the "never more rows than the content needs" clamp that
+   used to shrink the panel for a wearer with a short speed dial. Whole rows by construction, so P8's
+   no-sliced-tile guarantee is untouched — the truncation *is* the snap.
+2. **Two shares, because My Day is the one thing above the panel whose height the wearer controls.**
+   0.24 with the card expanded (was 0.20 under a four-row ceiling), 0.52 collapsed (was 0.30) —
+   what is left once the status card, My Day in its current state, the page control and the capsule
+   have had theirs. Both are bounded by P8's rule rather than by taste: the surface above is never
+   clipped at the panel's edge. A greedier pair was tried **in the simulator first** and cut the
+   collapsed card by a few points, which is P8's exact failure shape, so the shares came down until
+   the card was whole with a gap under it, and the expanded number follows the same arithmetic
+   against a ~280 pt open card. The asymmetry is deliberate and is the honest one: a phone cannot
+   hold an open My Day *and* a tall panel, and the collapse control is how a wearer says which they
+   want. With My Day off — the shipped default — the compact branch applies, so the tall panel is
+   what a new install gets. This is also the answer to the separate report that a collapsed card
+   left dead space: the freed height now returns as whole rows rather than as a gap under the last.
+3. **The invariant is restored, not revised.** Round 4 promised *"the panel never resizes under a
+   swipe."* It now holds absolutely: **the frame is not a function of the page, so a swipe cannot
+   change it.** The two things that do change it — collapsing My Day, and the first real tile
+   measurement replacing the opening guess — both originate outside the pager and settle with a
+   0.25 s animation keyed on the height itself.
+4. **The grid page's consequence is accepted deliberately.** More visible rows and less scrolling;
+   a wearer with few tiles gets empty glass below them rather than a short panel. That trade is the
+   whole point — the frame belongs to all three pages, and the one that needs height most is the
+   one that cannot ask for it.
+
+**Tests.** The height as a truth table (My Day state × screen × row height → whole rows) at two
+phone sizes and an accessibility row height; collapsing My Day never costs rows and never exceeds
+its share, swept across screen sizes; a short grid keeps the tall frame; the unmeasured first frame
+falls back to a guess; a very short screen still gets one row; and — stated as arithmetic — the
+height function has no page input, with the pager's own test showing a page change carries a page
+and nothing else.
+
 ## Rollout and exit criteria
 
 Pure UI/composition — no new permissions, no new network. Rollback is reverting the PR. Complete

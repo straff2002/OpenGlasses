@@ -140,9 +140,14 @@ struct BottomControlBar: View {
     /// One frame, three pages. The frame is the row-snapped grid height plus the room the page
     /// control needs, so every page is the same size whatever it holds and the panel never resizes
     /// under a swipe.
+    ///
+    /// The frame is now as tall as the screen affords rather than capped at four rows, which is
+    /// what gives the conversation page room to be read. Deliberately *not* a per-page height: the
+    /// tall frame is the panel's, and the conversation inherits it by sharing the frame. Only two
+    /// things move it — My Day collapsing, and the existing state-driven yields — and both of those
+    /// already animate outside the pager, so a swipe still lands on a frame that has not moved.
     private var panel: some View {
         let rows = DockGridMetrics.restingRows(
-            slotCount: slots.count, columns: columnCount,
             availableHeight: availableHeight, rowHeight: tileHeight,
             surfaceAboveIsCompact: myDayCollapsed || !myDayEnabled)
         let pageHeight = DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
@@ -170,6 +175,10 @@ struct BottomControlBar: View {
         // reliable ground. `.always` gives them their own, in both themes.
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .frame(height: pageHeight + DockGridMetrics.pageIndicatorHeight)
+        // The two things that move this frame — My Day collapsing, and the first real tile
+        // measurement replacing the opening guess — are both worth a settle rather than a jump.
+        // Keyed on the height itself, so a swipe (which cannot change it) animates nothing.
+        .animation(.easeInOut(duration: 0.25), value: pageHeight)
         // The page control is an adjustable element, which is a poor way to reach a named
         // destination. Every page is also one named action from wherever focus happens to be.
         .accessibilityElement(children: .contain)
