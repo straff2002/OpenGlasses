@@ -12,15 +12,20 @@ enum ResponsesTranslator {
     // MARK: - Request building
 
     /// Full request body: system prompt rides `instructions`; history becomes `input` items.
+    ///
+    /// Always streams. The backend rejects non-streaming requests outright
+    /// (`400 {"detail":"Stream must be set to true"}`), matching the upstream client, which
+    /// hardwires `stream: true`; callers that don't need live tokens still read the SSE and
+    /// take the `response.completed` payload.
     static func requestBody(model: String, instructions: String, history: [[String: Any]],
-                            tools: [[String: Any]]?, stream: Bool) -> [String: Any] {
+                            tools: [[String: Any]]?) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
             "instructions": instructions,
             "input": inputItems(history: history),
             // The backend keeps no server-side state for us — we resend history each turn.
             "store": false,
-            "stream": stream,
+            "stream": true,
         ]
         if let tools, !tools.isEmpty {
             body["tools"] = responseTools(fromChatTools: tools)
