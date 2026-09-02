@@ -83,10 +83,10 @@ final class ResponsesTranslatorTests: XCTestCase {
         let body = ResponsesTranslator.requestBody(
             model: "test-model", instructions: "be brief",
             history: [["role": "user", "content": "hi"]],
-            tools: [["type": "function", "function": ["name": "t", "description": "d"] as [String: Any]]],
-            stream: true)
+            tools: [["type": "function", "function": ["name": "t", "description": "d"] as [String: Any]]])
         XCTAssertEqual(body["model"] as? String, "test-model")
         XCTAssertEqual(body["instructions"] as? String, "be brief")
+        // The backend answers `400 Stream must be set to true` to anything else.
         XCTAssertEqual(body["stream"] as? Bool, true)
         XCTAssertEqual(body["store"] as? Bool, false)
         XCTAssertEqual((body["input"] as? [[String: Any]])?.count, 1)

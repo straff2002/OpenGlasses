@@ -261,6 +261,87 @@ final class LLMStreamingTests: XCTestCase {
     }
 }
 
+// MARK: - ChatGPT Responses backend (always streamed)
+
+/// The ChatGPT-subscription backend refuses non-streaming requests
+/// (`400 {"detail":"Stream must be set to true"}`), so every Responses call — including the
+/// stateless summariser/structured paths that have no token sink — reads SSE and takes the
+/// `response.completed` payload.
+@MainActor
+final class ResponsesStreamingTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        SSEQueueProtocol.queue = []
+    }
+
+    private func service() -> LLMService {
+        let s = LLMService()
+        s.streamingSession = SSEQueueProtocol.session()
+        return s
+    }
+
+    private var request: URLRequest { URLRequest(url: URL(string: "https://api.test/responses")!) }
+
+    private let completedTurn = """
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_1"}}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","delta":"It is "}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","delta":"sunny."}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_1","output":[{"type":"message","content":[{"type":"output_text","text":"It is sunny."}]}],"usage":{"input_tokens":3,"output_tokens":4}}}
+
+    """
+
+    func testNoTokenSinkStillReturnsCompletedPayload() async throws {
+        SSEQueueProtocol.queue = [(200, completedTurn)]
+        let json = try await service().streamResponsesTurn(request: request, onToken: nil)
+        XCTAssertEqual(ResponsesTranslator.parseOutput(json).text, "It is sunny.")
+        XCTAssertEqual((json["usage"] as? [String: Any])?["output_tokens"] as? Int, 4)
+    }
+
+    func testTokenSinkReceivesDeltasAndCompletedPayload() async throws {
+        SSEQueueProtocol.queue = [(200, completedTurn)]
+        var tokens = ""
+        let json = try await service().streamResponsesTurn(request: request) { tokens += $0 }
+        XCTAssertEqual(tokens, "It is sunny.")
+        XCTAssertEqual(json["id"] as? String, "resp_1")
+    }
+
+    func testStreamRejectionSurfacesBackendDetail() async {
+        SSEQueueProtocol.queue = [(400, #"{"detail":"Stream must be set to true"}"#)]
+        do {
+            _ = try await service().streamResponsesTurn(request: request, onToken: nil)
+            XCTFail("expected a thrown API error")
+        } catch let LLMError.apiError(provider, statusCode, message) {
+            XCTAssertEqual(provider, "ChatGPT")
+            XCTAssertEqual(statusCode, 400)
+            XCTAssertEqual(message?.contains("Stream must be set to true"), true)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testPrematureEOFWithoutCompletionThrows() async {
+        SSEQueueProtocol.queue = [(200, """
+        event: response.output_text.delta
+        data: {"type":"response.output_text.delta","delta":"half"}
+
+        """)]
+        do {
+            _ = try await service().streamResponsesTurn(request: request, onToken: nil)
+            XCTFail("expected a thrown error")
+        } catch {
+            XCTAssertTrue("\(error)".contains("stream ended without completion"), "\(error)")
+        }
+    }
+}
+
 // MARK: - SSE stub (queue of canned responses, popped per request)
 
 final class SSEQueueProtocol: URLProtocol {

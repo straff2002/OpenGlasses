@@ -1948,30 +1948,20 @@ class LLMService: ObservableObject {
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 ChatGPTAuth.apply(credential: token, accountID: accountID, to: &request)
-                let streaming = onToken != nil
                 let historyForRequest = self.requestHistory(for: .chatgpt, smallContext: smallContext)
                 let body = ResponsesTranslator.requestBody(
                     model: config.model, instructions: systemPrompt,
-                    history: historyForRequest, tools: tools, stream: streaming)
+                    history: historyForRequest, tools: tools)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 request.timeoutInterval = 120
 
-                let responseJSON: [String: Any]
-                if streaming, let onToken {
+                // The backend only serves streamed responses; without a token sink we still read
+                // the SSE and use the completed payload.
+                if onToken != nil {
                     // New tool-loop iteration: clear the caller's accumulated bubble first (BM P9).
                     onStreamReset?()
-                    responseJSON = try await self.streamResponsesTurn(request: request, onToken: onToken)
-                } else {
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    guard status == 200 else {
-                        let bodyText = String(data: data, encoding: .utf8) ?? ""
-                        PrivacyLog.model(.apiError, provider: PrivacyToken("chatgpt"),
-                                         status: status, bytes: data.count)
-                        throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: String(bodyText.prefix(300)))
-                    }
-                    responseJSON = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
                 }
+                let responseJSON = try await self.streamResponsesTurn(request: request, onToken: onToken)
 
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
                 // The parse-vs-sent diagnostic seam — where "tool_call returned but nothing
@@ -2011,11 +2001,14 @@ class LLMService: ObservableObject {
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
 
-    /// One streamed Responses turn: SSE events → `onToken` text deltas; returns the
-    /// authoritative `response.completed` payload (a shed delta is cosmetic, never corrupting).
-    /// Events are fed to the parser only at blank-line boundaries so a network chunk can't
-    /// shear a multi-byte character or a JSON payload.
-    private func streamResponsesTurn(request: URLRequest, onToken: @escaping (String) -> Void) async throws -> [String: Any] {
+    /// One streamed Responses turn: SSE events → `onToken` text deltas (nil when the caller
+    /// only wants the final payload); returns the authoritative `response.completed` payload
+    /// (a shed delta is cosmetic, never corrupting). Events are fed to the parser only at
+    /// blank-line boundaries so a network chunk can't shear a multi-byte character or a JSON
+    /// payload.
+    // Internal (not private) so the streaming fixture tests can drive it through a stubbed
+    // `streamingSession`.
+    func streamResponsesTurn(request: URLRequest, onToken: ((String) -> Void)?) async throws -> [String: Any] {
         let (bytes, response) = try await streamingSession.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
@@ -2025,6 +2018,8 @@ class LLMService: ObservableObject {
                 if errorBody.count > 2048 { break }
             }
             let text = String(data: errorBody, encoding: .utf8) ?? ""
+            PrivacyLog.model(.apiError, provider: PrivacyToken("chatgpt"),
+                             status: status, bytes: errorBody.count)
             throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: String(text.prefix(300)))
         }
 
@@ -2036,7 +2031,7 @@ class LLMService: ObservableObject {
             var events = parser.consume(chunk)
             if flush { events += parser.flush() }
             for event in events {
-                if let delta = accumulator.consume(event) {
+                if let delta = accumulator.consume(event), let onToken {
                     TurnRecorder.markFirstToken()
                     onToken(delta)
                 }
@@ -2073,7 +2068,7 @@ class LLMService: ObservableObject {
               let url = URL(string: ChatGPTOAuth.backendResponsesURL) else { return nil }
         var body = ResponsesTranslator.requestBody(
             model: model, instructions: instructions,
-            history: [["role": "user", "content": userContent]], tools: nil, stream: false)
+            history: [["role": "user", "content": userContent]], tools: nil)
         if let responseTools {
             body["tools"] = responseTools
             if let forcedToolName {
@@ -2086,12 +2081,9 @@ class LLMService: ObservableObject {
         ChatGPTAuth.apply(credential: token, accountID: ChatGPTOAuthService.shared.accountID, to: &request)
         request.timeoutInterval = timeout
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return json
+        // Streamed like every other backend call (it refuses `stream: false`); no token sink,
+        // just the completed payload.
+        return try? await streamResponsesTurn(request: request, onToken: nil)
     }
 
     /// Structured variant (BW P4): forced function call → the tool's arguments object, with the
