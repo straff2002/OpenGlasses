@@ -222,17 +222,15 @@ struct BottomControlBar: View {
 
     // MARK: - Pages
 
-    /// The transcript, and above it the header that says *which* conversation it is. The header
+    /// The conversation, and above it the header that says *which* conversation it is. The header
     /// does not scroll with the transcript: "start a new one" and "go back to an earlier one" have
     /// to be reachable from the bottom of a long reply, not just the top.
     private var conversationPage: some View {
         VStack(spacing: 6) {
             ConversationPageHeader(store: appState.conversationStore)
-            ScrollView(.vertical) {
-                TranscriptOverlay(session: session, openAISession: openAISession)
-                    .padding(.horizontal, 2)
-            }
-            .scrollBounceBehavior(.basedOnSize)
+            ConversationPageBody(store: appState.conversationStore,
+                                 session: session,
+                                 openAISession: openAISession)
         }
     }
 

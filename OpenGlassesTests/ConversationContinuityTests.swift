@@ -242,6 +242,95 @@ final class ConversationContinuityTests: XCTestCase {
         XCTAssertEqual(ConversationContinuity.recentThreads(in: store, limit: 1).map(\.id), [newer])
     }
 
+    // MARK: What the page draws (EB device round 2)
+
+    /// The defect, at the seam that caused it: resuming a thread changed the store and the model's
+    /// context and nothing else, because the page could only ever draw the live turn. A resumed
+    /// thread has to *be* what the page draws.
+    func testAResumedThreadIsWhatThePageDraws() {
+        let (older, _) = seedTwoThreads()
+        ConversationContinuity.resume(older, in: store) { _ in }
+
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: ""),
+            .history(threadId: older),
+            "A resumed conversation with messages in it still isn't what the page shows"
+        )
+    }
+
+    /// The empty state is for a conversation with nothing in it — not for one the page merely
+    /// cannot render.
+    func testTheEmptyStateOnlyAppliesWhenNothingHasBeenSaid() {
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: ""),
+            .empty)
+
+        let fresh = store.startThread(mode: "direct")
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: ""),
+            .empty,
+            "A thread with no messages is genuinely empty")
+
+        store.appendMessage(role: "user", content: "first thing")
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: ""),
+            .history(threadId: fresh.id))
+    }
+
+    /// Before the first turn is persisted — and after a voice session has ended its thread — the
+    /// live cards are the only thing there is to draw, and the page keeps drawing them.
+    func testTheLiveTurnStillShowsWhenNoThreadHoldsIt() {
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(
+                activeThreadId: nil, activeThreadMessageCount: 0, isRealtimeSession: false,
+                hasLiveUserText: true, hasLiveAssistantText: false),
+            .liveTurn,
+            "A turn with conversation history switched off has nowhere else to be shown")
+
+        let (_, newer) = seedTwoThreads()
+        store.endThread()
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: "The fence is fine."),
+            .liveTurn,
+            "The reply the wearer is still reading vanished when its thread ended")
+        // And taking the carry-on offer puts the conversation itself back on the page.
+        ConversationContinuity.resume(newer, in: store) { _ in }
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "", liveAssistantText: "The fence is fine."),
+            .history(threadId: newer))
+    }
+
+    /// A realtime session's transcript belongs to the session and is never persisted, so the live
+    /// cards stay the honest view there however many stored threads exist.
+    func testARealtimeSessionKeepsTheLiveCards() {
+        let (older, _) = seedTwoThreads()
+        ConversationContinuity.resume(older, in: store) { _ in }
+
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: true,
+                                               liveUserText: "what is this",
+                                               liveAssistantText: "A fuse box."),
+            .liveTurn)
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: true,
+                                               liveUserText: "", liveAssistantText: ""),
+            .empty)
+    }
+
+    /// Whitespace is not something said.
+    func testBlankLiveTextIsNotATurn() {
+        XCTAssertEqual(
+            ConversationContinuity.pageContent(store: store, isRealtimeSession: false,
+                                               liveUserText: "  ", liveAssistantText: "\n"),
+            .empty)
+    }
+
     // MARK: Copy
 
     /// Delete-all states the count, and neither modal blurs deletion with the view-level clearing

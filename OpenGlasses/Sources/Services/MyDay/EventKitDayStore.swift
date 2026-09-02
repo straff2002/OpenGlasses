@@ -17,6 +17,18 @@ struct EventKitReminderRecord: Equatable {
     let dueDate: Date?
     let hasTime: Bool
     let priority: Int
+    /// `EKReminder.calendar.title` — the Reminders list the item lives on.
+    let listName: String?
+
+    init(id: String, title: String, dueDate: Date?, hasTime: Bool, priority: Int,
+         listName: String? = nil) {
+        self.id = id
+        self.title = title
+        self.dueDate = dueDate
+        self.hasTime = hasTime
+        self.priority = priority
+        self.listName = listName
+    }
 }
 
 @MainActor
@@ -171,7 +183,8 @@ final class EventKitDayStore {
             title: reminder.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled",
             dueDate: date,
             hasTime: components?.hour != nil,
-            priority: reminder.priority
+            priority: reminder.priority,
+            listName: reminder.calendar?.title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
     }
 }
