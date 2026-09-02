@@ -1408,6 +1408,10 @@ enum PrivacyLog {
         case loaded, loadFailed, unloaded, visionDemoted, imageRefused
         case generationStarted, generationCompleted, generationFailed, stalled
         case historyTrimmed, toolCall, reasoningProduced, tokenShape
+        /// Installed-model records (Plan DZ P0). These carry **counts only** — a compatibility
+        /// descriptor's id is whatever the user typed into the model field, which makes it
+        /// user-authored text rather than a public catalog token.
+        case recordsMigrated, recordsMigrationDeferred, recordsMigrationFailed
     }
 
     /// `shape` is the prompt tensor's dimensions rendered as `1x842` — the diagnostic that

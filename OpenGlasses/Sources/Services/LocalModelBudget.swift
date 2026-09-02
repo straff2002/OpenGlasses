@@ -86,6 +86,125 @@ enum LocalModelBudget {
     /// Floor so a tiny/misconfigured window still admits the minimal system + turn prompt.
     static let minimumBudget = 512
 
+    // MARK: - Backend-aware load admission (Plan DZ P0 item 6)
+
+    /// Why a load is allowed but constrained.
+    enum AdmissionConstraint: Equatable, Sendable {
+        /// It fits, but with less than the comfort margin to spare — expect thermal pressure and
+        /// a tighter working set.
+        case tightHeadroom(spareBytes: Int64)
+        /// The requested context window exceeds what this runtime/model policy allows and will be
+        /// clamped to `tokens`.
+        case contextClamped(to: Int)
+    }
+
+    /// Why a load is refused. Typed and actionable — never a bare bool.
+    enum AdmissionRefusal: Equatable, Sendable {
+        /// Weights plus working set plus reserve exceed what this process may still allocate.
+        case insufficientHeadroom(neededBytes: Int64, availableBytes: Int64)
+    }
+
+    /// Verdict on loading a model right now.
+    enum Admission: Equatable, Sendable {
+        case allow
+        case allowConstrained(AdmissionConstraint)
+        case refuse(AdmissionRefusal)
+
+        var isAllowed: Bool {
+            if case .refuse = self { return false }
+            return true
+        }
+    }
+
+    /// Everything the admission rule looks at. Supplied by the caller rather than measured here, so
+    /// every tier — including the refusal — is exercised headlessly.
+    struct AdmissionInputs: Equatable, Sendable {
+        let runtime: LocalModelRuntime
+        /// Declared weights on disk. `0` = unknown (not downloaded yet).
+        let declaredWeightsBytes: Int64
+        /// Context window the caller wants to create.
+        let configuredContextTokens: Int
+        /// Ceiling the descriptor/policy allows for this model. `0` = no policy ceiling.
+        let policyContextTokens: Int
+        /// What this process may still allocate. `0` = no per-process budget on this platform.
+        let availableProcessBytes: Int64
+        /// Extra resident cost of the turn's images, when a multimodal turn is being admitted.
+        let imageWorkingSetBytes: Int64
+        /// Cushion held back beyond the runtime's own working set.
+        let safetyReserveBytes: Int64
+
+        init(runtime: LocalModelRuntime,
+             declaredWeightsBytes: Int64,
+             configuredContextTokens: Int = 0,
+             policyContextTokens: Int = 0,
+             availableProcessBytes: Int64,
+             imageWorkingSetBytes: Int64 = 0,
+             safetyReserveBytes: Int64 = 0) {
+            self.runtime = runtime
+            self.declaredWeightsBytes = declaredWeightsBytes
+            self.configuredContextTokens = configuredContextTokens
+            self.policyContextTokens = policyContextTokens
+            self.availableProcessBytes = availableProcessBytes
+            self.imageWorkingSetBytes = imageWorkingSetBytes
+            self.safetyReserveBytes = safetyReserveBytes
+        }
+    }
+
+    /// Working set a runtime needs beyond the weights themselves.
+    ///
+    /// Both runtimes use `MemoryHeadroom.workingOverheadBytes` today. It is a function rather than
+    /// a constant because the numbers *will* diverge — a GGUF context allocates its KV cache up
+    /// front where MLX grows into it — and the divergence must land in one tested place rather
+    /// than in whichever call site notices first.
+    static func workingSetBytes(for runtime: LocalModelRuntime) -> Int64 {
+        switch runtime {
+        case .mlx, .llamaCpp: return MemoryHeadroom.workingOverheadBytes
+        }
+    }
+
+    /// Comfort margin above the bare requirement, below which a load is allowed but flagged.
+    static let admissionComfortMarginBytes: Int64 = 512 * 1024 * 1024
+
+    /// Can this model load right now?
+    ///
+    /// **Deliberately consistent with `MemoryHeadroom.canLoad`, not a replacement for it.** The MLX
+    /// load path still calls `canLoad`, and this rule refuses exactly when that one does for the
+    /// same inputs (`LocalModelAdmissionTests` pins the agreement). Adding a second, differently
+    /// tuned gate to the shipping path is how a plan that promised "no behaviour change" quietly
+    /// starts refusing loads that used to work; this is the vocabulary the new runtime needs,
+    /// agreeing with the old rule where they overlap.
+    ///
+    /// Unknown values (≤ 0) skip the gate rather than block, for the reason `MemoryHeadroom`
+    /// already documents: refusing on "unknown" bricks the simulator and Mac, which do not need
+    /// the guard at all.
+    static func admit(_ inputs: AdmissionInputs) -> Admission {
+        var constraint: AdmissionConstraint?
+        if inputs.policyContextTokens > 0,
+           inputs.configuredContextTokens > inputs.policyContextTokens {
+            constraint = .contextClamped(to: inputs.policyContextTokens)
+        }
+
+        guard inputs.declaredWeightsBytes > 0, inputs.availableProcessBytes > 0 else {
+            return constraint.map(Admission.allowConstrained) ?? .allow
+        }
+
+        let needed = inputs.declaredWeightsBytes
+            + workingSetBytes(for: inputs.runtime)
+            + max(0, inputs.imageWorkingSetBytes)
+            + max(0, inputs.safetyReserveBytes)
+        let spare = inputs.availableProcessBytes - needed
+        if spare < 0 {
+            return .refuse(.insufficientHeadroom(neededBytes: needed,
+                                                 availableBytes: inputs.availableProcessBytes))
+        }
+        // A context clamp is the more actionable thing to report, so it wins when both apply.
+        if let constraint { return .allowConstrained(constraint) }
+        if spare < admissionComfortMarginBytes {
+            return .allowConstrained(.tightHeadroom(spareBytes: spare))
+        }
+        return .allow
+    }
+
     // MARK: - Multimodal (image) turns
 
     /// What survives a multimodal turn on this device.

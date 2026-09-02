@@ -1737,6 +1737,30 @@ struct Config {
     /// `WebSearchTool` always has the keyless DuckDuckGo fallback, so no configuration is needed.
     @UserDefaultsBacked("localWebSearchFallbackEnabled", default: true) static var localWebSearchFallbackEnabled: Bool
 
+    // MARK: - Local runtime and durable agent loops (Plan DZ)
+
+    // All four default OFF and fail closed. Off is not "broken": with the coordinator flag off the
+    // MLX path runs exactly as it always has, and none of these flags deletes anything when turned
+    // back off — they stop new work, they do not undo old work.
+
+    /// Route on-device generation through `LocalInferenceCoordinator` instead of calling
+    /// `LocalLLMService` directly. Both routes end at the same MLX code with the same arguments;
+    /// the flag exists so the seam can be proven on real turns before it becomes the only path.
+    @UserDefaultsBacked("localRuntimeCoordinatorEnabled", default: false)
+    static var localRuntimeCoordinatorEnabled: Bool
+
+    /// Offer, install and load GGUF models. Off leaves MLX untouched and leaves any installed GGUF
+    /// files on disk for re-enabling or explicit removal.
+    @UserDefaultsBacked("ggufModelsEnabled", default: false) static var ggufModelsEnabled: Bool
+
+    /// Use the durable scheduled-task store and typed run outcomes. Turning it off pauses scheduled
+    /// execution; it must never reactivate the legacy success-on-error executor.
+    @UserDefaultsBacked("durableSchedulerStateEnabled", default: false)
+    static var durableSchedulerStateEnabled: Bool
+
+    /// Run batch memory curation. Off stops new batches and retains everything already committed.
+    @UserDefaultsBacked("memoryCurationEnabled", default: false) static var memoryCurationEnabled: Bool
+
     // MARK: - Remote Invoke (Plan BH)
 
     // Per-class consent for gateway-initiated device commands. The whole surface additionally
