@@ -146,48 +146,71 @@ struct BottomControlBar: View {
                    capsuleGlyphBox + DockGridMetrics.capsuleVerticalPadding)
     }
 
-    /// Everything the dock draws that is not a grid row, in the order `body` stacks it: the padding
-    /// above the panel and below the capsule, the gap between them, the panel's own inset top and
-    /// bottom, the room the page dots need, and the capsule itself.
+    /// Everything the dock draws that is not a page, in the order `body` stacks it: the module gap
+    /// above the panel, the module gap between panel and capsule, the capsule, the padding under
+    /// it, and the panel's own inset top and bottom inside its glass.
+    ///
+    /// The page dots are deliberately *not* here — they sit inside the pages' frame, which is what
+    /// `panelPagesHeight` returns.
     private var dockChromeHeight: CGFloat {
-        DockGridMetrics.dockOuterPadding * 2
-            + DockGridMetrics.dockStackSpacing
+        DockGridMetrics.moduleGap * 2
+            + DockGridMetrics.dockBottomPadding
             + DockGridMetrics.panelInset * 2
-            + DockGridMetrics.pageIndicatorHeight
             + capsuleHeight
     }
 
+    /// The pages' frame inside the glass: pure subtraction, so every point the screen has left
+    /// belongs to the panel rather than to a gap above it.
+    private var pagesHeight: CGFloat {
+        DockGridMetrics.panelPagesHeight(
+            availableHeight: availableHeight,
+            reservedHeight: heightAboveDock.map { $0 + dockChromeHeight },
+            rowHeight: tileHeight)
+    }
+
+    /// What a page has above the dots — the room the grid's viewport is snapped inside.
+    private var pageBodyHeight: CGFloat {
+        max(0, pagesHeight - DockGridMetrics.pageIndicatorHeight)
+    }
+
+    /// The grid's scroll viewport: whole rows, and never the fraction of one that the glass now
+    /// keeps as empty space beneath it. This is P8's no-sliced-tile rule, at the edge that clips.
+    private var gridViewportHeight: CGFloat {
+        let rows = DockGridMetrics.viewportRows(availableHeight: pageBodyHeight,
+                                                rowHeight: tileHeight)
+        return DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
+    }
+
     var body: some View {
-        // Bottom-most control last: the paging panel, then the capsule beneath it.
-        VStack(spacing: DockGridMetrics.dockStackSpacing) {
+        // Bottom-most control last: the paging panel, then the capsule beneath it. One gap between
+        // them and one above, the same 16 pt the modules above the dock stack at — the dock is
+        // part of the tab's rhythm, not a surface with a rhythm of its own.
+        VStack(spacing: DockGridMetrics.moduleGap) {
             panel
             capsule
         }
-        .padding(.vertical, DockGridMetrics.dockOuterPadding)
+        .padding(.top, DockGridMetrics.moduleGap)
+        .padding(.bottom, DockGridMetrics.dockBottomPadding)
     }
 
     // MARK: - Panel
 
-    /// One frame, three pages. The frame is the row-snapped grid height plus the room the page
-    /// control needs, so every page is the same size whatever it holds and the panel never resizes
-    /// under a swipe.
+    /// One frame, three pages, and the frame is simply what the screen has left. Every page is the
+    /// same size whatever it holds, and the panel never resizes under a swipe.
     ///
-    /// The frame is now as tall as the screen affords rather than capped at four rows, which is
-    /// what gives the conversation page room to be read. Deliberately *not* a per-page height: the
-    /// tall frame is the panel's, and the conversation inherits it by sharing the frame. Only two
-    /// things move it — the surface above changing height, and the existing state-driven yields —
-    /// and both of those already animate outside the pager, so a swipe still lands on a frame that
-    /// has not moved.
+    /// The glass absorbs the remainder rather than snapping to whole rows. Snapping the frame put
+    /// up to a row of leftover *between* the card and the panel, sitting next to gaps that are all
+    /// 16 pt — a rhythm broken by arithmetic. Now every module gap is the rhythm and the leftover
+    /// lands inside the glass, under the last row, where it reads as calm space. The whole-row rule
+    /// moved to the grid's scroll viewport, which is the edge a tile could actually be sliced at.
     ///
-    /// What the panel affords is the screen minus everything measured above it and everything the
-    /// dock itself draws around the rows. My Day expanding or collapsing moves the frame the same
-    /// way a caption arriving does: by changing the measurement, not by naming a share.
+    /// Deliberately *not* a per-page height: the tall frame is the panel's, and the conversation
+    /// inherits it by sharing the frame. Only the surface above changing height and the existing
+    /// state-driven yields move it, and both animate outside the pager, so a swipe still lands on a
+    /// frame that has not moved. My Day expanding or collapsing moves it the same way a caption
+    /// arriving does: by changing the measurement, not by naming a share.
     private var panel: some View {
-        let rows = DockGridMetrics.restingRows(
-            availableHeight: availableHeight,
-            reservedHeight: heightAboveDock.map { $0 + dockChromeHeight },
-            rowHeight: tileHeight)
-        let pageHeight = DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
+        let pageHeight = pagesHeight
 
         return TabView(selection: pageSelection) {
             conversationPage
@@ -211,12 +234,18 @@ struct BottomControlBar: View {
         // The dots sit on a translucent panel over an animating ambience, where a bare dot has no
         // reliable ground. `.always` gives them their own, in both themes.
         .indexViewStyle(.page(backgroundDisplayMode: .always))
-        .frame(height: pageHeight + DockGridMetrics.pageIndicatorHeight)
-        // The things that move this frame — the surface above changing height (My Day collapsing,
-        // captions arriving) and the first real measurements replacing the opening guesses — are
-        // all worth a settle rather than a jump. Keyed on the height itself, so a swipe (which
-        // cannot change it) animates nothing.
-        .animation(.easeInOut(duration: 0.25), value: pageHeight)
+        .frame(height: pageHeight)
+        // **Deliberately not animated here.** The frame tracks the measurement directly, and that
+        // is what makes the card growing and the panel giving way one motion instead of two.
+        //
+        // A second animation on this side was the bug: while My Day animates its own height, the
+        // reader above reports a new value every frame, and an `.animation(value: pageHeight)`
+        // restarts a fresh ease toward each of them — the panel arrives late and mushy behind a
+        // card that has already stopped. Tracking instead means the two surfaces sum to the screen
+        // on every single frame, which is exactly what a "height exchange" is. The changes that
+        // have no motion of their own to ride — the opening guess giving way to the first real
+        // measurement, a caption arriving — carry `DockGridMetrics.heightSettle` at their source
+        // instead, so they settle without ever being animated twice.
         // The page control is an adjustable element, which is a poor way to reach a named
         // destination. Every page is also one named action from wherever focus happens to be.
         .accessibilityElement(children: .contain)
@@ -282,37 +311,53 @@ struct BottomControlBar: View {
     }
 
     /// The one grid: controls and content actions, wrapping into rows and scrolling vertically past
-    /// four of them. Nothing is ever cut off — a tile past the fourth row is a scroll away, never a
-    /// sliver at the panel's edge, and VoiceOver walks the same order either way.
+    /// what fits. Nothing is ever cut off — a tile past the last visible row is a scroll away,
+    /// never a sliver at the viewport's edge, and VoiceOver walks the same order either way.
+    ///
+    /// The scroll view takes a **row-snapped** height rather than the whole page, and the space
+    /// under it is where the glass's remainder now lives. That is the whole of the P8 rule: the
+    /// edge a tile is clipped against is its scroll view's, so that is the edge that must land on a
+    /// row boundary. A short grid simply draws its tiles at the top and leaves the rest calm.
     private var gridPage: some View {
-        ScrollView(.vertical) {
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: DockGridMetrics.rowSpacing),
-                               count: columnCount),
-                spacing: DockGridMetrics.rowSpacing
-            ) {
-                // Slots render in the user's arranged order (Settings → Quick Actions → Bar
-                // Layout); contextual ones still gate themselves.
-                ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
-                    dockView(for: slot)
-                        // One tile reports its height and the panel snaps to it. Measuring the
-                        // first is enough: a row is as tall as its tallest tile, and every tile in
-                        // this grid is the same `BarButton` with a one-line caption.
-                        .background(index == 0 ? tileHeightReader : nil)
+        VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(),
+                                                       spacing: DockGridMetrics.rowSpacing),
+                                   count: columnCount),
+                    spacing: DockGridMetrics.rowSpacing
+                ) {
+                    // Slots render in the user's arranged order (Settings → Quick Actions → Bar
+                    // Layout); contextual ones still gate themselves.
+                    ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
+                        dockView(for: slot)
+                            // One tile reports its height and the viewport snaps to it. Measuring
+                            // the first is enough: a row is as tall as its tallest tile, and every
+                            // tile in this grid is the same `BarButton` with a one-line caption.
+                            .background(index == 0 ? tileHeightReader : nil)
+                    }
                 }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
+            .frame(height: gridViewportHeight, alignment: .top)
+            // Short grids should not become scroll views: bouncing a grid that already fits reads
+            // as the panel coming loose from the tab.
+            .scrollBounceBehavior(.basedOnSize)
+
+            // The sub-row remainder, and the rows a short grid does not need. Calm empty glass
+            // under the tiles — which is where a leftover belongs, rather than between two cards.
+            Spacer(minLength: 0)
         }
         .onPreferenceChange(DockTileHeightKey.self) { height in
             guard let height, height > 0, height != measuredTileHeight else { return }
-            measuredTileHeight = height
+            // The opening guess giving way to a real tile: a height change with no motion of its
+            // own, so it settles here rather than being chased by the frame.
+            withAnimation(DockGridMetrics.heightSettle) { measuredTileHeight = height }
         }
-        // Short grids should not become scroll views: bouncing a grid that already fits reads as
-        // the panel coming loose from the tab.
-        .scrollBounceBehavior(.basedOnSize)
-        // The sighted shortcut to the edit page, on the grid's *background* — behind the tiles, so
-        // it answers a press on the gaps and never fires alongside a tile's action. It flips the
-        // pager rather than presenting a sheet now that editing is a page of its own.
+        // The sighted shortcut to the edit page, on the page's *background* — behind the tiles, so
+        // it answers a press on the gaps and never fires alongside a tile's action. On the whole
+        // page rather than the viewport, so the empty glass under a short grid answers it too. It
+        // flips the pager rather than presenting a sheet now that editing is a page of its own.
         .background(
             Color.clear
                 .contentShape(Rectangle())
@@ -361,7 +406,7 @@ struct BottomControlBar: View {
             .background(capsuleHeightReader)
             .onPreferenceChange(DockCapsuleHeightKey.self) { height in
                 guard let height, height > 0, height != measuredCapsuleHeight else { return }
-                measuredCapsuleHeight = height
+                withAnimation(DockGridMetrics.heightSettle) { measuredCapsuleHeight = height }
             }
     }
 

@@ -1,5 +1,8 @@
 import CoreGraphics
 import Foundation
+// For `Animation` only: the settle curve belongs with the metrics it settles, so the card and the
+// panel cannot drift onto two different motions.
+import SwiftUI
 
 /// One shipped action on the Voice tab's home grid.
 ///
@@ -255,11 +258,25 @@ enum DockGridMetrics {
     /// where the panel guesses.
     static let defaultRowsWithoutMeasurement = 4
 
-    /// The dock's own furniture, so the two views that stack it and the arithmetic that reserves
-    /// room for it cannot drift apart: 8 pt above the panel and below the capsule, 8 pt between
-    /// them, and the panel's 14 pt inset on every side.
-    static let dockOuterPadding: CGFloat = 8
-    static let dockStackSpacing: CGFloat = 8
+    /// **The one vertical rhythm.** Every gap between two stacked modules on the Voice tab is this,
+    /// and there is no second number: status card ↕ My Day ↕ panel ↕ capsule. A surface whose gaps
+    /// are 16, 16 and then whatever the arithmetic happened to leave over does not read as a
+    /// rhythm, it reads as a mistake — which is exactly what the sub-row remainder looked like when
+    /// it rendered *between* the card and the panel rather than inside the glass.
+    static let moduleGap: CGFloat = 16
+    /// Below the capsule, where the next thing is the tab bar rather than another module. Not a
+    /// module gap, so deliberately not `moduleGap`: the capsule belongs nearest the thumb.
+    static let dockBottomPadding: CGFloat = 8
+
+    /// **The one curve every height change on this surface settles on.**
+    ///
+    /// Shared so that a card growing and the panel giving way are the *same* motion rather than two
+    /// that merely resemble each other. The card and the panel always sum to the screen, so when
+    /// only one of them animates and the other simply tracks the measurement, the exchange is exact
+    /// and frame-perfect. Two independent animations on the same pair of surfaces is what reads as
+    /// jumping, and it is what this constant exists to prevent.
+    static let heightSettle: Animation = .easeInOut(duration: 0.25)
+    /// The panel's own inset, inside its glass.
     static let panelInset: CGFloat = 14
 
     /// The hero capsule's glyph box and the padding around it, at the default text size — the
@@ -269,42 +286,65 @@ enum DockGridMetrics {
     static let capsuleGlyphBox: CGFloat = 22
     static let capsuleVerticalPadding: CGFloat = 28
 
-    /// Rows the panel is tall: as many whole ones as the screen still has once everything that is
-    /// *not* a row has been measured out of it.
+    /// The panel's pages: everything the screen has left, and nothing else in the expression.
     ///
     /// `reservedHeight` is the real, rendered height of the rest of the tab — the status card, My
-    /// Day in whatever state the wearer left it, the captions and notices held below them, the
-    /// zone's own padding, and the dock's own furniture with the capsule under it. `nil` until the
-    /// first layout has reported it.
+    /// Day in whatever state the wearer left it, the captions and notices below them, the zone's
+    /// own padding, and the dock's own rhythm with the capsule under it. `nil` until the first
+    /// layout has reported it.
     ///
     /// **Measured, not apportioned.** This used to be a share of the screen — 0.24 with My Day
     /// open, 0.52 collapsed — margined so that the tallest plausible card was never clipped. The
     /// margin is the bug: whenever the real card came in shorter than the reservation implied, the
     /// slack rendered as dead glass between the card's bottom and the panel's top, which is what a
-    /// phone reported (a 6.6" screen, My Day open and short, ~190 pt of nothing). Measuring closes
-    /// both failure shapes at once. Clipping is impossible by construction, because the number
-    /// subtracted *is* the height the surface drew; and the residual gap can only ever be the
-    /// sub-row remainder, which is breathing room rather than a hole.
+    /// phone reported (a 6.6" screen, My Day open and short, ~190 pt of nothing).
+    ///
+    /// **And the remainder belongs inside the glass, not between the modules.** Measuring the
+    /// surface fixed the size of the reservation but not the *place* the leftover landed: snapping
+    /// the frame to whole rows left up to a row of it sitting between the card and the panel, next
+    /// to gaps that are all 16 pt. So the frame no longer snaps at all — it is pure subtraction,
+    /// the glass absorbs every remaining point, and the sub-row remainder now shows as calm empty
+    /// space under the last row of tiles where nobody reads it as a broken gap. The whole-row rule
+    /// did not go away; it moved to `viewportRows`, which is where it actually bites.
     ///
     /// **Not a function of the page, and not a function of how many tiles there are.** Both were
     /// tried and both were wrong in the same way. Sizing per page made the frame grow and shrink
     /// under every swipe; sizing to the content meant a wearer with a short grid got a short panel
     /// — and the conversation page, which shares that frame, became a two-line window onto a
     /// conversation. One height, held for every page, is what makes the transcript readable and
-    /// the pager honest at the same time.
-    ///
-    /// Whole rows by construction: the truncation *is* the snap, and it is why a tile is never
-    /// sliced across the panel's edge.
-    static func restingRows(availableHeight: CGFloat, reservedHeight: CGFloat?,
-                            rowHeight: CGFloat) -> Int {
-        guard rowHeight > 0, availableHeight > 0, let reservedHeight else {
-            return defaultRowsWithoutMeasurement
+    /// the pager honest at the same time. Pure subtraction makes that stronger, not weaker: there
+    /// is now no term in the expression a page or a slot count could reach.
+    static func panelPagesHeight(availableHeight: CGFloat, reservedHeight: CGFloat?,
+                                 rowHeight: CGFloat) -> CGFloat {
+        let floorHeight = minimumPagesHeight(rowHeight: rowHeight)
+        guard availableHeight > 0, let reservedHeight else {
+            // The one frame before anything has been measured, in the units the frame now takes.
+            return gridHeight(rows: defaultRowsWithoutMeasurement, tileHeight: rowHeight)
+                + pageIndicatorHeight
         }
-        let budget = availableHeight - reservedHeight
-        guard budget > 0 else { return 1 }
-        // Every row past the first also costs the gap above it. The share arithmetic divided by the
-        // row alone, and `n - 1` gaps is exactly the number of points the last row then overran by.
-        return max(1, Int((budget + rowSpacing) / (rowHeight + rowSpacing)))
+        return max(floorHeight, availableHeight - reservedHeight)
+    }
+
+    /// One row and the dots. A panel shorter than this is a panel with no controls, so the zone
+    /// above scrolls instead — the same floor the row arithmetic used to hold, in the new units.
+    static func minimumPagesHeight(rowHeight: CGFloat) -> CGFloat {
+        max(rowHeight, tileMinHeight) + pageIndicatorHeight
+    }
+
+    /// Whole rows the grid's **scroll viewport** shows, inside a glass that is no longer snapped.
+    ///
+    /// This is where P8's rule now lives, and it is where it always bit: a partial tile is not a
+    /// smaller control, it is an unreachable one, and the edge a tile can be sliced at is the edge
+    /// its scroll view clips against. Snapping the *frame* also satisfied that, but at the cost of
+    /// pushing the leftover out between the modules — so the viewport snaps and the glass keeps
+    /// the remainder as empty space below it.
+    ///
+    /// Whole rows by construction: the truncation *is* the snap.
+    static func viewportRows(availableHeight: CGFloat, rowHeight: CGFloat) -> Int {
+        guard rowHeight > 0, availableHeight > 0 else { return defaultRowsWithoutMeasurement }
+        // Every row past the first also costs the gap above it. Dividing by the row alone is how
+        // the last row ends up overrunning by exactly the `n - 1` gaps nobody subtracted.
+        return max(1, Int((availableHeight + rowSpacing) / (rowHeight + rowSpacing)))
     }
 
     static func rowsNeeded(slotCount: Int, columns: Int) -> Int {

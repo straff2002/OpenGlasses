@@ -29,10 +29,9 @@ struct VoiceTab: View {
     /// gap this replaces. Measuring cannot over-reserve, because the number is the height.
     @State private var surfaceAboveDock: CGFloat?
 
-    /// The two 16 pt gaps that used to come from the module stack's own spacing, now the flexible
-    /// spacer's floor. Constant rather than measured on purpose: it makes the zone's height exactly
-    /// the measured groups plus this, with nothing left to estimate.
-    private static let conversationZoneSpacerGap: CGFloat = 32
+    /// The zone's top padding, above the first module. The gaps *between* modules — and the gap
+    /// down to the dock — are all `DockGridMetrics.moduleGap`, which is the tab's one rhythm.
+    private static let conversationZoneTopPadding: CGFloat = 12
 
     private var session: GeminiLiveSessionManager { appState.geminiLiveSession }
     private var openAISession: OpenAIRealtimeSessionManager { appState.openAIRealtimeSession }
@@ -81,9 +80,7 @@ struct VoiceTab: View {
                                 mode: appState.currentMode),
                             voiceState: voiceState,
                             availableHeight: tab.size.height,
-                            heightAboveDock: surfaceAboveDock.map {
-                                $0 + Self.conversationZoneSpacerGap
-                            }
+                            heightAboveDock: surfaceAboveDock
                         )
                     }
                 }
@@ -97,15 +94,30 @@ struct VoiceTab: View {
             // panel divides the screen by what was drawn.
             .onPreferenceChange(ConversationSurfaceHeightKey.self) { total in
                 guard total > 0 else { return }
-                // Sub-point jitter under an animating ambience is not a layout change; anything
-                // larger is, and settles through the panel's own keyed animation.
+                // Sub-point jitter under an animating ambience is not a layout change.
                 if let current = surfaceAboveDock, abs(current - total) < 0.5 { return }
+
+                guard surfaceAboveDock != nil else {
+                    // The opening guess giving way to the first real measurement. The one height
+                    // change on this surface with no motion of its own to ride, so it settles.
+                    withAnimation(DockGridMetrics.heightSettle) { surfaceAboveDock = total }
+                    return
+                }
+                // Every later change is already inside somebody's animation — My Day growing, a
+                // caption arriving — and tracking it *without* a second animation is what makes
+                // the two surfaces one motion. The card takes the height and the panel gives it
+                // back on the same frame, because together they are always the whole screen.
                 surfaceAboveDock = total
             }
             }
         }
         }
-        .onReceive(appState.ambientCaptions.$isActive) { captionsActive = $0 }
+        // Animated at the source: captions arriving or leaving changes the zone's height, and the
+        // panel tracks that measurement rather than animating separately. Settling it here is what
+        // makes the caption block and the panel one exchange instead of two.
+        .onReceive(appState.ambientCaptions.$isActive) { active in
+            withAnimation(DockGridMetrics.heightSettle) { captionsActive = active }
+        }
         .fullScreenCover(isPresented: $showPreview) {
             LivePreviewView()
                 .environmentObject(appState)
@@ -137,25 +149,22 @@ struct VoiceTab: View {
     /// with the flexible spacer holding the transcript against the dock whenever the content is
     /// short enough for that to mean anything.
     ///
-    /// The modules are grouped rather than listed so that each group can report the height it
-    /// actually drew. The rhythm is unchanged — the stack's own 16 pt spacing became the spacer's
-    /// floor, which is the same two gaps in the same two places — but the zone's height is now the
-    /// sum of two measurements plus one constant, with nothing left to estimate.
+    /// **One flow, one rhythm.** Every module sits in the same stack at the same `moduleGap`, and
+    /// the gap down to the dock is that same number, produced by the dock's own top padding. There
+    /// is no flexible spacer any more: the panel's glass absorbs whatever the screen has left, so
+    /// there is nothing left over for a spacer to hold. Captions and notices join the flow rather
+    /// than being pinned to the bottom of the zone — with the leftover gone, "pinned to the bottom"
+    /// and "next in the flow" are the same place, and the flow keeps the gaps even.
+    ///
+    /// The whole stack reports one height, which is the number the panel subtracts.
     @ViewBuilder
     private func conversationZone(_ voiceState: VoiceVisualState) -> some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(spacing: 0) {
-                    topModules(voiceState)
-
-                    Spacer(minLength: Self.conversationZoneSpacerGap)
-
-                    bottomModules
-                }
-                // Exactly the viewport when the content is shorter, so a short surface keeps the
-                // old rhythm — top-aligned modules, transcript held down against the dock — and
-                // does not become a scroll view for no reason.
-                .frame(minHeight: proxy.size.height, alignment: .top)
+                zoneModules(voiceState)
+                    // Exactly the viewport when the content is shorter, so a short surface stays
+                    // top-aligned and does not become a scroll view for no reason.
+                    .frame(minHeight: proxy.size.height, alignment: .top)
             }
             .scrollBounceBehavior(.basedOnSize)
             // And when it scrolls, it says so. A surface whose only cue was a flush-cut card is
@@ -164,47 +173,45 @@ struct VoiceTab: View {
         }
     }
 
-    /// The modules pinned to the top of the zone, and the half of the measurement My Day moves.
+    /// The zone's modules, in order, at the one rhythm — and the height the panel is sized from.
     @ViewBuilder
-    private func topModules(_ voiceState: VoiceVisualState) -> some View {
-        VStack(spacing: 16) {
-            // Status card — one status surface: state, mode, persona, and the connection
-            // pills (formerly their own band above the card).
-            StatusIndicator(session: session, openAISession: openAISession,
-                            openClawBridge: appState.openClawBridge)
+    private func zoneModules(_ voiceState: VoiceVisualState) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: DockGridMetrics.moduleGap) {
+                // Status card — one status surface: state, mode, persona, and the connection
+                // pills (formerly their own band above the card).
+                StatusIndicator(session: session, openAISession: openAISession,
+                                openClawBridge: appState.openClawBridge)
 
-            if HomeSurfaceVisibility.showsMyDay(state: voiceState,
-                                                captionsActive: captionsActive) {
-                MyDayHomeView(
-                    service: appState.myDayService,
-                    isEnabled: $myDayEnabled,
-                    compact: voiceState == .listening
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            }
-        }
-        .padding(.top, 12)
-        .background(surfaceHeightReader)
-    }
+                if HomeSurfaceVisibility.showsMyDay(state: voiceState,
+                                                    captionsActive: captionsActive) {
+                    MyDayHomeView(
+                        service: appState.myDayService,
+                        isEnabled: $myDayEnabled,
+                        compact: voiceState == .listening
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
 
-    /// Captions and notices — held against the dock by the spacer above them, and measured with the
-    /// rest so the panel can never take the height a live caption needs.
-    private var bottomModules: some View {
-        VStack(spacing: 16) {
-            if captionsActive {
-                AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                if captionsActive {
+                    AmbientCaptionOverlay(captionService: appState.ambientCaptions)
+                }
             }
 
-            // The transcript moved into the dock's conversation page. The error card did
-            // not: the panel pages, and a failure the wearer has to see must not be one
-            // swipe from invisible.
+            // The transcript moved into the dock's conversation page. The error card did not: the
+            // panel pages, and a failure the wearer has to see must not be one swipe from
+            // invisible.
+            //
+            // Outside the spaced stack, because a `VStack` allocates its spacing around every child
+            // it holds — including one whose body resolves to nothing. Left in there, a *silent*
+            // notice still cost a 16 pt gap, which is precisely the uneven rhythm this pass exists
+            // to remove. The card carries its own leading gap instead, so absent it costs nothing
+            // and present it matches every other module. The overlay keeps its own observation of
+            // the sessions and the notice centre; gating it from here would have moved that
+            // decision to a view that does not watch either.
             SessionNoticeOverlay(session: session, openAISession: openAISession)
         }
-        // Content never ends flush against the dock. When the zone does have to scroll, the clip
-        // line landed exactly on the panel's edge and read as a card that had been cut in half
-        // rather than one with more below it — the gap is what makes "there is more here" legible
-        // at a glance.
-        .padding(.bottom, 16)
+        .padding(.top, Self.conversationZoneTopPadding)
         .background(surfaceHeightReader)
     }
 
