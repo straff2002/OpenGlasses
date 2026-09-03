@@ -953,6 +953,8 @@ enum PrivacyLog {
         case sessionRotated, sessionCompacted
         case devicePaired, pairingPending
         case deviceEventSent
+        /// hello-ok parsed: `count` is the size of the advertised catalog, `detail` the granted role.
+        case helloReceived
     }
 
     /// `peer` is which gateway — a private identifier, so it is fingerprinted: enough to tell two
@@ -1012,7 +1014,7 @@ enum PrivacyLog {
 
     /// An unsolicited push from the gateway. The preview text *is* the notification — it is read
     /// aloud to the wearer — so its length is the only thing recorded.
-    enum GatewayNotificationKind: String { case heartbeat, cronResult, triage }
+    enum GatewayNotificationKind: String { case heartbeat, cronResult, triage, lateResult }
 
     @discardableResult
     static func gatewayNotification(_ kind: GatewayNotificationKind, characters: Int) -> PrivacyEvent {

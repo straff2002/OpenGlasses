@@ -3,66 +3,75 @@ import Foundation
 /// Pure builder for the `connect` request params both gateway sockets send (the chat socket in
 /// `OpenClawBridge` and the event/invoke socket in `OpenClawEventClient`). One builder so the
 /// two handshakes can't drift — critical because the device-identity signature covers the
-/// clientId/mode/role/scopes carried in the frame, and a mismatch means zero scopes.
+/// clientId/mode/role/scopes carried in the frame, and a mismatch means a closed socket.
 ///
-/// Protocol notes:
-/// - `minProtocol 3, maxProtocol 4` — v3 gateways keep working; v4 gateways can use the
-///   device-identity and capability fields.
-/// - `deviceCapabilities` advertises the remote-invoke command surface up front so the
-///   gateway-side agent knows what it can ask for without a round-trip (Plan BH commands).
-/// - `device` (present only when the gateway issued a `connect.challenge` nonce) is the signed
-///   Ed25519 identity block — remote gateways may grant zero scopes without it.
+/// Wire notes (verified against the gateway's `ConnectParamsSchema`, a closed object):
+/// - Operator clients must speak exactly protocol 4; node clients get a 3–4 window.
+/// - `client.deviceFamily` is part of the v3 signature payload the gateway rebuilds from the
+///   frame, so it is always sent and always the same value the signer normalised.
+/// - `device` (present only when the gateway issued a `connect.challenge`) is the signed Ed25519
+///   identity block, signed at the challenge's own `ts` so gateway clock skew cannot stale it.
+/// - There is no free-form capability key; node command advertisement is `commands` and client
+///   capability flags are `caps`, both only meaningful for the role that declares them.
 enum OpenClawConnectParams {
 
-    static let role = "operator"
-    static let scopes = ["operator.read", "operator.write"]
-    static let clientMode = "node"
-
     static func build(
-        clientId: String,
+        clientId: String = GatewayWire.clientId,
         displayName: String,
         version: String,
         token: String,
-        challengeNonce: String?,
+        role: GatewayWire.Role = .operator,
+        scopes: [String]? = nil,
+        caps: [String] = [],
+        commands: [String] = [],
+        challenge: GatewayChallenge?,
         pairedDeviceId: String? = nil,
         localeIdentifier: String = Locale.current.identifier,
         identity: OpenClawDeviceIdentity.Identity? = nil,
         signedAtMs: Int? = nil
     ) -> [String: Any] {
+        let deviceFamily = OpenClawDeviceIdentity.deviceFamilyLabel()
         var client: [String: Any] = [
             "id": clientId,
             "displayName": displayName,
             "version": version,
-            "platform": "ios",
-            "mode": clientMode,
+            "platform": GatewayWire.platform,
+            "deviceFamily": deviceFamily,
+            "mode": GatewayWire.clientMode,
         ]
         if let pairedDeviceId, !pairedDeviceId.isEmpty {
-            client["deviceId"] = pairedDeviceId
+            client["instanceId"] = pairedDeviceId
         }
 
+        let window = role.protocolWindow
+        let effectiveScopes = scopes ?? role.defaultScopes
         var params: [String: Any] = [
-            "minProtocol": 3,
-            "maxProtocol": 4,
-            "role": role,
-            "scopes": scopes,
+            "minProtocol": window.min,
+            "maxProtocol": window.max,
+            "role": role.rawValue,
+            "scopes": effectiveScopes,
             "client": client,
-            "deviceCapabilities": RemoteGlassesCommand.allCanonicalActions,
             "locale": localeIdentifier,
+            "userAgent": "openglasses-ios/\(version)",
             "auth": ["token": token],
         ]
+        if !caps.isEmpty { params["caps"] = caps }
+        if !commands.isEmpty { params["commands"] = commands }
 
-        if let nonce = challengeNonce, !nonce.isEmpty {
+        if let challenge {
             let signingIdentity = identity ?? OpenClawDeviceIdentity.loadOrCreate()
-            let timestamp = signedAtMs ?? Int(Date().timeIntervalSince1970 * 1000)
+            let timestamp = signedAtMs ?? challenge.timestampMs ?? Int(Date().timeIntervalSince1970 * 1000)
             if let device = OpenClawDeviceIdentity.connectDevice(
                 identity: signingIdentity,
                 token: token,
-                nonce: nonce,
+                nonce: challenge.nonce,
                 clientId: clientId,
-                clientMode: clientMode,
-                role: role,
-                scopes: scopes,
-                signedAtMs: timestamp
+                clientMode: GatewayWire.clientMode,
+                role: role.rawValue,
+                scopes: effectiveScopes,
+                signedAtMs: timestamp,
+                platform: GatewayWire.platform,
+                deviceFamily: deviceFamily
             ) {
                 params["device"] = device
             }

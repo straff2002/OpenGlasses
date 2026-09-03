@@ -1,4 +1,4 @@
-# Plan EH — Licence Issuance Portal (a partner issues and renews team codes without the vendor)
+# Plan EI — Licence Issuance Portal (a partner issues and renews team codes without the vendor)
 
 **Status:** 📋 Planned 2026-09-03
 **Origin:** Every Field Assist team code that exists was minted by hand, on the vendor's machine, by

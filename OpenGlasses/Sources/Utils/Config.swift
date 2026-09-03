@@ -2656,7 +2656,9 @@ struct Config {
     /// **Default off, and deliberately distinct from `agentModeEnabled`.** Agent Mode bought
     /// "dispatch text tasks to my agent"; quietly upgrading that to "and ship frames from a
     /// head-mounted camera to the same endpoint" is a scope expansion the user never agreed to.
-    @UserDefaultsBacked("agentVisionAttachmentEnabled", default: false)
+    /// Default on since Plan EH P1: the gateway's `attachments` schema and its advertised
+    /// per-image ceiling answered the question CN P3 shipped default-off on.
+    @UserDefaultsBacked("agentVisionAttachmentEnabled", default: true)
     static var agentVisionAttachmentEnabled: Bool
 
     static func setAgentVisionAttachmentEnabled(_ enabled: Bool) { agentVisionAttachmentEnabled = enabled }
