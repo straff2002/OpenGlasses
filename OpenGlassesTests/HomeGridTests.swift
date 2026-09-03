@@ -344,84 +344,205 @@ final class HomeGridTests: XCTestCase {
                        ["control:disconnect", "control:micMode"])
     }
 
-    // MARK: - Row-snapped panel height
+    // MARK: - The panel's one height (EB device rounds 3–5)
 
-    /// The panel's ceiling is four complete rows; more than that scrolls.
-    func testThePanelRestsAtFourRowsAndScrollsPastThem() {
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 20, columns: 4), 4)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 16, columns: 4), 4)
-        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 20, columns: 4), 5,
-                       "The rows past the fourth still exist — they are scrolled, not dropped")
+    /// The frame is subtraction and nothing else: what the screen has, minus what the surface above
+    /// it *measured*. No share, no page, no slot count — and, since round 5, no row term either.
+    ///
+    /// The reserved numbers stand for the two states a wearer moves between: ~400 pt for a status
+    /// card over a short or collapsed My Day plus the dock's own rhythm, ~600 pt with the card
+    /// open. They are inputs here rather than constants in the code, which is the whole point: the
+    /// panel is sized by whatever was drawn.
+    func testPanelHeightIsTheScreenMinusWhatTheSurfaceAboveMeasured() {
+        let cases: [(available: CGFloat, reserved: CGFloat, row: CGFloat, height: CGFloat)] = [
+            // A phone, My Day open and then short. Every point the surface hands back is a point
+            // the glass takes — not "as many whole rows as fit", which is what left a gap.
+            (874, 600, 52, 274),
+            (874, 400, 52, 474),
+            // A smaller phone. Same rule, less of it — and the first cell is the floor winning,
+            // because 67 pt of budget is less than one row and the dots.
+            (667, 600, 52, 92),
+            (667, 400, 52, 267),
+            // An accessibility text size does not enter the frame at all any more. It only moves
+            // the floor, and neither of these is near it.
+            (874, 600, 120, 274),
+            (874, 400, 120, 474),
+        ]
+        for expectation in cases {
+            XCTAssertEqual(
+                DockGridMetrics.panelPagesHeight(availableHeight: expectation.available,
+                                                 reservedHeight: expectation.reserved,
+                                                 rowHeight: expectation.row),
+                expectation.height,
+                accuracy: 0.001,
+                "\(expectation.available)pt tab, \(expectation.reserved)pt reserved, "
+                    + "\(expectation.row)pt row")
+        }
     }
 
-    // MARK: - What the screen can spare
+    /// The rhythm rule, stated as arithmetic: **nothing is left over between the modules.**
+    ///
+    /// This is the round-5 report and it is the strict version of round 4's. Measuring the surface
+    /// fixed the size of the reservation; snapping the *frame* to whole rows then put up to a row
+    /// of the leftover back between the card and the panel, beside gaps that are all `moduleGap`.
+    /// Pure subtraction means the sum is exact: the surface, the panel and the dock's own rhythm
+    /// account for the entire screen, so the only gaps a wearer sees are the ones we chose.
+    func testNothingIsLeftOverBetweenTheModules() {
+        for available in stride(from: CGFloat(600), through: 1000, by: 20) {
+            for reserved in stride(from: CGFloat(200), through: 560, by: 20) {
+                for row in [CGFloat(48), 52, 64, 96] {
+                    let pages = DockGridMetrics.panelPagesHeight(availableHeight: available,
+                                                                 reservedHeight: reserved,
+                                                                 rowHeight: row)
+                    let context = "\(available)pt tab, \(reserved)pt reserved, \(row)pt row"
 
-    /// A phone cannot give four rows *and* an expanded My Day, and the surface that lost was My Day
-    /// — clipped mid-card at the panel's edge. The ceiling stays four; the screen decides how many
-    /// of them are affordable, and collapsing My Day is what buys the fourth back.
-    func testAPhoneWithAnExpandedMyDayRestsAtThreeRows() {
-        // The measured numbers from the device this regressed on: an 874 pt tab, a ~52 pt row.
-        let expanded = DockGridMetrics.restingRows(
-            slotCount: 15, columns: 4, availableHeight: 874, rowHeight: 52,
-            surfaceAboveIsCompact: false)
-        XCTAssertEqual(expanded, 3)
-
-        let collapsed = DockGridMetrics.restingRows(
-            slotCount: 15, columns: 4, availableHeight: 874, rowHeight: 52,
-            surfaceAboveIsCompact: true)
-        XCTAssertEqual(collapsed, DockGridMetrics.defaultVisibleRows,
-                       "Collapsing My Day hands back its height and the panel does not take it")
+                    // Above the floor, every point is accounted for. Not "within a row of it" —
+                    // exactly. Below it the panel refuses to shrink further and the zone scrolls,
+                    // which its own test covers.
+                    guard available - reserved >= DockGridMetrics.minimumPagesHeight(rowHeight: row)
+                    else { continue }
+                    XCTAssertEqual(reserved + pages, available, accuracy: 0.001,
+                                   "The screen did not add up, so the difference is a gap: \(context)")
+                }
+            }
+        }
     }
 
-    /// The ceiling is a ceiling: a taller canvas does not grow the panel past four.
-    func testTheCeilingHoldsOnALargeCanvas() {
-        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 40, columns: 4,
-                                                   availableHeight: 2000, rowHeight: 52,
-                                                   surfaceAboveIsCompact: true),
-                       DockGridMetrics.defaultVisibleRows)
+    /// The panel still refuses to vanish. Below its floor the arithmetic stops subtracting and the
+    /// zone above scrolls instead — a dock with no controls is not a smaller dock.
+    func testThePanelFloorsRatherThanVanishing() {
+        for row in [CGFloat(48), 52, 64, 120] {
+            let floor = DockGridMetrics.minimumPagesHeight(rowHeight: row)
+            XCTAssertGreaterThanOrEqual(
+                DockGridMetrics.panelPagesHeight(availableHeight: 400, reservedHeight: 500,
+                                                 rowHeight: row),
+                floor,
+                "A surface taller than the tab took the panel below its floor")
+            XCTAssertGreaterThanOrEqual(
+                DockGridMetrics.panelPagesHeight(availableHeight: 300, reservedHeight: 290,
+                                                 rowHeight: row),
+                floor)
+            // One row and the dots, so a floored panel is still a usable one.
+            XCTAssertGreaterThanOrEqual(floor, row)
+            XCTAssertGreaterThanOrEqual(floor, DockGridMetrics.pageIndicatorHeight)
+        }
     }
 
-    /// Content still wins when there is less of it: a short grid shrinks the panel rather than
-    /// padding it out to whatever the screen would allow.
-    func testTheContentStillCapsTheRestingRows() {
-        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 6, columns: 4,
-                                                   availableHeight: 874, rowHeight: 52,
-                                                   surfaceAboveIsCompact: true),
-                       2)
+    /// Collapsing My Day — or a day with less in it — is the wearer's one control over the panel's
+    /// height. Restated for round 5: a shorter surface above always buys the panel height, point
+    /// for point, and never costs it any.
+    func testAShorterSurfaceAboveAlwaysBuysThePanelHeight() {
+        for available in stride(from: CGFloat(600), through: 1000, by: 20) {
+            for row in [CGFloat(48), 52, 64, 96] {
+                var previous: CGFloat = 0
+                // Walking the surface *down* in height: every step affords at least as much panel.
+                for reserved in stride(from: CGFloat(560), through: 200, by: -20) {
+                    let pages = DockGridMetrics.panelPagesHeight(availableHeight: available,
+                                                                 reservedHeight: reserved,
+                                                                 rowHeight: row)
+                    XCTAssertGreaterThanOrEqual(
+                        pages, previous,
+                        "A shorter surface above cost the panel height: \(available)pt tab, "
+                            + "\(reserved)pt reserved, \(row)pt row")
+                    previous = pages
+                }
+            }
+        }
     }
 
-    /// Before the first layout there is no measured height to divide by. The panel falls back to
-    /// the ceiling rather than to zero rows.
-    func testAnUnmeasuredScreenFallsBackToTheCeiling() {
-        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 20, columns: 4,
-                                                   availableHeight: 0, rowHeight: 52,
-                                                   surfaceAboveIsCompact: false),
-                       DockGridMetrics.defaultVisibleRows)
+    // MARK: - Where the snap went (EB device round 5)
+
+    /// P8's rule, at the edge it actually bites: the grid's **scroll viewport**. The frame no
+    /// longer snaps, so the sub-row remainder sits under the tiles as empty glass — but a tile is
+    /// still never sliced, because the edge that clips one is its scroll view's, and that edge
+    /// lands on a row boundary.
+    func testTheGridViewportShowsWholeRowsAndNeverSlicesATile() {
+        for body in stride(from: CGFloat(60), through: 700, by: 10) {
+            for row in [CGFloat(48), 52, 64, 96, 130] {
+                let rows = DockGridMetrics.viewportRows(availableHeight: body, rowHeight: row)
+                let viewport = DockGridMetrics.gridHeight(rows: rows, tileHeight: row)
+                let context = "\(body)pt page body, \(row)pt row"
+
+                XCTAssertGreaterThanOrEqual(rows, 1, "A viewport with no rows: \(context)")
+                if body >= row {
+                    XCTAssertLessThanOrEqual(viewport, body + 0.001,
+                                             "The viewport overran the page: \(context)")
+                }
+                // One more row would not have fitted, so nothing of it can peek at the edge.
+                let oneMore = DockGridMetrics.gridHeight(rows: rows + 1, tileHeight: row)
+                XCTAssertGreaterThan(oneMore, body,
+                                     "Another whole row fitted and the viewport did not show it: \(context)")
+            }
+        }
     }
 
-    /// Never zero, whatever the arithmetic says: a panel with no rows is a panel with no controls.
-    func testAVeryShortScreenStillGetsARow() {
-        XCTAssertEqual(DockGridMetrics.restingRows(slotCount: 20, columns: 4,
-                                                   availableHeight: 200, rowHeight: 52,
-                                                   surfaceAboveIsCompact: false),
-                       1)
+    /// The invariant, stated as arithmetic: the height function has no page parameter, so no swipe
+    /// can change the frame. Round 4's promise, and pure subtraction makes it stronger rather than
+    /// weaker — there is no longer a term in the expression a page could reach.
+    func testTheFrameCannotDependOnThePage() {
+        let heights = DockPage.allCases.map { _ in
+            DockGridMetrics.panelPagesHeight(availableHeight: 874, reservedHeight: 400,
+                                             rowHeight: 52)
+        }
+        XCTAssertEqual(Set(heights).count, 1,
+                       "Every page resolves to the same frame — the page is not an input")
     }
 
-    /// Fewer slots shrink the panel rather than leaving it three rows of empty glass. Yielding the
-    /// content tiles is the common case, and the height it frees goes back to the conversation.
-    func testAShortGridShrinksThePanel() {
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 6, columns: 4), 2)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 4, columns: 4), 1)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 1, columns: 4), 1)
-        // Never zero-height glass: an empty grid still draws one row's worth of panel.
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 0, columns: 4), 1)
+    /// Nor does the content: a wearer with four tiles gets the same frame as one with forty,
+    /// because the conversation page shares it and a short grid must not shrink the transcript to
+    /// a two-line window. The short grid's unused rows are empty glass, not a shorter panel.
+    func testAShortGridKeepsTheTallFrame() {
+        let tall = DockGridMetrics.panelPagesHeight(availableHeight: 874, reservedHeight: 400,
+                                                    rowHeight: 52)
+        XCTAssertGreaterThan(tall, DockGridMetrics.gridHeight(rows: 4, tileHeight: 52),
+                             "The old four-row ceiling is still capping the panel")
+        // The rows the *content* needs are a separate question, and still answerable — the grid
+        // scrolls past what the viewport shows.
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 6, columns: 4), 2)
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 40, columns: 4), 10)
+    }
+
+    /// Before the first layout there is nothing measured to subtract — no screen, and no surface
+    /// above. The panel opens at a sensible guess rather than at nothing, and the first real
+    /// measurement settles it.
+    func testAnUnmeasuredScreenFallsBackToAGuess() {
+        let guess = DockGridMetrics.gridHeight(rows: DockGridMetrics.defaultRowsWithoutMeasurement,
+                                               tileHeight: 52)
+            + DockGridMetrics.pageIndicatorHeight
+        let unmeasured: [(available: CGFloat, reserved: CGFloat?)] = [
+            (0, 400),
+            (0, nil),
+            // The surface above has not reported yet, which is the frame the measurement added.
+            (874, nil),
+        ]
+        for state in unmeasured {
+            XCTAssertEqual(DockGridMetrics.panelPagesHeight(availableHeight: state.available,
+                                                            reservedHeight: state.reserved,
+                                                            rowHeight: 52),
+                           guess,
+                           accuracy: 0.001,
+                           "\(state.available)pt tab, \(String(describing: state.reserved)) reserved")
+        }
+    }
+
+    /// One curve for the whole exchange. The card grows and the panel gives way on the same motion
+    /// because there is only one to be on — a second animation on the panel is what made the two
+    /// surfaces look like they were moving independently.
+    func testThereIsOneSettleCurveForEveryHeightChange() {
+        XCTAssertEqual(DockGridMetrics.heightSettle, .easeInOut(duration: 0.25))
+    }
+
+    /// The rhythm is one number, and the dock is part of it rather than a surface with its own.
+    func testTheModuleGapIsTheOneRhythm() {
+        XCTAssertEqual(DockGridMetrics.moduleGap, 16)
+        // Below the capsule is the tab bar, not another module — deliberately not the module gap.
+        XCTAssertNotEqual(DockGridMetrics.dockBottomPadding, DockGridMetrics.moduleGap)
     }
 
     /// Two columns at accessibility sizes means the same slots need more rows — and still snap.
     func testTheAccessibilityColumnCountChangesRowsNotTheSnap() {
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 6, columns: 2), 3)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 6, columns: 2), 3)
-        XCTAssertEqual(DockGridMetrics.visibleRows(slotCount: 12, columns: 2), 4)
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 12, columns: 2), 6)
     }
 
     /// The bug this arithmetic exists to prevent: a height that lands mid-tile, so the row below
