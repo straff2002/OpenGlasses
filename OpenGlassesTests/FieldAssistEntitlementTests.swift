@@ -159,15 +159,33 @@ final class FieldAssistEntitlementTests: XCTestCase {
 
     // MARK: - Evaluator preferences
 
-    func testPerpetualEvidenceOutlastsDatedEvidence() throws {
+    func testPerpetualEvidenceOutlastsDatedEvidenceAtEqualTier() throws {
+        // Same tier: the perpetual one-time unlock beats a dated subscription.
+        let recorder = VerifiedStorePurchaseRecorder()
+        recorder.record(products: [
+            (StoreKitService.fieldAssistMonthlyId, Date(timeIntervalSince1970: 10_000)),
+            (StoreKitService.fieldAssistId, nil)
+        ])
+        let set = provider(code: nil, recorder: recorder).evidence()
+
+        let decision = FieldAssistEntitlementEvaluator.decide(set, now: Date(timeIntervalSince1970: 0))
+
+        XCTAssertTrue(decision.isGranted)
+        XCTAssertEqual(decision.tier, .solo)
+        XCTAssertNil(decision.expiresAt, "A perpetual grant must not report a nearer expiry")
+    }
+
+    func testHigherTierWinsOverPerpetualLowerTier() throws {
+        // Across tiers the perpetual solo purchase yields to a dated team code, and the decision
+        // reports the team code's lapse — the date the user actually loses that tier.
         let recorder = VerifiedStorePurchaseRecorder()
         recorder.record(productID: StoreKitService.fieldAssistId, expiration: nil)
         let set = provider(code: try code(expires: Date(timeIntervalSince1970: 10_000)), recorder: recorder).evidence()
 
         let decision = FieldAssistEntitlementEvaluator.decide(set, now: Date(timeIntervalSince1970: 0))
 
-        XCTAssertTrue(decision.isGranted)
-        XCTAssertNil(decision.expiresAt, "A perpetual grant must not report a nearer expiry")
+        XCTAssertEqual(decision.tier, .team)
+        XCTAssertEqual(decision.expiresAt, Date(timeIntervalSince1970: 10_000))
     }
 
     func testExpiredEvidenceDoesNotMaskALiveGrant() throws {

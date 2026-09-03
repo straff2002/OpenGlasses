@@ -43,6 +43,40 @@ final class LicenseService: ObservableObject {
         let licensee: String
         let issued: Date
         let expires: Date?   // nil = perpetual
+        /// Signed tier claim ("team" / "enterprise"). Absent on codes issued before tiers existed,
+        /// which all went to organisations — so absent reads as team.
+        var tier: String?
+        /// Commercial plan the code was issued under ("pilot" / "team" / "enterprise"); informational.
+        var plan: String?
+        /// Seats bought. Recorded so the status screen and the invoice agree; **not enforced** —
+        /// the code is device-scoped and offline, and there is no seat server.
+        var seats: Int?
+        /// Purchase order or agreement reference; free text.
+        var reference: String?
+
+        init(feature: String, licensee: String, issued: Date, expires: Date?,
+             tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil) {
+            self.feature = feature
+            self.licensee = licensee
+            self.issued = issued
+            self.expires = expires
+            self.tier = tier
+            self.plan = plan
+            self.seats = seats
+            self.reference = reference
+        }
+
+        /// The tier this payload grants; an unrecognised or missing claim is team, never more.
+        var resolvedTier: FieldAssistTier {
+            guard let tier, let parsed = FieldAssistTier(rawValue: tier) else { return .team }
+            return parsed == .solo ? .team : parsed
+        }
+
+        /// "Pilot" / "Team" / "Enterprise", or nil for a legacy code.
+        var planLabel: String? {
+            guard let plan, !plan.isEmpty else { return nil }
+            return plan.prefix(1).uppercased() + plan.dropFirst()
+        }
     }
 
     enum LicenseError: LocalizedError {

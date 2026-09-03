@@ -146,8 +146,9 @@ final class VaultRegistry {
         case "field_assist_refrigeration", "field_assist_it":
             return FieldAssistEntitlement.shared.isGranted
         case "enterprise":
-            // Customer-imported vaults (Plan H) ride the same Field Assist entitlement.
-            return FieldAssistEntitlement.shared.isGranted
+            // Customer-imported vaults (Plan H) are a team capability: a solo purchase covers the
+            // bundled vaults, an organisation's own vaults need its licence.
+            return FieldAssistEntitlement.shared.isGranted(atLeast: .team)
         default:
             return false
         }

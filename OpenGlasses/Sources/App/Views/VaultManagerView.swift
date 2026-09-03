@@ -17,6 +17,9 @@ struct VaultManagerView: View {
     @State private var syncProgress: (vaultId: String, title: String, completed: Int, total: Int)?
     @State private var shareItem: ShareItem?
 
+    /// Custom vaults are a team capability; the import button says so instead of failing later.
+    private var teamCheck: FieldAssistTierCheck { FieldAssistEntitlement.shared.check(atLeast: .team) }
+
     var body: some View {
         Form {
             Section {
@@ -25,7 +28,16 @@ struct VaultManagerView: View {
                 } label: {
                     Label("Import Vault Folder…", systemImage: "square.and.arrow.down")
                 }
-                .disabled(syncProgress != nil)
+                .disabled(syncProgress != nil || !teamCheck.isGranted)
+                if case .insufficientTier = teamCheck {
+                    Text(FieldAssistPaywallCopy.teamOnly)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if case .denied = teamCheck {
+                    Text("Custom vaults need a Field Assist team licence.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } footer: {
                 Text("Select a folder containing manifest.json, the listed markdown files, an optional procedures/ directory, and any manuals the manifest lists under documents (PDF, EPUB, Markdown, or text). The pack is validated before it's installed; manuals are indexed on this device for retrieval.")
             }

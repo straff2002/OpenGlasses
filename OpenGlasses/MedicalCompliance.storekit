@@ -1,183 +1,224 @@
 {
-  "identifier" : "medical_compliance_storekit",
-  "nonRenewingSubscriptions" : [
-
-  ],
-  "products" : [
+  "identifier": "medical_compliance_storekit",
+  "nonRenewingSubscriptions": [],
+  "products": [
     {
-      "displayPrice" : "149.99",
-      "familyShareable" : false,
-      "internalID" : "field_assist_001",
-      "localizations" : [
+      "displayPrice": "149.99",
+      "familyShareable": false,
+      "internalID": "field_assist_001",
+      "localizations": [
         {
-          "description" : "Hands-free, domain-grounded guidance for service technicians: knowledge vaults, guided procedures, domain calculators, and expert escalation.",
-          "displayName" : "Field Assist",
-          "locale" : "en_US"
+          "description": "Hands-free, domain-grounded guidance for service technicians: knowledge vaults, guided procedures, domain calculators, and expert escalation.",
+          "displayName": "Field Assist",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.openglasses.field_assist",
-      "referenceName" : "Field Assist",
-      "type" : "NonConsumable"
+      "productID": "com.openglasses.field_assist",
+      "referenceName": "Field Assist",
+      "type": "NonConsumable"
     }
   ],
-  "settings" : {
-    "_applicationInternalID" : "0",
-    "_developerTeamID" : "",
-    "_failTransactionsEnabled" : false,
-    "_lastSynchronizedDate" : "2026-04-05T00:00:00Z",
-    "_storeKitErrors" : [
+  "settings": {
+    "_applicationInternalID": "0",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_lastSynchronizedDate": "2026-04-05T00:00:00Z",
+    "_storeKitErrors": [
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Load Products"
+        "current": null,
+        "enabled": false,
+        "name": "Load Products"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Purchase"
+        "current": null,
+        "enabled": false,
+        "name": "Purchase"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Verification"
+        "current": null,
+        "enabled": false,
+        "name": "Verification"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "App Store Sync"
+        "current": null,
+        "enabled": false,
+        "name": "App Store Sync"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Subscription Status"
+        "current": null,
+        "enabled": false,
+        "name": "Subscription Status"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "App Transaction"
+        "current": null,
+        "enabled": false,
+        "name": "App Transaction"
       },
       {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Manage Subscriptions Sheet"
+        "current": null,
+        "enabled": false,
+        "name": "Manage Subscriptions Sheet"
       }
     ]
   },
-  "subscriptionGroups" : [
+  "subscriptionGroups": [
     {
-      "id" : "medical_compliance",
-      "localizations" : [
+      "id": "medical_compliance",
+      "localizations": [
         {
-          "description" : "Encryption, audit logging, biometric lock, FHIR export, and international medical framework compliance for clinical recordings.",
-          "displayName" : "Medical Compliance",
-          "locale" : "en_US"
+          "description": "Encryption, audit logging, biometric lock, FHIR export, and international medical framework compliance for clinical recordings.",
+          "displayName": "Medical Compliance",
+          "locale": "en_US"
         },
         {
-          "description" : "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
-          "displayName" : "Medical Compliance",
-          "locale" : "en_AU"
+          "description": "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
+          "displayName": "Medical Compliance",
+          "locale": "en_AU"
         },
         {
-          "description" : "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
-          "displayName" : "Medical Compliance",
-          "locale" : "en_GB"
+          "description": "Encryption, audit logging, biometric lock, FHIR export, and medical framework compliance for clinical recordings.",
+          "displayName": "Medical Compliance",
+          "locale": "en_GB"
         }
       ],
-      "name" : "Medical Compliance",
-      "subscriptions" : [
+      "name": "Medical Compliance",
+      "subscriptions": [
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "9.99",
-          "familyShareable" : false,
-          "groupNumber" : 1,
-          "internalID" : "medical_monthly_001",
-          "introductoryOffer" : {
-            "displayPrice" : "0.00",
-            "internalID" : "medical_monthly_trial",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W"
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "9.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "medical_monthly_001",
+          "introductoryOffer": {
+            "displayPrice": "0.00",
+            "internalID": "medical_monthly_trial",
+            "numberOfPeriods": 1,
+            "paymentMode": "free",
+            "subscriptionPeriod": "P1W"
           },
-          "localizations" : [
+          "localizations": [
             {
-              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
-              "displayName" : "Monthly",
-              "locale" : "en_US"
+              "description": "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName": "Monthly",
+              "locale": "en_US"
             },
             {
-              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
-              "displayName" : "Monthly",
-              "locale" : "en_AU"
+              "description": "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName": "Monthly",
+              "locale": "en_AU"
             },
             {
-              "description" : "Full medical compliance features with monthly billing. Cancel anytime.",
-              "displayName" : "Monthly",
-              "locale" : "en_GB"
+              "description": "Full medical compliance features with monthly billing. Cancel anytime.",
+              "displayName": "Monthly",
+              "locale": "en_GB"
             }
           ],
-          "productID" : "com.openglasses.medical_compliance_monthly",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Medical Compliance Monthly",
-          "subscriptionGroupID" : "medical_compliance",
-          "type" : "RecurringSubscription",
-          "winbackOffers" : [
-
-          ]
+          "productID": "com.openglasses.medical_compliance_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Medical Compliance Monthly",
+          "subscriptionGroupID": "medical_compliance",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "79.99",
-          "familyShareable" : false,
-          "groupNumber" : 1,
-          "internalID" : "medical_annual_001",
-          "introductoryOffer" : {
-            "displayPrice" : "0.00",
-            "internalID" : "medical_annual_trial",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W"
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "79.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "medical_annual_001",
+          "introductoryOffer": {
+            "displayPrice": "0.00",
+            "internalID": "medical_annual_trial",
+            "numberOfPeriods": 1,
+            "paymentMode": "free",
+            "subscriptionPeriod": "P1W"
           },
-          "localizations" : [
+          "localizations": [
             {
-              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
-              "displayName" : "Annual",
-              "locale" : "en_US"
+              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName": "Annual",
+              "locale": "en_US"
             },
             {
-              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
-              "displayName" : "Annual",
-              "locale" : "en_AU"
+              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName": "Annual",
+              "locale": "en_AU"
             },
             {
-              "description" : "Full medical compliance features billed annually. Save 33% compared to monthly.",
-              "displayName" : "Annual",
-              "locale" : "en_GB"
+              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "displayName": "Annual",
+              "locale": "en_GB"
             }
           ],
-          "productID" : "com.openglasses.medical_compliance_annual",
-          "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Medical Compliance Annual",
-          "subscriptionGroupID" : "medical_compliance",
-          "type" : "RecurringSubscription",
-          "winbackOffers" : [
-
-          ]
+          "productID": "com.openglasses.medical_compliance_annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Medical Compliance Annual",
+          "subscriptionGroupID": "medical_compliance",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    },
+    {
+      "id": "field_assist",
+      "localizations": [
+        {
+          "description": "Field Assist for a single technician.",
+          "displayName": "Field Assist",
+          "locale": "en_US"
+        }
+      ],
+      "name": "Field Assist",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "19.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "field_assist_monthly_001",
+          "localizations": [
+            {
+              "description": "Field Assist for one technician with monthly billing. Cancel anytime.",
+              "displayName": "Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openglasses.field_assist_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Field Assist Monthly",
+          "subscriptionGroupID": "field_assist",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "149.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "field_assist_annual_001",
+          "localizations": [
+            {
+              "description": "Field Assist for one technician with annual billing \u2014 the same price as the one-time unlock.",
+              "displayName": "Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openglasses.field_assist_annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Field Assist Annual",
+          "subscriptionGroupID": "field_assist",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
         }
       ]
     }
   ],
-  "version" : {
-    "major" : 3,
-    "minor" : 0
+  "version": {
+    "major": 3,
+    "minor": 0
   }
 }
