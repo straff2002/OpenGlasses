@@ -1,29 +1,40 @@
 import Foundation
 
-/// The real, phone-only agent harness (Plan N): drives a remote coding agent through the OpenClaw
-/// gateway. Dispatch rides `OpenClawBridge`'s JSON-RPC-ish `{type:"req",id,method,params}` transport
-/// via an injected `send` closure (AppState wires `OpenClawBridge.agentRequest`; tests inject a
-/// mock), so the adapter is testable without a live socket.
+/// The real, phone-only agent harness (Plan N): drives a remote agent through the OpenClaw
+/// gateway. Dispatch rides `OpenClawBridge`'s `{type:"req",id,method,params}` transport via an
+/// injected `send` closure (AppState wires `OpenClawBridge.agentRequest`; tests inject a mock),
+/// so the adapter is testable without a live socket.
 ///
-/// The valuable, deterministic, *tested* unit is `normalize(_:)` — gateway event JSON → the shared
-/// `AgentEvent`. The live event *stream* (subscribing to the gateway's per-run events) and the
-/// gateway-side `agent.*` methods are the deferred integration: they need a running gateway that
-/// exposes `agent.start`/`agent.status`/`agent.cancel`. Until then this drives a status-poll loop.
+/// Wire (Plan EH P1): there is no `agent.*` method family on the gateway. A task is one
+/// `sessions.send` into a dedicated task session (created on demand), which answers with a
+/// `runId`; the run's progress and final text arrive as `chat` events on the bridge socket and
+/// are folded into `ChatRunTracker`, which this harness polls through `runState`. Cancellation
+/// is `sessions.abort` on that session and run.
 struct OpenClawAgentHarness: AgentHarness {
     let kind: AgentHarnessKind = .openclaw
     var displayName: String { kind.displayName }
+
+    /// The session every delegated task runs in — one stable key, so the gateway keeps context
+    /// across tasks and `sessions.abort` needs no lookup.
+    static let taskSessionKey = "agent:main:glass:tasks"
 
     /// Sends a gateway request and returns the parsed response. Injected so it's mockable.
     let send: (_ method: String, _ params: [String: Any]) async throws -> [String: Any]
     /// Whether OpenClaw is configured (URL + token). Injected so tests don't touch `Config`.
     let configured: () -> Bool
+    /// Terminal-state snapshot for a run the bridge is tracking; nil when unknown.
+    let runState: (_ runId: String) async -> ChatRunTracker.RunState?
+    /// Poll cadence for `events(for:)`; tests shorten it.
+    var pollInterval: TimeInterval = 3
 
     var isConfigured: Bool { configured() }
 
     init(send: @escaping (_ method: String, _ params: [String: Any]) async throws -> [String: Any],
-         configured: @escaping () -> Bool = { Config.isOpenClawConfigured }) {
+         configured: @escaping () -> Bool = { Config.isOpenClawConfigured },
+         runState: @escaping (_ runId: String) async -> ChatRunTracker.RunState? = { _ in nil }) {
         self.send = send
         self.configured = configured
+        self.runState = runState
     }
 
     // MARK: - AgentHarness
@@ -33,58 +44,69 @@ struct OpenClawAgentHarness: AgentHarness {
     }
 
     func start(prompt: String, project: String?, attachment: AgentTaskAttachment?) async throws -> AgentRun {
-        var params: [String: Any] = ["prompt": prompt]
-        if let project { params["project"] = project }
-        // Plan CN. Whether the gateway accepts unknown params or rejects the call is unverified
-        // against a live endpoint, which is why the feature ships behind a default-off setting.
+        var message = prompt
+        if let project, !project.isEmpty { message = "Project: \(project)\n\n\(prompt)" }
+        var attachments: [GatewayAttachment] = []
         if let attachment {
-            params["image_base64"] = attachment.jpeg.base64EncodedString()
-            params["image_mime"] = "image/jpeg"
+            // Plan CN: the frame rides the schema's `attachments` list; the gateway advertises its
+            // per-image ceiling in hello-ok and the bridge drops oversize frames before sending.
+            attachments.append(GatewayAttachment(mimeType: "image/jpeg", fileName: "glasses.jpg",
+                                                 content: attachment.jpeg))
         }
-        let response = try await send("agent.start", params)
-        if let error = response["error"] as? String {
+        let request = GatewayRequestCatalog.sessionsSend(
+            key: Self.taskSessionKey, message: message, attachments: attachments,
+            idempotencyKey: UUID().uuidString)
+        let response = try await send(request.method, request.params)
+        if let error = Self.errorMessage(in: response) {
             throw AgentHarnessError.transport(error)
         }
         guard let id = Self.runID(in: response) else {
             throw AgentHarnessError.transport("Gateway did not return a run id.")
         }
-        let status = Self.parseStatus(response["status"] as? String) ?? .running
         return AgentRun(id: id, harness: .openclaw, prompt: prompt, project: project,
-                        status: status, startedAt: Date())
+                        status: .running, startedAt: Date())
     }
 
     func status(_ run: AgentRun) async throws -> AgentRunStatus {
-        let response = try await send("agent.status", ["id": run.id])
-        return Self.parseStatus(response["status"] as? String) ?? .running
+        guard let state = await runState(run.id) else { return .running }
+        return Self.status(for: state)
     }
 
     func cancel(_ run: AgentRun) async throws {
-        _ = try await send("agent.cancel", ["id": run.id])
+        let request = GatewayRequestCatalog.sessionsAbort(key: Self.taskSessionKey, runId: run.id)
+        let response = try await send(request.method, request.params)
+        if let error = Self.errorMessage(in: response) { throw AgentHarnessError.transport(error) }
     }
 
     func respondToInput(_ run: AgentRun, approved: Bool) async throws {
-        _ = try await send("agent.respond", ["id": run.id, "approved": approved])
+        // Approvals are a first-class gateway surface (`exec.approval.*`) wired in Plan EH P2.
+        throw AgentHarnessError.transport("This gateway answers approvals through its own approval surface, which is not wired yet.")
     }
 
-    /// Status-poll event stream (Phase 1). Emits `.started`, then polls `agent.status` until terminal
-    /// and emits `.completed`/`.error`. The richer per-file/-command event stream from the gateway is
-    /// deferred — `normalize(_:)` is ready to map it when the gateway exposes it.
+    /// Poll the tracked run until terminal: `.started`, then `.completed` (with the final text)
+    /// or `.error`. Cancelled runs complete with an empty result.
     func events(for run: AgentRun) -> AsyncStream<AgentEvent> {
-        AsyncStream { continuation in
+        let interval = pollInterval
+        return AsyncStream { continuation in
             let task = Task {
                 continuation.yield(.started(run))
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                     guard !Task.isCancelled else { break }
-                    let status = (try? await self.status(run)) ?? .running
-                    if status.isTerminal {
-                        if status == .failed {
-                            continuation.yield(.error("The agent run failed."))
-                        } else {
-                            continuation.yield(.completed(AgentRunResult()))
-                        }
-                        break
+                    guard let state = await self.runState(run.id), state.isTerminal else { continue }
+                    switch state.phase {
+                    case .answered(let text):
+                        var result = AgentRunResult()
+                        result.finalText = text.isEmpty ? nil : text
+                        continuation.yield(.completed(result))
+                    case .failed(let message):
+                        continuation.yield(.error(message ?? "The agent run failed."))
+                    case .aborted:
+                        continuation.yield(.completed(AgentRunResult()))
+                    case .running:
+                        continue
                     }
+                    break
                 }
                 continuation.finish()
             }
@@ -93,6 +115,15 @@ struct OpenClawAgentHarness: AgentHarness {
     }
 
     // MARK: - Pure normalization (unit-tested)
+
+    static func status(for state: ChatRunTracker.RunState) -> AgentRunStatus {
+        switch state.phase {
+        case .running: return .running
+        case .answered: return .completed
+        case .aborted: return .cancelled
+        case .failed: return .failed
+        }
+    }
 
     /// Map one gateway event payload to the shared `AgentEvent`, or `nil` for an unknown/ignored
     /// shape. The gateway tags each event with a `kind`; field names mirror the gateway schema.
@@ -144,15 +175,28 @@ struct OpenClawAgentHarness: AgentHarness {
         AgentRunStatus.parse(raw)
     }
 
+    /// The gateway's error, whether it came back as a `{ok:false, error:{message}}` frame or a
+    /// bare `error` string from a mock.
+    static func errorMessage(in response: [String: Any]) -> String? {
+        if let error = response["error"] as? String { return error }
+        if let error = response["error"] as? [String: Any] {
+            return (error["message"] as? String) ?? (error["code"] as? String) ?? "Gateway error"
+        }
+        if (response["ok"] as? Bool) == false { return "Gateway refused the request" }
+        return nil
+    }
+
     /// Pull a run id out of a gateway response under any of the common keys.
     static func runID(in response: [String: Any]) -> String? {
         for key in ["id", "runId", "run_id"] {
             if let id = response[key] as? String, !id.isEmpty { return id }
         }
-        // Some gateways nest the result.
-        if let result = response["result"] as? [String: Any] {
-            for key in ["id", "runId", "run_id"] {
-                if let id = result[key] as? String, !id.isEmpty { return id }
+        // The real gateway nests it under `payload`; some mocks under `result`.
+        for container in ["payload", "result"] {
+            if let nested = response[container] as? [String: Any] {
+                for key in ["id", "runId", "run_id"] {
+                    if let id = nested[key] as? String, !id.isEmpty { return id }
+                }
             }
         }
         return nil

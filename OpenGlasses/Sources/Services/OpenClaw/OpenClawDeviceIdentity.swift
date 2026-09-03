@@ -6,6 +6,9 @@ import UIKit
 
 /// Ed25519 device identity for OpenClaw gateway handshakes (protocol v3/v4).
 ///
+/// The signed payload is the gateway's `buildDeviceAuthPayloadV3` layout, byte for byte —
+/// pinned by `OpenClawDeviceIdentityTests`.
+///
 /// Remote gateways grant scopes based on a signed device identity presented with the `connect`
 /// request: the client signs the gateway's `connect.challenge` nonce (plus the connect metadata)
 /// with a per-device Ed25519 key. A token-only connect still authenticates but can be granted
@@ -54,7 +57,9 @@ enum OpenClawDeviceIdentity {
         clientMode: String,
         role: String,
         scopes: [String],
-        signedAtMs: Int
+        signedAtMs: Int,
+        platform: String = GatewayWire.platform,
+        deviceFamily: String? = nil
     ) -> [String: Any]? {
         let payload = signedPayloadV3(
             deviceId: identity.deviceId,
@@ -64,7 +69,9 @@ enum OpenClawDeviceIdentity {
             scopes: scopes,
             signedAtMs: signedAtMs,
             token: token,
-            nonce: nonce
+            nonce: nonce,
+            platform: platform,
+            deviceFamily: deviceFamily
         )
         guard let signature = try? identity.privateKey.signature(for: Data(payload.utf8)) else {
             return nil
@@ -107,7 +114,9 @@ enum OpenClawDeviceIdentity {
         scopes: [String],
         signedAtMs: Int,
         token: String,
-        nonce: String
+        nonce: String,
+        platform: String = GatewayWire.platform,
+        deviceFamily: String? = nil
     ) -> String {
         [
             "v3",
@@ -119,8 +128,8 @@ enum OpenClawDeviceIdentity {
             String(signedAtMs),
             token,
             nonce,
-            normalizeMetadata("ios"),
-            normalizeMetadata(deviceFamilyLabel()),
+            normalizeMetadata(platform),
+            normalizeMetadata(deviceFamily ?? deviceFamilyLabel()),
         ].joined(separator: "|")
     }
 
@@ -130,7 +139,10 @@ enum OpenClawDeviceIdentity {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    private static func deviceFamilyLabel() -> String {
+    /// The device family the connect frame carries as `client.deviceFamily`. The gateway rebuilds
+    /// the v3 signature payload from that field, so the frame and the signer must agree — which is
+    /// why this is the one source both read.
+    static func deviceFamilyLabel() -> String {
         #if canImport(UIKit)
         return UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
         #else

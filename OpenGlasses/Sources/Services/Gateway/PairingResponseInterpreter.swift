@@ -12,14 +12,23 @@ enum PairingStatus: Equatable {
 }
 
 /// The result of interpreting a gateway message: the new status, plus any device token the
-/// gateway issued (which the caller persists).
+/// gateway issued (which the caller persists), the parsed hello when the gateway sent one, and
+/// the pairing-request bookkeeping a 2.0 gateway attaches to a pending approval.
 struct PairingOutcome: Equatable {
     let status: PairingStatus
     let deviceToken: String?
+    var hello: GatewayHello? = nil
+    /// `error.details.requestId` — what an operator approves on the gateway host.
+    var pairingRequestId: String? = nil
+    /// `error.details.recommendedNextStep` — the gateway's own retry guidance.
+    var recommendedNextStep: String? = nil
+    /// `error.details.pauseReconnect` — the gateway asked us not to hammer it.
+    var pauseReconnect: Bool = false
 }
 
 /// Pure mapping from a gateway `res`/`event` JSON to a `PairingOutcome`. No I/O — exhaustively
-/// tested against the success, pending-approval, and failure shapes.
+/// tested against the success, pending-approval, and failure shapes of both the pre-2.0 and the
+/// 2.0 gateway.
 enum PairingResponseInterpreter {
 
     /// Interpret a `res` response to the connect handshake.
@@ -27,7 +36,11 @@ enum PairingResponseInterpreter {
         let ok = json["ok"] as? Bool ?? false
 
         if ok {
-            // A device token in the result means pairing just completed.
+            // 2.0: `hello-ok` carries the issued device token under `auth.deviceToken`.
+            if let hello = GatewayHello.parse(response: json) {
+                return PairingOutcome(status: .paired, deviceToken: hello.deviceToken, hello: hello)
+            }
+            // Pre-2.0: a device token in the result means pairing just completed.
             if let result = json["result"] as? [String: Any],
                let token = (result["token"] as? String), !token.isEmpty {
                 return PairingOutcome(status: .paired, deviceToken: token)
@@ -37,14 +50,23 @@ enum PairingResponseInterpreter {
         }
 
         let error = json["error"] as? [String: Any]
+        let details = error?["details"] as? [String: Any]
         let message = (error?["message"] as? String) ?? "Connection failed"
-        if isPendingApproval(code: error?["code"], message: message) {
-            return PairingOutcome(status: .waitingApproval, deviceToken: nil)
+        let detailCode = details?["code"] as? String
+        if detailCode == "PAIRING_REQUIRED" || isPendingApproval(code: error?["code"], message: message) {
+            return PairingOutcome(
+                status: .waitingApproval,
+                deviceToken: nil,
+                pairingRequestId: details?["requestId"] as? String,
+                recommendedNextStep: details?["recommendedNextStep"] as? String,
+                pauseReconnect: details?["pauseReconnect"] as? Bool ?? false
+            )
         }
-        return PairingOutcome(status: .error(message), deviceToken: nil)
+        return PairingOutcome(status: .error(message), deviceToken: nil,
+                              recommendedNextStep: details?["recommendedNextStep"] as? String)
     }
 
-    /// Interpret a `device.paired` event payload (the gateway approved out-of-band).
+    /// Interpret a `device.paired` event payload (the pre-2.0 gateway approved out-of-band).
     static func interpretPairedEvent(_ payload: [String: Any]) -> PairingOutcome? {
         guard let token = payload["token"] as? String, !token.isEmpty else { return nil }
         return PairingOutcome(status: .paired, deviceToken: token)
@@ -54,7 +76,8 @@ enum PairingResponseInterpreter {
     /// Tolerates the code being a string (`"pairing_pending"`) or the message mentioning it.
     static func isPendingApproval(code: Any?, message: String) -> Bool {
         if let codeString = code as? String,
-           codeString == "pairing_pending" || codeString == "pairing_required" {
+           codeString == "pairing_pending" || codeString == "pairing_required"
+            || codeString == "PAIRING_REQUIRED" {
             return true
         }
         let lower = message.lowercased()

@@ -1,7 +1,11 @@
 # Plan CN — Agent Vision Attachment (a delegated run can see)
 
 **Status:** ✅ P1+P2 built (2026-08-08), full suite green. P3 (live gateway round-trip, device
-smoke) deferred as planned.
+smoke) deferred as planned. **Wire answered by Plan EH P1 (2026-09-03):** the gateway's `sessions.send`
+schema carries the frame as `attachments: [{type, mimeType, fileName, content, sizeBytes}]` and
+advertises its per-image ceiling in `hello-ok.policy.attachments.maxImageBytes`, so the attachment
+setting now defaults **on** and oversize frames are dropped client-side before sending. The live
+round trip itself is EF P4.
 **Depends on:** Plan N (Remote Agent Harness), Plan CE (Frame Pinning), Plan CB (live-session vision detail)
 **Shape:** deterministic core first (P1), seam widening + adapters (P2), live/device edge deferred (P3)
 
