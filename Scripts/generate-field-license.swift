@@ -8,14 +8,17 @@ import CryptoKit
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //
-// The signing PRIVATE key is the vendor secret and must NEVER be committed or shipped. The script
-// resolves it, in order, from:
+//   ./Scripts/generate-field-license.swift keygen <privateKeyFile>
+//       One-off keypair generation. Writes the PRIVATE key to <privateKeyFile> with mode 0600
+//       (refusing to overwrite an existing file) and prints ONLY the public key and the path.
+//
+// The signing PRIVATE key is the vendor secret and must NEVER be committed or shipped, and is
+// NEVER printed: it is written to a file at generation and read back from there. Never paste a
+// private key into a terminal, a chat, or a log — a key that has been printed must be rotated.
+// The script resolves it, in order, from:
 //   1. $FIELD_ASSIST_SIGNING_KEY (base64), else
 //   2. secrets/field-assist-signing-key.txt (gitignored — see secrets/*.example).
 // The app embeds only the matching PUBLIC key (LicenseService.productionPublicKeyBase64).
-//
-//   # one-off keypair generation:
-//   swift -e 'import CryptoKit; let k = Curve25519.Signing.PrivateKey(); print("private:", k.rawRepresentation.base64EncodedString()); print("public:", k.publicKey.rawRepresentation.base64EncodedString())'
 //
 // Format (must match LicenseService): base64(payloadJSON) + "." + base64(Ed25519 signature),
 // payload encoded with ISO-8601 dates and sorted keys.
@@ -66,13 +69,45 @@ func resolvePrivateKey() -> String {
     """)
 }
 
+/// Mint a keypair, write the private half to `path` with mode 0600, and print ONLY the public key.
+func writeKeygen(to path: String) -> Never {
+    guard !FileManager.default.fileExists(atPath: path) else {
+        fail("\(path) already exists — refusing to overwrite an existing key. Move it aside first.")
+    }
+    let key = Curve25519.Signing.PrivateKey()
+    let contents = """
+    # OpenGlasses Field Assist licence signing key.
+    # Curve25519 signing PRIVATE key (base64, raw representation).
+    # Generated \(ISO8601DateFormatter().string(from: Date())).
+    # Vendor secret: never commit it, never paste it into a terminal, a chat, or a log.
+    \(key.rawRepresentation.base64EncodedString())
+
+    """
+    guard FileManager.default.createFile(
+        atPath: path,
+        contents: Data(contents.utf8),
+        attributes: [.posixPermissions: 0o600]) else {
+        fail("could not write \(path)")
+    }
+    print("private key written (mode 0600): \(path)")
+    print("public  (embed in app):  \(key.publicKey.rawRepresentation.base64EncodedString())")
+    exit(0)
+}
+
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "keygen" {
+    guard CommandLine.arguments.count == 3 else { fail("usage: generate-field-license.swift keygen <privateKeyFile>") }
+    writeKeygen(to: CommandLine.arguments[2])
+}
+
 let usage = """
 usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
          [--seats N] [--reference TEXT] [--days N] [--pack KEY ...]
+       generate-field-license.swift keygen <privateKeyFile>
 
   Positional expiry and --days are alternatives; --days counts from now.
   Prints the code on stdout and the decoded payload on stderr for a final look.
+  keygen writes the private key to a 0600 file and prints only the public half.
 """
 
 var positional: [String] = []

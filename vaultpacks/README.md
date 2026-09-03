@@ -34,7 +34,7 @@ included where the author is licensed to redistribute it; record that in `redist
    ```
 3. Sign it — prints the pack signature for the index entry:
    ```
-   swift Scripts/vaultpack-sign.swift sign-pack <vaultDir> <privateKey>
+   swift Scripts/vaultpack-sign.swift sign-pack <vaultDir> secrets/skillpack-signing-key.txt
    ```
 4. Zip the folder (`cd <vaultDir> && zip -X -r ../<vaultId>-<version>.zip .`), host the zip under
    `vaultpacks/packs/`, and note its SHA256 (`shasum -a 256 <zip>`).
@@ -42,10 +42,24 @@ included where the author is licensed to redistribute it; record that in `redist
    `minAppBuild`, `downloadURL`, `sha256`, `packSignature`.
 6. Re-sign the index and overwrite `catalog.json`:
    ```
-   swift Scripts/vaultpack-sign.swift sign-catalog vaultpacks/index.json <privateKey> > vaultpacks/catalog.json
+   swift Scripts/vaultpack-sign.swift sign-catalog vaultpacks/index.json secrets/skillpack-signing-key.txt > vaultpacks/catalog.json
    ```
 7. Create the pack's App Store product with the same id as `pack.json`'s `id` (a non-consumable),
    so solo buyers can buy it. Team licences include a pack with `--pack <licensePack>`.
 
-`catalog.json` does not exist until the first `sign-catalog` run with the vendor key; until then
-the app's Packs list reports that the catalog could not be reached.
+`catalog.json` is committed as a signed, empty index until the first pack ships, so the app's Packs
+list resolves cleanly rather than reporting an unreachable catalog.
+
+## The signing key
+
+The same vendor key signs this catalog and `skillpacks/catalog.json`. Mint it into a file — never
+onto your screen:
+
+```
+swift Scripts/skillpack-sign.swift keygen secrets/skillpack-signing-key.txt
+```
+
+**A private key is written to a file at generation and is never printed** — not by a script, not
+into a terminal, a chat, or a log. Pass the key *file's path* to `sign-pack` / `sign-catalog`, as
+above, so the key never reaches shell history either; a key that has been printed is a key that
+must be rotated. The key in use was rotated on 2026-09-03 for exactly that reason.

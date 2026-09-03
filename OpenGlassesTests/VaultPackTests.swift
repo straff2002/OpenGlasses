@@ -33,6 +33,22 @@ final class VaultPackTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - Committed catalog
+
+    /// Byte-for-byte copy of the committed `vaultpacks/catalog.json`. Signed by the same vendor
+    /// key as the skill-pack catalog, so if either the published envelope or
+    /// `SkillPackSignature.productionPublicKeyBase64` moves without the other, this fails — the
+    /// drift a key rotation must not leave behind.
+    static let committedVaultCatalog = #"{"payload":"eyJ2ZXJzaW9uIjoxLCJwYWNrcyI6W119Cg==","signature":"9+bfCHEy2NeIMm5bQseb3LbvSBddU9G5K05ogQgWGRB1FL2ArvnibgYpFIrxVAcDHEpwlYKet4jPymrgPXQFDw=="}"#
+
+    func testCommittedVaultCatalogVerifiesAgainstProductionKey() {
+        guard case .success(let packs) = VaultPackCatalog.parse(
+            envelopeData: Data(Self.committedVaultCatalog.utf8)) else {
+            return XCTFail("the committed vault catalog must verify against the embedded production key")
+        }
+        XCTAssertTrue(packs.isEmpty, "no vault packs are published yet — the index is an empty, signed shell")
+    }
+
     // MARK: - Fixtures
 
     static let packId = "com.openglasses.vault.hvac_rtu"

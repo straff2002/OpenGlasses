@@ -19,9 +19,15 @@ final class LicenseService: ObservableObject {
     /// Vendor's production public key (base64, Curve25519 raw representation). The private half is
     /// held only by the vendor and never ships in the app.
     ///
+    /// Rotated 2026-09-03: the previous private key had been printed into terminal scrollback and
+    /// chat transcripts, so it could no longer be treated as secret. No production licence codes
+    /// had been issued against it, so nothing in the field breaks — but any code minted with the
+    /// old key fails verification from this build on. The key is now minted straight to a 0600
+    /// file by `Scripts/generate-field-license.swift keygen <file>` and never printed.
+    ///
     /// `nonisolated` so it can be used as the default argument of `init` (default-argument
     /// expressions evaluate in a nonisolated context) — required under the Swift 6 language mode.
-    nonisolated static let productionPublicKeyBase64 = "KJyr5gDejBhxO2zpXbaBgvOeSjs9b3I93PJgauHubhY="
+    nonisolated static let productionPublicKeyBase64 = "i8ppcyB20u6FfNRworl5GPX2Z/k4+xBuhzIgBE7Kj2Q="
 
     /// Feature identifier a license must name to unlock Field Assist.
     nonisolated static let featureId = "field_assist"
