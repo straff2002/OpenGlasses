@@ -41,6 +41,17 @@ enum FieldAssistEntitlementEvaluator {
         return .denied(.noEvidence)
     }
 
+    /// Every pack any *live* licence includes. Packs are not a tier: a solo purchase beside a live
+    /// team code that lists a pack gets that pack, and a lapsed code contributes nothing.
+    static func livePacks(_ set: FieldAssistEntitlementEvidenceSet, now: Date = Date()) -> Set<String> {
+        var packs = Set<String>()
+        for candidate in set.evidence {
+            if let expiry = candidate.expiration, expiry <= now { continue }
+            packs.formUnion(candidate.packs)
+        }
+        return packs
+    }
+
     /// Higher tier wins; at equal tier perpetual outlasts dated; between two dated pieces the later
     /// expiry wins.
     private static func outranks(_ lhs: FieldAssistEntitlementEvidence,

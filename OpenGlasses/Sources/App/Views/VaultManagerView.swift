@@ -18,6 +18,8 @@ struct VaultManagerView: View {
     /// Recognition runs before chunking for a scanned manual and is the slow part; it gets its own line.
     @State private var recognitionProgress: (title: String, done: Int, total: Int)?
     @State private var shareItem: ShareItem?
+    @StateObject private var packs = VaultPackCatalogService()
+    @ObservedObject private var store = StoreKitService.shared
 
     /// Custom vaults are a team capability; the import button says so instead of failing later.
     private var teamCheck: FieldAssistTierCheck { FieldAssistEntitlement.shared.check(atLeast: .team) }
@@ -43,6 +45,8 @@ struct VaultManagerView: View {
             } footer: {
                 Text("Select a folder containing manifest.json, the listed markdown files, an optional procedures/ directory, and any manuals the manifest lists under documents (PDF, EPUB, Markdown, or text). The pack is validated before it's installed; manuals are indexed on this device for retrieval.")
             }
+
+            packsSection
 
             if !installed.isEmpty {
                 Section {
@@ -92,7 +96,10 @@ struct VaultManagerView: View {
         .navigationTitle("Custom Vaults")
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
-        .onAppear(perform: reloadLedgers)
+        .onAppear {
+            reloadLedgers()
+            if case .idle = packs.catalogState { Task { await packs.loadCatalog() } }
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
             handleImport(result)
         }
@@ -106,15 +113,101 @@ struct VaultManagerView: View {
         }
     }
 
+    // MARK: - Packs (Plan EG)
+
+    @ViewBuilder
+    private var packsSection: some View {
+        Section {
+            switch packs.catalogState {
+            case .idle, .loading:
+                Text("Loading packs…").foregroundStyle(.secondary)
+            case .failed(let reason):
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+                Button("Retry") { Task { await packs.loadCatalog() } }.font(.caption)
+            case .loaded(let entries):
+                if entries.isEmpty {
+                    Text("No packs are published yet.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(entries) { entry in packRow(entry) }
+                }
+            }
+        } header: {
+            Text("Packs")
+        } footer: {
+            Text("Authored vaults, signed by the vendor: fault codes, nameplate references, safety rules and procedures for a trade. Packs never include manufacturer manuals; add your own to a pack the same way as to any vault.")
+        }
+    }
+
+    @ViewBuilder
+    private func packRow(_ entry: VaultPackCatalogEntry) -> some View {
+        let state = packs.rowState(for: entry)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(entry.name)
+                Spacer()
+                Text("v\(entry.version)").font(.caption2).foregroundStyle(.secondary)
+            }
+            if !entry.summary.isEmpty {
+                Text(entry.summary).font(.caption).foregroundStyle(.secondary)
+            }
+            if let author = entry.author, !author.isEmpty {
+                Text("By \(author)").font(.caption2).foregroundStyle(.secondary)
+            }
+            switch packs.installStates[entry.id] {
+            case .downloading?: Text("Downloading…").font(.caption)
+            case .installing?: Text("Installing…").font(.caption)
+            case .failed(let reason)?: Text(reason).font(.caption).foregroundStyle(OGTheme.errorLabel)
+            case .installed(let warnings)?:
+                if !warnings.isEmpty { Text(warnings.joined(separator: "\n")).font(.caption2).foregroundStyle(.secondary) }
+            case nil: EmptyView()
+            }
+            packAction(entry, state: state)
+        }
+    }
+
+    @ViewBuilder
+    private func packAction(_ entry: VaultPackCatalogEntry, state: VaultPackRowState) -> some View {
+        let busy = packs.installStates[entry.id] == .downloading || packs.installStates[entry.id] == .installing
+        switch state {
+        case .needsNewerApp(let minBuild):
+            Text("Needs app build \(minBuild) or newer.").font(.caption).foregroundStyle(.secondary)
+        case .needsFieldAssist:
+            Text("Unlock Field Assist to use packs.").font(.caption).foregroundStyle(.secondary)
+        case .buy(let productId):
+            if let product = store.loadedProduct(id: productId) {
+                Button {
+                    Task { await store.purchase(product) }
+                } label: {
+                    HStack { Text("Buy"); Spacer(); Text(product.displayPrice).foregroundStyle(.secondary) }
+                }
+                .disabled(store.isPurchasing)
+            } else {
+                Text("Price unavailable right now. Check your connection and App Store sign-in.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        case .install:
+            Button("Install") { Task { await packs.install(entry); reloadLedgers() } }.disabled(busy)
+        case .update(let installedVersion):
+            Button("Update from v\(installedVersion)") { Task { await packs.install(entry); reloadLedgers() } }.disabled(busy)
+        case .installed:
+            Label("Installed", systemImage: "checkmark.circle").font(.caption).foregroundStyle(OGTheme.okLabel)
+        }
+    }
+
     // MARK: - Rows
 
     @ViewBuilder
     private func vaultRow(_ manifest: VaultManifest) -> some View {
         let ledger = ledgers[manifest.id] ?? VaultDocumentLedger()
+        let pack = VaultImporter.installedPack(for: manifest.id)
         VStack(alignment: .leading, spacing: 4) {
             Text(manifest.name)
             Text("\(manifest.id) · v\(manifest.version) · \(manifest.files.count) files")
                 .font(.caption).foregroundStyle(.secondary)
+            if let pack {
+                Text("Pack v\(pack.version)\(pack.author.map { " · by \($0)" } ?? "")")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
             if manifest.hasDocuments {
                 ForEach(manifest.documents, id: \.file) { document in
                     HStack(spacing: 6) {
@@ -143,12 +236,14 @@ struct VaultManagerView: View {
             }
         }
         .swipeActions(edge: .leading) {
-            Button {
-                exportVault(manifest)
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+            if VaultExporter.isExportable(manifest) {
+                Button {
+                    exportVault(manifest)
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .tint(AppAccent.color)
             }
-            .tint(AppAccent.color)
         }
     }
 

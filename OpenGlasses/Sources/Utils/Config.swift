@@ -2005,6 +2005,16 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "skillPackCatalogURL")
     }
 
+    /// Signed vault-pack catalog URL (Plan EG). Same envelope, same key, a second index file.
+    static var vaultPackCatalogURL: String {
+        UserDefaults.standard.string(forKey: "vaultPackCatalogURL")
+            ?? "https://straff2002.github.io/OpenGlasses/vaultpacks/catalog.json"
+    }
+
+    static func setVaultPackCatalogURL(_ url: String) {
+        UserDefaults.standard.set(url, forKey: "vaultPackCatalogURL")
+    }
+
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
     /// index verification.
     static var skillPackDevModeEnabled: Bool {

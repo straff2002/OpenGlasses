@@ -20,7 +20,7 @@ enum FieldAssistEntitlementEvidence: Equatable, Sendable {
     /// An organization license code whose signature and feature claim verified. `licenseIDHash`
     /// identifies which code granted access without carrying the code itself.
     /// `expiration` is the signed expiry claim (nil = perpetual); `tier` the signed tier claim.
-    case verifiedOrganizationLicense(licenseIDHash: String, expiration: Date?, tier: FieldAssistTier = .team)
+    case verifiedOrganizationLicense(licenseIDHash: String, expiration: Date?, tier: FieldAssistTier = .team, packs: [String] = [])
 
     #if DEBUG
     /// Internal-build convenience. Compiled out of Release, so no shipped code path can construct
@@ -32,18 +32,25 @@ enum FieldAssistEntitlementEvidence: Equatable, Sendable {
     var expiration: Date? {
         switch self {
         case .verifiedStoreProduct(_, let expiration): return expiration
-        case .verifiedOrganizationLicense(_, let expiration, _): return expiration
+        case .verifiedOrganizationLicense(_, let expiration, _, _): return expiration
         #if DEBUG
         case .internalDeveloper: return nil
         #endif
         }
     }
 
+    /// Vault packs this evidence includes by licence key (Plan EG). Store products never carry
+    /// packs — a pack purchase is its own product.
+    var packs: [String] {
+        if case .verifiedOrganizationLicense(_, _, _, let packs) = self { return packs }
+        return []
+    }
+
     /// The tier this evidence grants.
     var tier: FieldAssistTier {
         switch self {
         case .verifiedStoreProduct: return .solo
-        case .verifiedOrganizationLicense(_, _, let tier): return tier
+        case .verifiedOrganizationLicense(_, _, let tier, _): return tier
         #if DEBUG
         case .internalDeveloper: return .enterprise
         #endif
@@ -54,7 +61,7 @@ enum FieldAssistEntitlementEvidence: Equatable, Sendable {
     var source: FieldAssistEntitlementDecision.Source {
         switch self {
         case .verifiedStoreProduct(let productID, _): return .storeProduct(productID: productID)
-        case .verifiedOrganizationLicense(let hash, _, _): return .organizationLicense(licenseIDHash: hash)
+        case .verifiedOrganizationLicense(let hash, _, _, _): return .organizationLicense(licenseIDHash: hash)
         #if DEBUG
         case .internalDeveloper: return .internalDeveloper
         #endif

@@ -20,6 +20,7 @@ final class VerifiedStorePurchaseRecorder: @unchecked Sendable {
 
     private let lock = NSLock()
     private var stored: [FieldAssistEntitlementEvidence] = []
+    private var storedPackProducts: Set<String> = []
 
     init() {}
 
@@ -34,6 +35,20 @@ final class VerifiedStorePurchaseRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         stored = products.map { .verifiedStoreProduct(productID: $0.productID, expiration: $0.expiration) }
+    }
+
+    /// Vault-pack purchases observed verified and unrevoked this check (Plan EG). Kept apart from
+    /// the Field Assist evidence: a pack is nothing without the feature and grants no tier.
+    func recordPackProducts(_ ids: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        storedPackProducts = ids
+    }
+
+    var packProductIds: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPackProducts
     }
 
     /// Drop the record — no entitling transaction was found, or it was revoked.
@@ -84,7 +99,8 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
                 set.evidence.append(.verifiedOrganizationLicense(
                     licenseIDHash: Self.licenseIDHash(for: raw),
                     expiration: payload.expires,
-                    tier: payload.resolvedTier))
+                    tier: payload.resolvedTier,
+                    packs: payload.packs ?? []))
             } else {
                 set.hasUnverifiableLicense = true
             }
@@ -168,6 +184,15 @@ final class FieldAssistEntitlement: @unchecked Sendable {
     }
 
     var isGranted: Bool { decision().isGranted }
+
+    /// Vault packs every live licence includes (Plan EG).
+    func grantedPacks() -> Set<String> {
+        lock.lock()
+        let provider = storedProvider
+        let now = storedClock()
+        lock.unlock()
+        return FieldAssistEntitlementEvaluator.livePacks(provider.evidence(), now: now)
+    }
 
     /// Whether the current evidence covers a capability that needs `required`.
     func isGranted(atLeast required: FieldAssistTier) -> Bool {

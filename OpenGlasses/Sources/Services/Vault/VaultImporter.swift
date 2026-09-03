@@ -218,6 +218,25 @@ enum VaultImporter {
         return ledger
     }
 
+    // MARK: - Packs (Plan EG)
+
+    /// Record the pack a vault was installed from, beside its baseline, so the registry can
+    /// resolve the pack's licence key and the Packs list can tell an update from a reinstall.
+    static func recordPack(_ pack: VaultPackManifest, for id: String) throws {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(pack).write(to: url, options: .atomic)
+    }
+
+    /// The pack an installed vault came from, or nil for a customer folder or a bundled vault.
+    static func installedPack(for id: String) -> VaultPackManifest? {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(VaultPackManifest.self, from: data)
+    }
+
     /// The ledger for an installed vault (empty when it has never synced documents).
     static func documentLedger(for id: String) -> VaultDocumentLedger {
         VaultDocumentLedger.load(from: overlayDirectory(for: id))

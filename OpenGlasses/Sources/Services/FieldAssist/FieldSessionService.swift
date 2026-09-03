@@ -89,7 +89,12 @@ final class FieldSessionService: ObservableObject {
         logger = newLogger
         // The audit record says what entitled the session — a pilot export must read as a pilot.
         let entitlement = FieldAssistEntitlement.shared.decision().auditLabel
-        newLogger.appendLifecycle(.sessionStarted, note: "vault=\(vaultId), mode=\(mode.rawValue), asset=\(assetId ?? "-"), entitlement=\(entitlement)")
+        var note = "vault=\(vaultId), mode=\(mode.rawValue), asset=\(assetId ?? "-"), entitlement=\(entitlement)"
+        if let pack = VaultImporter.installedPack(for: vaultId) {
+            // An exported record says whose knowledge it drew on (Plan EG).
+            note += ", pack=\(pack.id)@\(pack.version), author=\(pack.author ?? "-")"
+        }
+        newLogger.appendLifecycle(.sessionStarted, note: note)
         EscalationCoordinator.shared.reset()
         lastResumeAt = Date()
         history.insert(session, at: 0)
