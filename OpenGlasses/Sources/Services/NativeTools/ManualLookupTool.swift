@@ -110,6 +110,8 @@ final class ManualLookupTool: NativeTool {
             documentStore.query(q, limit: limit, namespace: namespace, documentIds: documentIds)
         }, tokenSearch: { token, limit in
             documentStore.passages(containingToken: token, namespace: namespace, documentIds: documentIds, limit: limit)
+        }, provenance: { documentId in
+            documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
         }, policy: session.retrievalPolicy)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText,
                                                procedureStep: nil, limit: session.manualPassageLimit))

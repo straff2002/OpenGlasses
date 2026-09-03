@@ -40,6 +40,12 @@ struct VaultRetriever {
         let score: Float
         /// Code-like tokens from the request found verbatim in this passage.
         let matchedTokens: [String]
+        /// The passage's document was read, at least in part, by recognition rather than a text
+        /// layer. Numbers are where recognition fails quietly, so the reader is told.
+        var recognisedFromScan: Bool = false
+
+        /// The sentence appended to a recognised passage's citation.
+        static let provenanceNote = "(text recognised from a scan; verify figures against the printed page)"
 
         /// Machine-attached citation: title, page, section. Never something the model recalled.
         var citation: String {
@@ -55,14 +61,20 @@ struct VaultRetriever {
     /// "ZX9" has no word vector, so without this a fault-code query would retrieve nothing.
     typealias TokenSearch = (_ token: String, _ limit: Int) -> [DocumentStore.Passage]
 
+    /// Whether a document (by id) was read by recognition. Nil means "unknown", treated as no.
+    typealias Provenance = (_ documentId: String) -> Bool
+
     var query: QueryFunction
     var tokenSearch: TokenSearch?
+    var provenance: Provenance?
     var policy = RetrievalEvidencePolicy()
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
+         provenance: Provenance? = nil,
          policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy()) {
         self.query = query
         self.tokenSearch = tokenSearch
+        self.provenance = provenance
         self.policy = policy
     }
 
@@ -115,7 +127,8 @@ struct VaultRetriever {
         let boost = min(policy.maxBoost, policy.tokenBoost * Float(matched.count))
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
-                       similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched)
+                       similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,
+                       recognisedFromScan: provenance?(raw.documentId) ?? false)
     }
 
     // MARK: - Rendering
@@ -126,7 +139,7 @@ struct VaultRetriever {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.text)\nSource: \(p.citation)"
+                "[\(i + 1)] \(p.text)\nSource: \(p.citation)\(p.recognisedFromScan ? " " + Passage.provenanceNote : "")"
             }.joined(separator: "\n\n")
             return """
             MANUAL PASSAGES (retrieved for this turn — the only reference material available beyond the vault core; \
@@ -144,7 +157,7 @@ struct VaultRetriever {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.text)\nSource: \(p.citation)"
+                "[\(i + 1)] \(p.text)\nSource: \(p.citation)\(p.recognisedFromScan ? " " + Passage.provenanceNote : "")"
             }.joined(separator: "\n\n")
             return "Manual passages for '\(query)' — answer using only these and cite each Source line you rely on:\n\n\(body)"
         case .insufficient(let reason):

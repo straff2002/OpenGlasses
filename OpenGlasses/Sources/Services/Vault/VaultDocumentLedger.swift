@@ -15,6 +15,24 @@ struct VaultDocumentLedger: Codable, Equatable {
         let documentId: String
         let contentHash: String
         let chunkCount: Int
+        /// Pages read by recognition rather than a text layer; nil on entries written before
+        /// scanned import existed (which means zero).
+        let ocrPages: Int?
+        /// Of the recognised pages, how many fell below the confidence floor.
+        let lowConfidencePages: Int?
+
+        init(file: String, title: String, documentId: String, contentHash: String, chunkCount: Int,
+             ocrPages: Int? = nil, lowConfidencePages: Int? = nil) {
+            self.file = file
+            self.title = title
+            self.documentId = documentId
+            self.contentHash = contentHash
+            self.chunkCount = chunkCount
+            self.ocrPages = ocrPages
+            self.lowConfidencePages = lowConfidencePages
+        }
+
+        var usedRecognition: Bool { (ocrPages ?? 0) > 0 }
     }
 
     /// What the manifest wants installed, with the hash of the file as it is on disk now.

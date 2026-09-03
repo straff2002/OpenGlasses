@@ -1,6 +1,19 @@
 # Plan EF — Scanned Manual Import (OCR for PDFs without a text layer)
 
-**Status:** 📋 Planned 2026-09-03
+**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green; oldest-phone timing with a
+real scanned OEM manual pending). What landed: `ScannedPageReader` seam with a Vision-backed
+production reader; `VaultDocumentExtractor` decides per page (text layer where one exists, the
+reader where not), keeps physical page numbers, and reports `ocrPages` / `lowConfidencePages`;
+`ScanRenderPolicy` (200 dpi, 150 under thermal pressure, confidence floor 0.5) and
+`PDFPageRasterizer` with a pixel cap; `OCRCheckpoint` keyed by content hash so an interrupted scan
+resumes; the validator warns with page counts instead of refusing; the importer records
+`vault_document_ocr` as the source type and the ledger carries the page counts; retrieval appends
+a provenance note to recognised passages in both the prompt block and tool results; the Custom
+Vaults row shows pages read by recognition and low-confidence pages, with a per-page progress
+line during import. **Added beyond the draft:** `Scripts/extract-manual-text.swift`, a Mac-side
+extractor (PDFKit + Vision) that writes Markdown with "Page N" markers the chunker reads as page
+boundaries — so a pack author or a customer with a Mac can pre-extract once and the phone never
+pays for recognition; verified on a mixed text/scan fixture.
 **Origin:** Plan ED's P3 item, promoted to its own plan. The vault-building guide tells an author to
 test every PDF by selecting a sentence; the ones that fail that test are exactly the manuals a
 service company has most of — older OEM books that exist only as scans, photocopies, and the
@@ -116,9 +129,10 @@ on the oldest supported one. A 300-page scanned manual is minutes, not seconds, 
 
 ## Open questions
 
-- Whether to OCR the bundled vaults' future PDFs at pack-build time (Plan EG) so a pack ships
-  with text already extracted and the phone never pays the cost. Likely yes for packs, since the
-  pack author has a Mac.
+- Resolved: pre-extraction is the primary path for packs and for any author with a Mac —
+  `Scripts/extract-manual-text.swift` ships with this plan; on-phone recognition is the fallback
+  for a customer importing a scan directly. Whether a pack may *redistribute* extracted OEM text
+  is Plan EG's licensing question, not a technical one.
 - Language: Vision's recogniser is per-language; a French-language scan for a Canadian customer
   wants `["fr", "en"]`. A per-vault `language` manifest field serves both this plan and ED's
   embedding question.

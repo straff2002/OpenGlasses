@@ -15,6 +15,8 @@ struct VaultManagerView: View {
     @State private var successMessage: String?
     @State private var warnings: [String] = []
     @State private var syncProgress: (vaultId: String, title: String, completed: Int, total: Int)?
+    /// Recognition runs before chunking for a scanned manual and is the slow part; it gets its own line.
+    @State private var recognitionProgress: (title: String, done: Int, total: Int)?
     @State private var shareItem: ShareItem?
 
     /// Custom vaults are a team capability; the import button says so instead of failing later.
@@ -58,8 +60,15 @@ struct VaultManagerView: View {
             if let syncProgress {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Indexing \(syncProgress.title)…")
-                        ProgressView(value: Double(syncProgress.completed), total: Double(max(syncProgress.total, 1)))
+                        if let recognitionProgress, recognitionProgress.done < recognitionProgress.total {
+                            Text("Reading \(recognitionProgress.title) — page \(recognitionProgress.done + 1) of \(recognitionProgress.total) by recognition…")
+                            ProgressView(value: Double(recognitionProgress.done), total: Double(max(recognitionProgress.total, 1)))
+                            Text("Scanned pages are read on this phone. Keep the app open; an interrupted read resumes where it stopped.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        } else {
+                            Text("Indexing \(syncProgress.title)…")
+                            ProgressView(value: Double(syncProgress.completed), total: Double(max(syncProgress.total, 1)))
+                        }
                     }
                 }
             }
@@ -116,9 +125,9 @@ struct VaultManagerView: View {
                             .font(.caption)
                         Spacer()
                         if let entry = ledger.entries.first(where: { $0.file == document.file }) {
-                            Text("\(entry.chunkCount) sections")
+                            Text(Self.entrySummary(entry))
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle((entry.lowConfidencePages ?? 0) > 0 ? OGTheme.errorLabel : .secondary)
                         } else {
                             Text("not indexed")
                                 .font(.caption2)
@@ -141,6 +150,18 @@ struct VaultManagerView: View {
             }
             .tint(AppAccent.color)
         }
+    }
+
+    /// "412 sections · 38 pages read by recognition · 3 low confidence".
+    static func entrySummary(_ entry: VaultDocumentLedger.Entry) -> String {
+        var parts = ["\(entry.chunkCount) sections"]
+        if let ocr = entry.ocrPages, ocr > 0 {
+            parts.append("\(ocr) page\(ocr == 1 ? "" : "s") read by recognition")
+            if let low = entry.lowConfidencePages, low > 0 {
+                parts.append("\(low) low confidence")
+            }
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Actions
@@ -186,11 +207,19 @@ struct VaultManagerView: View {
 
     private func sync(_ manifest: VaultManifest) async {
         syncProgress = (manifest.id, manifest.documents.first?.title ?? manifest.name, 0, 1)
-        defer { syncProgress = nil }
+        recognitionProgress = nil
+        defer { syncProgress = nil; recognitionProgress = nil }
         do {
-            let ledger = try await VaultImporter.syncDocuments(manifest: manifest, into: appState.documentStore) { title, completed, total in
-                syncProgress = (manifest.id, title, completed, total)
-            }
+            let ledger = try await VaultImporter.syncDocuments(
+                manifest: manifest, into: appState.documentStore,
+                renderPolicy: ScanRenderPolicy(),
+                progress: { title, completed, total in
+                    recognitionProgress = nil
+                    syncProgress = (manifest.id, title, completed, total)
+                },
+                recognitionProgress: { title, done, total in
+                    recognitionProgress = (title, done, total)
+                })
             ledgers[manifest.id] = ledger
             let sections = ledger.entries.reduce(0) { $0 + $1.chunkCount }
             successMessage = "Indexed \(ledger.entries.count) manual\(ledger.entries.count == 1 ? "" : "s") for \(manifest.name) (\(sections) sections)."
