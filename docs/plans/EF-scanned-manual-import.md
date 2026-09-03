@@ -129,10 +129,13 @@ on the oldest supported one. A 300-page scanned manual is minutes, not seconds, 
 
 ## Open questions
 
-- Resolved: pre-extraction is the primary path for packs and for any author with a Mac —
-  `Scripts/extract-manual-text.swift` ships with this plan; on-phone recognition is the fallback
-  for a customer importing a scan directly. Whether a pack may *redistribute* extracted OEM text
-  is Plan EG's licensing question, not a technical one.
+- Resolved: pre-extraction is the primary path for packs. Three routes, in the guide's order:
+  on-phone recognition for a customer importing a scan directly; any free OCR tool that writes a
+  searchable PDF (OCRmyPDF, Acrobat, a scanner driver) on Windows, Mac or Linux — the PDF then
+  takes the ordinary text-layer path with no recognition on the phone; and
+  `Scripts/extract-manual-text.swift` on a Mac for authors who want editable Markdown, fetched
+  from the public repository since it does not ship in the app. Whether a pack may *redistribute*
+  extracted OEM text is Plan EG's licensing question, not a technical one.
 - Language: Vision's recogniser is per-language; a French-language scan for a Canadian customer
   wants `["fr", "en"]`. A per-vault `language` manifest field serves both this plan and ED's
   embedding question.
