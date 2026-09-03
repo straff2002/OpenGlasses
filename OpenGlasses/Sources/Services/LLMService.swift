@@ -2067,7 +2067,7 @@ class LLMService: ObservableObject {
         if let failure = accumulator.failureMessage {
             throw LLMError.apiError(provider: "ChatGPT", statusCode: 200, message: failure)
         }
-        guard let completed = accumulator.completedResponse else {
+        guard let completed = accumulator.effectiveResponse else {
             throw LLMError.invalidResponse("ChatGPT (stream ended without completion)")
         }
         return completed
