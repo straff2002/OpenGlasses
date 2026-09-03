@@ -2,7 +2,7 @@
 
 *OpenGlasses Field Assist · applies to September 2026 builds with the manual tier · team licence required · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
 
-A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the iPhone, and import it once.
+A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 
 ## What you are building
 
@@ -245,9 +245,27 @@ Edit the folder on the computer, bump `version`, and import again with the same 
 | `no terminal step is reachable` | Give the procedure at least one step with `"terminal": true` that the entry step can reach. |
 | `core files total … characters (budget 32768)` | Warning only. Move the long material into a document. |
 
-## Turning a vault into a pack
+## Sharing a vault: three situations
 
-Once a vault has proved itself with your own crews, the parts you authored — the core files and the procedures — can be published as a **pack** that other Field Assist users install from the app's Packs list, and that a team licence can include for a whole organisation. A pack never contains manufacturer manuals; a customer who installs your pack adds their own manuals to it exactly as described above. What you are publishing is your fault-code tables, nameplate decoding, safety rules and diagnostics, which is where your field knowledge lives.
+Most of this guide assumes you are building a vault for your own technicians. Two other situations come up, and they work differently. Decide which one you are in before you start.
+
+### 1 · Your own crew
+
+You build one vault, your manuals included, and put it on the phones your technicians carry. Nothing changes; this is the path the rest of the guide describes.
+
+### 2 · Building a vault for a customer
+
+Here you assemble the whole vault for one customer: their core files, their manuals, their procedures. You test it, then you hand it over finished. Their technicians do not each repeat the work; one person prepares the manuals once and everyone else uses the result.
+
+The manuals in such a vault are normally the customer's own. They already hold them through their OEM portal access, their dealer relationship, or the equipment itself. What you are providing is the assembly, the text extraction and the testing. If you intend to reuse one master set of manuals across several customers, that is redistribution and it needs the manufacturer's permission, so check your agreements first.
+
+Delivery today is by hand. You install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. An enrolment profile that installs the pack, the manuals and the configuration together from one scan is planned, so this step gets shorter.
+
+### 3 · Publishing a pack
+
+The parts you authored, the core files and the procedures, can be published as a **pack** that other Field Assist users install from the app's Packs list, and that a team licence can include for a whole organisation. What you are publishing is your fault-code tables, nameplate decoding, safety rules and diagnostics, which is where your field knowledge lives.
+
+> **A pack must never contain manufacturer manuals.** It goes into a catalog anyone can install from, so everything inside it is copied to people you have never met. Keep the manuals out. A customer who installs your pack pairs it with manuals from their own vault, or from a vault you built for them as in situation 2.
 
 To prepare one:
 
