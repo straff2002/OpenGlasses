@@ -176,9 +176,19 @@ final class FieldSessionService: ObservableObject {
 
     // MARK: - Prompt context
 
+    /// Where a vault's reference-tier documents live. Injected by `AppState`; nil in headless
+    /// contexts, in which case the manual block is simply absent.
+    var documentStore: DocumentStore?
+    /// The evidence gate for per-turn manual retrieval. Injectable so tests can pin the floor.
+    var retrievalPolicy = RetrievalEvidencePolicy()
+    /// How many manual passages a turn may carry.
+    var manualPassageLimit = 4
+
     /// System-prompt addendum for the active session, or nil when no session is active.
-    /// Hooked into `LLMService.buildSystemPrompt`.
-    func promptContext() -> String? {
+    /// Hooked into `LLMService.buildSystemPrompt`. When the vault declares a reference tier and
+    /// `turn` is given, the passages retrieved for that turn ride along — or an explicit statement
+    /// that nothing did, so the model cannot fall back to general knowledge silently.
+    func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
         var context = VaultPromptBuilder.promptContext(for: store)
         if let runner {
@@ -187,7 +197,39 @@ final class FieldSessionService: ObservableObject {
                 context = (context.map { $0 + "\n\n" } ?? "") + procedureContext
             }
         }
+        if let manuals = manualPassagesContext(turn: turn, store: store) {
+            context = (context.map { $0 + "\n\n" } ?? "") + manuals
+        }
         return context
+    }
+
+    /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has no reference tier, nothing
+    /// has been ingested for it, or there is no turn to retrieve against.
+    func manualPassagesContext(turn: String?, store: VaultStore) -> String? {
+        guard store.manifest.hasDocuments, let documentStore,
+              let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
+        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
+        guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        let outcome = manualRetriever(store: store).retrieve(
+            .init(turn: turn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+        return VaultRetriever.promptBlock(outcome)
+    }
+
+    /// A retriever scoped to the active vault's namespace, or nil when there is no store.
+    func manualRetriever(store: VaultStore) -> VaultRetriever {
+        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
+        let documentStore = self.documentStore
+        return VaultRetriever(query: { query, limit in
+            documentStore?.query(query, limit: limit, namespace: namespace) ?? []
+        }, tokenSearch: { token, limit in
+            documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
+        }, policy: retrievalPolicy)
+    }
+
+    /// Whether the active vault has manuals available to search.
+    var activeVaultHasManuals: Bool {
+        guard let store = activeVault, store.manifest.hasDocuments, let documentStore else { return false }
+        return documentStore.documentCount(namespace: DocumentStore.vaultNamespace(store.manifest.id)) > 0
     }
 
     /// Whether a session is currently active and accepting input.

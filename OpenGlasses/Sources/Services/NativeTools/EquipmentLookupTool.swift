@@ -43,17 +43,27 @@ final class EquipmentLookupTool: NativeTool {
 
     private let cameraService: CameraService?
     private let ocr: OCRService
+    /// Reference-tier fall-through: a code that lives only in an imported manual resolves here
+    /// after the markdown core misses. Nil when no store was wired (headless contexts).
+    private let documentStore: DocumentStore?
+    /// Session to read the active vault from; nil means the shared service. Injectable for tests.
+    private let injectedSession: FieldSessionService?
 
-    init(cameraService: CameraService? = nil, ocr: OCRService = OCRService()) {
+    init(cameraService: CameraService? = nil, ocr: OCRService = OCRService(),
+         documentStore: DocumentStore? = nil, sessionService: FieldSessionService? = nil) {
         self.cameraService = cameraService
         self.ocr = ocr
+        self.documentStore = documentStore
+        self.injectedSession = sessionService
     }
+
+    private var session: FieldSessionService { injectedSession ?? .shared }
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
-        guard let store = FieldSessionService.shared.activeVault else {
+        guard let store = session.activeVault else {
             return "No active Field Assist session. Start a session to search its vault."
         }
 
@@ -69,8 +79,28 @@ final class EquipmentLookupTool: NativeTool {
             return await lookupViaCamera(store: store, restrictTo: restrictTo)
         }
 
-        return search(query: query!, store: store, restrictTo: restrictTo)
-            ?? "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail, or recommend escalation rather than guessing."
+        if let hit = search(query: query!, store: store, restrictTo: restrictTo) { return hit }
+        if let manual = manualFallback(query: query!, ocrText: nil, store: store) { return manual }
+        return "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail, or recommend escalation rather than guessing."
+    }
+
+    // MARK: - Reference-tier fall-through
+
+    /// Search the vault's imported manuals when the markdown core has nothing. Returns nil when the
+    /// vault has no reference tier, nothing is ingested, or the evidence gate says insufficient —
+    /// the caller's own miss message is the right answer then.
+    private func manualFallback(query: String?, ocrText: String?, store: VaultStore) -> String? {
+        guard store.manifest.hasDocuments, let documentStore else { return nil }
+        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
+        guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        let retriever = VaultRetriever(query: { q, limit in
+            documentStore.query(q, limit: limit, namespace: namespace)
+        }, tokenSearch: { token, limit in
+            documentStore.passages(containingToken: token, namespace: namespace, limit: limit)
+        }, policy: session.retrievalPolicy)
+        let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText, limit: 3))
+        guard outcome.isSufficient else { return nil }
+        return VaultRetriever.toolResult(outcome, query: query ?? "the label")
     }
 
     // MARK: - Camera path
@@ -103,27 +133,18 @@ final class EquipmentLookupTool: NativeTool {
         }
 
         if matches.isEmpty {
+            if let manual = manualFallback(query: nil, ocrText: ocrText, store: store) {
+                return "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n\(manual)"
+            }
             return "Read this from the label via camera:\n\(ocrText)\n\n[No exact vault match. Identify the code/model from the text above and look it up, or ask the technician to confirm.]"
         }
         return render(Array(matches.prefix(3)), prefix: "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n")
     }
 
-    /// Extract plausible code/model tokens from OCR text: alphanumeric, 2–14 chars, containing at
-    /// least one digit or being short uppercase (e.g. "E5", "30RB", "T02", "DAIKIN").
-    /// Internal for testing.
+    /// Plausible code/model tokens from OCR text — shared with manual retrieval via `CodeTokenizer`
+    /// so both agree on what a code looks like. Kept as an instance method for existing callers.
     func candidateTokens(from text: String) -> [String] {
-        let raw = text.components(separatedBy: CharacterSet.alphanumerics.inverted)
-        var seen = Set<String>()
-        var tokens: [String] = []
-        for token in raw {
-            let t = token.trimmingCharacters(in: .whitespaces)
-            guard t.count >= 2, t.count <= 14 else { continue }
-            let hasDigit = t.contains { $0.isNumber }
-            let isShortAlpha = t.count <= 8 && t.allSatisfy { $0.isLetter }
-            guard hasDigit || isShortAlpha else { continue }
-            if seen.insert(t.uppercased()).inserted { tokens.append(t) }
-        }
-        return tokens
+        CodeTokenizer.candidateTokens(from: text)
     }
 
     // MARK: - Search

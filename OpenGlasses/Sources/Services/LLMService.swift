@@ -434,7 +434,7 @@ class LLMService: ObservableObject {
         }
         // Inject Field Assist vault content when a session is active.
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
-        if let vaultContext = FieldSessionService.shared.promptContext() {
+        if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
             prompt += "\n\n\(vaultContext)"
         }
         // Inject the active project's knowledge-base grounding when it has documents (Plan AN).

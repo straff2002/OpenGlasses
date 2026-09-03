@@ -136,6 +136,21 @@ final class DocumentStore: ObservableObject {
         return Array(scored.sorted { $0.similarity > $1.similarity }.prefix(limit))
     }
 
+    /// Passages containing `token` as a whole word (case-insensitive), optionally scoped. No
+    /// embedding involved — this is how a bare fault code or model number reaches a passage when
+    /// the embedder has no vector for it. Ordered by document then chunk so results are stable.
+    func passages(containingToken token: String, namespace: String? = nil,
+                  documentIds: [String]? = nil, limit: Int = 8) -> [Passage] {
+        guard !token.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        let rows = fetchChunks(namespace: namespace, documentIds: documentIds)
+            .filter { CodeTokenizer.contains($0.text, token: token) }
+            .sorted { ($0.documentName, $0.chunkIndex) < ($1.documentName, $1.chunkIndex) }
+        return rows.prefix(max(limit, 1)).map {
+            Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
+                    text: $0.text, similarity: 0, page: $0.page, section: $0.section)
+        }
+    }
+
     func list() -> [DocumentRef] { documents }
 
     /// Documents in a single namespace (project scope, Plan AN).
@@ -192,6 +207,26 @@ final class DocumentStore: ObservableObject {
         refresh()
         PrivacyLog.store(.ragDocuments, .cleared)
     }
+
+    /// Delete every document in one namespace and nothing outside it. The consumer surfaces
+    /// operate on their own namespaces; a Field Assist vault's manuals live in `vault:<id>` and
+    /// must never be swept by a personal-documents clear.
+    func clear(namespace: String) {
+        let ns = escapedSQL(namespace)
+        exec("DELETE FROM doc_chunks WHERE document_id IN (SELECT id FROM documents WHERE namespace = '\(ns)')")
+        exec("DELETE FROM documents WHERE namespace = '\(ns)'")
+        refresh()
+        PrivacyLog.store(.ragDocuments, .cleared)
+    }
+
+    // MARK: - Vault namespaces
+
+    nonisolated static let vaultNamespacePrefix = "vault:"
+
+    /// Namespace holding a Field Assist vault's reference-tier documents.
+    nonisolated static func vaultNamespace(_ vaultId: String) -> String { vaultNamespacePrefix + vaultId }
+
+    nonisolated static func isVaultNamespace(_ namespace: String) -> Bool { namespace.hasPrefix(vaultNamespacePrefix) }
 
     // MARK: - Embedding migration
 

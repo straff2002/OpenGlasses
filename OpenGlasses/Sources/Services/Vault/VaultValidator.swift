@@ -8,15 +8,28 @@ enum VaultValidator {
     struct Result {
         let manifest: VaultManifest?
         let issues: [String]
+        /// Advisory only — the pack still installs. Surfaced so an author sees them where they can act.
+        let warnings: [String]
         var isValid: Bool { issues.isEmpty }
+
+        init(manifest: VaultManifest?, issues: [String], warnings: [String] = []) {
+            self.manifest = manifest
+            self.issues = issues
+            self.warnings = warnings
+        }
     }
 
     /// Minimum grounding rules every vault must keep, regardless of what the uploaded manifest says.
     static let requiredRuleThemes = ["fabricate", "cite"]
 
+    /// Core-tier size above which the validator warns. The core is loaded whole into every turn's
+    /// system prompt; content past this point belongs in the reference tier (`documents`).
+    static let coreBudgetCharacters = 32_768
+
     /// Validate a directory laid out like a bundled vault.
     static func validate(directory: URL) -> Result {
         var issues: [String] = []
+        var warnings: [String] = []
         let fm = FileManager.default
 
         let manifestURL = directory.appendingPathComponent("manifest.json")
@@ -28,7 +41,9 @@ enum VaultValidator {
         }
 
         if manifest.id.trimmingCharacters(in: .whitespaces).isEmpty { issues.append("manifest id is empty") }
-        if manifest.files.isEmpty { issues.append("manifest lists no files") }
+        if manifest.files.isEmpty && manifest.documents.isEmpty {
+            issues.append("manifest lists no files and no documents")
+        }
         if manifest.promptRules.isEmpty {
             issues.append("manifest must include prompt_rules (grounding discipline)")
         } else {
@@ -39,6 +54,7 @@ enum VaultValidator {
         }
 
         // Files present and non-empty.
+        var coreCharacters = 0
         for file in manifest.files {
             let url = directory.appendingPathComponent(file)
             guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
@@ -46,6 +62,30 @@ enum VaultValidator {
             }
             if contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 issues.append("listed file is empty: \(file)")
+            }
+            coreCharacters += contents.count
+        }
+        if coreCharacters > coreBudgetCharacters {
+            warnings.append("core files total \(coreCharacters) characters (budget \(coreBudgetCharacters)); the core is loaded into every turn — move manuals and long references to 'documents' so they are retrieved instead")
+        }
+
+        // Reference documents: present, supported, and extractable.
+        var seenDocumentFiles = Set<String>()
+        for document in manifest.documents {
+            if document.title.trimmingCharacters(in: .whitespaces).isEmpty {
+                issues.append("document has no title: \(document.file)")
+            }
+            if !seenDocumentFiles.insert(document.file).inserted {
+                issues.append("document listed twice: \(document.file)")
+            }
+            let url = directory.appendingPathComponent(manifest.documentRelativePath(document))
+            guard fm.fileExists(atPath: url.path) else {
+                issues.append("listed document missing: \(manifest.documentRelativePath(document))"); continue
+            }
+            do {
+                _ = try VaultDocumentExtractor.extract(from: url)
+            } catch {
+                issues.append("document cannot be imported — \(error.localizedDescription)")
             }
         }
 
@@ -63,7 +103,7 @@ enum VaultValidator {
             }
         }
 
-        return Result(manifest: manifest, issues: issues)
+        return Result(manifest: manifest, issues: issues, warnings: warnings)
     }
 
     /// Validate one procedure's step graph: entry resolves, all branch/default targets resolve,
