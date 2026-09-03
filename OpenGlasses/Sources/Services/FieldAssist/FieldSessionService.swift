@@ -225,6 +225,8 @@ final class FieldSessionService: ObservableObject {
             documentStore?.query(query, limit: limit, namespace: namespace) ?? []
         }, tokenSearch: { token, limit in
             documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
+        }, provenance: { documentId in
+            documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
         }, policy: retrievalPolicy)
     }
 

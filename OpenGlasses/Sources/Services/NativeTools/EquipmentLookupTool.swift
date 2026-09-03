@@ -97,6 +97,8 @@ final class EquipmentLookupTool: NativeTool {
             documentStore.query(q, limit: limit, namespace: namespace)
         }, tokenSearch: { token, limit in
             documentStore.passages(containingToken: token, namespace: namespace, limit: limit)
+        }, provenance: { documentId in
+            documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
         }, policy: session.retrievalPolicy)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText, limit: 3))
         guard outcome.isSufficient else { return nil }

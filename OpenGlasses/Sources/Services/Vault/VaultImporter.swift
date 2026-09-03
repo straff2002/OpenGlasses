@@ -35,6 +35,16 @@ enum VaultImporter {
 
     /// Progress of a document sync: (document title, completed chunks, total chunks).
     typealias DocumentProgress = (_ title: String, _ completed: Int, _ total: Int) -> Void
+    /// Progress of recognising a scanned document's pages: (document title, pages done, pages to do).
+    typealias RecognitionProgress = (_ title: String, _ pagesDone: Int, _ pagesToDo: Int) -> Void
+
+    /// Source type recorded in the document store for a document any page of which was read by
+    /// recognition. Retrieval reads it back to mark those passages' provenance.
+    static let recognisedSourceType = "vault_document_ocr"
+
+    /// The reader used for pages without a text layer. Vision by default; nil disables recognition
+    /// (a scan then fails import the way it did before scanned import existed). Tests inject a fake.
+    nonisolated(unsafe) static var defaultScanReader: ScannedPageReader? = VisionScannedPageReader()
 
     /// `Documents/Vaults/_registry/` — where user vault manifests live for registry discovery.
     static var registryDirectory: URL {
@@ -142,7 +152,10 @@ enum VaultImporter {
                               into store: DocumentStore,
                               baseline: URL? = nil,
                               ledgerDirectory: URL? = nil,
-                              progress: DocumentProgress? = nil) async throws -> VaultDocumentLedger {
+                              scanReader: ScannedPageReader? = defaultScanReader,
+                              renderPolicy: ScanRenderPolicy = ScanRenderPolicy(),
+                              progress: DocumentProgress? = nil,
+                              recognitionProgress: RecognitionProgress? = nil) async throws -> VaultDocumentLedger {
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else { throw ImportError.notEntitled }
         let root = baseline ?? baselineDirectory(for: manifest.id)
         let ledgerDir = ledgerDirectory ?? overlayDirectory(for: manifest.id)
@@ -170,15 +183,24 @@ enum VaultImporter {
                 manifest.documents.first { $0.file == want.file } ?? VaultDocument(file: want.file, title: want.title)))
             let extracted: VaultDocumentExtractor.Extracted
             do {
-                extracted = try VaultDocumentExtractor.extract(from: url)
+                // Recognised pages are checkpointed under the content hash so an interrupted
+                // 300-page scan resumes where it stopped on the next sync.
+                extracted = try await VaultDocumentExtractor.extract(
+                    from: url, reader: scanReader, policy: renderPolicy,
+                    checkpoint: (
+                        load: { OCRCheckpoint.load(from: ledgerDir, contentHash: want.contentHash) },
+                        save: { try $0.save(to: ledgerDir) }
+                    ),
+                    progress: { done, total in recognitionProgress?(want.title, done, total) })
             } catch {
                 // Persist what succeeded so a partial sync is not repeated from scratch.
                 ledger.entries = entries
                 try? ledger.save(to: ledgerDir)
                 throw ImportError.documentFailed(error.localizedDescription)
             }
+            let sourceType = extracted.usedRecognition ? recognisedSourceType : "vault_document"
             let ref = await store.ingest(name: want.title, text: extracted.text,
-                                         sourceType: "vault_document", namespace: namespace) { done, total in
+                                         sourceType: sourceType, namespace: namespace) { done, total in
                 progress?(want.title, done, total)
             }
             guard let ref else {
@@ -186,8 +208,10 @@ enum VaultImporter {
                 try? ledger.save(to: ledgerDir)
                 throw ImportError.documentFailed("\(want.file) produced no chunks")
             }
+            OCRCheckpoint.remove(from: ledgerDir, contentHash: want.contentHash)
             entries.append(.init(file: want.file, title: want.title, documentId: ref.id,
-                                 contentHash: want.contentHash, chunkCount: ref.chunkCount))
+                                 contentHash: want.contentHash, chunkCount: ref.chunkCount,
+                                 ocrPages: extracted.ocrPages, lowConfidencePages: extracted.lowConfidencePages))
         }
         ledger.entries = entries
         try ledger.save(to: ledgerDir)

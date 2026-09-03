@@ -82,6 +82,16 @@ enum VaultValidator {
             guard fm.fileExists(atPath: url.path) else {
                 issues.append("listed document missing: \(manifest.documentRelativePath(document))"); continue
             }
+            // A scan is not a refusal: it is read by recognition at import, which is slow, so the
+            // author is told how much of it that covers and can find the original PDF first.
+            if let survey = VaultDocumentExtractor.survey(url), survey.needsRecognition {
+                if survey.pagesWithText == 0 {
+                    warnings.append("\(document.file) has no text layer on \(survey.pageCount) of \(survey.pageCount) pages; it will be read by on-device recognition at import, which takes several minutes for a long manual")
+                } else {
+                    warnings.append("\(document.file) has no text layer on \(survey.pagesWithoutText) of \(survey.pageCount) pages; those pages will be read by on-device recognition at import")
+                }
+                continue
+            }
             do {
                 _ = try VaultDocumentExtractor.extract(from: url)
             } catch {
