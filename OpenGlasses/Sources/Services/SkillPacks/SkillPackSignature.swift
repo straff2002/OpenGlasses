@@ -10,10 +10,16 @@ import CryptoKit
 /// developer mode, loudly labeled — that policy lives in `SkillPackStore`, not here.
 enum SkillPackSignature {
 
-    /// Production signing key (base64, Curve25519 raw representation), minted 2026-08-01 via
-    /// `Scripts/skillpack-sign.swift keygen`. The private half is held only by the vendor,
+    /// Production signing key (base64, Curve25519 raw representation), rotated 2026-09-03 via
+    /// `Scripts/skillpack-sign.swift keygen <file>`. The private half is held only by the vendor,
     /// alongside the Field Assist licensing key — it never ships in the app or the repo.
-    static let productionPublicKeyBase64 = "X01+yfa6ZRTOMpqrQpdZBlRc6ZyhksPaj+k961ocTy8="
+    ///
+    /// Rotated because the previous private key had been printed into terminal scrollback and chat
+    /// transcripts. No vault packs were published and only the two first-party skill packs existed,
+    /// so the blast radius was one app release: both catalogs and every pack were re-signed with
+    /// this key in the same change. `keygen` now writes the private half to a 0600 file and prints
+    /// only the public half — the printing was what lost the old key.
+    static let productionPublicKeyBase64 = "6fiA4lmBU5VBSOHRWGh9U73XbmMJA4wZnqCt0YU+o5g="
 
     /// The canonical byte string the signature covers: the manifest bytes, then one line per
     /// payload file — `sha256(path)=<hex>` — sorted by path. Deterministic by construction; any
