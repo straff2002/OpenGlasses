@@ -54,7 +54,7 @@ withdraw before the first team customer signs than after.
 ## Verified starting point
 
 - **The product is a non-consumable.** `MedicalCompliance.storekit` declares
-  `com.openglasses.field_assist` as `NonConsumable` (sandbox 149.99) and two Medical Compliance
+  `com.openglasses.field_assist` as `NonConsumable` and two Medical Compliance
   auto-renewing subscriptions in one group. `StoreKitService.checkSubscriptionStatus` handles the
   medical products with renewal info, grace period and auto-renew state; the Field Assist branch
   records `transaction.expirationDate`, which is always nil for a non-consumable.
@@ -175,29 +175,16 @@ record from a pilot says so.
 Org profile carries the licence; Managed App Configuration delivers it zero-touch; policy and
 entitlement keep separate expiry clocks. Nothing in P1–P4 has to be undone for it.
 
-## Pricing proposal
+## Pricing
 
-The plan docs have always left numbers to the vendor. These are the figures recommended to answer
-the first enquiry; change them here when decided. The principle: **price the team seat as
-software, not as a hosted service.** The 150–300 per-seat norms in [Plan F](F-field-assist.md)
-come from products that bundle infrastructure, support and an SLA; OpenGlasses has no server, the
-customer brings their own model key, and the partner delivers authoring and support and prices
-that layer themselves. A four-to-five-times multiple between a solo subscription and a business
-seat is ordinary for software, and it holds only because the team tier can do things solo cannot.
-
-| Item | Proposal | Per-month equivalent |
-|---|---|---|
-| Solo one-time | keep the App Store Connect price (sandbox shows USD 149.99); see the open question on withdrawing it | ≈ CAD 17 over a year |
-| Solo subscription | USD 19.99 monthly / USD 149.99 annual — annual equals the one-time so the choice is cash flow, not value | ≈ CAD 27 |
-| Team seat, list | CAD 120 per active technician per month, billed annually, 5-seat minimum | CAD 120 |
-| Team seat, partner wholesale | 30% off list → CAD 84; the partner sets their own end-customer price | CAD 84 |
-| Pilot | fixed fee (≈ CAD 5,000), up to 10 technicians, 90 days, vault authoring help and a weekly call; credited against year one on conversion | — |
-| Enterprise | contract; floor CAD 200 per technician per month for white-label, SLA, retention terms, self-hosted relay | CAD 200+ |
-| Model usage | customer's own provider key during the pilot; managed-usage add-on later | — |
-| Pack revenue share | 15% on a co-authored vertical pack sold outside the partner's territory; exclusivity only against a committed seat minimum | — |
-
-Worked example: twenty technicians through the partner at wholesale is ≈ CAD 20,000 a year to the
-vendor. Close to the figure the earlier plans quoted, but for a defensible reason.
+Numbers are set outside the repo and are not part of this plan. The model the code supports is the
+one the tier table above describes: a solo product on the App Store (one-time or subscription), an
+annual team licence issued by the vendor per organisation, a fixed-term pilot on the same code, and
+enterprise by contract. Two principles carried into the design and worth keeping when the numbers
+are set: the team seat is priced as software rather than as a hosted service (there is no server,
+the customer brings their own model key, and a partner delivers support), and the gap between a
+solo purchase and a team seat has to map to the capability gap in the tier table, or it invites
+arbitrage.
 
 ## Tests
 
@@ -239,8 +226,8 @@ vendor. Close to the figure the earlier plans quoted, but for a defensible reaso
   explaining a change of terms to them later.
 - Whether the annual subscription and the one-time purchase should be the same price (proposed
   yes while both are sold).
-- CAD pricing on the Canadian storefront: set per-storefront in App Store Connect or let Apple's
-  equalisation stand? Per-storefront is cleaner for a Canadian partner quoting in CAD.
+- Per-storefront pricing in App Store Connect versus Apple's equalisation, for a partner quoting in
+  their own currency.
 - Whether a `pilot` code should refuse `SessionExporter` PDF export (a pilot is evaluation, the
   export is the paid artefact) or leave export on so the pilot demonstrates it. Leaning leave it on:
   the export is the thing that sells the seat.
