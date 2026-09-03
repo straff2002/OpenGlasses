@@ -1,13 +1,13 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 📝 Revised 2026-09-03 — partner-configured edition (packs, tiers, EH issuance); still not scheduled
+**Status:** 📝 Revised 2026-09-03 — partner-configured edition (packs, tiers, EI issuance); still not scheduled
 **Depends on:** Plan F/licensing primitives (Ed25519 verification), Plan BX (signed-manifest +
 lossy-decode precedent), Plan BM P10 (`OwnerGateMachine`), Plan CD P1 (the onboarding-flag hazard),
 Plan EE (tiers on every piece of evidence, licence payload v2), Plan EG (vault packs, the `packs`
 claim, the signed catalog and its installer) — the last two shipped after this plan was drafted and
 are the reason for the revision
 **Related:** Plan CS (watch propagation), Plan CR P4 (enrolment endpoint, for the secrets half),
-Plan EH (who mints the code and the profile), Plans ED and EF (the documents tier an organisation
+Plan EI (who mints the code and the profile), Plans ED and EF (the documents tier an organisation
 loads its own manuals into)
 **Shape:** pure schema + applier first (P1), three ingress adapters (P2), onboarding + pack install +
 managed-state UI + watch propagation (P3), enrolment endpoint deferred (P4)
@@ -31,7 +31,7 @@ technician can widen. One scan standing in for a purchase, a licence code, an on
 vault import, a documents import and a dozen Settings toggles — and it is the same schema and the
 same applier as the museum, the ward and the training provider. What it adds to this plan is three
 things the draft predates: tiers and packs on the entitlement side (Plans EE and EG, both shipped),
-an issuance service that mints the artefact (Plan EH), and a ceiling deep enough to leave exactly one
+an issuance service that mints the artefact (Plan EI), and a ceiling deep enough to leave exactly one
 feature standing.
 
 The primitives for the fix are almost all already here:
@@ -328,7 +328,7 @@ Three consequences, stated as rules rather than left implicit:
   the correct outcome for a renewal that has lapsed, and a much better one than a vault that vanishes.
 - **Enterprise is not delegable, and a profile is where that would leak.** The registry's pack branch
   unlocks *every* pack at enterprise regardless of the `packs` claim, so an enterprise grant issued by
-  a partner would silently void per-partner pack accounting. Plan EH's partner record allows team only
+  a partner would silently void per-partner pack accounting. Plan EI's partner record allows team only
   for that reason, and a partner-issued profile therefore carries a team code. Enterprise stays a
   vendor contract, minted by the vendor.
 
@@ -391,9 +391,9 @@ After enrolment nothing needs the network to stay configured: the cached profile
 reachability matters only for the update check, which Plan EG runs at session start and never
 mid-session.
 
-### Where the profile and its code come from — Plan EH
+### Where the profile and its code come from — Plan EI
 
-A partner-configured edition needs somebody to mint it, and that is not this plan. Plan EH's issuance
+A partner-configured edition needs somebody to mint it, and that is not this plan. Plan EI's issuance
 service holds the signing key, checks a partner's grant record — which tiers, which packs, longest
 term, seat quota — *before* anything exists, and writes the ledger row the vendor bills from. **A
 partner issues a profile for a customer exactly the way it issues a code:** same grant, same
