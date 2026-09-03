@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 /// Settings UI for the Field Assist (B2B) feature: master toggle, vault picker,
@@ -282,15 +283,40 @@ struct FieldAssistSettingsView: View {
         }
     }
 
+    private var entitlementState: FieldAssistEntitlementStatus.State {
+        FieldAssistEntitlementStatus.make(decision: FieldAssistEntitlement.shared.decision())
+    }
+
     @ViewBuilder
     private var entitlementPaywall: some View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
-                Label("Field Assist is locked", systemImage: "lock.fill")
+                Label(FieldAssistPaywallCopy.locked, systemImage: "lock.fill")
                     .font(.headline)
-                Text("Unlock with a license code (teams) or a one-time in-app purchase.")
+                Text(FieldAssistPaywallCopy.lockedDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                switch entitlementState {
+                case .expired(let date):
+                    if license.activeLicense != nil || UserDefaults.standard.string(forKey: LicenseService.storageKey) != nil {
+                        Text(FieldAssistPaywallCopy.renewLicense)
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.errorLabel)
+                    } else {
+                        Text(FieldAssistPaywallCopy.subscriptionLapsed)
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.errorLabel)
+                        Text("Lapsed \(date.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                case .unverifiableLicense:
+                    Text(FieldAssistPaywallCopy.unverifiable)
+                        .font(.caption)
+                        .foregroundStyle(OGTheme.errorLabel)
+                default:
+                    EmptyView()
+                }
             }
         }
 
@@ -310,37 +336,13 @@ struct FieldAssistSettingsView: View {
             }
         }
 
-        Section {
-            TextField("Paste license code", text: $licenseCode, axis: .vertical)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(.footnote, design: .monospaced))
-            Button("Activate License") { activateLicense() }
-                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            if let licenseMessage {
-                Text(licenseMessage)
-                    .font(.caption)
-                    .foregroundStyle(licenseMessageIsError ? OGTheme.errorLabel : OGTheme.okLabel)
-            }
-        } header: {
-            Text("License Code")
-        } footer: {
-            Text("Enterprise customers receive a code with their order. Codes are signed and validated on-device — no network required.")
-        }
+        licenseEntrySection
 
         Section {
-            if let product = store.fieldAssistProduct {
-                Button {
-                    Task { await store.purchase(product) }
-                } label: {
-                    HStack {
-                        Label("Buy Field Assist", systemImage: "cart")
-                        Spacer()
-                        Text(product.displayPrice).foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(store.isPurchasing)
-            } else {
+            purchaseRow(store.fieldAssistProduct, title: "One-time unlock", subtitle: "Yours on this Apple ID, no renewal")
+            purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime")
+            purchaseRow(store.fieldAssistAnnualProduct, title: "Annual", subtitle: "Billed once a year")
+            if store.fieldAssistProduct == nil && store.fieldAssistMonthlyProduct == nil && store.fieldAssistAnnualProduct == nil {
                 Text("Purchase is unavailable right now. Check your connection and App Store sign-in.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -350,30 +352,102 @@ struct FieldAssistSettingsView: View {
                 Text(error).font(.caption).foregroundStyle(OGTheme.errorLabel)
             }
         } header: {
-            Text("In-App Purchase")
+            Text(FieldAssistPaywallCopy.purchaseHeader)
         } footer: {
-            Text("A one-time purchase unlocks Field Assist on this Apple ID.")
+            Text(FieldAssistPaywallCopy.purchaseFooter)
+        }
+    }
+
+    @ViewBuilder
+    private var licenseEntrySection: some View {
+        Section {
+            TextField("Paste licence code", text: $licenseCode, axis: .vertical)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(.footnote, design: .monospaced))
+            Button("Activate Licence") { activateLicense() }
+                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if let licenseMessage {
+                Text(licenseMessage)
+                    .font(.caption)
+                    .foregroundStyle(licenseMessageIsError ? OGTheme.errorLabel : OGTheme.okLabel)
+            }
+        } header: {
+            Text(FieldAssistPaywallCopy.licenseHeader)
+        } footer: {
+            Text(FieldAssistPaywallCopy.licenseFooter)
+        }
+    }
+
+    @ViewBuilder
+    private func purchaseRow(_ product: Product?, title: String, subtitle: String) -> some View {
+        if let product {
+            Button {
+                Task { await store.purchase(product) }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(product.displayPrice).foregroundStyle(.secondary)
+                }
+            }
+            .disabled(store.isPurchasing)
         }
     }
 
     @ViewBuilder
     private var entitlementStatus: some View {
         Section {
-            if let lic = license.activeLicense {
-                LabeledContent("Licensed to", value: lic.licensee)
-                LabeledContent("Expires", value: lic.expires?.formatted(date: .abbreviated, time: .omitted) ?? "Never")
-                Button("Remove License", role: .destructive) {
+            if case .granted(let grant) = entitlementState {
+                LabeledContent("Tier", value: grant.tier.label)
+                LabeledContent("Source", value: grant.sourceLabel)
+                if let lic = license.activeLicense, case .organizationLicense = grant.source {
+                    LabeledContent("Licensed to", value: lic.licensee)
+                    if let plan = lic.planLabel { LabeledContent("Plan", value: plan) }
+                    if let seats = lic.seats { LabeledContent("Seats", value: "\(seats)") }
+                    if let reference = lic.reference, !reference.isEmpty { LabeledContent("Reference", value: reference) }
+                }
+                LabeledContent("Expires", value: grant.expiresAt?.formatted(date: .abbreviated, time: .omitted) ?? "Never")
+                if let warning = grant.warning {
+                    Label(FieldAssistPaywallCopy.expiring(warning), systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(OGTheme.errorLabel)
+                }
+                if grant.tier == .solo {
+                    Text(FieldAssistPaywallCopy.teamOnly)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if case .storeProduct(let productID) = grant.source,
+                   StoreKitService.fieldAssistSubscriptionIds.contains(productID) {
+                    Button(FieldAssistPaywallCopy.manageSubscription) { Task { await store.showManageSubscription() } }
+                }
+                Text(grant.tier.capabilitySummary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if license.activeLicense != nil {
+                Button("Remove Licence", role: .destructive) {
                     license.clear()
                     licenseCode = ""
                     licenseMessage = nil
                     if enabled && !Config.fieldAssistUnlocked { enabled = false }
                 }
-            } else if case .storeProduct? = FieldAssistEntitlement.shared.decision().source {
-                Label("Unlocked via in-app purchase", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(OGTheme.okLabel)
             }
         } header: {
             Text("Entitlement")
+        } footer: {
+            if license.activeLicense?.seats != nil {
+                Text(FieldAssistPaywallCopy.seatsNote)
+            }
+        }
+
+        // A solo device can still enter (or renew) an organisation code from here.
+        if license.activeLicense == nil {
+            licenseEntrySection
         }
     }
 

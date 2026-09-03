@@ -87,7 +87,9 @@ final class FieldSessionService: ObservableObject {
         library = ProcedureLibrary(store: store)
         let newLogger = SessionLogger(session: session, root: sessionsRoot.appendingPathComponent(session.id, isDirectory: true))
         logger = newLogger
-        newLogger.appendLifecycle(.sessionStarted, note: "vault=\(vaultId), mode=\(mode.rawValue), asset=\(assetId ?? "-")")
+        // The audit record says what entitled the session — a pilot export must read as a pilot.
+        let entitlement = FieldAssistEntitlement.shared.decision().auditLabel
+        newLogger.appendLifecycle(.sessionStarted, note: "vault=\(vaultId), mode=\(mode.rawValue), asset=\(assetId ?? "-"), entitlement=\(entitlement)")
         EscalationCoordinator.shared.reset()
         lastResumeAt = Date()
         history.insert(session, at: 0)

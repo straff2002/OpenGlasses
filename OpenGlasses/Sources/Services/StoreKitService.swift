@@ -20,14 +20,21 @@ class StoreKitService: ObservableObject {
     nonisolated static let medicalMonthlyId = "com.openglasses.medical_compliance_monthly"
     nonisolated static let medicalAnnualId = "com.openglasses.medical_compliance_annual"
 
-    /// Field Assist (B2B) — a one-time non-consumable unlock. Complements the license-code path.
+    /// Field Assist (solo) — a one-time non-consumable unlock. Complements the license-code path.
     nonisolated static let fieldAssistId = "com.openglasses.field_assist"
+    /// Field Assist (solo) — monthly and annual auto-renewing subscriptions beside the one-time unlock.
+    nonisolated static let fieldAssistMonthlyId = "com.openglasses.field_assist_monthly"
+    nonisolated static let fieldAssistAnnualId = "com.openglasses.field_assist_annual"
+
+    /// Every store product that grants the solo tier. Teams are licensed by signed code, not StoreKit.
+    nonisolated static let fieldAssistProductIds: Set<String> = [fieldAssistId, fieldAssistMonthlyId, fieldAssistAnnualId]
+    nonisolated static let fieldAssistSubscriptionIds: Set<String> = [fieldAssistMonthlyId, fieldAssistAnnualId]
 
     /// Medical Compliance subscription products.
     private static let medicalProductIds: Set<String> = [medicalMonthlyId, medicalAnnualId]
 
     /// All known product identifiers (loaded from the App Store / .storekit).
-    private static let allProductIds: Set<String> = medicalProductIds.union([fieldAssistId])
+    private static let allProductIds: Set<String> = medicalProductIds.union(fieldAssistProductIds)
 
     /// Subscription group name (must match App Store Connect).
     static let subscriptionGroupId = "medical_compliance"
@@ -40,8 +47,11 @@ class StoreKitService: ObservableObject {
     /// Whether the user has an active Medical Compliance subscription.
     @Published private(set) var isMedicalComplianceActive = false
 
-    /// Whether the user has purchased the Field Assist non-consumable unlock.
+    /// Whether any store product entitles Field Assist (one-time unlock or a live subscription).
     @Published private(set) var isFieldAssistPurchased = false
+
+    /// The Field Assist subscription's renewal state, when the entitlement comes from one.
+    @Published private(set) var fieldAssistSubscription: SubscriptionInfo?
 
     /// The user's current subscription status (for UI display).
     @Published private(set) var subscriptionStatus: SubscriptionInfo?
@@ -62,7 +72,7 @@ class StoreKitService: ObservableObject {
         let willAutoRenew: Bool
 
         var planName: String {
-            productId == StoreKitService.medicalAnnualId ? "Annual" : "Monthly"
+            productId.hasSuffix("annual") ? "Annual" : "Monthly"
         }
 
         var isExpiringSoon: Bool {
@@ -97,7 +107,8 @@ class StoreKitService: ObservableObject {
 
     // MARK: - Purchase
 
-    /// Purchase a Medical Compliance subscription.
+    /// Purchase any product in the catalog (a Medical Compliance subscription, or a Field Assist
+    /// unlock or subscription); entitlement is re-derived from the receipt afterwards.
     func purchase(_ product: Product) async {
         isPurchasing = true
         purchaseError = nil
@@ -142,8 +153,8 @@ class StoreKitService: ObservableObject {
     /// update, and resolves against the on-device receipt, so it holds offline.
     func checkSubscriptionStatus() async {
         var medicalActive = false
-        var fieldActive = false
-        var fieldExpiration: Date?
+        var fieldProducts: [(productID: String, expiration: Date?)] = []
+        var fieldSubscription: SubscriptionInfo?
 
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
@@ -169,9 +180,30 @@ class StoreKitService: ObservableObject {
                         isInGracePeriod: gracePeriod,
                         willAutoRenew: willRenew
                     )
-                } else if transaction.productID == Self.fieldAssistId {
-                    fieldActive = true
-                    fieldExpiration = transaction.expirationDate
+                } else if Self.fieldAssistProductIds.contains(transaction.productID) {
+                    fieldProducts.append((transaction.productID, transaction.expirationDate))
+                    if Self.fieldAssistSubscriptionIds.contains(transaction.productID) {
+                        var willRenew = true
+                        var gracePeriod = false
+                        if let statuses = try? await product(for: transaction.productID)?.subscription?.status,
+                           let status = statuses.first {
+                            if case .verified(let renewalInfo) = status.renewalInfo {
+                                willRenew = renewalInfo.willAutoRenew
+                            }
+                            gracePeriod = status.state == .inGracePeriod
+                        }
+                        let info = SubscriptionInfo(productId: transaction.productID,
+                                                    expirationDate: transaction.expirationDate,
+                                                    isInGracePeriod: gracePeriod,
+                                                    willAutoRenew: willRenew)
+                        // Two live subscriptions (an upgrade mid-period): keep the one that lasts.
+                        if let existing = fieldSubscription,
+                           let a = existing.expirationDate, let b = info.expirationDate, a >= b {
+                            // keep existing
+                        } else {
+                            fieldSubscription = info
+                        }
+                    }
                 }
             }
         }
@@ -181,12 +213,15 @@ class StoreKitService: ObservableObject {
             subscriptionStatus = nil
         }
 
+        let fieldActive = !fieldProducts.isEmpty
         isFieldAssistPurchased = fieldActive
+        fieldAssistSubscription = fieldSubscription
         Config.setFieldAssistPurchased(fieldActive)
         // Revocation lands here: clearing the record makes every later gate deny, so nothing new
-        // opens. Work already in flight finishes — the gates are entry checks.
+        // opens. Work already in flight finishes — the gates are entry checks. Every entitling
+        // product is recorded; the evaluator prefers the perpetual unlock over a dated subscription.
         if fieldActive {
-            VerifiedStorePurchaseRecorder.shared.record(productID: Self.fieldAssistId, expiration: fieldExpiration)
+            VerifiedStorePurchaseRecorder.shared.record(products: fieldProducts)
         } else {
             VerifiedStorePurchaseRecorder.shared.clear()
         }
@@ -242,6 +277,24 @@ class StoreKitService: ObservableObject {
     /// The Field Assist non-consumable unlock product.
     var fieldAssistProduct: Product? {
         products.first { $0.id == Self.fieldAssistId }
+    }
+
+    /// The Field Assist monthly subscription product.
+    var fieldAssistMonthlyProduct: Product? {
+        products.first { $0.id == Self.fieldAssistMonthlyId }
+    }
+
+    /// The Field Assist annual subscription product.
+    var fieldAssistAnnualProduct: Product? {
+        products.first { $0.id == Self.fieldAssistAnnualId }
+    }
+
+    /// Whether the perpetual one-time unlock specifically is owned (as opposed to a subscription).
+    var ownsFieldAssistUnlock: Bool {
+        VerifiedStorePurchaseRecorder.shared.allEvidence.contains {
+            if case .verifiedStoreProduct(let id, _) = $0 { return id == Self.fieldAssistId }
+            return false
+        }
     }
 
     /// Whether the user can access Medical Compliance features.

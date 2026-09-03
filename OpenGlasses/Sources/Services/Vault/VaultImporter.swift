@@ -21,7 +21,7 @@ enum VaultImporter {
             switch self {
             case .invalid(let issues): return "Vault failed validation:\n• " + issues.joined(separator: "\n• ")
             case .ioError(let message): return "Install failed: \(message)"
-            case .notEntitled: return "Importing manuals into a vault needs a Field Assist licence."
+            case .notEntitled: return "Importing manuals into a vault needs a Field Assist team licence."
             case .documentFailed(let message): return "Manual import failed: \(message)"
             }
         }
@@ -143,7 +143,7 @@ enum VaultImporter {
                               baseline: URL? = nil,
                               ledgerDirectory: URL? = nil,
                               progress: DocumentProgress? = nil) async throws -> VaultDocumentLedger {
-        guard FieldAssistEntitlement.shared.isGranted else { throw ImportError.notEntitled }
+        guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else { throw ImportError.notEntitled }
         let root = baseline ?? baselineDirectory(for: manifest.id)
         let ledgerDir = ledgerDirectory ?? overlayDirectory(for: manifest.id)
         let namespace = DocumentStore.vaultNamespace(manifest.id)
