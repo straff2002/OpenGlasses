@@ -1,6 +1,22 @@
 # Plan EG — Vault Packs (authored vaults as sellable, signed, downloadable content)
 
-**Status:** 📋 Planned 2026-09-03
+**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green; the signed
+`vaultpacks/catalog.json` is minted by the vendor with the off-repo key, App Store Connect products
+per pack, and P3's first packs pending). What landed: `VaultPackManifest` (`pack.json`), archive
+extraction over the existing zip reader, signature verify/sign reusing the skill-pack message and
+key, `VaultPackCatalog` with the BX envelope, the `VaultPackAccess` table, `VaultPackRowState`;
+licence payload `packs` claim carried on the evidence and unioned by `livePacks` (a lapsed code
+contributes nothing), `--pack` on the generator; `VaultRegistry.isUnlocked` resolves a pack id via
+purchase / licence / enterprise; StoreKit records pack purchases apart from feature evidence and
+loads pack products from the catalog's ids; `VaultPackCatalogService` runs download → checksum →
+signature → structural checks (vault id, gating, no documents, min build) → the existing importer,
+records `pack.json` beside the baseline so updates preserve technician edits; a Packs section in
+Custom Vaults with Buy / Install / Update / Installed states; paid packs never export; session audit
+lines name the pack and author; `Scripts/vaultpack-sign.swift` and `vaultpacks/README.md` +
+`index.json` for the vendor to sign. **Resolved from the draft's open questions:** pre-extracted
+manual text may ship in a pack only with the manufacturer's written permission, recorded in
+`redistributionNote` (Plan EF's Mac extractor produces the text); packs are one-time purchases;
+two indexes, one key.
 **Origin:** The question "when a partner's vault becomes a standard one, who gets it?" The answer
 decided with it: the two bundled vaults stay inside the solo purchase; a partner-authored vertical
 is sold on its own, so its author can be paid for it. That needs a pack format, a way to deliver

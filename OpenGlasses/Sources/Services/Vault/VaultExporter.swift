@@ -21,7 +21,7 @@ enum VaultExporter {
         var errorDescription: String? {
             switch self {
             case .unknownVault(let id): return "No vault found with id \(id)."
-            case .notExportable(let name): return "“\(name)” is a paid bundled vault and can't be exported."
+            case .notExportable(let name): return "“\(name)” is paid content and can't be exported."
             case .ioError(let message): return "Export failed: \(message)"
             }
         }
@@ -30,6 +30,9 @@ enum VaultExporter {
     /// A vault may be exported when it's user-imported (lives in the import registry) or free
     /// (no IAP gate). Paid bundled baselines are deliberately excluded for licensing.
     static func isExportable(_ manifest: VaultManifest) -> Bool {
+        // A purchased pack lives in the registry like a customer folder but is paid content;
+        // exporting it would hand the pack to anyone (Plan EG).
+        if VaultImporter.installedPack(for: manifest.id) != nil { return false }
         let isUserImported = VaultImporter.installedManifests().contains { $0.id == manifest.id }
         let isFree = manifest.gating.iap == nil
         return isUserImported || isFree

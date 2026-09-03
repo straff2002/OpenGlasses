@@ -53,9 +53,12 @@ final class LicenseService: ObservableObject {
         var seats: Int?
         /// Purchase order or agreement reference; free text.
         var reference: String?
+        /// Vault packs included with this licence, by each pack's licence key (Plan EG).
+        var packs: [String]?
 
         init(feature: String, licensee: String, issued: Date, expires: Date?,
-             tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil) {
+             tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
+             packs: [String]? = nil) {
             self.feature = feature
             self.licensee = licensee
             self.issued = issued
@@ -64,6 +67,7 @@ final class LicenseService: ObservableObject {
             self.plan = plan
             self.seats = seats
             self.reference = reference
+            self.packs = packs
         }
 
         /// The tier this payload grants; an unrecognised or missing claim is team, never more.

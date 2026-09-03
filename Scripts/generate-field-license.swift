@@ -6,6 +6,7 @@ import CryptoKit
 //
 //   ./Scripts/generate-field-license.swift "<Licensee Name>" [expiresISO8601]
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
+//       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //
 // The signing PRIVATE key is the vendor secret and must NEVER be committed or shipped. The script
 // resolves it, in order, from:
@@ -28,6 +29,7 @@ struct LicensePayload: Codable {
     var plan: String?
     var seats: Int?
     var reference: String?
+    var packs: [String]?
 }
 
 func fail(_ message: String) -> Never {
@@ -67,7 +69,7 @@ func resolvePrivateKey() -> String {
 let usage = """
 usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
-         [--seats N] [--reference TEXT] [--days N]
+         [--seats N] [--reference TEXT] [--days N] [--pack KEY ...]
 
   Positional expiry and --days are alternatives; --days counts from now.
   Prints the code on stdout and the decoded payload on stderr for a final look.
@@ -79,6 +81,7 @@ var plan: String?
 var seats: Int?
 var reference: String?
 var days: Int?
+var packs: [String] = []
 var iterator = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = iterator.next() {
     func value(_ flag: String) -> String {
@@ -99,6 +102,8 @@ while let arg = iterator.next() {
         seats = n
     case "--reference":
         reference = value(arg)
+    case "--pack":
+        packs.append(value(arg))
     case "--days":
         guard let n = Int(value(arg)), n > 0 else { fail("--days must be a positive integer") }
         days = n
@@ -132,7 +137,8 @@ guard let keyData = Data(base64Encoded: resolvePrivateKey()) else {
 do {
     let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
     let payload = LicensePayload(feature: "field_assist", licensee: licensee, issued: Date(), expires: expires,
-                                 tier: tier, plan: plan, seats: seats, reference: reference)
+                                 tier: tier, plan: plan, seats: seats, reference: reference,
+                                 packs: packs.isEmpty ? nil : packs)
 
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601

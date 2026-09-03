@@ -155,6 +155,7 @@ class StoreKitService: ObservableObject {
         var medicalActive = false
         var fieldProducts: [(productID: String, expiration: Date?)] = []
         var fieldSubscription: SubscriptionInfo?
+        var packProducts = Set<String>()
 
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
@@ -180,6 +181,9 @@ class StoreKitService: ObservableObject {
                         isInGracePeriod: gracePeriod,
                         willAutoRenew: willRenew
                     )
+                } else if VaultPackManifest.isPackProductId(transaction.productID) {
+                    // A vault pack (Plan EG): recorded apart from the feature evidence.
+                    packProducts.insert(transaction.productID)
                 } else if Self.fieldAssistProductIds.contains(transaction.productID) {
                     fieldProducts.append((transaction.productID, transaction.expirationDate))
                     if Self.fieldAssistSubscriptionIds.contains(transaction.productID) {
@@ -225,6 +229,25 @@ class StoreKitService: ObservableObject {
         } else {
             VerifiedStorePurchaseRecorder.shared.clear()
         }
+        VerifiedStorePurchaseRecorder.shared.recordPackProducts(packProducts)
+    }
+
+    /// Fetch store metadata for vault packs the catalog lists, so a pack row can show a price and
+    /// be bought. Ids come from the signed catalog, never from a hard-coded set.
+    func loadPackProducts(ids: Set<String>) async {
+        let wanted = ids.filter { VaultPackManifest.isPackProductId($0) }.subtracting(products.map(\.id))
+        guard !wanted.isEmpty else { return }
+        do {
+            let loaded = try await Product.products(for: wanted)
+            products.append(contentsOf: loaded)
+        } catch {
+            PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
+        }
+    }
+
+    /// A loaded product by id (any kind).
+    func loadedProduct(id: String) -> Product? {
+        products.first { $0.id == id }
     }
 
     /// Restore purchases (triggers App Store sign-in if needed).
