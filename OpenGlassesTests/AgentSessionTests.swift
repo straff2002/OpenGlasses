@@ -155,14 +155,19 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(OpenClawAgentHarness.runID(in: ["id": "x"]), "x")
         XCTAssertEqual(OpenClawAgentHarness.runID(in: ["run_id": "y"]), "y")
         XCTAssertEqual(OpenClawAgentHarness.runID(in: ["result": ["runId": "z"]]), "z")
+        XCTAssertEqual(OpenClawAgentHarness.runID(in: ["ok": true, "payload": ["runId": "p", "status": "ok"]]), "p",
+                       "the real gateway answers sessions.send with payload.runId")
         XCTAssertNil(OpenClawAgentHarness.runID(in: ["nope": "x"]))
     }
 
     func testStartParsesRunAndThrowsOnError() async {
         let harness = OpenClawAgentHarness(
-            send: { method, _ in
-                XCTAssertEqual(method, "agent.start")
-                return ["id": "run-1", "status": "running"]
+            send: { method, params in
+                XCTAssertEqual(method, "sessions.send", "there is no agent.* family on the gateway")
+                XCTAssertEqual(params["key"] as? String, OpenClawAgentHarness.taskSessionKey)
+                XCTAssertEqual(params["message"] as? String, "Project: proj\n\np")
+                XCTAssertNotNil(params["idempotencyKey"])
+                return ["ok": true, "payload": ["runId": "run-1", "status": "ok"]]
             }, configured: { true })
         let run = try? await harness.start(prompt: "p", project: "proj")
         XCTAssertEqual(run?.id, "run-1")
@@ -172,6 +177,44 @@ final class AgentSessionTests: XCTestCase {
         do { _ = try await failing.start(prompt: "p", project: nil); XCTFail("expected throw") }
         catch let e as AgentHarnessError { XCTAssertEqual(e, .transport("no agent method")) }
         catch { XCTFail("wrong error: \(error)") }
+    }
+
+    func testStatusAndCancelRideTheRunTracker() async throws {
+        var aborted: [String: Any] = [:]
+        let harness = OpenClawAgentHarness(
+            send: { method, params in
+                if method == "sessions.abort" { aborted = params; return ["ok": true, "payload": [:]] }
+                return ["ok": true, "payload": ["runId": "run-9", "status": "ok"]]
+            },
+            configured: { true },
+            runState: { runId in
+                runId == "run-9" ? ChatRunTracker.RunState(phase: .answered("done")) : nil
+            })
+        let run = try await harness.start(prompt: "p", project: nil)
+        let status = try await harness.status(run)
+        XCTAssertEqual(status, .completed)
+        let unknown = try await harness.status(AgentRun(id: "unknown", harness: .openclaw, prompt: "", project: nil, startedAt: Date()))
+        XCTAssertEqual(unknown, .running, "an untracked run is still running as far as we know")
+        try await harness.cancel(run)
+        XCTAssertEqual(aborted["key"] as? String, OpenClawAgentHarness.taskSessionKey)
+        XCTAssertEqual(aborted["runId"] as? String, "run-9")
+        XCTAssertEqual(OpenClawAgentHarness.status(for: ChatRunTracker.RunState(phase: .aborted)), .cancelled)
+        XCTAssertEqual(OpenClawAgentHarness.status(for: ChatRunTracker.RunState(phase: .failed("x"))), .failed)
+    }
+
+    func testEventsCompleteWithTheFinalText() async throws {
+        var harness = OpenClawAgentHarness(
+            send: { _, _ in ["ok": true, "payload": ["runId": "run-3"]] },
+            configured: { true },
+            runState: { _ in ChatRunTracker.RunState(phase: .answered("The answer.")) })
+        harness.pollInterval = 0.01
+        let run = try await harness.start(prompt: "p", project: nil)
+        var seen: [AgentEvent] = []
+        for await event in harness.events(for: run) { seen.append(event) }
+        XCTAssertEqual(seen.first, .started(run))
+        var expected = AgentRunResult()
+        expected.finalText = "The answer."
+        XCTAssertEqual(seen.last, .completed(expected))
     }
 
     // MARK: - code_agent tool gate
