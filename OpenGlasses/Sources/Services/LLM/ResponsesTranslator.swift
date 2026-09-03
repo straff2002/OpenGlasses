@@ -140,6 +140,22 @@ enum ResponsesTranslator {
     struct StreamAccumulator {
         private(set) var completedResponse: [String: Any]?
         private(set) var failureMessage: String?
+        /// Output items collected from `response.output_item.done` as they stream. The backend's
+        /// `response.completed` envelope has slimmed to metadata/usage — the upstream client never
+        /// reads `output` from it, and neither can we: the items arrive one event each, done-side.
+        private(set) var doneItems: [[String: Any]] = []
+
+        /// The response to hand `parseOutput`: the completed payload with the streamed items
+        /// substituted in whenever the envelope's own `output` is missing or empty. A fat
+        /// envelope (fixtures, older backends) still wins when it actually carries items.
+        var effectiveResponse: [String: Any]? {
+            guard var response = completedResponse else { return nil }
+            let envelopeOutput = response["output"] as? [[String: Any]] ?? []
+            if envelopeOutput.isEmpty && !doneItems.isEmpty {
+                response["output"] = doneItems
+            }
+            return response
+        }
 
         /// Consume one SSE event; returns a text delta to surface, or nil.
         mutating func consume(_ event: SSEEvent) -> String? {
@@ -151,8 +167,13 @@ enum ResponsesTranslator {
             switch type {
             case "response.output_text.delta":
                 return json["delta"] as? String
+            case "response.output_item.done":
+                if let item = json["item"] as? [String: Any] {
+                    doneItems.append(item)
+                }
+                return nil
             case "response.completed":
-                completedResponse = json["response"] as? [String: Any]
+                completedResponse = json["response"] as? [String: Any] ?? [:]
                 return nil
             case "response.failed", "error":
                 let error = (json["response"] as? [String: Any])?["error"] as? [String: Any]
