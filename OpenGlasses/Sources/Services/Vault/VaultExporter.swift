@@ -69,6 +69,17 @@ enum VaultExporter {
                 try contents.write(to: root.appendingPathComponent(filename), atomically: true, encoding: .utf8)
             }
 
+            // Reference documents — the customer's own files, copied from the installed baseline
+            // so the folder round-trips (technicians never edit these, so there is no overlay copy).
+            for document in manifest.documents {
+                let relative = manifest.documentRelativePath(document)
+                guard let src = store.bundleRoot?.appendingPathComponent(relative),
+                      fm.fileExists(atPath: src.path) else { continue }
+                let dest = root.appendingPathComponent(relative)
+                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fm.copyItem(at: src, to: dest)
+            }
+
             // procedures/ — copy whatever is present (overlay wins, else bundle).
             if let dir = manifest.proceduresDir {
                 let dest = root.appendingPathComponent(dir, isDirectory: true)

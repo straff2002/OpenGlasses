@@ -1467,6 +1467,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Configure Study Mode — generates decks from documents via the text→JSON LLM call;
         // camera enables the hands-free scan → OCR source.
+        // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
+        FieldSessionService.shared.documentStore = documentStore
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
         // Reading companion (Plan BT) — camera frames for page turns, Study Mode for the

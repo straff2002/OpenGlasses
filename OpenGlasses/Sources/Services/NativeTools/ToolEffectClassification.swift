@@ -215,6 +215,11 @@ extension MoneyIdentifierTool {
 extension EquipmentLookupTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(idempotency: .intrinsic) }
 }
+// Same shape as equipment lookup: the manual search itself is a read, but the camera path
+// captures a photo when no query is given.
+extension ManualLookupTool {
+    var executionSemantics: ToolExecutionSemantics { .actuation(idempotency: .intrinsic) }
+}
 extension LookCloselyTool {
     var executionSemantics: ToolExecutionSemantics {
         .actuation(.bestEffort, idempotency: .intrinsic, timeout: .seconds(45))
