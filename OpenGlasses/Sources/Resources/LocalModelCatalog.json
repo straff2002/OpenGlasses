@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF#smollm2-360m-instruct-q8_0.gguf",
+      "displayName": "SmolLM2 360M",
+      "repositoryID": "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
+      "revision": "593b5a2e04c8f3e4ee880263f93e0bd2901ad47f",
+      "quantization": "Q8_0",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 386404992,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "smollm2-360m-instruct-q8_0.gguf",
+          "byteCount": 386404992,
+          "sha256": "48ab3034d0dd401fbc721eb1df3217902fee7dab9078992d66431f09b7750201",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "593b5a2e04c8f3e4ee880263f93e0bd2901ad47f"
+      },
+      "notes": "Smallest curated on-device model. Fast and light; short answers, limited reasoning.",
+      "minimumRAMGB": 4,
+      "architecture": "llama",
+      "trainedContextTokens": 8192,
+      "evidence": "fileMetadataOnly"
+    },
+    {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF#qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "displayName": "Qwen 2.5 0.5B",
+      "repositoryID": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "revision": "9217f5db79a29953eb74d5343926648285ec7e67",
+      "quantization": "Q4_K_M",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 491400032,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+          "byteCount": 491400032,
+          "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "9217f5db79a29953eb74d5343926648285ec7e67"
+      },
+      "notes": "Ultra-light multilingual model. Good for short questions and quick summaries.",
+      "minimumRAMGB": 4,
+      "architecture": "qwen2",
+      "trainedContextTokens": 32768,
+      "evidence": "fileMetadataOnly"
+    },
+    {
+      "id": "Qwen/Qwen2.5-1.5B-Instruct-GGUF#qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "displayName": "Qwen 2.5 1.5B",
+      "repositoryID": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
+      "quantization": "Q4_K_M",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 1117320736,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+          "byteCount": 1117320736,
+          "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9"
+      },
+      "notes": "Stronger multilingual answers than the 0.5B, at roughly twice the download and memory.",
+      "minimumRAMGB": 6,
+      "architecture": "qwen2",
+      "trainedContextTokens": 32768,
+      "evidence": "fileMetadataOnly"
+    }
+  ]
+}

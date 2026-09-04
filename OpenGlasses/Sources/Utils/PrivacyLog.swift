@@ -1417,6 +1417,11 @@ enum PrivacyLog {
         /// descriptor's id is whatever the user typed into the model field, which makes it
         /// user-authored text rather than a public catalog token.
         case recordsMigrated, recordsMigrationDeferred, recordsMigrationFailed
+        /// Acquisition pipeline. A *curated* plan names its catalog id, which is a public token; an
+        /// **imported** plan names nothing — the repository the user typed is user content, and the
+        /// `detail` field carries the plan's origin instead, so a log reader can still tell the two
+        /// pipelines apart without the line naming anyone's repository.
+        case downloadPlanned, downloadStarted, downloadRecovered, downloadFailed, installCompleted
     }
 
     /// `shape` is the prompt tensor's dimensions rendered as `1x842` — the diagnostic that

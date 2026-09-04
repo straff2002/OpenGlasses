@@ -231,6 +231,118 @@ final class LocalModelRepository {
         try? mutable.setResourceValues(values)
     }
 
+    // MARK: - Installing validated files
+
+    /// Publish a staged, fully validated directory as an installation.
+    ///
+    /// The order is the whole crash-consistency argument, and it lives here so "installed" keeps
+    /// exactly one definition:
+    ///
+    ///  1. write `installation.json` **inside the staging directory** and read it back;
+    ///  2. move (or atomically replace) that directory into `installed/<storage component>/`;
+    ///  3. write `.complete` last.
+    ///
+    /// A power loss before 2 leaves the previous installation untouched and the staging directory
+    /// recoverable. A power loss between 2 and 3 leaves a directory `installedModels()` refuses to
+    /// report — fail-closed — which the download plan's `installing` state is able to finish.
+    func install(_ installation: InstalledLocalModel, movingContentsOf stagedDirectory: URL) throws {
+        guard case .managed(let directoryName) = installation.storage,
+              directoryName == installation.id.storageComponent else {
+            throw RecordError.notWritable
+        }
+        let destination = directory(for: installation.id)
+        guard Self.isContained(destination, within: installedRoot),
+              Self.isContained(stagedDirectory, within: root) else {
+            throw RecordError.notWritable
+        }
+
+        // Resuming an install that was interrupted *after* the move: the staging directory is gone
+        // because it became the installed directory, and all that is missing is the marker. Without
+        // this the recovery path would try to move a directory that no longer exists and report a
+        // failed install over a perfectly good one.
+        if !fileManager.fileExists(atPath: stagedDirectory.path) {
+            guard let data = try? Data(contentsOf: destination.appendingPathComponent(Self.manifestFileName)),
+                  let decoded = try? Self.decoder.decode(InstalledLocalModel.self, from: data),
+                  decoded.id == installation.id else {
+                throw RecordError.notWritable
+            }
+            do {
+                try Data().write(to: destination.appendingPathComponent(Self.completionMarkerName),
+                                 options: .atomic)
+            } catch {
+                throw Self.classify(error)
+            }
+            excludeFromBackup(destination)
+            return
+        }
+
+        let manifest = stagedDirectory.appendingPathComponent(Self.manifestFileName)
+        do {
+            let data = try Self.encoder.encode(installation)
+            try data.write(to: manifest, options: .atomic)
+        } catch {
+            throw Self.classify(error)
+        }
+        guard let readBack = try? Data(contentsOf: manifest),
+              let decoded = try? Self.decoder.decode(InstalledLocalModel.self, from: readBack),
+              Self.matches(written: installation, readBack: decoded) else {
+            throw RecordError.readBackMismatch(installation.id)
+        }
+
+        do {
+            try fileManager.createDirectory(at: installedRoot, withIntermediateDirectories: true)
+            if fileManager.fileExists(atPath: destination.path) {
+                // Replacing rather than deleting-then-moving: a reinstall must never pass through
+                // a moment where neither copy exists.
+                _ = try fileManager.replaceItemAt(destination, withItemAt: stagedDirectory)
+            } else {
+                try fileManager.moveItem(at: stagedDirectory, to: destination)
+            }
+        } catch {
+            throw Self.classify(error)
+        }
+
+        do {
+            try Data().write(to: destination.appendingPathComponent(Self.completionMarkerName),
+                             options: .atomic)
+        } catch {
+            throw Self.classify(error)
+        }
+        excludeFromBackup(destination)
+    }
+
+    /// Remove an installation's files and record, after proving the directory is beneath the model
+    /// root. Removal is by *the record*, never by a caller-supplied path, so there is nothing for a
+    /// caller to get wrong.
+    func remove(_ installation: InstalledLocalModel) throws {
+        let directory = directory(for: installation)
+        guard Self.isContained(directory, within: root) else { throw RecordError.notWritable }
+        do {
+            try fileManager.removeItem(at: directory)
+        } catch {
+            // An already-absent directory is the state the caller asked for.
+            let nsError = error as NSError
+            guard nsError.domain == NSCocoaErrorDomain,
+                  CocoaError.Code(rawValue: nsError.code) == .fileNoSuchFile else {
+                throw Self.classify(error)
+            }
+        }
+        // A managed installation keeps its record in the same directory; a legacy discovery keeps
+        // it separately under `installed/`, so that record goes too.
+        if installation.storage.isLegacy {
+            let record = self.directory(for: installation.id)
+            if Self.isContained(record, within: installedRoot) {
+                try? fileManager.removeItem(at: record)
+            }
+        }
+    }
+
+    /// Path containment: `url` must be strictly beneath `root` once standardized.
+    static func isContained(_ url: URL, within root: URL) -> Bool {
+        let rootPath = root.standardizedFileURL.path
+        return url.standardizedFileURL.path.hasPrefix(rootPath + "/")
+    }
+
     // MARK: - Migration
 
     /// True while legacy MLX installs still have no record at the current version.
