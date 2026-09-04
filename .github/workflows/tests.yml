@@ -118,6 +118,10 @@ jobs:
           xcrun simctl boot "$UDID" || true
 
       - name: Run unit tests
+        # Below the job's 90-minute cap so a hung run fails while there is still budget to
+        # report it. Healthy runs have measured 16-24 minutes, so this is about twice the
+        # slowest of them: a run past it has hung, and both hangs so far ran to the cap.
+        timeout-minutes: 50
         run: |
           set -o pipefail
           # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
@@ -125,6 +129,10 @@ jobs:
           # must be enabled before it can be used' before any test executes.
           # 2>&1: xcodebuild reports its errors on stderr — without merging, the failure tail
           # below shows package resolution instead of the actual cause.
+          # -test-timeouts-enabled: a single wedged test fails itself, by name, instead of
+          # stalling the whole run behind it. No test here runs anywhere near 120s.
+          # grep --line-buffered: without it the log streams a 4KB block at a time, so when a
+          # run does stall the last visible line is minutes behind where it stopped.
           xcodebuild test \
             -project OpenGlasses.xcodeproj \
             -scheme OpenGlasses \
@@ -133,8 +141,10 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation \
             -clonedSourcePackagesDirPath .spm-checkouts \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
             SWIFT_EMIT_LOC_STRINGS=NO \
-            2>&1 | tee xcodebuild.log | grep -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
+            2>&1 | tee xcodebuild.log | grep --line-buffered -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
             || { tail -100 xcodebuild.log; exit 1; }
 
       - name: Upload result bundle on failure
