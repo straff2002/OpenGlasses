@@ -136,8 +136,7 @@ final class ChatRunTrackerTests: XCTestCase {
     func testTerminalRunsArePrunedButAwaitedOnesKept() async {
         let tracker = ChatRunTracker()
         tracker.register(runId: "keep")
-        async let _ = tracker.wait(runId: "keep")
-        await Task.yield()
+        let waiter = Task { await tracker.wait(runId: "keep") }
         for i in 0..<80 {
             tracker.register(runId: "run-\(i)")
             _ = tracker.handle(payload: final("run-\(i)", seq: 1, text: "x"))
@@ -145,5 +144,20 @@ final class ChatRunTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.trackedRunIds.contains("keep"))
         XCTAssertLessThanOrEqual(tracker.trackedRunIds.count, 65)
         tracker.park(runId: "keep")
+
+        // Released whichever way the two raced: the park resumes a waiter that got there first,
+        // and a waiter that arrives afterwards is told the run was given up on. This test used
+        // to depend on one `Task.yield()` being enough for the waiter to arrive first, and hung
+        // for ever on a machine slow enough to lose that race.
+        let outcome = await waiter.value
+        XCTAssertEqual(outcome, .timedOut)
+    }
+
+    func testParkBeforeAnyoneWaitsDoesNotStrandTheNextWaiter() async {
+        let tracker = ChatRunTracker()
+        tracker.register(runId: "r")
+        tracker.park(runId: "r")
+        let outcome = await tracker.wait(runId: "r")
+        XCTAssertEqual(outcome, .timedOut, "no one may block on a run already given up on")
     }
 }
