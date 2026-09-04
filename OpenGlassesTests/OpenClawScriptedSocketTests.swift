@@ -170,6 +170,17 @@ final class OpenClawBridgeScriptedSocketTests: XCTestCase {
         return (bridge, socket)
     }
 
+    /// Poll a condition fed by a fire-and-forget task. Returns as soon as it holds, so a
+    /// passing run costs nothing; the deadline only bounds a broken one.
+    private func waitUntil(_ description: String, timeout: TimeInterval = 10,
+                           _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(condition(), "timed out waiting for \(description)")
+    }
+
     func testDelegateTaskCorrelatesTheAnswerByRunId() async throws {
         let (bridge, socket) = makeBridge { id, _ in
             [GatewayScript.ok(replyTo: id, payload: ["runId": "run-1", "status": "ok"]),
@@ -216,8 +227,8 @@ final class OpenClawBridgeScriptedSocketTests: XCTestCase {
              GatewayScript.chat(runId: "r", seq: 1, state: "final", text: "ok")]
         }
         _ = await bridge.delegateTask(task: "x")
-        // The catalog query is fire-and-forget after connect; give it a moment.
-        for _ in 0..<50 where bridge.availableToolNames.isEmpty { try? await Task.sleep(nanoseconds: 10_000_000) }
+        // The catalog query is fire-and-forget after connect; wait for it, don't race it.
+        await waitUntil("the tool catalog") { !bridge.availableToolNames.isEmpty }
         XCTAssertEqual(bridge.availableToolNames, ["web_search"])
         XCTAssertEqual(socket.sentRequests(method: "tools.effective").count, 1)
     }
@@ -241,14 +252,28 @@ final class OpenClawBridgeScriptedSocketTests: XCTestCase {
         XCTAssertEqual(lateText, "Here is your week.")
     }
 
+    /// The gateway aborts the run in the same breath as accepting it: the `chat` event is on the
+    /// wire before `delegateTask` resumes to look at the response. The run must already be tracked
+    /// by then — the bridge registers it as the response is routed — or the terminal state lands on
+    /// an unknown run, is dropped, and the caller waits out `replyTimeout` for an answer that
+    /// already came and went.
     func testAbortedRunIsAFailure() async {
         let (bridge, _) = makeBridge { id, _ in
             [GatewayScript.ok(replyTo: id, payload: ["runId": "a", "status": "ok"]),
              GatewayScript.chat(runId: "a", seq: 1, state: "aborted", text: nil)]
         }
+        // Nothing here waits on a clock: the abort is queued before the send returns. The bound
+        // exists so a dropped terminal event fails in seconds instead of parking for two minutes.
+        bridge.replyTimeout = 5
+
         let result = await bridge.delegateTask(task: "x")
-        guard case .failure(let message) = result else { return XCTFail("expected failure") }
+
+        guard case .failure(let message) = result else {
+            return XCTFail("expected failure, got \(result) — the abort was not correlated to the run")
+        }
         XCTAssertTrue(message.contains("stopped"))
+        XCTAssertEqual(bridge.runTracker.state(runId: "a"),
+                       ChatRunTracker.RunState(phase: .aborted), "the abort is recorded against the run")
     }
 
     func testOversizeImageIsDroppedNotSent() async throws {
