@@ -65,6 +65,19 @@ jobs:
       - name: Fetch MediaPipe frameworks
         run: ./Scripts/fetch-mediapipe-frameworks.sh
 
+      # The llama.cpp engine (Plan DZ) is fetched or built, not committed — the XCFramework is
+      # ~50 MB and SPM refuses to resolve a local binary target whose directory is empty, so this
+      # must run before any package resolution. Cached on the pinned revision: the cache misses
+      # only when REVISION moves, and a miss costs one from-source build rather than one per run.
+      - name: Cache llama.cpp framework
+        uses: actions/cache@v6
+        with:
+          path: Vendor/LlamaCpp/Frameworks
+          key: llamacpp-framework-${{ hashFiles('Vendor/LlamaCpp/REVISION', 'Scripts/build-llamacpp-framework.sh') }}
+
+      - name: Fetch llama.cpp framework
+        run: ./Scripts/fetch-llamacpp-framework.sh
+
       - name: Cache SPM checkouts
         uses: actions/cache@v6
         with:
