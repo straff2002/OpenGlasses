@@ -105,6 +105,16 @@ packages:
   # run Scripts/fetch-mediapipe-frameworks.sh once after cloning (CI does it post-clone).
   MediaPipeTasks:
     path: Vendor/MediaPipeTasks
+  # Vendored llama.cpp engine for the GGUF local-inference runtime (Plan DZ). Local package;
+  # the binary under Vendor/LlamaCpp/Frameworks is BUILT, not committed — run
+  # Scripts/fetch-llamacpp-framework.sh once after cloning (CI does it post-clone). The pin and
+  # the digests are what's tracked: Vendor/LlamaCpp/{REVISION,SHA256SUMS,BUILD-INFO}.
+  #
+  # Linking it is not enabling it: nothing in the app reaches the engine unless
+  # Config.ggufModelsEnabled is on, which it is not by default. The MLX path does not go through
+  # this package at all.
+  LlamaCpp:
+    path: Vendor/LlamaCpp
 
 targets:
   OpenGlasses:
@@ -218,6 +228,8 @@ targets:
         product: SherpaOnnxWrapper
       - package: MediaPipeTasks
         product: MediaPipeTasksShim
+      - package: LlamaCpp
+        product: LlamaCppWrapper
       - target: GlassesActivityWidget
       - target: OpenGlassesShareExtension
 

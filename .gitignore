@@ -74,7 +74,18 @@ xcuserdata/
 # to commit: the graph static libraries exceed GitHub's 100 MB per-file limit)
 Vendor/MediaPipeTasks/Frameworks/
 
+# llama.cpp engine (Plan DZ) — the xcframework is built, not committed, by
+# Scripts/build-llamacpp-framework.sh; run Scripts/fetch-llamacpp-framework.sh once after
+# cloning (CI does it post-clone). What IS tracked is the pin and the digests:
+# Vendor/LlamaCpp/{REVISION,SHA256SUMS,BUILD-INFO}. `.build/` holds the upstream checkout and
+# the cmake build trees.
+Vendor/LlamaCpp/Frameworks/
+Vendor/LlamaCpp/.build/
+
 # Local TLS material — never commit private keys
 *.crt
 *.key
-.dd-agent/
+# Throwaway DerivedData for headless builds. `.dd-agent/` was the first; the glob covers the
+# per-configuration ones a verification matrix needs (.dd-relsim, .dd-reldev, .dd-device …) so a
+# parallel build's output can never be picked up by `git add`.
+.dd-*/

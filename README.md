@@ -405,6 +405,7 @@ Meta developer credentials, Universal Links, personal signing, in-app configurat
 | [meta-wearables-dat-ios](https://github.com/facebook/meta-wearables-dat-ios) | Glasses connection + camera |
 | [HaishinKit](https://github.com/shogo4405/HaishinKit.swift) | RTMP broadcasting |
 | [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | On-device LLM inference |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | On-device GGUF inference engine — vendored under `Vendor/LlamaCpp`, pinned by commit; the binary is built, not committed (run `Scripts/fetch-llamacpp-framework.sh` once after cloning) |
 | [WebRTC](https://github.com/stasel/WebRTC) | Peer-to-peer browser streaming + expert video |
 | [SystemNotification](https://github.com/danielsaidi/SystemNotification) | In-app notification banners |
 
