@@ -123,7 +123,14 @@ final class ChatRunTracker {
 
     /// Suspend until the run reaches a terminal state or `park(runId:)` is called.
     func wait(runId: String) async -> Outcome {
-        if let terminal = runs[runId]?.terminal { return Self.outcome(for: terminal) }
+        if let run = runs[runId] {
+            if let terminal = run.terminal { return Self.outcome(for: terminal) }
+            // Already given up on before this waiter arrived. Suspending here would wait on a
+            // transition that has already happened: `park` resumes the continuation it finds,
+            // and a run parked with none is never resumed again. Its answer is not lost — it
+            // still surfaces as `.lateAnswer` — but no one may block for it.
+            if run.parked { return .timedOut }
+        }
         register(runId: runId)
         return await withCheckedContinuation { continuation in
             runs[runId]?.continuation = continuation
