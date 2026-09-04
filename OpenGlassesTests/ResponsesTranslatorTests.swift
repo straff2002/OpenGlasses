@@ -175,6 +175,54 @@ final class ResponsesTranslatorTests: XCTestCase {
         XCTAssertNil(accumulator.failureMessage)
     }
 
+    /// The backend slimmed `response.completed` to metadata/usage — no `output` array — which
+    /// made every reply parse to empty text and zero tool calls, silently (seen on device
+    /// 2026-09-04, gpt-5.6-terra; the upstream client never reads output from the envelope,
+    /// collecting `response.output_item.done` instead). The accumulator must do the same.
+    func testSlimCompletedEnvelopeUsesStreamedOutputItems() {
+        var accumulator = ResponsesTranslator.StreamAccumulator()
+        for event in SSEEventParser.parse("""
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"Hello from items"}]}}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"function_call","name":"get_weather","call_id":"c1","arguments":"{}"}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":5}}}
+
+        """) {
+            _ = accumulator.consume(event)
+        }
+        let final = ResponsesTranslator.parseOutput(accumulator.effectiveResponse ?? [:])
+        XCTAssertEqual(final.text, "Hello from items")
+        XCTAssertEqual(final.toolCalls.count, 1)
+        XCTAssertEqual(final.toolCalls.first?.name, "get_weather")
+        // Usage from the slim envelope survives alongside the substituted items.
+        XCTAssertNotNil(accumulator.effectiveResponse?["usage"])
+    }
+
+    /// A fat envelope that genuinely carries output still wins over streamed items — older
+    /// backends and every existing fixture keep their meaning.
+    func testFatCompletedEnvelopeStillAuthoritative() {
+        var accumulator = ResponsesTranslator.StreamAccumulator()
+        for event in SSEEventParser.parse("""
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"from items"}]}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"from envelope"}]}]}}
+
+        """) {
+            _ = accumulator.consume(event)
+        }
+        let final = ResponsesTranslator.parseOutput(accumulator.effectiveResponse ?? [:])
+        XCTAssertEqual(final.text, "from envelope")
+    }
+
     func testStreamAccumulatorCapturesFailure() {
         var accumulator = ResponsesTranslator.StreamAccumulator()
         for event in SSEEventParser.parse("""

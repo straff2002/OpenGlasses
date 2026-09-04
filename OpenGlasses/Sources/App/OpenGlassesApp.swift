@@ -1467,6 +1467,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Configure Study Mode — generates decks from documents via the text→JSON LLM call;
         // camera enables the hands-free scan → OCR source.
+        // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
+        FieldSessionService.shared.documentStore = documentStore
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
         // Reading companion (Plan BT) — camera frames for page turns, Study Mode for the
@@ -1595,6 +1597,14 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in
                 await self.userMemory.syncFromGateway()
             }
+        }
+
+        // Plan EH P1: a delegated task the wearer stopped waiting on has answered. It is the
+        // answer to their own question, so it is announced as one — not handed to the triage
+        // pass built for unsolicited content, which would judge it on newsworthiness.
+        openClawBridge.onLateResult = { [weak self] text in
+            guard let self else { return }
+            self.agentNotificationQueue.enqueue(message: "From OpenClaw: \(text)", source: "openclaw")
         }
 
         // Streaming TTS — speak partial gateway results as they arrive
@@ -3403,10 +3413,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Build the agent harness registry from current config: the OpenClaw gateway adapter plus the
     /// Custom URL adapter (configured from `Config.customAgentHarness`). Rebuilt on settings change.
     private func makeAgentRegistry() -> AgentHarnessRegistry {
-        let openClaw = OpenClawAgentHarness(send: { [weak self] method, params in
-            guard let self else { throw AgentHarnessError.transport("App unavailable.") }
-            return try await self.openClawBridge.agentRequest(method: method, params: params)
-        })
+        let openClaw = OpenClawAgentHarness(
+            send: { [weak self] method, params in
+                guard let self else { throw AgentHarnessError.transport("App unavailable.") }
+                return try await self.openClawBridge.agentRequest(method: method, params: params)
+            },
+            runState: { [weak self] runId in
+                await self?.openClawBridge.runTracker.state(runId: runId)
+            })
         let custom = CustomAgentHarness(config: Config.customAgentHarness ?? CustomHarnessConfig())
 
         // Codex / Claude Code remote (Plan N Phase 3) — preset-backed HTTP harnesses, ready when a token is set.

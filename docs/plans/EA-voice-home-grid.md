@@ -3,9 +3,10 @@
 **Status:** ✅ Shipped P1–P3, then revised on device (2026-08-31). The dock-fit criterion closed the
 same day — the model tile dropped its model-name label for a provider glyph + constant caption (full
 name stays in the accessibility label), and the dock's strip wraps into rows of four instead of
-scrolling horizontally. Four phone rounds then rewrote most of the plan's decisions — the dock is a
-three-page pager and My Day rows can be cleared. See **P4**–**P7** below. The pattern is the plan's
-real lesson: every one of those rounds found something no amount of headless reasoning had.
+scrolling horizontally. Five phone rounds then rewrote most of the plan's decisions — the dock is a
+three-page pager, My Day rows can be cleared, the panel's height is measured rather than apportioned,
+and My Day expands in place instead of into a modal. See **P4**–**P8d** below. The pattern is the
+plan's real lesson: every one of those rounds found something no amount of headless reasoning had.
 **Origin:** On-device design review of the shipped My Day home surface (2026-08-31): inconsistent
 vertical gaps around the My Day card, and a bottom-dock utility row that scrolls because it carries
 both controls and the user's quick actions.
@@ -307,6 +308,172 @@ and the page dots overlapped its captions.
 
 **Verified on device-sized simulator across states:** expanded (3 rows, card whole, gap before the
 panel), collapsed (4 rows, all captions intact, dots clear), and the grid page's own scroll.
+
+### P8a — One tall frame, and the four-row ceiling retired (device round 3, 2026-09-02)
+
+Reported from the phone once the conversation page could finally show a conversation: *"you get a
+very small space… by having full height, the conversation can be properly reviewed."* The panel was
+sized as a **grid** — at most four rows, and fewer when the grid held fewer tiles — and the
+conversation page shares that frame, so a transcript was being read through a two-line window.
+
+The first design considered was a per-page reading height: expand on the conversation page, return
+to the row-snapped height on the others. It was **rejected before it was built**, and the reason is
+the report it would have produced next — *"it keeps growing and shrinking."* A frame that depends on
+the selected page moves under every swipe, and no amount of animating it on settle makes a surface
+that changes size three times a gesture feel still.
+
+**What shipped instead: the panel is as tall as the screen affords it, at all times, on every page.**
+
+1. **`DockGridMetrics.restingRows(availableHeight:rowHeight:surfaceAboveIsCompact:)`** — the page is
+   not a parameter and neither is the slot count. Rows are `floor(share × available ÷ rowHeight)`:
+   the four-row ceiling is gone, and so is the "never more rows than the content needs" clamp that
+   used to shrink the panel for a wearer with a short speed dial. Whole rows by construction, so P8's
+   no-sliced-tile guarantee is untouched — the truncation *is* the snap.
+2. **Two shares, because My Day is the one thing above the panel whose height the wearer controls.**
+   0.24 with the card expanded (was 0.20 under a four-row ceiling), 0.52 collapsed (was 0.30) —
+   what is left once the status card, My Day in its current state, the page control and the capsule
+   have had theirs. Both are bounded by P8's rule rather than by taste: the surface above is never
+   clipped at the panel's edge. A greedier pair was tried **in the simulator first** and cut the
+   collapsed card by a few points, which is P8's exact failure shape, so the shares came down until
+   the card was whole with a gap under it, and the expanded number follows the same arithmetic
+   against a ~280 pt open card. The asymmetry is deliberate and is the honest one: a phone cannot
+   hold an open My Day *and* a tall panel, and the collapse control is how a wearer says which they
+   want. With My Day off — the shipped default — the compact branch applies, so the tall panel is
+   what a new install gets. This is also the answer to the separate report that a collapsed card
+   left dead space: the freed height now returns as whole rows rather than as a gap under the last.
+3. **The invariant is restored, not revised.** Round 4 promised *"the panel never resizes under a
+   swipe."* It now holds absolutely: **the frame is not a function of the page, so a swipe cannot
+   change it.** The two things that do change it — collapsing My Day, and the first real tile
+   measurement replacing the opening guess — both originate outside the pager and settle with a
+   0.25 s animation keyed on the height itself.
+4. **The grid page's consequence is accepted deliberately.** More visible rows and less scrolling;
+   a wearer with few tiles gets empty glass below them rather than a short panel. That trade is the
+   whole point — the frame belongs to all three pages, and the one that needs height most is the
+   one that cannot ask for it.
+
+**Tests.** The height as a truth table (My Day state × screen × row height → whole rows) at two
+phone sizes and an accessibility row height; collapsing My Day never costs rows and never exceeds
+its share, swept across screen sizes; a short grid keeps the tall frame; the unmeasured first frame
+falls back to a guess; a very short screen still gets one row; and — stated as arithmetic — the
+height function has no page input, with the pager's own test showing a page change carries a page
+and nothing else.
+
+> **Superseded by P8b and P8c.** The two shares below are gone, and so is the row-snapped frame.
+> Everything else in P8a — the tall frame,
+> the retired ceiling, whole rows, the page-is-not-an-input invariant — stands.
+
+### P8b — The shares became a measurement (device round 4, 2026-09-02)
+
+Reported from the phone with the tall panel approved: **with My Day expanded there is a visible gap
+between the card's bottom and the panel's top.** Reproduced in the simulator first, on a screen the
+size of the one it was reported from — an open My Day whose day happened to be a light one, and
+~190 pt of empty glass under it.
+
+**Mechanism, and it is the shares' own margin.** P8a chose 0.24 and 0.52 by measuring a *plausible*
+surface — a ~116 pt status card, a ~50 pt collapsed My Day, a ~280 pt open one — and then rounded
+down so the tallest of those was never clipped at the panel's edge (P8's rule). A margin against
+clipping is dead space whenever the real card comes in shorter than the estimate, and a My Day card
+is exactly the module whose height nobody can predict: it is as tall as the day is busy. The same
+arithmetic produced the opposite failure at the other end, also reproduced: with My Day *off* the
+compact share applied, but the setup card it draws instead is far taller than the ~50 pt collapsed
+card the number was fitted to, and it was clipped flush against the panel.
+
+**What shipped instead: the panel subtracts a measurement, not a share.**
+
+1. **`DockGridMetrics.restingRows(availableHeight:reservedHeight:rowHeight:)`** — `reservedHeight`
+   is the height everything that is not a grid row actually drew. `heightShare` and
+   `heightShareWhenSurfaceAboveIsCompact` are deleted, and with them the dock's reads of
+   `myDayEnabled` / `myDayCollapsed`: My Day's state reaches the panel by changing the measurement,
+   which is also how a caption arriving reaches it, and how anything added to that surface later
+   will. **Both failure shapes close at once.** Clipping is impossible by construction, because the
+   number subtracted *is* the height the surface drew. The residual gap can only be the sub-row
+   remainder — under one row, which is breathing room rather than a hole.
+2. **Two measured groups, summed by a preference key.** `ConversationSurfaceHeightKey` reduces by
+   addition, and the zone's modules report in two groups — the status card and My Day above the
+   flexible spacer, the captions and notices held below it — because the panel needs the whole of
+   what they drew and a group left out is a group the panel would grow over. The stack's own 16 pt
+   spacing became the spacer's `minLength`, so the two gaps around it are a constant rather than
+   something else to estimate: the zone's height is two measurements plus 32.
+3. **The capsule is measured too**, on the tile's terms and for the tile's reason (`DockCapsuleHeightKey`).
+   It was the last predicted number in the reservation, and predicting it is predicting a font's
+   line height at text sizes nobody sweeps by hand. Its touch-target floor is what keeps the
+   measurement from feeding back into the panel above it.
+4. **The row arithmetic now pays for its gaps.** Rows are `floor((budget + rowSpacing) ÷ (rowHeight
+   + rowSpacing))`, not `floor(budget ÷ rowHeight)`: `n` rows also cost the `n − 1` gaps between
+   them, and those points were exactly what the last row used to overrun by.
+5. **Everything else is untouched by design.** Whole-row snapping, the one-row floor, the
+   first-frame fallback before any measurement arrives, the 0.25 s settle keyed on the height
+   itself, and the page-is-not-an-input invariant.
+
+**Tests.** The truth table's inputs become measured ones (reserved height × screen × row height →
+whole rows) at two phone sizes and an accessibility row height. Two sweeps replace the share bound:
+the panel never takes height the surface above drew, *and* never leaves a whole further row behind
+as a gap — the two failure shapes as one property. The collapse pin is restated in measurement
+terms: walking the surface above down in height never costs the panel a row. Page-independence, the
+short-grid frame, the one-row floor (including a surface taller than the tab, which measuring makes
+reachable) and the unmeasured first frame all stand, the last now including "the surface has not
+reported yet".
+
+### P8c — One rhythm, and the remainder moves inside the glass (device round 5, 2026-09-02)
+
+P8b's arithmetic was right and its *placement* was wrong. Screenshots from the phone, both My Day
+states: the leftover — the spacer floor plus the sub-row remainder, ~70–80 pt together — rendered
+**between** My Day and the panel, while every other gap on the surface is 16 pt. The rule the report
+states is the right one: *"The gap between should be similar as the other vertical gaps. This should
+be consistent across all panels for good UI design."*
+
+Measuring fixed how much was reserved. It did not stop the frame from *rounding*, and a frame that
+snaps to whole rows has to put the rounding somewhere.
+
+1. **Every inter-module gap is `DockGridMetrics.moduleGap` (16).** Status card ↕ My Day ↕ panel ↕
+   capsule, one number, no second one. The zone's flexible spacer is gone — with the glass absorbing
+   the remainder there is nothing left for a spacer to hold — and the captions/notices block joins
+   the flow rather than being pinned to the bottom, because with no leftover those are the same
+   place. Below the capsule stays 8: the next thing there is the tab bar, not a module.
+2. **The glass absorbs everything left.** `panelPagesHeight(availableHeight:reservedHeight:rowHeight:)`
+   is pure subtraction with a floor of one row plus the dots — no row term in the frame at all. The
+   sum is now *exact*: surface + panel + the dock's rhythm = the screen, which is what the test
+   asserts instead of "within a row".
+3. **The whole-row rule moved to where it bites.** `viewportRows` snaps the grid's **scroll
+   viewport** inside the glass. The edge that can slice a tile is its scroll view's, so that is the
+   edge that lands on a row boundary; the remainder sits below it as calm empty glass, which the
+   wearer has seen and accepts. Conversation and edit pages simply fill the glass.
+4. **One settle curve, and only one animation.** `DockGridMetrics.heightSettle` is shared, and the
+   panel's frame is now **deliberately not animated** — it tracks the measurement. A second
+   animation there was the mushy part: while My Day animates its own height the reader reports a new
+   value every frame, and `.animation(value:)` restarts an ease toward each one, so the panel
+   arrived late behind a card that had already stopped. Tracking means card and panel sum to the
+   screen on *every frame* — an exact height exchange. The changes with no motion of their own to
+   ride (the opening guess giving way to the first measurement, a caption arriving, the tile and
+   capsule measurements landing) carry the settle at their source instead.
+
+### P8d — My Day expands in place; ↗ was a modal (device round 5)
+
+Reported alongside the rhythm: *"should be a nice transition when my day opens and closes, maybe the
+my day summary opens up taller rather than in a modal."*
+
+**What ↗ was.** `arrow.up.right` presented `MyDayView` as a **sheet** — a full `NavigationStack`
+screen with the whole list, per-item actions, an Availability section and pull-to-refresh. The row
+tap and "See all N items" opened the same sheet.
+
+**What it became.** A third card state, `isExpanded`, drawn in the flow:
+
+- **Chevron** = collapsed ↔ summary, as before, and a collapse resets the expansion — expansion is a
+  glance, not a setting, so it is `@State` rather than `@AppStorage`.
+- **↗ became ⤢** (`arrow.up.left.and.arrow.down.right` / its inverse): grows the card in place to
+  today's whole list. The arrows point the way the card is about to move, which the old ↗ — the
+  universal "open elsewhere" — actively contradicted. "See all N items" and a row tap do the same.
+- **The row actions came with it.** Complete, directions, dismiss and open-in-Calendar are ported
+  into the expanded rows, so moving the list into the card is not a quieter version of it.
+- **The card grows to whatever the day needs** and the zone — already a scroll view — scrolls when
+  the day is longer than the screen. Deliberately *not* a nested scroll view inside the card: it
+  would fight the zone's gesture and make the card's measured height ambiguous, which is the number
+  the panel is sized from. The panel floors at one row plus the dots, as its own test pins.
+
+**The modal survives for one named reason.** Repairing a source needs per-source messages and a
+Settings deep link, which is a genuinely different screen from a list of today's items. It is now
+reached from the availability line — the thing it repairs — instead of from the expand control, and
+that line became a button. VoiceOver labels follow the new behaviour throughout.
 
 ## Rollout and exit criteria
 

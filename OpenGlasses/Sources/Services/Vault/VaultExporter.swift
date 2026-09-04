@@ -21,7 +21,7 @@ enum VaultExporter {
         var errorDescription: String? {
             switch self {
             case .unknownVault(let id): return "No vault found with id \(id)."
-            case .notExportable(let name): return "“\(name)” is a paid bundled vault and can't be exported."
+            case .notExportable(let name): return "“\(name)” is paid content and can't be exported."
             case .ioError(let message): return "Export failed: \(message)"
             }
         }
@@ -30,6 +30,9 @@ enum VaultExporter {
     /// A vault may be exported when it's user-imported (lives in the import registry) or free
     /// (no IAP gate). Paid bundled baselines are deliberately excluded for licensing.
     static func isExportable(_ manifest: VaultManifest) -> Bool {
+        // A purchased pack lives in the registry like a customer folder but is paid content;
+        // exporting it would hand the pack to anyone (Plan EG).
+        if VaultImporter.installedPack(for: manifest.id) != nil { return false }
         let isUserImported = VaultImporter.installedManifests().contains { $0.id == manifest.id }
         let isFree = manifest.gating.iap == nil
         return isUserImported || isFree
@@ -67,6 +70,17 @@ enum VaultExporter {
             for filename in manifest.files {
                 let contents = store.read(filename) ?? ""
                 try contents.write(to: root.appendingPathComponent(filename), atomically: true, encoding: .utf8)
+            }
+
+            // Reference documents — the customer's own files, copied from the installed baseline
+            // so the folder round-trips (technicians never edit these, so there is no overlay copy).
+            for document in manifest.documents {
+                let relative = manifest.documentRelativePath(document)
+                guard let src = store.bundleRoot?.appendingPathComponent(relative),
+                      fm.fileExists(atPath: src.path) else { continue }
+                let dest = root.appendingPathComponent(relative)
+                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fm.copyItem(at: src, to: dest)
             }
 
             // procedures/ — copy whatever is present (overlay wins, else bundle).

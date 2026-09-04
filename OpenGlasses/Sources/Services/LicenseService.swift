@@ -19,9 +19,15 @@ final class LicenseService: ObservableObject {
     /// Vendor's production public key (base64, Curve25519 raw representation). The private half is
     /// held only by the vendor and never ships in the app.
     ///
+    /// Rotated 2026-09-03: the previous private key had been printed into terminal scrollback and
+    /// chat transcripts, so it could no longer be treated as secret. No production licence codes
+    /// had been issued against it, so nothing in the field breaks — but any code minted with the
+    /// old key fails verification from this build on. The key is now minted straight to a 0600
+    /// file by `Scripts/generate-field-license.swift keygen <file>` and never printed.
+    ///
     /// `nonisolated` so it can be used as the default argument of `init` (default-argument
     /// expressions evaluate in a nonisolated context) — required under the Swift 6 language mode.
-    nonisolated static let productionPublicKeyBase64 = "KJyr5gDejBhxO2zpXbaBgvOeSjs9b3I93PJgauHubhY="
+    nonisolated static let productionPublicKeyBase64 = "i8ppcyB20u6FfNRworl5GPX2Z/k4+xBuhzIgBE7Kj2Q="
 
     /// Feature identifier a license must name to unlock Field Assist.
     nonisolated static let featureId = "field_assist"
@@ -43,6 +49,44 @@ final class LicenseService: ObservableObject {
         let licensee: String
         let issued: Date
         let expires: Date?   // nil = perpetual
+        /// Signed tier claim ("team" / "enterprise"). Absent on codes issued before tiers existed,
+        /// which all went to organisations — so absent reads as team.
+        var tier: String?
+        /// Commercial plan the code was issued under ("pilot" / "team" / "enterprise"); informational.
+        var plan: String?
+        /// Seats bought. Recorded so the status screen and the invoice agree; **not enforced** —
+        /// the code is device-scoped and offline, and there is no seat server.
+        var seats: Int?
+        /// Purchase order or agreement reference; free text.
+        var reference: String?
+        /// Vault packs included with this licence, by each pack's licence key (Plan EG).
+        var packs: [String]?
+
+        init(feature: String, licensee: String, issued: Date, expires: Date?,
+             tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
+             packs: [String]? = nil) {
+            self.feature = feature
+            self.licensee = licensee
+            self.issued = issued
+            self.expires = expires
+            self.tier = tier
+            self.plan = plan
+            self.seats = seats
+            self.reference = reference
+            self.packs = packs
+        }
+
+        /// The tier this payload grants; an unrecognised or missing claim is team, never more.
+        var resolvedTier: FieldAssistTier {
+            guard let tier, let parsed = FieldAssistTier(rawValue: tier) else { return .team }
+            return parsed == .solo ? .team : parsed
+        }
+
+        /// "Pilot" / "Team" / "Enterprise", or nil for a legacy code.
+        var planLabel: String? {
+            guard let plan, !plan.isEmpty else { return nil }
+            return plan.prefix(1).uppercased() + plan.dropFirst()
+        }
     }
 
     enum LicenseError: LocalizedError {

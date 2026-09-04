@@ -434,7 +434,7 @@ class LLMService: ObservableObject {
         }
         // Inject Field Assist vault content when a session is active.
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
-        if let vaultContext = FieldSessionService.shared.promptContext() {
+        if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
             prompt += "\n\n\(vaultContext)"
         }
         // Inject the active project's knowledge-base grounding when it has documents (Plan AN).
@@ -2067,7 +2067,7 @@ class LLMService: ObservableObject {
         if let failure = accumulator.failureMessage {
             throw LLMError.apiError(provider: "ChatGPT", statusCode: 200, message: failure)
         }
-        guard let completed = accumulator.completedResponse else {
+        guard let completed = accumulator.effectiveResponse else {
             throw LLMError.invalidResponse("ChatGPT (stream ended without completion)")
         }
         return completed

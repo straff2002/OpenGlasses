@@ -3,6 +3,10 @@ import Foundation
 /// WebSocket client for receiving proactive notifications from OpenClaw.
 /// Connects to the OpenClaw gateway's WebSocket endpoint, authenticates,
 /// and listens for heartbeat/cron events to speak through TTS.
+///
+/// Plan EH P1: the handshake is the shared `OpenClawConnectParams` (challenge-timestamped device
+/// signature, closed-schema params) and the reply is read through `PairingResponseInterpreter`,
+/// which understands the 2.0 `hello-ok` and its pairing-required details.
 class OpenClawEventClient {
     var onNotification: ((String) -> Void)?
     /// Surfaces live pairing/connection state to the gateway settings UI.
@@ -11,17 +15,23 @@ class OpenClawEventClient {
     /// produces exactly one reply frame and passes it to the completion for sending.
     var onRemoteRequest: (([String: Any], @escaping ([String: Any]) -> Void) -> Void)?
 
-    private var webSocketTask: URLSessionWebSocketTask?
-    private var session: URLSession?
+    private let socketFactory: GatewaySocketFactory
+    private var socket: GatewaySocket?
     private var isConnected = false
     private var shouldReconnect = false
     private var reconnectDelay: TimeInterval = 2
     private let maxReconnectDelay: TimeInterval = 30
     /// The gateway resolved for the current connection — its credential drives the handshake.
     private var currentGateway: GatewayConfig?
-    /// Nonce from the gateway's `connect.challenge` — signed into the device-identity block so
-    /// remote gateways grant real scopes (token-only connects can be granted zero scopes).
-    private var challengeNonce: String?
+    /// The gateway's `connect.challenge` — signed into the device-identity block so remote
+    /// gateways grant real scopes (token-only connects can be granted zero scopes).
+    private var challenge: GatewayChallenge?
+    /// The gateway's hello-ok for this socket (role, scopes, catalog).
+    private(set) var gatewayHello: GatewayHello?
+
+    init(socketFactory: @escaping GatewaySocketFactory = URLSessionGatewaySocket.make) {
+        self.socketFactory = socketFactory
+    }
 
     func connect() {
         // BK P0: listening for inbound gateway events and feeding them to the triage LLM is itself
@@ -40,18 +50,17 @@ class OpenClawEventClient {
         sendDeviceEvent(type: "connection", payload: ["status": "disconnected"])
         shouldReconnect = false
         isConnected = false
-        challengeNonce = nil
-        webSocketTask?.cancel(with: .normalClosure, reason: nil)
-        webSocketTask = nil
-        session?.invalidateAndCancel()
-        session = nil
+        challenge = nil
+        gatewayHello = nil
+        socket?.cancel()
+        socket = nil
         onPairingStatusChange?(.disconnected)
         PrivacyLog.gatewayConnection(.disconnected)
     }
 
     /// Begin device pairing with a setup code: store it on the active gateway and reconnect, so
     /// the handshake presents the bootstrap token. The gateway returns a per-device token once
-    /// the device is approved (captured in `handleConnectResponse` / the `device.paired` event).
+    /// the device is approved (captured in `handleConnectResponse`).
     func startPairing(setupCode: String) {
         guard let gateway = Self.activeGateway() else {
             onPairingStatusChange?(.error("No gateway configured"))
@@ -79,18 +88,14 @@ class OpenClawEventClient {
             return
         }
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        session = URLSession(configuration: config)
-        // BR P4: same channel classification as the bridge socket.
         var request = URLRequest(url: url)
         request.setValue(OpenClawBridge.messageChannel, forHTTPHeaderField: "x-openclaw-message-channel")
-        webSocketTask = session?.webSocketTask(with: request)
-        webSocketTask?.resume()
+        let socket = socketFactory(request)
+        self.socket = socket
 
         PrivacyLog.gatewayConnection(.connecting, transport: Self.transport(for: gateway),
                                      peer: PrivateIdentifier(gateway.id))
-        startReceiving()
+        startReceiving(on: socket)
     }
 
     /// Find the first enabled gateway that uses the OpenClaw WebSocket protocol.
@@ -160,26 +165,19 @@ class OpenClawEventClient {
         return "ws://\(host):\(gateway.port)/ws"
     }
 
-    private func startReceiving() {
-        webSocketTask?.receive { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let message):
-                switch message {
-                case .string(let text):
+    private func startReceiving(on socket: GatewaySocket) {
+        Task { [weak self] in
+            while let self, self.socket === socket {
+                do {
+                    let text = try await socket.receive()
                     self.handleMessage(text)
-                case .data(let data):
-                    if let text = String(data: data, encoding: .utf8) {
-                        self.handleMessage(text)
-                    }
-                @unknown default:
-                    break
+                } catch {
+                    guard self.socket === socket else { return }
+                    PrivacyLog.gatewayFailed(.receive, SafeErrorSummary(error))
+                    self.isConnected = false
+                    self.scheduleReconnect()
+                    return
                 }
-                self.startReceiving()
-            case .failure(let error):
-                PrivacyLog.gatewayFailed(.receive, SafeErrorSummary(error))
-                self.isConnected = false
-                self.scheduleReconnect()
             }
         }
     }
@@ -201,6 +199,8 @@ class OpenClawEventClient {
     /// Remote invoke (Plan BH): an unsolicited server→client request. The wired handler owns
     /// parse/policy/execute and always produces exactly one reply frame; with no handler wired
     /// we still answer (unsupported) rather than leave the gateway hanging.
+    /// (The 2.0 gateway delivers node commands as `node.invoke.request` events answered by the
+    /// `node.invoke.result` RPC — that mapping lands with the node role in Plan EH P3.)
     private func handleRequestFrame(_ json: [String: Any]) {
         guard let handler = onRemoteRequest else {
             if let request = RemoteCommandParser.parse(json) {
@@ -214,30 +214,34 @@ class OpenClawEventClient {
     }
 
     private func sendFrame(_ frame: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: frame),
+        guard let socket,
+              let data = try? JSONSerialization.data(withJSONObject: frame),
               let string = String(data: data, encoding: .utf8) else { return }
-        webSocketTask?.send(.string(string)) { error in
-            if let error {
+        Task {
+            do { try await socket.send(string) } catch {
                 PrivacyLog.gatewayFailed(.send, SafeErrorSummary(error))
             }
         }
     }
 
-    /// Fire-and-forget `device.event` push (Plan BH follow-up): tell the gateway-side agent
-    /// something changed on the device without being asked — connection state, glasses
-    /// attach/detach, battery. The request/reply invoke path stays unchanged; this is the
-    /// outbound half of the bidirectional terminal. No-op unless the socket is authenticated.
+    /// Fire-and-forget device event (Plan BH follow-up): tell the gateway-side agent something
+    /// changed on the device without being asked — connection state, glasses attach/detach,
+    /// battery. On the wire this is the `node.event` RPC, which the gateway accepts only from a
+    /// socket admitted as a node; until this socket connects with the node role (Plan EH P3) the
+    /// event is not sent, rather than sending a frame the gateway will refuse.
     func sendDeviceEvent(type: String, payload: [String: Any]) {
-        guard isConnected else { return }
+        guard isConnected, gatewayHello?.role == GatewayWire.Role.node.rawValue else { return }
         var body: [String: Any] = [
             "type": type,
             "timestamp": Int(Date().timeIntervalSince1970),
         ]
         if !payload.isEmpty { body["data"] = payload }
+        let request = GatewayRequestCatalog.nodeEvent("device.event", payload: body)
         sendFrame([
-            "type": "event",
-            "event": "device.event",
-            "payload": body,
+            "type": "req",
+            "id": UUID().uuidString,
+            "method": request.method,
+            "params": request.params,
         ])
         PrivacyLog.gatewayConnection(.deviceEventSent, detail: PrivacyToken(type))
     }
@@ -257,10 +261,18 @@ class OpenClawEventClient {
         case .paired:
             isConnected = true
             reconnectDelay = 2
+            gatewayHello = outcome.hello
+            if let hello = outcome.hello {
+                PrivacyLog.gatewayConnection(.helloReceived, count: hello.events.count,
+                                             detail: PrivacyToken(hello.role))
+            }
             PrivacyLog.gatewayConnection(.connected)
             sendDeviceEvent(type: "connection", payload: ["status": "connected"])
         case .waitingApproval:
+            // The gateway closes the socket on a pending approval; the reconnect loop presents
+            // the same identity again and the approved device gets its token in hello-ok.
             PrivacyLog.gatewayConnection(.pairingPending)
+            if outcome.pauseReconnect { reconnectDelay = maxReconnectDelay }
         case .error:
             // The interpreter's message and the raw frame are both the gateway's own prose —
             // the frame additionally echoes the credential we just presented.
@@ -277,7 +289,7 @@ class OpenClawEventClient {
 
         switch event {
         case "connect.challenge":
-            challengeNonce = payload["nonce"] as? String
+            challenge = GatewayChallenge.parse(event: json)
             sendConnectHandshake()
         case "device.paired":
             if let outcome = PairingResponseInterpreter.interpretPairedEvent(payload),
@@ -313,30 +325,24 @@ class OpenClawEventClient {
             token = Config.openClawGatewayToken
         }
 
-        // Shared builder (protocol v3/v4): role/scopes, capability advertisement, and — when the
-        // gateway issued a challenge nonce — the signed Ed25519 device-identity block.
+        // Shared builder: role/scopes, closed-schema client block, and — when the gateway issued
+        // a challenge — the Ed25519 device-identity block signed at the challenge's timestamp.
         let connectMsg: [String: Any] = [
             "type": "req",
             "id": UUID().uuidString,
             "method": "connect",
             "params": OpenClawConnectParams.build(
-                clientId: "gateway-client",
                 displayName: "OpenGlasses",
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
                 token: token,
-                challengeNonce: challengeNonce,
+                role: .operator,
+                challenge: challenge,
                 pairedDeviceId: deviceId.isEmpty ? nil : deviceId
             )
         ]
 
-        guard let data = try? JSONSerialization.data(withJSONObject: connectMsg),
-              let string = String(data: data, encoding: .utf8) else { return }
         PrivacyLog.gatewayConnection(.handshakeSent)
-        webSocketTask?.send(.string(string)) { error in
-            if let error {
-                PrivacyLog.gatewayFailed(.handshake, SafeErrorSummary(error))
-            }
-        }
+        sendFrame(connectMsg)
     }
 
     private func handleHeartbeatEvent(_ payload: [String: Any]) {

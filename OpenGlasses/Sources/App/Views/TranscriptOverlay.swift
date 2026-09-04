@@ -144,6 +144,11 @@ struct SessionNoticeOverlay: View {
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .padding(.horizontal, 16)
+                // The card carries its own gap to the module above it, rather than taking one from
+                // a parent stack's spacing. A stack allocates spacing around a child that draws
+                // nothing, so a silent notice would otherwise leave a phantom gap on a surface
+                // whose rule is that every module gap is the same.
+                .padding(.top, DockGridMetrics.moduleGap)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: errorText)

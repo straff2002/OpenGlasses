@@ -34,7 +34,8 @@ enum SessionExporter {
     /// produced; artifacts already written stay on disk and remain the user's record.
     @discardableResult
     static func export(sessionDir: URL, formats: Set<Format> = [.json, .pdf]) throws -> [URL] {
-        guard FieldAssistEntitlement.shared.isGranted else {
+        // Audited export is a team capability; the session log itself stays on the device at any tier.
+        guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
             throw ExportError.notEntitled
         }
         guard FileManager.default.fileExists(atPath: sessionDir.path) else {

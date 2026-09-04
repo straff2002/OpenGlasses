@@ -247,12 +247,26 @@ struct MyDayHomeView: View {
     let compact: Bool
 
     @Environment(\.appAccent) private var accent
+    @Environment(\.openURL) private var openURL
     @State private var showDetail = false
 
     /// The user's own collapse, remembered across launches. Distinct from `compact`, which the
     /// session state imposes for as long as the mic is open: this one is a choice, so it outranks
     /// the compact form and holds until the user reverses it.
     @AppStorage("myDayCollapsed") private var isCollapsed = false
+
+    /// The whole day, in the card, in place of the three-item summary.
+    ///
+    /// Deliberately **not** persisted, unlike `isCollapsed`. Collapsing is a standing preference
+    /// about how much of the home surface My Day should occupy; expanding is a momentary "show me
+    /// the rest", and a card that came back full-height on every launch would be making a lasting
+    /// decision out of a glance. It also resets when the card is collapsed, so the chevron always
+    /// returns to a card the wearer recognises.
+    @State private var isExpanded = false
+
+    /// The result of an item action, which has nowhere else to be said now that the full day is
+    /// drawn in the card rather than on a screen with its own alert.
+    @State private var actionMessage: String?
 
     var body: some View {
         Group {
@@ -279,8 +293,31 @@ struct MyDayHomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             refreshInBackground()
         }
+        // The full day is drawn in the card now, so this screen is no longer where "show me the
+        // rest" goes. It survives for the one job the card cannot do inline: repairing a source.
+        // Those rows carry per-source messages and a Settings deep link, and they are reached from
+        // the availability line — the thing they repair — rather than from the expand control.
         .sheet(isPresented: $showDetail) {
             MyDayView(service: service)
+        }
+        .alert("My Day", isPresented: Binding(
+            get: { actionMessage != nil },
+            set: { if !$0 { actionMessage = nil } }
+        )) {
+            Button("OK") { actionMessage = nil }
+        } message: {
+            Text(actionMessage ?? "")
+        }
+    }
+
+    /// Completing a reminder from the expanded card — the same call the full screen makes, so an
+    /// action that moved to the card did not become a weaker version of itself.
+    private func complete(_ item: MyDayItem) async {
+        do {
+            let title = try await service.completeReminder(id: item.id.rawValue)
+            if title == nil { actionMessage = "That reminder is no longer available." }
+        } catch {
+            actionMessage = "The reminder could not be completed."
         }
     }
 
@@ -345,7 +382,11 @@ struct MyDayHomeView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isCollapsed)
+        // Both height changes ride the surface's one settle curve. The panel below does not
+        // animate at all — it tracks the height this card reports — so this *is* the motion of
+        // the exchange, and the two move as one.
+        .animation(DockGridMetrics.heightSettle, value: isCollapsed)
+        .animation(DockGridMetrics.heightSettle, value: isExpanded)
     }
 
     /// The card's one always-present row. Collapsed, it is the whole card — the title, today's
@@ -379,19 +420,31 @@ struct MyDayHomeView: View {
                 .foregroundStyle(accent)
                 .accessibilityLabel("Refresh My Day")
 
+                // Grows the card in place rather than presenting the day somewhere else. The
+                // arrows point the way the card is about to move, which is why this is no longer
+                // the "↗" that meant "open elsewhere".
                 Button {
-                    showDetail = true
+                    isExpanded.toggle()
                 } label: {
-                    Image(systemName: "arrow.up.right")
+                    Image(systemName: isExpanded
+                          ? "arrow.down.right.and.arrow.up.left"
+                          : "arrow.up.left.and.arrow.down.right")
                         .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(accent)
-                .accessibilityLabel("Open full My Day")
+                .accessibilityLabel(isExpanded ? "Show the My Day summary"
+                                               : "Show the full day in My Day")
+                .accessibilityHint(isExpanded
+                                   ? "Returns the card to the first few items."
+                                   : "Grows the card to today's whole list.")
             }
 
             Button {
                 isCollapsed.toggle()
+                // A collapsed card always reopens as the summary it is recognised by — expansion
+                // is a glance, not a setting, so it does not survive being put away.
+                if isCollapsed { isExpanded = false }
             } label: {
                 Image(systemName: "chevron.down")
                     .rotationEffect(.degrees(isCollapsed ? -90 : 0))
@@ -409,7 +462,10 @@ struct MyDayHomeView: View {
         .background(
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture { isCollapsed.toggle() }
+                .onTapGesture {
+                    isCollapsed.toggle()
+                    if isCollapsed { isExpanded = false }
+                }
         )
     }
 
@@ -449,45 +505,62 @@ struct MyDayHomeView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                let visibleItems = Array(snapshot.items.prefix(compact ? 1 : 3))
+                // Expanded, the card *is* the full day — the whole list, not the card's share of
+                // it, which is what the modal used to be for.
+                let visibleItems = isExpanded && !compact
+                    ? snapshot.allItems
+                    : Array(snapshot.items.prefix(compact ? 1 : 3))
                 ForEach(visibleItems) { item in
                     MyDaySwipeToClear(label: item.title) {
                         Task { await service.dismiss(item) }
                     } content: {
-                        Button {
-                            showDetail = true
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: icon(for: item.kind))
-                                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-                                    .frame(width: 20)
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.title)
-                                        .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
-                                        .foregroundStyle(.primary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    if !compact, let detail = item.detail {
-                                        Text(detail)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 10) {
+                            Button {
+                                // Tapping a row is "show me more", which now happens here rather
+                                // than by leaving for a screen. Already expanded, the row's own
+                                // action button is the thing to press, so this settles to a no-op.
+                                isExpanded = true
+                            } label: {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: icon(for: item.kind))
+                                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                        .frame(width: 20)
+                                        .accessibilityHidden(true)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title)
+                                            .font(.footnote.weight(item.urgency >= .important ? .semibold : .regular))
+                                            .foregroundStyle(.primary)
                                             .fixedSize(horizontal: false, vertical: true)
+                                        if !compact, let detail = item.detail {
+                                            Text(detail)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
                                     }
+                                    Spacer(minLength: 4)
                                 }
-                                Spacer(minLength: 4)
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .disabled(isExpanded)
+                            // The detail carries which Reminders list a task came from, and the
+                            // compact card does not draw it — so it is spoken explicitly rather
+                            // than left to whatever happened to be rendered.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel([item.title, item.detail]
+                                .compactMap { $0 }
+                                .joined(separator: ", "))
+                            .accessibilityAddTraits(isExpanded ? [] : .isButton)
+                            .accessibilityHint(isExpanded ? "" : "Shows the full day in the card.")
+
+                            // Expanded, each row carries the action the full screen used to own —
+                            // completing a reminder, directions, opening an event. Moving the list
+                            // into the card without these would have made "in place" a downgrade.
+                            if isExpanded && !compact {
+                                actionButton(for: item)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        // The detail carries which Reminders list a task came from, and the
-                        // compact card does not draw it — so it is spoken explicitly rather than
-                        // left to whatever happened to be rendered.
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel([item.title, item.detail]
-                            .compactMap { $0 }
-                            .joined(separator: ", "))
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityHint("Opens My Day")
                     }
                 }
 
@@ -496,12 +569,12 @@ struct MyDayHomeView: View {
                 // it had materialised, when it had been on the list the whole time and nothing on
                 // screen could say so.
                 let total = snapshot.allItems.count
-                if !compact, total > visibleItems.count {
+                if !compact, !isExpanded, total > visibleItems.count {
                     Button("See all \(total) items") {
-                        showDetail = true
+                        isExpanded = true
                     }
                     .font(.footnote.weight(.semibold))
-                    .accessibilityHint("Opens the full day. \(total - visibleItems.count) more than the card shows.")
+                    .accessibilityHint("Grows the card to today's whole list. \(total - visibleItems.count) more than the card shows.")
                 }
             }
 
@@ -510,18 +583,79 @@ struct MyDayHomeView: View {
                     $0.availability != .available
                 }.count
                 if unavailableCount > 0 {
-                    Label(
-                        unavailableCount == 1 ? "1 source needs attention" : "\(unavailableCount) sources need attention",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    // The one thing the card still sends elsewhere, and the only reason the full
+                    // screen survives: repairing a source needs its own message and a Settings
+                    // deep link per source. Reached from the line that reports the problem, which
+                    // is where a wearer looks for it — not from the expand control.
+                    Button {
+                        showDetail = true
+                    } label: {
+                        Label(
+                            unavailableCount == 1 ? "1 source needs attention" : "\(unavailableCount) sources need attention",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens the sources that need attention.")
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    /// The action a row carries once the card is expanded — the same set, and the same calls, the
+    /// full screen offers. Ported rather than reimplemented so "in place" costs the wearer nothing.
+    @ViewBuilder
+    private func actionButton(for item: MyDayItem) -> some View {
+        if item.actions.contains(.complete) {
+            Button {
+                Task { await complete(item) }
+            } label: {
+                Image(systemName: "checkmark.circle")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Complete \(item.title)")
+        } else if item.actions.contains(.directions),
+                  let url = service.directionsURL(for: item.id) {
+            Button {
+                service.recordAction(.startDirections)
+                openURL(url)
+            } label: {
+                Image(systemName: "arrow.triangle.turn.up.right.diamond")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Start directions for \(item.title)")
+        } else if item.actions.contains(.dismiss) {
+            Button {
+                Task { await service.dismissDigestItem(id: item.id.rawValue) }
+            } label: {
+                Image(systemName: "xmark.circle")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Dismiss \(item.title)")
+        } else if item.actions.contains(.open), let dueAt = item.dueAt {
+            Button {
+                service.recordAction(.openEvent)
+                let seconds = dueAt.timeIntervalSinceReferenceDate
+                if let url = URL(string: "calshow:\(seconds)") { openURL(url) }
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Open \(item.title) in Calendar")
+        }
     }
 
     private func progressRow(_ label: String) -> some View {

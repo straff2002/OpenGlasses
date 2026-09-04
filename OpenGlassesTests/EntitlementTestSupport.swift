@@ -1,16 +1,24 @@
 import Foundation
 @testable import OpenGlasses
 
-/// Grants Field Assist unconditionally. Feature tests that need the feature *on* say so with this,
-/// instead of writing a global preference and relying on a gate to read it back.
+/// Grants Field Assist unconditionally at `tier` (enterprise by default, so "feature on" means every
+/// capability). Feature tests that need the feature *on* say so with this, instead of writing a
+/// global preference and relying on a gate to read it back. Pass `.solo` to state the solo condition.
 struct AlwaysGrantedEntitlementProvider: FieldAssistEntitlementProvider {
-    var productID = "com.openglasses.field_assist"
+    var tier: FieldAssistTier = .enterprise
     var expiration: Date?
 
     func evidence() -> FieldAssistEntitlementEvidenceSet {
-        FieldAssistEntitlementEvidenceSet(evidence: [
-            .verifiedStoreProduct(productID: productID, expiration: expiration)
-        ])
+        switch tier {
+        case .solo:
+            return FieldAssistEntitlementEvidenceSet(evidence: [
+                .verifiedStoreProduct(productID: "com.openglasses.field_assist", expiration: expiration)
+            ])
+        case .team, .enterprise:
+            return FieldAssistEntitlementEvidenceSet(evidence: [
+                .verifiedOrganizationLicense(licenseIDHash: "test-grant", expiration: expiration, tier: tier)
+            ])
+        }
     }
 }
 
@@ -36,9 +44,9 @@ struct StubEntitlementProvider: FieldAssistEntitlementProvider {
 /// `tearDown` can put it back. Kept explicit rather than automatic so a test that forgets to restore
 /// is obvious in review.
 enum EntitlementTestScope {
-    static func grant() -> FieldAssistEntitlementProvider {
+    static func grant(tier: FieldAssistTier = .enterprise) -> FieldAssistEntitlementProvider {
         let previous = FieldAssistEntitlement.shared.provider
-        FieldAssistEntitlement.shared.provider = AlwaysGrantedEntitlementProvider()
+        FieldAssistEntitlement.shared.provider = AlwaysGrantedEntitlementProvider(tier: tier)
         return previous
     }
 

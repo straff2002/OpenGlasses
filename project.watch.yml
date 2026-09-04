@@ -19,8 +19,8 @@ targets:
         # Must equal the iOS app's PRODUCT_BUNDLE_IDENTIFIER — override BOTH in
         # project.local.yml when rebranding, or Watch install fails.
         WK_COMPANION_APP_BUNDLE_IDENTIFIER: com.openglasses.app
-        MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "362"
+        MARKETING_VERSION: "2026.9"
+        CURRENT_PROJECT_VERSION: "368"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
@@ -51,8 +51,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
-        MARKETING_VERSION: "2026.8"
-        CURRENT_PROJECT_VERSION: "362"
+        MARKETING_VERSION: "2026.9"
+        CURRENT_PROJECT_VERSION: "368"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: "YES"

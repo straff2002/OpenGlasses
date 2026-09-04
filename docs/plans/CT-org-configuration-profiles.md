@@ -1,11 +1,16 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 📝 Drafted (not scheduled), 2026-08-09
+**Status:** 📝 Revised 2026-09-03 — partner-configured edition (packs, tiers, EI issuance); still not scheduled
 **Depends on:** Plan F/licensing primitives (Ed25519 verification), Plan BX (signed-manifest +
-lossy-decode precedent), Plan BM P10 (`OwnerGateMachine`), Plan CD P1 (the onboarding-flag hazard)
-**Related:** Plan CS (watch propagation), Plan CR P4 (enrolment endpoint, for the secrets half)
-**Shape:** pure schema + applier first (P1), three ingress adapters (P2), onboarding + managed-state
-UI + watch propagation (P3), enrolment endpoint deferred (P4)
+lossy-decode precedent), Plan BM P10 (`OwnerGateMachine`), Plan CD P1 (the onboarding-flag hazard),
+Plan EE (tiers on every piece of evidence, licence payload v2), Plan EG (vault packs, the `packs`
+claim, the signed catalog and its installer) — the last two shipped after this plan was drafted and
+are the reason for the revision
+**Related:** Plan CS (watch propagation), Plan CR P4 (enrolment endpoint, for the secrets half),
+Plan EI (who mints the code and the profile), Plans ED and EF (the documents tier an organisation
+loads its own manuals into)
+**Shape:** pure schema + applier first (P1), three ingress adapters (P2), onboarding + pack install +
+managed-state UI + watch propagation (P3), enrolment endpoint deferred (P4)
 
 ---
 
@@ -16,6 +21,18 @@ to hand someone a device and have the app come up configured: the right capabili
 ones off, the right gateway, the right vault, the right mode. Today the only route is a person walking
 through [`OnboardingView`](../../OpenGlasses/Sources/App/Views/OnboardingView.swift)'s seven pages and
 then through Settings, by hand, per device, correctly, every time.
+
+**The case this revision is written against: a partner-configured edition.** A reseller or
+integration partner sells an organisation an annual team licence that includes a vault pack for its
+trade, and wants every technician's phone to come up as *the HVAC assistant* — Field Assist on, the
+partner's pack installed and set as the default vault, the organisation's own manuals loaded into
+that pack's documents tier, and every unrelated capability hidden and unavailable, with nothing the
+technician can widen. One scan standing in for a purchase, a licence code, an onboarding flow, a
+vault import, a documents import and a dozen Settings toggles — and it is the same schema and the
+same applier as the museum, the ward and the training provider. What it adds to this plan is three
+things the draft predates: tiers and packs on the entitlement side (Plans EE and EG, both shipped),
+an issuance service that mints the artefact (Plan EI), and a ceiling deep enough to leave exactly one
+feature standing.
 
 The primitives for the fix are almost all already here:
 
@@ -89,7 +106,17 @@ convenience into an actual deployment story.
   "profiles + PIN".
 - **Downloaded code or behaviour.** A profile sets values and locks; it does not add tools, prompts or
   procedures. That is what Plan BX skill packs are for, and they have their own signing and install
-  trust decision. A profile may *reference* a pack; it may not embed one.
+  trust decision. A profile may *reference* a pack; it may not embed one — and that holds for the
+  vault pack enrolment now installs, which arrives as signed, checksummed **data** through Plan EG's
+  own installer rather than as anything the profile carries.
+- **White label.** A partner's own name on the icon is a separate bundle identifier, App Store
+  listing, review, signing identity and privacy manifest, with its own screenshots, support URL and
+  localisation — none of which a configuration profile shortens by a single step, and Plan EE already
+  places white label in the enterprise *contract* column rather than in any tier's code path. What
+  this plan offers instead is a single-purpose edition **inside the same app**: the partner's pack,
+  the organisation's name on the managed row, everything else subtracted. That is the behaviour a
+  partner asks for and not the branding, and the distinction belongs in the sales conversation rather
+  than being discovered during review.
 - **Secrets in the profile.** Structural, see below.
 - **Silently locking a device.** A managed device says so, on screen, always.
 
@@ -100,8 +127,10 @@ convenience into an actual deployment story.
 ### `ConfigProfile`
 
 Versioned, `Codable`, signed. Fields: profile id, org display name, schema version, issued date,
-**two expiry dates** (below), an optional skill-pack reference list, an `entitlements` map, and the
-settings themselves as `[SettingKey: ManagedValue]` where:
+**two expiry dates** (below), an optional skill-pack reference list, a **vault-pack reference** (the
+pack id enrolment installs, plus an optional documents source for the organisation's own manuals),
+the **licence code** the entitlement half rides on, and the settings themselves as
+`[SettingKey: ManagedValue]` where:
 
 ```
 ManagedValue = { value: ProfileValue, disposition: .default | .ceiling }
@@ -147,10 +176,23 @@ importance:
 3. It gives the profile a schema to validate against, which is what makes the report below possible.
 
 Deliberately small first cut: the capability toggles and feature gates (`privacyFilterEnabled`,
-`glassesDisplayEnabled`, `accessibilityModeEnabled`, `simpleModeEnabled`, `audioOnlyMode`,
-`mcpServerEnabled`, `agentModeEnabled`, the `remoteInvoke*` trio, the fingerspelling and
-visual-state families), plus non-secret endpoints (gateway host/port, Hermes bridge host/port) and
-vault/procedure-pack selection. Everything else is a later addition, and adding one is one enum case.
+`glassesDisplayEnabled`, `simpleModeEnabled`, `audioOnlyMode`, `mcpServerEnabled`,
+`agentModeEnabled`, the `remoteInvoke*` trio, the visual-state family), plus non-secret endpoints
+(gateway host/port, Hermes bridge host/port), the Field Assist selection keys (`fieldAssistEnabled`,
+`fieldAssistDefaultVaultId`, `fieldAssistDefaultMode`) and skill- and vault-pack references.
+Everything else is a later addition, and adding one is one enum case.
+
+**Two families are settable in the pin-*on* direction only, and one of those is a correction to this
+plan's own first cut.** The assistive surface may be turned on by a profile and never off — the
+decision was already recorded here, and it is now enforced in code:
+[`CapabilityCatalog`](../../OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift)
+builds the Accessibility category through `pinnedAssistive`, a constructor that deliberately exposes
+no placement and no Simple Mode parameter, with the reason written above it. **The fingerspelling
+family is part of that surface**, not a general capability: `FingerspellingSettingsView` is presented
+from inside `AccessibilitySettingsView`, so listing it beside `mcpServerEnabled`, as the draft did,
+would have let an organisation withhold a sign-language reader from the person holding the device. It
+moves to pin-on-only with the rest of the assistive surface. The privacy filter is the second family:
+`.ceiling(privacyFilterEnabled: true)` is a supported policy, pinning it off is not one.
 
 ### `ProfileApplier`
 
@@ -183,6 +225,61 @@ identity or entitlement change**, not just at enrolment:
 A one-shot apply looks correct in testing and fails in exactly the case this plan exists for: someone
 signs in an hour after enrolment and their own settings quietly restore a capability the org removed.
 
+### Ceilings for a single-purpose edition
+
+A ceiling that removes a handful of toggles produces a general assistant with some settings missing.
+"The HVAC assistant" is a stronger claim: one feature stands and the rest of the app is gone. That is
+a long subtraction, and it has to be enumerated against what actually ships rather than described in
+the abstract. The shipped hub is `CapabilityCatalog.all` — twelve categories rendered by
+`SettingsView.destination(for:)` — so the subtraction is stated per category.
+
+**Subtracted by a Field-Assist-only ceiling.**
+
+| Category | What the ceiling takes away |
+|---|---|
+| AI & Personality | The persona library and the Modes tab's grid (`Config.savedPersonas`, `PersonaPickerTab`), the custom system prompt, model choice, `autoModelRoutingEnabled`, `modelCascadeEnabled`, `narrateModelSwitchesEnabled`, `llmComplexityClassifierEnabled`, `intentClassifierEnabled` |
+| Live / realtime modes | Gemini Live and OpenAI Realtime. Neither is a toggle today — `Config.geminiLiveModelConfig` and `Config.openAIRealtimeModelConfig` decide availability by whether a provider is configured — so the ceiling dimension is *which providers and modes may be configured or used at all*, which is the same dimension the draft already required for model and egress policy |
+| Capture & Streaming | Recording (`recordingSaveToPhotos`, `recordingFolderBookmark`), RTMP broadcasting (`broadcastPlatform`, `broadcastRTMPURL`, the frame-rate/bitrate family), `broadcastChatReadbackEnabled`, browser streaming, `dwellCaptureEnabled` |
+| Connections | The gateway (`openClawEnabled`, saved gateways), `agentModeEnabled`, the `remoteInvoke*` trio, `mcpServerEnabled`, the Hermes bridge (`hermesBridgeEnabled` + host/port), the custom agent harness, Home Assistant |
+| Tools & Actions | Skill packs (`skillPackCatalogURL`, `skillPackDevModeEnabled`, and the `SkillPackSideload` deep-link host), playbooks, quick actions, custom home actions |
+| Memory & context | `memoryCurationEnabled`, `memoryNudgesEnabled`, `visualStateMemoryEnabled` / `visualStateInjectThumbnails`, `contextualEmbeddingEnabled`, `myDayEnabled` |
+| Local inference | `localAgentEnabled`, `ggufModelsEnabled`, `localRuntimeCoordinatorEnabled` — a managed phone should not be pulling gigabyte model files over a customer's tether, and that is the organisation's call rather than the technician's |
+| Advanced | The prompt-and-traffic inspection surface behind `AdvancedSettingsScreen` |
+
+**Kept, and not at the organisation's discretion.**
+
+- **Accessibility** — already decided here, now enforced by `CapabilityCatalog.pinnedAssistive` as
+  above. Assistive narration, reading help and fingerspelling stay reachable on a fully ceilinged
+  device.
+- **Diagnostics & Support** — the catalog marks it everyday *and* visible in Simple Mode, because the
+  wearers who most need a self-test and a way to report a problem are the ones who never see
+  Advanced. A technician whose managed phone has stopped working has to be able to prove it.
+- **Voice & Triggers** — Field Assist is a hands-free product; the wake phrase and push-to-talk are
+  its input, not an extra.
+- **Glasses & Privacy** — pairing, and `privacyFilterEnabled`, which an org may pin on and nobody may
+  pin off.
+- **Look & Feel** — theme, accent and language. `LanguageSettingsView` is how a technician reads the
+  app at all.
+- **Field Assist itself** — the session surface, Custom Vaults with its Packs section, the session
+  log, escalation.
+- **The managed row and its removal path** — a device that cannot be un-managed is malware with a
+  nicer name, and that does not soften for a single-purpose edition.
+- **About** — version, build, attributions and the licence notice are an obligation, not a
+  capability.
+
+**What the surface looks like when most of it is gone.** `MainView` is four tabs — Voice, Modes,
+Chat, Settings. On a fully ceilinged device the Modes tab holds exactly one mode, so it collapses to
+the Field Assist entry rather than presenting a grid of one; Chat holds field-session transcripts and
+nothing else; Voice stays the session surface. **Field Assist is the home**, which is what "comes up
+as the HVAC assistant" means concretely. Settings renders the surviving categories, a persistent
+"Managed by ⟨org⟩" row carrying the issue date and both expiries, and nothing else.
+
+Two second-order effects a first implementation will get wrong unless they are written down: the
+**Discover** shelf must not pitch a category the ceiling removed, and **"Show everything"**
+(`journey.state.showsEverything`) must not be able to bring one back — it is a display switch over
+folded categories, and its footer today ("Nothing here is locked — this only decides what the list
+shows") stops being true on a managed device and has to change with it.
+
 ### Entitlement rides the profile — one artefact, bought once for the fleet
 
 **Decided:** the org's code is both the configuration *and* the licence. An organisation buys for
@@ -192,11 +289,48 @@ entitlement — login stays purely identity and personalisation.
 
 This is cheaper than keeping them apart, not more expensive, because they are already the same
 primitive. [`LicenseService`](../../OpenGlasses/Sources/Services/LicenseService.swift) verifies
-`{feature, expiry}` under an Ed25519 signature with an embedded public key; `ConfigProfile` verifies
-`{settings, expiry}` the same way. Merging is one payload type and one verification path instead of
-two. The join on the consuming side already exists too: `VaultRegistry` gates on string ids
-(`field_assist_refrigeration`, `field_assist_it`), so an org grant slots into the gating that ships
-today.
+`{feature, licensee, issued, expires?, tier?, plan?, seats?, reference?, packs?}` under an Ed25519
+signature with an embedded public key; `ConfigProfile` verifies `{settings, expiry}` the same way.
+Merging is one payload type and one verification path instead of two. The join on the consuming side
+already exists and has grown since this was drafted:
+[`VaultRegistry.isUnlocked`](../../OpenGlasses/Sources/Services/Vault/VaultRegistry.swift) is now a
+resolution table rather than a two-case switch — `nil` unlocked always, `medical_compliance` on the
+Medical Compliance subscription, the two bundled ids at any Field Assist tier, `enterprise` (a
+customer's own imported vaults) at tier ≥ team, and **anything else resolved as a pack id** through
+`VaultPackAccess.isUnlocked` from the verified store products, the licence's `packs` claim and the
+tier. So an organisation grant needs no new gating; it needs the right claims in the code the profile
+carries.
+
+**The profile's entitlement half is the licence code, and nothing but the licence code.** Enrolment
+does not invent an evidence kind. It hands the code to `LicenseService.activate(code:)`, which
+verifies the signature and the `feature == "field_assist"` claim before storing the string at
+`LicenseService.storageKey` — the same single slot a technician typing a code by hand writes to. From
+that moment the shipped path does all the work:
+[`LiveFieldAssistEntitlementProvider.evidence()`](../../OpenGlasses/Sources/Services/Entitlement/FieldAssistEntitlementProvider.swift)
+decodes the stored code **afresh on every read**, hands the *signed* `expires` and `resolvedTier` to
+`FieldAssistEntitlementEvaluator`, and `livePacks` unions the `packs` claim of live evidence only, so
+a lapsed code contributes no packs. Nothing in that chain is a cached "entitled" flag, which is Plan
+DP's rule and the constraint this plan must not erode — a profile that wrote a boolean would be
+exactly the forgeable preference DP removed, arriving through the one path that looks administrative
+rather than security-relevant.
+
+Three consequences, stated as rules rather than left implicit:
+
+- **A profile may never widen entitlement beyond the code inside it.** The tier a device holds is the
+  decision's tier, derived from the signed payload; `LicensePayload.resolvedTier` maps a missing or
+  unrecognised claim to `.team` and coerces `solo` up to `.team`, so no malformed claim reaches
+  enterprise. Where a profile's settings imply a capability the code does not entitle, the result is a
+  locked or absent control with an honest reason, never an unlock. Ceilings only subtract; the
+  entitlement half only reports what was signed.
+- **A pack the code does not list stays locked, whatever the profile says.** The profile names a pack
+  so enrolment can *install* it. The registry still asks `VaultPackAccess` with the granted packs and
+  the verified store products, so an installed-but-unentitled pack is a visible, locked row — which is
+  the correct outcome for a renewal that has lapsed, and a much better one than a vault that vanishes.
+- **Enterprise is not delegable, and a profile is where that would leak.** The registry's pack branch
+  unlocks *every* pack at enterprise regardless of the `packs` claim, so an enterprise grant issued by
+  a partner would silently void per-partner pack accounting. Plan EI's partner record allows team only
+  for that reason, and a partner-issued profile therefore carries a team code. Enterprise stays a
+  vendor contract, minted by the vendor.
 
 Nor is it a new bypass of StoreKit. Field Assist is *already* unlockable by an offline signed code as
 well as by `com.openglasses.field_assist` — the org-purchase path is shipped and this is the same path
@@ -218,6 +352,67 @@ happens at the depot and the work happens in the field.
 subscription must not unmanage a device (the capability bounds are a safety property, not a paid
 feature) and a rotated policy must not revoke a licence the org has paid for. Merging them into one
 date is the mistake that turns a billing event into a compliance incident.
+
+### Pack install is part of enrolment
+
+Naming a pack and installing one are different acts, and the draft only had the first. The profile
+carries the pack id — the same string the vault manifest's `gating.iap` carries and the catalog entry
+is keyed by — and enrolment installs it through the path Plan EG shipped rather than a new one:
+[`VaultPackCatalogService`](../../OpenGlasses/Sources/Services/Vault/VaultPackCatalogService.swift)
+verifies the signed index against the embedded key, then runs download → SHA-256 against the
+catalog's checksum → pack-signature verification over `pack.json`, `manifest.json` and every payload
+file → structural checks (vault id, gating string, no documents, `minAppBuild`) →
+`VaultImporter.installReporting(from:)`. The importer records `pack.json` beside the read-only
+baseline, which is what lets a later pack update preserve the technician's own edits in the overlay.
+
+Only once that install reports success does enrolment write `fieldAssistDefaultVaultId` and switch
+`fieldAssistEnabled` on. In the other order the default points at a vault id the registry cannot
+resolve — a broken home screen on a device whose entire purpose is that screen.
+
+**The organisation's own manuals are a pointer too.** A pack ships trade knowledge and never OEM
+manuals; Plan EG is categorical about it, so the customer's books belong in the same vault's
+`documents` tier. The profile may name an organisation-hosted folder or document set for that tier,
+and ingestion runs through `VaultImporter.syncDocuments`, which is already gated at `.team` at the
+boundary where the store is written and already routes scans through Plan EF's extractor. The profile
+carries a location and never document bytes — the same rule that makes it a pointer rather than a
+payload, and for the additional reason that a service company's manual library is not something to
+put behind a code on a workshop wall.
+
+**Offline, at enrolment and afterwards.** Enrolment already costs one round trip. The catalog and the
+pack archive want the same connectivity, and the honest behaviour is a *partial* success rather than
+a refusal: the verified profile is cached and applied immediately — the ceilings and the licence are
+the safety half and must not wait on a download — while the pack is recorded as pending, retried, and
+named on the Field Assist screen as the thing that is missing. A half-configured device that says
+which half is missing is recoverable in the field; one that quietly comes up as a general assistant
+is not.
+
+After enrolment nothing needs the network to stay configured: the cached profile, the stored code
+(re-verified locally on every read) and the installed baseline are all offline artefacts. Catalog
+reachability matters only for the update check, which Plan EG runs at session start and never
+mid-session.
+
+### Where the profile and its code come from — Plan EI
+
+A partner-configured edition needs somebody to mint it, and that is not this plan. Plan EI's issuance
+service holds the signing key, checks a partner's grant record — which tiers, which packs, longest
+term, seat quota — *before* anything exists, and writes the ledger row the vendor bills from. **A
+partner issues a profile for a customer exactly the way it issues a code:** same grant, same
+validation, same ledger row, one more artefact. The profile is that code plus the settings that turn
+the app into a single-purpose edition, published at the URL the QR points at.
+
+Three properties follow, worth stating so neither plan drifts from the other:
+
+- **Renewal is a new code, or a new profile at the same URL.** `LicenseService.storageKey` holds one
+  string and activation replaces it, so a device cannot accumulate licences; renewal is replacement in
+  both plans, and a rotated poster is a new URL rather than a new entitlement.
+- **The two clocks stay two.** The partner's agreed maximum term bounds the *entitlement* clock it
+  sells. `policyExpiry` is the organisation's own and is not the partner's to lapse: a device whose
+  licence ran out must be a bounded device that lost a feature, never an unmanaged device that
+  regained the rest of the app.
+- **Support still names a ledger row and never a code.** The provider's licence-id hash — the first 16
+  hex characters of SHA-256 over the code — is what the decision's audit label and the session audit
+  lines carry. Enrolling by profile changes none of that, so a screenshot from a partner-configured
+  phone is still safe for a customer to send.
 
 ### `ProfileVerification`
 
@@ -250,7 +445,7 @@ the org updates the hosted profile without reprinting anything.
 
 ---
 
-## P3 — Onboarding, managed state, watch
+## P3 — Onboarding, enrolment, managed state, watch
 
 ### The first-run branch
 
@@ -265,6 +460,27 @@ enrolment path that applies settings mid-onboarding is exactly that hazard weari
 enrolment funnels through `WearablesBootstrap`, sets `hasCompletedOnboarding` *explicitly* rather than
 relying on the derived flag, and a test asserts that a profile applied at first run leaves the app in
 the same flag state as completing onboarding by hand.
+
+### Enrolment, in order
+
+Enrolment is no longer "apply settings". On a partner-configured device it is a sequence, and the
+order is load-bearing:
+
+1. Fetch and verify the profile — both signatures, both clocks — and present it: the organisation's
+   name, what it will turn on, what it will take away, and which pack it will install. That is the one
+   human confirmation, and it covers the pack too, per Plan BX's rule that install is the trust
+   decision.
+2. Activate the licence code, so entitlement exists before anything gated on it runs.
+3. Install the pack through `VaultPackCatalogService` — which is gated on that entitlement and needs
+   the catalog.
+4. Write the settings and raise the ceiling, then set `fieldAssistDefaultVaultId` and
+   `fieldAssistEnabled` — after the pack is on disk, never before.
+5. Sync the organisation's documents into the pack's documents tier when the profile names a source.
+   On a binder of scans this takes a long time, so it is resumable and does not block enrolment.
+
+Steps 1, 2 and 4 succeed together or not at all; 3 and 5 may be pending, retried and reported. The
+device is correctly *bounded* the moment step 4 lands, and that is the property that must never wait
+on a download.
 
 ### Managed state, visible
 
@@ -320,6 +536,13 @@ between exactly the right two devices. A QR there would be strictly worse than w
 | No removal path | the device is permanently owned by whoever printed a poster |
 | Inline payload instead of a pointer | the profile stops fitting, or the code stops scanning, at exactly the size a real org needs |
 | Read managed config once at launch | an MDM policy change lands next launch, or never |
+| A profile that writes an "entitled" flag rather than storing the code | the forgeable preference Plan DP removed, re-introduced by the one path that looks administrative rather than security-relevant |
+| A profile naming a pack the licence's `packs` claim omits | an installed vault that never unlocks, and no explanation unless the row says why |
+| Setting `fieldAssistDefaultVaultId` before the pack installs | the default points at a vault id the registry cannot resolve — a broken home screen on a device whose whole purpose is that screen |
+| A partner-issuable enterprise tier | the registry unlocks *every* pack at enterprise, so one delegated grant voids per-partner pack accounting |
+| Blocking enrolment on the pack download | a depot with poor signal leaves the device unbounded, which is the half that must never wait |
+| Ceilings that stop at Settings and leave the tabs alone | the Modes tab still presents a grid of one and Discover still pitches what the ceiling removed — the app reads as broken rather than purposeful |
+| Withholding the assistive surface, or the fingerspelling family inside it | an organisation takes a sign-language reader off the device of the person holding it; this plan's own first cut made that mistake |
 
 ---
 
@@ -327,10 +550,22 @@ between exactly the right two devices. A QR there would be strictly worse than w
 
 - **How much of `Config` is org-settable, eventually?** The first cut above is deliberate and small.
   The full audit is a judgement call per setting, not a technical problem, and it does not block P1.
-- **Should a profile be able to require a skill pack?** Referencing one is easy; *installing* it
-  unattended crosses BX's line that install is the trust decision. Leaning: the profile names the pack
-  and the enrolment screen presents it as part of the same human confirmation, so one decision covers
-  both.
+- ~~Should a profile be able to require a pack?~~ **Resolved for vault packs:** yes, and enrolment
+  installs it — the profile names the pack, the enrolment screen presents it as part of the same human
+  confirmation so one decision covers the profile and the install, and the pack itself is checksummed
+  and signature-checked on the way in. **Unchanged for skill packs:** a skill pack adds *behaviour*,
+  which is a different trust decision from adding a reference vault, and Plan BX's line stands until
+  somebody argues it down on its own merits.
+- **Should "Field Assist only" be a named preset rather than a subtraction list?** The table above is
+  long, and every capability added to the app afterwards defaults to *present* unless somebody
+  remembers to ceiling it — the wrong default for a single-purpose edition and the right one for a
+  museum. A disposition that inverts it (nothing but the named feature and the kept list) is more
+  robust and much blunter. Leaning: ship the enumerated ceiling first, because it is testable per key,
+  and revisit the inverted form when a second partner asks for a second edition.
+- **Where do an organisation's manuals actually come from?** A hosted folder the profile points at is
+  the obvious shape, but the documents tier is the one part of this that is the customer's own
+  material, and hosting it introduces a store the vendor does not otherwise operate. A folder handed
+  over at the depot is less elegant and leaves the vendor holding nothing. No lean yet.
 - **Does an expired profile revert or freeze?** Reverting silently changes a working device's
   behaviour; freezing leaves an unmanaged device configured by a lapsed policy. Leaning freeze plus a
   visible "management expired" state, because a device changing behaviour on its own in the field is
@@ -338,7 +573,10 @@ between exactly the right two devices. A QR there would be strictly worse than w
 - ~~Does org membership carry entitlement?~~ **Resolved:** entitlement rides the profile, device-scoped
   and org-purchased — see *Entitlement rides the profile* above.
 - ~~Which tiers may an org grant?~~ **Resolved 2026-08-09.** Two grantable, one not:
-  - **Field Assist** — already works this way; nothing changes but the ergonomics.
+  - **Field Assist** — already works this way; nothing changes but the ergonomics. Tiers are real
+    now (solo / team / enterprise, Plan EE), so the grant is specifically a **team** code with a
+    `packs` claim, and **enterprise is never delegable to a partner** — see *Entitlement rides the
+    profile* above.
   - **Medical Compliance** — grantable as an org site licence. This is the coherent shape anyway: a
     ward buys the tier *and* pins HIPAA mode as a ceiling, and those are the same purchase rather than
     a licence plus a separate configuration step someone has to remember.

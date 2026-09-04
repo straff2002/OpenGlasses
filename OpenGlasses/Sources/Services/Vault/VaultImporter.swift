@@ -14,14 +14,37 @@ enum VaultImporter {
     enum ImportError: LocalizedError {
         case invalid([String])
         case ioError(String)
+        case notEntitled
+        case documentFailed(String)
 
         var errorDescription: String? {
             switch self {
             case .invalid(let issues): return "Vault failed validation:\n• " + issues.joined(separator: "\n• ")
             case .ioError(let message): return "Install failed: \(message)"
+            case .notEntitled: return "Importing manuals into a vault needs a Field Assist team licence."
+            case .documentFailed(let message): return "Manual import failed: \(message)"
             }
         }
     }
+
+    /// What an install produced: the manifest plus any advisory warnings from validation.
+    struct InstallReport {
+        let manifest: VaultManifest
+        let warnings: [String]
+    }
+
+    /// Progress of a document sync: (document title, completed chunks, total chunks).
+    typealias DocumentProgress = (_ title: String, _ completed: Int, _ total: Int) -> Void
+    /// Progress of recognising a scanned document's pages: (document title, pages done, pages to do).
+    typealias RecognitionProgress = (_ title: String, _ pagesDone: Int, _ pagesToDo: Int) -> Void
+
+    /// Source type recorded in the document store for a document any page of which was read by
+    /// recognition. Retrieval reads it back to mark those passages' provenance.
+    static let recognisedSourceType = "vault_document_ocr"
+
+    /// The reader used for pages without a text layer. Vision by default; nil disables recognition
+    /// (a scan then fails import the way it did before scanned import existed). Tests inject a fake.
+    nonisolated(unsafe) static var defaultScanReader: ScannedPageReader? = VisionScannedPageReader()
 
     /// `Documents/Vaults/_registry/` — where user vault manifests live for registry discovery.
     static var registryDirectory: URL {
@@ -44,8 +67,15 @@ enum VaultImporter {
     }
 
     /// Validate and install. Returns the installed manifest on success; throws with the issues otherwise.
+    /// Reference documents are copied here; chunking them into the document store is a separate,
+    /// async step — `syncDocuments(manifest:into:progress:)` — because ingest yields between chunks.
     @discardableResult
     static func install(from sourceDir: URL) throws -> VaultManifest {
+        try installReporting(from: sourceDir).manifest
+    }
+
+    /// `install(from:)` plus the validator's advisory warnings (core over budget, and so on).
+    static func installReporting(from sourceDir: URL) throws -> InstallReport {
         let result = VaultValidator.validate(directory: sourceDir)
         guard result.isValid, let manifest = result.manifest else {
             throw ImportError.invalid(result.issues)
@@ -77,6 +107,13 @@ enum VaultImporter {
                     try fm.copyItem(at: src, to: staging.appendingPathComponent(dir, isDirectory: true))
                 }
             }
+            // Copy the reference documents the manifest lists (validated present above).
+            for document in manifest.documents {
+                let relative = manifest.documentRelativePath(document)
+                let dest = staging.appendingPathComponent(relative)
+                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fm.copyItem(at: sourceDir.appendingPathComponent(relative), to: dest)
+            }
             // Swap staging → baseline (the read-only authoritative copy).
             try? fm.removeItem(at: baseline)
             try fm.createDirectory(at: baseline.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -98,10 +135,127 @@ enum VaultImporter {
             try? fm.removeItem(at: staging)
             throw ImportError.ioError(error.localizedDescription)
         }
-        return manifest
+        return InstallReport(manifest: manifest, warnings: result.warnings)
     }
 
-    /// Fully remove an installed user vault: baseline + overlay edits + registry entry.
+    // MARK: - Reference documents
+
+    /// Bring the document store in line with the installed baseline's `documents`: forget what
+    /// the manifest dropped or replaced, ingest what is new or changed, leave the rest alone.
+    /// Idempotent — a second call with nothing changed does no work. Returns the updated ledger.
+    ///
+    /// Gated on the Field Assist entitlement: manuals are a paid capability, and the gate belongs
+    /// at the boundary where the store is written, not only where a session starts.
+    @MainActor
+    @discardableResult
+    static func syncDocuments(manifest: VaultManifest,
+                              into store: DocumentStore,
+                              baseline: URL? = nil,
+                              ledgerDirectory: URL? = nil,
+                              scanReader: ScannedPageReader? = defaultScanReader,
+                              renderPolicy: ScanRenderPolicy = ScanRenderPolicy(),
+                              progress: DocumentProgress? = nil,
+                              recognitionProgress: RecognitionProgress? = nil) async throws -> VaultDocumentLedger {
+        guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else { throw ImportError.notEntitled }
+        let root = baseline ?? baselineDirectory(for: manifest.id)
+        let ledgerDir = ledgerDirectory ?? overlayDirectory(for: manifest.id)
+        let namespace = DocumentStore.vaultNamespace(manifest.id)
+
+        var desired: [VaultDocumentLedger.Desired] = []
+        for document in manifest.documents {
+            let url = root.appendingPathComponent(manifest.documentRelativePath(document))
+            guard let data = try? Data(contentsOf: url) else {
+                throw ImportError.documentFailed("\(document.file) is missing from the installed vault")
+            }
+            desired.append(.init(file: document.file, title: document.title, contentHash: VaultDocumentLedger.hash(of: data)))
+        }
+
+        var ledger = VaultDocumentLedger.load(from: ledgerDir)
+        let plan = VaultDocumentLedger.plan(current: ledger, desired: desired)
+        guard !plan.isNoop else { return ledger }
+
+        for entry in plan.toForget {
+            store.forget(documentId: entry.documentId)
+        }
+        var entries = plan.unchanged
+        for want in plan.toIngest {
+            let url = root.appendingPathComponent(manifest.documentRelativePath(
+                manifest.documents.first { $0.file == want.file } ?? VaultDocument(file: want.file, title: want.title)))
+            let extracted: VaultDocumentExtractor.Extracted
+            do {
+                // Recognised pages are checkpointed under the content hash so an interrupted
+                // 300-page scan resumes where it stopped on the next sync.
+                extracted = try await VaultDocumentExtractor.extract(
+                    from: url, reader: scanReader, policy: renderPolicy,
+                    checkpoint: (
+                        load: { OCRCheckpoint.load(from: ledgerDir, contentHash: want.contentHash) },
+                        save: { try $0.save(to: ledgerDir) }
+                    ),
+                    progress: { done, total in recognitionProgress?(want.title, done, total) })
+            } catch {
+                // Persist what succeeded so a partial sync is not repeated from scratch.
+                ledger.entries = entries
+                try? ledger.save(to: ledgerDir)
+                throw ImportError.documentFailed(error.localizedDescription)
+            }
+            let sourceType = extracted.usedRecognition ? recognisedSourceType : "vault_document"
+            let ref = await store.ingest(name: want.title, text: extracted.text,
+                                         sourceType: sourceType, namespace: namespace) { done, total in
+                progress?(want.title, done, total)
+            }
+            guard let ref else {
+                ledger.entries = entries
+                try? ledger.save(to: ledgerDir)
+                throw ImportError.documentFailed("\(want.file) produced no chunks")
+            }
+            OCRCheckpoint.remove(from: ledgerDir, contentHash: want.contentHash)
+            entries.append(.init(file: want.file, title: want.title, documentId: ref.id,
+                                 contentHash: want.contentHash, chunkCount: ref.chunkCount,
+                                 ocrPages: extracted.ocrPages, lowConfidencePages: extracted.lowConfidencePages))
+        }
+        ledger.entries = entries
+        try ledger.save(to: ledgerDir)
+        return ledger
+    }
+
+    // MARK: - Packs (Plan EG)
+
+    /// Record the pack a vault was installed from, beside its baseline, so the registry can
+    /// resolve the pack's licence key and the Packs list can tell an update from a reinstall.
+    static func recordPack(_ pack: VaultPackManifest, for id: String) throws {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(pack).write(to: url, options: .atomic)
+    }
+
+    /// The pack an installed vault came from, or nil for a customer folder or a bundled vault.
+    static func installedPack(for id: String) -> VaultPackManifest? {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(VaultPackManifest.self, from: data)
+    }
+
+    /// The ledger for an installed vault (empty when it has never synced documents).
+    static func documentLedger(for id: String) -> VaultDocumentLedger {
+        VaultDocumentLedger.load(from: overlayDirectory(for: id))
+    }
+
+    /// Fully remove an installed user vault: baseline + overlay edits + registry entry, and every
+    /// reference document it ingested into `documentStore`.
+    @MainActor
+    static func uninstall(id: String, documentStore: DocumentStore) {
+        for entry in VaultDocumentLedger.load(from: overlayDirectory(for: id)).entries {
+            documentStore.forget(documentId: entry.documentId)
+        }
+        // Backstop: anything in the vault's namespace the ledger lost track of.
+        documentStore.clear(namespace: DocumentStore.vaultNamespace(id))
+        uninstall(id: id)
+    }
+
+    /// Fully remove an installed user vault: baseline + overlay edits + registry entry. Ingested
+    /// documents are left in the store — prefer the overload that takes the store.
     static func uninstall(id: String) {
         let fm = FileManager.default
         try? fm.removeItem(at: baselineDirectory(for: id))

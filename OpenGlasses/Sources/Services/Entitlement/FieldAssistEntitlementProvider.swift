@@ -19,25 +19,49 @@ final class VerifiedStorePurchaseRecorder: @unchecked Sendable {
     static let shared = VerifiedStorePurchaseRecorder()
 
     private let lock = NSLock()
-    private var stored: FieldAssistEntitlementEvidence?
+    private var stored: [FieldAssistEntitlementEvidence] = []
+    private var storedPackProducts: Set<String> = []
 
     init() {}
 
-    /// Record a transaction that came back `.verified` and unrevoked.
+    /// Record a single transaction that came back `.verified` and unrevoked, replacing any record.
     func record(productID: String, expiration: Date?) {
+        record(products: [(productID, expiration)])
+    }
+
+    /// Record every entitling transaction observed this check — a non-consumable beside a
+    /// subscription is two pieces of evidence, and the evaluator picks the one that lasts.
+    func record(products: [(productID: String, expiration: Date?)]) {
         lock.lock()
         defer { lock.unlock() }
-        stored = .verifiedStoreProduct(productID: productID, expiration: expiration)
+        stored = products.map { .verifiedStoreProduct(productID: $0.productID, expiration: $0.expiration) }
+    }
+
+    /// Vault-pack purchases observed verified and unrevoked this check (Plan EG). Kept apart from
+    /// the Field Assist evidence: a pack is nothing without the feature and grants no tier.
+    func recordPackProducts(_ ids: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        storedPackProducts = ids
+    }
+
+    var packProductIds: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPackProducts
     }
 
     /// Drop the record — no entitling transaction was found, or it was revoked.
     func clear() {
         lock.lock()
         defer { lock.unlock() }
-        stored = nil
+        stored = []
     }
 
-    var currentEvidence: FieldAssistEntitlementEvidence? {
+    /// The first recorded piece, for callers that only ever expected one.
+    var currentEvidence: FieldAssistEntitlementEvidence? { allEvidence.first }
+
+    var allEvidence: [FieldAssistEntitlementEvidence] {
         lock.lock()
         defer { lock.unlock() }
         return stored
@@ -68,15 +92,15 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
     func evidence() -> FieldAssistEntitlementEvidenceSet {
         var set = FieldAssistEntitlementEvidenceSet()
 
-        if let purchase = storePurchases.currentEvidence {
-            set.evidence.append(purchase)
-        }
+        set.evidence.append(contentsOf: storePurchases.allEvidence)
 
         if let raw = licenseCode()?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
             if let payload = try? LicenseService.decode(code: raw, publicKeyBase64: licensePublicKeyBase64) {
                 set.evidence.append(.verifiedOrganizationLicense(
                     licenseIDHash: Self.licenseIDHash(for: raw),
-                    expiration: payload.expires))
+                    expiration: payload.expires,
+                    tier: payload.resolvedTier,
+                    packs: payload.packs ?? []))
             } else {
                 set.hasUnverifiableLicense = true
             }
@@ -160,6 +184,29 @@ final class FieldAssistEntitlement: @unchecked Sendable {
     }
 
     var isGranted: Bool { decision().isGranted }
+
+    /// Vault packs every live licence includes (Plan EG).
+    func grantedPacks() -> Set<String> {
+        lock.lock()
+        let provider = storedProvider
+        let now = storedClock()
+        lock.unlock()
+        return FieldAssistEntitlementEvaluator.livePacks(provider.evidence(), now: now)
+    }
+
+    /// Whether the current evidence covers a capability that needs `required`.
+    func isGranted(atLeast required: FieldAssistTier) -> Bool {
+        decision().satisfies(required)
+    }
+
+    /// The tiered gate result, with the reason a paywall needs when the answer is no.
+    func check(atLeast required: FieldAssistTier) -> FieldAssistTierCheck {
+        let decision = decision()
+        guard decision.isGranted, let held = decision.tier else {
+            return .denied(decision.denial ?? .noEvidence)
+        }
+        return held >= required ? .granted(held) : .insufficientTier(required: required, held: held)
+    }
 
     /// Delete the preference key the removed developer toggle wrote.
     ///

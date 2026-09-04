@@ -107,6 +107,23 @@ final class DockPagerTests: XCTestCase {
         XCTAssertEqual(Set(DockPage.allCases.map(\.showActionName)).count, DockPage.allCases.count)
     }
 
+    /// "The panel never resizes under a swipe" is round 4's promise, and after the reading-height
+    /// report it is a promise *kept* rather than traded away: the panel is tall on every page, so
+    /// the conversation gets its height by sharing the frame rather than by asking for a different
+    /// one. Moving the pager moves the page and nothing else — there is no size in `DockPagerState`
+    /// to move, and `DockGridMetrics.restingRows` takes no page (`HomeGridTests` holds that half).
+    func testMovingThePagerChangesThePageAndNothingElse() {
+        var state = DockPagerState()
+        for page in DockPage.allCases {
+            let moved = DockPagerPolicy.userMoved(state, to: page)
+            XCTAssertEqual(moved.page, page)
+            XCTAssertTrue(moved.userMovedThisTurn)
+            state = moved
+        }
+        // The whole of what a page change carries: a page, and the "do not argue with me" flag.
+        XCTAssertEqual(state, DockPagerState(page: .edit, userMovedThisTurn: true))
+    }
+
     func testTurnActivityIsThinkingAndSpeakingOnly() {
         for state in states {
             XCTAssertEqual(DockPagerPolicy.isTurnActive(state),

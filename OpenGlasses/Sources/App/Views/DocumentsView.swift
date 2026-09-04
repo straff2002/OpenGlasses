@@ -17,7 +17,9 @@ struct DocumentsView: View {
     /// Documents grouped by namespace ("global" first), each newest-first.
     private var groups: [(namespace: String, docs: [DocumentStore.DocumentRef])] {
         _ = refreshToken
-        let byNS = Dictionary(grouping: store.list(), by: \.namespace)
+        // Vault manuals (`vault:<id>`) are managed from Custom Vaults, not here — a personal
+        // documents surface must not list, and cannot delete, a customer's reference tier.
+        let byNS = Dictionary(grouping: store.list().filter { !DocumentStore.isVaultNamespace($0.namespace) }, by: \.namespace)
         return byNS.keys.sorted { a, b in
             if a == "global" { return true }
             if b == "global" { return false }
@@ -27,7 +29,7 @@ struct DocumentsView: View {
 
     var body: some View {
         List {
-            if store.list().isEmpty {
+            if groups.isEmpty {
                 ContentUnavailableView("No documents", systemImage: "doc.text",
                                        description: Text("Add text or import a file to build your private on-device knowledge base."))
             } else {

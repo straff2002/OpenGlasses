@@ -68,4 +68,40 @@ final class PairingResponseInterpreterTests: XCTestCase {
         XCTAssertTrue(PairingResponseInterpreter.isPendingApproval(code: nil, message: "Please APPROVE the device"))
         XCTAssertFalse(PairingResponseInterpreter.isPendingApproval(code: "other", message: "denied"))
     }
+
+    // MARK: - 2.0 gateway shapes
+
+    func testHelloOkCarriesTheDeviceTokenAndCatalog() {
+        let outcome = PairingResponseInterpreter.interpretResponse(json("""
+        {"type":"res","id":"c","ok":true,"payload":{"type":"hello-ok","protocol":4,
+          "server":{"version":"2026.8.2","connId":"x"},
+          "features":{"methods":["sessions.send"],"events":["chat"]},"snapshot":{},
+          "auth":{"role":"operator","scopes":["operator.read"],"deviceToken":"dev-2"},
+          "policy":{"maxPayload":1,"maxBufferedBytes":1,"tickIntervalMs":1}}}
+        """))
+        XCTAssertEqual(outcome.status, .paired)
+        XCTAssertEqual(outcome.deviceToken, "dev-2", "2.0 issues the token under auth.deviceToken")
+        XCTAssertTrue(outcome.hello?.supports("sessions.send") ?? false)
+    }
+
+    func testPairingRequiredDetailsAreSurfaced() {
+        let outcome = PairingResponseInterpreter.interpretResponse(json("""
+        {"type":"res","id":"c","ok":false,"error":{"code":"INVALID_REQUEST","message":"device not paired",
+          "details":{"code":"PAIRING_REQUIRED","reason":"not-paired","requestId":"req-77",
+                     "recommendedNextStep":"wait_then_retry","pauseReconnect":true}}}
+        """))
+        XCTAssertEqual(outcome.status, .waitingApproval)
+        XCTAssertEqual(outcome.pairingRequestId, "req-77")
+        XCTAssertEqual(outcome.recommendedNextStep, "wait_then_retry")
+        XCTAssertTrue(outcome.pauseReconnect)
+        XCTAssertNil(outcome.deviceToken)
+    }
+
+    func testStaleSignatureIsAnErrorNotAPendingApproval() {
+        let outcome = PairingResponseInterpreter.interpretResponse(json("""
+        {"type":"res","id":"c","ok":false,"error":{"code":"INVALID_REQUEST","message":"device signature expired",
+          "details":{"code":"DEVICE_AUTH_INVALID","reason":"device-signature-stale"}}}
+        """))
+        XCTAssertEqual(outcome.status, .error("device signature expired"))
+    }
 }

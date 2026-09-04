@@ -37,8 +37,14 @@ enum ResolvedConnection: Equatable {
 
 // MARK: - OpenClaw Bridge
 
-/// Client for the OpenClaw gateway. Uses /health for status checks and
-/// WebSocket protocol v3 (sessions.send) for chat / task delegation.
+/// Client for the OpenClaw gateway. Uses /health for status checks and the gateway WebSocket
+/// protocol (v4) for chat / task delegation.
+///
+/// Plan EH P1 wire contract: every outbound request is built by `GatewayRequestCatalog` (the
+/// gateway's schemas are closed objects — an unknown key is a rejected frame); the connect
+/// handshake is `OpenClawConnectParams`; the `hello-ok` reply's method catalog gates what we
+/// call; and a delegated task's answer is correlated by `runId` through `ChatRunTracker`, since
+/// `sessions.send` only acknowledges and the reply arrives later as `chat` events.
 @MainActor
 class OpenClawBridge: ObservableObject {
     @Published var lastToolCallStatus: ToolCallStatus = .idle
@@ -50,6 +56,9 @@ class OpenClawBridge: ObservableObject {
     @Published var availableGatewayTools: [[String: String]] = []
     /// Whether session compaction has occurred (gateway trimmed context).
     @Published var sessionCompacted: Bool = false
+    /// The gateway's `hello-ok` for the live socket — its method/event catalog and policy.
+    /// Nil before connect, and on a pre-2.0 gateway that answers a bare `{ok:true}`.
+    @Published private(set) var gatewayHello: GatewayHello?
 
     private let pingSession: URLSession
     private let lanPingSession: URLSession
@@ -60,18 +69,29 @@ class OpenClawBridge: ObservableObject {
     /// The gateway config that resolved to the cached endpoint
     private var activeGateway: GatewayConfig?
 
-    /// WebSocket for chat (sessions.send)
-    private var webSocketTask: URLSessionWebSocketTask?
-    private var wsSession: URLSession?
+    /// The chat socket (challenge → connect → hello-ok, then request/response + events).
+    private let socketFactory: GatewaySocketFactory
+    private var socket: GatewaySocket?
     private var wsConnected = false
     private var pendingResponses: [String: CheckedContinuation<String, Error>] = [:]
+
+    /// Correlates `chat` events with the requests that started them.
+    let runTracker = ChatRunTracker()
+    /// How long `delegateTask` waits for the run's final text before parking the run. A parked
+    /// run's answer still arrives — through `onLateResult` — it is never dropped.
+    var replyTimeout: TimeInterval = 120
 
     /// Callback for streaming partial content chunks from long gateway tasks.
     /// Called on main actor with each text chunk as it arrives.
     var onStreamChunk: ((String) -> Void)?
     var onGatewayConnected: (() -> Void)?
+    /// A run the wearer stopped waiting on has answered. The text is the answer to a question
+    /// they asked, not unsolicited news — the caller announces it, it does not triage it.
+    var onLateResult: ((String) -> Void)?
+    /// Raw `agent` events (tool activity, run lifecycle) for consumers that want them.
+    var onAgentEvent: (([String: Any]) -> Void)?
 
-    init() {
+    init(socketFactory: @escaping GatewaySocketFactory = URLSessionGatewaySocket.make) {
         let pingConfig = URLSessionConfiguration.default
         pingConfig.timeoutIntervalForRequest = 10
         self.pingSession = URLSession(configuration: pingConfig)
@@ -80,12 +100,19 @@ class OpenClawBridge: ObservableObject {
         lanPingConfig.timeoutIntervalForRequest = 2
         self.lanPingSession = URLSession(configuration: lanPingConfig)
 
+        self.socketFactory = socketFactory
         self.sessionKey = OpenClawBridge.newSessionKey()
     }
 
     /// BR P4: the gateway session key in use (stable across Live sessions; rotates only on
     /// deliberate `resetSession()`). Exposed read-only for tests/diagnostics.
     var currentSessionKey: String { sessionKey }
+
+    /// Whether the connected gateway advertises `method`. Unknown catalog (not yet connected, or
+    /// a pre-2.0 gateway) means "try it" — the gateway's own error is then the honest answer.
+    func supports(_ method: String) -> Bool {
+        gatewayHello?.supports(method) ?? true
+    }
 
     // MARK: - Endpoint Resolution (Multi-Gateway)
 
@@ -186,29 +213,6 @@ class OpenClawBridge: ObservableObject {
         }
     }
 
-    private func alternateEndpoint() -> String? {
-        // Multi-gateway: try the next gateway in priority order
-        if let current = activeGateway {
-            let gateways = Config.enabledGateways
-            if let idx = gateways.firstIndex(where: { $0.id == current.id }),
-               idx + 1 < gateways.count {
-                let next = gateways[idx + 1]
-                let url = !next.tunnelURL.isEmpty ? next.tunnelURL : next.lanURL
-                PrivacyLog.gatewayConnection(.failover, peer: PrivateIdentifier(next.id))
-                return url
-            }
-        }
-
-        // Legacy fallback
-        guard Config.openClawConnectionMode == .auto else { return nil }
-        let lanHost = Config.openClawLanHost.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let lanURL = "\(lanHost):\(Config.openClawPort)"
-        let tunnelURL = Config.openClawTunnelHost.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if cachedEndpoint == lanURL, !tunnelURL.isEmpty { return tunnelURL }
-        if cachedEndpoint == tunnelURL { return lanURL }
-        return nil
-    }
-
     func clearCachedEndpoint() {
         cachedEndpoint = nil
         activeGateway = nil
@@ -234,9 +238,15 @@ class OpenClawBridge: ObservableObject {
         resolvedConnection = nil
     }
 
-    /// The active gateway's token, or the legacy token.
+    /// The active gateway's credential: a per-device token issued at pairing beats the shared
+    /// token; the legacy single-gateway token is the fallback.
     var activeToken: String {
-        activeGateway?.token ?? Config.openClawGatewayToken
+        if let gateway = activeGateway {
+            return GatewayAuthSelector.credential(deviceToken: gateway.deviceToken,
+                                                  setupCode: gateway.setupCode,
+                                                  sharedToken: gateway.token)
+        }
+        return Config.openClawGatewayToken
     }
 
     /// The leg the bridge currently believes it is on, for logging. `unknown` until resolution.
@@ -332,9 +342,9 @@ class OpenClawBridge: ObservableObject {
 
     // MARK: - WebSocket Chat
 
-    /// Ensure WebSocket is connected and authenticated
+    /// Ensure the socket is connected and authenticated: challenge → connect → hello-ok.
     private func ensureWebSocket() async throws {
-        if wsConnected, webSocketTask != nil { return }
+        if wsConnected, socket != nil { return }
 
         let endpoint = await resolveEndpoint()
         let normalized = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
@@ -350,154 +360,152 @@ class OpenClawBridge: ObservableObject {
         }
 
         PrivacyLog.gatewayConnection(.connecting, transport: currentTransport)
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        wsSession = URLSession(configuration: config)
-
-        // Build request with X-Scopes header (OpenClaw protocol v3 requirement)
         var request = URLRequest(url: url)
-        request.setValue("chat,skills,sessions,config,tools", forHTTPHeaderField: "X-Scopes")
-        // BR P4: classify our sessions as channel "glass" in the gateway's sessions_list
-        // (without this they appear as generic webchat and channel-scoped status checks
-        // can't find them).
+        // The gateway reads this header on its HTTP routes only; on the socket it is inert.
+        // Kept so an HTTP-side session listing still classes these as "glass" if that changes.
         request.setValue(OpenClawBridge.messageChannel, forHTTPHeaderField: "x-openclaw-message-channel")
-        webSocketTask = wsSession?.webSocketTask(with: request)
-        webSocketTask?.resume()
+        let socket = socketFactory(request)
+        self.socket = socket
 
-        // Wait for connect.challenge and pull its nonce — signing it into the device-identity
-        // block is what earns real scopes on remote gateways (token-only can be zero-scoped).
-        let challengeMsg = try await receiveMessage()
-        PrivacyLog.gatewayConnection(.challengeReceived)
-        var challengeNonce: String?
-        if let data = challengeMsg.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let payload = json["payload"] as? [String: Any] {
-            challengeNonce = payload["nonce"] as? String
+        // The gateway speaks first: `connect.challenge` carries the nonce we sign into the
+        // device-identity block and the timestamp we sign *at*. Signing our own clock instead
+        // fails on any gateway more than two minutes off from the phone.
+        let challengeText = try await socket.receive()
+        var challenge: GatewayChallenge?
+        if let data = challengeText.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            challenge = GatewayChallenge.parse(event: json)
         }
+        PrivacyLog.gatewayConnection(.challengeReceived)
 
-        // Send connect handshake — register as "node" via the shared params builder (protocol
-        // v3/v4, role/scopes, capability advertisement, signed device identity when challenged).
         let connectId = UUID().uuidString
         let connectMsg: [String: Any] = [
             "type": "req",
             "id": connectId,
             "method": "connect",
             "params": OpenClawConnectParams.build(
-                clientId: "gateway-client",
                 displayName: "OpenGlasses",
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
                 token: token,
-                challengeNonce: challengeNonce
+                role: .operator,
+                challenge: challenge,
+                pairedDeviceId: activeGateway.map { Config.deviceId(forGateway: $0.id) }
             )
         ]
 
         let connectData = try JSONSerialization.data(withJSONObject: connectMsg)
         let connectJSON = String(data: connectData, encoding: .utf8)!
-        // The handshake body carries the gateway token and the signed device-identity block.
-        // `LogRedaction` masked two token shapes of it and let the rest through; nothing about
-        // the frame is loggable, so only the fact that it was sent is.
+        // The handshake body carries the gateway token and the signed device-identity block;
+        // nothing about the frame is loggable, so only the fact that it was sent is.
         PrivacyLog.gatewayConnection(.handshakeSent, count: connectJSON.count)
-        try await webSocketTask!.send(.string(connectJSON))
+        try await socket.send(connectJSON)
 
-        // Wait for connect response
-        let response = try await receiveMessage()
-        if let data = response.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let ok = json["ok"] as? Bool, ok {
-            wsConnected = true
-            sessionCompacted = false
-            consecutiveWSFailures = 0
-            PrivacyLog.gatewayConnection(.connected, transport: currentTransport)
-            startReceiveLoop()
-
-            // Query available tools from gateway (fire-and-forget, non-blocking)
-            Task { await queryAvailableTools() }
-            onGatewayConnected?()
-        } else {
+        let response = try await socket.receive()
+        guard let data = response.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             PrivacyLog.gatewayConnection(.authRejected)
             noteWSFailure()
-            throw NSError(domain: "OpenClaw", code: -2, userInfo: [NSLocalizedDescriptionKey: "WebSocket auth failed: \(String(response.prefix(200)))"])
+            throw NSError(domain: "OpenClaw", code: -2, userInfo: [NSLocalizedDescriptionKey: "WebSocket auth failed: unreadable reply"])
         }
+        let outcome = PairingResponseInterpreter.interpretResponse(json)
+        guard outcome.status == .paired else {
+            PrivacyLog.gatewayConnection(outcome.status == .waitingApproval ? .pairingPending : .authRejected)
+            noteWSFailure()
+            let reason: String
+            switch outcome.status {
+            case .waitingApproval: reason = "Waiting for this device to be approved on the gateway."
+            case .error(let message): reason = message
+            default: reason = "Gateway refused the connection."
+            }
+            throw NSError(domain: "OpenClaw", code: -2, userInfo: [NSLocalizedDescriptionKey: "WebSocket auth failed: \(reason)"])
+        }
+
+        gatewayHello = outcome.hello
+        if let token = outcome.deviceToken, let gateway = activeGateway {
+            Config.setDeviceCredentials(gatewayId: gateway.id, deviceToken: token)
+            PrivacyLog.gatewayConnection(.devicePaired, peer: PrivateIdentifier(gateway.id))
+        }
+        if let hello = outcome.hello {
+            PrivacyLog.gatewayConnection(.helloReceived, count: hello.methods.count,
+                                         detail: PrivacyToken(hello.role))
+        }
+        wsConnected = true
+        sessionCompacted = false
+        consecutiveWSFailures = 0
+        PrivacyLog.gatewayConnection(.connected, transport: currentTransport)
+        startReceiveLoop(on: socket)
+
+        // Query available tools from gateway (fire-and-forget, non-blocking)
+        Task { await queryAvailableTools() }
+        onGatewayConnected?()
     }
 
-    private func receiveMessage() async throws -> String {
-        guard let task = webSocketTask else {
-            throw NSError(domain: "OpenClaw", code: -1, userInfo: [NSLocalizedDescriptionKey: "No WebSocket"])
-        }
-        let msg = try await task.receive()
-        switch msg {
-        case .string(let text): return text
-        case .data(let data): return String(data: data, encoding: .utf8) ?? ""
-        @unknown default: return ""
-        }
-    }
-
-    /// Background receive loop — routes responses to pending continuations
-    private func startReceiveLoop() {
+    /// Background receive loop — routes responses to pending continuations and events to their
+    /// consumers. `chat` events feed the run tracker; `agent` events are handed on raw.
+    private func startReceiveLoop(on socket: GatewaySocket) {
         Task { [weak self] in
-            while let self, let task = self.webSocketTask, self.wsConnected {
+            while let self, self.socket === socket, self.wsConnected {
                 do {
-                    let msg = try await task.receive()
-                    let text: String
-                    switch msg {
-                    case .string(let t): text = t
-                    case .data(let d): text = String(data: d, encoding: .utf8) ?? ""
-                    @unknown default: continue
-                    }
-
+                    let text = try await socket.receive()
                     guard let data = text.data(using: .utf8),
                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-                    let type = json["type"] as? String ?? ""
-
-                    if type == "res", let id = json["id"] as? String {
-                        // Route to pending request
-                        await MainActor.run {
-                            if let cont = self.pendingResponses.removeValue(forKey: id) {
-                                cont.resume(returning: text)
-                            }
-                        }
-                    } else if type == "event" {
-                        let event = json["event"] as? String ?? ""
-                        let payload = json["payload"] as? [String: Any] ?? [:]
-
-                        switch event {
-                        case "session.compacted", "session.truncated":
-                            await MainActor.run {
-                                self.sessionCompacted = true
-                                PrivacyLog.gatewayConnection(.sessionCompacted)
-                            }
-                        case "session.chunk", "stream.chunk":
-                            // Streaming partial result — forward to TTS for early speech
-                            if let chunk = payload["content"] as? String, !chunk.isEmpty {
-                                await MainActor.run {
-                                    self.onStreamChunk?(chunk)
-                                }
-                            }
-                        default:
-                            break // Other events handled by OpenClawEventClient
-                        }
-                    }
+                    self.route(frame: json, rawText: text)
                 } catch {
                     PrivacyLog.gatewayFailed(.receive, SafeErrorSummary(error))
-                    await MainActor.run {
-                        self.wsConnected = false
-                        // Fail all pending requests
-                        for (_, cont) in self.pendingResponses {
-                            cont.resume(throwing: error)
-                        }
-                        self.pendingResponses.removeAll()
+                    guard self.socket === socket else { return }
+                    self.wsConnected = false
+                    // Fail all pending requests
+                    for (_, cont) in self.pendingResponses {
+                        cont.resume(throwing: error)
                     }
+                    self.pendingResponses.removeAll()
                     break
                 }
             }
         }
     }
 
+    private func route(frame json: [String: Any], rawText: String) {
+        switch json["type"] as? String {
+        case "res":
+            if let id = json["id"] as? String, let cont = pendingResponses.removeValue(forKey: id) {
+                cont.resume(returning: rawText)
+            }
+        case "event":
+            let event = json["event"] as? String ?? ""
+            let payload = json["payload"] as? [String: Any] ?? [:]
+            switch event {
+            case "chat":
+                handleChatEvent(payload)
+            case "agent":
+                onAgentEvent?(payload)
+            default:
+                break // heartbeat/cron/pairing events are the event client's business
+            }
+        default:
+            break
+        }
+    }
+
+    private func handleChatEvent(_ payload: [String: Any]) {
+        guard let update = runTracker.handle(payload: payload) else { return }
+        switch update {
+        case .chunk(_, let text):
+            onStreamChunk?(text)
+        case .lateAnswer(_, let text):
+            // The answer is the wearer's content; only its size is recorded.
+            PrivacyLog.gatewayNotification(.lateResult, characters: text.count)
+            onLateResult?(text)
+        case .completed, .unknownRun:
+            break
+        }
+    }
+
     /// Send a WebSocket request and wait for the matching response
-    /// Public entry point for the Remote Agent Harness (Plan N) to issue `agent.*` requests over the
-    /// same WebSocket transport. A thin pass-through to `sendRequest` so the harness adapter doesn't
-    /// reach into the bridge's internals.
+    /// Public entry point for the Remote Agent Harness (Plan N) to issue requests over the same
+    /// WebSocket transport. A thin pass-through to `sendRequest` so the harness adapter doesn't
+    /// reach into the bridge's internals. Runs started here are tracked so the harness can poll
+    /// their state through `runTracker`.
     func agentRequest(method: String, params: [String: Any]) async throws -> [String: Any] {
         // BK P0: gate at the service layer, not just at the tool layer. This public pass-through
         // to `sendRequest` is otherwise an ungated hole of the same shape as `delegateTask`.
@@ -505,12 +513,34 @@ class OpenClawBridge: ObservableObject {
             throw NSError(domain: "OpenClaw", code: -2,
                           userInfo: [NSLocalizedDescriptionKey: "Agent mode not enabled"])
         }
-        return try await sendRequest(method: method, params: params)
+        guard !GatewayWire.removedMethods.contains(method) else {
+            throw NSError(domain: "OpenClaw", code: -6,
+                          userInfo: [NSLocalizedDescriptionKey: "This gateway has no \(method) method"])
+        }
+        let response = try await sendRequest(method: method, params: params)
+        if method == "sessions.send" || method == "chat.send",
+           let payload = response["payload"] as? [String: Any],
+           let runId = payload["runId"] as? String {
+            runTracker.register(runId: runId)
+        }
+        return response
+    }
+
+    /// Send a catalog-built request. Reports `unsupported` without a round trip when the
+    /// gateway's hello-ok catalog lacks the method.
+    private func send(_ request: GatewayRequest) async throws -> [String: Any] {
+        try await ensureWebSocket()
+        guard supports(request.method) else {
+            PrivacyLog.gatewayOperation(request.method, outcome: .unsupported)
+            throw NSError(domain: "OpenClaw", code: -6,
+                          userInfo: [NSLocalizedDescriptionKey: "The gateway does not offer \(request.method)"])
+        }
+        return try await sendRequest(method: request.method, params: request.params)
     }
 
     private func sendRequest(method: String, params: [String: Any]) async throws -> [String: Any] {
         try await ensureWebSocket()
-        guard let task = webSocketTask else {
+        guard let socket else {
             throw NSError(domain: "OpenClaw", code: -1, userInfo: [NSLocalizedDescriptionKey: "No WebSocket"])
         }
 
@@ -523,11 +553,25 @@ class OpenClawBridge: ObservableObject {
         ]
 
         let data = try JSONSerialization.data(withJSONObject: msg)
-        try await task.send(.string(String(data: data, encoding: .utf8)!))
+        let text = String(data: data, encoding: .utf8)!
 
-        // Wait for response with timeout
+        // Register the continuation BEFORE the frame leaves: the receive loop runs on this
+        // actor too, and a gateway that answers within the same turn (or a scripted one that
+        // answers synchronously) would otherwise route the reply before anyone was waiting.
         let responseText: String = try await withCheckedThrowingContinuation { continuation in
             pendingResponses[reqId] = continuation
+
+            Task {
+                do {
+                    try await socket.send(text)
+                } catch {
+                    await MainActor.run {
+                        if let cont = self.pendingResponses.removeValue(forKey: reqId) {
+                            cont.resume(throwing: error)
+                        }
+                    }
+                }
+            }
 
             // Timeout after 120s
             Task {
@@ -550,35 +594,40 @@ class OpenClawBridge: ObservableObject {
 
     func disconnectWebSocket() {
         wsConnected = false
-        webSocketTask?.cancel(with: .normalClosure, reason: nil)
-        webSocketTask = nil
-        wsSession?.invalidateAndCancel()
-        wsSession = nil
+        socket?.cancel()
+        socket = nil
+        gatewayHello = nil
         for (_, cont) in pendingResponses {
             cont.resume(throwing: NSError(domain: "OpenClaw", code: -5, userInfo: [NSLocalizedDescriptionKey: "Disconnected"]))
         }
         pendingResponses.removeAll()
     }
 
+    private static func errorMessage(_ response: [String: Any]) -> String {
+        let error = response["error"] as? [String: Any]
+        return error?["message"] as? String ?? error?["code"] as? String ?? "Unknown error"
+    }
+
     // MARK: - Tool Visibility
 
-    /// Query available tools from the gateway at connect time.
-    /// Populates `availableGatewayTools` so the system prompt only references live capabilities.
+    /// Query the tools the gateway will actually offer this session, so the system prompt only
+    /// references live capabilities. `tools.effective` is session-filtered; `tools.catalog` is
+    /// the fallback on gateways without it.
     private func queryAvailableTools() async {
         guard Config.agentModeEnabled else { return }
+        let request = supports("tools.effective")
+            ? GatewayRequestCatalog.toolsEffective(sessionKey: sessionKey)
+            : GatewayRequestCatalog.toolsCatalog()
         do {
-            let response = try await sendRequest(method: "tools.available", params: [:])
-            if let ok = response["ok"] as? Bool, ok,
-               let payload = response["payload"] as? [String: Any],
-               let tools = payload["tools"] as? [[String: String]] {
-                availableGatewayTools = tools
-                PrivacyLog.gatewayOperation("tools.available", outcome: .succeeded, count: tools.count)
+            let response = try await send(request)
+            if let ok = response["ok"] as? Bool, ok, let payload = response["payload"] as? [String: Any] {
+                availableGatewayTools = GatewayRequestCatalog.toolRows(from: payload)
+                PrivacyLog.gatewayOperation(request.method, outcome: .succeeded, count: availableGatewayTools.count)
             } else {
-                // Gateway may not support tools.available — not an error
-                PrivacyLog.gatewayOperation("tools.available", outcome: .unsupported)
+                PrivacyLog.gatewayOperation(request.method, outcome: .rejected)
             }
         } catch {
-            PrivacyLog.gatewayOperation("tools.available", outcome: .failed)
+            PrivacyLog.gatewayOperation(request.method, outcome: .failed)
             PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
         }
     }
@@ -593,21 +642,19 @@ class OpenClawBridge: ObservableObject {
     /// Create a cron job on the gateway. Requires agentModeEnabled.
     func createCronJob(expression: String, task: String, context: String? = nil) async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
-        var params: [String: Any] = [
-            "expression": expression,
-            "task": task
-        ]
-        if let context { params["context"] = context }
+        let name = String(task.prefix(60)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = GatewayRequestCatalog.cronAdd(
+            name: name.isEmpty ? "Glasses task" : name, message: task,
+            schedule: .cron(expr: expression, tz: TimeZone.current.identifier), description: context)
         do {
-            let response = try await sendRequest(method: "cron.create", params: params)
+            let response = try await send(request)
             if let ok = response["ok"] as? Bool, ok {
                 let payload = response["payload"] as? [String: Any]
-                let id = payload?["id"] as? String ?? "unknown"
-                PrivacyLog.gatewayOperation("cron.create", outcome: .succeeded)
+                let id = payload?["id"] as? String ?? (payload?["job"] as? [String: Any])?["id"] as? String ?? "unknown"
+                PrivacyLog.gatewayOperation(request.method, outcome: .succeeded)
                 return .success("Cron job created (id: \(id))")
             }
-            let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
-            return .failure("Cron create failed: \(msg)")
+            return .failure("Cron create failed: \(Self.errorMessage(response))")
         } catch {
             return .failure("Cron create error: \(error.localizedDescription)")
         }
@@ -616,17 +663,16 @@ class OpenClawBridge: ObservableObject {
     /// Update an existing cron job on the gateway.
     func updateCronJob(id: String, expression: String? = nil, task: String? = nil, enabled: Bool? = nil) async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
-        var params: [String: Any] = ["id": id]
-        if let expression { params["expression"] = expression }
-        if let task { params["task"] = task }
-        if let enabled { params["enabled"] = enabled }
+        var patch = GatewayCronPatch()
+        if let expression { patch.schedule = .cron(expr: expression, tz: TimeZone.current.identifier) }
+        if let task { patch.message = task }
+        if let enabled { patch.enabled = enabled }
         do {
-            let response = try await sendRequest(method: "cron.update", params: params)
+            let response = try await send(GatewayRequestCatalog.cronUpdate(id: id, patch: patch))
             if let ok = response["ok"] as? Bool, ok {
                 return .success("Cron job updated")
             }
-            let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
-            return .failure("Cron update failed: \(msg)")
+            return .failure("Cron update failed: \(Self.errorMessage(response))")
         } catch {
             return .failure("Cron update error: \(error.localizedDescription)")
         }
@@ -636,12 +682,11 @@ class OpenClawBridge: ObservableObject {
     func deleteCronJob(id: String) async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
         do {
-            let response = try await sendRequest(method: "cron.delete", params: ["id": id])
+            let response = try await send(GatewayRequestCatalog.cronRemove(id: id))
             if let ok = response["ok"] as? Bool, ok {
                 return .success("Cron job deleted")
             }
-            let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
-            return .failure("Cron delete failed: \(msg)")
+            return .failure("Cron delete failed: \(Self.errorMessage(response))")
         } catch {
             return .failure("Cron delete error: \(error.localizedDescription)")
         }
@@ -651,18 +696,11 @@ class OpenClawBridge: ObservableObject {
     func listCronJobs() async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
         do {
-            let response = try await sendRequest(method: "cron.list", params: [:])
+            let response = try await send(GatewayRequestCatalog.cronList())
             if let ok = response["ok"] as? Bool, ok,
-               let payload = response["payload"] as? [String: Any],
-               let jobs = payload["jobs"] as? [[String: Any]] {
-                let descriptions = jobs.map { job -> String in
-                    let id = job["id"] as? String ?? "?"
-                    let expr = job["expression"] as? String ?? "?"
-                    let task = job["task"] as? String ?? "?"
-                    let enabled = job["enabled"] as? Bool ?? true
-                    return "\(enabled ? "+" : "-") [\(id)] \(expr): \(task)"
-                }
-                return .success(descriptions.joined(separator: "\n"))
+               let payload = response["payload"] as? [String: Any] {
+                let rows = GatewayRequestCatalog.cronRows(from: payload)
+                return .success(rows.isEmpty ? "No cron jobs" : rows.joined(separator: "\n"))
             }
             return .success("No cron jobs")
         } catch {
@@ -670,21 +708,17 @@ class OpenClawBridge: ObservableObject {
         }
     }
 
-    // MARK: - Gateway Memory (Embeddings)
+    // MARK: - Gateway Memory (read-only on the wire)
 
-    /// Query the gateway's long-term memory via embeddings.
+    /// Search the gateway's memory index.
     func queryMemory(query: String, limit: Int = 5) async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
         do {
-            let response = try await sendRequest(method: "memory.query", params: [
-                "query": query,
-                "limit": limit
-            ])
+            let response = try await send(GatewayRequestCatalog.memorySearch(query: query, maxResults: limit))
             if let ok = response["ok"] as? Bool, ok,
-               let payload = response["payload"] as? [String: Any],
-               let results = payload["results"] as? [[String: Any]] {
-                let texts = results.compactMap { $0["content"] as? String }
-                return .success(texts.joined(separator: "\n---\n"))
+               let payload = response["payload"] as? [String: Any] {
+                let texts = GatewayRequestCatalog.memoryTexts(from: payload)
+                return .success(texts.isEmpty ? "No memory results" : texts.joined(separator: "\n---\n"))
             }
             return .success("No memory results")
         } catch {
@@ -692,65 +726,19 @@ class OpenClawBridge: ObservableObject {
         }
     }
 
-    /// Store a memory in the gateway's embedding store.
+    /// The gateway exposes no memory *write* method — memory is the agent's own, consolidated on
+    /// its side — so this reports honestly rather than inventing a frame. On-device memory
+    /// (BrainStore) stays native-first regardless.
     func storeMemory(content: String, metadata: [String: String]? = nil) async -> ToolResult {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
-        var params: [String: Any] = ["content": content]
-        if let metadata { params["metadata"] = metadata }
-        do {
-            let response = try await sendRequest(method: "memory.store", params: params)
-            if let ok = response["ok"] as? Bool, ok {
-                return .success("Memory stored")
-            }
-            let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
-            return .failure("Memory store failed: \(msg)")
-        } catch {
-            return .failure("Memory store error: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Message Routing via Gateway
-
-    /// Route a message through the gateway's channel abstraction.
-    func routeMessage(channel: String, recipient: String, message: String) async -> ToolResult {
-        guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
-        do {
-            let response = try await sendRequest(method: "channels.send", params: [
-                "channel": channel,
-                "recipient": recipient,
-                "message": message
-            ])
-            if let ok = response["ok"] as? Bool, ok {
-                return .success("Message sent via \(channel)")
-            }
-            let msg = (response["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
-            return .failure("Message routing failed: \(msg)")
-        } catch {
-            return .failure("Message routing error: \(error.localizedDescription)")
-        }
-    }
-
-    /// List available messaging channels on the gateway.
-    func listChannels() async -> ToolResult {
-        guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
-        do {
-            let response = try await sendRequest(method: "channels.list", params: [:])
-            if let ok = response["ok"] as? Bool, ok,
-               let payload = response["payload"] as? [String: Any],
-               let channels = payload["channels"] as? [[String: Any]] {
-                let names = channels.compactMap { $0["name"] as? String }
-                return .success("Available channels: \(names.joined(separator: ", "))")
-            }
-            return .success("No channels available")
-        } catch {
-            return .failure("Channel list error: \(error.localizedDescription)")
-        }
+        PrivacyLog.gatewayOperation("memory.store", outcome: .unsupported)
+        return .failure("This gateway has no memory store method; memories stay on the phone.")
     }
 
     // MARK: - Task Delegation
 
-    /// Send a task to the OpenClaw gateway via WebSocket sessions.send.
-    /// Optionally includes an image (e.g. from glasses camera) as base64 JPEG.
+    /// Send a task to the OpenClaw gateway and wait for the run's answer.
+    /// Optionally includes an image (e.g. from glasses camera) as a JPEG attachment.
     func delegateTask(
         task: String,
         toolName: String = "execute",
@@ -763,54 +751,74 @@ class OpenClawBridge: ObservableObject {
         lastToolCallStatus = .executing(toolName)
 
         do {
-            var params: [String: Any] = [
-                "agentId": "main",
-                "sessionKey": sessionKey,
-                "text": task
-            ]
-            if let imageData = imageData {
-                params["imageBase64"] = imageData.base64EncodedString()
-                params["imageMimeType"] = "image/jpeg"
+            try await ensureWebSocket()
+            var attachments: [GatewayAttachment] = []
+            if let imageData {
+                let attachment = GatewayAttachment(mimeType: "image/jpeg", fileName: "glasses.jpg", content: imageData)
+                if attachment.fits(gatewayHello) {
+                    attachments.append(attachment)
+                } else {
+                    // Over the gateway's advertised ceiling: send the words, not a rejected frame.
+                    PrivacyLog.gatewayOperation("attachment", outcome: .rejected, count: imageData.count)
+                }
             }
-            let response = try await sendRequest(method: "sessions.send", params: params)
+            let request = GatewayRequestCatalog.sessionsSend(
+                key: sessionKey, message: task, agentId: "main", attachments: attachments,
+                idempotencyKey: UUID().uuidString)
+            let response = try await sendRequest(method: request.method, params: request.params)
 
-            let ok = response["ok"] as? Bool ?? false
-            if ok {
-                // Extract result — sessions.send may return the run result directly
-                if let payload = response["payload"] as? [String: Any],
-                   let content = payload["content"] as? String {
-                    // The content is the agent's answer to the wearer — user content. Only its
-                    // size is recorded, which is what a truncation or empty-reply report needs.
-                    PrivacyLog.gatewayOperation("sessions.send", outcome: .succeeded,
-                                                characters: content.count)
-                    lastToolCallStatus = .completed(toolName)
-                    return .success(content)
-                }
-                // Some responses just acknowledge the send — the actual result comes via events
-                if let payload = response["payload"] as? [String: Any],
-                   let runId = payload["runId"] as? String {
-                    PrivacyLog.gatewayOperation("sessions.send", outcome: .succeeded)
-                    lastToolCallStatus = .completed(toolName)
-                    return .success("Task dispatched (runId: \(runId))")
-                }
-                lastToolCallStatus = .completed(toolName)
-                return .success("OK")
-            } else {
+            guard response["ok"] as? Bool ?? false else {
                 let error = response["error"] as? [String: Any]
                 let code = error?["code"] as? String ?? "unknown"
                 let message = error?["message"] as? String ?? "Unknown error"
                 // The gateway's `message` is free-form prose about the failed task; the `code` is
                 // its machine vocabulary and is the only half that can be summarised.
-                PrivacyLog.gatewayOperation("sessions.send", outcome: .rejected)
+                PrivacyLog.gatewayOperation(request.method, outcome: .rejected)
                 PrivacyLog.gatewayFailed(.request, .remote(code: code))
 
                 if message.contains("missing scope") {
                     lastToolCallStatus = .failed(toolName, "Token needs write permissions")
                     return .failure("Gateway token needs operator.write scope. Update the token permissions in OpenClaw settings.")
                 }
-
                 lastToolCallStatus = .failed(toolName, message)
                 return .failure("Gateway error: \(message)")
+            }
+
+            let payload = response["payload"] as? [String: Any] ?? [:]
+            guard let runId = payload["runId"] as? String, !runId.isEmpty else {
+                // A gateway that answers inline (pre-2.0 shape) — take the text as the result.
+                if let content = payload["content"] as? String {
+                    PrivacyLog.gatewayOperation(request.method, outcome: .succeeded, characters: content.count)
+                    lastToolCallStatus = .completed(toolName)
+                    return .success(content)
+                }
+                lastToolCallStatus = .completed(toolName)
+                return .success("OK")
+            }
+
+            runTracker.register(runId: runId)
+            let outcome = await waitForReply(runId: runId)
+            switch outcome {
+            case .answered(let text):
+                // The content is the agent's answer to the wearer — user content. Only its
+                // size is recorded, which is what a truncation or empty-reply report needs.
+                PrivacyLog.gatewayOperation(request.method, outcome: .succeeded, characters: text.count)
+                lastToolCallStatus = .completed(toolName)
+                return .success(text.isEmpty ? "OK" : text)
+            case .aborted:
+                PrivacyLog.gatewayOperation(request.method, outcome: .rejected)
+                lastToolCallStatus = .failed(toolName, "Run aborted")
+                return .failure("The gateway stopped the task before it finished.")
+            case .failed(let message):
+                PrivacyLog.gatewayOperation(request.method, outcome: .failed)
+                lastToolCallStatus = .failed(toolName, message ?? "Run failed")
+                return .failure("Gateway error: \(message ?? "the task failed")")
+            case .timedOut:
+                // Parked, not dropped: the run is still tracked and its answer will be announced
+                // through `onLateResult` when it arrives.
+                PrivacyLog.gatewayOperation(request.method, outcome: .succeeded)
+                lastToolCallStatus = .completed(toolName)
+                return .success("The gateway accepted the task and is still working on it. The answer will be announced when it arrives; do not invent one now.")
             }
         } catch {
             PrivacyLog.gatewayOperation("sessions.send", outcome: .failed)
@@ -820,5 +828,17 @@ class OpenClawBridge: ObservableObject {
             lastToolCallStatus = .failed(toolName, error.localizedDescription)
             return .failure("Gateway error: \(error.localizedDescription)")
         }
+    }
+
+    /// Wait for a run's terminal `chat` event, parking it after `replyTimeout`.
+    private func waitForReply(runId: String) async -> ChatRunTracker.Outcome {
+        let timeoutTask = Task { [replyTimeout] in
+            try? await Task.sleep(nanoseconds: UInt64(replyTimeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { _ = self.runTracker.park(runId: runId) }
+        }
+        let outcome = await runTracker.wait(runId: runId)
+        timeoutTask.cancel()
+        return outcome
     }
 }
