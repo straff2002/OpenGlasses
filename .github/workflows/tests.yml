@@ -119,9 +119,9 @@ jobs:
 
       - name: Run unit tests
         # Below the job's 90-minute cap so a hung run fails while there is still budget to
-        # report it. The step normally takes ~18 minutes; twice that is a hang, not a slow
-        # runner, and the runner has hung mid-suite often enough to be worth bounding.
-        timeout-minutes: 40
+        # report it. Healthy runs have measured 16-24 minutes, so this is about twice the
+        # slowest of them: a run past it has hung, and both hangs so far ran to the cap.
+        timeout-minutes: 50
         run: |
           set -o pipefail
           # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
