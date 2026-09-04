@@ -52,6 +52,10 @@ enum GatewayWire {
         "channels.send", "channels.list",
         "agent.start", "agent.status", "agent.cancel", "agent.respond",
     ]
+
+    /// Methods whose response carries a `runId` — the reply arrives later as `chat` events, so
+    /// the run has to be tracked the moment its response is routed.
+    static let runStartingMethods: Set<String> = ["sessions.send", "chat.send"]
 }
 
 // MARK: - connect.challenge

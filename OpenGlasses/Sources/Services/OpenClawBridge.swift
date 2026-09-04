@@ -73,7 +73,14 @@ class OpenClawBridge: ObservableObject {
     private let socketFactory: GatewaySocketFactory
     private var socket: GatewaySocket?
     private var wsConnected = false
-    private var pendingResponses: [String: CheckedContinuation<String, Error>] = [:]
+    /// An in-flight request: the method it asked for, kept alongside the waiter so the receive
+    /// loop can act on the response before the caller is resumed.
+    private struct PendingRequest {
+        let method: String
+        let continuation: CheckedContinuation<String, Error>
+    }
+
+    private var pendingResponses: [String: PendingRequest] = [:]
 
     /// Correlates `chat` events with the requests that started them.
     let runTracker = ChatRunTracker()
@@ -455,8 +462,8 @@ class OpenClawBridge: ObservableObject {
                     guard self.socket === socket else { return }
                     self.wsConnected = false
                     // Fail all pending requests
-                    for (_, cont) in self.pendingResponses {
-                        cont.resume(throwing: error)
+                    for (_, pending) in self.pendingResponses {
+                        pending.continuation.resume(throwing: error)
                     }
                     self.pendingResponses.removeAll()
                     break
@@ -468,8 +475,16 @@ class OpenClawBridge: ObservableObject {
     private func route(frame json: [String: Any], rawText: String) {
         switch json["type"] as? String {
         case "res":
-            if let id = json["id"] as? String, let cont = pendingResponses.removeValue(forKey: id) {
-                cont.resume(returning: rawText)
+            if let id = json["id"] as? String, let pending = pendingResponses.removeValue(forKey: id) {
+                // Track a started run here, not where the caller resumes: the caller wakes on a
+                // later turn of this actor, and the run's `chat` events are routed in between.
+                // A run that finishes fast would otherwise reach the tracker as an unknown run,
+                // its terminal state dropped and its waiter left to time out.
+                if GatewayWire.runStartingMethods.contains(pending.method),
+                   let runId = (json["payload"] as? [String: Any])?["runId"] as? String, !runId.isEmpty {
+                    runTracker.register(runId: runId)
+                }
+                pending.continuation.resume(returning: rawText)
             }
         case "event":
             let event = json["event"] as? String ?? ""
@@ -559,15 +574,15 @@ class OpenClawBridge: ObservableObject {
         // actor too, and a gateway that answers within the same turn (or a scripted one that
         // answers synchronously) would otherwise route the reply before anyone was waiting.
         let responseText: String = try await withCheckedThrowingContinuation { continuation in
-            pendingResponses[reqId] = continuation
+            pendingResponses[reqId] = PendingRequest(method: method, continuation: continuation)
 
             Task {
                 do {
                     try await socket.send(text)
                 } catch {
                     await MainActor.run {
-                        if let cont = self.pendingResponses.removeValue(forKey: reqId) {
-                            cont.resume(throwing: error)
+                        if let pending = self.pendingResponses.removeValue(forKey: reqId) {
+                            pending.continuation.resume(throwing: error)
                         }
                     }
                 }
@@ -577,8 +592,8 @@ class OpenClawBridge: ObservableObject {
             Task {
                 try? await Task.sleep(nanoseconds: 120_000_000_000)
                 await MainActor.run {
-                    if let cont = self.pendingResponses.removeValue(forKey: reqId) {
-                        cont.resume(throwing: NSError(domain: "OpenClaw", code: -3, userInfo: [NSLocalizedDescriptionKey: "Request timed out"]))
+                    if let pending = self.pendingResponses.removeValue(forKey: reqId) {
+                        pending.continuation.resume(throwing: NSError(domain: "OpenClaw", code: -3, userInfo: [NSLocalizedDescriptionKey: "Request timed out"]))
                     }
                 }
             }
@@ -597,8 +612,8 @@ class OpenClawBridge: ObservableObject {
         socket?.cancel()
         socket = nil
         gatewayHello = nil
-        for (_, cont) in pendingResponses {
-            cont.resume(throwing: NSError(domain: "OpenClaw", code: -5, userInfo: [NSLocalizedDescriptionKey: "Disconnected"]))
+        for (_, pending) in pendingResponses {
+            pending.continuation.resume(throwing: NSError(domain: "OpenClaw", code: -5, userInfo: [NSLocalizedDescriptionKey: "Disconnected"]))
         }
         pendingResponses.removeAll()
     }
