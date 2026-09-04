@@ -182,7 +182,14 @@ class LLMService: ObservableObject {
 
     private func coordinator(for service: LocalLLMService) -> LocalInferenceCoordinator {
         if let localCoordinator { return localCoordinator }
-        let created = LocalInferenceCoordinator(backends: [MLXLocalInferenceBackend(service: service)])
+        // Both runtimes are registered; neither is *enabled* by registration. The GGUF backend
+        // refuses every load with `.runtimeDisabled` while `Config.ggufModelsEnabled` is off, and
+        // constructing it touches nothing native — so registering it here cannot change what an
+        // MLX user's turn does, and the flag stays effective without a relaunch.
+        let created = LocalInferenceCoordinator(backends: [
+            MLXLocalInferenceBackend(service: service),
+            LlamaCppLocalInferenceBackend(),
+        ])
         localCoordinator = created
         return created
     }

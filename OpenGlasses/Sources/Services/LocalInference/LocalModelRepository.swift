@@ -102,6 +102,30 @@ final class LocalModelRepository {
         installedRoot.appendingPathComponent(id.storageComponent, isDirectory: true)
     }
 
+    /// Where an installation's *files* are, which is not always where its record is: a legacy MLX
+    /// discovery still points at the hub cache directory it was found in, because PR1 records
+    /// without moving anything.
+    func directory(for installation: InstalledLocalModel) -> URL {
+        Self.directory(for: installation, root: root)
+    }
+
+    /// The same rule against the default root, for callers that hold no repository — the GGUF
+    /// backend resolves a weights path this way rather than taking a dependency on the store.
+    static func defaultDirectory(for installation: InstalledLocalModel,
+                                 fileManager: FileManager = .default) -> URL {
+        directory(for: installation, root: defaultRoot(fileManager: fileManager))
+    }
+
+    private static func directory(for installation: InstalledLocalModel, root: URL) -> URL {
+        switch installation.storage {
+        case .legacyHubSnapshot(let name):
+            return root.appendingPathComponent(name, isDirectory: true)
+        case .managed(let name):
+            return root.appendingPathComponent(installedDirectoryName, isDirectory: true)
+                .appendingPathComponent(name, isDirectory: true)
+        }
+    }
+
     // MARK: - Reading
 
     /// Every complete installation, ordered by id so the result is stable.

@@ -1409,6 +1409,9 @@ enum PrivacyLog {
         case downloaded, downloadCancelled, deleted, tempsSwept
         case loaded, loadFailed, unloaded, visionDemoted, imageRefused
         case generationStarted, generationCompleted, generationFailed, stalled
+        /// The prompt finished its batched prefill. Separate from `generationStarted` because
+        /// prefill time and first-token latency are different diagnostics with different causes.
+        case promptDecoded
         case historyTrimmed, toolCall, reasoningProduced, tokenShape
         /// Installed-model records (Plan DZ P0). These carry **counts only** — a compatibility
         /// descriptor's id is whatever the user typed into the model field, which makes it
@@ -1427,6 +1430,8 @@ enum PrivacyLog {
                            footprintMegabytes: Int? = nil, headroomMegabytes: Int? = nil,
                            kilobytes: Int? = nil,
                            tool: PrivacyToken? = nil, detail: PrivacyToken? = nil,
+                           milliseconds: Int? = nil, firstTokenMilliseconds: Int? = nil,
+                           percent: Int? = nil, state: PrivacyToken? = nil,
                            error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
         if let model { fields.append(.init(.model, .token(model))) }
@@ -1447,6 +1452,12 @@ enum PrivacyLog {
         if let kilobytes { fields.append(.init(.kilobytes, .count(kilobytes))) }
         if let tool { fields.append(.init(.tool, .token(tool))) }
         if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let milliseconds { fields.append(.init(.duration, .milliseconds(milliseconds))) }
+        if let firstTokenMilliseconds {
+            fields.append(.init(.elapsed, .milliseconds(firstTokenMilliseconds)))
+        }
+        if let percent { fields.append(.init(.percent, .count(percent))) }
+        if let state { fields.append(.init(.state, .token(state))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.model, .localModel, fields))
     }
