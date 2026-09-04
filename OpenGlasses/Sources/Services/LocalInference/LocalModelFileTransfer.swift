@@ -8,6 +8,23 @@ struct LocalModelFileTransferRequest: Sendable {
     let identifier: LocalModelTransferIdentifier
     let url: URL
     let expectedBytes: Int64
+    /// Bytes written so far for this file, reported while the fetch runs.
+    ///
+    /// UI only, and deliberately so: what survives a relaunch is still the persisted plan, which is
+    /// recomputed from bytes actually on disk. This is the live reading laid over it, so a
+    /// multi-gigabyte file does not sit at nought percent for ten minutes and then jump to whole.
+    /// Implementations throttle it — see `progressReportingStepBytes`.
+    let onProgress: (@Sendable (Int64) -> Void)?
+
+    init(identifier: LocalModelTransferIdentifier,
+         url: URL,
+         expectedBytes: Int64,
+         onProgress: (@Sendable (Int64) -> Void)? = nil) {
+        self.identifier = identifier
+        self.url = url
+        self.expectedBytes = expectedBytes
+        self.onProgress = onProgress
+    }
 }
 
 /// What a completed fetch delivered. Every field is something the manager re-checks: a transport
@@ -59,9 +76,16 @@ final class LocalModelBackgroundTransfer: NSObject, LocalModelFileTransferring, 
     /// One session per app, named so the system can hand its tasks back after a relaunch.
     static let sessionIdentifier = "com.openglasses.localmodels.download"
 
+    /// How much must arrive before progress is reported again. `URLSession` calls its delegate
+    /// every few kilobytes; forwarding each one would spend more time waking the actor than
+    /// fetching. A megabyte is invisible on a progress bar and rare enough to cost nothing.
+    static let progressReportingStepBytes: Int64 = 1 << 20
+
     private let lock = NSLock()
     private var continuations: [LocalModelTransferIdentifier: CheckedContinuation<LocalModelFileTransferOutcome, Error>] = [:]
     private var refusedRedirects: Set<LocalModelTransferIdentifier> = []
+    private var progressSinks: [LocalModelTransferIdentifier: @Sendable (Int64) -> Void] = [:]
+    private var lastReportedBytes: [LocalModelTransferIdentifier: Int64] = [:]
     /// Called when the system finishes delivering background events, so the app delegate's stored
     /// completion handler can be invoked.
     private var backgroundEventsHandler: (@Sendable () -> Void)?
@@ -92,6 +116,8 @@ final class LocalModelBackgroundTransfer: NSObject, LocalModelFileTransferring, 
             lock.lock()
             continuations[request.identifier] = continuation
             refusedRedirects.remove(request.identifier)
+            progressSinks[request.identifier] = request.onProgress
+            lastReportedBytes[request.identifier] = 0
             lock.unlock()
 
             var urlRequest = URLRequest(url: request.url)
@@ -122,8 +148,24 @@ final class LocalModelBackgroundTransfer: NSObject, LocalModelFileTransferring, 
                         with result: Result<LocalModelFileTransferOutcome, Error>) {
         lock.lock()
         let continuation = continuations.removeValue(forKey: identifier)
+        progressSinks.removeValue(forKey: identifier)
+        lastReportedBytes.removeValue(forKey: identifier)
         lock.unlock()
         continuation?.resume(with: result)
+    }
+
+    /// Forward a progress reading, at most once per `progressReportingStepBytes`.
+    private func reportProgress(_ identifier: LocalModelTransferIdentifier, written: Int64) {
+        lock.lock()
+        let last = lastReportedBytes[identifier] ?? 0
+        guard written - last >= Self.progressReportingStepBytes else {
+            lock.unlock()
+            return
+        }
+        lastReportedBytes[identifier] = written
+        let sink = progressSinks[identifier]
+        lock.unlock()
+        sink?(written)
     }
 }
 
@@ -153,6 +195,15 @@ extension LocalModelBackgroundTransfer: URLSessionDownloadDelegate {
             finalURL: response?.url ?? downloadTask.originalRequest?.url,
             fileURL: destination,
             byteCount: size)))
+    }
+
+    func urlSession(_ session: URLSession,
+                    downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        guard let identifier = LocalModelTransferIdentifier(downloadTask.taskDescription) else { return }
+        reportProgress(identifier, written: totalBytesWritten)
     }
 
     func urlSession(_ session: URLSession,

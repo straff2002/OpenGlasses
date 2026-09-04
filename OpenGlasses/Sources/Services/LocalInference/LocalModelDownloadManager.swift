@@ -52,6 +52,12 @@ actor LocalModelDownloadManager {
     /// never has to know about the coordinator (and so the suite never touches a `.shared` service).
     private let unloadIfResident: @Sendable (LocalModelID) async -> Void
 
+    /// Bytes written for the file currently being fetched, keyed by plan. In memory only, and only
+    /// for the progress bar: what survives a relaunch is the persisted plan, whose byte counts are
+    /// recomputed from the files actually staged on disk. Cleared as soon as a file validates,
+    /// because from that moment the persisted count is the better number.
+    private var liveFileBytes: [UUID: (fileIndex: Int, bytes: Int64)] = [:]
+
     init(repository: LocalModelRepository,
          transfer: any LocalModelFileTransferring,
          fileManager: FileManager = .default,
@@ -96,6 +102,25 @@ actor LocalModelDownloadManager {
     }
 
     func plan(_ planID: UUID) -> LocalModelDownloadPlan? { readPlan(planID) }
+
+    /// Progress for one plan: the bytes it has persisted, plus the live reading for the file in
+    /// flight. Returns nil when there is no such plan.
+    func progress(_ planID: UUID) -> (completedBytes: Int64, totalBytes: Int64)? {
+        guard let plan = readPlan(planID) else { return nil }
+        var completed = plan.completedBytes
+        if let live = liveFileBytes[planID],
+           plan.files.indices.contains(live.fileIndex),
+           !plan.files[live.fileIndex].isValidated {
+            // The persisted count already includes anything validated; the live figure belongs to
+            // the one file that has not been.
+            completed += min(live.bytes, plan.files[live.fileIndex].byteCount)
+        }
+        return (min(completed, plan.totalBytes), plan.totalBytes)
+    }
+
+    private func recordLiveBytes(planID: UUID, fileIndex: Int, bytes: Int64) {
+        liveFileBytes[planID] = (fileIndex, bytes)
+    }
 
     /// The plan currently occupying the pipeline, if any.
     func activePlan() -> LocalModelDownloadPlan? {
@@ -238,10 +263,18 @@ actor LocalModelDownloadManager {
 
         let outcome: LocalModelFileTransferOutcome
         do {
+            let planID = plan.id
             outcome = try await transfer.transfer(.init(
-                identifier: LocalModelTransferIdentifier(planID: plan.id, fileIndex: fileIndex),
+                identifier: LocalModelTransferIdentifier(planID: planID, fileIndex: fileIndex),
                 url: url,
-                expectedBytes: file.byteCount))
+                expectedBytes: file.byteCount,
+                onProgress: { [weak self] written in
+                    // Already throttled by the transport; one hop per megabyte is affordable and
+                    // is what keeps the actor's state the single owner of the reading.
+                    Task { await self?.recordLiveBytes(planID: planID,
+                                                       fileIndex: fileIndex,
+                                                       bytes: written) }
+                }))
         } catch LocalModelFileTransferError.cancelled {
             throw CancellationError()
         } catch LocalModelFileTransferError.redirectRefused {
@@ -290,6 +323,7 @@ actor LocalModelDownloadManager {
         }
 
         plan.markValidated(fileIndex: fileIndex, byteCount: file.byteCount, now: now())
+        liveFileBytes[plan.id] = nil
         if let next = plan.nextFileIndex {
             try plan.advance(to: .downloading(fileIndex: next), now: now())
         }
@@ -327,6 +361,7 @@ actor LocalModelDownloadManager {
         }
         plan = (try? persist(plan)) ?? plan
         log(.installCompleted, plan: plan)
+        liveFileBytes[plan.id] = nil
         // The plan has done its job; its directory goes now that nothing depends on it.
         removePlanDirectory(plan.id)
         return plan
@@ -366,6 +401,7 @@ actor LocalModelDownloadManager {
         // directory is not.
         guard readPlan(plan.id) != nil else { return plan }
         let stored = (try? persist(plan)) ?? plan
+        liveFileBytes[stored.id] = nil
         log(.downloadCancelled, plan: stored)
         removePlanDirectory(stored.id)
         return stored
@@ -424,7 +460,7 @@ actor LocalModelDownloadManager {
             default:
                 break
             }
-            try? persist(plan)
+            _ = try? persist(plan)
             log(.downloadRecovered, plan: plan,
                 detail: live.contains(plan.id) ? "taskLive" : "taskAbsent")
             result.append((plan, recovery))
