@@ -1,0 +1,17 @@
+# Pinned llama.cpp engine revision for the GGUF local-inference runtime (Plan DZ P1).
+#
+# Machine-readable: `key=value`, one per line, `#` comments ignored. Read by
+# Scripts/build-llamacpp-framework.sh, Scripts/fetch-llamacpp-framework.sh and
+# OpenGlassesTests/LlamaRuntimePackageTests.swift.
+#
+# `commit` is authoritative — a tag can be moved, a commit cannot. `tag` records which release
+# that commit was, and the build script verifies the two still agree upstream before building,
+# so a re-pointed tag fails loudly instead of silently building different sources.
+#
+# Why v0.3.0: it is the newest non-prerelease release of ggml-org/llama.cpp (published
+# 2026-08-25). Every `bNNNNN` tag upstream publishes is marked prerelease — those are the
+# nightly build tags — so pinning one would be pinning a nightly. Never pin a branch.
+
+repository=https://github.com/ggml-org/llama.cpp.git
+tag=v0.3.0
+commit=c1d0e7a004015f23bc0233470b747b596f29b264

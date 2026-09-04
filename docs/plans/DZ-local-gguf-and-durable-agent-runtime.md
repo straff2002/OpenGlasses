@@ -1,6 +1,7 @@
 # Plan DZ — Local GGUF Runtime and Durable Agent Loops
 
-**Status:** 🚧 In progress — **P0 / PR1 ✅ complete** (all flags off); PR2 onward not started.
+**Status:** 🚧 In progress — **P0 / PR1 ✅ complete**, **P1 / PR2 ✅ complete** (all flags off);
+PR3 onward not started.
 **Priority:** P1 for the text-only GGUF runtime and model acquisition path; P1 reliability work for
 scheduled tasks; P2 for memory curation; vision and skill-pack storage remain gated follow-ups.
 
@@ -49,6 +50,65 @@ Honest caveats on the exit criteria:
   than before DZ.
 - **`LocalModelDownloadManager` / `LocalModelDownloadPlan` are not in this PR** — they belong to the
   acquisition work in PR4 and would have no consumer here.
+
+### P1 / PR2 — what actually landed, and its caveats
+
+Landed: `Vendor/LlamaCpp` as a local SPM package (`Package.swift`, the `LlamaCppWrapper`
+Objective-C++ target behind a minimal C ABI, a static `llama.xcframework` built from a pinned
+revision, plus `REVISION`, `SHA256SUMS`, `BUILD-INFO`, `NOTICES.md` and a `README.md`);
+`Scripts/build-llamacpp-framework.sh` and `Scripts/fetch-llamacpp-framework.sh`; the package wired
+into `project.base.yml` and the CI post-clone; `LlamaRuntimeAvailability` as the app's only contact
+with the engine; and `LlamaRuntimePackageTests` guarding the pin, the digests, and the
+"linked is not enabled" property.
+
+`BUILD-INFO` is an addition to the layout the plan prescribed, not a substitution — see the
+reproducibility caveat below for what it is for.
+
+The engine is pinned at `c1d0e7a004015f23bc0233470b747b596f29b264` (release `v0.3.0`), chosen
+because it is upstream's newest *non-prerelease* release — every `bNNNNN` tag is published as a
+prerelease nightly, so pinning one would be pinning a nightly.
+
+Honest caveats on the exit criteria:
+
+- **"Metal execution works" is not among the claims.** The device slice builds with Metal
+  compiled in and links; nothing has run a Metal graph on hardware, because nothing loads a model
+  until PR3. `LlamaRuntimeAvailability.supportsGPUOffload` says the backend is present, not that it
+  runs. A successful simulator build is explicitly not evidence here.
+- **The wrapper ABI is written but unexercised.** Tokenization, template application, batched
+  decode, sampling and detokenization compile and are shaped for PR3's flow; not one of them has
+  processed a real GGUF file. The tests in this slice cover the *packaging* promise, not the
+  engine's behaviour.
+- **Byte-level reproducibility is not claimed, only source-level.** The revision is pinned by
+  commit and cross-checked against its tag before compiling, but a static archive carries DWARF
+  with absolute paths, so a different Xcode or a different checkout directory produces different
+  digests from identical sources. `BUILD-INFO` records revision, options fingerprint, toolchain and
+  checkout path; the build script fails hard on a digest change that *none* of those explain, and
+  records the new digests loudly when one of them does. `--strict` makes any difference fatal.
+- **There is no published artefact mirror yet, so "a clean clone deterministically obtains the
+  exact binary" is only half true.** `Scripts/fetch-llamacpp-framework.sh` verifies a downloaded
+  archive against both its own digest and `SHA256SUMS` — but with no URL configured it falls
+  through to building from the pinned sources, which is deterministic in sources and not in bytes.
+  Mirroring the xcframework as a release asset (and setting `LLAMACPP_FRAMEWORK_URL` /
+  `_SHA256`) closes this; the fetch path is already written and waiting for it.
+- **CI now builds the engine on a cold run.** Xcode Cloud has no Homebrew, so
+  `ci_post_clone.sh` sets `OG_ALLOW_TOOL_BOOTSTRAP=1` and the fetch script unpacks a pinned,
+  checksum-verified cmake into `.ci-tools/` the way the same script already does for XcodeGen. This
+  adds several minutes per cold archive. A mirror removes it. On a developer's Mac the bootstrap is
+  off and a missing cmake is a clear error, never a silent install.
+- **The simulator slice runs generic CPU kernels.** Building it for `arm64` and `x86_64` together
+  defeats ggml's architecture detection ("Unknown CPU architecture. Falling back to generic
+  implementations"). The device slice is unaffected. Simulator inference is correct and slow, which
+  is acceptable because the simulator is not a supported place to run local models — MLX cannot run
+  there at all. `--sim-archs arm64` trades Intel Mac support for NEON.
+- **`LLAMA_BUILD_MTMD=OFF`.** The multimodal projector is not built, matching the text-only
+  invariant. The vision phase flips the option and re-pins; it is not a silent capability sitting
+  in the binary.
+- **No module map ships inside the xcframework.** Xcode copies a static xcframework's headers into
+  `$BUILT_PRODUCTS_DIR/include`, so a second vendored xcframework carrying one collides with
+  sherpa-onnx's ("Multiple commands produce …/include/module.modulemap"). The wrapper only needs
+  the headers on the search path, and Swift is meant to see `LlamaCppWrapper.h`, never `llama.h`.
+- **`Package.resolved` is unchanged, correctly.** Local path packages are not pinned in the
+  SwiftPM lockfile — sherpa-onnx and MediaPipe are absent from it for the same reason.
 
 ---
 

@@ -86,10 +86,18 @@ On iPhone: Meta AI app → Settings → About → tap version number **5 times**
 Same as [Quick Start](#quick-start) step 1. The repo ships [`project.base.yml`](project.base.yml) plus optional [`project.local.yml`](project.local.yml.example); XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.
 
 ```bash
-brew install xcodegen
+brew install xcodegen cmake
+./Scripts/fetch-mediapipe-frameworks.sh    # vendored binaries, fetched not committed
+./Scripts/fetch-llamacpp-framework.sh      # builds the pinned llama.cpp engine (several minutes, once)
 ./Scripts/generate-xcodeproj.sh
 open OpenGlasses.xcodeproj
 ```
+
+Two vendored packages keep their binaries out of the repository and obtain them with a script:
+MediaPipe Tasks (downloaded, checksum-verified) and the llama.cpp engine (built from the exact
+revision pinned in `Vendor/LlamaCpp/REVISION`, then recorded in `SHA256SUMS`). Both scripts are
+idempotent — re-running them after the first time costs a second. The llama build needs `cmake`;
+it will tell you rather than installing anything itself.
 
 [Xcode Cloud](https://developer.apple.com/documentation/xcode/xcode-cloud) runs `./Scripts/generate-xcodeproj.sh` in `ci_scripts/ci_post_clone.sh` (full app + watch + tests).
 
