@@ -101,6 +101,10 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     private let monotonicNanoseconds: @Sendable () -> UInt64
     /// Whether GGUF is switched on. Injected so a test does not mutate a global default.
     private let isRuntimeEnabled: @Sendable () -> Bool
+    /// Where the diagnostics card's numbers go. It is a *second sink on the existing measurement*,
+    /// not a second measurement: the two call sites below hand it the same values they hand
+    /// `PrivacyLog`, so the card and the log can never disagree about a run.
+    private let recordDiagnostics: @Sendable (LocalRuntimeDiagnosticsSample) -> Void
 
     // MARK: - Resident state
 
@@ -143,7 +147,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             = { ProcessInfo.processInfo.thermalState },
          monotonicNanoseconds: @escaping @Sendable () -> UInt64
             = { DispatchTime.now().uptimeNanoseconds },
-         isRuntimeEnabled: @escaping @Sendable () -> Bool = { Config.ggufModelsEnabled }) {
+         isRuntimeEnabled: @escaping @Sendable () -> Bool = { Config.ggufModelsEnabled },
+         recordDiagnostics: @escaping @Sendable (LocalRuntimeDiagnosticsSample) -> Void
+            = { LocalRuntimeDiagnostics.shared.record($0) }) {
         self.engine = engine
         self.directoryForInstallation = directoryForInstallation ?? { installation in
             LocalModelRepository.defaultDirectory(for: installation)
@@ -154,6 +160,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         self.thermalState = thermalState
         self.monotonicNanoseconds = monotonicNanoseconds
         self.isRuntimeEnabled = isRuntimeEnabled
+        self.recordDiagnostics = recordDiagnostics
     }
 
     var loadedModel: LocalLoadedModel? { resources?.loaded }
@@ -277,6 +284,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   loaded: loaded,
                                   headroomAfterLoadBytes: availableProcessBytes())
 
+            let loadMilliseconds = milliseconds(since: startedAt)
             PrivacyLog.localModel(.loaded,
                                   model: PrivacyToken(installation.id.rawValue),
                                   vision: false,
@@ -284,8 +292,24 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   footprintMegabytes: megabytes(appFootprintBytes()),
                                   headroomMegabytes: megabytes(availableProcessBytes()),
                                   detail: PrivacyToken("gguf-\(plan.binding.rawValue)"),
-                                  milliseconds: milliseconds(since: startedAt),
+                                  milliseconds: loadMilliseconds,
                                   state: thermalToken())
+            // Same numbers, second sink: the card can say what the context came out at before the
+            // wearer has asked the model anything.
+            recordDiagnostics(LocalRuntimeDiagnosticsSample(
+                kind: .load,
+                modelID: installation.id,
+                runtime: .llamaCpp,
+                modelRevision: installation.descriptor.revision,
+                contextTokens: actualContext,
+                promptTokens: 0,
+                generatedTokens: 0,
+                firstTokenMilliseconds: nil,
+                totalMilliseconds: loadMilliseconds,
+                headroomDeltaBytes: 0,
+                footprintBytes: appFootprintBytes(),
+                thermalState: .init(thermalState()),
+                recordedAt: Date()))
             return loaded
         } catch {
             // 7. Reverse-order teardown of whatever was created, then a typed error. A raw engine
@@ -447,6 +471,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                               state: thermalToken())
 
         let plan = GenerationPlan(installationID: resources.installation.id,
+                                  modelRevision: resources.installation.descriptor.revision,
                                   model: resources.model,
                                   context: resources.context,
                                   sampler: sampler,
@@ -476,6 +501,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     /// Everything the decode loop needs, captured so the loop can run off the actor.
     private struct GenerationPlan: Sendable {
         let installationID: LocalModelID
+        /// Carried rather than looked up: the completion record runs off the actor, and reaching
+        /// back for the installation there would be a hop for a value that cannot change mid-turn.
+        let modelRevision: String
         let model: LlamaModelHandle
         let context: LlamaContextHandle
         let sampler: LlamaSamplerHandle
@@ -604,6 +632,10 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                               position: Int) {
         let headroomNow = availableProcessBytes()
         let usage = plan.contextTokens > 0 ? (position * 100) / plan.contextTokens : 0
+        let totalMilliseconds = milliseconds(since: plan.promptStartedAt)
+        let firstTokenMilliseconds = firstTokenAt.map {
+            Int(($0 &- plan.promptStartedAt) / 1_000_000)
+        }
         PrivacyLog.localModel(.generationCompleted,
                               model: PrivacyToken(plan.installationID.rawValue),
                               count: generated,
@@ -612,12 +644,26 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                               footprintMegabytes: megabytes(appFootprintBytes()),
                               headroomMegabytes: megabytes(headroomNow - plan.headroomAfterLoadBytes),
                               detail: PrivacyToken("gguf"),
-                              milliseconds: milliseconds(since: plan.promptStartedAt),
-                              firstTokenMilliseconds: firstTokenAt.map {
-                                  Int(($0 &- plan.promptStartedAt) / 1_000_000)
-                              },
+                              milliseconds: totalMilliseconds,
+                              firstTokenMilliseconds: firstTokenMilliseconds,
                               percent: usage,
                               state: thermalToken())
+        // The diagnostics card reads exactly what the line above recorded — same counts, same
+        // clock, same headroom reading — so there is one measurement with two readers.
+        recordDiagnostics(LocalRuntimeDiagnosticsSample(
+            kind: .generation,
+            modelID: plan.installationID,
+            runtime: .llamaCpp,
+            modelRevision: plan.modelRevision,
+            contextTokens: plan.contextTokens,
+            promptTokens: plan.promptTokens.count,
+            generatedTokens: generated,
+            firstTokenMilliseconds: firstTokenMilliseconds,
+            totalMilliseconds: totalMilliseconds,
+            headroomDeltaBytes: headroomNow - plan.headroomAfterLoadBytes,
+            footprintBytes: appFootprintBytes(),
+            thermalState: .init(thermalState()),
+            recordedAt: Date()))
     }
 
     // MARK: - Cancellation

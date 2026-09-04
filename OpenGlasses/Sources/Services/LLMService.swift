@@ -194,6 +194,18 @@ class LLMService: ObservableObject {
         return created
     }
 
+    /// The coordinator, for surfaces that manage residency directly rather than through a turn —
+    /// the model manager's Load/Unload and the deletion path.
+    ///
+    /// Returns nil only when there is no on-device service at all. Handing the manager the same
+    /// coordinator the turn path uses is what keeps "at most one resident model" true across the
+    /// two runtimes: a GGUF load from the manager evicts a resident MLX model instead of the two
+    /// of them competing for the same memory.
+    func localInferenceCoordinator() -> LocalInferenceCoordinator? {
+        guard let localLLMService else { return nil }
+        return coordinator(for: localLLMService)
+    }
+
     /// Session the SSE streaming helpers use. Injectable purely so tests can stub `URLProtocol`
     /// and exercise the stream parsing/error paths headlessly (BM P9); production uses `.shared`.
     var streamingSession: URLSession = .shared
@@ -2735,12 +2747,12 @@ class LLMService: ObservableObject {
     /// a retired entry, or one the user typed — resolves to a compatibility descriptor so no
     /// configuration can be made unusable by this seam. Storage is `.legacyHubSnapshot`, which is
     /// where MLX files actually live and where PR1 leaves them.
+    /// The compatibility installation for a model with no record — a hub snapshot discovered on
+    /// disk, or an id someone typed. One definition, shared with the selection resolver, so the
+    /// turn path and the model manager cannot synthesize two different installations for the same
+    /// id.
     nonisolated static func mlxInstallation(forModelID modelID: String) -> InstalledLocalModel {
-        InstalledLocalModel(
-            descriptor: LocalModelCatalog.resolveDescriptor(forLegacyMLXModelID: modelID),
-            storage: .legacyHubSnapshot(
-                directoryName: LocalModelRepository.legacyDirectoryName(forModelID: modelID)),
-            installedAt: Date(timeIntervalSince1970: 0))
+        LocalModelSelection.compatibilityInstallation(for: LocalModelID(modelID))
     }
 
     // Unlike the cloud providers, the on-device path is deliberately NOT on the shared `runToolLoop`
@@ -2756,12 +2768,26 @@ class LLMService: ObservableObject {
         // Load the configured model (no auto-swap — user picks one model). With the DZ seam on,
         // the same load goes through the coordinator, which owns residency across runtimes; with
         // it off this is the call it has always been.
-        let useCoordinator = Config.localRuntimeCoordinatorEnabled
+        // The selected model is a stable id whose runtime comes from its installation record; the
+        // legacy `config.model` string is the fallback for a device whose selection migration has
+        // not run. For every MLX model the two are the same string by construction, so this path is
+        // unchanged for everyone who has one selected.
+        let selection = LocalModelSelection.store()
+        let selectedID = selection.selectedID() ?? LocalModelID(config.model)
+        let installation = LocalModelSelection.installation(for: selectedID)
+        let isGGUF = installation.runtime == .llamaCpp
+
+        // A GGUF model has no direct route: `LocalLLMService` is the MLX runtime. The coordinator
+        // is therefore required for it, whatever the seam flag says — that flag is about which
+        // route *MLX* takes, not about whether a second runtime exists.
+        let useCoordinator = Config.localRuntimeCoordinatorEnabled || isGGUF
         if useCoordinator {
             try await coordinator(for: localService).load(
-                Self.mlxInstallation(forModelID: config.model),
+                installation,
                 configuration: LocalLoadConfiguration(
-                    contextLength: LocalModelBudget.contextWindow(for: config.model)))
+                    contextLength: installation.descriptor.contextLength > 0
+                        ? installation.descriptor.contextLength
+                        : LocalModelBudget.contextWindow(for: selectedID.rawValue)))
         } else if !localService.isModelLoaded || localService.loadedModelId != config.model {
             try await localService.loadModel(config.model)
         }
@@ -2800,11 +2826,11 @@ class LLMService: ObservableObject {
                                                        history: history,
                                                        userMessage: text),
                     images: imageData.map { [LocalImageInput(data: $0)] } ?? [],
-                    maxOutputTokens: LocalModelBudget.generationReserve(for: config.model),
+                    maxOutputTokens: LocalModelBudget.generationReserve(for: selectedID.rawValue),
                     previewSink: onToken)
                 do {
                     let stream = try await coordinator(for: localService)
-                        .generate(request, expecting: LocalModelID(config.model))
+                        .generate(request, expecting: selectedID)
                     var assembled = ""
                     for try await chunk in stream { assembled += chunk }
                     response = assembled
@@ -2813,7 +2839,7 @@ class LLMService: ObservableObject {
                     // refuses it inside `generate`. Same outcome, and deliberately the same words —
                     // answering blind about a photo the model never saw is the failure both nets
                     // exist to prevent.
-                    PrivacyLog.localModel(.imageRefused, model: PrivacyToken(config.model))
+                    PrivacyLog.localModel(.imageRefused, model: PrivacyToken(selectedID.rawValue))
                     response = LocalLLMService.visionWeightsUnavailableMessage
                 }
             } else {

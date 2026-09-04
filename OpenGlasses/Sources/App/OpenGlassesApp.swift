@@ -106,11 +106,25 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
     }
 
     /// Handle background URLSession events (model downloads completing while app is suspended).
-    /// The Hub library uses a background URLSession with identifier "{bundleId}.hub.hubclient.background".
+    ///
+    /// Two sessions can wake the app here, and they are handled differently because they are owned
+    /// differently. The GGUF download session is ours: its delegate knows when it has finished
+    /// delivering, so the system's handler is given to it and invoked exactly then. The Hub
+    /// library's session ("{bundleId}.hub.hubclient.background") is not ours and exposes no such
+    /// signal, so its handler keeps the timed release it has always had.
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
         PrivacyLog.transfer(.backgroundDownload, .sessionResumed)
+        if LocalModelAcquisition.ownsBackgroundSession(identifier) {
+            Task { @MainActor in
+                LocalModelAcquisition.shared.adoptBackgroundEventsHandler {
+                    completionHandler()
+                    PrivacyLog.transfer(.backgroundDownload, .sessionCompleted)
+                }
+            }
+            return
+        }
         // The Hub library's background session delegate handles the actual download completion.
         // We just need to store the completion handler so the system knows we processed the event.
         BackgroundSessionCompletionStore.shared.completionHandler = completionHandler
@@ -196,6 +210,11 @@ struct OpenGlassesApp: App {
         // so no model is ever redownloaded — and the version stamp is written only once every
         // record has been read back, so an interrupted or unwritable run retries next launch.
         LocalModelRepository().migrateIfNeeded()
+        // Carry the on-device model *selection* forward from the legacy provider string to a stable
+        // id (Plan DZ P2). Forward-only, read-back-verified, and it writes nothing into the legacy
+        // field — that value is already what it is migrating from, so an interrupted run leaves the
+        // previous behaviour exactly intact.
+        LocalModelSelection.store().migrateIfNeeded()
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they

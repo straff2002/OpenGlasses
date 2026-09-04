@@ -63,6 +63,29 @@ enum LocalModelImportFault: Error, Equatable, Sendable {
     case pathOutsideModelRoot
     /// The chosen candidate is not one this offer enumerated.
     case unknownSelection
+
+    /// User-facing copy, in the same register as `LocalModelImportRejection.localizedMessage`: it
+    /// says which rule the repository failed and never echoes anything the user typed.
+    var localizedMessage: String {
+        switch self {
+        case .revisionNotResolved:
+            return "That repository doesn't name an exact version, so there's nothing to pin the "
+                + "download to."
+        case .repositoryNotPublic:
+            return "That repository needs an account or accepted terms to download from. Only "
+                + "public repositories can be imported."
+        case .noEligibleFiles:
+            return "That repository holds no GGUF model files."
+        case .noVerifiableFiles:
+            return "That repository's model files publish no checksum, so a download couldn't be "
+                + "verified."
+        case .pathOutsideModelRoot:
+            return "That repository lists a file path that wouldn't stay inside the model's own "
+                + "folder, so it hasn't been imported."
+        case .unknownSelection:
+            return "That file isn't one of the ones listed for this repository."
+        }
+    }
 }
 
 // MARK: - Candidates
