@@ -81,6 +81,12 @@ jobs:
       - name: Fetch llama.cpp framework
         run: ./Scripts/fetch-llamacpp-framework.sh
 
+      # Obtaining the engine must not edit what is committed about it. It used to: an explained
+      # digest difference rewrote SHA256SUMS in the workspace, so the test comparing the two was
+      # comparing the build to itself. This fails the run if that ever comes back.
+      - name: Vendor digests survive the build
+        run: git diff --exit-code Vendor/LlamaCpp
+
       # Every run re-clones the full SPM graph — WebRTC, HaishinKit, mlx-swift-lm and the
       # HuggingFace packages — before a line of app code compiles. The checkouts are identical
       # between runs unless the pins move, so -clonedSourcePackagesDirPath (set on the xcodebuild

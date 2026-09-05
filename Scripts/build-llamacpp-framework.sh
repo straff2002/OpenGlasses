@@ -184,7 +184,9 @@ HEADERS=(
 )
 
 # --- fast path ----------------------------------------------------------------------------------
-if [ "$clean" -eq 0 ] && [ -d "$xcframework" ] && [ -f "$sums_file" ]; then
+# --update-sums is a request to record what this configuration produces, so it has to reach the
+# recording step: taking the fast path would accept the request and do nothing with it.
+if [ "$clean" -eq 0 ] && [ "$update_sums" -eq 0 ] && [ -d "$xcframework" ] && [ -f "$sums_file" ]; then
   if (cd "$vendor_dir" && shasum -a 256 -c "$sums_file" >/dev/null 2>&1); then
     echo "llama.xcframework already built at ${LLAMA_TAG} (${LLAMA_COMMIT:0:12}) and matches SHA256SUMS."
     exit 0
@@ -422,8 +424,12 @@ new_sums="$work_dir/SHA256SUMS.new"
 
 # What produced these digests. Options are hashed rather than listed so the file stays short and
 # a single changed flag still changes the fingerprint.
+# The checkout path is written back out of the options before they are fingerprinted: the
+# -ffile-prefix-map flag names this directory, so hashing the flags verbatim made the fingerprint
+# move between checkouts and every build claim its bytes were "explained by the build options" —
+# the one explanation that would hide a genuinely changed flag.
 options_digest="$(printf '%s\n' "${COMMON_CMAKE_ARGS[@]}" "sim_archs=$sim_archs" \
-                  | shasum -a 256 | cut -d' ' -f1)"
+                  | sed "s|$repo_root|/OpenGlasses|g" | shasum -a 256 | cut -d' ' -f1)"
 new_info="$work_dir/BUILD-INFO.new"
 {
   echo "revision=$LLAMA_COMMIT"
@@ -442,11 +448,20 @@ new_info="$work_dir/BUILD-INFO.new"
 
 previous_field() { [ -f "$build_info_file" ] && sed -n "s/^$1=//p" "$build_info_file" | head -n 1; }
 
+# What this build actually produced, recorded next to the build tree rather than in the tracked
+# files. Untracked by construction: $work_dir is gitignored. Consumers read it to know whether the
+# artefact in the working copy is the one the committed digests describe.
+built_sums="$work_dir/SHA256SUMS.built"
+built_info="$work_dir/BUILD-INFO.built"
+
 if [ "$update_sums" -eq 1 ] || [ ! -f "$sums_file" ]; then
+  cp "$new_sums" "$built_sums"; cp "$new_info" "$built_info"
   mv "$new_sums" "$sums_file"; mv "$new_info" "$build_info_file"
   echo "Recorded $sums_file ($(wc -l < "$sums_file" | tr -d ' ') files) and $build_info_file."
 elif diff -q "$sums_file" "$new_sums" >/dev/null; then
-  mv "$new_info" "$build_info_file"
+  # Matching bytes are not a reason to rewrite the record of what produced them: build_root alone
+  # would differ in every checkout, which is the churn this set out to stop.
+  mv "$new_sums" "$built_sums"; mv "$new_info" "$built_info"
   echo "SHA256SUMS verified ($(wc -l < "$sums_file" | tr -d ' ') files)."
 else
   # A digest difference is only alarming when nothing that could explain it has changed.
@@ -474,12 +489,20 @@ else
      fetch-llamacpp-framework.sh validates a downloaded engine against."
   fi
 
+  # Explained, so the build is legitimate and carries on — but the tracked files are left
+  # exactly as committed. Rewriting them here is what made the digests unfalsifiable: a CI runner
+  # whose Xcode is never the recorded one re-recorded on every run, and the test that compares
+  # SHA256SUMS to the artefact then compared a file to the build that had just written it.
+  # The as-built digests go beside the build tree instead, where the test and the fetch script
+  # can find them and say plainly which build they describe.
   echo ""
-  echo "NOTE: the artefact's digests changed, explained by ${explained}."
-  echo "      Recording the new digests. Review the SHA256SUMS/BUILD-INFO diff before committing."
-  mv "$new_sums" "$sums_file"; mv "$new_info" "$build_info_file"
+  echo "NOTE: the artefact's digests differ from the recorded ones, explained by ${explained}."
+  echo "      The recorded files are left untouched. This build's digests are in"
+  echo "      $(printf '%s' "${built_sums#"$repo_root/"}") — re-run with --update-sums to adopt them."
+  mv "$new_sums" "$built_sums"; mv "$new_info" "$built_info"
 fi
 rm -f "$new_sums" "$new_info"
 
-( cd "$vendor_dir" && shasum -a 256 -c SHA256SUMS >/dev/null ) || die "SHA256SUMS does not verify"
+( cd "$vendor_dir" && shasum -a 256 -c "$built_sums" >/dev/null ) \
+  || die "the artefact does not match the digests this build just computed for it"
 echo "llama.cpp ${LLAMA_TAG} (${LLAMA_COMMIT:0:12}) built and verified."

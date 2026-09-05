@@ -35,12 +35,25 @@ die() { echo "fetch-llamacpp-framework: $*" >&2; exit 1; }
 
 verify() { ( cd "$vendor_dir" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ); }
 
+# The digests of whatever build put the framework here, if it was built rather than downloaded.
+# A framework that matches these is this machine's own build and needs no rebuilding, even when
+# its toolchain means it can never match the committed digests.
+built_sums="$vendor_dir/.build/SHA256SUMS.built"
+verify_built() {
+  [ -f "$built_sums" ] && ( cd "$vendor_dir" && shasum -a 256 -c "$built_sums" >/dev/null 2>&1 )
+}
+
 pinned="$(sed -n 's/^commit=//p' "$vendor_dir/REVISION" | head -n 1)"
 tag="$(sed -n 's/^tag=//p' "$vendor_dir/REVISION" | head -n 1)"
 
 # --- 1. already in place -------------------------------------------------------------------------
 if [ -d "$xcframework" ] && verify; then
   echo "llama.xcframework present and matches SHA256SUMS (${tag}, ${pinned:0:12})."
+  exit 0
+fi
+
+if [ -d "$xcframework" ] && verify_built; then
+  echo "llama.xcframework present and matches this machine's own build (${tag}, ${pinned:0:12})."
   exit 0
 fi
 
@@ -110,5 +123,10 @@ if ! command -v cmake >/dev/null 2>&1; then
   echo "fetch-llamacpp-framework: $(cmake --version | head -n 1)"
 fi
 
+# A locally built engine is held to the digests the build script computed for *this* build, which
+# it verifies before returning. It is not held to the committed ones: those describe the bytes a
+# particular toolchain produced, and a runner's Xcode is never that one. The committed digests stay
+# the gate for a downloaded archive above — the case they exist for — where nothing explains a
+# mismatch away.
 "$repo_root/Scripts/build-llamacpp-framework.sh"
-verify || die "build completed but the artefact does not match SHA256SUMS"
+[ -d "$xcframework" ] || die "the build reported success but produced no $xcframework"
