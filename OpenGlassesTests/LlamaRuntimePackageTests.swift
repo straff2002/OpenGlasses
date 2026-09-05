@@ -132,11 +132,42 @@ final class LlamaRuntimePackageTests: XCTestCase {
 
     // MARK: - The binary, when it is here
 
+    /// What a *local* build recorded for itself, if the framework here was built rather than
+    /// downloaded. `Vendor/LlamaCpp/.build` is gitignored, so this is absent on a clone that
+    /// fetched a prebuilt archive — and that is the case where the committed digests are a real
+    /// gate rather than a reproducibility record.
+    private func locallyBuiltProvenance() -> [String: String]? {
+        let url = Self.packageRoot.appendingPathComponent(".build/BUILD-INFO.built")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return keyedValues(text)
+    }
+
     /// The whole point of recorded digests is that they match something. Verifying every file
     /// keeps the check honest about the artefact rather than about the file listing.
+    ///
+    /// The bytes an engine build produces depend on the toolchain that produced them, so this
+    /// asserts equality only when the framework on disk came from the same inputs the digests
+    /// were recorded from. When it did not — a runner's Xcode is never the recorded one — the
+    /// honest outcome is a skip that names the difference. It must not be a pass: this test used
+    /// to be handed a SHA256SUMS that the build in the same run had just rewritten to match, and
+    /// a green check that compares a file to itself is worse than no check at all.
     func testRecordedChecksumsMatchTheBuiltFramework() throws {
         let frameworkPath = Self.packageRoot.appendingPathComponent("Frameworks/llama.xcframework")
         try skipUnlessFrameworkPresent(frameworkPath)
+
+        if let built = locallyBuiltProvenance() {
+            let recorded = keyedValues(try packageText("BUILD-INFO"))
+            for field in ["revision", "options_digest", "xcodebuild", "cmake"] {
+                if let mine = built[field], let theirs = recorded[field], mine != theirs {
+                    throw XCTSkip(
+                        "the framework here was built with \(field) = \(mine), and SHA256SUMS "
+                        + "was recorded from a build with \(field) = \(theirs). Its bytes are "
+                        + "expected to differ, so comparing them would assert nothing. Re-run "
+                        + "the build with --update-sums on this toolchain to make this check "
+                        + "meaningful here.")
+                }
+            }
+        }
 
         for line in try packageText("SHA256SUMS").split(separator: "\n") {
             let parts = line.components(separatedBy: "  ")
