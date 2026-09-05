@@ -8,14 +8,18 @@ Like `Vendor/MediaPipeTasks`, the binary is **not committed**. Unlike it, there 
 upstream to download — llama.cpp publishes no iOS xcframework — so it is *built* from the exact
 revision pinned in [`REVISION`](REVISION):
 
+`Frameworks/llama.xcframework` is committed, so a clone needs none of this to build the app. The
+scripts are for changing the engine, not for obtaining it:
+
 ```bash
-Scripts/fetch-llamacpp-framework.sh     # fetch-or-build; verifies before use (CI runs this)
+Scripts/fetch-llamacpp-framework.sh     # verifies what is here (CI runs this); builds only if absent
 Scripts/build-llamacpp-framework.sh     # the build itself; --help for options
 ```
 
-Needs `cmake` (`brew install cmake`); it will say so rather than installing anything. The first
-run takes several minutes and produces `Frameworks/llama.xcframework` (~50 MB, gitignored);
-re-runs are a no-op.
+Building needs `cmake` (`brew install cmake`); it will say so rather than installing anything, and
+takes several minutes. After changing the pin or the build options, rebuild with `--update-sums`
+and commit the xcframework together with the digests — the two are one change, and the
+Engine Reproducibility workflow fails if they disagree.
 
 Tracked, and the reason any of this is checkable:
 

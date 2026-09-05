@@ -4,17 +4,15 @@ import XCTest
 
 /// Guards the vendored llama.cpp package's pin and its recorded digests (Plan DZ P1/PR2).
 ///
-/// The engine binary is not committed — it is built by `Scripts/build-llamacpp-framework.sh` and
-/// obtained by `Scripts/fetch-llamacpp-framework.sh`. What *is* committed is the promise about it:
-/// `REVISION` says which sources, `SHA256SUMS` says which bytes, `BUILD-INFO` says what produced
-/// them. Those three files are only worth anything if they cannot quietly rot, so this asserts
-/// their shape and their agreement with each other.
+/// The engine binary is committed, as SherpaOnnx's is, so a clone links exactly what was reviewed
+/// without first spending four minutes compiling an inference engine. A binary in a repository
+/// says nothing about where it came from, so what is committed beside it has to: `REVISION` says
+/// which sources, `SHA256SUMS` says which bytes, `BUILD-INFO` says what produced them, and the
+/// Engine Reproducibility workflow rebuilds from the pin and requires the same bytes back.
 ///
-/// Two of the checks need the framework itself and are skipped with a message when it is absent,
-/// so a clean clone that has not run the fetch script still passes the suite. Skipping is the
-/// right call rather than failing: the file is deliberately not in the repository, and a suite
-/// that cannot be run until a 50 MB build finishes is a suite people stop running. The fetch
-/// script — wired into CI post-clone — is how the skip stops being taken.
+/// This file asserts the shape of those three, their agreement with each other and with the
+/// binary, and that the workflow tying the bytes to the sources still exists — that last one
+/// because deleting it would leave an unexplained blob behind and nothing would notice.
 final class LlamaRuntimePackageTests: XCTestCase {
 
     // MARK: - Repo anchor
@@ -132,10 +130,10 @@ final class LlamaRuntimePackageTests: XCTestCase {
 
     // MARK: - The binary, when it is here
 
-    /// What a *local* build recorded for itself, if the framework here was built rather than
-    /// downloaded. `Vendor/LlamaCpp/.build` is gitignored, so this is absent on a clone that
-    /// fetched a prebuilt archive — and that is the case where the committed digests are a real
-    /// gate rather than a reproducibility record.
+    /// What a *local* build recorded for itself, if one has run here. `Vendor/LlamaCpp/.build` is
+    /// gitignored, so this is absent in an ordinary clone — where the framework is the committed
+    /// one and the committed digests describe it exactly, which is the case the check below is
+    /// strict about.
     private func locallyBuiltProvenance() -> [String: String]? {
         let url = Self.packageRoot.appendingPathComponent(".build/BUILD-INFO.built")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
@@ -215,17 +213,33 @@ final class LlamaRuntimePackageTests: XCTestCase {
                       "NOTICES.md names a different revision than REVISION pins")
     }
 
-    /// The binary is deliberately not committed; an ignore rule that goes missing is how a 50 MB
-    /// artefact ends up in a source commit.
-    func testTheFrameworkIsIgnoredAndThePinIsNot() throws {
+    /// The engine is committed, as SherpaOnnx's is, so a clone builds the app without first
+    /// compiling an inference engine. What must stay out of commits is the build tree: the
+    /// upstream checkout, the cmake trees, and the digests of whatever build last ran locally —
+    /// the last of which would otherwise be mistaken for the committed record.
+    func testTheBuildTreeIsIgnoredAndTheEngineIsNot() throws {
         let ignores = try String(contentsOf: Self.repoRoot.appendingPathComponent(".gitignore"),
                                  encoding: .utf8)
-        XCTAssertTrue(ignores.contains("Vendor/LlamaCpp/Frameworks/"),
-                      ".gitignore must keep the built engine out of commits")
         XCTAssertTrue(ignores.contains("Vendor/LlamaCpp/.build/"),
                       ".gitignore must keep the upstream checkout and cmake trees out of commits")
+        XCTAssertFalse(ignores.contains("Vendor/LlamaCpp/Frameworks/"),
+                       "the engine is committed — an ignore rule here would silently drop it from a clone")
         XCTAssertFalse(ignores.contains("Vendor/LlamaCpp/REVISION"),
                        "the pin is the tracked half of this arrangement")
+    }
+
+    /// Committing a binary is only defensible while something still checks it came from the
+    /// pinned sources. That something is a workflow, so its absence is a real regression.
+    func testAWorkflowRebuildsTheEngineFromItsPinnedSources() throws {
+        let workflow = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent(".github/workflows/engine-reproducibility.yml"),
+            encoding: .utf8)
+        XCTAssertTrue(workflow.contains("build-llamacpp-framework.sh --clean --strict"),
+                      "the rebuild must be from scratch and refuse any difference")
+        XCTAssertTrue(workflow.contains("schedule:"),
+                      "a rebuild that only runs when someone remembers is not a guarantee")
+        XCTAssertTrue(workflow.contains("Vendor/LlamaCpp/REVISION"),
+                      "changing the pin must trigger the rebuild that proves the new bytes")
     }
 
     // MARK: - Helpers
@@ -234,11 +248,10 @@ final class LlamaRuntimePackageTests: XCTestCase {
                                             file: StaticString = #filePath,
                                             line: UInt = #line) throws {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            throw XCTSkip("""
-                Vendor/LlamaCpp/Frameworks/llama.xcframework is not present. It is built, not \
-                committed — run Scripts/fetch-llamacpp-framework.sh to obtain it. The pin and \
-                digest checks in this file still ran.
-                """, file: file, line: line)
+            throw XCTSkip(
+                "Vendor/LlamaCpp/Frameworks/llama.xcframework is not present. It is committed, so "
+                + "this means a partial checkout rather than a missing build step. The pin and "
+                + "digest checks in this file still ran.", file: file, line: line)
         }
     }
 

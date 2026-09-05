@@ -1,0 +1,51 @@
+# The llama.cpp engine is committed, so no ordinary run rebuilds it. This does: it compiles the
+# pinned revision from scratch and requires the result to be byte-identical to what is in the tree.
+#
+# That is the claim committing a binary otherwise costs you. A blob in a repository says nothing
+# about where it came from; this says the committed bytes are the ones Vendor/LlamaCpp/REVISION
+# produces, and says it on a schedule rather than on the honour system.
+#
+# --strict means any difference fails, including one the toolchain explains. That is deliberate
+# here: if a runner's Xcode moves and the engine no longer reproduces, the honest outcome is a red
+# job and a decision — re-record the bytes deliberately, or pin the toolchain — not a note in a
+# log nobody reads.
+name: Engine Reproducibility
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'          # Mondays, 04:00 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Vendor/LlamaCpp/REVISION'
+      - 'Vendor/LlamaCpp/SHA256SUMS'
+      - 'Vendor/LlamaCpp/BUILD-INFO'
+      - 'Scripts/build-llamacpp-framework.sh'
+      - 'Scripts/fetch-llamacpp-framework.sh'
+      - '.github/workflows/engine-reproducibility.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rebuild:
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          cmake --version || true
+          echo "recorded:"; cat Vendor/LlamaCpp/BUILD-INFO
+
+      - name: Rebuild the pinned engine and require identical bytes
+        run: ./Scripts/build-llamacpp-framework.sh --clean --strict
+
+      # --strict already fails on any difference; this catches the other half — a build that
+      # somehow edited what is committed instead of comparing itself to it.
+      - name: The rebuild changed nothing in the tree
+        run: git diff --exit-code Vendor/LlamaCpp
