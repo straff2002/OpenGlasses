@@ -114,6 +114,14 @@ fi
 #
 # GGML_METAL_EMBED_LIBRARY embeds the kernel *source* into a __ggml_metallib data section, so
 # there is no default.metallib resource to ship or fail to find at runtime.
+warning_flags="-Wno-macro-redefined -Wno-shorten-64-to-32 -Wno-unused-command-line-argument"
+
+# Release objects carry DWARF, and DWARF records the absolute path of every source file, so the
+# same sources built from two checkouts produced different bytes — and shipped a developer's home
+# directory inside the engine. Rewriting the repo's prefix to a fixed name removes both. It is
+# half the story: see normalize_merge for the member names, which no compiler flag reaches.
+path_flags="-ffile-prefix-map=${repo_root}=/OpenGlasses"
+
 COMMON_CMAKE_ARGS=(
   -DCMAKE_SYSTEM_NAME=iOS
   -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_MIN_OS_VERSION}"
@@ -138,8 +146,8 @@ COMMON_CMAKE_ARGS=(
   -DGGML_ACCELERATE=ON
   -DGGML_OPENMP=OFF
   -DGGML_NATIVE=OFF
-  -DCMAKE_C_FLAGS="-Wno-macro-redefined -Wno-shorten-64-to-32 -Wno-unused-command-line-argument"
-  -DCMAKE_CXX_FLAGS="-Wno-macro-redefined -Wno-shorten-64-to-32 -Wno-unused-command-line-argument"
+  -DCMAKE_C_FLAGS="$warning_flags $path_flags"
+  -DCMAKE_CXX_FLAGS="$warning_flags $path_flags"
 )
 
 # Cache entries asserted after configure. Configuring is not the same as configuring the way we
@@ -253,6 +261,81 @@ build_slice() { # name sysroot archs
   cmake --build "$build_dir" --config Release -j "$jobs" -- -quiet
 }
 
+# Rebuild the merged archive with content-derived member names. CMake disambiguates colliding
+# basenames (upstream has ggml.c beside ggml.cpp) by appending an MD5 of the source's *absolute*
+# path, so two checkouts produce archives whose objects are byte-identical but whose members are
+# named differently — and a digest over the archive then moves for a reason that means nothing.
+# Naming each member after its own contents closes the last route from the build directory into
+# the artefact, and is what lets a digest mismatch mean something again.
+#
+# The inputs are unpacked one at a time rather than the merged archive: the merge holds several
+# members of the same name (every library brings its own ggml.o) and ar(1) overwrites same-named
+# members as it extracts, which would silently drop objects. Fat archives are handled one
+# architecture at a time because ar(1) refuses to read them at all.
+normalize_merge() { # out_lib archs reference archives...
+  local lib="$1" archs="$2" reference="$3"; shift 3
+  local archives=("$@")
+  local work; work="$(mktemp -d "$(dirname "$lib")/normalize.XXXXXX")"
+  local normalized=() arch i a obj
+
+  symbols() { xcrun nm -gj "$1" 2>/dev/null | grep -v ':$' | grep -v '^$' | LC_ALL=C sort -u; }
+
+  for arch in $(printf '%s' "$archs" | tr ';' ' '); do
+    local stage="$work/stage-$arch"; mkdir -p "$stage"
+    i=0
+    for a in "${archives[@]}"; do
+      i=$((i + 1))
+      local thin="$work/thin-$arch-$i.a" extract="$work/extract-$arch-$i"
+      local have; have="$(xcrun lipo -archs "$a" 2>/dev/null || true)"
+
+      # The build tree holds each library more than once — the fat one Xcode assembles and the
+      # per-architecture halves it was assembled from — and the collect-everything find(1) above
+      # picks up all of them. An archive without this slice is skipped, never copied: feeding
+      # arm64 objects into the x86_64 stage is how this first went wrong. Objects that land on
+      # the same content hash are the same object arriving twice, and collapse into one.
+      printf '%s\n' $have | grep -qx "$arch" || continue
+      mkdir -p "$extract"
+      if [ "$have" = "$arch" ]; then cp "$a" "$thin"
+      else xcrun lipo -thin "$arch" "$a" -output "$thin" || die "could not thin $(basename "$a") to $arch"
+      fi
+      ( cd "$extract" && xcrun ar x "$thin" ) || die "could not read $(basename "$a") ($arch)"
+
+      local members files
+      members="$(xcrun ar t "$thin" | wc -l | tr -d ' ')"
+      files="$(find "$extract" -type f | wc -l | tr -d ' ')"
+      [ "$members" -eq "$files" ] \
+        || die "extracting $(basename "$a") ($arch) yielded $files files for $members members"
+
+      while IFS= read -r obj; do
+        mv "$obj" "$stage/$(shasum -a 256 "$obj" | cut -d' ' -f1).o"
+      done < <(find "$extract" -type f)
+    done
+
+    local sorted=()
+    while IFS= read -r obj; do sorted+=("$obj"); done < <(find "$stage" -name '*.o' | LC_ALL=C sort)
+    [ "${#sorted[@]}" -gt 0 ] || die "no objects staged for $arch"
+    ZERO_AR_DATE=1 xcrun libtool -static -o "$work/normalized-$arch.a" "${sorted[@]}" 2>/dev/null \
+      || die "libtool failed rebuilding the $arch archive"
+
+    # Renaming and de-duplicating members must not move a single symbol.
+    local ref_thin="$work/reference-$arch.a"
+    if [ "$(xcrun lipo -archs "$reference" 2>/dev/null)" = "$arch" ]; then cp "$reference" "$ref_thin"
+    else xcrun lipo -thin "$arch" "$reference" -output "$ref_thin" || die "could not thin the reference to $arch"
+    fi
+    diff <(symbols "$ref_thin") <(symbols "$work/normalized-$arch.a") >/dev/null \
+      || die "normalising the $arch archive changed its symbols"
+
+    normalized+=("$work/normalized-$arch.a")
+  done
+
+  if [ "${#normalized[@]}" -gt 1 ]; then
+    xcrun lipo -create "${normalized[@]}" -output "$lib" || die "lipo failed rebuilding $(basename "$lib")"
+  else
+    cp "${normalized[0]}" "$lib"
+  fi
+  rm -rf "$work"
+}
+
 merge_slice() { # name archs -> writes $work_dir/merged/<name>/libllama.a
   local name="$1" archs="$2"
   local build_dir="$work_dir/build-$name"
@@ -274,6 +357,9 @@ merge_slice() { # name archs -> writes $work_dir/merged/<name>/libllama.a
   # those warnings are noise, the error path is still checked by the exit status.
   xcrun libtool -static -o "$out_dir/libllama.a" "${archives[@]}" 2>/dev/null \
     || die "libtool failed merging $name"
+  cp "$out_dir/libllama.a" "$out_dir/libllama.reference.a"
+  normalize_merge "$out_dir/libllama.a" "$archs" "$out_dir/libllama.reference.a" "${archives[@]}"
+  rm -f "$out_dir/libllama.reference.a"
 
   local want got
   want="$(printf '%s' "$archs" | tr ';' ' ')"
@@ -311,6 +397,19 @@ xcrun xcodebuild -create-xcframework \
   -library "$work_dir/merged/ios-sim/libllama.a"    -headers "$headers_dir" \
   -output "$xcframework" >/dev/null
 
+# xcodebuild lists the slices in whatever order it happened to walk them, so two builds of
+# identical inputs disagree in Info.plist alone — the last thing in the artefact that moved for
+# no reason. Sorting the list by identifier makes the metadata as reproducible as the bytes.
+python3 - "$xcframework/Info.plist" <<'CANONICALISE' || die "could not canonicalise Info.plist"
+import plistlib, sys
+path = sys.argv[1]
+with open(path, "rb") as f:
+    plist = plistlib.load(f)
+plist["AvailableLibraries"].sort(key=lambda entry: entry["LibraryIdentifier"])
+with open(path, "wb") as f:
+    plistlib.dump(plist, f, sort_keys=True)
+CANONICALISE
+
 slice_count="$(/usr/libexec/PlistBuddy -c 'Print :AvailableLibraries' "$xcframework/Info.plist" \
                | grep -c 'LibraryIdentifier')"
 [ "$slice_count" -eq 2 ] || die "xcframework has $slice_count slices, expected 2"
@@ -334,10 +433,10 @@ new_info="$work_dir/BUILD-INFO.new"
   echo "options_digest=$options_digest"
   echo "xcodebuild=$(xcrun xcodebuild -version 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
   echo "cmake=$(cmake --version | head -n 1)"
-  # Release object files carry DWARF, and DWARF carries absolute source paths — so a checkout at a
-  # different path produces different bytes from identical sources. Recording it is what lets that
-  # difference be recognised as explained rather than raising a false supply-chain alarm on a CI
-  # runner, which never clones to the same directory a developer does.
+  # Recorded as provenance only. The artefact no longer depends on it — sources compile with
+  # -ffile-prefix-map and the archive's members are named after their contents — so a build from
+  # a different directory now has to produce the same bytes, and a difference it cannot explain
+  # any other way is a real one worth stopping for.
   echo "build_root=$repo_root"
 } > "$new_info"
 
@@ -359,8 +458,6 @@ else
     || explained="the Xcode toolchain"
   [ -n "$explained" ] || [ "$(previous_field cmake)" = "$(sed -n 's/^cmake=//p' "$new_info")" ] \
     || explained="the cmake version"
-  [ -n "$explained" ] || [ "$(previous_field build_root)" = "$repo_root" ] \
-    || explained="the checkout path (debug info records absolute source paths)"
 
   if [ -z "$explained" ] || [ "$strict" -eq 1 ]; then
     echo "" >&2
