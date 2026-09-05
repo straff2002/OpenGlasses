@@ -88,7 +88,6 @@ Same as [Quick Start](#quick-start) step 1. The repo ships [`project.base.yml`](
 ```bash
 brew install xcodegen cmake
 ./Scripts/fetch-mediapipe-frameworks.sh    # vendored binaries, fetched not committed
-./Scripts/fetch-llamacpp-framework.sh      # builds the pinned llama.cpp engine (several minutes, once)
 ./Scripts/generate-xcodeproj.sh
 open OpenGlasses.xcodeproj
 ```
