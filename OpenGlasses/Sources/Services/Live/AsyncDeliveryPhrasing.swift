@@ -29,14 +29,36 @@ enum AsyncDeliveryPhrasing {
         """
     }
 
+    /// Markers that fence the quoted result. Delimiters rather than prose because the model has
+    /// to tell our framing from the task's own words, and prose alone doesn't survive a result
+    /// that happens to be written in the second person.
+    static let resultBeginMarker = "---BEGIN RESULT---"
+    static let resultEndMarker = "---END RESULT---"
+
     /// Instruction injected when a deferred result lands: framed as the answer to the original
     /// question, so the model presents it as such rather than as unprompted news.
+    ///
+    /// Both live wires deliver an injection as a **user turn**, which is what makes the layout
+    /// load-bearing. Field-observed: with the raw result last, a task whose answer ended in an
+    /// assistant-style sign-off ("Let me know if you need anything else!") read to the model as
+    /// the *user* closing the conversation — so it replied "You're welcome!" and never spoke the
+    /// result at all. Hence: the result is fenced as quoted material, it is said in as many words
+    /// that the wearer did not say it, and the delivery instruction is the last line, where a
+    /// turn's actual intent lives.
     static func resultInstruction(question: String?, answer: String) -> String {
         let asked = question.map { "The user earlier asked: \"\($0)\". " } ?? ""
+        let quoted = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         return """
-        \(asked)The result of that background task has just arrived. Deliver it now as the \
-        answer to what was asked — not as a new notification. Result:
-        \(answer)
+        \(asked)The result of that background task has just arrived. Everything between the \
+        markers below is quoted material from that task — it is NOT something the user just said \
+        to you, so do not reply to it, thank it, or treat its closing words as the user's.
+
+        \(resultBeginMarker)
+        \(quoted)
+        \(resultEndMarker)
+
+        Deliver the quoted result now, in your own voice, as the answer to what was asked — not \
+        as a new notification.
         """
     }
 

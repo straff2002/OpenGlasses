@@ -641,6 +641,12 @@ class GeminiLiveSessionManager: ObservableObject {
 extension GeminiLiveSessionManager: LiveSessionInjecting {
     var canInject: Bool { isActive && connectionState == .ready }
 
+    /// Model-speaking only: the Gemini Live wire we speak gives us no user-activity event. VAD is
+    /// server-side and silent — the wearer's speech first becomes visible as `interrupted` (after
+    /// the fact) or as an input transcription (after the utterance). Neither is a "talking right
+    /// now" signal, so this reports the half we can actually see rather than inventing the other.
+    var isBusyForInjection: Bool { geminiService.isModelSpeaking }
+
     func injectSharpImage(jpegData: Data) {
         geminiService.sendHighResImage(jpegData: jpegData)
     }

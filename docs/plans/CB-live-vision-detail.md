@@ -19,6 +19,11 @@ glasses, injected-turn behaviour mid-conversation, zoom feel.
 - `look_closely` on Gemini needs **no** `clientContent` at all: the sharp frame rides the realtime
   video lane and the pending function response drives generation. `completeTurn` matters for the
   *text* consumers (deferred agent results).
+- Follow-up (2026-09-06): deferred results now wait for a gap in the session before injecting
+  (`LiveInjectionAdmission` — bounded, because a lost result is worse than a clipped one) rather
+  than colliding with the Realtime wire's single active-response slot, and `resultInstruction`
+  fences the result as quoted material with the delivery instruction last, after a result ending
+  in an assistant-style sign-off read to the model as the user closing the conversation.
 
 ## Problem
 

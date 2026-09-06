@@ -96,6 +96,45 @@ final class BRHardeningTests: XCTestCase {
         XCTAssertEqual(StreamRecoveryPolicy.action(consecutiveFailures: 5), .resetSession)
     }
 
+    /// The reconnect ladder that runs after a wanted stream drops. Its shape is a promise: fast
+    /// enough that a hiccup is invisible, slow enough not to hammer a radio mid-handshake, and
+    /// finite — because past a certain point the glasses are off, flat or out of range, and the
+    /// honest move is to say so rather than retry forever.
+    func testReconnectCadenceStartsFastThenBacksOff() {
+        let first = StreamRecoveryPolicy.reconnectDelay(attempt: 0)
+        XCTAssertEqual(first, 1.5, "a hiccup should be covered before the wearer notices")
+
+        var previous: TimeInterval = 0
+        var attempt = 0
+        while let delay = StreamRecoveryPolicy.reconnectDelay(attempt: attempt) {
+            XCTAssertGreaterThanOrEqual(delay, previous,
+                                        "the cadence must never speed back up at attempt \(attempt)")
+            XCTAssertLessThanOrEqual(delay, 5, "a slow poll, not a stall")
+            previous = delay
+            attempt += 1
+            XCTAssertLessThan(attempt, 200, "the ladder must terminate")
+        }
+        XCTAssertGreaterThan(attempt, 5, "a couple of tries is not a reconnect")
+    }
+
+    func testReconnectBudgetIsBoundedAndRoughlyAWakePlusHandshake() {
+        XCTAssertNil(StreamRecoveryPolicy.reconnectDelay(attempt: 21),
+                     "past the budget the ladder must stop, not keep climbing")
+        XCTAssertNil(StreamRecoveryPolicy.reconnectDelay(attempt: -1))
+        let budget = StreamRecoveryPolicy.reconnectBudget
+        XCTAssertGreaterThan(budget, 60, "a glasses wake plus a BT handshake can take most of a minute")
+        XCTAssertLessThan(budget, 120, "past ~90s more retries fix nothing")
+    }
+
+    /// The first notice promises a reconnect. When the ladder runs out, something has to retract
+    /// that promise, or the wearer keeps waiting on a camera that stopped trying.
+    func testGiveUpNoticeRetractsThePromise() {
+        let notice = StreamRecoveryPolicy.reconnectGaveUpNotice.lowercased()
+        XCTAssertTrue(notice.contains("glasses"))
+        XCTAssertFalse(notice.contains("reconnecting"),
+                       "the give-up notice must not repeat the promise it is retracting")
+    }
+
     func testCompatibilityMessages() {
         XCTAssertNotNil(DATCompatibilityMessage.message(for: .datAppOnTheGlassesUpdateRequired))
         XCTAssertNil(DATCompatibilityMessage.message(for: .thermalCritical),

@@ -100,6 +100,11 @@ enum LiveInjectionEnvelope {
 protocol LiveSessionInjecting: AnyObject {
     /// Whether the session is connected enough for an injection to reach the model.
     var canInject: Bool { get }
+    /// Whether someone is mid-turn right now — the model speaking, or the wearer. An injection
+    /// sent into either collides: the Realtime wire has one active-response slot and refuses a
+    /// second, and a turn arriving mid-utterance cuts the speaker off. Consulted through
+    /// `LiveInjectionAdmission`, which bounds how long a result may wait for quiet.
+    var isBusyForInjection: Bool { get }
     /// Push a full-quality still into the model's view (no turn semantics — see envelope docs).
     func injectSharpImage(jpegData: Data)
     /// Put text in front of the model. `completeTurn: true` = the model responds now, in its own

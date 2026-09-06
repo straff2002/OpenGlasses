@@ -14,6 +14,7 @@ final class LookCloselyToolTests: XCTestCase {
     private final class FakeInjector: LiveSessionInjecting {
         let recorder: Recorder
         var canInject: Bool = true
+        var isBusyForInjection: Bool = false
         init(recorder: Recorder) { self.recorder = recorder }
         func injectSharpImage(jpegData: Data) {
             recorder.events.append("inject(\(jpegData.count)B)")

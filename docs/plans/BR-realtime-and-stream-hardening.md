@@ -50,6 +50,13 @@ glasses firmware presents as a mystery connection failure.
   the AppState TTS sink (voice-first; the phone may be pocketed).
 - Tests: tiering table, compatibility message mapping (update-required vs thermal vs
   compatible).
+- Follow-up (2026-09-06): the `.stopped` row of the state table was still terminal, so a
+  wanted stream that dropped mid-session cleared `isStreaming` — which disarms the stall
+  detector, the only thing left that would have rebuilt it — and the preview stayed dead
+  until a manual restart; `stoppedWhileWanted` now drives a bounded reconnect ladder
+  (`StreamRecoveryPolicy.reconnectDelay`, ~90 s) over the same tiered recovery, and the
+  preview placeholder gains a delayed cold-start hint naming folded hinges and doffed
+  glasses.
 
 ## P3 — Realtime WebSocket connection-generation guard
 
