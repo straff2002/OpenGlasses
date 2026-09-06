@@ -60,7 +60,8 @@ enum VaultPackArchive {
 
     static func extract(zipData: Data) -> Result<(packManifestData: Data, files: [String: Data]), ArchiveError> {
         guard let archive = ZipArchiveReader(data: zipData) else { return .failure(.notAZip) }
-        guard let packData = archive.entryData(named: VaultPackManifest.filename) else {
+        guard let packData = archive.entryData(named: VaultPackManifest.filename,
+                                               maximumUncompressedSize: maxEntryBytes) else {
             return .failure(.missingPackManifest)
         }
         var files: [String: Data] = [:]
@@ -68,7 +69,8 @@ enum VaultPackArchive {
             let normalized = name.hasPrefix("./") ? String(name.dropFirst(2)) : name
             guard normalized != VaultPackManifest.filename, !normalized.hasSuffix("/"),
                   !normalized.hasPrefix("__MACOSX"), !normalized.contains("..") else { continue }
-            guard let data = archive.entryData(named: name), data.count <= maxEntryBytes else { continue }
+            guard let data = archive.entryData(named: name,
+                                               maximumUncompressedSize: maxEntryBytes) else { continue }
             files[normalized] = data
         }
         guard files["manifest.json"] != nil else { return .failure(.missingVaultManifest) }

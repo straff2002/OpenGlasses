@@ -73,6 +73,13 @@ final class SafetyGateTests: XCTestCase {
         }
     }
 
+    func testGuardRejectsAmbiguousAndDocumentOnlyAddresses() {
+        for host in ["2130706433", "0177.0.0.1", "0x7f000001", "192.0.2.1",
+                     "198.18.0.1", "198.51.100.2", "203.0.113.9", "2001:db8::1", "100::1"] {
+            XCTAssertTrue(URLFetchGuard.isBlockedHost(host), host)
+        }
+    }
+
     func testGuardBlocksPrivateIPv4() {
         for host in ["http://192.168.1.1/x", "http://10.0.0.5/y", "http://172.16.3.4/z",
                      "http://127.0.0.1/local", "http://169.254.169.254/latest/meta-data"] {

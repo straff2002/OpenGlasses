@@ -5,7 +5,8 @@ import Network
 /// Plan BP — the flag-gated phone serving edge: `GET /` (the self-contained page, no data)
 /// and `GET /hud.json?t=<token>` (the current mirror frame). Reuses the Plan E listener
 /// pattern (`MCPGlassesServer`): NWListener, per-device Keychain bearer token, developer
-/// gates. Gated `agentModeEnabled && hudMirrorEnabled` (default off).
+/// gates. Gated `agentModeEnabled && hudMirrorEnabled` (default off) and the compile-time
+/// ``LocalServiceExposurePolicy``. Release builds refuse this cleartext transport.
 ///
 /// Privacy hard line: **HIPAA mode hard-disables the mirror** — at start, on mode change
 /// (AppState wiring), and per request in the router, so vault/health content never crosses
@@ -54,6 +55,9 @@ final class WebHUDMirrorServer: ObservableObject {
 
     /// The URL to register in Developer Mode (token rides the hash — never sent over HTTP).
     var registrationURL: String? {
+        guard LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror) else {
+            return nil
+        }
         guard let ip = MCPGlassesServer.lanIPAddress() else { return nil }
         return "http://\(ip):\(Self.port)/#t=\(accessToken)"
     }
@@ -66,6 +70,11 @@ final class WebHUDMirrorServer: ObservableObject {
     }
 
     func start() {
+        guard LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror) else {
+            // Refuse before creating a token or a listener. Release preference state is not an
+            // authorization mechanism and cannot override the build boundary.
+            return
+        }
         guard listener == nil else { return }
         guard !Config.hipaaMode else { return }
         _ = accessToken

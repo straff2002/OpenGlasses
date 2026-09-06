@@ -43,6 +43,9 @@ enum OperationAdmission: Equatable {
     case proceed(OperationRecord)
     /// This exact call already ran, or is running. The existing record governs; do not dispatch.
     case duplicate(OperationRecord)
+    /// The pre-dispatch record could not be made durable. The operation must not dispatch because
+    /// its outcome could not be recovered or de-duplicated after a crash.
+    case storageUnavailable
 }
 
 /// What recording a terminal outcome amounted to.
@@ -216,6 +219,9 @@ final class ProtectedOperationJournal: OperationJournal {
     private let fileURL: URL
     private let retention: OperationJournalRetention
     private var rows: [OperationRecord] = []
+    /// Fail closed after an unreadable/corrupt store or a failed write. Reconstructing the service
+    /// after protected data becomes available retries loading without overwriting the original.
+    private(set) var storageAvailable = true
     /// Successful tool output, kept only for the life of this process so a redelivery inside the
     /// same session can be answered with the real result. Never encoded, never written to disk.
     private var completedValues: [String: String] = [:]
@@ -232,10 +238,11 @@ final class ProtectedOperationJournal: OperationJournal {
         self.directory = directory ?? Self.defaultDirectory()
         self.fileURL = self.directory.appendingPathComponent("operations.json")
         self.retention = retention
-        load()
+        storageAvailable = load()
+        guard storageAvailable else { return }
         recoverInterruptedOperations(at: now)
         prune(at: now)
-        persist()
+        storageAvailable = persist()
     }
 
     private static func defaultDirectory() -> URL {
@@ -249,6 +256,7 @@ final class ProtectedOperationJournal: OperationJournal {
 
     func admit(call: ResolvedToolCall, semantics: ToolExecutionSemantics, key: String,
                at now: Date) -> OperationAdmission {
+        guard storageAvailable else { return .storageUnavailable }
         if let existing = record(forKey: key) {
             // A settled failure means nothing happened, so the same call may legitimately be made
             // again; the old row is replaced rather than blocking the retry it authorises.
@@ -275,9 +283,16 @@ final class ProtectedOperationJournal: OperationJournal {
             startedAt: now,
             updatedAt: now,
             state: .started)
+        let previousRows = rows
         rows.insert(record, at: 0)
         prune(at: now)
-        persist()
+        guard persist() else {
+            // The external effect has not started. Restore the in-memory view and refuse dispatch;
+            // a caller may retry after storage is repaired or a fresh journal is constructed.
+            rows = previousRows
+            storageAvailable = false
+            return .storageUnavailable
+        }
         return .proceed(record)
     }
 
@@ -297,7 +312,12 @@ final class ProtectedOperationJournal: OperationJournal {
         if case .completed(let value) = outcome { memoize(value, for: operationID) }
         let updated = rows[index]
         prune(at: now)
-        persist()
+        if !persist() {
+            // The effect may already have happened, so its in-memory outcome remains the honest
+            // answer for this process. Refuse subsequent unsafe admissions until a fresh journal
+            // can load durable state rather than compounding an unrecorded external effect.
+            storageAvailable = false
+        }
         return updated.resolvedLate ? .late(updated) : .recorded(updated)
     }
 
@@ -355,7 +375,7 @@ final class ProtectedOperationJournal: OperationJournal {
             rows[index].updatedAt = now
             rows[index].recoveredFromRestart = true
             // The tool name is the app's own fixed vocabulary; the operation's arguments — who
-            // a message was going to and what it said — are in the row and stay there.
+            // a message was going to and what it said — are not in the row and stay out of logs.
             PrivacyLog.store(.operationJournal, .recovered,
                              detail: PrivacyToken(rows[index].toolName))
         }
@@ -391,14 +411,24 @@ final class ProtectedOperationJournal: OperationJournal {
 
     // MARK: Storage
 
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        rows = (try? decoder.decode([OperationRecord].self, from: data)) ?? []
+    private func load() -> Bool {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return true }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            rows = try decoder.decode([OperationRecord].self, from: data)
+            return true
+        } catch {
+            // Do not turn a locked, unreadable, or corrupt history into an empty one and overwrite
+            // its bytes. A consequential operation is safer to refuse until recovery is explicit.
+            PrivacyLog.store(.operationJournal, .loadFailed, error: SafeErrorSummary(error))
+            return false
+        }
     }
 
-    private func persist() {
+    @discardableResult
+    private func persist() -> Bool {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         do {
@@ -414,8 +444,10 @@ final class ProtectedOperationJournal: OperationJournal {
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try? url.setResourceValues(values)
+            return true
         } catch {
             PrivacyLog.store(.operationJournal, .saveFailed, error: SafeErrorSummary(error))
+            return false
         }
     }
 

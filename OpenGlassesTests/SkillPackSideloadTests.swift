@@ -73,7 +73,13 @@ final class SkillPackSideloadTests: XCTestCase {
                        .notASideloadLink)
         XCTAssertEqual(
             SkillPackSideload.parse(URL(string: "openglasses://skillpack?url=ftp%3A%2F%2Fx%2Fp.zip")!).failure,
-            .insecureSource("ftp://x/p.zip"))
+            .insecureSource)
+        XCTAssertEqual(
+            SkillPackSideload.parse(URL(string: "openglasses://skillpack?url=https%3A%2F%2Fu%3Ap%40x%2Fp.zip")!).failure,
+            .insecureSource)
+        XCTAssertEqual(
+            SkillPackSideload.parse(URL(string: "openglasses://skillpack?url=https%3A%2F%2Fx%2Fp.zip%23fragment")!).failure,
+            .insecureSource)
     }
 
     // MARK: - Service flow
@@ -83,15 +89,192 @@ final class SkillPackSideloadTests: XCTestCase {
                                  signature: sig)
     }
 
+    func testReleaseContainmentRefusesBeforeFetch() async {
+        struct UnexpectedFetch: Error {}
+        var fetchCount = 0
+        let service = SkillPackSideloadService(
+            store: makeStore(),
+            fetch: { _ in
+                fetchCount += 1
+                throw UnexpectedFetch()
+            },
+            networkDecision: .refuseUntilHardenedClient
+        )
+
+        await service.handle(request(sig: "unused"))
+
+        XCTAssertEqual(fetchCount, 0)
+        guard case .error(let message)? = service.prompt else {
+            return XCTFail("release containment must show an error without fetching")
+        }
+        XCTAssertEqual(message, UntrustedNetworkFeaturePolicy.unavailableMessage)
+    }
+
+    func testLinkPresentsConsentWithoutStartingTransport() async {
+        var fetchCount = 0
+        let service = SkillPackSideloadService(
+            store: makeStore(),
+            fetch: { _ in fetchCount += 1; return self.fixtureZip },
+            networkDecision: .allowHardenedFetch
+        )
+
+        await service.handle(request(sig: "unused"))
+
+        XCTAssertEqual(fetchCount, 0)
+        guard case .downloadConsent(let offer)? = service.prompt else {
+            return XCTFail("the link must stop at a non-network consent prompt")
+        }
+        XCTAssertEqual(offer.origin, "http://192.168.1.10:8787")
+        XCTAssertFalse(offer.consentMessage.contains("pack.zip"))
+    }
+
+    func testDownloadConsentIsSingleUse() async {
+        setDevMode(true)
+        var fetchCount = 0
+        let zip = fixtureZip
+        let service = SkillPackSideloadService(
+            store: makeStore(),
+            fetch: { _ in fetchCount += 1; return zip },
+            networkDecision: .allowHardenedFetch
+        )
+        await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+
+        await service.approveDownload(offer)
+        XCTAssertEqual(fetchCount, 1)
+        await service.approveDownload(offer)
+        XCTAssertEqual(fetchCount, 1, "a consumed approval must not be replayable")
+    }
+
+    func testExpiredConsentDoesNotFetch() async {
+        var instant = Date(timeIntervalSince1970: 1_000)
+        var fetchCount = 0
+        let service = SkillPackSideloadService(
+            store: makeStore(),
+            fetch: { _ in fetchCount += 1; return self.fixtureZip },
+            networkDecision: .allowHardenedFetch,
+            now: { instant }
+        )
+        await service.handle(request(sig: "unused"))
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        instant = instant.addingTimeInterval(SkillPackSideloadService.consentLifetime + 1)
+
+        await service.approveDownload(offer)
+
+        XCTAssertEqual(fetchCount, 0)
+        guard case .error(let message)? = service.prompt else { return XCTFail() }
+        XCTAssertTrue(message.contains("expired"))
+    }
+
+    func testApprovedDownloadUsesProtectedStagingAndDismissCleansIt() async {
+        setDevMode(true)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skillpack-staging-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var protectedPaths: [String] = []
+        let staging = SkillPackStagingStore(root: root, protect: { protectedPaths.append($0.path) })
+        let zip = fixtureZip
+        let service = SkillPackSideloadService(
+            store: makeStore(), fetch: { _ in zip },
+            networkDecision: .allowHardenedFetch, stagingStore: staging)
+
+        await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
+        guard case .confirm(let pending)? = service.prompt else { return XCTFail() }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pending.stagedArchive.fileURL.path))
+        XCTAssertEqual(protectedPaths.count, 3, "root, session directory and empty archive are protected before content write")
+        service.dismiss()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pending.stagedArchive.directory.path))
+    }
+
+    func testServiceStartupRemovesOnlyAbandonedStagingSessions() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skillpack-recovery-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let abandoned = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let unrelated = root.appendingPathComponent("keep-me", isDirectory: true)
+        try FileManager.default.createDirectory(at: abandoned, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        try Data("partial".utf8).write(to: abandoned.appendingPathComponent("archive.zip"))
+        let staging = SkillPackStagingStore(root: root, protect: { _ in })
+
+        _ = SkillPackSideloadService(
+            store: makeStore(), fetch: { _ in self.fixtureZip },
+            networkDecision: .allowHardenedFetch, stagingStore: staging)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: abandoned.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+    }
+
+    func testStagingRejectsAggregateBytesBeyondArchiveLimit() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skillpack-bounded-stage-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let staging = SkillPackStagingStore(root: root, protect: { _ in })
+        let archive = try staging.createArchive()
+        try staging.append(Data(repeating: 0, count: SkillPackArchive.maxArchiveBytes), to: archive)
+
+        XCTAssertThrowsError(try staging.append(Data([1]), to: archive)) { error in
+            XCTAssertEqual(error as? SkillPackStagingError, .archiveTooLarge)
+        }
+        XCTAssertEqual(try staging.load(archive).count, SkillPackArchive.maxArchiveBytes)
+    }
+
+    func testBackgroundInvalidatesConsentBeforeFetch() async {
+        var fetchCount = 0
+        let service = SkillPackSideloadService(
+            store: makeStore(),
+            fetch: { _ in fetchCount += 1; return self.fixtureZip },
+            networkDecision: .allowHardenedFetch)
+        await service.handle(request(sig: "unused"))
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+
+        service.handleBackground()
+        await service.approveDownload(offer)
+
+        XCTAssertEqual(fetchCount, 0)
+        guard case .error(let message)? = service.prompt else { return XCTFail() }
+        XCTAssertTrue(message.contains("no longer valid"))
+    }
+
+    func testInstallRefusesTamperedStagedArchiveAndCleansIt() async {
+        setDevMode(true)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skillpack-tamper-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let staging = SkillPackStagingStore(root: root, protect: { _ in })
+        let zip = fixtureZip
+        let store = makeStore()
+        let service = SkillPackSideloadService(
+            store: store, fetch: { _ in zip },
+            networkDecision: .allowHardenedFetch, stagingStore: staging)
+        await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
+        guard case .confirm(let pending)? = service.prompt else { return XCTFail() }
+        try? Data("tampered".utf8).write(to: pending.stagedArchive.fileURL)
+
+        service.confirm(pending)
+
+        XCTAssertTrue(store.installedPacks.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pending.stagedArchive.directory.path))
+        guard case .error(let message)? = service.prompt else { return XCTFail() }
+        XCTAssertTrue(message.contains("changed"))
+    }
+
     func testUnsignedSideloadNeedsDevMode() async {
         setDevMode(false)
         let zip = fixtureZip
         let service = SkillPackSideloadService(store: makeStore(), fetch: { _ in zip })
         await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
         guard case .error(let message)? = service.prompt else {
             return XCTFail("unsigned without dev mode must error, got \(String(describing: service.prompt))")
         }
-        XCTAssertTrue(message.contains("Developer Mode"))
+        XCTAssertTrue(message.lowercased().contains("developer mode"))
     }
 
     func testPreviewNeverInstallsUntilConfirmed() async {
@@ -102,6 +285,8 @@ final class SkillPackSideloadTests: XCTestCase {
         let service = SkillPackSideloadService(store: store, fetch: { _ in zip },
                                                onInstalled: { refreshed = true })
         await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
 
         guard case .confirm(let pending)? = service.prompt else {
             return XCTFail("dev-mode unsigned sideload must reach the confirmation")
@@ -109,6 +294,11 @@ final class SkillPackSideloadTests: XCTestCase {
         XCTAssertEqual(pending.name, "Barista Coach")
         XCTAssertFalse(pending.signed)
         XCTAssertTrue(pending.confirmationMessage.contains("UNSIGNED"))
+        XCTAssertTrue(pending.confirmationMessage.contains("Source: http://192.168.1.10:8787"))
+        XCTAssertTrue(pending.confirmationMessage.contains("Archive SHA-256:"))
+        XCTAssertTrue(pending.confirmationMessage.contains("Actions (1): dial_in_shot"))
+        XCTAssertTrue(pending.confirmationMessage.contains("Capabilities: model prompt generation"))
+        XCTAssertTrue(pending.confirmationMessage.contains("Settings: roast_level"))
         XCTAssertTrue(store.installedPacks.isEmpty, "the link must never act — preview only")
         XCTAssertFalse(refreshed)
 
@@ -133,6 +323,8 @@ final class SkillPackSideloadTests: XCTestCase {
         let service = SkillPackSideloadService(store: store, fetch: { _ in zip })
 
         await service.handle(request(sig: signature))
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
         guard case .confirm(let pending)? = service.prompt else { return XCTFail() }
         XCTAssertTrue(pending.signed)
 
@@ -141,17 +333,16 @@ final class SkillPackSideloadTests: XCTestCase {
         XCTAssertEqual(store.installedPacks.first?.signatureVerified, true)
     }
 
-    func testBadSignatureSideloadIsRefusedAtConfirm() async {
+    func testBadSignatureSideloadIsRefusedBeforeInstallReview() async {
         setDevMode(false)
         let store = makeStore()   // production key; our garbage sig won't verify
         let zip = fixtureZip
         let service = SkillPackSideloadService(store: store, fetch: { _ in zip })
         await service.handle(request(sig: Data(repeating: 7, count: 64).base64EncodedString()))
-        guard case .confirm(let pending)? = service.prompt else { return XCTFail() }
-
-        service.confirm(pending)
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
         guard case .error(let message)? = service.prompt else {
-            return XCTFail("bad signature must refuse at install")
+            return XCTFail("bad signature must refuse before install review")
         }
         XCTAssertTrue(message.contains("signature"))
         XCTAssertTrue(store.installedPacks.isEmpty)
@@ -161,6 +352,8 @@ final class SkillPackSideloadTests: XCTestCase {
         setDevMode(true)
         let service = SkillPackSideloadService(store: makeStore(), fetch: { _ in Data("junk".utf8) })
         await service.handle(request())
+        guard case .downloadConsent(let offer)? = service.prompt else { return XCTFail() }
+        await service.approveDownload(offer)
         guard case .error(let message)? = service.prompt else { return XCTFail() }
         XCTAssertTrue(message.contains("archive"))
     }

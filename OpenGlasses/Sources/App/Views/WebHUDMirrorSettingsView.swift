@@ -8,6 +8,10 @@ struct WebHUDMirrorSettingsView: View {
     @State private var enabled = Config.hudMirrorEnabled
     @State private var exportedPreview: URL?
 
+    private var legacyTransportAvailable: Bool {
+        LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
+    }
+
     var body: some View {
         Form {
             if Config.hipaaMode {
@@ -21,7 +25,7 @@ struct WebHUDMirrorSettingsView: View {
 
             Section {
                 Toggle("Web HUD Mirror", isOn: $enabled)
-                    .disabled(Config.hipaaMode || !Config.agentModeEnabled)
+                    .disabled(Config.hipaaMode || !Config.agentModeEnabled || !legacyTransportAvailable)
                     .onChange(of: enabled) { _, newValue in
                         Config.hudMirrorEnabled = newValue
                         if newValue {
@@ -33,9 +37,16 @@ struct WebHUDMirrorSettingsView: View {
                 if !Config.agentModeEnabled {
                     Label("Requires Agent Mode", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(OGTheme.warnLabel)
+                } else if !legacyTransportAvailable {
+                    Label("Unavailable in production builds", systemImage: "lock.shield")
+                        .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Serves the current HUD frame to the glasses' built-in web view — no display entitlement needed. Read-only: item labels render, actions stay on the phone.")
+                if legacyTransportAvailable {
+                    Text("Serves the current HUD frame to the glasses' built-in web view — no display entitlement needed. Read-only: item labels render, actions stay on the phone.")
+                } else {
+                    Text("Secure browser sharing is not implemented yet; the legacy cleartext listener is limited to Debug development builds.")
+                }
             }
 
             if enabled, appState.webHUDMirror.isRunning {
@@ -73,6 +84,14 @@ struct WebHUDMirrorSettingsView: View {
         }
         .navigationTitle("Web HUD Mirror")
         .ogFormStyle()
+        .onAppear {
+            // Policy enforcement does not trust this preference. Clearing it prevents a stale
+            // Debug opt-in from appearing active after installation of a production build.
+            if !legacyTransportAvailable {
+                enabled = false
+                Config.hudMirrorEnabled = false
+            }
+        }
     }
 
     private func exportPreview() {

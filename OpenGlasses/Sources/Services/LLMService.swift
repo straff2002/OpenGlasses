@@ -170,6 +170,51 @@ class LLMService: ObservableObject {
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
 
+    /// Resolve every LLM inference through the Medical Compliance routing rule. This is deliberately
+    /// separate from `Config.activeModel`: a local-only turn must not mutate the user's saved model
+    /// choice, and disabling the policy should immediately restore that choice.
+    private func medicalInferenceModel(requested: ModelConfig) throws -> ModelConfig {
+        var candidates = Config.savedModels
+        if let local = localLLMService {
+            // A downloaded model can be selected by the fast-tier agent without having a saved
+            // `ModelConfig`. Give the policy a local config for every on-disk model so "usable"
+            // means usable on this device, not merely present in the picker.
+            let represented = Set(candidates.filter { $0.llmProvider == .local }.map(\.model))
+            for modelID in local.downloadedModelIds() where !represented.contains(modelID) {
+                candidates.append(ModelConfig(
+                    id: "medical-local-\(modelID)", name: "On-Device Model",
+                    provider: LLMProvider.local.rawValue, apiKey: "", model: modelID, baseURL: ""))
+            }
+        }
+
+        let decision = MedicalLLMRoutingPolicy.decide(
+            hipaaMode: Config.hipaaMode,
+            localOnly: Config.hipaaLocalOnly,
+            requested: requested,
+            candidates: candidates,
+            isUsableLocal: { [weak self] config in
+                guard let service = self?.localLLMService else { return false }
+                return service.isModelDownloaded(config.model)
+                    || (service.isModelLoaded && service.loadedModelId == config.model)
+            })
+        switch decision {
+        case .use(let config), .replaceWithLocal(let config):
+            return config
+        case .refuse:
+            throw LLMError.invalidConfiguration(MedicalLLMRoutingPolicy.unavailableMessage)
+        }
+    }
+
+    /// Defense at the actual remote-provider boundary. Selection points normally replace a cloud
+    /// model before reaching this method; this guard makes a future direct caller fail closed.
+    private func enforceMedicalRemoteBoundary(_ config: ModelConfig) throws {
+        guard MedicalLLMRoutingPolicy.isEnforced(
+            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
+              config.llmProvider != .local,
+              config.llmProvider != .appleOnDevice else { return }
+        throw LLMError.invalidConfiguration(MedicalLLMRoutingPolicy.unavailableMessage)
+    }
+
     /// Backend-neutral local-inference seam (Plan DZ P0), built lazily around whatever
     /// `localLLMService` is set and used only while `Config.localRuntimeCoordinatorEnabled` is on.
     ///
@@ -555,9 +600,10 @@ class LLMService: ObservableObject {
             compressContextWindowIfNeeded()
         }
 
-        guard let modelConfig = Config.activeModel else {
+        guard let requestedModel = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured — add one in Settings")
         }
+        let modelConfig = try medicalInferenceModel(requested: requestedModel)
 
         let provider = modelConfig.llmProvider
         // Plan CU P1: tag the turn with the model that is about to serve it, read here rather than
@@ -706,6 +752,14 @@ class LLMService: ObservableObject {
             try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
         }
 
+        // The normal cascade intentionally contains cloud models. Under medical local-only policy,
+        // one resolved local attempt is authoritative: a local failure must surface, never hop to
+        // an otherwise eligible cloud candidate.
+        if MedicalLLMRoutingPolicy.isEnforced(
+            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly) {
+            return try await send()
+        }
+
         let candidates = ModelFallbackChain.candidates(
             activeId: Config.activeModelId, saved: Config.savedModels,
             fallbackOrder: Config.modelFallbackOrder)
@@ -791,9 +845,10 @@ class LLMService: ObservableObject {
     /// Stateless, tool-free completion against the user's active provider (honors on-device
     /// models). Used by lightweight features like recall summarization.
     func completeStateless(_ text: String, system: String) async throws -> String {
-        guard let config = Config.activeModel else {
+        guard let requested = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured")
         }
+        let config = try medicalInferenceModel(requested: requested)
         let snapshot = conversationHistory
         conversationHistory = []
         defer { conversationHistory = snapshot }
@@ -973,7 +1028,8 @@ class LLMService: ObservableObject {
     /// Make a standalone LLM call to summarize a set of messages.
     /// Uses no tools and a small max_tokens budget. Returns nil on failure.
     private func summarizeMessages(_ messages: [[String: Any]]) async -> String? {
-        guard let modelConfig = Config.activeModel else { return nil }
+        guard let requestedModel = Config.activeModel,
+              let modelConfig = try? medicalInferenceModel(requested: requestedModel) else { return nil }
 
         // Build a text representation of the messages
         var transcript = ""
@@ -1102,7 +1158,8 @@ class LLMService: ObservableObject {
     /// history. Used by the Assistive Modes (A3) ambient loop, which must not pollute the chat.
     /// Returns the raw model text, or nil on failure / unsupported provider (local, appleOnDevice).
     func analyzeFrame(systemPrompt: String, userText: String, imageData: Data, maxTokens: Int = 200) async -> String? {
-        guard let modelConfig = Config.activeModel else { return nil }
+        guard let requestedModel = Config.activeModel,
+              let modelConfig = try? medicalInferenceModel(requested: requestedModel) else { return nil }
         let base64 = LLMImagePreparer.prepared(imageData).base64EncodedString()
         let provider = modelConfig.llmProvider
 
@@ -1214,7 +1271,8 @@ class LLMService: ObservableObject {
     func analyzeFrameStructured(systemPrompt: String, userText: String, imageData: Data,
                                 jsonSchema: [String: Any], toolName: String = "assessment",
                                 maxTokens: Int = 1024) async -> [String: Any]? {
-        guard let modelConfig = Config.activeModel else { return nil }
+        guard let requestedModel = Config.activeModel,
+              let modelConfig = try? medicalInferenceModel(requested: requestedModel) else { return nil }
         let base64 = LLMImagePreparer.prepared(imageData).base64EncodedString()
         let provider = modelConfig.llmProvider
         let toolDescription = "Return the structured assessment for the image."
@@ -1320,7 +1378,8 @@ class LLMService: ObservableObject {
     /// the offline path works. Returns the JSON object, or nil on failure. Used by Study Mode generation.
     func completeStructured(systemPrompt: String, userText: String, jsonSchema: [String: Any],
                             toolName: String = "result", maxTokens: Int = 2048) async -> [String: Any]? {
-        guard let modelConfig = Config.activeModel else { return nil }
+        guard let requestedModel = Config.activeModel,
+              let modelConfig = try? medicalInferenceModel(requested: requestedModel) else { return nil }
         let provider = modelConfig.llmProvider
         let toolDescription = "Return the structured result."
 
@@ -1428,6 +1487,9 @@ class LLMService: ObservableObject {
     /// Route a request to the appropriate cloud provider for a given config.
     /// Used when a cloud model is selected as the agentic fast-tier model.
     private func sendCloud(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool) async throws -> String {
+        let localOnly = MedicalLLMRoutingPolicy.isEnforced(
+            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
+        let config = try medicalInferenceModel(requested: config)
         switch config.llmProvider {
         case .anthropic:
             return try await sendAnthropic(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
@@ -1435,8 +1497,17 @@ class LLMService: ObservableObject {
             return try await sendChatGPT(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
         case .gemini, .geminiVertex:
             return try await sendGemini(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        case .local, .appleOnDevice:
-            throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
+        case .local:
+            guard localOnly else {
+                throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
+            }
+            return try await sendLocal(text, systemPrompt: systemPrompt, config: config,
+                                       includeTools: includeTools, imageData: nil)
+        case .appleOnDevice:
+            guard localOnly else {
+                throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
+            }
+            return try await sendAppleOnDevice(text, systemPrompt: systemPrompt)
         case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
             return try await sendOpenAICompatible(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
         }
@@ -1473,6 +1544,7 @@ class LLMService: ObservableObject {
     // Internal (not private) so the BM P9 fixture tests can drive the full streamed tool loop
     // through a stubbed `streamingSession`.
     func sendAnthropic(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        try enforceMedicalRemoteBoundary(config)
         // An explicit API key wins; otherwise fall back to a connected Claude account (OAuth).
         let apiKey = await AnthropicAuth.resolveCredential(apiKey: config.apiKey)
         guard !apiKey.isEmpty else {
@@ -1676,6 +1748,7 @@ class LLMService: ObservableObject {
     nonisolated(unsafe) private static var customEndpointRejectsTools = false
 
     private func sendOpenAICompatible(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        try enforceMedicalRemoteBoundary(config)
         let provider = config.llmProvider
         let apiKey = config.apiKey
         let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: apiKey)
@@ -1945,6 +2018,7 @@ class LLMService: ObservableObject {
     /// converts to Responses items at request time), so history hygiene, pruning, and
     /// persistence behave exactly like the OpenAI-compatible path.
     private func sendChatGPT(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        try enforceMedicalRemoteBoundary(config)
         guard let token = await ChatGPTOAuthService.shared.validAccessToken() else {
             throw LLMError.missingAPIKey("ChatGPT account not connected — sign in with ChatGPT in the model editor")
         }
@@ -2100,6 +2174,8 @@ class LLMService: ObservableObject {
                                           responseTools: [[String: Any]]? = nil,
                                           forcedToolName: String? = nil,
                                           timeout: TimeInterval = 45) async -> [String: Any]? {
+        guard !MedicalLLMRoutingPolicy.isEnforced(
+            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly) else { return nil }
         guard let token = await ChatGPTOAuthService.shared.validAccessToken(),
               let url = URL(string: ChatGPTOAuth.backendResponsesURL) else { return nil }
         var body = ResponsesTranslator.requestBody(
@@ -2368,6 +2444,7 @@ class LLMService: ObservableObject {
     /// Credential problems throw `missingAPIKey` — per-candidate for the fallback chain, so a
     /// mid-session refresh failure moves to the next model instead of dead-airing the turn.
     func geminiRequest(for config: ModelConfig, timeout: TimeInterval? = nil) async throws -> URLRequest {
+        try enforceMedicalRemoteBoundary(config)
         var request: URLRequest
         switch config.llmProvider {
         case .geminiVertex:
@@ -2598,7 +2675,9 @@ class LLMService: ObservableObject {
         // Uncertainty gate (Plan BI): no tool channel is wired on the Apple on-device path, so a
         // hedged or freshness-sensitive answer gets one transparent web-grounded re-ask.
         var answer = response.content
-        if Config.localWebSearchFallbackEnabled,
+        if !MedicalLLMRoutingPolicy.isEnforced(
+               hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
+           Config.localWebSearchFallbackEnabled,
            UncertaintyDetector.assess(question: text, answer: answer).shouldSearch {
             // The Apple session is stateful (it holds its own transcript), so its rewrite is
             // context-aware without an explicit history block; the shared conversationHistory
@@ -2969,7 +3048,9 @@ class LLMService: ObservableObject {
         // personal reminders", the exact reply the detector's guard exists to prevent.
         let isPersonalData = UncertaintyDetector.isPersonalDataQuestion(text.lowercased())
         var finalAnswer = cleanResponse
-        if Config.localWebSearchFallbackEnabled, !isPersonalData,
+        if !MedicalLLMRoutingPolicy.isEnforced(
+               hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
+           Config.localWebSearchFallbackEnabled, !isPersonalData,
            announcedIntent || UncertaintyDetector.assess(question: text, answer: cleanResponse).shouldSearch {
             finalAnswer = await UncertaintyReask.answer(
                 question: text,
@@ -3016,6 +3097,33 @@ class LLMService: ObservableObject {
     func sendViaLocalAgent(_ text: String, locationContext: String? = nil, memoryContext: String? = nil, weatherContext: String? = nil) async throws -> String {
         let agentModelId = Config.agentModelId
         let hasNativeTools = nativeToolRouter != nil
+
+        // The fast-tier setting can name a cloud configuration independently of the active chat
+        // model. Resolve it before building a cloud prompt so Medical Local LLM Only cannot escape
+        // through the agent path or receive a prompt too large for the replacement local model.
+        if MedicalLLMRoutingPolicy.isEnforced(
+            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly) {
+            let requested = Config.savedModels.first(where: { $0.id == agentModelId })
+                ?? ModelConfig(id: "requested-local-agent", name: "On-Device Agent",
+                               provider: LLMProvider.local.rawValue, apiKey: "",
+                               model: agentModelId, baseURL: "")
+            let localConfig = try medicalInferenceModel(requested: requested)
+            let leanPrompt = await Self.leanOnDevicePrompt(
+                locationContext: locationContext, memoryContext: memoryContext,
+                hasImage: false, turn: text, weatherContext: weatherContext)
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(localConfig.model),
+                             detail: PrivacyToken("medicalLocalOnly"))
+            switch localConfig.llmProvider {
+            case .local:
+                return try await sendLocal(text, systemPrompt: leanPrompt, config: localConfig,
+                                           includeTools: hasNativeTools)
+            case .appleOnDevice:
+                return try await sendAppleOnDevice(text, systemPrompt: leanPrompt)
+            default:
+                // `medicalInferenceModel` cannot return a remote model while this policy is active.
+                throw LLMError.invalidConfiguration(MedicalLLMRoutingPolicy.unavailableMessage)
+            }
+        }
 
         // Cloud agent: build the full tool-laden system prompt — cloud models handle a large
         // context and tool-call natively.

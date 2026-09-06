@@ -498,7 +498,9 @@ struct ToolsActionsSettingsScreen: View {
                         HStack {
                             Label("MCP Server", systemImage: "macbook.and.iphone")
                             Spacer()
-                            if MCPGlassesServer.shared.isRunning {
+                            if !LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses) {
+                                Text("Unavailable").foregroundStyle(.secondary)
+                            } else if MCPGlassesServer.shared.isRunning {
                                 Text("Running").foregroundStyle(.secondary)
                             }
                         }

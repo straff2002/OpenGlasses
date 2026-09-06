@@ -1,35 +1,92 @@
 # Plan DN — Outbound Fetch and Skill-Pack Sideload Hardening
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🟡 In progress — P0–P3 engineering checkpoints implemented 2026-09-06; focused runtime, Release-artifact and physical-device network evidence remain.
 **Origin:** 2026-08-26 adversarial review findings 5 (High) and 8 (Medium).
-**Priority:** P0 for QR redirects/DNS; remote deep-link pack install stays disabled until P1/P2.
+**Priority:** P0 for QR redirects/DNS; do not approve distribution of the re-enabled hardened paths until the compiled adversarial suite and device evidence pass.
 
 This plan creates one bounded, redirect-aware outbound fetch substrate for untrusted QR and skill-pack
 URLs, and a streaming archive reader that enforces limits before allocation. A deep link is an offer to
 review a download, not permission to contact its server.
 
+## Implementation checkpoint — 6 September 2026
+
+- `UntrustedNetworkFeaturePolicy` routes QR context, signed catalog/archive and remote skill-pack
+  deep-link fetches through named hardened profiles in both Debug and Release. Release has no private
+  HTTP profile. A private-HTTP skill-pack profile exists only under `#if DEBUG`, accepts only private
+  addresses and never follows redirects; the fail-closed refusal decision remains available as a
+  rollback/test seam.
+- `BoundedHTTPClient` resolves each hostname once per hop, rejects the entire answer set when a public
+  destination contains any private/reserved address, connects to an approved numeric address and
+  preserves the original host for TLS SNI and certificate verification. It parses HTTP/1.1 itself,
+  follows at most three redirects after re-running URL/DNS/address policy, rejects HTTPS downgrade and
+  redirect loops, disables HTTP content coding, and enforces profile MIME and streamed byte ceilings.
+- In builds where sideload fetching is permitted, receipt of a link now creates a non-network download
+  offer showing only the normalized origin and 8 MiB limit. The approval is bound to the exact request,
+  expires after five minutes and is consumed before fetching, so it cannot be replayed. Credentials and
+  URL fragments are rejected. The existing post-inspection install confirmation remains the second gate.
+- Skill-pack archives are rejected before extraction when compressed input exceeds 8 MiB, entries exceed
+  128, an entry exceeds 4 MiB, declared aggregate output exceeds 32 MiB, per-entry compression exceeds
+  100:1, paths are noncanonical/too deep/too long/duplicate, or entries are encrypted, symlinks, nested
+  archives, special Unix file types/type masquerading, or use unsupported methods. Stored/deflated
+  output must match declared size and CRC. Central/local names, flags, methods, sizes and CRC values must
+  agree; the central directory must end exactly at EOCD; descriptors and physical ranges must be valid
+  and non-overlapping; ZIP64 and multi-disk layouts are refused.
+- Consented bytes are stored in a protected, backup-excluded staging directory. Backgrounding or
+  dismissal cancels and invalidates the flow and removes staging; service startup removes abandoned
+  UUID sessions left by process termination. The install prompt is single-use; installation reloads
+  the staged archive, verifies its SHA-256 digest and re-extracts those exact bytes.
+- The production downloader streams response bytes through a 32 KiB rolling buffer and enforces the
+  8 MiB compressed cap during receipt instead of buffering the network response in memory.
+- The store's production signature, manifest, definition-scanner and admission checks now run before
+  the install prompt. The prompt enumerates origin, archive hash, action names, native/procedure/remote/
+  hardware capabilities, settings and validation warnings; install repeats validation over the exact bytes.
+- Protected staging maps the already-capped archive instead of copying it into heap. `ZipArchiveReader`
+  streams stored and deflated content through 32 KiB chunks into a caller sink, decrements actual output
+  budgets before delivery and calculates CRC incrementally. `SkillPackArchive` may still materialize
+  approved files after these checks, bounded to 4 MiB each and 32 MiB total.
+- Nine bounded-client tests cover address pinning, mixed DNS, hop re-resolution, public-to-private and
+  downgrade redirects, loops/count, URL credentials/fragments/ports, MIME/content coding/declared length,
+  chunk streaming/overflow and stacked transfer coding. The archive corpus now includes central/local
+  mismatch, exact central-directory bounds, physical overlap and Unix special-file/type-masquerade cases,
+  in addition to the existing size, traversal and CRC cases. Consent/lifecycle/tamper/recovery/budget
+  coverage remains in the sideload suite.
+- Xcode-beta successfully compiled and linked the arm64 Debug app and complete test bundle after these
+  changes. The 60-test focused selection could not begin in two attempts: a new iOS 27 simulator timed
+  out while preparing to boot, and an existing booted simulator remained blocked waiting for workers
+  to materialize. Both produced infrastructure failures with zero XCTest cases executed.
+- Xcode-beta build `27A5228h` successfully produced the current unsigned arm64 Release simulator app.
+  Its 136,425,544-byte Mach-O has SHA-256
+  `ec32f1eb275856c43f36e4cf76d116ffa01d3df384f3e5aa4332e299cc84eb1a`. Inspection found the public
+  `qrContext`, `signedCatalog` and `skillPack` profile strings and bounded-fetch policy messages; the
+  Debug-only `internalSkillPack` literal was absent.
+- Remaining evidence/work: run the compiled suite in a functioning simulator/CI host; add distinct
+  first-byte/idle deadline and TLS-hostname failure cases; validate the manifest before materializing
+  optional files; inspect a signed installed Release artifact; and capture real-device
+  DNS/redirect/private-address behavior. MCP/custom-model/gateway/FHIR and other clients remain a
+  separate W02.3 inventory.
+
 ---
 
-## Problem and verified path
+## Assessment-baseline problem and verified path
 
-`URLFetchGuard` rejects literal loopback/private hosts but explicitly does not resolve DNS.
-`QRContextTool` validates only the initial URL then uses `URLSession.shared.data(from:)`, which follows
-redirects automatically. A public-looking hostname or redirect can therefore reach localhost, LAN,
+At the assessment baseline, `URLFetchGuard` rejected literal loopback/private hosts but did not resolve DNS.
+`QRContextTool` validated only the initial URL and then used `URLSession.shared.data(from:)`, which followed
+redirects automatically. A public-looking hostname or redirect could therefore reach localhost, LAN,
 link-local, metadata-like, or other non-public addresses.
 
-Skill-pack deep links are handled outside the ordinary trust gate and begin downloading before the
-install confirmation. Downloads are buffered in full. `SkillPackCatalog` enforces one cap —
-`maxEntryBytes` (5 MiB) per entry, and only *after* the entry is allocated and inflated; there is no
-total-archive cap, entry-count cap, or ratio cap. `ZipArchiveReader.inflate` allocates
+At that baseline, skill-pack deep links were handled outside the ordinary trust gate and began downloading before the
+install confirmation. Downloads were buffered in full. `SkillPackCatalog` enforced one cap —
+`maxEntryBytes` (5 MiB) per entry, and only *after* the entry was allocated and inflated; there was no
+total-archive cap, entry-count cap, or ratio cap. `ZipArchiveReader.inflate` allocated
 `Data(count: entry.uncompressedSize)` straight from the archive's central-directory metadata before
-any of that, so a single entry declaring a huge uncompressed size triggers the full allocation before
-the 5 MiB check can reject it. A crafted link can cause network disclosure, memory/disk pressure, or a
+any of that, so a single entry declaring a huge uncompressed size triggered the full allocation before
+the 5 MiB check could reject it. A crafted link could cause network disclosure, memory/disk pressure, or a
 zip bomb before the user has meaningfully consented.
 
-Critically, `URLFetchGuard.validate` is called from exactly one place — `QRContextTool`. The
-skill-pack sideload and catalog fetches call `URLSession.shared.data(from:)` **with no `URLFetchGuard`
-check at all**; the sideload URL is gated only by `SkillPackSideload.isPermittedSource` (a
-looser HTTPS-or-private-host allowlist that also follows redirects). The plan's "one bounded,
+At that baseline, `URLFetchGuard.validate` was called from exactly one place — `QRContextTool`. The
+skill-pack sideload and catalog fetches called `URLSession.shared.data(from:)` **with no `URLFetchGuard`
+check at all**; the sideload URL was gated only by `SkillPackSideload.isPermittedSource` (a
+looser HTTPS-or-private-host allowlist that also followed redirects). The plan's "one bounded,
 redirect-aware substrate" must therefore *replace* both the QR path and these ungated skill-pack
 fetches, not just harden the guard QR already uses.
 
@@ -59,7 +116,7 @@ Relevant seams:
 
 ---
 
-## P0 — Immediate containment 🔴
+## P0 — Immediate containment ✅ engineering checkpoint
 
 1. Disable QR network fetch and remote skill-pack deep-link download behind separate kill switches.
    QR text display and locally bundled packs continue to work.
@@ -73,7 +130,7 @@ Relevant seams:
 **Tests.** Opening a deep link produces zero transport calls before consent; redirect is refused;
 mixed public/private DNS answers fail closed; oversized chunked response cancels.
 
-## P1 — Pinned, policy-driven HTTP client 🔴
+## P1 — Pinned, policy-driven HTTP client 🟡 implemented; runtime/device evidence pending
 
 Build a small `BoundedHTTPClient` with injected resolver, connector, clock, and policy. Do not put this
 policy into a general app-wide `URLSession` extension; callers must opt into a named fetch profile.
@@ -106,7 +163,7 @@ public→private redirect; cross-origin redirect; downgrade; loop; too many hops
 chunked cap; MIME mismatch; TLS hostname mismatch; credential stripping. All use fakes/local fixtures,
 not live internet.
 
-## P2 — Consent-first sideload state machine 🟠
+## P2 — Consent-first sideload state machine 🟡 implemented; runtime evidence pending
 
 Implement a pure, replay-resistant state machine:
 
@@ -130,7 +187,7 @@ received → awaitingConsent → downloading → inspecting → awaitingInstall 
 deletes staging; tampering after review fails hash check; install review enumerates native targets;
 network errors do not automatically retry.
 
-## P3 — Streaming archive limits before allocation 🟠
+## P3 — Streaming archive limits before allocation 🟡 implemented; manifest-first admission and runtime evidence pending
 
 Replace `ZipArchiveReader`'s trust in declared output size with a budgeted API.
 

@@ -36,6 +36,21 @@ final class SkillPackStore: ObservableObject {
         case rejected(reasons: [String])
     }
 
+    enum ReviewResult: Equatable {
+        case accepted(warnings: [String])
+        case rejected(reasons: [String])
+    }
+
+    private enum PackageValidation {
+        case accepted(
+            manifest: SkillPackManifest,
+            report: SkillPackDecodeReport,
+            warnings: [String],
+            signatureVerified: Bool
+        )
+        case rejected(reasons: [String])
+    }
+
     @Published private(set) var installedPacks: [InstalledPack] = []
 
     private let directory: URL
@@ -66,6 +81,27 @@ final class SkillPackStore: ObservableObject {
 
     // MARK: - Install / remove
 
+    /// Runs the same signature, decode and definition/admission checks as installation without
+    /// writing anything. Sideload UI calls this before asking the user to approve the pack.
+    func review(
+        manifestData: Data,
+        files: [String: Data] = [:],
+        signatureBase64: String?,
+        developerMode: Bool = false
+    ) -> ReviewResult {
+        switch validatePackage(
+            manifestData: manifestData,
+            files: files,
+            signatureBase64: signatureBase64,
+            developerMode: developerMode
+        ) {
+        case .accepted(_, _, let warnings, _):
+            return .accepted(warnings: warnings)
+        case .rejected(let reasons):
+            return .rejected(reasons: reasons)
+        }
+    }
+
     /// Validate and install a pack (or a new version of an installed pack).
     ///
     /// Order matters and is deliberate: signature → decode → validate → write. The signature is
@@ -77,39 +113,23 @@ final class SkillPackStore: ObservableObject {
         signatureBase64: String?,
         developerMode: Bool = false
     ) -> InstallResult {
-        guard savingAllowed else {
-            return .rejected(reasons: ["pack state is unreadable (device locked?) — try again after unlock"])
-        }
-
-        var warnings: [String] = []
-        var signatureVerified = false
-        if let signatureBase64 {
-            guard SkillPackSignature.verify(
-                signatureBase64: signatureBase64,
-                manifestData: manifestData,
-                payloadFiles: files,
-                publicKeyBase64: publicKeyBase64) else {
-                return .rejected(reasons: ["signature verification failed"])
-            }
-            signatureVerified = true
-        } else if developerMode {
-            warnings.append("UNSIGNED — developer-mode install")
-        } else {
-            return .rejected(reasons: ["pack is unsigned (developer mode required for unsigned installs)"])
-        }
-
-        let (decoded, report) = SkillPackManifest.lossyDecode(manifestData)
-        guard let manifest = decoded else {
-            return .rejected(reasons: ["manifest unreadable — id/version/name missing or not JSON"])
-        }
-
-        switch SkillPackValidator.validate(
-            manifest: manifest, report: report,
-            currentBuild: currentBuild, nativeToolNames: nativeToolNames()) {
+        let manifest: SkillPackManifest
+        let report: SkillPackDecodeReport
+        let warnings: [String]
+        let signatureVerified: Bool
+        switch validatePackage(
+            manifestData: manifestData,
+            files: files,
+            signatureBase64: signatureBase64,
+            developerMode: developerMode
+        ) {
+        case .accepted(let acceptedManifest, let acceptedReport, let acceptedWarnings, let verified):
+            manifest = acceptedManifest
+            report = acceptedReport
+            warnings = acceptedWarnings
+            signatureVerified = verified
         case .rejected(let reasons):
             return .rejected(reasons: reasons)
-        case .accepted(let validatorWarnings):
-            warnings.append(contentsOf: validatorWarnings)
         }
 
         do {
@@ -154,6 +174,59 @@ final class SkillPackStore: ObservableObject {
                             version: PrivacyToken(manifest.version),
                             signed: signatureVerified, count: manifest.actions.count)
         return .installed(warnings: warnings)
+    }
+
+    private func validatePackage(
+        manifestData: Data,
+        files: [String: Data],
+        signatureBase64: String?,
+        developerMode: Bool
+    ) -> PackageValidation {
+        guard savingAllowed else {
+            return .rejected(reasons: ["pack state is unreadable (device locked?) — try again after unlock"])
+        }
+
+        var warnings: [String] = []
+        let signatureVerified: Bool
+        if let signatureBase64 {
+            guard SkillPackSignature.verify(
+                signatureBase64: signatureBase64,
+                manifestData: manifestData,
+                payloadFiles: files,
+                publicKeyBase64: publicKeyBase64
+            ) else {
+                return .rejected(reasons: ["signature verification failed"])
+            }
+            signatureVerified = true
+        } else if developerMode {
+            warnings.append("UNSIGNED — developer-mode install")
+            signatureVerified = false
+        } else {
+            return .rejected(reasons: ["pack is unsigned (developer mode required for unsigned installs)"])
+        }
+
+        let (decoded, report) = SkillPackManifest.lossyDecode(manifestData)
+        guard let manifest = decoded else {
+            return .rejected(reasons: ["manifest unreadable — id/version/name missing or not JSON"])
+        }
+
+        switch SkillPackValidator.validate(
+            manifest: manifest,
+            report: report,
+            currentBuild: currentBuild,
+            nativeToolNames: nativeToolNames()
+        ) {
+        case .rejected(let reasons):
+            return .rejected(reasons: reasons)
+        case .accepted(let validatorWarnings):
+            warnings.append(contentsOf: validatorWarnings)
+            return .accepted(
+                manifest: manifest,
+                report: report,
+                warnings: warnings,
+                signatureVerified: signatureVerified
+            )
+        }
     }
 
     func remove(id: String) {

@@ -353,6 +353,44 @@ final class OperationJournalTests: XCTestCase {
         XCTAssertEqual(recoveredJournal.recoveredOperations.count, 1)
     }
 
+    func testCorruptJournalIsPreservedAndRefusesAdmission() throws {
+        let directory = temporaryDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = directory.appendingPathComponent("operations.json")
+        let corrupt = Data("not valid operation json".utf8)
+        try corrupt.write(to: store)
+
+        let journal = ProtectedOperationJournal(directory: directory)
+
+        XCTAssertFalse(journal.storageAvailable)
+        XCTAssertEqual(journal.admit(call: call("send_it", invocationID: "call-1"),
+                                     semantics: .external(.bestEffort), key: "key-1", at: Date()),
+                       .storageUnavailable)
+        XCTAssertEqual(try Data(contentsOf: store), corrupt,
+                       "unreadable evidence must not be overwritten as an empty journal")
+        XCTAssertTrue(journal.records.isEmpty)
+    }
+
+    func testJournalWriteFailureBlocksConsequentialDispatch() async throws {
+        // A regular file cannot contain operations.json, so initialization and admission cannot
+        // make a durable record. The router must fail before the tool's external effect starts.
+        let blockedDirectory = temporaryDirectory()
+        try Data("blocks directory creation".utf8).write(to: blockedDirectory)
+        let tool = CountingTool(name: "send_it", semantics: .external(.bestEffort))
+        let router = router(with: tool, journalDirectory: blockedDirectory, timeout: 30)
+
+        let outcome = await router.executeRoot(name: "send_it", args: ["to": "mum"],
+                                               invocationID: "call-1")
+
+        guard case .failedBeforeExecution(let reason) = outcome else {
+            return XCTFail("storage failure must refuse dispatch: \(outcome)")
+        }
+        XCTAssertTrue(reason.contains("not run"), reason)
+        XCTAssertEqual(tool.runs, 0)
+        XCTAssertTrue(router.operationJournal.records.isEmpty)
+        XCTAssertEqual(outcome.retryDisposition, .safeToRetry)
+    }
+
     func testRecoveredOperationsAreReconciledWhereAToolCanAnswer() async {
         let directory = temporaryDirectory()
         let journal = ProtectedOperationJournal(directory: directory)

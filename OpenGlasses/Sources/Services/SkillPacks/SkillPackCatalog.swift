@@ -167,25 +167,102 @@ enum SkillPackArchive {
     enum ArchiveError: Error, Equatable {
         case notAZip
         case missingManifest
+        case archiveTooLarge
+        case tooManyEntries
+        case unsafeEntryPath
+        case duplicateEntry
+        case unsupportedEntry
+        case entryTooLarge
+        case totalUncompressedSizeTooLarge
+        case suspiciousCompressionRatio
+        case corruptEntry
     }
 
-    /// Zip entries larger than this are refused before inflation — a zip-bomb guard, not a
-    /// realistic content limit.
-    static let maxEntryBytes = 5 * 1024 * 1024
+    static let maxArchiveBytes = 8 * 1024 * 1024
+    static let maxEntryBytes = 4 * 1024 * 1024
+    static let maxTotalUncompressedBytes = 32 * 1024 * 1024
+    static let maxEntryCount = 128
+    static let maxCompressionRatio = 100
+    static let maxPathBytes = 180
+    static let maxPathDepth = 8
+
+    private static let nestedArchiveExtensions: Set<String> = [
+        "7z", "bz2", "epub", "gz", "rar", "tar", "tgz", "xz", "zip",
+    ]
 
     static func extract(zipData: Data) -> Result<(manifestData: Data, files: [String: Data]), ArchiveError> {
+        guard zipData.count <= maxArchiveBytes else { return .failure(.archiveTooLarge) }
         guard let archive = ZipArchiveReader(data: zipData) else { return .failure(.notAZip) }
-        guard let manifestData = archive.entryData(named: "skillpack.json") else {
+        guard archive.entryMetadata.count <= maxEntryCount else { return .failure(.tooManyEntries) }
+
+        var normalizedNames: [String: String] = [:]
+        var totalUncompressedBytes = 0
+        for entry in archive.entryMetadata {
+            guard let normalized = normalizedPath(entry.name) else { return .failure(.unsafeEntryPath) }
+            guard normalizedNames[normalized] == nil else { return .failure(.duplicateEntry) }
+            normalizedNames[normalized] = entry.name
+
+            let unixMode = (entry.externalAttributes >> 16) & 0xF000
+            let expectedUnixMode: UInt32 = entry.name.hasSuffix("/") ? 0x4000 : 0x8000
+            // Zero means the producer omitted Unix type bits. Otherwise accept only regular files
+            // and directories whose name agrees with the advertised type.
+            let safeUnixType = unixMode == 0 || unixMode == expectedUnixMode
+            let allowedFlags: UInt16 = 0x0008 | 0x0800 // data descriptor and UTF-8 names
+            guard entry.generalPurposeBitFlag & ~allowedFlags == 0,
+                  entry.compressionMethod == 0 || entry.compressionMethod == 8,
+                  safeUnixType else { return .failure(.unsupportedEntry) }
+            guard entry.uncompressedSize <= maxEntryBytes else { return .failure(.entryTooLarge) }
+            let (nextTotal, overflow) = totalUncompressedBytes.addingReportingOverflow(entry.uncompressedSize)
+            guard !overflow, nextTotal <= maxTotalUncompressedBytes else {
+                return .failure(.totalUncompressedSizeTooLarge)
+            }
+            totalUncompressedBytes = nextTotal
+
+            if entry.uncompressedSize > 0 {
+                guard entry.compressedSize > 0,
+                      entry.uncompressedSize <= entry.compressedSize * maxCompressionRatio else {
+                    return .failure(.suspiciousCompressionRatio)
+                }
+            }
+            if !normalized.hasSuffix("/"),
+               nestedArchiveExtensions.contains((normalized as NSString).pathExtension.lowercased()) {
+                return .failure(.unsupportedEntry)
+            }
+        }
+
+        guard normalizedNames["skillpack.json"] != nil else {
             return .failure(.missingManifest)
         }
+        guard let manifestData = archive.entryData(named: normalizedNames["skillpack.json"]!,
+                                                   maximumUncompressedSize: maxEntryBytes) else {
+            return .failure(.corruptEntry)
+        }
         var files: [String: Data] = [:]
-        for name in archive.entryNames {
-            let normalized = name.hasPrefix("./") ? String(name.dropFirst(2)) : name
+        for (normalized, sourceName) in normalizedNames {
             guard normalized != "skillpack.json", !normalized.hasSuffix("/") else { continue }
-            guard let data = archive.entryData(named: name), data.count <= maxEntryBytes else { continue }
+            guard let data = archive.entryData(named: sourceName,
+                                               maximumUncompressedSize: maxEntryBytes) else {
+                return .failure(.corruptEntry)
+            }
             files[normalized] = data
         }
         return .success((manifestData, files))
+    }
+
+    private static func normalizedPath(_ name: String) -> String? {
+        guard !name.isEmpty, name.utf8.count <= maxPathBytes,
+              !name.hasPrefix("/"), !name.contains("\\"), !name.contains(":"),
+              !name.unicodeScalars.contains(where: { $0.value == 0 }) else { return nil }
+        let stripped = name.hasPrefix("./") ? String(name.dropFirst(2)) : name
+        guard !stripped.isEmpty else { return nil }
+        let isDirectory = stripped.hasSuffix("/")
+        let components = stripped.split(separator: "/", omittingEmptySubsequences: false)
+        let pathComponents = isDirectory ? components.dropLast() : components[...]
+        guard !pathComponents.isEmpty, pathComponents.count <= maxPathDepth,
+              pathComponents.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return nil }
+        let normalized = pathComponents.joined(separator: "/") + (isDirectory ? "/" : "")
+        guard stripped == normalized else { return nil }
+        return normalized
     }
 
     static func sha256Hex(_ data: Data) -> String {

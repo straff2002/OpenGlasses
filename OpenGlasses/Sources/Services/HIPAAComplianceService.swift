@@ -46,9 +46,18 @@ class HIPAAComplianceService: ObservableObject {
     /// and fires `onModeChanged` so dependent live sessions reconfigure at once. Callers must use
     /// this rather than setting `Config.hipaaMode` directly, so the teardown never gets skipped.
     func setMode(_ enabled: Bool) {
-        Config.hipaaMode = enabled
-        log(action: enabled ? "COMPLIANCE_ENABLED" : "COMPLIANCE_DISABLED",
-            detail: enabled ? "Medical compliance mode enabled" : "Medical compliance mode disabled")
+        // A disable event belongs to the audit trail even though ordinary audit events are
+        // suppressed while the mode is off. Record it before lowering the gate; otherwise the
+        // transition which stops audit collection erases its own evidence.
+        if enabled {
+            Config.hipaaMode = true
+            appendAuditEntry(action: "COMPLIANCE_ENABLED",
+                             detail: "Medical compliance mode enabled")
+        } else {
+            appendAuditEntry(action: "COMPLIANCE_DISABLED",
+                             detail: "Medical compliance mode disabled")
+            Config.hipaaMode = false
+        }
         if enabled {
             // Plan BQ P2: compliance mode hard-disables Spotlight donation — purge
             // everything previously donated. (Refreshes while enabled donate nothing.)
@@ -104,6 +113,14 @@ class HIPAAComplianceService: ObservableObject {
     func log(action: String, detail: String) {
         guard Config.hipaaMode else { return }
 
+        appendAuditEntry(action: action, detail: detail)
+    }
+
+    /// Record an audit-control event without consulting the mode it is changing. Callers are
+    /// limited to this service's own control transitions; ordinary feature events still go
+    /// through `log` and remain suppressed while compliance mode is off.
+    private func appendAuditEntry(action: String, detail: String) {
+
         let entry = AuditEntry(action: action, detail: detail)
         auditLog.append(entry)
 
@@ -137,9 +154,16 @@ class HIPAAComplianceService: ObservableObject {
 
     /// Clear the audit log (itself an auditable event).
     func clearAuditLog() {
-        log(action: "AUDIT_LOG_CLEARED", detail: "Audit log cleared by user")
+        let recordClear = Config.hipaaMode
         auditLog.removeAll()
-        saveAuditLog()
+        if recordClear {
+            // The marker is written after the old entries are removed so it is not erased by the
+            // operation it records. When the mode is off, this method remains a true reset helper
+            // for test/setup and migration paths and does not start collecting events.
+            appendAuditEntry(action: "AUDIT_LOG_CLEARED", detail: "Audit log cleared by user")
+        } else {
+            saveAuditLog()
+        }
     }
 
     private func loadAuditLog() {

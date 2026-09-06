@@ -4,7 +4,8 @@ import Network
 import UIKit
 
 /// Local HTTP server (Plan E) that lets a Claude Code session on the same LAN "see through" the
-/// glasses. Developer-only — gated behind `agentModeEnabled` + `mcpServerEnabled`.
+/// glasses. Developer-only — gated behind `agentModeEnabled` + `mcpServerEnabled` and the
+/// compile-time ``LocalServiceExposurePolicy``. Release builds refuse this cleartext transport.
 ///
 /// Exposes three REST endpoints on port 8765, mirroring the planned MCP tools:
 ///   - `GET  /see_glasses`     → `{ image_b64, timestamp }` — latest camera frame
@@ -80,6 +81,12 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     func start() {
+        guard LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses) else {
+            // Check the build boundary before reading/creating a bearer token or constructing a
+            // listener. A persisted developer preference therefore cannot reactivate this edge in
+            // a Release build.
+            return
+        }
         guard listener == nil else { return }
         _ = accessToken   // ensure a token exists before we accept connections
         do {
