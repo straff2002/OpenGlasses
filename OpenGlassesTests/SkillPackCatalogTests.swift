@@ -97,9 +97,116 @@ final class SkillPackCatalogTests: XCTestCase {
         XCTAssertEqual(SkillPackArchive.extract(zipData: eocd).failureError, .missingManifest)
     }
 
+    func testArchiveSizeLimitRunsBeforeZipParsing() {
+        let oversized = Data(count: SkillPackArchive.maxArchiveBytes + 1)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: oversized).failureError, .archiveTooLarge)
+    }
+
+    func testDeclaredOversizeIsRefusedBeforeInflation() throws {
+        var archive = fixtureZip
+        let central = try firstCentralDirectoryOffset(in: archive)
+        writeUInt32(UInt32(SkillPackArchive.maxEntryBytes + 1), to: &archive, at: central + 24)
+        let local = Int(readUInt32(from: archive, at: central + 42))
+        writeUInt32(UInt32(SkillPackArchive.maxEntryBytes + 1), to: &archive, at: local + 22)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .entryTooLarge)
+    }
+
+    func testTraversalPathRefusesWholeArchive() throws {
+        var archive = fixtureZip
+        let central = try centralDirectoryOffset(named: "prompts/persona.md", in: archive)
+        let replacement = Data("../evil/persona.md".utf8)
+        XCTAssertEqual(replacement.count, "prompts/persona.md".utf8.count)
+        archive.replaceSubrange((central + 46)..<(central + 46 + replacement.count), with: replacement)
+        let local = Int(readUInt32(from: archive, at: central + 42))
+        archive.replaceSubrange((local + 30)..<(local + 30 + replacement.count), with: replacement)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .unsafeEntryPath)
+    }
+
+    func testCentralAndLocalNamesMustMatch() throws {
+        var archive = fixtureZip
+        let central = try firstCentralDirectoryOffset(in: archive)
+        let local = Int(readUInt32(from: archive, at: central + 42))
+        archive[local + 30] ^= 0x01
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+    }
+
+    func testCentralDirectoryMustEndExactlyAtEOCD() throws {
+        var archive = fixtureZip
+        let eocd = try XCTUnwrap(archive.range(of: Data([0x50, 0x4B, 0x05, 0x06]), options: .backwards)?.lowerBound)
+        let declaredSize = readUInt32(from: archive, at: eocd + 12)
+        writeUInt32(declaredSize - 1, to: &archive, at: eocd + 12)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+    }
+
+    func testOverlappingPhysicalEntryRangesAreRejected() throws {
+        var archive = fixtureZip
+        let central = try firstCentralDirectoryOffset(in: archive)
+        let local = Int(readUInt32(from: archive, at: central + 42))
+        let compressedSize = readUInt32(from: archive, at: central + 20)
+        writeUInt32(compressedSize + 4, to: &archive, at: central + 20)
+        writeUInt32(compressedSize + 4, to: &archive, at: local + 18)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+    }
+
+    func testUnixSpecialFilesAndTypeMasqueradingAreRejected() throws {
+        for mode: UInt32 in [0x1000, 0x2000, 0x6000, 0xA000, 0xC000] {
+            var archive = fixtureZip
+            let central = try firstCentralDirectoryOffset(in: archive)
+            writeUInt32(mode << 16, to: &archive, at: central + 38)
+            XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .unsupportedEntry)
+        }
+
+        var directoryAsFile = fixtureZip
+        let directory = try centralDirectoryOffset(named: "prompts/", in: directoryAsFile)
+        writeUInt32(0x8000 << 16, to: &directoryAsFile, at: directory + 38)
+        XCTAssertEqual(SkillPackArchive.extract(zipData: directoryAsFile).failureError, .unsupportedEntry)
+    }
+
+    func testCRCMismatchRefusesWholeArchive() throws {
+        var archive = fixtureZip
+        let payload = Data("You are a barista coach.".utf8)
+        let range = try XCTUnwrap(archive.range(of: payload))
+        archive[range.lowerBound] ^= 0x01
+        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .corruptEntry)
+    }
+
     func testSha256HexMatchesKnownVector() {
         XCTAssertEqual(SkillPackArchive.sha256Hex(Data("abc".utf8)),
                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    private func firstCentralDirectoryOffset(in data: Data) throws -> Int {
+        try XCTUnwrap(data.range(of: Data([0x50, 0x4B, 0x01, 0x02]))?.lowerBound)
+    }
+
+    private func centralDirectoryOffset(named name: String, in data: Data) throws -> Int {
+        var offset = try firstCentralDirectoryOffset(in: data)
+        while offset + 46 <= data.count {
+            guard readUInt32(from: data, at: offset) == 0x0201_4B50 else { break }
+            let nameLength = Int(readUInt16(from: data, at: offset + 28))
+            let extraLength = Int(readUInt16(from: data, at: offset + 30))
+            let commentLength = Int(readUInt16(from: data, at: offset + 32))
+            let nameData = data.subdata(in: (offset + 46)..<(offset + 46 + nameLength))
+            if String(data: nameData, encoding: .utf8) == name { return offset }
+            offset += 46 + nameLength + extraLength + commentLength
+        }
+        throw NSError(domain: "SkillPackCatalogTests", code: 1)
+    }
+
+    private func readUInt16(from data: Data, at offset: Int) -> UInt16 {
+        UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+    }
+
+    private func readUInt32(from data: Data, at offset: Int) -> UInt32 {
+        UInt32(readUInt16(from: data, at: offset)) |
+            (UInt32(readUInt16(from: data, at: offset + 2)) << 16)
+    }
+
+    private func writeUInt32(_ value: UInt32, to data: inout Data, at offset: Int) {
+        data[offset] = UInt8(truncatingIfNeeded: value)
+        data[offset + 1] = UInt8(truncatingIfNeeded: value >> 8)
+        data[offset + 2] = UInt8(truncatingIfNeeded: value >> 16)
+        data[offset + 3] = UInt8(truncatingIfNeeded: value >> 24)
     }
 
     // MARK: - Catalog envelope

@@ -242,7 +242,23 @@ final class MedicalComplianceTests: XCTestCase {
         XCTAssertFalse(hipaaService.auditLog.isEmpty)
 
         hipaaService.clearAuditLog()
-        XCTAssertTrue(hipaaService.auditLog.isEmpty)
+        XCTAssertEqual(hipaaService.auditLog.count, 1)
+        XCTAssertEqual(hipaaService.auditLog.first?.action, "AUDIT_LOG_CLEARED",
+                       "clearing history must retain the event which explains the deletion")
+        XCTAssertFalse(hipaaService.auditLog.contains { $0.action == "BEFORE_CLEAR" })
+    }
+
+    func testDisablingComplianceModeRetainsItsAuditEvent() {
+        hipaaService.setMode(true)
+        hipaaService.setMode(false)
+
+        XCTAssertFalse(Config.hipaaMode)
+        XCTAssertEqual(hipaaService.auditLog.suffix(2).map(\.action),
+                       ["COMPLIANCE_ENABLED", "COMPLIANCE_DISABLED"])
+
+        let reloaded = HIPAAComplianceService()
+        XCTAssertTrue(reloaded.auditLog.contains { $0.action == "COMPLIANCE_DISABLED" },
+                      "the transition that stops collection must survive a restart")
     }
 
     // MARK: - File Protection

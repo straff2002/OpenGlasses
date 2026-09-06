@@ -14,6 +14,28 @@ struct QRContextTool: NativeTool {
     let description = "Scan a QR code and load its content as context. For museum/venue QR codes, loads exhibit info, floor maps, and guides. For procedure QR codes, creates a step-by-step playbook. Use when user says 'scan that QR code' or 'load context' at a museum, venue, or workplace."
 
     let cameraService: CameraService
+    private let networkDecision: UntrustedNetworkFeaturePolicy.Decision
+    private let fetch: (URL) async throws -> (Data, HTTPURLResponse)
+
+    init(
+        cameraService: CameraService,
+        networkDecision: UntrustedNetworkFeaturePolicy.Decision =
+            UntrustedNetworkFeaturePolicy.currentDecision(for: .qrContextFetch),
+        fetch: @escaping (URL) async throws -> (Data, HTTPURLResponse) = { url in
+            let (data, response) = try await BoundedHTTPClient().fetchData(url, profile: .qrContext)
+            guard let http = HTTPURLResponse(
+                url: response.finalURL,
+                statusCode: response.statusCode,
+                httpVersion: "HTTP/1.1",
+                headerFields: response.headers
+            ) else { throw URLError(.badServerResponse) }
+            return (data, http)
+        }
+    ) {
+        self.cameraService = cameraService
+        self.networkDecision = networkDecision
+        self.fetch = fetch
+    }
 
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -84,6 +106,14 @@ struct QRContextTool: NativeTool {
     // MARK: - Context Loading
 
     private func loadContext(from urlString: String, createPlaybook: Bool) async -> String {
+        guard networkDecision.allowsRequest else {
+            PrivacyLog.qrFetchBlocked(.init(
+                category: .refused,
+                detail: PrivacyToken("releaseContainment")
+            ))
+            return UntrustedNetworkFeaturePolicy.unavailableMessage
+        }
+
         // SSRF guard (Plan BC): the URL comes from a scanned QR or an LLM arg — never let it aim
         // at the user's private network or a metadata endpoint.
         let url: URL
@@ -97,15 +127,14 @@ struct QRContextTool: NativeTool {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            let httpResponse = response as? HTTPURLResponse
+            let (data, httpResponse) = try await fetch(url)
 
-            guard let statusCode = httpResponse?.statusCode, (200...299).contains(statusCode) else {
-                return "Failed to load context from \(urlString) (HTTP \(httpResponse?.statusCode ?? 0))"
+            guard (200...299).contains(httpResponse.statusCode) else {
+                return "Failed to load context from \(url.host ?? "the requested host") (HTTP \(httpResponse.statusCode))"
             }
 
             guard let content = String(data: data, encoding: .utf8) else {
-                return "Could not read content from \(urlString)"
+                return "Could not read content from \(url.host ?? "the requested host")"
             }
 
             // Truncate very long content
@@ -126,7 +155,7 @@ struct QRContextTool: NativeTool {
 
             return result
         } catch {
-            return "Failed to load context from \(urlString): \(error.localizedDescription)"
+            return "Failed to load context from \(url.host ?? "the requested host"): \(error.localizedDescription)"
         }
     }
 

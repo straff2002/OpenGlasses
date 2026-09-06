@@ -13,14 +13,12 @@ import Combine
 /// 1. **Face recognition must see raw pixels.** The blur is indiscriminate (the known-contact
 ///    exemption list was removed in BK P6 as dead code), so filtering ahead of recognition would
 ///    blur the very faces the user deliberately enrolled and break the feature outright.
-/// 2. **Blurring costs a Vision pass plus a Core Image composite per frame.** That is affordable on
-///    the model-facing paths, which `FrameThrottler` has already reduced to roughly one frame a
-///    second, and is not affordable at recording/broadcast frame rates without a dedicated
-///    off-main pipeline that does not exist yet.
+/// 2. **Blurring costs a Vision pass plus a Core Image composite per frame.** The model-facing
+///    paths are already throttled; camera-rate consumers share the off-main `OutboundFrameRelay`.
 ///
-/// So v1 covers egress to third-party models — the highest-stakes path, and the throttled one.
-/// Recording, broadcast and expert streams are **not yet covered**, which the Settings copy now
-/// says out loud rather than implying otherwise.
+/// Every egress scope is covered. When the filter is enabled, a processing failure never returns
+/// the source image: camera-rate consumers drop it in `OutboundFrameRelay`, while this service's
+/// nonoptional still-image API returns an opaque replacement.
 ///
 /// A third constraint arrived with Plan CV: **not every model-facing consumer is an egress.** A
 /// frame handed to an on-device VLM never leaves the device, so there is nothing to filter, and
@@ -76,6 +74,13 @@ enum PrivacyFilterScope: String, CaseIterable {
     }
 }
 
+/// Vision must distinguish a verified empty result from an execution failure. Treating both as
+/// `[]` makes an unavailable detector indistinguishable from “safe to send the original pixels.”
+enum PrivacyFaceDetectionResult: Equatable {
+    case success([CGRect])
+    case failure
+}
+
 /// Automatically detects and blurs bystander faces in video frames.
 ///
 /// Applied at the model-facing chokepoints listed in `PrivacyFilterScope` — the same
@@ -119,18 +124,28 @@ class PrivacyFilterService: ObservableObject {
         PrivacyLog.camera(.privacyFilter, .resumed)
     }
 
-    /// Process a UIImage and return it with bystander faces blurred.
-    /// Returns the original image if no faces detected or filtering is disabled/suspended.
+    /// Process a protected still-image path. With the filter off this is a true passthrough; with
+    /// it on, the source image is returned only after Vision successfully reports no faces.
+    /// Suspension or any conversion/detection/composite failure returns an opaque replacement.
     func processFrame(_ image: UIImage) -> UIImage {
-        guard isEnabled, !isSuspended else { return image }
-        guard let cgImage = image.cgImage else { return image }
+        guard isEnabled else { return image }
+        guard !isSuspended else { return failClosedFrame(like: image, reason: "suspended") }
+        guard let cgImage = image.cgImage else {
+            return failClosedFrame(like: image, reason: "conversionFailed")
+        }
 
-        // Detect faces
-        let faceRects = detectFaces(in: cgImage)
-        guard !faceRects.isEmpty else { return image }
+        let faceRects: [CGRect]
+        switch Self.detectFaces(in: cgImage) {
+        case .success(let detected):
+            faceRects = detected
+        case .failure:
+            return failClosedFrame(like: image, reason: "detectionFailed")
+        }
+        guard !faceRects.isEmpty else { return image }  // verified no-face result
 
-        // Apply blur to each face region
-        guard let blurred = blurFaces(in: image, faceRects: faceRects) else { return image }
+        guard let blurred = blurFaces(in: image, faceRects: faceRects) else {
+            return failClosedFrame(like: image, reason: "compositeFailed")
+        }
         facesBlurredCount += faceRects.count
         return blurred
     }
@@ -145,32 +160,21 @@ class PrivacyFilterService: ObservableObject {
         return processFrame(image)
     }
 
-    // `filteredPublisher` was removed with the Item 0 wiring. It had no callers (like
-    // `processFrame`, which is how the whole feature came to be inert), and it sampled `isEnabled`
-    // once at construction so a mid-session toggle would never have reached it. The recording and
-    // broadcast paths it was meant for need an off-main pipeline at 30 fps, not a `.map` on a
-    // background queue — same judgement as the BK P6 removal above: don't ship a surface that
-    // doesn't do what its name says.
-
     // MARK: - Face Detection
 
-    private func detectFaces(in cgImage: CGImage) -> [CGRect] {
-        return detectFacesSync(in: cgImage)
-    }
-
-    private nonisolated func detectFacesSync(in cgImage: CGImage) -> [CGRect] {
+    nonisolated static func detectFaces(in cgImage: CGImage) -> PrivacyFaceDetectionResult {
         let request = VNDetectFaceRectanglesRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
         do {
             try handler.perform([request])
-            guard let results = request.results else { return [] }
+            guard let results = request.results else { return .failure }
 
             // Convert normalized rects to image coordinates
             let imageWidth = CGFloat(cgImage.width)
             let imageHeight = CGFloat(cgImage.height)
 
-            return results.map { face in
+            return .success(results.map { face in
                 let box = face.boundingBox
                 // Vision uses bottom-left origin, flip to top-left
                 return CGRect(
@@ -179,9 +183,28 @@ class PrivacyFilterService: ObservableObject {
                     width: box.width * imageWidth,
                     height: box.height * imageHeight
                 )
-            }
+            })
         } catch {
-            return []
+            return .failure
+        }
+    }
+
+    /// A failure marker that contains none of the source pixels. The lower-rate filtering API is
+    /// intentionally nonoptional because live-session and pin call sites expect an image. An opaque
+    /// frame preserves that contract while making encoder success safe; zero-size/non-renderable
+    /// inputs become an empty `UIImage`, which downstream encoders reject rather than expose.
+    private func failClosedFrame(like image: UIImage, reason: String) -> UIImage {
+        PrivacyLog.camera(.privacyFilter, .frameRejected, detail: PrivacyToken(reason))
+        let size = image.size
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
+            return UIImage()
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = max(image.scale, 1)
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
         }
     }
 
@@ -223,7 +246,7 @@ class PrivacyFilterService: ObservableObject {
                          z: ciRect.width, w: ciRect.height)
 
             // Use a radial gradient as an elliptical mask
-            guard let radialGradient = CIFilter(name: "CIRadialGradient") else { continue }
+            guard let radialGradient = CIFilter(name: "CIRadialGradient") else { return nil }
             let center = CIVector(x: ciRect.midX, y: ciRect.midY)
             radialGradient.setValue(center, forKey: "inputCenter")
             radialGradient.setValue(min(ciRect.width, ciRect.height) * 0.4, forKey: "inputRadius0")
@@ -231,17 +254,16 @@ class PrivacyFilterService: ObservableObject {
             radialGradient.setValue(CIColor.white, forKey: "inputColor0")
             radialGradient.setValue(CIColor.clear, forKey: "inputColor1")
 
-            guard let maskImage = radialGradient.outputImage else { continue }
+            guard let maskImage = radialGradient.outputImage else { return nil }
 
             // Blend blurred face region with original using mask
-            guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { continue }
+            guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return nil }
             blendFilter.setValue(croppedBlurred, forKey: kCIInputImageKey)
             blendFilter.setValue(result, forKey: kCIInputBackgroundImageKey)
             blendFilter.setValue(maskImage, forKey: kCIInputMaskImageKey)
 
-            if let blended = blendFilter.outputImage {
-                result = blended.cropped(to: ciImage.extent)
-            }
+            guard let blended = blendFilter.outputImage else { return nil }
+            result = blended.cropped(to: ciImage.extent)
         }
 
         // Render final image

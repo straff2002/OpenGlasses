@@ -19,12 +19,13 @@ final class BookFileExtractorTests: XCTestCase {
         for file in files {
             let nameBytes = Data(file.name.utf8)
             let contentBytes = Data(file.content.utf8)
+            let checksum = crc32(contentBytes)
             localOffsets.append(body.count)
             body.appendUInt32(0x0403_4B50)               // local header signature
             body.appendUInt16(20); body.appendUInt16(0)  // version, flags
             body.appendUInt16(0)                         // method: stored
             body.appendUInt16(0); body.appendUInt16(0)   // time, date
-            body.appendUInt32(0)                         // crc (reader doesn't verify)
+            body.appendUInt32(checksum)
             body.appendUInt32(UInt32(contentBytes.count))
             body.appendUInt32(UInt32(contentBytes.count))
             body.appendUInt16(UInt16(nameBytes.count)); body.appendUInt16(0)
@@ -34,12 +35,13 @@ final class BookFileExtractorTests: XCTestCase {
         for (index, file) in files.enumerated() {
             let nameBytes = Data(file.name.utf8)
             let contentBytes = Data(file.content.utf8)
+            let checksum = crc32(contentBytes)
             centralDirectory.appendUInt32(0x0201_4B50)   // central directory signature
             centralDirectory.appendUInt16(20); centralDirectory.appendUInt16(20)
             centralDirectory.appendUInt16(0)             // flags
             centralDirectory.appendUInt16(0)             // method: stored
             centralDirectory.appendUInt16(0); centralDirectory.appendUInt16(0)
-            centralDirectory.appendUInt32(0)             // crc
+            centralDirectory.appendUInt32(checksum)
             centralDirectory.appendUInt32(UInt32(contentBytes.count))
             centralDirectory.appendUInt32(UInt32(contentBytes.count))
             centralDirectory.appendUInt16(UInt16(nameBytes.count))
@@ -168,7 +170,7 @@ final class BookFileExtractorTests: XCTestCase {
         let name = Data("deflated.txt".utf8)
         body.appendUInt32(0x0403_4B50); body.appendUInt16(20); body.appendUInt16(0)
         body.appendUInt16(8)                                  // method: deflate
-        body.appendUInt16(0); body.appendUInt16(0); body.appendUInt32(0)
+        body.appendUInt16(0); body.appendUInt16(0); body.appendUInt32(crc32(originalBytes))
         body.appendUInt32(UInt32(compressed.count)); body.appendUInt32(UInt32(originalBytes.count))
         body.appendUInt16(UInt16(name.count)); body.appendUInt16(0)
         body.append(name); body.append(compressed)
@@ -176,7 +178,7 @@ final class BookFileExtractorTests: XCTestCase {
         var central = Data()
         central.appendUInt32(0x0201_4B50); central.appendUInt16(20); central.appendUInt16(20)
         central.appendUInt16(0); central.appendUInt16(8)
-        central.appendUInt16(0); central.appendUInt16(0); central.appendUInt32(0)
+        central.appendUInt16(0); central.appendUInt16(0); central.appendUInt32(crc32(originalBytes))
         central.appendUInt32(UInt32(compressed.count)); central.appendUInt32(UInt32(originalBytes.count))
         central.appendUInt16(UInt16(name.count)); central.appendUInt16(0); central.appendUInt16(0)
         central.appendUInt16(0); central.appendUInt16(0); central.appendUInt32(0)
@@ -202,6 +204,17 @@ final class BookFileExtractorTests: XCTestCase {
         let html = "<p>line one</p><p>line &quot;two&quot; &#x2014; done</p><script>alert(1)</script>"
         let text = HTMLTextStripper.text(from: html)
         XCTAssertEqual(text, "line one\nline \"two\" — done")
+    }
+
+    private func crc32(_ data: Data) -> UInt32 {
+        var crc = UInt32.max
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 {
+                crc = (crc >> 1) ^ ((crc & 1) == 1 ? 0xEDB8_8320 : 0)
+            }
+        }
+        return crc ^ UInt32.max
     }
 }
 

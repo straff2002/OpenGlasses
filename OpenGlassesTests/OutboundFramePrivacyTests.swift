@@ -1,9 +1,22 @@
 import XCTest
 import CoreGraphics
+import CoreImage
+import Combine
+import UIKit
 @testable import OpenGlasses
 
 /// Plan CP — the two cores that make a blur affordable at camera rate.
 final class OutboundFramePrivacyTests: XCTestCase {
+
+    private func makeImage(color: UIColor = .red, size: CGSize = CGSize(width: 16, height: 16)) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            color.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+    }
 
     // MARK: - FrameCoalescer
 
@@ -190,5 +203,230 @@ final class OutboundFramePrivacyTests: XCTestCase {
         for scope in PrivacyFilterScope.allCases where scope.usesOutboundRelay {
             XCTAssertTrue(scope.isFiltered, "\(scope.rawValue) routes through the relay but claims to be unfiltered")
         }
+    }
+
+    // MARK: - Relay fail-closed behavior
+
+    /// Background optimization deliberately suspends expensive filtering. With privacy enabled,
+    /// that must pause the camera-rate pixels rather than turn the relay into a raw passthrough.
+    @MainActor
+    func testEnabledSuspendedRelayDropsInsteadOfPublishingRawFrame() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        filter.suspend()
+        let relay = OutboundFrameRelay(filter: filter)
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        var received: [UIImage] = []
+        let token = relay.publisher.sink { received.append($0) }
+        source.send(makeImage())
+
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertEqual(relay.privacyDroppedFrameCount, 1)
+        XCTAssertEqual(relay.droppedFrameCount, 1)
+        withExtendedLifetime(token) {}
+    }
+
+    /// Backgrounding can race a Vision pass already in flight. The relay must enforce suspension
+    /// again at publication rather than relying only on the state observed when the frame arrived.
+    @MainActor
+    func testSuspensionDuringDetectionDropsVerifiedNoFaceFrameBeforePublish() async {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        let detectorStarted = expectation(description: "detector started")
+        let releaseDetector = DispatchSemaphore(value: 0)
+        let relay = OutboundFrameRelay(
+            filter: filter,
+            detector: { _ in
+                detectorStarted.fulfill()
+                releaseDetector.wait()
+                return .success([])
+            },
+            compositor: { image, _, _ in image })
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        let dropped = expectation(description: "in-flight source frame was dropped")
+        var received = 0
+        var tokens: Set<AnyCancellable> = []
+        relay.publisher.sink { _ in received += 1 }.store(in: &tokens)
+        relay.$privacyDroppedFrameCount.dropFirst().sink { count in
+            if count == 1 { dropped.fulfill() }
+        }.store(in: &tokens)
+
+        source.send(makeImage())
+        await fulfillment(of: [detectorStarted], timeout: 2)
+        filter.suspend()
+        releaseDetector.signal()
+        await fulfillment(of: [dropped], timeout: 2)
+
+        XCTAssertEqual(received, 0)
+        XCTAssertEqual(relay.droppedFrameCount, 1)
+    }
+
+    /// Invalid/non-CG-backed input cannot be inspected, so it cannot be declared face-free.
+    @MainActor
+    func testEnabledRelayDropsWhenImageCannotBeConverted() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        let relay = OutboundFrameRelay(filter: filter)
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        var received = 0
+        let token = relay.publisher.sink { _ in received += 1 }
+        let ciBacked = UIImage(ciImage: CIImage(color: .red).cropped(
+            to: CGRect(x: 0, y: 0, width: 16, height: 16)))
+        XCTAssertNil(ciBacked.cgImage, "fixture must traverse the conversion-failure branch")
+        source.send(ciBacked)
+
+        XCTAssertEqual(received, 0)
+        XCTAssertEqual(relay.privacyDroppedFrameCount, 1)
+        withExtendedLifetime(token) {}
+    }
+
+    /// A thrown Vision request used to collapse into an empty array and publish the original. The
+    /// injected detector makes the failure deterministic without relying on Vision internals.
+    @MainActor
+    func testEnabledRelayDropsDetectorFailure() async {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        let relay = OutboundFrameRelay(
+            filter: filter,
+            detector: { _ in .failure },
+            compositor: { image, _, _ in image })
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        let dropped = expectation(description: "privacy failure was recorded")
+        var received = 0
+        var tokens: Set<AnyCancellable> = []
+        relay.publisher.sink { _ in received += 1 }.store(in: &tokens)
+        relay.$privacyDroppedFrameCount.dropFirst().sink { count in
+            if count == 1 { dropped.fulfill() }
+        }.store(in: &tokens)
+
+        source.send(makeImage())
+        await fulfillment(of: [dropped], timeout: 2)
+        XCTAssertEqual(received, 0)
+        XCTAssertEqual(relay.droppedFrameCount, 1)
+    }
+
+    /// A face was found, so returning the original after a Core Image failure is a direct privacy
+    /// bypass. The relay must drop it and continue processing later frames.
+    @MainActor
+    func testEnabledRelayDropsCompositeFailure() async {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        let relay = OutboundFrameRelay(
+            filter: filter,
+            detector: { image in
+                .success([CGRect(x: 0, y: 0, width: image.width, height: image.height)])
+            },
+            compositor: { _, _, _ in nil })
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        let dropped = expectation(description: "composite failure was recorded")
+        var received = 0
+        var tokens: Set<AnyCancellable> = []
+        relay.publisher.sink { _ in received += 1 }.store(in: &tokens)
+        relay.$privacyDroppedFrameCount.dropFirst().sink { count in
+            if count == 1 { dropped.fulfill() }
+        }.store(in: &tokens)
+
+        source.send(makeImage())
+        await fulfillment(of: [dropped], timeout: 2)
+        XCTAssertEqual(received, 0)
+        XCTAssertEqual(relay.droppedFrameCount, 1)
+    }
+
+    /// Empty and failed detections are intentionally different: after a successful no-face result,
+    /// the source pixels may pass without paying for a no-op composite.
+    @MainActor
+    func testEnabledRelayPublishesAfterVerifiedNoFaceResult() async {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        let relay = OutboundFrameRelay(
+            filter: filter,
+            detector: { _ in .success([]) },
+            compositor: { image, _, _ in image })
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        let published = expectation(description: "verified no-face frame published")
+        let input = makeImage()
+        var output: UIImage?
+        let token = relay.publisher.sink {
+            output = $0
+            published.fulfill()
+        }
+
+        source.send(input)
+        await fulfillment(of: [published], timeout: 2)
+        XCTAssertTrue(output === input)
+        XCTAssertEqual(relay.privacyDroppedFrameCount, 0)
+        withExtendedLifetime(token) {}
+    }
+
+    /// Privacy-off is the one raw passthrough state. This preserves the documented user choice and
+    /// avoids adding filtering cost to exempt/off operation.
+    @MainActor
+    func testDisabledRelayStillPassesThroughSynchronously() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = false
+        filter.suspend()  // suspension cannot turn an explicit off state into a drop
+        let relay = OutboundFrameRelay(filter: filter)
+        let source = PassthroughSubject<UIImage, Never>()
+        relay.attach(to: source)
+
+        let input = makeImage()
+        var output: UIImage?
+        let token = relay.publisher.sink { output = $0 }
+        source.send(input)
+
+        XCTAssertTrue(output === input)
+        XCTAssertEqual(relay.droppedFrameCount, 0)
+        withExtendedLifetime(token) {}
+    }
+
+    // MARK: - Lower-rate protected and exempt paths
+
+    @MainActor
+    func testSuspendedProtectedStillReturnsOpaqueReplacement() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        filter.suspend()
+        let input = makeImage(color: .red)
+
+        let output = filter.filtered(input, for: .directModelTurn)
+
+        XCTAssertFalse(output === input)
+        guard let cgImage = output.cgImage,
+              let pixel = CIContext(options: [.useSoftwareRenderer: true]).createCGImage(
+                CIImage(cgImage: cgImage), from: CGRect(x: 0, y: 0, width: 1, height: 1)),
+              let provider = pixel.dataProvider,
+              let bytes = provider.data else {
+            return XCTFail("opaque replacement should be renderable")
+        }
+        let pointer = CFDataGetBytePtr(bytes)
+        XCTAssertNotNil(pointer)
+        XCTAssertEqual(pointer?[0], 0)
+        XCTAssertEqual(pointer?[1], 0)
+        XCTAssertEqual(pointer?[2], 0)
+    }
+
+    /// On-device scene narration and face recognition retain their deliberately raw input even if
+    /// an outbound stream has suspended its protected filter.
+    @MainActor
+    func testExemptOnDeviceScopesRemainRawWhileSuspended() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = true
+        filter.suspend()
+        let input = makeImage()
+
+        XCTAssertTrue(filter.filtered(input, for: .faceRecognition) === input)
+        XCTAssertTrue(filter.filtered(input, for: .sceneNarration) === input)
     }
 }

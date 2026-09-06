@@ -27,25 +27,35 @@ final class SkillPackCatalogService: ObservableObject {
     @Published private(set) var installStates: [String: InstallState] = [:]
 
     private let store: SkillPackStore
-    private let fetch: (URL) async throws -> Data
+    private let fetchCatalog: (URL) async throws -> Data
+    private let fetchArchive: (URL) async throws -> Data
     private let catalogURL: () -> URL?
     private let onInstalled: () -> Void
 
     init(
         store: SkillPackStore,
         catalogURL: @escaping () -> URL? = { URL(string: Config.skillPackCatalogURL) },
-        fetch: @escaping (URL) async throws -> Data = { url in
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw URLError(.badServerResponse)
-            }
-            return data
-        },
+        fetch: ((URL) async throws -> Data)? = nil,
         onInstalled: @escaping () -> Void = {}
     ) {
         self.store = store
         self.catalogURL = catalogURL
-        self.fetch = fetch
+        if let fetch {
+            // A single injected fixture transport intentionally drives both routes in tests.
+            self.fetchCatalog = fetch
+            self.fetchArchive = fetch
+        } else {
+            self.fetchCatalog = { url in
+                let (data, response) = try await BoundedHTTPClient().fetchData(url, profile: .signedCatalog)
+                guard (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+                return data
+            }
+            self.fetchArchive = { url in
+                let (data, response) = try await BoundedHTTPClient().fetchData(url, profile: .skillPack)
+                guard (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+                return data
+            }
+        }
         self.onInstalled = onInstalled
     }
 
@@ -56,7 +66,7 @@ final class SkillPackCatalogService: ObservableObject {
         }
         catalogState = .loading
         do {
-            let envelope = try await fetch(url)
+            let envelope = try await fetchCatalog(url)
             switch SkillPackCatalog.parse(envelopeData: envelope) {
             case .success(let entries):
                 catalogState = .loaded(entries)
@@ -80,7 +90,7 @@ final class SkillPackCatalogService: ObservableObject {
 
         let zipData: Data
         do {
-            zipData = try await fetch(url)
+            zipData = try await fetchArchive(url)
         } catch {
             installStates[entry.id] = .failed("download failed: \(error.localizedDescription)")
             return

@@ -9,13 +9,16 @@ struct MCPServerSettingsView: View {
     @AppStorage("mcpServerEnabled") private var enabled: Bool = false
 
     private var agentModeOn: Bool { Config.agentModeEnabled }
+    private var legacyTransportAvailable: Bool {
+        LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses)
+    }
 
     var body: some View {
         Form {
             Section {
                 Toggle("Enable MCP Glasses Server", isOn: $enabled)
                     .tint(AppAccent.color)
-                    .disabled(!agentModeOn)
+                    .disabled(!agentModeOn || !legacyTransportAvailable)
                     .onChange(of: enabled) { _, newValue in
                         if newValue && agentModeOn {
                             appState.startMCPServer()
@@ -24,7 +27,9 @@ struct MCPServerSettingsView: View {
                         }
                     }
             } footer: {
-                if agentModeOn {
+                if !legacyTransportAvailable {
+                    Text("Unavailable in production builds. Secure LAN pairing is not implemented yet; this cleartext server is limited to Debug development builds.")
+                } else if agentModeOn {
                     Text("Exposes the glasses camera and TTS to a Claude Code session on your network. Developer-only.")
                 } else {
                     Text("Requires Agent Mode. Enable Agent Mode first, then turn this on.")
@@ -66,5 +71,10 @@ struct MCPServerSettingsView: View {
         .navigationTitle("MCP Server")
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
+        .onAppear {
+            // Clear a persisted opt-in when a Debug install is replaced by a production build.
+            // The server policy refuses it independently; this keeps the UI honest as well.
+            if !legacyTransportAvailable { enabled = false }
+        }
     }
 }

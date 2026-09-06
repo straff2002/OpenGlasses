@@ -233,6 +233,7 @@ enum PrivacyLog {
     enum ToolGateVerdict: String {
         case blockedBySafety, heldForReengagement, noConfirmationCoordinator
         case confirmationRequired, declinedByUser, egressWithheld, alreadyJournaled
+        case operationJournalUnavailable
     }
 
     @discardableResult

@@ -1,6 +1,6 @@
 # Plan DO — Local-Network Service Transport Hardening
 
-**Status:** 📝 Drafted (2026-08-26)
+**Status:** 🚧 P0 production listener containment implemented (2026-09-05); Release/device verification and the remaining P0/P1–P3 controls are open
 **Origin:** 2026-08-26 adversarial review finding 6 (High).
 **Priority:** Release blocker if LAN MCP/HUD modes are present in a production build.
 
@@ -23,12 +23,17 @@ the cleartext wire regardless. Anyone able to observe or alter the local network
 credentials/content, replay requests, inject HUD text/TTS, or consume camera-derived data. Long-lived
 bearer tokens do not provide confidentiality, peer identity, forward secrecy, or robust replay
 protection. One asymmetry to fix while here: `WebHUDMirrorServer` refuses to start under
-`Config.hipaaMode`, but `MCPGlassesServer` has no HIPAA gate at all and stays reachable in HIPAA mode.
+`Config.hipaaMode`, but `MCPGlassesServer` has no HIPAA gate; it remains reachable in HIPAA mode when
+the legacy transport is permitted in a Debug build.
 
-Neither server is `#if DEBUG`-gated; both ship in Release behind default-off `UserDefaults` toggles
-(`mcpServerEnabled` + `agentModeEnabled`; `webHUD…` + `!hipaaMode`). Route/auth logic is unit-tested
-(`SafetyGateTests`, `WebHUDMirrorTests`), but nothing exercises the live listener, so "binds loopback
-only," "no TLS fallback," and connection-limit behavior have no coverage today.
+Both server implementations remain compiled in Release, but as of 2026-09-05 their start paths consult
+the non-overridable current-build `LocalServiceExposurePolicy`: Release refuses before token/listener
+creation, clears the two persisted opt-ins at launch, suppresses the HUD registration URL and reports
+the feature unavailable in settings. Debug preserves the existing all-interface LAN developer flow.
+Route/auth and policy logic have focused unit tests. On 2026-09-06 the generated Xcode project and test
+bundle built with Xcode 27, and all 5 `LocalServiceExposurePolicyTests` passed in an iOS simulator. No
+live-listener, installed-Release-artifact, loopback, TLS-fallback, connection-limit or packet-capture
+coverage is claimed yet.
 
 Relevant seams:
 
@@ -78,6 +83,22 @@ Relevant seams:
 **Tests.** Release policy cannot return LAN; debug loopback resolves only loopback addresses; `.any`
 is never requested in production composition; background/lock closes fake listeners; old tokens are
 invalid; request/connection limits fail closed.
+
+### P0 implementation checkpoint — 2026-09-05
+
+`LocalServiceExposurePolicy` now accepts explicit build flavor and requested service and returns either
+legacy Debug LAN permission or production refusal. Both `MCPGlassesServer.start()` and
+`WebHUDMirrorServer.start()` enforce the compile-time-derived current policy before accessing a token
+or constructing `NWListener`; `WebHUDMirrorServer.registrationURL` uses the same boundary. Release
+launch removes only `mcpServerEnabled` and `hudMirrorEnabled`, and the settings surfaces show the
+feature as unavailable instead of implying secure transport exists. Focused tests cover both services,
+both build decisions, migration isolation and the two composition call sites; all 5 passed in the Xcode
+27 simulator checkpoint on 2026-09-06.
+
+This checkpoint completes only the immediate Release refusal portion of P0. Debug still binds all
+interfaces to preserve phone-to-Mac development, tokens were not rotated, and foreground/protected-data
+state, connection/request limits, scoped capabilities, live socket verification and Release artifact
+inspection remain open. P1 TLS identity/pairing and P3 browser replacement have not started.
 
 ## P1 — TLS identity and pairing for native MCP clients 🔴
 

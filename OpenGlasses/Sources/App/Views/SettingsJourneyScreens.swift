@@ -401,7 +401,8 @@ struct DisplayHUDSettingsScreen: View {
                     HStack {
                         Label("Web HUD Mirror", systemImage: "globe.desk")
                         Spacer()
-                        Text(hudMirrorEnabled ? "On" : "Off")
+                        Text(LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
+                             ? (hudMirrorEnabled ? "On" : "Off") : "Unavailable")
                             .foregroundStyle(.secondary)
                     }
                 }

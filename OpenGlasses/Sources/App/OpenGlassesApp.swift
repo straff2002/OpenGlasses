@@ -181,6 +181,10 @@ struct OpenGlassesApp: App {
         // without the launch argument — first, because everything below reads what it seeds.
         UITestSupport.applyLaunchState()
         #endif
+        // A Debug install may have persisted opt-ins for the legacy cleartext MCP/Web HUD
+        // listeners. Production refuses those listeners independently at their start boundary;
+        // clearing the preferences here also prevents the UI from representing them as enabled.
+        LocalServiceExposurePolicy.current.clearPersistedOptIns()
         // Start the in-memory diagnostic ring before anything else can log, so a launch-time fault
         // is in the buffer a wearer would export. It records the *encoded* events — the same lines
         // the OS log already receives — so this collects nothing new; only exporting it needs
@@ -314,8 +318,8 @@ struct OpenGlassesApp: App {
 
                     // Skill-pack sideload (Plan BX P3). Deliberately outside the DeepLinkTrust
                     // token gate: a QR-scanned link can't carry the app-group token, and this
-                    // handler never acts — it fetches a preview and raises a confirmation alert;
-                    // the human tap is the gate. Source URLs are HTTPS-or-LAN-only (see
+                    // handler never starts transport — it first raises a download confirmation;
+                    // a second confirmation follows archive inspection. Sources are HTTPS-or-LAN-only (see
                     // SkillPackSideload.isPermittedSource).
                     if url.scheme == "openglasses", url.host == "skillpack" {
                         switch SkillPackSideload.parse(url) {
@@ -415,6 +419,7 @@ struct OpenGlassesApp: App {
             appState.notePresenceForeground(newPhase == .active)
             switch newPhase {
             case .background:
+                appState.skillPackSideload.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 if appState.isConnected {

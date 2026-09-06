@@ -261,6 +261,13 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
         let journal = operationJournal
         switch journal.admit(call: call, semantics: semantics, key: key, at: Date()) {
+        case .storageUnavailable:
+            PrivacyLog.toolGate(.operationJournalUnavailable, tool: name,
+                                detail: PrivacyToken("operation-journal-unavailable"))
+            return .failedBeforeExecution(
+                reason: "'\(name)' was not run because its safety record could not be saved. "
+                    + "Unlock storage or try again after restarting; no action was taken.")
+
         case .duplicate(let existing):
             let advice = OperationRetryPolicy.advice(for: existing, semantics: semantics)
             PrivacyLog.toolGate(.alreadyJournaled, tool: name,

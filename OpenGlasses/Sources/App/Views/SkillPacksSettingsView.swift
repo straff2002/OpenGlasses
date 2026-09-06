@@ -237,6 +237,14 @@ struct SkillPackSideloadPromptOverlay: View {
             .frame(width: 0, height: 0)
             .alert(item: $sideload.prompt) { prompt in
                 switch prompt {
+                case .downloadConsent(let offer):
+                    return Alert(
+                        title: Text("Download Skill Pack?"),
+                        message: Text(offer.consentMessage),
+                        primaryButton: .default(Text("Download")) {
+                            Task { @MainActor in await sideload.approveDownload(offer) }
+                        },
+                        secondaryButton: .cancel { sideload.dismiss() })
                 case .confirm(let pending):
                     return Alert(
                         title: Text("Install Skill Pack?"),
