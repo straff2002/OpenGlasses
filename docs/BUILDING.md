@@ -83,11 +83,12 @@ On iPhone: Meta AI app → Settings → About → tap version number **5 times**
 
 ### 6. Build & Run
 
-Same as [Quick Start](#quick-start) step 1. The repo ships [`project.base.yml`](project.base.yml) plus optional [`project.local.yml`](project.local.yml.example); XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.
+The repo ships [`project.base.yml`](../project.base.yml) plus an optional [`project.local.yml`](../project.local.yml.example) overlay; XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.
 
 ```bash
 brew install xcodegen cmake
 ./Scripts/fetch-mediapipe-frameworks.sh    # vendored binaries, fetched not committed
+./Scripts/fetch-llamacpp-framework.sh      # fetch or build the pinned local inference engine
 ./Scripts/generate-xcodeproj.sh
 open OpenGlasses.xcodeproj
 ```
