@@ -149,6 +149,22 @@ class AgentNotificationQueue: ObservableObject {
         // framed as the delivery of an earlier request, not fresh news, so the model presents it
         // as the answer it is.
         if let injector = appState.activeLiveInjector {
+            // Wait for a gap first. Injected blind, this lands as `conversation.item.create` +
+            // `response.create` while the model may already own the wire's single active-response
+            // slot — the injection is refused or collides with barge-in, and the result is simply
+            // gone. The wait is bounded (`LiveInjectionAdmission`); past the bound we deliver over
+            // the top, because a clipped answer beats a lost one.
+            let admission = await LiveInjectionAdmission.waitUntilClear(
+                isBusy: { injector.isBusyForInjection },
+                sleep: { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+                now: { Date() }
+            )
+            if admission.deferred {
+                PrivacyLog.agent(.notifications, .injectionDeferred,
+                                 reason: PrivacyToken(admission.isTimedOut ? "waitExhausted"
+                                                                          : "sessionWentQuiet"),
+                                 seconds: admission.waited)
+            }
             let framed = AsyncDeliveryPhrasing.resultInstruction(question: nil, answer: message)
             injector.injectText(framed, completeTurn: true)
             appState.lastResponse = message

@@ -10,6 +10,8 @@ struct LivePreviewView: View {
     @State private var currentFrame: UIImage?
     @State private var isStartingStream = false
     @State private var streamError: String?
+    /// Whether the placeholder has been up long enough to earn a second line of advice.
+    @State private var showColdStartHint = false
     @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
 
     @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
@@ -34,12 +36,35 @@ struct LivePreviewView: View {
                     .accessibilityAction(named: "Pin this frame") {
                         appState.pinCurrentFrame()
                     }
-            } else if isStartingStream {
+            } else if isConnecting {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(OGTheme.onMedia)
                     Text("Connecting to camera…")
                         .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
+                    // A healthy cold start really does take up to ~20 s, so the spinner alone is
+                    // truthful and useless. Field reports of "black screen" are almost always
+                    // folded hinges or glasses off the face — both of which cut the camera, and
+                    // neither of which a spinner mentions. Held back a few seconds so a quick
+                    // connect never flashes advice nobody needed.
+                    if showColdStartHint {
+                        Text(CameraStreamStatePolicy.coldStartHint)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(
+                                OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary)
+                            )
+                            .padding(.horizontal, 32)
+                            .transition(.opacity)
+                    }
+                }
+                .task {
+                    // Scoped to this branch, so a stream that drops and reconnects gets a fresh
+                    // grace period instead of inheriting an expiry from the previous attempt.
+                    showColdStartHint = false
+                    try? await Task.sleep(for: .seconds(CameraStreamStatePolicy.coldStartHintDelay))
+                    guard !Task.isCancelled else { return }
+                    showColdStartHint = true
                 }
             } else if let error = streamError {
                 VStack(spacing: 12) {
@@ -236,6 +261,12 @@ struct LivePreviewView: View {
                 }
             }
         }
+    }
+
+    /// Waiting on a first frame — either our own start, or the backend's reconnect after a
+    /// stream we still wanted dropped out.
+    private var isConnecting: Bool {
+        isStartingStream || appState.cameraService.streamingStatus == .waiting
     }
 
     private func startStreamIfNeeded() {

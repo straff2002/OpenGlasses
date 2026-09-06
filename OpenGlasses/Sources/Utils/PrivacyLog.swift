@@ -523,6 +523,8 @@ enum PrivacyLog {
         case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture
+        case streamStoppedWhileWanted
+        case reconnectScheduled, reconnectAttempt, reconnected, reconnectGaveUp
         case warmupAborted, warmupNudged, warmupSessionStopped, warmupAttemptFailed, warmupRetry
         case streamingReached, firstFrameTimedOut, waitAttemptFailed, streamError
         case started, stopped, suspended, resumed, unavailable, configured
@@ -1701,7 +1703,7 @@ enum PrivacyLog {
         case taskStarted, taskCompleted, taskFailed, taskDeferred, taskProducedNothing
         case personaSwitched, modelSwitched, modelRestored
         case queued, pruned, deliveryStarted, deliverySkipped, deliveredViaSession
-        case awaitingOperator, summaryFailed
+        case awaitingOperator, summaryFailed, injectionDeferred
         case dispatchedWithoutFrame, replanned, yieldedToHuman
     }
 
@@ -1712,7 +1714,8 @@ enum PrivacyLog {
     static func agent(_ channel: AgentChannel, _ event: AgentEvent,
                       model: PrivacyToken? = nil, priority: PrivacyToken? = nil,
                       reason: PrivacyToken? = nil, count: Int? = nil, characters: Int? = nil,
-                      minutes: Int? = nil, error: SafeErrorSummary? = nil) -> PrivacyEvent {
+                      minutes: Int? = nil, seconds: Double? = nil,
+                      error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.channel, .token(PrivacyToken(channel.rawValue))),
             .init(.event, .token(PrivacyToken(event.rawValue))),
@@ -1723,6 +1726,7 @@ enum PrivacyLog {
         if let count { fields.append(.init(.count, .count(count))) }
         if let characters { fields.append(.init(.characters, .count(characters))) }
         if let minutes { fields.append(.init(.minutes, .count(minutes))) }
+        if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.agent, .agent, fields))
     }

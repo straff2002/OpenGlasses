@@ -390,6 +390,13 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 extension OpenAIRealtimeSessionManager: LiveSessionInjecting {
     var canInject: Bool { isActive && connectionState == .ready }
 
+    /// Both halves matter here. The model half is the API's single active-response slot; the user
+    /// half is server VAD, which will interrupt the response our injection just asked for if the
+    /// wearer is still talking when it lands.
+    var isBusyForInjection: Bool {
+        realtimeService.isModelSpeaking || realtimeService.isUserSpeaking
+    }
+
     func injectSharpImage(jpegData: Data) {
         realtimeService.sendHighResImage(jpegData: jpegData)
     }

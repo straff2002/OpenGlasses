@@ -37,6 +37,41 @@ enum StreamRecoveryPolicy {
     /// guessing from the clock.
     static let warmupTimeout: TimeInterval = 20
 
+    /// Delay before reconnect attempt `attempt` (0-based) after a stream we still wanted
+    /// dropped to `.stopped`. `nil` once the budget is spent.
+    ///
+    /// The shape is earned by what is on the other end: a glasses wake plus a Bluetooth
+    /// handshake can take most of a minute, so the ladder stays cheap and fast while the drop
+    /// might be a hiccup, then settles to a slow poll rather than hammering a radio that is
+    /// busy re-associating. It stops at ~90 s because past that the glasses are off, out of
+    /// range or flat — none of which more retries fix, and all of which deserve to be said.
+    static func reconnectDelay(attempt: Int) -> TimeInterval? {
+        switch attempt {
+        case ..<0: return nil
+        case 0..<3: return 1.5     // a hiccup: back before the wearer notices
+        case 3..<6: return 3
+        case 6..<21: return 5      // a wake + handshake: poll, don't hammer
+        default: return nil        // ~88 s spent; this is not coming back on its own
+        }
+    }
+
+    /// Total wall-clock the reconnect ladder is allowed. Derived from the cadence rather than
+    /// asserted, so the two can never drift apart.
+    static var reconnectBudget: TimeInterval {
+        var total: TimeInterval = 0
+        var attempt = 0
+        while let delay = reconnectDelay(attempt: attempt) {
+            total += delay
+            attempt += 1
+        }
+        return total
+    }
+
+    /// Said once when the ladder gives up. The earlier notice promised a reconnect; this one has
+    /// to retract that promise, or the wearer keeps waiting on a camera that stopped trying.
+    static let reconnectGaveUpNotice =
+        "Camera didn't come back. Check the glasses are on and charged, then start the camera again."
+
     /// Whether a frame-flow stall should trigger recovery at all, given the stream's
     /// current state. `.paused` is the temple-tap system hold: frames stopping is the
     /// EXPECTED behavior, there is no app-callable resume, and tearing the stream down

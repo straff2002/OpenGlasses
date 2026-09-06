@@ -32,6 +32,10 @@ class OpenAIRealtimeService: ObservableObject {
     @Published var connectionState: OpenAIRealtimeConnectionState = .disconnected
     @Published var isModelSpeaking: Bool = false
     @Published var reconnecting: Bool = false
+    /// Server VAD's view of the wearer: true between `speech_started` and `speech_stopped`.
+    /// Read by the injection admission gate — a turn injected mid-utterance is a turn the server
+    /// is about to interrupt.
+    @Published private(set) var isUserSpeaking: Bool = false
 
     // Callbacks
     var onAudioReceived: ((Data) -> Void)?
@@ -214,6 +218,10 @@ class OpenAIRealtimeService: ObservableObject {
         onReconnected = nil
         connectionState = .disconnected
         isModelSpeaking = false
+        // A `speech_started` with no matching `speech_stopped` would otherwise leave the next
+        // session believing the wearer never stopped talking, and hold every injection to its
+        // full bounded wait.
+        isUserSpeaking = false
         currentResponseId = nil
         resolveConnect(success: false)
     }
@@ -401,7 +409,15 @@ class OpenAIRealtimeService: ObservableObject {
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500
+                    "silence_duration_ms": 500,
+                    // Both stated rather than left to the API's defaults. `create_response`
+                    // is what makes end-of-speech produce an answer at all; `interrupt_response`
+                    // keeps barge-in server-side, where it can cancel a response the client
+                    // never learns about. Defaults for these have moved between API versions,
+                    // and a session that silently stops answering is indistinguishable from a
+                    // dead microphone.
+                    "create_response": true,
+                    "interrupt_response": true
                 ]
             ]
         ]
@@ -545,6 +561,7 @@ class OpenAIRealtimeService: ObservableObject {
 
         case "input_audio_buffer.speech_started":
             // User started speaking — interrupt model if it's responding
+            isUserSpeaking = true
             if isModelSpeaking {
                 PrivacyLog.realtimeSession(.openai, .userInterrupted)
                 cancelResponse()
@@ -552,6 +569,7 @@ class OpenAIRealtimeService: ObservableObject {
             lastUserSpeechEnd = nil
 
         case "input_audio_buffer.speech_stopped":
+            isUserSpeaking = false
             lastUserSpeechEnd = Date()
 
         case "conversation.item.input_audio_transcription.completed":

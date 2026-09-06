@@ -88,6 +88,119 @@ final class LiveInjectionTests: XCTestCase {
         XCTAssertTrue(bare.contains("answer to what was asked"))
     }
 
+    /// Both live wires deliver an injection as a **user** turn, which is what makes the layout
+    /// matter: the result has to be fenced as quoted material, and the model has to be told in as
+    /// many words that the wearer did not say it.
+    func testResultIsFencedAsQuotedMaterialExactlyOnce() {
+        let answer = "Two meetings: standup at 9, review at 4."
+        let text = AsyncDeliveryPhrasing.resultInstruction(question: nil, answer: answer)
+
+        guard let begin = text.range(of: AsyncDeliveryPhrasing.resultBeginMarker),
+              let end = text.range(of: AsyncDeliveryPhrasing.resultEndMarker) else {
+            return XCTFail("the result must be fenced by both markers")
+        }
+        XCTAssertTrue(begin.upperBound < end.lowerBound, "markers must be in order")
+
+        let fenced = String(text[begin.upperBound..<end.lowerBound])
+        XCTAssertEqual(fenced.trimmingCharacters(in: .whitespacesAndNewlines), answer,
+                       "the fence holds the result and nothing else")
+        XCTAssertEqual(text.components(separatedBy: answer).count - 1, 1,
+                       "the result must appear exactly once — a second copy outside the fence is "
+                       + "the model's cue to answer it")
+        XCTAssertTrue(text.lowercased().contains("not something the user just said"),
+                      "the delimiters alone don't survive a result written in the second person")
+    }
+
+    /// The defect in one assertion. A result ending in an assistant-style sign-off used to be the
+    /// last thing in the prompt, so the model read it as the *user* closing the conversation and
+    /// replied "You're welcome!" instead of speaking the result. The instruction goes last.
+    func testTheLastLineIsTheInstructionNotTheAnswersSignOff() {
+        let signOff = "Let me know if you need anything else!"
+        let text = AsyncDeliveryPhrasing.resultInstruction(
+            question: "did the deploy finish", answer: "Deploy finished at 14:02. \(signOff)")
+
+        guard let last = text
+            .components(separatedBy: .newlines)
+            .map({ $0.trimmingCharacters(in: .whitespaces) })
+            .last(where: { !$0.isEmpty }) else {
+            return XCTFail("no content in the prompt")
+        }
+
+        XCTAssertFalse(last.contains(signOff),
+                       "a sign-off inside the result must not be the last thing the model reads")
+        XCTAssertTrue(last.contains("not as a new notification") || last.contains("Deliver"),
+                      "the prompt has to end on the delivery instruction, got: \(last)")
+        XCTAssertTrue(text.contains("did the deploy finish"),
+                      "the earlier-question prefix survives the reframing")
+    }
+
+    // MARK: - LiveInjectionAdmission
+
+    /// A quiet session takes the injection immediately — the gate must not add latency to the
+    /// common case, which is a result arriving between turns.
+    func testAQuietSessionInjectsImmediately() {
+        XCTAssertEqual(
+            LiveInjectionAdmission.decide(modelSpeaking: false, userSpeaking: false, waited: 0),
+            .injectNow)
+    }
+
+    /// Either speaker busy is a collision: the Realtime wire has one active-response slot, and a
+    /// turn arriving mid-utterance cuts the speaker off.
+    func testEitherSpeakerDefersTheInjection() {
+        XCTAssertEqual(
+            LiveInjectionAdmission.decide(modelSpeaking: true, userSpeaking: false, waited: 0),
+            .retry(after: LiveInjectionAdmission.pollInterval))
+        XCTAssertEqual(
+            LiveInjectionAdmission.decide(modelSpeaking: false, userSpeaking: true, waited: 0),
+            .retry(after: LiveInjectionAdmission.pollInterval))
+    }
+
+    /// Waiting forever loses the answer, and a stuck speaking flag would lose it silently — the
+    /// exact failure class the gate exists to end. Past the bound we deliver into the collision.
+    func testTheWaitIsBoundedAndThenInjectsAnyway() {
+        XCTAssertEqual(
+            LiveInjectionAdmission.decide(modelSpeaking: true, userSpeaking: true,
+                                          waited: LiveInjectionAdmission.maxWait),
+            .injectAnyway)
+        XCTAssertEqual(
+            LiveInjectionAdmission.decide(modelSpeaking: true, userSpeaking: false,
+                                          waited: LiveInjectionAdmission.maxWait - 0.01),
+            .retry(after: LiveInjectionAdmission.pollInterval))
+    }
+
+    @MainActor
+    func testWaitUntilClearReleasesOnTheFirstGap() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        var remainingBusyPolls = 3
+        let outcome = await LiveInjectionAdmission.waitUntilClear(
+            isBusy: {
+                guard remainingBusyPolls > 0 else { return false }
+                remainingBusyPolls -= 1
+                return true
+            },
+            sleep: { clock = clock.addingTimeInterval($0) },
+            now: { clock })
+
+        XCTAssertEqual(outcome, .clear(waited: 3 * LiveInjectionAdmission.pollInterval))
+        XCTAssertTrue(outcome.deferred)
+        XCTAssertFalse(outcome.isTimedOut)
+    }
+
+    @MainActor
+    func testWaitUntilClearGivesUpAtTheBoundRatherThanLosingTheResult() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        let outcome = await LiveInjectionAdmission.waitUntilClear(
+            isBusy: { true },
+            sleep: { clock = clock.addingTimeInterval($0) },
+            now: { clock })
+
+        XCTAssertTrue(outcome.isTimedOut)
+        XCTAssertGreaterThanOrEqual(outcome.waited, LiveInjectionAdmission.maxWait)
+        XCTAssertLessThan(outcome.waited,
+                          LiveInjectionAdmission.maxWait + LiveInjectionAdmission.pollInterval,
+                          "the loop must stop at the bound, not overshoot it")
+    }
+
     func testDirectModeFallbackIsDeterministicAndVaries() {
         XCTAssertEqual(AsyncDeliveryPhrasing.directModeStillWorking(elapsedSeconds: 10),
                        "Still working on that.")
