@@ -75,12 +75,17 @@ enum VaultExporter {
             // Reference documents — the customer's own files, copied from the installed baseline
             // so the folder round-trips (technicians never edit these, so there is no overlay copy).
             for document in manifest.documents {
-                let relative = manifest.documentRelativePath(document)
-                guard let src = store.bundleRoot?.appendingPathComponent(relative),
-                      fm.fileExists(atPath: src.path) else { continue }
-                let dest = root.appendingPathComponent(relative)
-                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fm.copyItem(at: src, to: dest)
+                // The document and, when it bundles one, the manufacturer's original beside it —
+                // an export that dropped the original would silently downgrade the vault it came
+                // from (Plan EK P3).
+                for relative in [manifest.documentRelativePath(document),
+                                 manifest.documentSourceRelativePath(document)].compactMap({ $0 }) {
+                    guard let src = store.bundleRoot?.appendingPathComponent(relative),
+                          fm.fileExists(atPath: src.path) else { continue }
+                    let dest = root.appendingPathComponent(relative)
+                    try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.copyItem(at: src, to: dest)
+                }
             }
 
             // procedures/ — copy whatever is present (overlay wins, else bundle).

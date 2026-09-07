@@ -13,6 +13,11 @@ struct MessageBubble: View {
     @Environment(\.appAccent) private var accent
 
     private var isUser: Bool { message.role == "user" }
+    /// The sources this answer named. Machine-attached by the retriever and repeated by the model,
+    /// so they point at real pages — which is what makes them safe to make tappable (Plan EK P3).
+    private var citations: [Citation] {
+        isUser ? [] : CitationLineParser.parse(message.content)
+    }
     private var bubbleColor: Color {
         isUser ? accent.opacity(0.18) : OGTheme.card
     }
@@ -33,6 +38,8 @@ struct MessageBubble: View {
                     .padding(.vertical, 9)
                     .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
                     .contextMenu { contextActions }
+
+                CitationChipsView(citations: citations)
 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)

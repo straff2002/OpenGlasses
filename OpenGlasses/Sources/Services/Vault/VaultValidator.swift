@@ -82,6 +82,7 @@ enum VaultValidator {
             guard fm.fileExists(atPath: url.path) else {
                 issues.append("listed document missing: \(manifest.documentRelativePath(document))"); continue
             }
+            issues.append(contentsOf: originalIssues(for: document, manifest: manifest, directory: directory))
             // A scan is not a refusal: it is read by recognition at import, which is slow, so the
             // author is told how much of it that covers and can find the original PDF first.
             if let survey = VaultDocumentExtractor.survey(url), survey.needsRecognition {
@@ -114,6 +115,28 @@ enum VaultValidator {
         }
 
         return Result(manifest: manifest, issues: issues, warnings: warnings)
+    }
+
+    /// The manufacturer's original beside an extracted-text document (Plan EK P3): it has to be a
+    /// PDF that is actually there, and a published link has to be a link, because both are shown to
+    /// a technician as the manufacturer's own copy and neither can be checked later.
+    static func originalIssues(for document: VaultDocument, manifest: VaultManifest, directory: URL) -> [String] {
+        var issues: [String] = []
+        if let relative = manifest.documentSourceRelativePath(document) {
+            let source = document.source ?? relative
+            if !source.lowercased().hasSuffix(".pdf") {
+                issues.append("document source must be a PDF: \(source)")
+            } else if !FileManager.default.fileExists(atPath: directory.appendingPathComponent(relative).path) {
+                issues.append("document source missing: \(relative)")
+            }
+        }
+        if let link = document.sourceUrl, !link.trimmingCharacters(in: .whitespaces).isEmpty {
+            let scheme = URL(string: link.trimmingCharacters(in: .whitespaces))?.scheme?.lowercased()
+            if scheme != "http" && scheme != "https" {
+                issues.append("document source_url must be an http(s) link: \(link)")
+            }
+        }
+        return issues
     }
 
     /// Validate one procedure's step graph: entry resolves, all branch/default targets resolve,

@@ -107,12 +107,16 @@ enum VaultImporter {
                     try fm.copyItem(at: src, to: staging.appendingPathComponent(dir, isDirectory: true))
                 }
             }
-            // Copy the reference documents the manifest lists (validated present above).
+            // Copy the reference documents the manifest lists (validated present above), and the
+            // manufacturer's original beside any that names one — never indexed, but the page a
+            // technician following an SOP has to be able to see (Plan EK P3).
             for document in manifest.documents {
-                let relative = manifest.documentRelativePath(document)
-                let dest = staging.appendingPathComponent(relative)
-                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fm.copyItem(at: sourceDir.appendingPathComponent(relative), to: dest)
+                for relative in [manifest.documentRelativePath(document),
+                                 manifest.documentSourceRelativePath(document)].compactMap({ $0 }) {
+                    let dest = staging.appendingPathComponent(relative)
+                    try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.copyItem(at: sourceDir.appendingPathComponent(relative), to: dest)
+                }
             }
             // Swap staging → baseline (the read-only authoritative copy).
             try? fm.removeItem(at: baseline)
@@ -167,7 +171,14 @@ enum VaultImporter {
             guard let data = try? Data(contentsOf: url) else {
                 throw ImportError.documentFailed("\(document.file) is missing from the installed vault")
             }
-            desired.append(.init(file: document.file, title: document.title, contentHash: VaultDocumentLedger.hash(of: data)))
+            // The original is hashed, not read: it is the thing "unmodified since import" is
+            // checked against later, and it never becomes chunks.
+            let originalHash = manifest.documentSourceRelativePath(document)
+                .flatMap { try? Data(contentsOf: root.appendingPathComponent($0)) }
+                .map(VaultDocumentLedger.hash(of:))
+            desired.append(.init(file: document.file, title: document.title,
+                                 contentHash: VaultDocumentLedger.hash(of: data),
+                                 sourceContentHash: originalHash))
         }
 
         var ledger = VaultDocumentLedger.load(from: ledgerDir)
@@ -213,7 +224,8 @@ enum VaultImporter {
                                  contentHash: want.contentHash, chunkCount: ref.chunkCount,
                                  ocrPages: extracted.ocrPages, lowConfidencePages: extracted.lowConfidencePages,
                                  structuredHeadings: extracted.structuredHeadings,
-                                 diagramPages: extracted.diagramPages))
+                                 diagramPages: extracted.diagramPages,
+                                 sourceContentHash: want.sourceContentHash))
         }
         ledger.entries = entries
         try ledger.save(to: ledgerDir)

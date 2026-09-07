@@ -198,6 +198,38 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    /// Every printed page of a document with the text stored for it, ascending — what the figure
+    /// sheet shows and pages through when a manual was imported as extracted text rather than as a
+    /// PDF (Plan EK P3).
+    ///
+    /// Its own query rather than `fetchChunks`, which decodes every chunk's embedding blob: a page
+    /// of text has no use for a vector, and a 300-page manual would pay for all of them on the main
+    /// actor while the model is still answering.
+    ///
+    /// A chunk carries the page its first sentence is on, so a short page swallowed whole by the
+    /// chunk before it has no entry here. That is why the sheet pages over these rather than over
+    /// 1…N: offering a page the store holds nothing for would show a blank.
+    func pageTexts(documentId: String) -> [(page: Int, text: String)] {
+        let sql = """
+        SELECT page, text FROM doc_chunks
+        WHERE document_id = '\(escapedSQL(documentId))' AND page IS NOT NULL
+        ORDER BY chunk_index ASC
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var byPage: [Int: [String]] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(stmt, 1) else { continue }
+            byPage[Int(sqlite3_column_int(stmt, 0)), default: []].append(String(cString: raw))
+        }
+        return byPage.keys.sorted().compactMap { page in
+            let text = DocumentReconstructor.deOverlap(byPage[page]!)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : (page, text)
+        }
+    }
+
     func list() -> [DocumentRef] { documents }
 
     /// Documents in a single namespace (project scope, Plan AN).

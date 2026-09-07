@@ -1,9 +1,10 @@
 # Plan EK — Manual Structure and Figures (headings from type, diagrams as pictures)
 
-**Status:** 🚧 P1 + P2 implemented 2026-09-07 (headless); a device turn against a cloud provider is
+**Status:** 🚧 P1–P3 implemented 2026-09-07 (headless); a device turn against a cloud provider is
 pending. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What each phase found —
-including two rules the design did not have, one measured cost, and the P1 rule P2 had to work
-around — is in **P1 findings** and **P2 findings** below.
+including two rules the design did not have, one measured cost, the P1 rule P2 had to work around,
+and the route mistake P3 nearly shipped — is in **P1 findings**, **P2 findings** and **P3 findings**
+below.
 **Origin:** EJ P1 tightened the lexical heading rules and left a residue it could not reach: an
 ALL-CAPS wiring-diagram fragment (`§BOTH SENSOR`, `§1- DATA LOW CONNECTION`, `§PRESS TO RESET`,
 `§TEST B`) is indistinguishable by any rule over letters from a real heading like
@@ -145,6 +146,50 @@ chunks).
   is not a heading), and a **prose** chunk under a caption cites its `§Section` rather than the
   figure — the figure names a drawing, the section names prose; a diagram chunk keeps `Figure N`.
 
+### 5 · Every citation is a door to the page it came from (P3)
+
+An answer's `Source:` lines are machine-attached by the retriever, never recalled by the model, so
+they are safe to make tappable. P3 turns them into the human-in-the-loop check a manufacturer's SOP
+needs: the technician sees the page the answer was drawn from, in the manufacturer's own document
+when it is present, and the session records that they did.
+
+- **Citation chips.** Under each assistant message on the phone, one chip per `Source:` line —
+  manual title, page, and figure or section — parsed from the message text. Tapping opens the P2
+  sheet at that page. Core-file citations (`Source: error_codes.md`) open that section in the
+  existing vault file editor, so a technician can check and an author can correct on the spot. By
+  voice, "open page 20" / "show me that source" route through `manual_figure` with a page argument.
+- **Two routes, one sheet, honest header.** PDF route: the sheet shows the manufacturer's page and
+  the header says so — `Manufacturer's document · page 20 of 85 · unmodified since import`, the last
+  clause checked against the ledger's content hash, not asserted. Markdown route: the sheet shows the
+  page's stored text, rendered, and the header says `Extracted text · page 20` and whether the
+  original is bundled (below).
+- **The original alongside the extract.** A Markdown document in the manifest may name its
+  original: `"source": "SLP99UHVK-service-manual.pdf"` (a PDF in the same `documents_dir`, copied at
+  install, hashed in the ledger, never indexed — the text is what is searched, so an author's
+  corrections still count). When present, the sheet offers **Open manufacturer's page** at the same
+  page; when absent, the header says the original is not in this vault, which a compliance reviewer
+  wants to know. An optional `"source_url"` per document offers the manufacturer's published copy,
+  opened outside the app. Both fields optional; existing manifests untouched; the validator checks
+  `source` exists and is a PDF.
+- **Paging.** PDF route: PDFKit's viewer pages by swipe; the title shows `page N of M` and one tap
+  returns to the cited page. Markdown route: the store knows every chunk's page, so the sheet pages
+  through stored text by page number with the same title and the same return tap.
+- **Pretty Markdown.** The chat renderer parses inline Markdown and fenced code today and nothing
+  else; the vault files are headings and pipe tables. P3 extends the app's own block parser with
+  headings, bullet and numbered lists, and pipe tables drawn as a grid in the design kit's type, and
+  uses it for the core-file section view, the Markdown-route page view, and the chat transcript. No
+  new dependency.
+- **The audit trail says what was verified.** `citation_opened` (title, page, from which chip or
+  voice request) and `page_verified` with a `source` of `manufacturer_pdf`, `extracted_text` or
+  `external_url`; every page swiped to is a `page_viewed`. The session export lists, per answer,
+  which citations were opened and against what. That is the double trust: the answer, and the page
+  in the manufacturer's book the technician read.
+- **Guide.** Step 1 gains: for anything a manufacturer requires as an SOP, import the PDF or bundle
+  it as `source` beside the extracted text. Step 6 gains the citation-chip check.
+- **Not in scope.** Highlighting the passage inside the PDF page (glyph mapping is fragile; the
+  printed book is page-granular anyway), HUD beyond the one-line cue, and any manual browser beyond
+  paging from a citation.
+
 ## Phases
 
 - **P1 — pure core (one PR).** §1 structured extraction in `VaultDocumentExtractor` (attributed
@@ -163,7 +208,13 @@ chunks).
   audit-log lines naming the figure sent and shown, the two P1 follow-ups. Headless tests use a
   fixture PDF and a fake provider; the sheet's view model is tested without SwiftUI; the live edge
   is a device turn against a cloud provider, recorded when run.
-- **P3 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
+- **P3 — citations as doors (one PR). Done 2026-09-07.** §5: citation chips, the two-route sheet header with the
+  ledger-hash check, `source` / `source_url` manifest fields with validator and importer support, paging
+  on both routes, the Markdown block renderer, the three audit events and the export lines, guide
+  edits. Headless tests for the chip parser, the header decision, the manifest/validator/importer
+  changes, the Markdown block parser (tables, lists, headings), the paging model, and the audit
+  events; the sheet's view model without SwiftUI.
+- **P4 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
   page), and per-manual heading lists for PDFs whose type carries no structure.
 
 ## Acceptance
@@ -321,3 +372,56 @@ sheet's content is decided by a view model with no SwiftUI in it, but whether a 
 is legible *enough* to a given model for 8-point terminal labels is a question only a real turn
 answers. If it is not, the answer is P3's crop rather than a higher DPI: the whole page at a
 readable label size is a much larger image than the drawing at one.
+
+## P3 findings (2026-09-07)
+
+**The route is a property of the document, not of what happens to be on disk.** The first cut of the
+sheet chose its route by asking "is there a PDF to show?" — which answers *yes* for a Markdown manual
+whose original is bundled beside it, and would have opened the transcription's page under the header
+`Manufacturer's document`. That is precisely the lie the header exists to prevent, and no test of the
+PDF route would have caught it, because on that route the two questions have the same answer. The
+route now comes from the document (`documentIsPDF`) and the bundled original is a switch the
+technician makes; the extracted-text tests are what fail when it regresses.
+
+**A swapped original is changed content, even when the text is byte-identical.** The ledger diff
+compares the original's hash as well as the extracted text's, so re-importing a vault with a new PDF
+re-ingests that document. It costs a re-index of text that did not change — and the alternative is
+worse: the ledger keeps the hash it recorded at import, so leaving it stale would have the header
+check the file on screen against the hash of a file that is no longer there and report the
+manufacturer's own copy as *changed since import*.
+
+**A citation cannot be split on its commas.** `Title, page 44, Figure 58` and
+`error_codes.md, models.md` are the same punctuation meaning two different things. Splitting reads
+one of them wrong whichever way it is written, so the parser groups instead: a part naming a page, a
+`§section` or a `Figure N` belongs to the citation before it, and anything else starts a new one.
+One rule reads both shapes, and a part that belongs to nothing — `Source: page 4` — is dropped rather
+than promoted to a document.
+
+**The extracted-text route pages through what the store holds, not 1…N.** A chunk carries the page
+its *first* sentence is on (P1), so a short page swallowed whole by a chunk that began on the page
+before has no stored text of its own. Paging over the pages the store actually holds — sparse, in
+order — is therefore the honest offering; a cited page the store has nothing for opens the nearest
+page it does have rather than a blank. On the Lennox pair the loss is small and real: the service
+manual's 85 pages hold stored text on 83 and the installation instructions' 78 on 76 — two pages each
+with no text of their own, either swallowed by the chunk before them or carrying nothing extractable.
+`ExampleVaultLennoxTests` prints both numbers rather than asserting one, because they are a property
+of the manuals' typesetting rather than of the code.
+
+**What P3 deliberately did not do with the bundled original.** A Markdown document with a `source`
+now has a page that could be rendered for the *model* as well as for the technician, but
+`ManualFigureAttachment` still asks whether the imported document is a PDF. Left alone: P2's decision
+is tested against that question, the plan's §5 is about the sheet, and widening the model's image
+slot is a change to what leaves the device — which belongs in its own phase with its own test, not in
+a paragraph of a UI phase.
+
+**The chat renderer changed for every answer, not only Field Assist ones.** Headings, lists and pipe
+tables are parsed app-wide because `MessageContentView` is one view; a fault-code table in a vault
+answer and a table in a general chat reply are the same text going through the same parser. That is
+the intent of §5's "pretty Markdown" and it is worth naming rather than discovering: the surface it
+touches is larger than the plan's other work.
+
+**A chip's visibility is a cheap check, not a resolution.** `canOpenCitation` is asked once per
+citation per drawn message, so it asks whether this vault has a reference tier (or a core file of
+that name) rather than resolving the document — which reads the ledger off disk. The tap resolves,
+and a citation that resolves to nothing opens nothing and logs nothing, because an audit line saying
+a page was opened when it was not is worse than a chip that does nothing.

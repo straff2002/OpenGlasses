@@ -60,6 +60,12 @@ final class SessionLogger {
             case figureSent = "figure_sent"
             /// A manual figure was put on the technician's phone.
             case figureShown = "figure_shown"
+            /// A technician opened a citation from an answer (Plan EK P3).
+            case citationOpened = "citation_opened"
+            /// The page behind a citation was shown, and against which document.
+            case pageVerified = "page_verified"
+            /// A page was turned to inside the figure sheet.
+            case pageViewed = "page_viewed"
             case error = "error"
         }
     }
