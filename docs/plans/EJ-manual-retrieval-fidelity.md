@@ -1,6 +1,6 @@
 # Plan EJ — Manual Retrieval Fidelity (what a real OEM manual pair exposed)
 
-**Status:** 🚧 Planned 2026-09-07. P1 implemented 2026-09-07 (ranking, heading detector, whole-line page markers, lookup preference); P2 and P3 outstanding.
+**Status:** 🚧 P1 + P2 implemented 2026-09-07; device measurement pending. P1: ranking, heading detector, whole-line page markers, lookup preference. P2: the gate measured against the real pair (`RetrievalGateCalibrationTests`) and given a lexical criterion plus per-backend defaults — `nl-word` numbers below; `nl-sentence` and `nl-contextual` still unmeasured and left at today's gate until a device run. P3 outstanding.
 **Origin:** The first vault built from a real pair of OEM manuals — a Lennox SLP99UHVK gas furnace
 service manual (85 pages) and installation instructions (78 pages), 400 KB of extracted text, 692
 chunks — was imported headlessly through the shipped validator, importer, lookup tool, procedure
@@ -97,25 +97,91 @@ titles is a model-side judgement, and the second citation is useful.
 
 ### 2 · A gate that is calibrated, not assumed (evidence)
 
-Two changes, one measurement.
+Two changes, one measurement — and the measurement changed the design, so what follows is what was
+built and what it scored, not what was planned.
 
-**Relative margin instead of an absolute floor.** `RetrievalEvidencePolicy` gains a second criterion:
-a passage counts as evidence when its similarity clears the floor **and** it is within `margin` of
-the best passage in the ranked list, *or* it carries a token. The gate then asks "is anything here
-markedly better than the background?" rather than "is anything above 0.30?", which is the question
-that survives a change of embedder. Both parameters stay injectable; both defaults come from the
-measurement below.
+**The criteria.** `RetrievalEvidencePolicy` now carries three switchable criteria beside the token
+rule (a code-like token found verbatim is always evidence):
 
-**Measurement.** Extend `EmbeddingBenchmark` with a negatives set — questions with no relevant
-passage in the corpus (other manufacturers, torque specs, weather) — and a score,
-`insufficiencyRecall`: the fraction of negatives for which the gate says insufficient at a given
-policy. Run it against both backends (`nl-word` headless; `nl-sentence` and `nl-contextual` on a
-device via the existing Diagnostics screen path that already reports embedding readiness) with the
-Lennox pair as the corpus, and pick the `(floor, margin)` pair that maximises positive recall@4 with
-insufficiency recall ≥ 0.9. Record the numbers per backend in this plan's Status line and in
-`RetrievalEvidencePolicy`'s doc comment, with the backend they were measured on. If the two backends
-need different floors, `RetrievalEvidencePolicy.default(for: Embedder)` chooses by `modelId` — one
-place, stamped the same way persisted vectors are.
+- `similarityFloor` — the absolute cosine floor, unchanged at 0.30.
+- `margin` — the relative criterion the plan asked for: a non-token passage is evidence only if its
+  similarity is within `margin` of the best passage in the ranked list. **It cannot do the job it
+  was proposed for.** The best passage in a list is always within any margin of itself, so a margin
+  trims a weak tail and can never make a query insufficient. This is a property of the criterion,
+  not of this corpus; `testRelativeMarginTrimsTheTailButCannotRejectAQuery` pins it. It ships,
+  switchable and off by default.
+- `minSharedTerms` — content-word overlap between the question and the passage
+  ([[LexicalSupport]]: lowercase, letters only, four characters or more, a short stopword list, one
+  pass of suffix trimming). This is the criterion that actually refuses anything on this backend.
+
+**Measured, `nl-word.en`, 2026-09-07** (simulator; the sentence asset is refused in the simulator
+sandbox and a device without it runs the same fallback). Corpus: the Lennox pair, 685 chunks.
+Twelve in-scope questions, each labelled with the printed pages that answer it, taken from the
+manuals by grep rather than from a run of the retriever; twelve out-of-scope questions (other
+manufacturers, a torque figure the book never gives, refrigerant charging, a heat-pump defrost
+board, ductwork sizing, weather, price, warranty). `RetrievalGateCalibrationTests` is the
+instrument and prints this table.
+
+Similarity distribution over the top four passages of each question:
+
+| | min | median | max |
+|---|---|---|---|
+| in-scope (n=48) | 0.838 | 0.888 | 0.917 |
+| out-of-scope (n=48) | 0.846 | 0.876 | 0.897 |
+
+The ranges overlap completely: the best out-of-scope passage outscores most in-scope ones. **No
+floor and no margin can separate them at any setting.** That is the finding; the rest of the table
+follows from it.
+
+| variant | recall@4 | insufficiency recall | in-scope questions refused |
+|---|---|---|---|
+| floor 0.30 (shipped before P2) | 0.750 | 0.000 | 0.000 |
+| floor 0.30 + margin 0.02 | 0.750 | 0.000 | 0.000 |
+| floor 0.30 + margin 0.005 | 0.750 | 0.000 | 0.000 |
+| floor 0.88 | 0.667 | 0.417 | 0.250 |
+| floor 0.30 + terms ≥ 1 | 0.750 | 0.167 | 0.000 |
+| floor 0.30 + terms ≥ 2 | 0.833 | 0.333 | 0.000 |
+| **floor 0.30 + terms ≥ 3 (default)** | **0.833** | **0.667** | **0.083** |
+| floor 0.30 + terms ≥ 4 | 0.583 | 1.000 | 0.167 |
+| floor 0.30 + terms ≥ 5 | 0.250 | 1.000 | 0.583 |
+| floor 0.30 + terms ≥ 3 + margin 0.02 | 0.833 | 0.667 | 0.083 |
+
+Recall@4 is measured *after* the gate, which is why it rises with the lexical criterion up to three
+terms: dropping passages that share nothing with the question promotes the ones that do into the top
+four. Above three terms the criterion starts cutting into the answer itself.
+
+**The chosen default for `nl-word` is `(floor 0.30, no margin, minSharedTerms 3)`.** It beats the
+shipped gate on both axes — recall@4 0.750 → 0.833, insufficiency recall 0.000 → 0.667 — for one
+in-scope question in twelve refused. The plan's original target ("maximise recall@4 with
+insufficiency recall ≥ 0.9") is only met at four terms, which costs a quarter of the recall and
+refuses one in-scope question in six; the target was set before the shape of the curve was known,
+and a technician mid-job is better served by rephrasing a question occasionally than by losing two
+in five correct answers. `RetrievalEvidencePolicy.default(for:)` chooses by `modelId` prefix and
+`FieldSessionService` adopts it from the store's embedder when the store is set, so both lookup
+tools and the per-turn prompt block inherit it; a test that pins a floor still overrides by
+assigning afterwards.
+
+**What the default still lets through**, on this corpus: *"how do I replace the heat exchanger on a
+Carrier 58MVB"*, *"how do I charge the refrigerant on the outdoor unit"*, *"how do I reset the
+defrost board on a heat pump"*, *"how do I wire a Trane XR95 two stage thermostat"*. Every one asks
+about a subject this furnace manual genuinely covers, on a machine it does not — the passages
+returned really are about heat exchangers, and no lexical rule can tell that the question was about
+somebody else's. Rejecting these needs the question's *subject equipment* compared against the
+vault's, which is a different mechanism (the nameplate/model the session already knows) and is not
+attempted here. The vault's prompt rules and the page citation on every passage are what carry it,
+which is why both are validator-required.
+
+**What it wrongly refuses**, on this corpus: *"which propane conversion kit does this furnace need"*
+— which the retriever was already missing before the gate (no anchor page in its top four), so the
+gate turned a wrong answer into an honest refusal. The example vault's printed check *"how long is
+the pre-purge before ignition"* is refused too; the manual's own wording is "pre-purge period" and
+"ignitor warm-up", and the question shares only two terms with anything retrieved.
+
+**`nl-sentence` and `nl-contextual` are unmeasured** and deliberately left at today's gate (floor
+0.30, no margin, no lexical criterion) rather than given a guessed value: their cosines span a
+different range and the lexical criterion may be unnecessary once similarity separates. That
+measurement needs one device run with the `com.apple.linguisticdata` asset present, and is recorded
+here when taken.
 
 The insufficiency sentence itself does not change; the vault rules already tell the model to relay
 it.
@@ -179,11 +245,15 @@ House style: deterministic core first, one PR per plan, the live edge last.
   the sentence turn cites the code's page, and no citation for the Lennox pair contains
   `§FIGURE`, `§TABLE`, `§WARNING` or a list-step. Full suite + Release green before the PR (the
   suite's own Reading Companion and memory chunking tests are the regression net for §3/§4).
-- **P2 — measured gate (one PR).** §2: `EmbeddingBenchmark` negatives + `insufficiencyRecall`, the
-  relative-margin criterion, `RetrievalEvidencePolicy.default(for:)`, the two numbers measured and
-  recorded. Headless gives the `nl-word` number; the `nl-sentence` / `nl-contextual` numbers need
-  one device run through the Diagnostics screen and are recorded in the Status line when taken. Ships
-  with the guide edits (§5) because the guide's step-6 wording depends on the measured behaviour.
+- **P2 — measured gate (one PR).** ✅ 2026-09-07. `EmbeddingBenchmark` negatives +
+  `insufficiencyRecall`, the relative-margin criterion (which the measurement then showed cannot
+  refuse a query), [[LexicalSupport]] and the `minSharedTerms` criterion that can,
+  `RetrievalEvidencePolicy.default(for:)` wired from the store's embedder, and
+  `RetrievalGateCalibrationTests` — the instrument, skipped when the manuals are not checked out.
+  The `nl-word` numbers are in §2. The `nl-sentence` / `nl-contextual` numbers still need one device
+  run with the `com.apple.linguisticdata` asset present and are recorded in the Status line when
+  taken. Shipped with the guide edits (§5, nameplate spellings and step 6) because the step-6
+  wording depends on the measured behaviour; the Route C extractor note stays with P3.
 - **P3 — extractor + example (small PR).** §4 script changes, the hint fix, and re-running the
   Lennox example through the extractor to confirm no numbering warnings fire on that pair.
 
@@ -192,12 +262,18 @@ House style: deterministic core first, one PR per plan, the live edge last.
 - `ExampleVaultLennoxTests` asserts, not prints, that *"the display shows E223 on a heat call"*
   cites Service Manual page 20 or Installation Instructions page 47, and that every citation for
   the pair is either `Title, page N` or `Title, page N, §<a heading with two or more words>`.
-- Against the Lennox pair with the default policy, *"how do I replace the heat exchanger on a Carrier
-  58MVB"* and *"what is the torque for the blower wheel set screw"* produce the insufficiency
-  sentence on the `nl-word` backend headlessly, and on the sentence backend on a device (recorded).
+- Against the Lennox pair with the measured default, *"what is the torque for the blower wheel set
+  screw"* produces the insufficiency sentence on the `nl-word` backend headlessly, asserted in
+  `ExampleVaultLennoxTests`; *"how do I replace the heat exchanger on a Carrier 58MVB"* does **not**,
+  and cannot be made to by any similarity or lexical rule, because the passages it returns are
+  genuinely about heat exchangers (§2). It stays a printed check with that explanation. The gate as
+  a whole refuses 2 out of 3 out-of-scope questions and 1 in 12 in-scope ones on this backend
+  (§2's table); the sentence-backend numbers need a device run and are not claimed.
 - `DocumentChunkerTests` rejects `FIGURE 5`, `TABLE 22.`, `WARNING`, `7 - Inspect the condensate
   drain and trap for leaks and`, `1 AFUE 98.1% 98.1% 98.2%`, `C 24VAXC COMMON`, and accepts `5.3
-  Safety Requirements`, `Chapter 12`, `SAFETY PROCEDURES`, `Heating Sequence of Operation`.
+  Safety Requirements`, `Chapter 12`, `SAFETY PROCEDURES`, `BOTTOM RETURN AIR`. (`Heating Sequence
+  of Operation` was listed here as an accepted heading in error: it is mixed case and unnumbered, so
+  no rule in §3 reaches it. P1 pinned it as a negative.)
 - A chunk never contains a recognised page-marker line; a document whose OEM header numbering
   differs from its physical pages cites the physical page.
 - No change to `documents.sqlite` schema, `VaultManifest`, or any UI string.
@@ -213,3 +289,15 @@ House style: deterministic core first, one PR per plan, the live edge last.
   positives in `DocumentChunkerTests` guard it.
 - **Not in scope.** Cross-encoder reranking, a different embedder, deduplicating repeated tables
   across manuals, and the extractor's OCR path (EF) are unchanged.
+
+## P1 findings (2026-09-07)
+
+The ALL-CAPS heading rule, even after §3's tightening, still yields wiring-diagram and display
+fragments: on the Lennox pair a citation can read `§BOTH SENSOR`, `§1- DATA LOW CONNECTION`,
+`§PRESS TO RESET`, `§TEST B`. Every one satisfies the same lexical shape as a real heading like
+`BOTTOM RETURN AIR` — two or more words, the letter share, no label prefix, no digits to speak of —
+so no rule over the *text of the line* separates them. The next lever is structural rather than
+lexical: position on the page, font size or weight from the extractor, or a per-manual list of
+headings supplied at import. Both need information the chunker does not currently receive, so this
+is deferred rather than attempted; the citations remain locatable (title and printed page are always
+right) and only the optional `§section` is noise.
