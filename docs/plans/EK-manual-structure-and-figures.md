@@ -1,6 +1,9 @@
 # Plan EK — Manual Structure and Figures (headings from type, diagrams as pictures)
 
-**Status:** 📋 Planned 2026-09-07. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425).
+**Status:** 🚧 P1 implemented 2026-09-07 (headless; §1–§3 and the extractor script). P2 (the picture
+to the model) not started. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What P1
+found, including two rules the design did not have and one measured cost, is in **P1 findings**
+below.
 **Origin:** EJ P1 tightened the lexical heading rules and left a residue it could not reach: an
 ALL-CAPS wiring-diagram fragment (`§BOTH SENSOR`, `§1- DATA LOW CONNECTION`, `§PRESS TO RESET`,
 `§TEST B`) is indistinguishable by any rule over letters from a real heading like
@@ -176,3 +179,93 @@ chunks).
 - **Not in scope.** Multi-image turns, cropping to the figure's bounds, OCR of diagram raster
   labels (EF's path applies if the page has no text layer at all), and changes to the live
   (Gemini Live / OpenAI Realtime) sessions, which already stream camera frames on their own path.
+
+## P1 findings (2026-09-07)
+
+Measured on the Lennox pair (78 + 85 pages) through both routes.
+
+**The type carries the structure, and the rules in the design were not enough to read it.** Body
+size came out at 10 pt on both manuals, as the probe said. Two rules had to be added before the
+headings were usable, and both are about the same thing — this manual sets whole *paragraphs* in
+bold, so "bold at body size" on its own is not a heading:
+
+- **A heading stands alone.** A bold line whose neighbour above or below is also bold at body size
+  is one line of a bold paragraph, not a place. Without this the installation instructions yielded
+  316 "headings", most of them wrapped warning text (`§EQUIPMENT MAY EXPERIENCE PREMATURE COM-`).
+  With it, 117 — and they read like the book's own contents list. A figure caption and the
+  parenthetical qualifier a heading absorbs are not neighbours for this purpose, and neither is the
+  publisher's running page header, which is set in the same bold directly above the first heading on
+  every page.
+- **A numbered list step is a step whatever weight it is set in.** `4 - Go to setup / system devices
+  / thermostat / edit` is bold, body size and stands alone; EJ's `numberedNonHeading` screen, which
+  the lexical path already had, applies to the structural path too.
+
+Shape rules that also earned their place: a heading starts with a capital or a digit and does not
+end on a broken word or an unfinished clause (`stallation in mobile homes, recreational vehicles or`
+is the middle of a sentence), and a parenthetical line is never a heading on its own — it belongs to
+the line above it.
+
+**The two routes agree on 470 of 471 grammar lines.** Running the script on the Mac and
+`VaultDocumentExtractor` on the phone over the same two PDFs and diffing the `## `/`### `/diagram
+lines: the service manual is identical (237/237); the installation instructions differ by one line
+(234 vs 235). The cause is not a rule but the platforms: `BLOWER DATA` on p.56 is set in a font
+whose weight macOS's PDFKit reports as bold and iOS's reports as regular, so the Mac marks it a
+heading and the phone leaves it as text. Both manuals still report **0 pages printed a page number
+that disagreed with the PDF page**, and both give 11 diagram pages.
+
+**A drawing's figure names the page, not a point inside it.** Page 44 of the installation
+instructions prints `FIGURE 58` and then `TABLE 16`, `TABLE 17` and `TABLE 18` over the same
+drawing. Taking each caption in turn would cite the `24VAXC` row as `Table 18`, and the page's
+extracted text starts before any caption at all, so the first chunk would carry no figure. Both
+producers therefore write the page's own caption — its `FIGURE` if it has one, else its first
+`TABLE` — at the top of a diagram page, and the chunker lets the first caption on a drawing stand
+for the whole page. This is what makes the plan's acceptance sentence true (`SLP99UHVK Installation
+Instructions, page 44, Figure 58`) and it is the right shape for P2, which will send the *page* as
+the image. Per-table precision inside one drawing is P3 territory (cropping) rather than something
+to fake with metadata.
+
+**Prose and a drawing never share a chunk.** A chunk takes its kind and figure from its first
+sentence, so the tail of a prose page packing into the top of a wiring diagram would cite a page of
+terminal labels as prose. The chunker now closes the chunk when the kind changes, and carries no
+overlap across that seam. Nothing moves in a document that is all one kind, which is every document
+without a diagram page — the existing chunking tests are untouched.
+
+**A caption outranks a section in a citation, and that costs something.** `Title, page N, Figure 58`
+comes before `Title, page N, §Section` as the plan specified, so a prose passage that sits below a
+caption is cited by the caption rather than by the section it is in — `page 12, Figure 16` rather
+than `page 12, §Discharge Air Temperature Sensor`. A `## ` heading clears the figure (a new section
+is new material), which keeps this to passages that really do sit under the caption, but it is a
+judgement the plan should own rather than a detail: the figure is the thing a technician can point
+at, the section is the thing they can look up.
+
+**The gate, re-measured on the restructured corpus** (`RetrievalGateCalibrationTests`, `nl-word.en`,
+701 chunks, the same 17 in-scope / 16 out-of-scope questions as EJ §2). Excluding drawings from the
+semantic candidates and re-chunking the text moves recall; the gate itself was not retuned.
+
+| variant | recall@4 | insufficiency recall | in-scope refused |
+|---|---|---|---|
+| floor 0.30 (the pre-P2 gate) | 0.706 | 0.000 | 0.000 |
+| floor 0.30 + terms ≥ 3 | 0.706 | 0.750 | 0.176 |
+| **default (terms ≥ 3, fraction 0.75)** | **0.765** | **0.750** | **0.118** |
+
+Against EJ's table on the same set the adopted default's recall@4 falls from 0.824 to 0.765;
+insufficiency recall (0.750) and in-scope refusals (2 of 17) are unchanged, and the ordering of the
+variants is unchanged, so every assertion in the calibration test still holds. The similarity ranges
+still overlap completely (in-scope 0.645–0.919, out-of-scope 0.649–0.897), which is why a 0.06 shift
+in recall@4 is a reshuffle among passages that all score about the same rather than a signal.
+
+**The visible cost of that reshuffle**, recorded rather than tuned away: *"what is the manifold
+pressure on high fire"* reached Service Manual p.65 at rank 3 before this plan and reaches no anchor
+page at any limit after it, while the short form a technician actually says — *"high fire manifold
+pressure"* — answers from p.67 at rank 1. `ExampleVaultLennoxTests` asserts the short form and
+prints the sentence form, so the cost stays on screen instead of disappearing into a passing test.
+
+**What EJ's residue looks like now.** The four fragments EJ named (`§BOTH SENSOR`, `§1- DATA LOW
+CONNECTION`, `§PRESS TO RESET`, `§TEST B`) are gone: they are diagram-page labels, the pages they
+sit on are tagged as drawings, and lexical detection is off for any document whose type carried
+structure. What replaces them are the manuals' own headings — `Turning Off Gas to Unit`,
+`Pressure Switches (Two)`, `Failure To Operate`, `Priming Condensate Trap`. The residue that
+remains is cover-page and banner furniture set as isolated bold lines (`NOTICE`, `Dallas, Texas
+USA`, `FRONT VIEW`): harmless, page-1-ish, and not worth a rule that would cost real headings.
+EJ's "two words or more" check in `ExampleVaultLennoxTests` is gone with them — one-word sections
+are now `General`, `Filters` and the diagnostic codes, each a real place in the book.
