@@ -12,6 +12,9 @@ struct SessionExport: Codable, Equatable {
     let vault: String
     let vaultName: String
     let assetId: String?
+    /// The machine the session was working on, when it recognised one (Plan EL). Absent — and
+    /// printed nowhere — for a session that never identified a unit.
+    let equipment: Equipment?
     let mode: String
     let outcome: String
     let billableMinutes: Int
@@ -26,6 +29,34 @@ struct SessionExport: Codable, Equatable {
     struct Location: Codable, Equatable {
         let latitude: Double
         let longitude: Double
+    }
+
+    /// The equipment identity, flattened for the record. The nameplate's own text stays in the
+    /// event log where it was written — the work order names the machine, not the plate.
+    struct Equipment: Codable, Equatable {
+        let model: String
+        let heading: String
+        /// `EquipmentIdentity.Source` raw value — "spoken", "nameplate", "asset", "manual".
+        let source: String
+        let recognisedAt: Date
+
+        init(_ identity: EquipmentIdentity) {
+            self.model = identity.modelToken
+            self.heading = identity.heading
+            self.source = identity.source.rawValue
+            self.recognisedAt = identity.recognisedAt
+        }
+
+        /// "Equipment: SLP99UH090XV60CK — from the nameplate at 14:02".
+        var sentence: String {
+            let phrase = EquipmentIdentity.Source(rawValue: source)?.provenancePhrase ?? "recorded"
+            return "Equipment: \(model) — \(phrase) at \(EquipmentIdentity.clock(recognisedAt))"
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case model, heading, source
+            case recognisedAt = "recognised_at"
+        }
     }
 
     struct TranscriptEntry: Codable, Equatable {
@@ -122,6 +153,7 @@ struct SessionExport: Codable, Equatable {
         case vault
         case vaultName = "vault_name"
         case assetId = "asset_id"
+        case equipment
         case mode, outcome
         case billableMinutes = "billable_minutes"
         case location, transcript, photos

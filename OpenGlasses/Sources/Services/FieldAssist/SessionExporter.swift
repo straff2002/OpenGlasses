@@ -149,6 +149,7 @@ enum SessionExporter {
             vault: session.vaultId,
             vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId,
             assetId: session.assetId,
+            equipment: session.equipment.map(SessionExport.Equipment.init),
             mode: session.mode.rawValue,
             outcome: session.outcome.rawValue,
             billableMinutes: Int((session.billableSeconds / 60.0).rounded()),
@@ -281,8 +282,13 @@ enum SessionExporter {
             : (names.first ?? raw)
     }
 
-    private static func summaryLines(_ d: SessionExport) -> [String] {
-        var lines = [
+    /// The summary block, in the order the work order prints it. The machine comes first when the
+    /// session knew it: a reviewer reading a refrigerant log or a warranty claim asks what unit
+    /// before anything else, and a session that never identified one prints no line at all.
+    static func summaryLines(_ d: SessionExport) -> [String] {
+        var lines: [String] = []
+        if let equipment = d.equipment { lines.append(equipment.sentence) }
+        lines += [
             "Asset: \(d.assetId ?? "—")",
             "Mode: \(d.mode)",
             "Outcome: \(d.outcome)",

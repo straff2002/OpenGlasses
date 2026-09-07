@@ -1900,6 +1900,21 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         cancellables.append(figureToken)
 
+        // Field Assist: the lens says which machine the answers are for, and says so again when
+        // the identity is corrected or forgotten — one transient line on the same path the figure
+        // cue uses, and nothing persistent (Plan EL P2). The nil a session end publishes is not a
+        // change worth flashing, so it is filtered on the session still being there.
+        let equipmentToken = FieldSessionService.shared.$activeEquipment
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] identity in
+                guard let self, FieldSessionService.shared.activeSession != nil else { return }
+                EquipmentHUDCue.show(identity,
+                                     vaultName: FieldSessionService.shared.activeVault?.manifest.name,
+                                     on: self.glassesDisplay)
+            }
+        cancellables.append(equipmentToken)
+
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.
         let playbookHUDToken = playbookStore.$activeSession
