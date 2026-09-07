@@ -120,7 +120,7 @@ struct WorkRecord: Codable, Equatable {
     /// technician says "read back the job", and what the export prints.
     var summaryLines: [String] {
         var lines: [String] = [headerLine]
-        lines.append(equipmentLine)
+        if let equipmentLine { lines.append(equipmentLine) }
         lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
 
         for status in Self.statusOrder {
@@ -160,10 +160,14 @@ struct WorkRecord: Codable, Equatable {
         return job.map { "Job \($0) — \(vaultName)." } ?? "\(vaultName) — no job reference."
     }
 
-    private var equipmentLine: String {
+    /// The machine, when the session identified one. A session that never did prints **no**
+    /// equipment line — the same rule the work order's own summary follows, so the two halves of
+    /// one PDF cannot contradict each other about whether the machine was known. The work order's
+    /// asset id is not the machine and says so on its own line.
+    private var equipmentLine: String? {
         guard let equipment else {
-            return assetId.map { "Equipment: not identified; work order asset \($0)." }
-                ?? "Equipment: not identified."
+            guard let assetId, !assetId.isEmpty else { return nil }
+            return "Work order asset: \(assetId); no machine was identified."
         }
         let phrase = EquipmentIdentity.Source(rawValue: equipment.source)?.provenancePhrase
             ?? equipment.source

@@ -456,6 +456,26 @@ final class WorkRecordTests: XCTestCase {
 
     // MARK: - The record
 
+    func testASessionThatNeverIdentifiedAMachinePrintsNoEquipmentLine() {
+        // The work order's own summary omits the line entirely in this case; the record follows the
+        // same rule, so the two halves of one PDF cannot disagree about whether the machine was known.
+        var session = Self.scriptedSession()
+        session.equipment = nil
+        let lines = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service").summaryLines
+        XCTAssertFalse(lines.contains { $0.contains("Equipment:") }, lines.description)
+        XCTAssertEqual(lines[1], "Work order asset: Unit 47B; no machine was identified.")
+
+        // `assetId` is immutable on the session, so the no-asset case is built from scratch.
+        let anonymous = FieldSession(
+            id: "s2", vaultId: "lennox_slp99", assetId: nil, mode: .aiOnly,
+            startedAt: Date(timeIntervalSince1970: 1_700_000_000), endedAt: nil, pausedAt: nil,
+            resumedAt: nil, outcome: .inProgress, startLocation: nil, endLocation: nil,
+            escalations: [], billableSeconds: 0)
+        let bare = WorkRecord(session: anonymous, vaultName: "Lennox SLP99 Furnace Service").summaryLines
+        XCTAssertFalse(bare.contains { $0.contains("Equipment:") || $0.contains("Work order asset") },
+                       bare.description)
+    }
+
     func testTheRecordRendersDeterministicallyFromAScriptedSession() {
         let record = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service")
         XCTAssertEqual(record.summaryLines, [
