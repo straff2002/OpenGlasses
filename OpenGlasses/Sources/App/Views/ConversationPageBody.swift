@@ -111,6 +111,8 @@ struct ConversationThreadTranscript: View {
             // rather than at the top of somebody's afternoon.
             .onChange(of: threadId) { _, _ in scrollToBottom(proxy, animated: false) }
             .onAppear { scrollToBottom(proxy, animated: false) }
+            // The same doors the Chat tab draws under an answer (Plan EK P3).
+            .environment(\.citationOpener, appState.citationOpener)
         }
     }
 

@@ -121,6 +121,9 @@ struct ChatThreadView: View {
             .onChange(of: isThinking) { _, _ in scrollToBottom(proxy) }
             .onChange(of: streamingText) { _, _ in scrollToBottom(proxy) }
             .onAppear { scrollToBottom(proxy, animated: false) }
+            // A citation under an answer opens the page it came from (Plan EK P3). Handed down
+            // rather than reached for, so a bubble stays ignorant of vaults.
+            .environment(\.citationOpener, appState.citationOpener)
         }
     }
 

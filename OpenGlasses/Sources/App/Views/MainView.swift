@@ -80,7 +80,13 @@ struct MainView: View {
         // The manual page a Field Assist turn pointed at (Plan EK). Presented from here because a
         // figure can be staged by a spoken turn on any tab, and the drawing is the answer.
         .sheet(item: $appState.manualFigureRequest) { request in
-            ManualFigureSheet(presenter: request.presenter)
+            ManualFigureSheet(request: request)
+        }
+        // The vault's own core file, opened from a citation chip (Plan EK P3) — checkable by the
+        // technician and correctable by an author without leaving the answer.
+        .sheet(item: $appState.vaultFileRequest) { request in
+            VaultFileCitationSheet(vaultId: request.vaultId, filename: request.filename,
+                                   section: request.section)
         }
     }
 }

@@ -2661,11 +2661,67 @@ class AppState: ObservableObject, AppStateProtocol {
     /// re-staging the drawing already on screen does not reopen the sheet over itself.
     struct ManualFigureRequest: Identifiable, Equatable {
         let presenter: ManualFigurePresenter
+        /// What the sheet draws: which document, which pages, and the hash the manufacturer's file
+        /// is checked against (Plan EK P3).
+        let sheet: ManualPageSheetModel
         var id: String { presenter.citation }
     }
 
     /// Non-nil while the manual figure sheet should be presented.
     @Published var manualFigureRequest: ManualFigureRequest?
+
+    /// A core file of the active vault, opened from a citation so the technician can check it and
+    /// an author can correct it on the spot.
+    struct VaultFileRequest: Identifiable, Equatable {
+        let vaultId: String
+        let filename: String
+        /// The `##` section the citation named, when it named one.
+        let section: String?
+        var id: String { "\(vaultId)/\(filename)#\(section ?? "")" }
+    }
+
+    @Published var vaultFileRequest: VaultFileRequest?
+
+    /// How the chat surfaces open a citation. Handed down the view tree rather than reached for,
+    /// so a message bubble stays ignorant of vaults.
+    var citationOpener: CitationOpener {
+        CitationOpener(canOpen: { [weak self] in self?.canOpenCitation($0) ?? false },
+                       open: { [weak self] in self?.openCitation($0) })
+    }
+
+    /// Whether this vault can put the page behind a citation on screen. Deliberately cheap — it is
+    /// asked once per citation per drawn message — so it checks that the tier exists rather than
+    /// resolving the document, which the tap then does.
+    func canOpenCitation(_ citation: Citation) -> Bool {
+        guard Config.fieldAssistActive, let store = FieldSessionService.shared.activeVault else { return false }
+        switch citation.kind {
+        case .manual:
+            return FieldSessionService.shared.activeVaultHasManuals
+        case .coreFile:
+            return store.manifest.files.contains { $0.lowercased() == citation.title.lowercased() }
+        }
+    }
+
+    /// Open the page a citation names: a manual page in the figure sheet, a core file in the
+    /// vault's own editor. Nothing is logged when nothing opens — an audit line saying a page was
+    /// opened when it was not is worse than a chip that does nothing.
+    func openCitation(_ citation: Citation,
+                      origin: FieldSessionService.CitationOrigin = .chip) {
+        let session = FieldSessionService.shared
+        switch citation.kind {
+        case .manual:
+            guard let staged = session.stagedFigure(for: citation) else { return }
+            session.logCitationOpened(citation, origin: origin)
+            presentManualFigure(staged)
+        case .coreFile:
+            guard let store = session.activeVault,
+                  let filename = store.manifest.files.first(where: { $0.lowercased() == citation.title.lowercased() })
+            else { return }
+            session.logCitationOpened(citation, origin: origin)
+            vaultFileRequest = VaultFileRequest(vaultId: store.manifest.id, filename: filename,
+                                                section: citation.section)
+        }
+    }
 
     /// Put a staged figure in front of the technician: the page on the phone, a one-line cue on
     /// the lens, and a line in the session's audit log. Returns what the sheet will draw so a
@@ -2676,7 +2732,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // "show that again" while it is still up) must not re-log it or blink the sheet.
         if let open = manualFigureRequest, open.id == staged.citation { return open.presenter }
         let presenter = ManualFigurePresenter.present(staged, session: FieldSessionService.shared)
-        manualFigureRequest = ManualFigureRequest(presenter: presenter)
+        manualFigureRequest = ManualFigureRequest(
+            presenter: presenter,
+            sheet: FieldSessionService.shared.manualPageSheet(for: staged))
         // The lens says where the drawing is and nothing else — it cannot render one legibly.
         ManualFigureCue.show(staged, on: glassesDisplay)
         return presenter
