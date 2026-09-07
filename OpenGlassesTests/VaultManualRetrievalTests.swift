@@ -361,9 +361,38 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(policy.decide([offTopic], limit: 4), .sufficient([offTopic]))
     }
 
+    /// A flat shared-term count is unreachable for a question with fewer content terms than the
+    /// count, so a short in-scope question is refused by construction. The fraction lowers the bar
+    /// for short questions and never raises it for long ones.
+    func testRequiredSharedTermsScalesDownForShortQuestionsOnly() {
+        let flat = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3)
+        for count in 1...8 { XCTAssertEqual(flat.requiredSharedTerms(queryTermCount: count), 3) }
+
+        let scaled = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 1), 1)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 2), 2)   // ceil(1.5)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 3), 3)   // ceil(2.25)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 8), 3)   // never above the count
+        // The fraction is inert while the lexical criterion itself is off.
+        XCTAssertEqual(RetrievalEvidencePolicy(sharedFraction: 0.6).requiredSharedTerms(queryTermCount: 2), 0)
+        // An empty question falls back to the flat count rather than to 1.
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 0), 3)
+
+        // End to end: a two-term question sharing both terms is evidence under the fraction and
+        // refused under the flat count.
+        let passage = VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: 0,
+                                             text: "The pre-purge time is fifteen seconds before the ignitor warm up begins.",
+                                             page: 3, section: nil, similarity: 0.9, score: 0.9, matchedTokens: [])
+        let terms = LexicalSupport.contentTerms("pre-purge time")
+        XCTAssertEqual(terms.count, 2, "\(terms.sorted())")
+        XCTAssertFalse(flat.decide([passage], limit: 4, queryTerms: terms).isSufficient)
+        XCTAssertTrue(scaled.decide([passage], limit: 4, queryTerms: terms).isSufficient)
+    }
+
     func testPolicyDefaultsAreChosenPerEmbeddingBackend() {
         let word = RetrievalEvidencePolicy.default(for: "nl-word.en")
         XCTAssertEqual(word.minSharedTerms, 3, "the measured backend carries the lexical criterion")
+        XCTAssertEqual(word.sharedFraction, 0.75, "and the measured scaling for short questions")
         XCTAssertEqual(word.similarityFloor, 0.30)
         for unmeasured in ["nl-sentence.en", "nl-contextual.multi_v1"] {
             XCTAssertEqual(RetrievalEvidencePolicy.default(for: unmeasured), RetrievalEvidencePolicy(),

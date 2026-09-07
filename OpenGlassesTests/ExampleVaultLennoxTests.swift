@@ -301,7 +301,11 @@ final class ExampleVaultLennoxTests: XCTestCase {
         //    and the citation the passage carries are what stop the answer there, not the gate.
         //  · a legitimate question whose wording barely overlaps the manual's ("pre-purge before
         //    ignition") can be refused. A technician rephrases; a fabricated answer is not
-        //    recoverable, which is the trade the measured default takes.
+        //    recoverable, which is the trade the measured default takes. `sharedFraction` bought
+        //    back the *short* form of this question ("pre-purge time", two content terms, which a
+        //    flat count of three could never satisfy); this one carries three — "long", "purge",
+        //    "ignition" — so it is asked for all three and still falls short of the manual's own
+        //    "pre-purge period" and "ignitor warm-up" wording.
         for turn in ["how long is the pre-purge before ignition",
                      "how do I replace the heat exchanger on a Carrier 58MVB"] {
             let result = retriever.retrieve(.init(turn: turn, limit: 3))

@@ -218,6 +218,15 @@ struct RetrievalEvidencePolicy: Equatable {
     var margin: Float = .infinity
     /// Content terms a non-token passage must share with the question. 0 disables the criterion.
     var minSharedTerms: Int = 0
+    /// Share of the question's *own* content terms that must be shared, when that is fewer than
+    /// `minSharedTerms`. 0 disables the scaling and `minSharedTerms` applies as a flat count.
+    ///
+    /// A flat count is unreachable by construction for a question shorter than the count: "pre-purge
+    /// time" has two content terms ([[LexicalSupport]] drops words under four letters), so a
+    /// three-term rule refuses it whatever the manual says. Scaling asks a short question for
+    /// proportionally less — 0.6 wants 2 terms of a 2- or 3-term question and 3 of a 5-term one —
+    /// while never asking a long question for more than `minSharedTerms`.
+    var sharedFraction: Double = 0
     var tokenBoost: Float = 0.25
     var maxBoost: Float = 0.5
 
@@ -225,12 +234,22 @@ struct RetrievalEvidencePolicy: Equatable {
         "The loaded manuals do not cover this. Ask the technician for the model number, or recommend escalation rather than guessing."
 
     init(similarityFloor: Float = 0.30, margin: Float = .infinity, minSharedTerms: Int = 0,
-         tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {
+         sharedFraction: Double = 0, tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {
         self.similarityFloor = similarityFloor
         self.margin = margin
         self.minSharedTerms = minSharedTerms
+        self.sharedFraction = sharedFraction
         self.tokenBoost = tokenBoost
         self.maxBoost = maxBoost
+    }
+
+    /// The shared-term count a question of `queryTermCount` terms actually has to meet: the flat
+    /// `minSharedTerms`, lowered (never raised) to `ceil(sharedFraction × queryTermCount)` when the
+    /// fraction is switched on, and never below 1.
+    func requiredSharedTerms(queryTermCount: Int) -> Int {
+        guard minSharedTerms > 0 else { return 0 }
+        guard sharedFraction > 0, queryTermCount > 0 else { return minSharedTerms }
+        return min(minSharedTerms, max(1, Int(ceil(sharedFraction * Double(queryTermCount)))))
     }
 
     /// The defaults measured for an embedding backend, chosen by [[Embedder]] `modelId` prefix.
@@ -238,17 +257,25 @@ struct RetrievalEvidencePolicy: Equatable {
     /// - `nl-word` — **measured** on the Lennox pair (see the type's doc comment). The floor stays
     ///   at 0.30 because nothing in that backend's range is near it, the margin stays off because a
     ///   relative criterion cannot reject a query, and `minSharedTerms` is 3 — the measured knee:
-    ///   1 shared term refuses 1 out-of-scope question in 6, 3 refuses 2 in 3 while *raising*
+    ///   1 shared term refuses 1 out-of-scope question in 5, 3 refuses 3 in 4 while *raising*
     ///   recall@4 (off-topic passages stop crowding the top four), and 4 refuses all of them but
-    ///   also a sixth of the in-scope ones and drops recall@4 from 0.83 to 0.58. A technician who
-    ///   has to rephrase is recoverable; one third of out-of-scope questions still getting an
-    ///   answer is the residue, and the vault's prompt rules and citations carry it from there.
+    ///   also a third of the in-scope ones and drops recall@4 from 0.77 to 0.41.
+    /// - `sharedFraction` is 0.75, measured on the same corpus after the question set was widened
+    ///   with the short questions a technician mid-job actually asks. A flat count of 3 refuses a
+    ///   two-term question ("pre-purge time") whatever the manual says; scaling it asks that
+    ///   question for 2 terms and every question of four terms or more for the full 3. It refuses
+    ///   fewer in-scope questions (2 of 17 rather than 3), raises recall@4 from 0.765 to 0.824, and
+    ///   costs nothing on the out-of-scope side — insufficiency recall stays at 0.750, because the
+    ///   short *out-of-scope* questions are asked for proportionally less too and still share
+    ///   nothing. Fractions of 0.5 and 0.6 refuse no in-scope question at all but drop insufficiency
+    ///   recall to 0.562 and 0.688, which is the wrong trade: a technician who has to rephrase is
+    ///   recoverable, a confident answer from the wrong manual is not.
     /// - `nl-sentence`, `nl-contextual` — **unmeasured — device run pending.** Left at today's
     ///   values (floor 0.30, no margin, no lexical criterion) rather than guessed: their cosines
     ///   span a different range and the lexical rule may be unnecessary once similarity separates.
     static func `default`(for modelId: String) -> RetrievalEvidencePolicy {
         if modelId.hasPrefix("nl-word") {
-            return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3)
+            return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
         }
         return RetrievalEvidencePolicy()
     }
@@ -263,7 +290,8 @@ struct RetrievalEvidencePolicy: Equatable {
         guard passage.similarity >= similarityFloor else { return false }
         if let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
         if minSharedTerms > 0, let queryTerms {
-            guard LexicalSupport.sharedTermCount(text: passage.text, queryTerms: queryTerms) >= minSharedTerms else {
+            let required = requiredSharedTerms(queryTermCount: queryTerms.count)
+            guard LexicalSupport.sharedTermCount(text: passage.text, queryTerms: queryTerms) >= required else {
                 return false
             }
         }

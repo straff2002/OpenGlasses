@@ -51,6 +51,20 @@ final class RetrievalGateCalibrationTests: XCTestCase {
               anchors: [serviceManual: [4], installation: [48, 56]]),
         .init(query: "how do I inspect the heat exchanger during annual maintenance",
               anchors: [installation: [67, 68]]),
+        // Short in-scope questions — the way a technician mid-job actually asks. Each carries two
+        // or three content terms after [[LexicalSupport]] drops words under four letters, which is
+        // the case a flat `minSharedTerms` of 3 can never satisfy. Same subjects, and so the same
+        // grep-verified anchor pages, as the long-form questions above.
+        .init(query: "pre-purge time",
+              anchors: [serviceManual: [15, 76, 77], installation: [65, 66]]),
+        .init(query: "flame signal microamps",
+              anchors: [serviceManual: [34], installation: [64]]),
+        .init(query: "condensate trap priming",
+              anchors: [serviceManual: [63], installation: [61]]),
+        .init(query: "trap water amount",
+              anchors: [serviceManual: [63], installation: [61]]),
+        .init(query: "high fire manifold pressure",
+              anchors: [serviceManual: [65, 66, 67], installation: [62, 63, 64]]),
     ]
 
     /// Questions these two manuals do not answer: other manufacturers, other equipment, figures the
@@ -69,6 +83,12 @@ final class RetrievalGateCalibrationTests: XCTestCase {
         "what oil does the York chiller pump take",
         "how do I bleed the radiators on a hydronic boiler",
         "what is the warranty claim procedure for Rheem parts",
+        // Short out-of-scope questions, the counterweight to the short in-scope ones: whatever a
+        // fraction buys for a two-term question it must not spend on these.
+        "compressor amp draw",
+        "refrigerant charge weight",
+        "defrost board wiring",
+        "duct sizing chart",
     ]
 
     /// The gate variants compared. `margin` and `minSharedTerms` are switched on one at a time so
@@ -85,6 +105,14 @@ final class RetrievalGateCalibrationTests: XCTestCase {
         ("floor 0.30 + terms >= 5", RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 5)),
         ("floor 0.30 + terms >= 3 + margin 0.02",
          RetrievalEvidencePolicy(similarityFloor: 0.30, margin: 0.02, minSharedTerms: 3)),
+        // The count scaled to the question's own length, so a two-term question is asked for two
+        // terms rather than an unreachable three.
+        ("floor 0.30 + terms >= 3 + fraction 0.5",
+         RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.5)),
+        ("floor 0.30 + terms >= 3 + fraction 0.6",
+         RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.6)),
+        ("floor 0.30 + terms >= 3 + fraction 0.75",
+         RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)),
         ("default(for: nl-word)", RetrievalEvidencePolicy.default(for: "nl-word.en")),
     ]
 
@@ -166,6 +194,17 @@ final class RetrievalGateCalibrationTests: XCTestCase {
             print("[GATE] - '\(q)' → \(top)")
         }
 
+        // How many content terms each question actually carries — the number a flat count has to be
+        // reachable by, and the number a fraction scales against.
+        for p in Self.positives {
+            let terms = LexicalSupport.contentTerms(p.query)
+            print("[GATE] terms(+) \(terms.count) '\(p.query)' \(terms.sorted())")
+        }
+        for q in Self.negatives {
+            let terms = LexicalSupport.contentTerms(q)
+            print("[GATE] terms(-) \(terms.count) '\(q)'")
+        }
+
         print("[GATE] variant | recall@4 | insufficiency recall | in-scope questions refused")
         var scores: [String: (recall: Double, insufficiency: Double, falseRefusals: Double)] = [:]
         for (name, policy) in Self.variants {
@@ -189,6 +228,8 @@ final class RetrievalGateCalibrationTests: XCTestCase {
             let falseRefusals = Double(decisions.filter { !$0.outcome.isSufficient }.count) / Double(decisions.count)
             scores[name] = (recall, insufficiency, falseRefusals)
             print("[GATE] \(name) | \(fmt(Float(recall))) | \(fmt(Float(insufficiency))) | \(fmt(Float(falseRefusals)))")
+            let refusedHere = decisions.filter { !$0.outcome.isSufficient }.map(\.p.query)
+            if !refusedHere.isEmpty { print("[GATE]   \(name) refuses in scope: \(refusedHere)") }
         }
 
         // What the shipped default still lets through, and what it wrongly turns away. Printed:
@@ -241,6 +282,16 @@ final class RetrievalGateCalibrationTests: XCTestCase {
             XCTAssertEqual(baseline.insufficiency, 0, accuracy: 1e-9,
                            "the 0.30 floor rejects nothing on this backend")
             XCTAssertGreaterThanOrEqual(chosen.recall, 0.5, "the chosen default keeps most in-scope answers")
+
+            // Why the default scales the shared-term count instead of applying it flat: the whole
+            // case for the fraction is that it costs nothing on the out-of-scope side. If a future
+            // corpus makes it cost something, this fails and the default goes back to the flat
+            // count rather than quietly trading refusals for answers.
+            let flat = try XCTUnwrap(scores["floor 0.30 + terms >= 3"])
+            XCTAssertGreaterThanOrEqual(chosen.insufficiency, flat.insufficiency,
+                                        "scaling the count must not let more out-of-scope questions through")
+            XCTAssertLessThanOrEqual(chosen.falseRefusals, flat.falseRefusals,
+                                     "scaling the count must refuse no more in-scope questions than the flat count")
         }
     }
 
