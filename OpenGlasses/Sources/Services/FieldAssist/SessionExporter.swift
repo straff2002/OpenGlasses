@@ -61,6 +61,9 @@ enum SessionExporter {
             return nil
         }
         let events = readEvents(sessionDir.appendingPathComponent("log.jsonl"), decoder: decoder)
+        // What the technician did about the answers' citations. Collected first because a citation
+        // is opened after the answer that carried it was written (Plan EK P3).
+        let checks = CitationChecks(events: events)
 
         var transcript: [SessionExport.TranscriptEntry] = []
         var photos: [SessionExport.PhotoRef] = []
@@ -83,15 +86,19 @@ enum SessionExporter {
                 if let text = event.text {
                     transcript.append(.init(timestamp: event.timestamp, role: "assistant", text: text))
                 }
-                if let sources = event.payload?["citations"]?.value as? [Any] {
-                    for source in sources.compactMap({ $0 as? String }) {
-                        citations.append(.init(timestamp: event.timestamp, source: source, claim: event.text))
-                    }
+                // Every source this answer named: the ones the caller passed, plus the `Source:`
+                // lines in the answer itself, which is where a manual citation actually lives.
+                var named = (event.payload?["citations"]?.value as? [Any])?.compactMap { $0 as? String } ?? []
+                named += CitationLineParser.parse(event.text ?? "").map(\.label)
+                var seen = Set<String>()
+                for source in named where seen.insert(source).inserted {
+                    citations.append(checks.citation(timestamp: event.timestamp, source: source, claim: event.text))
                 }
             case .citation:
                 if let source = event.payload?["source"]?.value as? String {
-                    citations.append(.init(timestamp: event.timestamp, source: source,
-                                           claim: event.payload?["claim"]?.value as? String ?? event.text))
+                    citations.append(checks.citation(
+                        timestamp: event.timestamp, source: source,
+                        claim: event.payload?["claim"]?.value as? String ?? event.text))
                 }
             case .photoAttached:
                 if let path = event.payload?["path"]?.value as? String {
@@ -226,8 +233,7 @@ enum SessionExporter {
 
             if !document.citations.isEmpty {
                 layout.section("Sources Cited")
-                let uniqueSources = Set(document.citations.map { $0.source }).sorted()
-                for source in uniqueSources { layout.body("• \(source)") }
+                for line in citationLines(document) { layout.body("• \(line)") }
             }
 
             if !document.transcript.isEmpty {
@@ -239,6 +245,40 @@ enum SessionExporter {
             }
         }
         return url
+    }
+
+    /// One line per distinct source: what was cited, and whether anybody looked at the page it
+    /// names. Plain words rather than the log's raw kinds — a work order is read by a customer.
+    static func citationLines(_ d: SessionExport) -> [String] {
+        var lines: [String] = []
+        var seen = Set<String>()
+        for citation in d.citations where seen.insert(citation.source).inserted {
+            guard citation.opened else {
+                lines.append("\(citation.source) — not opened")
+                continue
+            }
+            let how = citation.origin == "voice" ? "opened by voice" : "opened"
+            guard let against = citation.verifiedAgainst, !against.isEmpty else {
+                lines.append("\(citation.source) — \(how)")
+                continue
+            }
+            lines.append("\(citation.source) — \(how), read in \(readableSources(against))")
+        }
+        return lines
+    }
+
+    /// "manufacturer_pdf, extracted_text" → "the manufacturer's document, then the extracted text".
+    static func readableSources(_ raw: String) -> String {
+        let names = raw.split(separator: ",").map { part -> String in
+            switch ManualPageRoute(rawValue: part.trimmingCharacters(in: .whitespaces)) {
+            case .manufacturerPDF: return "the manufacturer's document"
+            case .extractedText: return "the extracted text"
+            case .externalURL: return "the manufacturer's published manual"
+            case nil: return part.trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return names.count > 1 ? names.dropLast().joined(separator: ", ") + ", then " + names[names.count - 1]
+            : (names.first ?? raw)
     }
 
     private static func summaryLines(_ d: SessionExport) -> [String] {
@@ -324,5 +364,54 @@ private final class PDFLayout {
     private func newPage() {
         context.beginPage()
         cursorY = margin
+    }
+}
+
+
+// MARK: - Citation follow-through
+
+/// What the session's `citation_opened` / `page_verified` events say about each cited source
+/// (Plan EK P3). Keyed by the document and page a citation names, so a chip tapped under one answer
+/// marks that answer's citation and not a different answer's mention of the same manual's page 4.
+struct CitationChecks {
+
+    private var origins: [String: String] = [:]
+    private var verifications: [String: [String]] = [:]
+
+    init(events: [SessionLogger.Event]) {
+        for event in events {
+            guard let document = event.payload?["document"]?.value as? String else { continue }
+            let page = event.payload?["page"]?.value as? Int ?? 0
+            let key = Self.key(title: document, page: page)
+            switch event.kind {
+            case .citationOpened:
+                if origins[key] == nil {
+                    origins[key] = event.payload?["origin"]?.value as? String ?? "chip"
+                }
+            case .pageVerified:
+                let source = event.payload?["source"]?.value as? String ?? ManualPageRoute.extractedText.rawValue
+                if verifications[key]?.contains(source) != true {
+                    verifications[key, default: []].append(source)
+                }
+            default:
+                continue
+            }
+        }
+    }
+
+    /// Build the export's citation for one source line, carrying whatever the log knows about it.
+    func citation(timestamp: Date, source: String, claim: String?) -> SessionExport.Citation {
+        let parsed = CitationLineParser.citations(inBody: source).first
+        let key = Self.key(title: parsed?.title ?? source, page: parsed?.page ?? 0)
+        let verified = verifications[key]
+        return SessionExport.Citation(
+            timestamp: timestamp, source: source, claim: claim,
+            opened: origins[key] != nil || verified != nil,
+            origin: origins[key],
+            verifiedAgainst: verified?.joined(separator: ", "))
+    }
+
+    static func key(title: String, page: Int) -> String {
+        "\(title.trimmingCharacters(in: .whitespaces).lowercased())#\(page)"
     }
 }

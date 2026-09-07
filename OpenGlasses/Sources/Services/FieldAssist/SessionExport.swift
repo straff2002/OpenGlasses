@@ -66,10 +66,48 @@ struct SessionExport: Codable, Equatable {
         }
     }
 
+    /// One source an answer cited, and what the technician did about it (Plan EK P3).
+    ///
+    /// The double trust a manufacturer's SOP asks for is the answer *and* the page: an export that
+    /// listed only what was cited could not tell a reviewer whether anybody looked.
     struct Citation: Codable, Equatable {
         let timestamp: Date
         let source: String
         let claim: String?
+        /// Whether the technician opened this citation during the session.
+        let opened: Bool
+        /// How it was opened — "chip" (tapped under the answer) or "voice" (asked for).
+        let origin: String?
+        /// Which document the page was read in: "manufacturer_pdf", "extracted_text",
+        /// "external_url", or several, in the order they were opened. Nil when none was.
+        let verifiedAgainst: String?
+
+        init(timestamp: Date, source: String, claim: String?,
+             opened: Bool = false, origin: String? = nil, verifiedAgainst: String? = nil) {
+            self.timestamp = timestamp
+            self.source = source
+            self.claim = claim
+            self.opened = opened
+            self.origin = origin
+            self.verifiedAgainst = verifiedAgainst
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case timestamp, source, claim, opened, origin
+            case verifiedAgainst = "verified_against"
+        }
+
+        /// Hand-written so an audit exported before P3 still decodes — an old record simply has
+        /// nothing to say about whether its citations were opened.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            timestamp = try c.decode(Date.self, forKey: .timestamp)
+            source = try c.decode(String.self, forKey: .source)
+            claim = try c.decodeIfPresent(String.self, forKey: .claim)
+            opened = try c.decodeIfPresent(Bool.self, forKey: .opened) ?? false
+            origin = try c.decodeIfPresent(String.self, forKey: .origin)
+            verifiedAgainst = try c.decodeIfPresent(String.self, forKey: .verifiedAgainst)
+        }
     }
 
     struct EscalationEntry: Codable, Equatable {
