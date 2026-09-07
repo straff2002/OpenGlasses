@@ -30,6 +30,11 @@ final class DocumentStore: ObservableObject {
         let similarity: Float
         let page: Int?
         let section: String?
+        /// What kind of page the chunk came off. Rows stored before the column existed read back
+        /// as prose, which is what they were treated as.
+        var kind: DocumentChunker.Kind = .prose
+        /// The figure or table that names the chunk's place ("Figure 58"), when it has one.
+        var figure: String?
     }
 
     // MARK: - Published
@@ -87,6 +92,7 @@ final class DocumentStore: ObservableObject {
             let embedding = embedder.embed(chunk.text)
             insertChunk(documentId: docId, index: chunk.index, text: chunk.text,
                         embedding: embedding.map(vecToData), page: chunk.page, section: chunk.section,
+                        kind: chunk.kind, figure: chunk.figure,
                         createdAt: now, version: embedding != nil ? versionTag : nil)
             progress?(chunk.index + 1, chunks.count)
             await Task.yield()
@@ -103,12 +109,18 @@ final class DocumentStore: ObservableObject {
 
     /// Retrieve the most relevant passages for a query, optionally scoped to a namespace and/or
     /// a specific document set.
-    func query(_ text: String, limit: Int = 4, namespace: String? = nil, documentIds: [String]? = nil) -> [Passage] {
+    ///
+    /// Drawings are left out by default. A wiring-diagram page is a bag of terminal labels: it
+    /// embeds to noise, scores like everything else on a manual-wide embedder, and crowds out the
+    /// prose that answers the question. It is reached instead by `passages(containingToken:)`,
+    /// which is what a technician asking about `W951` or `24VAXC` actually needs.
+    func query(_ text: String, limit: Int = 4, namespace: String? = nil, documentIds: [String]? = nil,
+               kinds: Set<DocumentChunker.Kind> = [.prose]) -> [Passage] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let qv = embedder.embed(trimmed) else { return [] }
 
         let current = embedder.version
-        let rows = fetchChunks(namespace: namespace, documentIds: documentIds)
+        let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
         let scored = rows.compactMap { row -> Passage? in
             // A chunk embedded by a different model can't be compared against `qv`. Re-embed it from
             // its text with the active model and persist the result, so the store self-heals after a
@@ -131,7 +143,7 @@ final class DocumentStore: ObservableObject {
             guard sim > minSimilarity else { return nil }
             return Passage(documentId: row.documentId, documentName: row.documentName,
                            chunkIndex: row.chunkIndex, text: row.text, similarity: sim,
-                           page: row.page, section: row.section)
+                           page: row.page, section: row.section, kind: row.kind, figure: row.figure)
         }
         return Array(scored.sorted { $0.similarity > $1.similarity }.prefix(limit))
     }
@@ -140,14 +152,16 @@ final class DocumentStore: ObservableObject {
     /// embedding involved — this is how a bare fault code or model number reaches a passage when
     /// the embedder has no vector for it. Ordered by document then chunk so results are stable.
     func passages(containingToken token: String, namespace: String? = nil,
-                  documentIds: [String]? = nil, limit: Int = 8) -> [Passage] {
+                  documentIds: [String]? = nil, limit: Int = 8,
+                  kinds: Set<DocumentChunker.Kind> = Set(DocumentChunker.Kind.allCases)) -> [Passage] {
         guard !token.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds)
-            .filter { CodeTokenizer.contains($0.text, token: token) }
+            .filter { kinds.contains($0.kind) && CodeTokenizer.contains($0.text, token: token) }
             .sorted { ($0.documentName, $0.chunkIndex) < ($1.documentName, $1.chunkIndex) }
         return rows.prefix(max(limit, 1)).map {
             Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
-                    text: $0.text, similarity: 0, page: $0.page, section: $0.section)
+                    text: $0.text, similarity: 0, page: $0.page, section: $0.section,
+                    kind: $0.kind, figure: $0.figure)
         }
     }
 
@@ -339,6 +353,11 @@ final class DocumentStore: ObservableObject {
         // Embedding version stamp (see [[EmbeddingVersion]]) — lets a later model swap re-embed rather
         // than silently compare across embedding spaces.
         exec("ALTER TABLE doc_chunks ADD COLUMN embedding_version TEXT")
+        // What kind of page a chunk came off, and the figure that names it (Plan EK). Rows stored
+        // before these columns existed read back as prose with no figure, which is how they were
+        // already being treated — no re-index is forced.
+        exec("ALTER TABLE doc_chunks ADD COLUMN kind TEXT")
+        exec("ALTER TABLE doc_chunks ADD COLUMN figure TEXT")
         // One-time backfill: rows ingested before the stamp were produced by the *current* model (this
         // migration doesn't change the model), so tag them as current — no re-embed needed. A genuine
         // model change later is what flips these to outdated. Only when a usable model is present.
@@ -369,8 +388,9 @@ final class DocumentStore: ObservableObject {
     }
 
     private func insertChunk(documentId: String, index: Int, text: String, embedding: Data?,
-                             page: Int?, section: String?, createdAt: Double, version: String?) {
-        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, page, section, created_at, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                             page: Int?, section: String?, kind: DocumentChunker.Kind, figure: String?,
+                             createdAt: Double, version: String?) {
+        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, page, section, created_at, embedding_version, kind, figure) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -388,6 +408,8 @@ final class DocumentStore: ObservableObject {
         sqlite3_bind_double(stmt, 8, createdAt)
         // Only stamp a version when there is actually an embedding to tag.
         if let version, embedding != nil { sqlite3_bind_text(stmt, 9, version, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(stmt, 9) }
+        sqlite3_bind_text(stmt, 10, kind.rawValue, -1, SQLITE_TRANSIENT)
+        if let figure { sqlite3_bind_text(stmt, 11, figure, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(stmt, 11) }
         _ = sqlite3_step(stmt)
     }
 
@@ -403,11 +425,14 @@ final class DocumentStore: ObservableObject {
         let page: Int?
         let section: String?
         let embeddingVersion: String?
+        let kind: DocumentChunker.Kind
+        let figure: String?
     }
 
     private func fetchChunks(namespace: String?, documentIds: [String]?) -> [ChunkRow] {
         var sql = """
-        SELECT c.id, c.document_id, d.name, c.chunk_index, c.text, c.embedding, c.page, c.section, c.embedding_version
+        SELECT c.id, c.document_id, d.name, c.chunk_index, c.text, c.embedding, c.page, c.section,
+               c.embedding_version, c.kind, c.figure
         FROM doc_chunks c JOIN documents d ON c.document_id = d.id
         """
         var clauses: [String] = []
@@ -436,8 +461,12 @@ final class DocumentStore: ObservableObject {
             let page = sqlite3_column_type(stmt, 6) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 6)) : nil
             let section = sqlite3_column_type(stmt, 7) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 7)) : nil
             let version = sqlite3_column_type(stmt, 8) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 8)) : nil
+            let kindTag = sqlite3_column_type(stmt, 9) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 9)) : nil
+            let figure = sqlite3_column_type(stmt, 10) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 10)) : nil
             rows.append(ChunkRow(id: id, documentId: docId, documentName: name, chunkIndex: idx, text: text,
-                                 embedding: emb, page: page, section: section, embeddingVersion: version))
+                                 embedding: emb, page: page, section: section, embeddingVersion: version,
+                                 kind: kindTag.flatMap(DocumentChunker.Kind.init(rawValue:)) ?? .prose,
+                                 figure: figure))
         }
         return rows
     }

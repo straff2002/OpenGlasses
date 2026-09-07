@@ -97,12 +97,19 @@ struct DocumentRAGTool: NativeTool {
         return "Relevant passages for '\(query)' — answer using only these, and cite the document name and (when shown) the page/section:\n\n\(body)"
     }
 
-    /// A speakable source locator for a passage: prefers page + section, degrades to whichever is
-    /// present, and falls back to the chunk index when the document carried no page/heading markers.
+    /// A speakable source locator for a passage: page, then whichever of the figure or the section
+    /// names the place (the figure first — it is what the reader sees on the page), and the chunk
+    /// index only when the document carried no markers at all.
     private func locator(for p: DocumentStore.Passage) -> String {
         var parts: [String] = []
         if let page = p.page { parts.append("page \(page)") }
-        if let section = p.section, !section.isEmpty { parts.append(section) }
+        if let figure = p.figure, !figure.isEmpty {
+            parts.append(figure)
+        } else if p.kind == .diagram {
+            parts.append("diagram")
+        } else if let section = p.section, !section.isEmpty {
+            parts.append(section)
+        }
         return parts.isEmpty ? "chunk \(p.chunkIndex)" : parts.joined(separator: ", ")
     }
 
