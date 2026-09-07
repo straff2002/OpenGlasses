@@ -211,7 +211,9 @@ enum VaultImporter {
             OCRCheckpoint.remove(from: ledgerDir, contentHash: want.contentHash)
             entries.append(.init(file: want.file, title: want.title, documentId: ref.id,
                                  contentHash: want.contentHash, chunkCount: ref.chunkCount,
-                                 ocrPages: extracted.ocrPages, lowConfidencePages: extracted.lowConfidencePages))
+                                 ocrPages: extracted.ocrPages, lowConfidencePages: extracted.lowConfidencePages,
+                                 structuredHeadings: extracted.structuredHeadings,
+                                 diagramPages: extracted.diagramPages))
         }
         ledger.entries = entries
         try ledger.save(to: ledgerDir)

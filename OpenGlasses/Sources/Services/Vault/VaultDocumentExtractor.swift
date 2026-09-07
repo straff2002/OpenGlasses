@@ -12,6 +12,14 @@ import PDFKit
 /// A PDF is rarely all scan or all text — a reissued manual often has a typeset front section and
 /// scanned appendices — so the decision is **per page**: the text layer where a page has one, the
 /// injected `ScannedPageReader` where it does not. Page numbering stays physical either way.
+///
+/// A page read from its text layer is read *with its type* ([[ManualStructure]]): PDFKit's
+/// attributed string carries point size and weight per run, which is what tells a real section
+/// heading (bold, body size, often mixed case) from the sentence beside it, a figure caption from a
+/// cross-reference to one, and a wiring diagram from prose. Those become `## Heading`,
+/// `### Figure 58 — Title` and a `<!-- page: diagram -->` tag, the grammar [[DocumentChunker]]
+/// reads. A recognised page has no type to read and keeps the lexical treatment, which is also what
+/// a PDF whose fonts carry no structure falls back to.
 enum VaultDocumentExtractor {
 
     struct Extracted: Equatable {
@@ -24,12 +32,20 @@ enum VaultDocumentExtractor {
         /// are kept — a shaky page is a better search target than none — but counted, so the
         /// author knows which scan to replace.
         let lowConfidencePages: Int
+        /// Section headings read off the type (`## ` lines). Zero means the document carried no
+        /// structure in its fonts and the chunker's lexical rules apply instead.
+        let structuredHeadings: Int
+        /// Pages that came out as drawings rather than prose (`<!-- page: diagram -->`).
+        let diagramPages: Int
 
-        init(text: String, pageCount: Int?, ocrPages: Int = 0, lowConfidencePages: Int = 0) {
+        init(text: String, pageCount: Int?, ocrPages: Int = 0, lowConfidencePages: Int = 0,
+             structuredHeadings: Int = 0, diagramPages: Int = 0) {
             self.text = text
             self.pageCount = pageCount
             self.ocrPages = ocrPages
             self.lowConfidencePages = lowConfidencePages
+            self.structuredHeadings = structuredHeadings
+            self.diagramPages = diagramPages
         }
 
         var usedRecognition: Bool { ocrPages > 0 }
@@ -80,9 +96,10 @@ enum VaultDocumentExtractor {
         switch url.pathExtension.lowercased() {
         case "pdf":
             guard let document = PDFDocument(url: url) else { throw ExtractionError.unreadable(name) }
-            let pages = textLayerPages(of: document)
-            guard pages.contains(where: { !$0.isEmpty }) else { throw ExtractionError.noTextLayer(name) }
-            return Extracted(text: pages.joined(separator: pageSeparator), pageCount: document.pageCount)
+            let layer = structuredPages(of: document)
+            guard layer.pages.contains(where: { !$0.isEmpty }) else { throw ExtractionError.noTextLayer(name) }
+            return Extracted(text: layer.pages.joined(separator: pageSeparator), pageCount: document.pageCount,
+                             structuredHeadings: layer.headings, diagramPages: layer.diagramPages)
         default:
             return try extractNonPDF(from: url)
         }
@@ -110,11 +127,13 @@ enum VaultDocumentExtractor {
         guard url.pathExtension.lowercased() == "pdf" else { return try extractNonPDF(from: url) }
         guard let document = PDFDocument(url: url) else { throw ExtractionError.unreadable(name) }
 
-        var pages = textLayerPages(of: document)
+        let layer = structuredPages(of: document)
+        var pages = layer.pages
         let blank = pages.indices.filter { pages[$0].isEmpty }
         guard let reader, !blank.isEmpty else {
             guard pages.contains(where: { !$0.isEmpty }) else { throw ExtractionError.noTextLayer(name) }
-            return Extracted(text: pages.joined(separator: pageSeparator), pageCount: pages.count)
+            return Extracted(text: pages.joined(separator: pageSeparator), pageCount: pages.count,
+                             structuredHeadings: layer.headings, diagramPages: layer.diagramPages)
         }
 
         var state = checkpoint?.load() ?? OCRCheckpoint(contentHash: "")
@@ -141,12 +160,49 @@ enum VaultDocumentExtractor {
 
         guard pages.contains(where: { !$0.isEmpty }) else { throw ExtractionError.empty(name) }
         return Extracted(text: pages.joined(separator: pageSeparator), pageCount: pages.count,
-                         ocrPages: blank.count, lowConfidencePages: low)
+                         ocrPages: blank.count, lowConfidencePages: low,
+                         structuredHeadings: layer.headings, diagramPages: layer.diagramPages)
     }
 
     // MARK: - Helpers
 
-    /// Per-page text-layer text, trimmed; empty string for a page without a text layer.
+    /// What a document's text layer came out as, page by page, once its type has been read.
+    struct LayerText {
+        /// Per-page text in the chunker's grammar; empty string for a page without a text layer.
+        let pages: [String]
+        let headings: Int
+        let diagramPages: Int
+    }
+
+    /// Per-page text with its structure marked from type.
+    ///
+    /// The body size is measured across the whole document before any page is written — a diagram
+    /// page's own modal size is its labels, so no page can decide for itself what "small" means. A
+    /// page whose text layer carries no attributed string (a recognised scan) or a document whose
+    /// fonts yield no body size at all falls back to `page.string`, and the chunker's lexical rules
+    /// then apply as they did before.
+    private static func structuredPages(of document: PDFDocument) -> LayerText {
+        let typed = ManualStructure.typedPages(of: document)
+        let body = ManualStructure.bodySize(of: typed.keys.sorted().compactMap { typed[$0] })
+        var pages: [String] = []
+        var headings = 0
+        var diagrams = 0
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { pages.append(""); continue }
+            guard body > 0, let typedPage = typed[index] else {
+                pages.append(page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+                continue
+            }
+            let rendered = ManualStructure.render(typedPage, bodySize: body)
+            headings += rendered.headings
+            if rendered.isDiagram { diagrams += 1 }
+            pages.append(rendered.text.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return LayerText(pages: pages, headings: headings, diagramPages: diagrams)
+    }
+
+    /// Per-page text-layer text, trimmed; empty string for a page without a text layer. The plain
+    /// read, for callers that only need to know whether there is text at all.
     private static func textLayerPages(of document: PDFDocument) -> [String] {
         (0..<document.pageCount).map { index in
             document.page(at: index)?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
