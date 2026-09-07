@@ -1,9 +1,9 @@
 # Plan EK — Manual Structure and Figures (headings from type, diagrams as pictures)
 
-**Status:** 🚧 P1 implemented 2026-09-07 (headless; §1–§3 and the extractor script). P2 (the picture
-to the model) not started. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What P1
-found, including two rules the design did not have and one measured cost, is in **P1 findings**
-below.
+**Status:** 🚧 P1 + P2 implemented 2026-09-07 (headless); a device turn against a cloud provider is
+pending. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What each phase found —
+including two rules the design did not have, one measured cost, and the P1 rule P2 had to work
+around — is in **P1 findings** and **P2 findings** below.
 **Origin:** EJ P1 tightened the lexical heading rules and left a residue it could not reach: an
 ALL-CAPS wiring-diagram fragment (`§BOTH SENSOR`, `§1- DATA LOW CONNECTION`, `§PRESS TO RESET`,
 `§TEST B`) is indistinguishable by any rule over letters from a real heading like
@@ -114,24 +114,36 @@ chunks).
 - The `MANUAL PASSAGES` block labels a diagram passage as such (`[2] (wiring diagram, Figure 58,
   page 44) …`) so the model reads terminal labels as labels.
 
-### 4 · The figure reaches the model as a picture
+### 4 · The figure reaches the model as a picture, and the technician as a page
 
 - `FieldSessionService` records, per turn, the best diagram/figure passage among the evidence as
   `figureForTurn: (documentId, page, figure)`. A new `manual_figure` tool lets the model (or the
-  technician, by voice: "show me figure 65") request a specific figure or page; the tool resolves
-  it from the ledger and stages it the same way, answering in text what it staged.
+  technician, by voice: "show me figure 65", "show that figure again") request a specific figure or
+  page; the tool resolves it from the ledger and stages it the same way, answering in text what it
+  staged. The last figure stays on the session so it can be reopened.
 - In `LLMService.sendMessage`, when `imageData` is nil and the active field session has a staged
   figure whose source document is a PDF in the vault baseline, render that page with
   `PDFPageRasterizer` at a bounded DPI, pass it through `LLMImagePreparer`, and send it as the
   turn's image. The prompt block says `Figure 58 (page 44) is attached as this turn's image`. A
   camera frame, when the turn has one, wins the single slot and the figure stays a citation.
-- The Markdown route has no page to render: the citation still names the figure, and the tool
-  says the figure is not available as a picture from this document. That is the honest limit and
-  a reason to import the PDF rather than the extracted text.
+- **The phone shows the page.** Speech cannot read a drawing back, and the model seeing it does not
+  help the technician see it. A figure sheet on the phone, opened from the answer (and by the voice
+  requests above), shows the rendered page with pinch-zoom, the citation as its title, and a jump
+  to that page in the source PDF through PDFKit's own viewer — which is free with PDFKit and beats a
+  static image for a dense diagram. The audit log records which figure was shown. When a Display
+  device is connected, the lens gets a one-line cue (`Figure 58, page 44, on your phone`) and nothing
+  else: the HUD screen model has no image type and a lens display cannot make a wiring diagram
+  legible. No general manual browser.
+- The Markdown route has no page to render: the citation still names the figure, the sheet and the
+  tool say the figure is not available as a picture from this document. That is the honest limit and
+  a reason to import the PDF rather than the extracted text; the vault guide says so.
 - Gating: on for cloud providers, off for on-device models (`LLMService.isOnDevice`), following
-  the existing vision choice for a session; no new settings string in P1/P2.
+  the existing vision choice for a session; no new settings string in P2.
 - The rendered page is manual content, not a camera frame, so it does not pass the privacy filter,
   and it leaves the device only where the passages' text already does.
+- Two P1 follow-ups ride with P2: `NOTICE` joins the label list (an isolated bold `NOTICE` banner
+  is not a heading), and a **prose** chunk under a caption cites its `§Section` rather than the
+  figure — the figure names a drawing, the section names prose; a diagram chunk keeps `Figure N`.
 
 ## Phases
 
@@ -146,10 +158,11 @@ chunks).
   terminal label reaching a diagram chunk with a figure citation; the PDF route exercised through
   the local `source-pdfs/` when present (skip otherwise), and the extractor script re-run on both
   PDFs to confirm zero numbering warnings and headings that match the in-app route.
-- **P2 — the picture (one PR).** §4: figure staging, `manual_figure` tool, the `sendMessage`
-  seam, provider gating, prompt wording, audit-log line naming the figure sent. Headless tests use
-  a fixture PDF and a fake provider; the live edge is a device turn against a cloud provider,
-  recorded when run.
+- **P2 — the picture (one PR). Done 2026-09-07.** §4: figure staging, `manual_figure` tool, the `sendMessage`
+  seam, provider gating, prompt wording, the phone figure sheet with PDFKit page jump, the lens cue,
+  audit-log lines naming the figure sent and shown, the two P1 follow-ups. Headless tests use a
+  fixture PDF and a fake provider; the sheet's view model is tested without SwiftUI; the live edge
+  is a device turn against a cloud provider, recorded when run.
 - **P3 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
   page), and per-manual heading lists for PDFs whose type carries no structure.
 
@@ -269,3 +282,42 @@ remains is cover-page and banner furniture set as isolated bold lines (`NOTICE`,
 USA`, `FRONT VIEW`): harmless, page-1-ish, and not worth a rule that would cost real headings.
 EJ's "two words or more" check in `ExampleVaultLennoxTests` is gone with them — one-word sections
 are now `General`, `Filters` and the diagnostic codes, each a real place in the book.
+
+## P2 findings (2026-09-07)
+
+**The figure goes to the model and to the technician from one staging.** Retrieval happens once,
+inside `manualPassagesContext`, so that is where the turn's drawing is staged: the best diagram (or
+figure-bearing) passage among the evidence, cleared by the next turn that finds none. Everything
+downstream reads that one published value — `LLMService` decides the image slot, the phone opens the
+sheet, the lens flashes its line — so nothing searches the manuals twice and the three surfaces
+cannot disagree about which drawing this turn is about.
+
+**The prompt says "attached" only after the page has rendered.** The plan has the sentence appended
+to the `MANUAL PASSAGES` block, which is built before anything is rendered; a render that then
+failed (a missing baseline file, a page out of range) would leave the prompt promising a picture the
+model never got, which is exactly the class of lie the whole retrieval design exists to prevent. The
+sentence is therefore appended to the end of the system prompt, after the render returns bytes. The
+cost is adjacency: it no longer sits directly under the passages it refers to, so it names the
+citation explicitly and says the page is a manual page rather than a camera photo — which it had to
+say anyway, because the vision block above it describes the glasses camera.
+
+**A chunk takes its figure from its first sentence, so a caption below a heading is invisible to
+it.** P1's rule (a chunk's kind and figure come from where it starts) means a text manual written as
+`## Section` then `### Figure 9` then prose stores that chunk with no figure at all — the chunk
+starts at the heading, where no figure was in force. Nothing here is wrong for the PDF route, where
+a producer writes the page's own caption at the top of a drawing, but a hand-written vault document
+has to put the caption above the prose it captions for the figure to be stored. The test fixture
+does; the vault guide's `### ` example already reads that way.
+
+**Two citations changed under the P1 follow-up**, both for the better — prose printed under a table
+caption now cites the section it is in: `SLP99UHVK Service Manual, page 29, §Soft Disable` (was
+`page 29, Table 19`) and `SLP99UHVK Installation Instructions, page 64, §High Altitude Information`
+(was `page 64, Table 38`). No other citation in the Lennox pair moved, and no drawing's did — a
+diagram still cites its figure, which is the whole point of the rule.
+
+**What is still device-pending.** No turn has gone to a cloud provider with a rendered page attached:
+the seam, the decision, the render, the prompt line and the audit event are tested headlessly and the
+sheet's content is decided by a view model with no SwiftUI in it, but whether a 150-dpi letter page
+is legible *enough* to a given model for 8-point terminal labels is a question only a real turn
+answers. If it is not, the answer is P3's crop rather than a higher DPI: the whole page at a
+readable label size is a much larger image than the drawing at one.

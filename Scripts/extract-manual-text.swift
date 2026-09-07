@@ -120,7 +120,7 @@ struct TypedPage {
     let sizes: [Int: Int]
 }
 
-let labelWords = "FIGURE|TABLE|NOTE|NOTES|WARNING|CAUTION|DANGER|IMPORTANT"
+let labelWords = "FIGURE|TABLE|NOTE|NOTES|NOTICE|WARNING|CAUTION|DANGER|IMPORTANT"
 
 /// A numbered line that is a list step or a spec-table row rather than a heading; the separator
 /// after the number is what tells them apart. Same set as the app's chunker uses.
@@ -446,6 +446,7 @@ func runSelfCheck() -> Never {
     check("caption line", heading("FIGURE 58", 10, true), "no")
     check("table line", heading("TABLE 16", 10, true), "no")
     check("warning banner", heading("WARNING", 10, true), "no")
+    check("notice banner", heading("NOTICE", 10, true), "no")
     check("note label", heading("NOTE - the blower runs on", 10, true), "no")
     check("sentence", heading("Turn off the gas at the manual shut-off valve.", 10, true), "no")
     check("colon lead-in", heading("Before you begin:", 10, true), "no")

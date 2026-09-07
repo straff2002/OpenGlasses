@@ -653,7 +653,7 @@ class LLMService: ObservableObject {
         let smallContext = !isOnDevice && modelConfig.smallContextEnabled
         let effectiveIncludeTools = smallContext ? false : includeTools
 
-        let fullPrompt: String
+        var fullPrompt: String
         if isOnDevice {
             fullPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
@@ -664,6 +664,27 @@ class LLMService: ObservableObject {
             let nativeToolDescriptions = nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? []
             let gatewayToolNames = openClawBridge?.availableToolNames ?? []
             fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text)
+        }
+
+        // Plan EK P2: the manual page a Field Assist turn pointed at goes into the turn's single
+        // image slot when nothing else is using it. The figure was staged while the prompt above
+        // was built (retrieval happens there), so the decision is made here, after it — and the
+        // sentence announcing the page is appended only once the page has actually rendered, so
+        // the prompt can never promise a picture the model did not get.
+        var turnImage = imageData
+        let stagedFigure = FieldSessionService.shared.stagedFigure
+        if let stagedFigure {
+            let decision = ManualFigureAttachment.decide(
+                staged: stagedFigure,
+                sourceURL: FieldSessionService.shared.sourcePDFURL(for: stagedFigure),
+                hasCameraImage: imageData != nil,
+                isOnDevice: isOnDevice)
+            if case .attach(let source, let page) = decision,
+               let rendered = await ManualFigureAttachment.render(source: source, page: page) {
+                turnImage = rendered
+                fullPrompt += "\n\n" + ManualFigureAttachment.promptLine(for: stagedFigure)
+                FieldSessionService.shared.logFigureSent(stagedFigure)
+            }
         }
 
         // The model *id* is a public catalog name; the configuration *name* is whatever the
@@ -682,7 +703,7 @@ class LLMService: ObservableObject {
         // The planner sees the request alone (not chat history), and tool output never re-enters
         // planning — the structural prompt-injection defense. Falls back to single-shot when the
         // request can't be planned/validated (still safe; every call is supervised either way).
-        if Config.agentModeEnabled, hasNativeTools, imageData == nil, await classifyMultiStep(text) {
+        if Config.agentModeEnabled, hasNativeTools, turnImage == nil, await classifyMultiStep(text) {
             if let summary = await runAgentPlan(request: text, nativeToolNames: nativeToolNames) {
                 conversationHistory.append(["role": "user", "content": text])
                 conversationHistory.append(["role": "assistant", "content": summary])
@@ -701,17 +722,17 @@ class LLMService: ObservableObject {
         let rawResponse: String
         switch provider {
         case .anthropic:
-            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .chatgpt:
-            rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .gemini, .geminiVertex:
-            rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext)
+            rawResponse = try await sendGemini(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext)
         case .local:
-            rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: imageData, onToken: onToken)
+            rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: turnImage, onToken: onToken)
         case .appleOnDevice:
             rawResponse = try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
         case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: imageData, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         }
 
         // Local reasoning models (LFM2.5) are stripped at the generate layer —

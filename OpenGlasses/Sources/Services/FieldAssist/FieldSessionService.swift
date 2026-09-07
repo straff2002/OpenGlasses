@@ -34,6 +34,14 @@ final class FieldSessionService: ObservableObject {
     /// Id of the procedure currently running (nil when none). Published for UI.
     @Published private(set) var activeProcedureId: String?
 
+    /// The drawing this turn points at, or nil when it points at none (Plan EK P2). Published so
+    /// the phone can put the page in front of the technician while the model is still answering.
+    @Published private(set) var stagedFigure: StagedFigure?
+
+    /// The last figure this session staged. Kept after `stagedFigure` clears so "show me that
+    /// figure again" has something to reopen.
+    private(set) var lastShownFigure: StagedFigure?
+
     private let sessionsRoot: URL
 
     init(sessionsRoot: URL? = nil) {
@@ -152,6 +160,8 @@ final class FieldSessionService: ObservableObject {
         logger.appendLifecycle(.sessionEnded, note: "outcome=\(outcome.rawValue), billable_seconds=\(Int(session.billableSeconds))")
         activeSession = nil
         activeVault = nil
+        stagedFigure = nil
+        lastShownFigure = nil
         self.logger = nil
         lastResumeAt = nil
         runner = nil
@@ -227,6 +237,11 @@ final class FieldSessionService: ObservableObject {
         guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
         let outcome = manualRetriever(store: store).retrieve(
             .init(turn: turn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+        // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
+        // automatic path, so a figure never outlives the question that found it: a turn whose
+        // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
+        // attached to a question about condensate.
+        stageFigure(makeStagedFigure(for: Self.bestFigure(in: outcome.passages), vaultId: store.manifest.id))
         return VaultRetriever.promptBlock(outcome)
     }
 
@@ -251,6 +266,118 @@ final class FieldSessionService: ObservableObject {
 
     /// Whether a session is currently active and accepting input.
     var isSessionActive: Bool { activeSession?.isActive == true }
+
+    // MARK: - Figures (Plan EK)
+
+    /// The drawing a turn points at: what a technician would turn to in the book, what the phone
+    /// puts on screen, and what the model is handed as a picture when the turn has no camera frame.
+    ///
+    /// A value type carrying only what naming and rendering the page need — the page itself is
+    /// resolved from the vault's baseline on demand (`sourcePDFURL(for:)`), because a staged figure
+    /// may outlive an uninstall and must then simply fail to resolve.
+    struct StagedFigure: Equatable {
+        let documentId: String
+        /// The manual's title, as the citation says it.
+        let documentTitle: String
+        /// The printed page the drawing is on — the number in the citation, and the page the
+        /// renderer opens. Plan EK P1 measured the printed and physical page in agreement on
+        /// every page of the example pair; a document where they disagree renders the wrong page,
+        /// which is why the extractor warns on a mismatch at import.
+        let page: Int
+        /// "Figure 58" / "Table 16", when the page printed a caption.
+        let figure: String?
+        /// The vault file the document was ingested from ("SLP99UHVK-Install.pdf"), when the
+        /// ledger still knows it. Nil once the ledger entry has gone, and for a document the
+        /// manifest lists as something other than a PDF.
+        let sourceFile: String?
+
+        init(documentId: String, documentTitle: String, page: Int, figure: String? = nil,
+             sourceFile: String? = nil) {
+            self.documentId = documentId
+            self.documentTitle = documentTitle
+            self.page = page
+            self.figure = figure
+            self.sourceFile = sourceFile
+        }
+
+        /// The same citation the passage carried, so what is said, shown and logged agree.
+        var citation: String {
+            var parts = [documentTitle, "page \(page)"]
+            if let figure, !figure.isEmpty { parts.append(figure) }
+            return parts.joined(separator: ", ")
+        }
+
+        /// How the figure is named in a sentence: its caption when it has one, else its page.
+        var name: String {
+            figure.flatMap { $0.isEmpty ? nil : $0 } ?? "the drawing on page \(page)"
+        }
+
+        /// Whether the vault holds a page that can be rendered at all. The Markdown route holds
+        /// extracted text and has none — the honest limit the vault guide names.
+        var hasSourcePage: Bool { sourceFile?.lowercased().hasSuffix(".pdf") == true }
+    }
+
+    /// The best drawing among a turn's evidence: a drawing outright, else prose that names one.
+    /// Ranked order is the retriever's, so "best" is "highest ranked" and nothing re-scores here.
+    static func bestFigure(in passages: [VaultRetriever.Passage]) -> VaultRetriever.Passage? {
+        passages.first { $0.kind == .diagram && $0.page != nil }
+            ?? passages.first { $0.figure?.isEmpty == false && $0.page != nil }
+    }
+
+    /// Stage a figure for this turn, or clear the staging when there is none. Whatever is staged
+    /// stays reachable as `lastShownFigure` for the rest of the session.
+    func stageFigure(_ figure: StagedFigure?) {
+        stagedFigure = figure
+        if let figure { lastShownFigure = figure }
+    }
+
+    /// Put the session's last figure back on the turn ("show me that figure again").
+    @discardableResult
+    func restageLastFigure() -> StagedFigure? {
+        guard let last = lastShownFigure else { return nil }
+        stagedFigure = last
+        return last
+    }
+
+    /// Build a staged figure from a retrieved passage, filling in the source file from the vault's
+    /// document ledger so the page can be found again. Nil when the passage names no page.
+    func makeStagedFigure(for passage: VaultRetriever.Passage?, vaultId: String) -> StagedFigure? {
+        guard let passage, let page = passage.page else { return nil }
+        let file = VaultImporter.documentLedger(for: vaultId)
+            .entries.first { $0.documentId == passage.documentId }?.file
+        return StagedFigure(documentId: passage.documentId, documentTitle: passage.documentName,
+                            page: page, figure: passage.figure, sourceFile: file)
+    }
+
+    /// The PDF in the vault's read-only baseline that a staged figure's page comes from, or nil
+    /// when the document was imported as text (or is no longer installed).
+    func sourcePDFURL(for figure: StagedFigure) -> URL? {
+        guard figure.hasSourcePage, let file = figure.sourceFile, let store = activeVault else { return nil }
+        let manifest = store.manifest
+        guard let document = manifest.documents.first(where: { $0.file == file }) else { return nil }
+        let url = VaultImporter.baselineDirectory(for: manifest.id)
+            .appendingPathComponent(manifest.documentRelativePath(document))
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Audit: a manual page went to the model as this turn's image.
+    func logFigureSent(_ figure: StagedFigure) {
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .figureSent, text: figure.citation,
+            payload: ["document": AnyCodable(figure.documentTitle),
+                      "page": AnyCodable(figure.page),
+                      "figure": AnyCodable(figure.figure ?? "")]))
+    }
+
+    /// Audit: a manual figure was put in front of the technician (or could not be).
+    func logFigureShown(_ figure: StagedFigure, asPicture: Bool) {
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .figureShown, text: figure.citation,
+            payload: ["document": AnyCodable(figure.documentTitle),
+                      "page": AnyCodable(figure.page),
+                      "figure": AnyCodable(figure.figure ?? ""),
+                      "as_picture": AnyCodable(asPicture)]))
+    }
 
     // MARK: - Audit-log convenience
 

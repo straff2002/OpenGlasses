@@ -260,24 +260,31 @@ final class ExampleVaultLennoxTests: XCTestCase {
                         || context.contains("Source: SLP99UHVK Installation Instructions, page 47"),
                       "a sentence carrying the code must still cite the code's own page: \(context.suffix(1200))")
 
-        // Every citation the pair produces is locatable: a title and a printed page, then whichever
-        // of the figure or the section names the place — and the section only when it is a heading
-        // a technician would recognise.
+        // Every citation the pair produces is locatable: a title and a printed page, then the name
+        // of the place — the figure on a drawing, the section in prose, and the section only when
+        // it is a heading a technician would recognise. A prose paragraph set under a caption cites
+        // its section, not the caption: the picture does not contain the sentence.
         for query in ["E223", "E203", "E270", "090XV60C"] {
             for passage in retriever.retrieve(.init(turn: query, limit: 4)).passages {
                 let page = try XCTUnwrap(passage.page, "\(query) → \(passage.citation) has no page")
                 var expected = "\(passage.documentName), page \(page)"
-                if let figure = passage.figure, !figure.isEmpty {
-                    expected += ", \(figure)"
-                    XCTAssertNotNil(figure.range(of: #"^(Figure|Table) \d"#, options: .regularExpression),
-                                    "\(query) → \(passage.citation) names something that is not a figure")
-                } else if passage.kind == .diagram {
-                    expected += " (diagram)"
+                if passage.kind == .diagram {
+                    if let figure = passage.figure, !figure.isEmpty {
+                        expected += ", \(figure)"
+                        XCTAssertNotNil(figure.range(of: #"^(Figure|Table) \d"#, options: .regularExpression),
+                                        "\(query) → \(passage.citation) names something that is not a figure")
+                    } else {
+                        expected += " (diagram)"
+                    }
                 } else if let section = passage.section, !section.isEmpty {
                     expected += ", §\(section)"
                     assertReadableHeading(section, query: query)
                 }
                 XCTAssertEqual(passage.citation, expected)
+                if passage.kind == .prose, let figure = passage.figure, !figure.isEmpty {
+                    // The cost of the rule, on screen: this passage was cited by its caption before.
+                    print("[LENNOX] prose under \(figure) now cites \(passage.citation)")
+                }
             }
         }
 

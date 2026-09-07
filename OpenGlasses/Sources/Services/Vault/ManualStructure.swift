@@ -64,7 +64,11 @@ enum ManualStructure {
 
     /// Words an OEM manual prints in bold that are labels rather than places. Same set as
     /// [[DocumentChunker]]'s lexical screen, so the two halves agree on what is furniture.
-    private static let labelWords = "FIGURE|TABLE|NOTE|NOTES|WARNING|CAUTION|DANGER|IMPORTANT"
+    ///
+    /// `NOTICE` earns its place from the field: it is the one safety banner these manuals set on a
+    /// line of its own, so it clears every shape rule and stands alone, and without it a page's
+    /// prose is filed under a section called "NOTICE".
+    private static let labelWords = "FIGURE|TABLE|NOTE|NOTES|NOTICE|WARNING|CAUTION|DANGER|IMPORTANT"
 
     /// A numbered line that is a list step or a spec-table row rather than a heading; the separator
     /// after the number is what tells them apart. Same set as [[DocumentChunker]]'s.

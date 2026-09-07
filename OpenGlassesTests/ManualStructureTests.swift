@@ -210,6 +210,8 @@ final class ManualStructureTests: XCTestCase {
         XCTAssertFalse(ManualStructure.isHeading(line("FIGURE 58"), bodySize: 10))
         XCTAssertFalse(ManualStructure.isHeading(line("TABLE 16"), bodySize: 10))
         XCTAssertFalse(ManualStructure.isHeading(line("WARNING"), bodySize: 10))
+        XCTAssertFalse(ManualStructure.isHeading(line("NOTICE"), bodySize: 10),
+                       "the one banner these manuals set on a line of its own")
         XCTAssertFalse(ManualStructure.isHeading(line("NOTE - the blower runs on"), bodySize: 10))
         XCTAssertFalse(ManualStructure.isHeading(line("Close the manual gas valve before starting."), bodySize: 10))
         XCTAssertFalse(ManualStructure.isHeading(line("Before you begin:"), bodySize: 10))

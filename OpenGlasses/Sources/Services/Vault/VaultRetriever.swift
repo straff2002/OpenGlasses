@@ -51,20 +51,23 @@ struct VaultRetriever {
         /// The sentence appended to a recognised passage's citation.
         static let provenanceNote = "(text recognised from a scan; verify figures against the printed page)"
 
-        /// Machine-attached citation: title, page, and whichever of the figure or the section names
-        /// the place. Never something the model recalled.
+        /// Machine-attached citation: title, page, and the name of the place — the figure on a
+        /// drawing, the section in prose. Never something the model recalled.
         ///
-        /// The figure comes first when there is one: on a drawing it is what the reader will see
-        /// when they turn to the page, and it is the thing a technician can point at. A drawing
-        /// with no caption still says so, because "page 44" of a wiring diagram and "page 44" of a
-        /// procedure are read very differently.
+        /// **The kind decides which name is used, not which one is present.** A figure names a
+        /// drawing; a section names prose. A prose paragraph printed under a caption is still
+        /// prose, and citing it as "page 12, Figure 16" sends the reader to a picture that does not
+        /// contain the sentence they were given — so prose cites its section even when it carries a
+        /// figure. A drawing with no caption still says it is one, because "page 44" of a wiring
+        /// diagram and "page 44" of a procedure are read very differently.
         var citation: String {
             var parts = [documentName]
             if let page { parts.append("page \(page)") }
-            if let figure, !figure.isEmpty {
+            if kind == .diagram {
+                guard let figure, !figure.isEmpty else {
+                    return parts.joined(separator: ", ") + " (diagram)"
+                }
                 parts.append(figure)
-            } else if kind == .diagram {
-                return parts.joined(separator: ", ") + " (diagram)"
             } else if let section, !section.isEmpty {
                 parts.append("§\(section)")
             }

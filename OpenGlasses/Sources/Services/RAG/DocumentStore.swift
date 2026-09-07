@@ -165,6 +165,39 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    /// Chunks whose stored caption is `label` ("Figure 58"), case-insensitively — how a figure a
+    /// technician names by number is found again (Plan EK P2). Drawings first, then document and
+    /// chunk order, so the page's own drawing outranks the prose that merely cites it.
+    func passages(figure label: String, namespace: String? = nil,
+                  documentIds: [String]? = nil, limit: Int = 4) -> [Passage] {
+        let needle = label.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return [] }
+        return ordered(fetchChunks(namespace: namespace, documentIds: documentIds)
+            .filter { ($0.figure ?? "").lowercased() == needle }, limit: limit)
+    }
+
+    /// Chunks off one printed page, drawings first. The page number is the one the manual prints,
+    /// which is the one a technician reads out.
+    func passages(onPage page: Int, namespace: String? = nil,
+                  documentIds: [String]? = nil, limit: Int = 4) -> [Passage] {
+        ordered(fetchChunks(namespace: namespace, documentIds: documentIds).filter { $0.page == page },
+                limit: limit)
+    }
+
+    /// Drawings first, then document then chunk order — a stable, embedding-free ordering for the
+    /// lookups above, which are exact rather than scored.
+    private func ordered(_ rows: [ChunkRow], limit: Int) -> [Passage] {
+        rows.sorted {
+            $0.kind != $1.kind ? $0.kind == .diagram
+                : ($0.documentName, $0.chunkIndex) < ($1.documentName, $1.chunkIndex)
+        }
+        .prefix(max(limit, 1)).map {
+            Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
+                    text: $0.text, similarity: 0, page: $0.page, section: $0.section,
+                    kind: $0.kind, figure: $0.figure)
+        }
+    }
+
     func list() -> [DocumentRef] { documents }
 
     /// Documents in a single namespace (project scope, Plan AN).
