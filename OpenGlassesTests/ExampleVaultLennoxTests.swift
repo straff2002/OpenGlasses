@@ -442,6 +442,65 @@ final class ExampleVaultLennoxTests: XCTestCase {
                        policy: RetrievalEvidencePolicy(similarityFloor: 0))
     }
 
+    // MARK: - Citations as doors (Plan EK P3)
+
+    func testEveryCitationInAnAnswerOpensThePageItNames() async throws {
+        let (directory, manualsPresent) = try stageExample()
+        guard manualsPresent else { throw XCTSkip("manuals not present in documents/; see documents/README.md") }
+
+        let store = makeStore()
+        let service = try startSession(from: directory, store: store)
+        let manifest = try XCTUnwrap(VaultRegistry.shared.manifest(id: Self.vaultId))
+        _ = try await VaultImporter.syncDocuments(manifest: manifest, into: store)
+
+        // An answer as the technician would see it: the tool's own rendering of what a real query
+        // retrieved, `Source:` lines and all. Nothing here is hand-written.
+        let outcome = service.manualRetriever(store: VaultRegistry.shared.store(for: manifest))
+            .retrieve(.init(turn: "E223", limit: 4))
+        XCTAssertTrue(outcome.isSufficient)
+        let answer = VaultRetriever.toolResult(outcome, query: "E223")
+
+        let citations = CitationLineParser.parse(answer)
+        XCTAssertEqual(citations.map(\.label),
+                       Array(NSOrderedSet(array: outcome.passages.map(\.citation))) as? [String],
+                       "every source line in the answer is read back, once each")
+
+        for (citation, passage) in zip(citations, outcome.passages) {
+            XCTAssertEqual(citation.title, passage.documentName)
+            XCTAssertEqual(citation.page, passage.page)
+
+            let staged = try XCTUnwrap(service.stagedFigure(for: citation),
+                                       "\(citation.label) resolves to a manual in this vault")
+            XCTAssertEqual(staged.documentId, passage.documentId,
+                           "the chip opens the document the passage came from")
+            XCTAssertEqual(staged.page, passage.page)
+
+            // The example imports the extracted text, not the PDFs — so the sheet shows the stored
+            // page and says, in as many words, that the manufacturer's own copy is not in the vault.
+            // That is the reason the guide tells an author to bundle it.
+            let sheet = service.manualPageSheet(for: staged)
+            XCTAssertTrue(sheet.hasContent, citation.label)
+            XCTAssertEqual(sheet.route, .extractedText, citation.label)
+            XCTAssertEqual(sheet.originalLine, "Original not bundled in this vault")
+            XCTAssertEqual(sheet.headerLine, "Extracted text \u{00B7} page \(passage.page ?? 0)")
+            XCTAssertEqual(sheet.paging.currentPage, passage.page)
+            XCTAssertTrue(sheet.paging.pageCount > 50, "a whole manual pages: \(sheet.paging.pageCount)")
+
+            // The page behind the chip is the page the sentence came from, not a page with the
+            // same number in another manual.
+            let text = try XCTUnwrap(sheet.currentText, citation.label)
+            let firstSentence = passage.text.prefix(40).trimmingCharacters(in: .whitespacesAndNewlines)
+            XCTAssertTrue(text.contains(firstSentence),
+                          "\(citation.label) opens a page that does not contain its passage")
+        }
+
+        // A code-bearing answer's own page really does hold the code.
+        let coded = try XCTUnwrap(citations.first { $0.page == 20 && $0.title == "SLP99UHVK Service Manual" },
+                                  "\(citations.map(\.label))")
+        let page20 = try XCTUnwrap(service.manualPageSheet(for: try XCTUnwrap(service.stagedFigure(for: coded))).currentText)
+        XCTAssertTrue(page20.contains("E223"), "page 20 of the service manual prints the code")
+    }
+
     /// A `§section` is spoken aloud as part of a citation, so it has to name a place. Captions,
     /// safety banners and numbered list steps are none of those.
     ///

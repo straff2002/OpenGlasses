@@ -439,7 +439,7 @@ final class FieldSessionService: ObservableObject {
             // PDF is bundled beside extracted text. Comparing the wrong one would report a
             // faithfully imported manual as changed.
             ledgerHash: isPDF ? entry?.contentHash : entry?.sourceContentHash,
-            documentIsPDF: pdf != nil)
+            documentIsPDF: isPDF)
     }
 
     /// Audit: a technician opened a citation — from a chip under the answer, or by asking.
