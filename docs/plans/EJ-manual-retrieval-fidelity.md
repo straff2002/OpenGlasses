@@ -1,6 +1,6 @@
 # Plan EJ — Manual Retrieval Fidelity (what a real OEM manual pair exposed)
 
-**Status:** 🚧 P1 + P2 implemented 2026-09-07; device measurement pending. P1: ranking, heading detector, whole-line page markers, lookup preference. P2: the gate measured against the real pair (`RetrievalGateCalibrationTests`) and given a lexical criterion plus per-backend defaults — `nl-word` numbers below; `nl-sentence` and `nl-contextual` still unmeasured and left at today's gate until a device run. P3 outstanding.
+**Status:** ✅ P1–P3 implemented 2026-09-07 (headless); device measurement of `nl-sentence`/`nl-contextual` gate pending. P1: ranking, heading detector, whole-line page markers, lookup preference. P2: the gate measured against the real pair (`RetrievalGateCalibrationTests`) and given a lexical criterion plus per-backend defaults. P3: the extractor warns on printed numbering that disagrees with the PDF, derives its manifest hint from the file name, and self-checks; the `nl-word` gate re-measured on a set widened with short questions and its shared-term count scaled to question length (`sharedFraction` 0.75) — §2. **The device run this still needs:** run `RetrievalGateCalibrationTests` on an iPhone with the `com.apple.linguisticdata` sentence asset present and the two manuals in `examples/vaults/lennox-slp99/documents/`, then record the printed variant table for the `nl-sentence` backend here and set `RetrievalEvidencePolicy.default(for:)` for it from that table rather than from a guess.
 **Origin:** The first vault built from a real pair of OEM manuals — a Lennox SLP99UHVK gas furnace
 service manual (85 pages) and installation instructions (78 pages), 400 KB of extracted text, 692
 chunks — was imported headlessly through the shipped validator, importer, lookup tool, procedure
@@ -177,6 +177,59 @@ gate turned a wrong answer into an honest refusal. The example vault's printed c
 the pre-purge before ignition"* is refused too; the manual's own wording is "pre-purge period" and
 "ignitor warm-up", and the question shares only two terms with anything retrieved.
 
+**Re-measured, 2026-09-07, on a widened set (P3).** The `minSharedTerms 3` default has a
+structural cost the first measurement could not see: [[LexicalSupport]] drops words under four
+letters, so a spoken question with fewer than three content terms — *"pre-purge time"* has two —
+can never meet a flat count of three, whatever the manual says. Short questions are the ones a
+technician with their hands full actually asks, and the first set had none. Five short in-scope
+questions (two or three content terms, the same subjects and so the same grep-verified anchor pages
+as their long-form siblings) and four short out-of-scope ones were added, giving 17 in-scope and 16
+out-of-scope. The variant measured against it: required shared terms =
+`min(minSharedTerms, max(1, ceil(sharedFraction × queryTerms.count)))`, so the bar drops for a short
+question and never rises for a long one.
+
+Similarity on the widened set, top four passages per question — still overlapping completely, and
+now over a wider range because a two-word question scores differently from a sentence:
+
+| | min | median | max |
+|---|---|---|---|
+| in-scope (n=68) | 0.656 | 0.880 | 0.917 |
+| out-of-scope (n=64) | 0.651 | 0.868 | 0.897 |
+
+| variant | recall@4 | insufficiency recall | in-scope questions refused |
+|---|---|---|---|
+| floor 0.30 (shipped before P2) | 0.706 | 0.000 | 0.000 |
+| floor 0.30 + margin 0.02 | 0.706 | 0.000 | 0.000 |
+| floor 0.30 + margin 0.005 | 0.706 | 0.000 | 0.000 |
+| floor 0.88 | 0.471 | 0.562 | 0.471 |
+| floor 0.30 + terms ≥ 1 | 0.706 | 0.188 | 0.000 |
+| floor 0.30 + terms ≥ 2 | 0.824 | 0.438 | 0.000 |
+| floor 0.30 + terms ≥ 3 (the P2 default) | 0.765 | 0.750 | 0.176 |
+| floor 0.30 + terms ≥ 4 | 0.412 | 1.000 | 0.353 |
+| floor 0.30 + terms ≥ 5 | 0.176 | 1.000 | 0.706 |
+| floor 0.30 + terms ≥ 3 + margin 0.02 | 0.706 | 0.750 | 0.235 |
+| floor 0.30 + terms ≥ 3 + fraction 0.5 | 0.824 | 0.562 | 0.000 |
+| floor 0.30 + terms ≥ 3 + fraction 0.6 | 0.882 | 0.688 | 0.000 |
+| **floor 0.30 + terms ≥ 3 + fraction 0.75 (adopted)** | **0.824** | **0.750** | **0.118** |
+
+**Adopted: `sharedFraction = 0.75` beside the count of 3.** The adoption rule set before the run was
+"fewer in-scope refusals without lowering insufficiency recall below the P2 figure on the same set",
+and only 0.75 meets it: insufficiency recall is unchanged at 0.750, in-scope refusals fall from 3 of
+17 to 2, and recall@4 rises from 0.765 to 0.824. Fractions of 0.5 and 0.6 refuse nothing in scope but
+give up insufficiency recall (0.562 and 0.688) — the wrong direction, since a refusal is a rephrase
+and a confident wrong answer is not recoverable. That the fraction costs nothing on the out-of-scope
+side is the point and not luck: a short *out-of-scope* question is asked for proportionally less too,
+and still shares nothing at all with what came back. `RetrievalGateCalibrationTests` asserts both
+halves of the rule against the flat-count row, so a future corpus that makes the scaling cost
+something fails the test rather than passing quietly.
+
+The two in-scope questions the adopted default still refuses are *"which propane conversion kit does
+this furnace need"* (which the retriever was already missing before any gate — no anchor page in its
+top four) and *"trap water amount"*, whose three terms ask for all three and whose page prints the
+figure as "10 fl. oz. (300 ml) of water into the trap" without the word *amount*. The four
+out-of-scope questions it still answers are unchanged, and unchanged in kind: every one asks about a
+subject this manual covers, on a machine it does not.
+
 **`nl-sentence` and `nl-contextual` are unmeasured** and deliberately left at today's gate (floor
 0.30, no margin, no lexical criterion) rather than given a guessed value: their cosines span a
 different range and the lexical criterion may be unnecessary once similarity separates. That
@@ -254,8 +307,14 @@ House style: deterministic core first, one PR per plan, the live edge last.
   run with the `com.apple.linguisticdata` asset present and are recorded in the Status line when
   taken. Shipped with the guide edits (§5, nameplate spellings and step 6) because the step-6
   wording depends on the measured behaviour; the Route C extractor note stays with P3.
-- **P3 — extractor + example (small PR).** §4 script changes, the hint fix, and re-running the
-  Lennox example through the extractor to confirm no numbering warnings fire on that pair.
+- **P3 — extractor + example (small PR).** ✅ 2026-09-07. §4's script changes (a per-page warning
+  when a page's own first line prints a page number that disagrees with the PDF's index, and a
+  count of them in the closing summary), the hint fix (`kind` and a `title` suggestion derived from
+  the file name, labelled as something to edit), a `--self-check` mode that runs the marker and hint
+  rules over synthetic inputs and exits non-zero on a mismatch — the script has no test target — and
+  the Route C note in the guide. Re-run for real on both Lennox PDFs: **0 numbering warnings on each**,
+  and the output is byte-identical to the committed-locally documents apart from the hand-edited H1.
+  Shipped with the measured `sharedFraction` follow-up to P2's gate (§2).
 
 ## Acceptance
 
