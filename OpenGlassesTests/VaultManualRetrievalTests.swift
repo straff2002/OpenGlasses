@@ -235,6 +235,42 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(outcome.passages.first?.score, 0.25)
     }
 
+    func testATokenHitOutranksAnyUnmatchedPassageAndLeavesRoomForProse() {
+        // The invariant, stated directly: on the word-average embedder every passage in a manual
+        // scores about the same, so ranking by similarity buries the row that names the code.
+        let retriever = VaultRetriever(query: { _, _ in [
+            self.passage("d", 0, "General prose about heat calls and the LED menu.", sim: 0.99),
+            self.passage("d", 1, "More prose about the LED menu and diagnostics.", sim: 0.95),
+            self.passage("d", 2, "Third piece of prose about heating.", sim: 0.91)
+        ] }, tokenSearch: { _, _ in [
+            self.passage("d", 7, "E223 Low pressure switch failed open.", sim: 0, page: 20),
+            self.passage("d", 8, "E223 appears again in the installation table.", sim: 0, page: 47, name: "Other")
+        ] })
+        let outcome = retriever.retrieve(.init(turn: "the display shows E223 on a heat call", limit: 3))
+        let passages = outcome.passages
+        XCTAssertEqual(passages.count, 3)
+        XCTAssertEqual(passages[0].similarity, 0, "a token hit with similarity 0 outranks 0.99 without one")
+        XCTAssertEqual(passages[0].chunkIndex, 7)
+        XCTAssertEqual(passages[1].chunkIndex, 8)
+        XCTAssertEqual(passages.prefix(2).map(\.matchedTokens), [["E223"], ["E223"]])
+        // Fill, not replace: the slot the token hits leave goes to the best semantic passage.
+        XCTAssertEqual(passages[2].chunkIndex, 0)
+        XCTAssertEqual(passages[2].similarity, 0.99)
+    }
+
+    func testTokenHitsAreOrderedByScoreThenDeterministically() {
+        let retriever = VaultRetriever(query: { _, _ in [] }, tokenSearch: { token, _ in
+            token == "E5" ? [
+                self.passage("d", 4, "E5 and ZX9 both appear here.", sim: 0),
+                self.passage("d", 2, "E5 alone.", sim: 0, name: "Alpha"),
+                self.passage("d", 3, "E5 alone as well.", sim: 0, name: "Alpha")
+            ] : [self.passage("d", 4, "E5 and ZX9 both appear here.", sim: 0)]
+        })
+        let passages = retriever.retrieve(.init(turn: "E5 ZX9", limit: 4)).passages
+        XCTAssertEqual(passages.map(\.chunkIndex), [4, 2, 3], "two matched codes beat one; then name, then index")
+        XCTAssertEqual(passages[0].matchedTokens, ["E5", "ZX9"])
+    }
+
     func testProcedureStepParticipatesOnlyWhenGiven() {
         var seenQueries: [String] = []
         let retriever = VaultRetriever(query: { q, _ in seenQueries.append(q); return [] })
@@ -503,5 +539,36 @@ final class VaultManualRetrievalTests: XCTestCase {
         _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
         let noDocs = try await tool.execute(args: ["query": "ZX9"])
         XCTAssertTrue(noDocs.contains("has no manuals"), noDocs)
+    }
+
+    func testCodeLikeLookupPrefersTheSectionTitledWithTheModel() async throws {
+        // The model is named in the file's introduction before it gets its own section. In plain
+        // file order the introduction (and any summary section) can push the model's own section
+        // past the three-result cap.
+        let core = """
+        # Models
+
+        This vault covers the RTU-500 rooftop unit and the accessories that fit it.
+
+        ## Accessory kits
+
+        The economizer kit fits the RTU-500 and the RTU-400.
+
+        ## RTU-500
+
+        Nominal cooling five tons. Factory charge R-410A. High-pressure switch opens at 610 psig.
+        """
+        let manifest = try VaultImporter.install(from: writeVault(coreText: core))
+        VaultRegistry.shared.reloadUserManifests()
+        VaultRegistry.shared.resetCache()
+        let service = FieldSessionService(sessionsRoot: tempRoot.appendingPathComponent("lookup", isDirectory: true))
+        _ = try service.startSession(vaultId: manifest.id, assetId: nil)
+
+        let result = try await EquipmentLookupTool(sessionService: service).execute(args: ["query": "RTU-500"])
+        let titled = try XCTUnwrap(result.range(of: "## RTU-500"))
+        let intro = try XCTUnwrap(result.range(of: "This vault covers"))
+        XCTAssertTrue(titled.lowerBound < intro.lowerBound,
+                      "the model's own section should come first:\n\(result)")
+        XCTAssertTrue(result.contains("Nominal cooling five tons"), result)
     }
 }

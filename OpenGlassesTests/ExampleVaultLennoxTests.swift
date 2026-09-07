@@ -249,18 +249,32 @@ final class ExampleVaultLennoxTests: XCTestCase {
             print("[LENNOX] E223 → \(passage.citation) | sim \(passage.similarity) score \(passage.score)")
         }
 
-        // A spoken sentence carrying the code. Whether the E223 passages survive the ranking is
-        // printed, not asserted: with the simulator's embedder every passage scores ~0.9 similarity,
-        // so an exact-token hit (score 0.25) is outranked — see the findings in the example README.
+        // A spoken sentence carrying the code. Every passage in these manuals scores ~0.9 on the
+        // word-average embedder, so this only holds because an exact-token hit now sorts ahead of
+        // anything without one, whatever the cosine.
         let context = try XCTUnwrap(service.promptContext(turn: "the display shows E223 on a heat call"))
         XCTAssertTrue(context.contains("MANUAL PASSAGES (retrieved"), context.suffix(600).description)
-        let citesCodePage = context.contains("Source: SLP99UHVK Service Manual, page 20")
-            || context.contains("Source: SLP99UHVK Installation Instructions, page 47")
         print("[LENNOX] embedder=\(Embedder().modelId) sentenceModel=\(Embedder().usesSentenceModel)")
-        print("[LENNOX] sentence turn with E223 cites the code's page: \(citesCodePage)")
+        XCTAssertTrue(context.contains("Source: SLP99UHVK Service Manual, page 20")
+                        || context.contains("Source: SLP99UHVK Installation Instructions, page 47"),
+                      "a sentence carrying the code must still cite the code's own page: \(context.suffix(1200))")
+
+        // Every citation the pair produces is locatable: a title and a printed page, and a section
+        // only when the section is a heading a technician would recognise.
+        for query in ["E223", "E203", "E270", "090XV60C"] {
+            for passage in retriever.retrieve(.init(turn: query, limit: 4)).passages {
+                let page = try XCTUnwrap(passage.page, "\(query) → \(passage.citation) has no page")
+                var expected = "\(passage.documentName), page \(page)"
+                if let section = passage.section, !section.isEmpty {
+                    expected += ", §\(section)"
+                    assertReadableHeading(section, query: query)
+                }
+                XCTAssertEqual(passage.citation, expected)
+            }
+        }
 
         // Exploratory: how do natural-language questions and an out-of-scope question fare against the
-        // default evidence gate? Printed, not asserted — this is what the vault guide's step 6 checks by hand.
+        // default evidence gate? Printed, not asserted — calibrating the gate is its own piece of work.
         for turn in ["what is the manifold pressure on high fire",
                      "how long is the pre-purge before ignition",
                      "what is the torque for the blower wheel set screw",
@@ -272,6 +286,23 @@ final class ExampleVaultLennoxTests: XCTestCase {
             case .insufficient:
                 print("[LENNOX] '\(turn)' → insufficient")
             }
+        }
+    }
+
+    /// A `§section` is spoken aloud as part of a citation, so it has to name a place. Captions,
+    /// safety banners and numbered list steps are none of those.
+    private func assertReadableHeading(_ section: String, query: String,
+                                       file: StaticString = #filePath, line: UInt = #line) {
+        let context = "\(query) → §\(section)"
+        XCTAssertGreaterThanOrEqual(section.split(whereSeparator: { $0.isWhitespace }).count, 2,
+                                    "one-word heading: \(context)", file: file, line: line)
+        for label in ["FIGURE", "TABLE", "WARNING", "CAUTION", "NOTE"] {
+            XCTAssertFalse(section.uppercased().hasPrefix(label), "label, not a section: \(context)",
+                           file: file, line: line)
+        }
+        for pattern in [#"^\d+(\.\d+)*\s+[-–—]\s"#, #"^\d+(\.\d+)*\s*\)"#, #"^\d+(\.\d+)*\.?\s+\p{Ll}"#] {
+            XCTAssertNil(section.range(of: pattern, options: .regularExpression),
+                         "list step, not a section: \(context)", file: file, line: line)
         }
     }
 }

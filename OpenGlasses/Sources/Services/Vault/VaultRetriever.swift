@@ -116,10 +116,19 @@ struct VaultRetriever {
             }
         }
 
-        let ranked = merged.values.sorted {
-            $0.score != $1.score ? $0.score > $1.score
-                : ($0.documentName, $0.chunkIndex) < ($1.documentName, $1.chunkIndex)
+        // Exact-token hits rank ahead of everything else, then score within each group. An
+        // embedder scores a whole manual's prose alike (0.87–0.91 on the word-average backend), so
+        // an additive boost cannot lift the row that actually names the code above prose that
+        // merely sounds like it. Filling rather than replacing: token hits take the first slots,
+        // the best semantic passages take whatever `limit` leaves — a spoken sentence carrying a
+        // code gets the code's row *and* its context.
+        func precedes(_ a: Passage, _ b: Passage) -> Bool {
+            a.score != b.score ? a.score > b.score
+                : (a.documentName, a.chunkIndex) < (b.documentName, b.chunkIndex)
         }
+        let candidates = Array(merged.values)
+        let ranked = candidates.filter { !$0.matchedTokens.isEmpty }.sorted(by: precedes)
+            + candidates.filter { $0.matchedTokens.isEmpty }.sorted(by: precedes)
         return policy.decide(ranked, limit: request.limit)
     }
 
