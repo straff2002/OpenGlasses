@@ -15,7 +15,10 @@ enum SharedAppState {
     }
 
     static var isListening: Bool {
-        get { defaults.bool(forKey: "listeningEnabled") }
+        // Absent means "never toggled", and the app's default for that is ON (`Config.listeningEnabled`).
+        // `bool(forKey:)` answered false here, so a fresh install rendered the Control as off and a
+        // press from that state wrote a real `false` into the App Group — listening silently disabled.
+        get { defaults.object(forKey: "listeningEnabled") as? Bool ?? true }
         set {
             defaults.set(newValue, forKey: "listeningEnabled")
             postListeningChanged()
