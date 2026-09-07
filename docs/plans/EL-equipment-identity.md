@@ -1,7 +1,7 @@
 # Plan EL — Equipment Identity (the session knows what is in front of the technician)
 
-**Status:** ✅ P1 implemented 2026-09-07 (headless). P2 (session card / HUD line / export surface /
-guide step 6) and P3 (nameplate fields beyond the model) not started. Stacked on
+**Status:** ✅ P1 + P2 implemented 2026-09-08 (headless); device smoke pending. P3 (nameplate fields
+beyond the model) not started. Stacked on
 [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425) and [Plan EK](EK-manual-structure-and-figures.md).
 **Origin:** EJ P2 measured the evidence gate against the Lennox SLP99 pair and left a residue that
 words cannot close: a quarter of out-of-scope questions still get an answer, every one of them on a
@@ -110,9 +110,9 @@ Before retrieval, `FieldSessionService.manualPassagesContext` and both lookup to
   passes `090XV60C`; penalty ordering on the manifold rows; session round-trips `equipment` through
   Codable and decodes old sessions without it; calibration table with identity on. Full suite +
   Release before the PR.
-- **P2 — the surface (one PR).** Session card and HUD status line show the active model; the
-  session export lists it; the vault guide's step 6 gains "read the nameplate first" and the
-  behaviour to expect for another manufacturer. Strings localised through the existing catalog.
+- **P2 — the surface (one PR).** ✅ 2026-09-08. Session card and HUD status line show the active
+  model; the session export lists it; the vault guide's step 6 gains "read the nameplate first" and
+  the behaviour to expect for another manufacturer. Strings localised through the existing catalog.
 - **P3 — deferred.** Nameplate field parsing beyond the model (serial, refrigerant, charge) into the
   identity, and using it to pre-fill capture flows.
 
@@ -201,3 +201,43 @@ can make that choice, which is the whole argument for the feature.
 manuals, not in the core, so a turn that names one and nothing else would be refused. It has not
 been seen in a spoken turn and the fix — checking the manuals' tokens as well as the core's — costs
 an index over 700 chunks; recorded here rather than pre-emptively built.
+
+---
+
+## P2 findings (2026-09-08)
+
+**There is one session card, and it is on the Field Assist screen.** The plan says "session card
+and the main-screen session pill"; there is no main-screen pill for a field session — the main
+screen carries the persona sheet's Field Assist panel (vault switcher, per-vault model, a link),
+and the only place a running session is drawn is `FieldAssistSettingsView`'s **Active Session**
+section. The equipment rows went there: the model token collapsed, the matched heading and
+*"from the nameplate at 14:02"* expanded, **Change** listing the vault's own model headings and
+**Clear**. A vault whose index is empty draws no rows at all rather than an empty picker, which is
+what keeps the bundled vaults' screen identical.
+
+**Picking a model on the phone is not a spoken correction.** The plan offered `.spoken` for the
+picker; the audit record would then say the technician read the model out when they tapped a row.
+`EquipmentIdentity.Source` gained `.manual` ("picked on the phone") instead — a new case on a
+`String`-backed `Codable` enum, so every session written by P1 still decodes.
+
+**The lens gets a flash, not a status bar.** The HUD has no persistent status line to add a field
+to: `showText`/`showNavigation` own the ambient frame, and an interactive task card suppresses
+anything persistent. So identity reuses the figure cue's path exactly — a transient
+`showNotification` of `SLP99UH090XV60CK · Lennox SLP99 Furnace Service`, five seconds, on every
+change. The nil a session end publishes is filtered out (the session is already gone by then), so
+ending a session does not flash "No equipment set" at a technician who is walking away.
+
+**The work order prints the machine first.** `Equipment: SLP99UH090XV60CK — from the nameplate at
+14:02` is the first summary line, above `Asset:` — a reviewer of a refrigerant log or a warranty
+claim asks what unit before anything else. The plate's own text stays in the event log where P1
+wrote it; the exported document names the machine, not the plate, and a test asserts the serial
+number never reaches the JSON. `equipment` is an optional field with a synthesized key, so an audit
+exported before this decodes with it nil and prints nothing.
+
+**Step 6 could not open with the nameplate.** The plan asks for "a new first item"; item 1 chooses
+a vault and item 2 starts the session, and neither can be preceded by reading a plate. It is the
+first thing done *inside* the session (item 3), and it absorbed the old item 4, which said the same
+thing with none of the consequences. The old item 5's paragraph also had to change: it told the
+reader that a question about a subject the manuals cover asked about a machine they do not is
+**not** refused, which is exactly what P1 made false for a vault with model headings.
+
