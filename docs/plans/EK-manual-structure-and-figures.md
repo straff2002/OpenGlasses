@@ -145,6 +145,50 @@ chunks).
   is not a heading), and a **prose** chunk under a caption cites its `§Section` rather than the
   figure — the figure names a drawing, the section names prose; a diagram chunk keeps `Figure N`.
 
+### 5 · Every citation is a door to the page it came from (P3)
+
+An answer's `Source:` lines are machine-attached by the retriever, never recalled by the model, so
+they are safe to make tappable. P3 turns them into the human-in-the-loop check a manufacturer's SOP
+needs: the technician sees the page the answer was drawn from, in the manufacturer's own document
+when it is present, and the session records that they did.
+
+- **Citation chips.** Under each assistant message on the phone, one chip per `Source:` line —
+  manual title, page, and figure or section — parsed from the message text. Tapping opens the P2
+  sheet at that page. Core-file citations (`Source: error_codes.md`) open that section in the
+  existing vault file editor, so a technician can check and an author can correct on the spot. By
+  voice, "open page 20" / "show me that source" route through `manual_figure` with a page argument.
+- **Two routes, one sheet, honest header.** PDF route: the sheet shows the manufacturer's page and
+  the header says so — `Manufacturer's document · page 20 of 85 · unmodified since import`, the last
+  clause checked against the ledger's content hash, not asserted. Markdown route: the sheet shows the
+  page's stored text, rendered, and the header says `Extracted text · page 20` and whether the
+  original is bundled (below).
+- **The original alongside the extract.** A Markdown document in the manifest may name its
+  original: `"source": "SLP99UHVK-service-manual.pdf"` (a PDF in the same `documents_dir`, copied at
+  install, hashed in the ledger, never indexed — the text is what is searched, so an author's
+  corrections still count). When present, the sheet offers **Open manufacturer's page** at the same
+  page; when absent, the header says the original is not in this vault, which a compliance reviewer
+  wants to know. An optional `"source_url"` per document offers the manufacturer's published copy,
+  opened outside the app. Both fields optional; existing manifests untouched; the validator checks
+  `source` exists and is a PDF.
+- **Paging.** PDF route: PDFKit's viewer pages by swipe; the title shows `page N of M` and one tap
+  returns to the cited page. Markdown route: the store knows every chunk's page, so the sheet pages
+  through stored text by page number with the same title and the same return tap.
+- **Pretty Markdown.** The chat renderer parses inline Markdown and fenced code today and nothing
+  else; the vault files are headings and pipe tables. P3 extends the app's own block parser with
+  headings, bullet and numbered lists, and pipe tables drawn as a grid in the design kit's type, and
+  uses it for the core-file section view, the Markdown-route page view, and the chat transcript. No
+  new dependency.
+- **The audit trail says what was verified.** `citation_opened` (title, page, from which chip or
+  voice request) and `page_verified` with a `source` of `manufacturer_pdf`, `extracted_text` or
+  `external_url`; every page swiped to is a `page_viewed`. The session export lists, per answer,
+  which citations were opened and against what. That is the double trust: the answer, and the page
+  in the manufacturer's book the technician read.
+- **Guide.** Step 1 gains: for anything a manufacturer requires as an SOP, import the PDF or bundle
+  it as `source` beside the extracted text. Step 6 gains the citation-chip check.
+- **Not in scope.** Highlighting the passage inside the PDF page (glyph mapping is fragile; the
+  printed book is page-granular anyway), HUD beyond the one-line cue, and any manual browser beyond
+  paging from a citation.
+
 ## Phases
 
 - **P1 — pure core (one PR).** §1 structured extraction in `VaultDocumentExtractor` (attributed
@@ -163,7 +207,13 @@ chunks).
   audit-log lines naming the figure sent and shown, the two P1 follow-ups. Headless tests use a
   fixture PDF and a fake provider; the sheet's view model is tested without SwiftUI; the live edge
   is a device turn against a cloud provider, recorded when run.
-- **P3 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
+- **P3 — citations as doors (one PR).** §5: citation chips, the two-route sheet header with the
+  ledger-hash check, `source` / `source_url` manifest fields with validator and importer support, paging
+  on both routes, the Markdown block renderer, the three audit events and the export lines, guide
+  edits. Headless tests for the chip parser, the header decision, the manifest/validator/importer
+  changes, the Markdown block parser (tables, lists, headings), the paging model, and the audit
+  events; the sheet's view model without SwiftUI.
+- **P4 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
   page), and per-manual heading lists for PDFs whose type carries no structure.
 
 ## Acceptance
