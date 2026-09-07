@@ -2,7 +2,7 @@
   "id": "lennox_slp99",
   "name": "Lennox SLP99 Furnace Service",
   "version": "1.0.0",
-  "files": ["safety.md", "error_codes.md", "models.md", "service_values.md"],
+  "files": ["safety.md", "error_codes.md", "models.md", "service_values.md", "parts.md"],
   "documents_dir": "documents",
   "documents": [
     { "file": "SLP99UHVK-service-manual.md",             "title": "SLP99UHVK Service Manual",             "kind": "service_manual" },

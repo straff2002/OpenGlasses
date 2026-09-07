@@ -25,6 +25,9 @@ struct SessionExport: Codable, Equatable {
     let captures: [CaptureRun]
     let citations: [Citation]
     let escalations: [EscalationEntry]
+    /// What was recommended, what was decided, and what base is being asked for (Plan EM).
+    /// Optional so an audit exported before the work record existed still decodes.
+    let workRecord: WorkRecord?
 
     struct Location: Codable, Equatable {
         let latitude: Double
@@ -159,5 +162,6 @@ struct SessionExport: Codable, Equatable {
         case location, transcript, photos
         case proceduresRun = "procedures_run"
         case captures, citations, escalations
+        case workRecord = "work_record"
     }
 }

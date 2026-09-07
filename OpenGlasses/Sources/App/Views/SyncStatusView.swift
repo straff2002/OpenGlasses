@@ -72,6 +72,8 @@ struct SyncStatusView: View {
         case .llmGrounding:  return "Deferred question"
         case .auditExport:   return "Audit export"
         case .captureRecord: return "Capture record"
+        case .workRecord:    return "Work record"
+        case .partsRequest:  return "Parts request"
         }
     }
 

@@ -70,6 +70,19 @@ final class SessionLogger {
             case equipmentRecognised = "equipment_recognised"
             /// …and gave it up again.
             case equipmentCleared = "equipment_cleared"
+            /// The assistant recommended something, with its citation (Plan EM).
+            case taskProposed = "task_proposed"
+            /// The technician accepted, declined or deferred it.
+            case taskDecision = "task_decision"
+            case taskStarted = "task_started"
+            case taskCompleted = "task_completed"
+            /// A part was asked of base.
+            case partsRequested = "parts_requested"
+            /// …and base answered. Reported, never acted on.
+            case partsAnswered = "parts_answered"
+            /// A nameplate or display field was written down, with its source.
+            case identityFieldRecorded = "identity_field_recorded"
+            case jobReferenceSet = "job_reference_set"
             case error = "error"
         }
     }

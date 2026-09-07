@@ -69,7 +69,8 @@ final class FieldSessionService: ObservableObject {
         vaultId: String,
         assetId: String?,
         mode: FieldSession.Mode = .aiOnly,
-        startLocation: CLLocation? = nil
+        startLocation: CLLocation? = nil,
+        jobReference: String? = nil
     ) throws -> FieldSession {
         guard activeSession == nil else {
             throw FieldSessionError.alreadyActive
@@ -82,7 +83,7 @@ final class FieldSessionService: ObservableObject {
         }
 
         let store = VaultRegistry.shared.store(for: manifest)
-        let session = FieldSession(
+        var session = FieldSession(
             id: UUID().uuidString,
             vaultId: vaultId,
             assetId: assetId,
@@ -97,10 +98,15 @@ final class FieldSessionService: ObservableObject {
             escalations: [],
             billableSeconds: 0
         )
+        if let reference = jobReference?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !reference.isEmpty {
+            session.jobReference = reference
+        }
 
         activeSession = session
         activeVault = store
         modelIndex = VaultModelIndex(store: store)
+        partsIndex = VaultPartsIndex(store: store)
         activeEquipment = nil
         library = ProcedureLibrary(store: store)
         let newLogger = SessionLogger(session: session, root: sessionsRoot.appendingPathComponent(session.id, isDirectory: true))
@@ -173,10 +179,17 @@ final class FieldSessionService: ObservableObject {
         history = history.replacingFirst(matching: session.id, with: session)
         logger.updateSession { $0 = session }
         logger.appendLifecycle(.sessionEnded, note: "outcome=\(outcome.rawValue), billable_seconds=\(Int(session.billableSeconds))")
+        // The visit's record leaves as its own queued operation, whatever else the session does
+        // with it (Plan EM). The queue's sink is unchanged — this is a durable local tombstone
+        // until a configured endpoint exists.
+        let record = WorkRecord(session: session,
+                                vaultName: activeVault?.manifest.name ?? session.vaultId)
+        offlineQueue?.enqueue(QueuedOp.make(workRecord: record))
         activeSession = nil
         activeVault = nil
         activeEquipment = nil
         modelIndex = VaultModelIndex(vaultName: "", files: [])
+        partsIndex = VaultPartsIndex(files: [])
         stagedFigure = nil
         lastShownFigure = nil
         self.logger = nil
@@ -259,6 +272,335 @@ final class FieldSessionService: ObservableObject {
         guard let model = modelIndex.models.first(where: { $0.heading == active.heading }) else { return nil }
         return VaultRetriever.ModelScope(activeTokens: Set(model.tokens),
                                          otherTokens: modelIndex.knownModelTokens)
+    }
+
+    // MARK: - Work record: tasks, parts, identity (Plan EM)
+
+    /// The active vault's parts table, derived once per session from its core files. Empty for a
+    /// vault that lists no parts, which leaves the manuals as the only route to a verification.
+    private(set) var partsIndex = VaultPartsIndex(files: [])
+
+    /// Verification of a part number against the vault's parts table first, then its manuals.
+    var partsVerifier: PartsVerifier {
+        let store = activeVault
+        let documentStore = self.documentStore
+        return PartsVerifier(index: partsIndex) { token in
+            guard let store, store.manifest.hasDocuments, let documentStore else { return [] }
+            return documentStore.passages(containingToken: token,
+                                          namespace: DocumentStore.vaultNamespace(store.manifest.id),
+                                          limit: 3)
+        }
+    }
+
+    /// Verify one part number the way everything else does, so nothing can be written down by a
+    /// route that skips the book.
+    func verifyPart(_ number: String) -> TaskPart { partsVerifier.verify(number) }
+
+    /// Apply a change to the active session and persist it through the one update path, so the
+    /// audit record, the history list and a crash-restored session cannot disagree.
+    @discardableResult
+    private func mutateSession<T>(_ body: (inout FieldSession) -> T) -> T? {
+        guard var session = activeSession else { return nil }
+        let result = body(&session)
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        return result
+    }
+
+    /// The job this visit belongs to.
+    func setJobReference(_ reference: String) {
+        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, activeSession != nil else { return }
+        mutateSession { $0.jobReference = trimmed }
+        logger?.append(.init(timestamp: Date(), kind: .jobReferenceSet, text: trimmed, payload: nil))
+    }
+
+    /// Write down a field read off the machine — model, serial, board part number, firmware,
+    /// refrigerant — with where it came from, because digits are where recognition fails quietly.
+    @discardableResult
+    func recordIdentityField(name: String, value: String,
+                             source: DeviceIdentityField.Source) -> DeviceIdentityField? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !value.isEmpty, activeSession != nil else { return nil }
+        let field = DeviceIdentityField(name: name, value: value, source: source)
+        mutateSession { session in
+            // A field read a second time replaces the first — the later reading is the one the
+            // technician is standing in front of.
+            session.identityFields.removeAll { $0.name.lowercased() == name.lowercased() }
+            session.identityFields.append(field)
+        }
+        logger?.append(.init(timestamp: Date(), kind: .identityFieldRecorded, text: field.summary,
+                             payload: ["field": AnyCodable(name), "value": AnyCodable(value),
+                                       "source": AnyCodable(source.rawValue)]))
+        return field
+    }
+
+    // MARK: Tasks
+
+    func task(id: String) -> FieldSession.Task? { activeSession?.tasks.first { $0.id == id } }
+    /// The task work is being recorded against, if any.
+    var activeTask: FieldSession.Task? { activeSession?.activeTask }
+    /// The recommendation "do it" / "skip that" / "later" resolve to when no task is named.
+    var latestRecommendation: FieldSession.Task? { activeSession?.latestRecommendation }
+
+    /// Record a recommendation. It is a proposal and nothing else until the technician decides.
+    ///
+    /// Refused without a citation: the model may only recommend what it can point at in the book.
+    /// Refused with a procedure the vault does not have: a task cannot promise to run something
+    /// that is not there.
+    @discardableResult
+    func proposeTask(title: String, why: String? = nil, procedureId: String? = nil,
+                     parts: [TaskPart] = [], safetyNote: String? = nil,
+                     citation: String) throws -> FieldSession.Task {
+        guard activeSession != nil else { throw FieldSessionError.noActiveSession }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw FieldSessionError.taskNeedsTitle }
+        let citation = citation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !citation.isEmpty else { throw FieldSessionError.recommendationNeedsCitation }
+        if let procedureId, !procedureId.isEmpty, library?.procedure(id: procedureId) == nil {
+            throw FieldSessionError.unknownProcedure(procedureId)
+        }
+        let task = FieldSession.Task(
+            title: title, why: why, origin: .recommended, status: .recommended,
+            procedureId: (procedureId?.isEmpty == true) ? nil : procedureId,
+            citation: citation, safetyNote: safetyNote, parts: parts)
+        mutateSession { $0.tasks.append(task) }
+        logger?.append(.init(timestamp: Date(), kind: .taskProposed, text: title, payload: [
+            "task_id": AnyCodable(task.id),
+            "citation": AnyCodable(citation),
+            "procedure_id": AnyCodable(task.procedureId ?? ""),
+            "parts": AnyCodable(task.parts.map { ["number": $0.number, "verified": $0.verified] as [String: Any] })
+        ]))
+        return task
+    }
+
+    /// "Add a task: cleaned the condensate trap." Work the technician did without anybody
+    /// suggesting it — already in progress, because they are telling you while doing it.
+    @discardableResult
+    func addOperatorTask(title: String, why: String? = nil) throws -> FieldSession.Task {
+        guard activeSession != nil else { throw FieldSessionError.noActiveSession }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw FieldSessionError.taskNeedsTitle }
+        let now = Date()
+        let task = FieldSession.Task(title: title, why: why, origin: .operatorAdded,
+                                     status: .inProgress, createdAt: now, acceptedAt: now)
+        mutateSession { $0.tasks.append(task) }
+        logger?.append(.init(timestamp: now, kind: .taskStarted, text: title,
+                             payload: ["task_id": AnyCodable(task.id),
+                                       "origin": AnyCodable(task.origin.rawValue)]))
+        return task
+    }
+
+    /// What "do it" / "skip that" / "later" did, including the procedure an acceptance started.
+    struct TaskDecisionResult {
+        let task: FieldSession.Task
+        /// The step the technician is now on, when accepting started a procedure.
+        let procedureStep: Procedure.Step?
+        /// Why a procedure named by the task could not be started, when it could not.
+        let procedureProblem: String?
+    }
+
+    enum TaskDecision: String {
+        case accept
+        case decline
+        case defer_ = "defer"
+    }
+
+    /// Accept, decline or defer a task.
+    ///
+    /// Accepting starts the task's procedure when it names one, and makes the task the active one
+    /// so readings, photos and verified pages attach to it — unless something else is already
+    /// running, in which case it rests at `accepted` and `start` picks it up later.
+    @discardableResult
+    func decideTask(id: String, decision: TaskDecision) throws -> TaskDecisionResult {
+        guard activeSession != nil else { throw FieldSessionError.noActiveSession }
+        guard let existing = task(id: id) else { throw FieldSessionError.unknownTask(id) }
+        guard existing.status.isOpen else {
+            throw FieldSessionError.taskAlreadyClosed(existing.title, existing.status.rawValue)
+        }
+
+        var step: Procedure.Step?
+        var problem: String?
+        let now = Date()
+
+        switch decision {
+        case .decline, .defer_:
+            mutateSession { session in
+                guard let idx = session.tasks.firstIndex(where: { $0.id == id }) else { return }
+                session.tasks[idx].status = (decision == .decline) ? .declined : .deferred
+            }
+        case .accept:
+            if let procedureId = existing.procedureId {
+                do {
+                    step = try startProcedure(id: procedureId)
+                } catch {
+                    problem = error.localizedDescription
+                }
+            }
+            let busy = (step == nil) && (activeTask != nil)
+            mutateSession { session in
+                guard let idx = session.tasks.firstIndex(where: { $0.id == id }) else { return }
+                session.tasks[idx].acceptedAt = session.tasks[idx].acceptedAt ?? now
+                session.tasks[idx].status = busy ? .accepted : .inProgress
+            }
+        }
+
+        let updated = task(id: id) ?? existing
+        logger?.append(.init(timestamp: now, kind: .taskDecision, text: updated.title, payload: [
+            "task_id": AnyCodable(id),
+            "decision": AnyCodable(decision.rawValue),
+            "status": AnyCodable(updated.status.rawValue)
+        ]))
+        return TaskDecisionResult(task: updated, procedureStep: step, procedureProblem: problem)
+    }
+
+    /// Pick up a task that was accepted or put off earlier.
+    @discardableResult
+    func startTask(id: String) throws -> FieldSession.Task {
+        guard activeSession != nil else { throw FieldSessionError.noActiveSession }
+        guard let existing = task(id: id) else { throw FieldSessionError.unknownTask(id) }
+        guard existing.status.isOpen || existing.status == .deferred else {
+            throw FieldSessionError.taskAlreadyClosed(existing.title, existing.status.rawValue)
+        }
+        let now = Date()
+        mutateSession { session in
+            guard let idx = session.tasks.firstIndex(where: { $0.id == id }) else { return }
+            session.tasks[idx].acceptedAt = session.tasks[idx].acceptedAt ?? now
+            session.tasks[idx].status = .inProgress
+        }
+        let updated = task(id: id) ?? existing
+        logger?.append(.init(timestamp: now, kind: .taskStarted, text: updated.title,
+                             payload: ["task_id": AnyCodable(id)]))
+        return updated
+    }
+
+    /// Close a task, with what the technician said they did.
+    @discardableResult
+    func completeTask(id: String, note: String? = nil, outcome: String? = nil) throws -> FieldSession.Task {
+        try closeTask(id: id, status: .done, note: note, outcome: outcome)
+    }
+
+    /// Give a task up. Kept on the record — started and not finished is information.
+    @discardableResult
+    func abandonTask(id: String, note: String? = nil) throws -> FieldSession.Task {
+        try closeTask(id: id, status: .abandoned, note: note, outcome: nil)
+    }
+
+    @discardableResult
+    private func closeTask(id: String, status: FieldSession.Task.Status,
+                           note: String?, outcome: String?) throws -> FieldSession.Task {
+        guard activeSession != nil else { throw FieldSessionError.noActiveSession }
+        guard let existing = task(id: id) else { throw FieldSessionError.unknownTask(id) }
+        guard existing.status.isOpen else {
+            throw FieldSessionError.taskAlreadyClosed(existing.title, existing.status.rawValue)
+        }
+        let now = Date()
+        mutateSession { session in
+            guard let idx = session.tasks.firstIndex(where: { $0.id == id }) else { return }
+            session.tasks[idx].status = status
+            session.tasks[idx].completedAt = now
+            session.tasks[idx].acceptedAt = session.tasks[idx].acceptedAt ?? session.tasks[idx].createdAt
+            if let note, !note.isEmpty { session.tasks[idx].completionNote = note }
+            if let outcome, !outcome.isEmpty { session.tasks[idx].procedureOutcome = outcome }
+        }
+        let updated = task(id: id) ?? existing
+        logger?.append(.init(timestamp: now, kind: .taskCompleted, text: updated.title, payload: [
+            "task_id": AnyCodable(id),
+            "status": AnyCodable(status.rawValue),
+            "note": AnyCodable(note ?? ""),
+            "outcome": AnyCodable(updated.procedureOutcome ?? "")
+        ]))
+        return updated
+    }
+
+    /// A procedure a task started has reached its end: the outcome closes the task, so nobody has
+    /// to remember to say "done" twice.
+    private func closeTaskForProcedure(id procedureId: String?, outcome: String) {
+        guard let procedureId,
+              let task = activeSession?.tasks.last(where: {
+                  $0.procedureId == procedureId && $0.status.isOpen
+              }) else { return }
+        _ = try? closeTask(id: task.id, status: .done, note: nil, outcome: outcome)
+    }
+
+    // MARK: Evidence attachment
+
+    /// Attach evidence to the active task, or to the job when none is running. Called from the
+    /// existing logging paths so nothing has to be recorded twice.
+    private func attachEvidence(_ body: (inout FieldSession.Evidence) -> Void) {
+        mutateSession { session in
+            if let idx = session.tasks.lastIndex(where: { $0.status == .inProgress }) {
+                body(&session.tasks[idx].evidence)
+            } else {
+                body(&session.jobEvidence)
+            }
+        }
+    }
+
+    // MARK: Parts requests
+
+    /// Ask base for a part. May stand without a task — a stock check goes out before anybody knows
+    /// whether the repair is happening — and leaves as its own queued operation.
+    @discardableResult
+    func requestPart(_ part: TaskPart, quantity: Int = 1, taskId: String? = nil,
+                     urgency: PartsRequest.Urgency = .routine, onVan: Bool = false) -> PartsRequest? {
+        guard let session = activeSession else { return nil }
+        let request = PartsRequest(part: part, quantity: max(quantity, 1), taskId: taskId,
+                                   modelToken: activeEquipment?.modelToken, urgency: urgency,
+                                   onVan: onVan)
+        mutateSession { $0.partsRequests.append(request) }
+        logger?.append(.init(timestamp: request.createdAt, kind: .partsRequested,
+                             text: request.summary, payload: [
+                                "request_id": AnyCodable(request.id),
+                                "part": AnyCodable(part.number),
+                                "quantity": AnyCodable(request.quantity),
+                                "verified": AnyCodable(part.verified),
+                                "page": AnyCodable(part.page ?? ""),
+                                "task_id": AnyCodable(taskId ?? ""),
+                                "urgency": AnyCodable(urgency.rawValue),
+                                "on_van": AnyCodable(onVan)]))
+        offlineQueue?.enqueue(QueuedOp.make(partsRequest: request, sessionId: session.id))
+        return request
+    }
+
+    /// Record what base said. **Reported, never acted on**: it is attached to the request and
+    /// spoken to the technician, and it changes no task and no recommendation by itself.
+    @discardableResult
+    func answerPartsRequest(id: String? = nil, part: String? = nil, answer: String) -> PartsRequest? {
+        guard let session = activeSession else { return nil }
+        let wantedPart = part.map(PartsVerifier.normalise)
+        let match = session.partsRequests.last { request in
+            if let id { return request.id == id }
+            if let wantedPart, !wantedPart.isEmpty { return request.part.number == wantedPart }
+            return true
+        }
+        guard let match else { return nil }
+        let now = Date()
+        mutateSession { session in
+            guard let idx = session.partsRequests.firstIndex(where: { $0.id == match.id }) else { return }
+            session.partsRequests[idx].baseAnswer = answer
+            session.partsRequests[idx].status = .answered
+            session.partsRequests[idx].answeredAt = now
+        }
+        logger?.append(.init(timestamp: now, kind: .partsAnswered, text: answer, payload: [
+            "request_id": AnyCodable(match.id),
+            "part": AnyCodable(match.part.number)
+        ]))
+        return activeSession?.partsRequests.first { $0.id == match.id }
+    }
+
+    // MARK: The record
+
+    /// The visit's record as it stands — what "read back the job" speaks, and what leaves at the
+    /// end. Deterministic: no model is asked to summarise anything.
+    func workRecord() -> WorkRecord? {
+        guard let session = activeSession else { return nil }
+        var snapshot = session
+        // Time on site as it is right now, without disturbing the session's own accounting.
+        if let lastResumeAt { snapshot.billableSeconds += Date().timeIntervalSince(lastResumeAt) }
+        return WorkRecord(session: snapshot, vaultName: activeVault?.manifest.name ?? session.vaultId)
     }
 
     // MARK: - Prompt context
@@ -539,6 +881,10 @@ final class FieldSessionService: ObservableObject {
                       "page": AnyCodable(citation.page ?? 0),
                       "origin": AnyCodable(origin.rawValue),
                       "kind": AnyCodable(citation.kind.rawValue)]))
+        let label = citation.label
+        attachEvidence { evidence in
+            if !evidence.citationsOpened.contains(label) { evidence.citationsOpened.append(label) }
+        }
     }
 
     /// Audit: the page behind a citation was actually put on screen, and against what.
@@ -548,6 +894,10 @@ final class FieldSessionService: ObservableObject {
             payload: ["document": AnyCodable(title),
                       "page": AnyCodable(page),
                       "source": AnyCodable(source.rawValue)]))
+        let label = "\(title), page \(page)"
+        attachEvidence { evidence in
+            if !evidence.pagesVerified.contains(label) { evidence.pagesVerified.append(label) }
+        }
     }
 
     /// Audit: a page was turned to.
@@ -590,6 +940,11 @@ final class FieldSessionService: ObservableObject {
     /// the consolidated export (no-op if no session).
     func logCaptureRecord(_ record: CaptureRecord) {
         logger?.append(record.auditEvent)
+        // A reading taken while a task is running belongs to that task; with none running it
+        // belongs to the job (Plan EM).
+        attachEvidence { evidence in
+            if !evidence.readings.contains(record.id) { evidence.readings.append(record.id) }
+        }
     }
 
     /// Append a HECA safety-assessment event to the active session's audit log (no-op if no session).
@@ -606,6 +961,12 @@ final class FieldSessionService: ObservableObject {
 
     func attachPhoto(_ data: Data, caption: String? = nil) -> URL? {
         let url = logger?.attachPhoto(data, caption: caption)
+        if let url {
+            let name = url.lastPathComponent
+            attachEvidence { evidence in
+                if !evidence.photos.contains(name) { evidence.photos.append(name) }
+            }
+        }
         if let url, let sessionId = activeSession?.id {
             offlineQueue?.enqueue(QueuedOp.make(
                 kind: .photoUpload, sessionId: sessionId,
@@ -650,7 +1011,10 @@ final class FieldSessionService: ObservableObject {
     func advanceProcedure(choice: String?) throws -> ProcedureRunner.Transition {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
         let transition = try runner.advance(choice: choice)
-        if case .completed = transition { clearRunner() }
+        if case .completed(let outcome) = transition {
+            closeTaskForProcedure(id: activeProcedureId, outcome: outcome)
+            clearRunner()
+        }
         return transition
     }
 
@@ -669,6 +1033,7 @@ final class FieldSessionService: ObservableObject {
     func completeProcedure(outcome: String) throws {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
         _ = runner.complete(outcome: outcome)
+        closeTaskForProcedure(id: activeProcedureId, outcome: outcome)
         clearRunner()
     }
 
@@ -722,6 +1087,7 @@ final class FieldSessionService: ObservableObject {
         activeSession = inProgress
         activeVault = store
         modelIndex = VaultModelIndex(store: store)
+        partsIndex = VaultPartsIndex(store: store)
         // The machine is part of the session record, so a crash-restored session still knows what
         // it is standing in front of.
         activeEquipment = inProgress.equipment
@@ -783,6 +1149,10 @@ enum FieldSessionError: LocalizedError {
     case procedureAlreadyRunning
     case noProcedureRunning
     case unknownProcedure(String)
+    case unknownTask(String)
+    case taskNeedsTitle
+    case taskAlreadyClosed(String, String)
+    case recommendationNeedsCitation
 
     var errorDescription: String? {
         switch self {
@@ -793,6 +1163,12 @@ enum FieldSessionError: LocalizedError {
         case .procedureAlreadyRunning: return "A procedure is already running. Complete it before starting another."
         case .noProcedureRunning: return "No procedure is currently running. Start one first."
         case .unknownProcedure(let id): return "Unknown procedure: \(id)"
+        case .unknownTask(let id): return "No task with id \(id) on this job."
+        case .taskNeedsTitle: return "A task needs a title — say what is to be done."
+        case .taskAlreadyClosed(let title, let status):
+            return "'\(title)' is already \(status.replacingOccurrences(of: "_", with: " "))."
+        case .recommendationNeedsCitation:
+            return "A recommendation needs a citation. Look the answer up in the manuals first, then recommend it with the source you found."
         }
     }
 }

@@ -99,7 +99,8 @@ final class ExampleVaultLennoxTests: XCTestCase {
 
         let manifest = try XCTUnwrap(result.manifest)
         XCTAssertEqual(manifest.id, Self.vaultId)
-        XCTAssertEqual(manifest.files, ["safety.md", "error_codes.md", "models.md", "service_values.md"])
+        XCTAssertEqual(manifest.files,
+                       ["safety.md", "error_codes.md", "models.md", "service_values.md", "parts.md"])
         XCTAssertEqual(manifest.gating.iap, "enterprise")
 
         let procedures = try FileManager.default.contentsOfDirectory(at: directory.appendingPathComponent("procedures"),
@@ -216,6 +217,76 @@ final class ExampleVaultLennoxTests: XCTestCase {
         guard case .moved(let outOfRange) = try service.advanceProcedure(choice: "out_of_range") else { return XCTFail("expected a move") }
         XCTAssertEqual(outOfRange.id, "inducer_check")
         XCTAssertEqual(try service.procedureBack().id, "measure_delta_p")
+    }
+
+    // MARK: - The work record (Plan EM)
+
+    /// The plan's acceptance scenario, end to end on the real example vault: a recommendation with
+    /// a procedure and a part, "do it", the procedure's outcome closing the task, a verified stock
+    /// check, an operator task nobody recommended, an unknown part recorded unverified, and a
+    /// read-back that names all of it.
+    func testAJobRunsFromRecommendationToRecordOnTheExampleVault() async throws {
+        let (directory, _) = try stageExample()
+        let service = try startSession(from: directory)
+        service.setJobReference("WO-4471")
+        service.recordIdentityField(name: "Serial", value: "5820A12345", source: .nameplate)
+
+        let propose = ProposeTaskTool(sessionService: service)
+        let task = TaskTool(sessionService: service)
+        let parts = PartsRequestTool(sessionService: service)
+
+        // The assistant recommends, citing the page, naming the procedure and the part.
+        let recommended = try await propose.execute(args: [
+            "title": "Check the pressure switch tubing",
+            "why": "E223 on a heat call",
+            "citation": "SLP99UHVK Service Manual, page 39",
+            "procedure_id": "slp99_pressure_switch_lockout",
+            "parts": ["14T65"]
+        ])
+        XCTAssertTrue(recommended.contains("14T65 (High-altitude pressure switch, 7,501–10,000 ft) — verified, parts.md"),
+                      recommended)
+
+        // "Do it" starts the procedure; its terminal outcome closes the task.
+        let accepted = try await task.execute(args: ["verb": "accept"])
+        XCTAssertTrue(accepted.contains("Starting slp99_pressure_switch_lockout"), accepted)
+        _ = try service.advanceProcedure(choice: "low_switch")
+        _ = try service.advanceProcedure(choice: "blocked")
+        XCTAssertEqual(service.activeSession?.tasks.first?.status, .done)
+        XCTAssertEqual(service.activeSession?.tasks.first?.procedureOutcome, "resolved")
+
+        // "Request two 14T65 for this job" — verified, citing where it was found, no task needed.
+        let requested = try await parts.execute(args: ["part": "14T65", "quantity": 2])
+        XCTAssertTrue(requested.contains("Requested 2 × 14T65"), requested)
+        XCTAssertTrue(requested.contains("Verified"), requested)
+
+        // "Add a task: cleaned the condensate trap" … "done".
+        _ = try await task.execute(args: ["verb": "add", "title": "Cleaned the condensate trap"])
+        _ = try await task.execute(args: ["verb": "done", "completion_note": "flushed it, ran clear"])
+
+        // An unknown number is recorded and spoken as unverified rather than trusted or dropped.
+        let unknown = try await parts.execute(args: ["part": "99Z99"])
+        XCTAssertTrue(unknown.contains("99Z99 is not in the manuals loaded for this vault"), unknown)
+        XCTAssertEqual(service.activeSession?.partsRequests.last?.part.verified, false)
+
+        // The read-back names all three with their status.
+        let readBack = try await task.execute(args: ["read_back": true])
+        XCTAssertTrue(readBack.hasPrefix("Job WO-4471 — Lennox SLP99 Furnace Service."), readBack)
+        XCTAssertTrue(readBack.contains("  Serial: 5820A12345 (from the nameplate)"), readBack)
+        XCTAssertTrue(readBack.contains("Done: Check the pressure switch tubing."), readBack)
+        XCTAssertTrue(readBack.contains("Procedure slp99_pressure_switch_lockout finished as resolved"), readBack)
+        XCTAssertTrue(readBack.contains("Done: Cleaned the condensate trap (added by the technician). Note: flushed it, ran clear."),
+                      readBack)
+        XCTAssertTrue(readBack.contains("2 × 14T65"), readBack)
+        XCTAssertTrue(readBack.contains("1 × 99Z99 — unverified, not found in the manuals"), readBack)
+
+        // …and the export carries them.
+        let session = try service.endSession(outcome: .resolved)
+        let dir = tempRoot.appendingPathComponent("sessions/\(session.id)", isDirectory: true)
+        let record = try XCTUnwrap(SessionExporter.buildExport(sessionDir: dir)?.workRecord)
+        XCTAssertEqual(record.tasks(status: .done).map(\.title),
+                       ["Check the pressure switch tubing", "Cleaned the condensate trap"])
+        XCTAssertEqual(record.partsRequests.map(\.part.number), ["14T65", "99Z99"])
+        XCTAssertEqual(record.identityFields.map(\.value), ["5820A12345"])
     }
 
     // MARK: - Manuals (present locally only)
