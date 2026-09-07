@@ -198,6 +198,40 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    /// The text one printed page of one document holds, in chunk order and de-overlapped — what
+    /// the figure sheet shows when a manual was imported as extracted text rather than as a PDF
+    /// (Plan EK P3). Nil when nothing is stored for that page.
+    func text(documentId: String, page: Int) -> String? {
+        let chunks = fetchChunks(namespace: nil, documentIds: [documentId])
+            .filter { $0.page == page }
+            .sorted { $0.chunkIndex < $1.chunkIndex }
+            .map(\.text)
+        guard !chunks.isEmpty else { return nil }
+        let text = DocumentReconstructor.deOverlap(chunks).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    /// Every printed page of a document with the text stored for it, ascending — one pass over the
+    /// document's chunks, so the figure sheet can page through a text-imported manual without
+    /// querying per page (Plan EK P3).
+    func pageTexts(documentId: String) -> [(page: Int, text: String)] {
+        let byPage = Dictionary(grouping: fetchChunks(namespace: nil, documentIds: [documentId])
+            .filter { $0.page != nil }, by: { $0.page! })
+        return byPage.keys.sorted().compactMap { page in
+            let text = DocumentReconstructor.deOverlap(
+                byPage[page]!.sorted { $0.chunkIndex < $1.chunkIndex }.map(\.text))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : (page, text)
+        }
+    }
+
+    /// The printed pages a document has stored text for, ascending. The extracted-text route pages
+    /// through these rather than through 1…N: a document's text may start at a cover page it never
+    /// numbered, and offering a page the store has nothing for would show a blank.
+    func storedPages(documentId: String) -> [Int] {
+        Array(Set(fetchChunks(namespace: nil, documentIds: [documentId]).compactMap(\.page))).sorted()
+    }
+
     func list() -> [DocumentRef] { documents }
 
     /// Documents in a single namespace (project scope, Plan AN).

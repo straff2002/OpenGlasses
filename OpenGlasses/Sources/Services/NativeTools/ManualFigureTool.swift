@@ -12,8 +12,9 @@ final class ManualFigureTool: NativeTool {
     let name = "manual_figure"
     let description = """
     Show a numbered figure, table or page from the manuals loaded into the active Field Assist \
-    vault. Pass 'figure' ("Figure 58", or just "58"), or 'page' with a printed page number, or \
-    'again' to bring back the last figure shown. The page opens on the technician's phone and is \
+    vault, or re-open the source a previous answer cited. Pass 'figure' ("Figure 58", or just \
+    "58"), or 'page' with a printed page number ("open page 20"), or 'again' to bring back the \
+    last figure or page shown ("show me that source", "show that figure again"). The page opens on the technician's phone and is \
     attached to your next turn as an image when one is available, so you can read the drawing \
     yourself. Use it when the technician names a figure or asks to see a wiring diagram, and after \
     citing one. A manual imported as extracted text has no page to show — the tool says so, and \
@@ -109,6 +110,9 @@ final class ManualFigureTool: NativeTool {
     private func show(_ staged: FieldSessionService.StagedFigure,
                       session: FieldSessionService, opening: String) -> String {
         let presenter = ManualFigurePresenter(figure: staged, sourceURL: session.sourcePDFURL(for: staged))
+        // Asked for out loud rather than tapped: the audit records which it was, because a
+        // technician reading a page and a technician asking to be shown one are different evidence.
+        session.logCitationOpened(staged.asCitation, origin: .voice)
         var lines = ["\(opening) \(staged.name) on the technician's phone. Source: \(staged.citation)."]
         if presenter.hasPicture {
             lines.append("The page is attached to your next turn as an image, so read the drawing there rather than describing it from the labels.")

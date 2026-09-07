@@ -312,6 +312,12 @@ final class FieldSessionService: ObservableObject {
             figure.flatMap { $0.isEmpty ? nil : $0 } ?? "the drawing on page \(page)"
         }
 
+        /// The staged figure as a citation, so what is logged when a figure is asked for by voice
+        /// keys the same way as a citation tapped under an answer (Plan EK P3).
+        var asCitation: Citation {
+            Citation(kind: .manual, title: documentTitle, page: page, figure: figure)
+        }
+
         /// Whether the vault holds a page that can be rendered at all. The Markdown route holds
         /// extracted text and has none — the honest limit the vault guide names.
         var hasSourcePage: Bool { sourceFile?.lowercased().hasSuffix(".pdf") == true }
@@ -358,6 +364,108 @@ final class FieldSessionService: ObservableObject {
         let url = VaultImporter.baselineDirectory(for: manifest.id)
             .appendingPathComponent(manifest.documentRelativePath(document))
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    // MARK: - Citations as doors (Plan EK P3)
+
+    /// Where an opened citation came from. A tap and a spoken request are different evidence in an
+    /// audit: one is a technician reading the page, the other is a technician asking to be shown it.
+    enum CitationOrigin: String, Equatable {
+        case chip
+        case voice
+    }
+
+    /// The ledger entry a staged figure's document was ingested as, when the vault still knows it.
+    func ledgerEntry(for figure: StagedFigure) -> VaultDocumentLedger.Entry? {
+        guard let store = activeVault else { return nil }
+        let ledger = VaultImporter.documentLedger(for: store.manifest.id)
+        return ledger.entries.first { $0.documentId == figure.documentId }
+            ?? ledger.entries.first { $0.file == figure.sourceFile }
+    }
+
+    /// The manifest entry for a staged figure's file.
+    func manifestDocument(for figure: StagedFigure) -> VaultDocument? {
+        guard let file = figure.sourceFile, let store = activeVault else { return nil }
+        return store.manifest.documents.first { $0.file == file }
+    }
+
+    /// The manufacturer's own PDF for a staged figure: the imported document when that is a PDF,
+    /// otherwise the original bundled beside the extracted text (`source`). Nil when the vault
+    /// holds neither — which is what "Original not bundled in this vault" is telling the reader.
+    func manufacturerPDFURL(for figure: StagedFigure) -> URL? {
+        if let direct = sourcePDFURL(for: figure) { return direct }
+        guard let store = activeVault, let document = manifestDocument(for: figure),
+              let relative = store.manifest.documentSourceRelativePath(document) else { return nil }
+        let url = VaultImporter.baselineDirectory(for: store.manifest.id).appendingPathComponent(relative)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Turn a citation parsed out of an answer back into the page it names, or nil when no manual
+    /// in this vault answers to that title. Matching is by the title the ledger recorded, which is
+    /// the title the citation was built from, so a chip can only ever open the document it names.
+    func stagedFigure(for citation: Citation) -> StagedFigure? {
+        guard citation.kind == .manual, let store = activeVault else { return nil }
+        let wanted = citation.title.lowercased()
+        let entries = VaultImporter.documentLedger(for: store.manifest.id).entries
+        guard let entry = entries.first(where: { $0.title.lowercased() == wanted })
+                ?? entries.first(where: { $0.title.lowercased().contains(wanted) }) else { return nil }
+        return StagedFigure(documentId: entry.documentId, documentTitle: entry.title,
+                            page: max(citation.page ?? 1, 1), figure: citation.figure,
+                            sourceFile: entry.file)
+    }
+
+    /// Everything the figure sheet needs for one staged figure: which document it can show, the
+    /// pages it can turn to, the hash the manufacturer's file is checked against, and the
+    /// manufacturer's published copy when the manifest names one.
+    func manualPageSheet(for figure: StagedFigure) -> ManualPageSheetModel {
+        let pdf = manufacturerPDFURL(for: figure)
+        let document = manifestDocument(for: figure)
+        let entry = ledgerEntry(for: figure)
+        let isPDF = document?.isPDF ?? (figure.sourceFile?.lowercased().hasSuffix(".pdf") == true)
+        let pages: [ManualPageSheetModel.Page] = isPDF ? [] :
+            (documentStore?.pageTexts(documentId: figure.documentId) ?? [])
+                .map { .init(number: $0.page, text: $0.text) }
+        let published = document?.sourceUrl
+            .flatMap { URL(string: $0.trimmingCharacters(in: .whitespaces)) }
+        return ManualPageSheetModel(
+            citation: figure.citation,
+            documentTitle: figure.documentTitle,
+            citedPage: figure.page,
+            manufacturerPDF: pdf,
+            pdfPageCount: pdf.map(ManualPageSheetModel.pageCount(ofPDF:)) ?? 0,
+            extractedPages: pages,
+            publishedURL: published,
+            // The document's own hash when the document is the PDF; the original's hash when the
+            // PDF is bundled beside extracted text. Comparing the wrong one would report a
+            // faithfully imported manual as changed.
+            ledgerHash: isPDF ? entry?.contentHash : entry?.sourceContentHash,
+            documentIsPDF: pdf != nil)
+    }
+
+    /// Audit: a technician opened a citation — from a chip under the answer, or by asking.
+    func logCitationOpened(_ citation: Citation, origin: CitationOrigin) {
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .citationOpened, text: citation.label,
+            payload: ["document": AnyCodable(citation.title),
+                      "page": AnyCodable(citation.page ?? 0),
+                      "origin": AnyCodable(origin.rawValue),
+                      "kind": AnyCodable(citation.kind.rawValue)]))
+    }
+
+    /// Audit: the page behind a citation was actually put on screen, and against what.
+    func logPageVerified(title: String, page: Int, source: ManualPageRoute) {
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .pageVerified, text: "\(title), page \(page)",
+            payload: ["document": AnyCodable(title),
+                      "page": AnyCodable(page),
+                      "source": AnyCodable(source.rawValue)]))
+    }
+
+    /// Audit: a page was turned to.
+    func logPageViewed(title: String, page: Int) {
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .pageViewed, text: "\(title), page \(page)",
+            payload: ["document": AnyCodable(title), "page": AnyCodable(page)]))
     }
 
     /// Audit: a manual page went to the model as this turn's image.
