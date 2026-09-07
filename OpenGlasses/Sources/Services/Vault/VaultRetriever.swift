@@ -129,6 +129,9 @@ struct VaultRetriever {
         let candidates = Array(merged.values)
         let ranked = candidates.filter { !$0.matchedTokens.isEmpty }.sorted(by: precedes)
             + candidates.filter { $0.matchedTokens.isEmpty }.sorted(by: precedes)
+        // The lexical criterion compares a passage against everything that was searched, not just
+        // the spoken turn: a nameplate's words and the running procedure step are as much a part of
+        // what was asked as the sentence is.
         return policy.decide(ranked, limit: request.limit,
                              queryTerms: LexicalSupport.contentTerms(parts.joined(separator: " ")))
     }
