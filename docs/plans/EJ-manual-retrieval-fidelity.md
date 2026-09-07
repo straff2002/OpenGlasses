@@ -150,7 +150,8 @@ Recall@4 is measured *after* the gate, which is why it rises with the lexical cr
 terms: dropping passages that share nothing with the question promotes the ones that do into the top
 four. Above three terms the criterion starts cutting into the answer itself.
 
-**The chosen default for `nl-word` is `(floor 0.30, no margin, minSharedTerms 3)`.** It beats the
+**The default P2 chose for `nl-word` was `(floor 0.30, no margin, minSharedTerms 3)`** —
+superseded below by the re-measurement that added `sharedFraction 0.75` beside it. It beats the
 shipped gate on both axes — recall@4 0.750 → 0.833, insufficiency recall 0.000 → 0.667 — for one
 in-scope question in twelve refused. The plan's original target ("maximise recall@4 with
 insufficiency recall ≥ 0.9") is only met at four terms, which costs a quarter of the recall and
