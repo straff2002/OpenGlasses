@@ -273,11 +273,36 @@ final class ExampleVaultLennoxTests: XCTestCase {
             }
         }
 
-        // Exploratory: how do natural-language questions and an out-of-scope question fare against the
-        // default evidence gate? Printed, not asserted — calibrating the gate is its own piece of work.
-        for turn in ["what is the manifold pressure on high fire",
-                     "how long is the pre-purge before ignition",
-                     "what is the torque for the blower wheel set screw",
+        // The evidence gate, as measured (see `RetrievalGateCalibrationTests` and Plan EJ §2). The
+        // session adopts `RetrievalEvidencePolicy.default(for:)` from the store's embedder, so this
+        // is the gate a technician on this backend actually gets.
+        XCTAssertEqual(service.retrievalPolicy, .default(for: Embedder().modelId))
+
+        // In scope: a question the manuals answer is answered, from a page that answers it. The
+        // manifold-pressure procedure and its table run over Service Manual pp.65–67 and
+        // Installation pp.62–64.
+        let manifold = retriever.retrieve(.init(turn: "what is the manifold pressure on high fire", limit: 3))
+        XCTAssertTrue(manifold.isSufficient, "\(manifold)")
+        let manifoldPages: [String: Set<Int>] = ["SLP99UHVK Service Manual": [65, 66, 67],
+                                                 "SLP99UHVK Installation Instructions": [62, 63, 64]]
+        XCTAssertTrue(manifold.passages.contains { p in
+            guard let page = p.page else { return false }
+            return manifoldPages[p.documentName]?.contains(page) == true
+        }, "no citation on a page that answers it: \(manifold.passages.map(\.citation))")
+
+        // Out of scope: a figure these manuals never print. Refused.
+        let torque = retriever.retrieve(.init(turn: "what is the torque for the blower wheel set screw", limit: 3))
+        XCTAssertFalse(torque.isSufficient, "\(torque.passages.map(\.citation))")
+
+        // Printed, not asserted — the two measured costs of that gate, which the plan records rather
+        // than tunes away:
+        //  · a furnace manual really does cover heat exchangers, so a question about *another
+        //    manufacturer's* heat exchanger shares enough words to pass. The vault's prompt rules
+        //    and the citation the passage carries are what stop the answer there, not the gate.
+        //  · a legitimate question whose wording barely overlaps the manual's ("pre-purge before
+        //    ignition") can be refused. A technician rephrases; a fabricated answer is not
+        //    recoverable, which is the trade the measured default takes.
+        for turn in ["how long is the pre-purge before ignition",
                      "how do I replace the heat exchanger on a Carrier 58MVB"] {
             let result = retriever.retrieve(.init(turn: turn, limit: 3))
             switch result {
