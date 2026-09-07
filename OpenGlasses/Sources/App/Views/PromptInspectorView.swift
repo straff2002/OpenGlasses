@@ -104,14 +104,18 @@ struct PromptInspectorView: View {
             isPresent: true
         ))
 
+        // Vision is always part of the prompt — the only question is whether this section's copy
+        // was auto-injected or is already written into the wearer's own system prompt. Both are
+        // "on", so both render as present: an inactive-looking row here was read as "vision is
+        // off" by someone whose prompt simply already covered it.
         let visionAutoInjected = !basePrompt.lowercased().contains("vision") && !basePrompt.lowercased().contains("camera")
         secs.append(PromptSection(
             name: "Vision & Camera",
             icon: "eye.fill",
             content: visionAutoInjected
                 ? "Auto-injected: tells the AI it can see images from the glasses camera, handle OCR, translation, and object identification."
-                : "Already covered in your system prompt.",
-            isPresent: visionAutoInjected
+                : "Included in your system prompt. A camera frame is attached when a question needs one and the glasses camera is available.",
+            isPresent: true
         ))
 
         secs.append(PromptSection(

@@ -45,12 +45,15 @@ class WakeWordService: NSObject, ObservableObject {
     /// Set before an *intentional* recognition cancel (e.g. pausing the wake-word task so
     /// only the buffer forwarder feeds TranscriptionService). Tells `handleRecognitionResult`
     /// to ignore the resulting cancellation error instead of auto-restarting a competing recognizer.
-    private var suppressAutoRestart = false
+    /// Set when a recognition task is cancelled on purpose, so the resulting error callback is
+    /// consumed instead of auto-restarting a competing recognizer. `private(set)` rather than
+    /// `private` so the shared-engine handoff can be asserted in tests.
+    private(set) var suppressAutoRestart = false
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest? {
         didSet { tapState.setRequest(recognitionRequest) }   // keep the tap's view in sync (Plan BE)
     }
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private(set) var recognitionTask: SFSpeechRecognitionTask?
     private var audioSessionConfigured: Bool = false
     /// Our claim on the shared session with the coordinator. Wake word is the always-on baseline
     /// owner: it self-activates with its tuned config and registers ownership so a live session
@@ -494,14 +497,28 @@ class WakeWordService: NSObject, ObservableObject {
         // Engine is nil or stopped — restart it (without starting recognition)
         PrivacyLog.audio(.wakeWord, .engineRestarted, detail: PrivacyToken("sharedUse"))
         try await startListening()
-        // Pause recognition so only the buffer forwarder is active. Mark the cancel as
-        // intentional so its error callback doesn't auto-restart a competing recognizer
-        // (which would fight TranscriptionService and make tap-to-talk stop immediately).
+        pauseRecognitionForSharedEngine()
+    }
+
+    /// Hand the running audio engine over to another consumer: tear down the wake-word recognizer
+    /// but leave the engine (and its buffer forwarders) alive.
+    ///
+    /// The cancel is marked intentional so its error callback doesn't auto-restart a competing
+    /// recognizer — that would fight `TranscriptionService` and make tap-to-talk stop the instant
+    /// it starts.
+    ///
+    /// `isListening` **must** drop with the recognizer. `startListening()` opens with
+    /// `guard !isListening else { return }`, so leaving the flag set after the recognizer is gone
+    /// made every later auto-restart a silent no-op: the service reported that it was listening
+    /// while nothing was recognising, and the wake word worked exactly once per launch (issue 427).
+    /// `pauseRecognition()` already drops the flag for the same reason.
+    func pauseRecognitionForSharedEngine() {
         suppressAutoRestart = true
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+        isListening = false
     }
 
     /// Start the shared engine for an explicit audio-buffer consumer even when always-on wake-word

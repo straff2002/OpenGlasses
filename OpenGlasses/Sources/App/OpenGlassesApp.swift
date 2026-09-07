@@ -3654,8 +3654,12 @@ class AppState: ObservableObject, AppStateProtocol {
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
         // The user may have disabled listening while the turn was finishing — a finish stage
-        // must never turn the microphone back on behind their back.
-        guard listeningEnabled else { return }
+        // must never turn the microphone back on behind their back. Log it: a silent return here
+        // is indistinguishable in the field from the mic failing to reopen after the reply.
+        guard listeningEnabled else {
+            PrivacyLog.wakeWord(.listenerSkippedDisabled)
+            return
+        }
         if inConversation {
             if ensureEngine { try? await wakeWordService.ensureAudioEngineRunning() }
             // The engine keepalive suspends; re-check the user didn't flip the toggle meanwhile.

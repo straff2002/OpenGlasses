@@ -85,7 +85,8 @@ class ConversationStore: ObservableObject {
 
     /// True after a read failure on an existing conversations file (e.g. file protection while
     /// locked): the on-disk data may be intact, so saves are suppressed until a load succeeds.
-    private var saveBlocked = false
+    /// `private(set)` rather than `private` so the unlock retry can be asserted in tests.
+    private(set) var saveBlocked = false
 
     /// Serializes encrypted saves so an older snapshot can never finish after — and overwrite —
     /// a newer one.
@@ -491,9 +492,104 @@ class ConversationStore: ObservableObject {
 
     /// Rebuild only from the still-authoritative in-memory snapshot. A biometrically locked store
     /// remains closed until its normal unlock flow supplies decrypted threads.
+    ///
+    /// One exception: if the launch-time read failed *because* the device was locked, the
+    /// in-memory snapshot is not authoritative — it is empty, and saves have been refused ever
+    /// since. Now that protected data is readable, re-run the load before rebuilding recall.
     func protectedDataDidBecomeAvailable() {
         guard !isLocked else { return }
+        if saveBlocked, retryBlockedLoad() { return }
         recallCoordinator?.storeDidUnlock(threads: threads)
+    }
+
+    /// Re-read a conversations file whose launch-time load failed under file protection.
+    ///
+    /// Field trace: the app launched before first unlock, `Data(contentsOf:)` returned Cocoa 257
+    /// on the `.completeFileProtection` file, `saveBlocked` latched, and **every** turn for the
+    /// rest of the process was dropped with `saveSkipped detail=loadFailed` — the store only ever
+    /// loaded from `init`, so nothing could clear the latch.
+    ///
+    /// - Returns: `true` when a retry succeeded, or when an asynchronous decrypt was started. The
+    ///   caller must not fall through to `storeDidUnlock` on either: the plaintext branch has
+    ///   already published the merged list, and the decrypt branch will publish its own once it
+    ///   resolves — publishing here would hand recall the stale empty snapshot.
+    @discardableResult
+    private func retryBlockedLoad() -> Bool {
+        // An encrypted file must never reach the plaintext reader. `isFileEncrypted(at:)` answers
+        // `false` for a file it cannot *read*, so a locked-device launch with encryption on
+        // latched `saveBlocked` down the plaintext branch of `loadThreads()` exactly like an
+        // unencrypted store. Handing those `OGENC1` bytes to `JSONStore.loadArray` decodes as
+        // `.corrupt`, which moves the user's whole history aside and starts empty — turning a
+        // save outage into data loss for precisely the wearers who asked for more protection.
+        if encryption.isEnabled, encryption.isFileEncrypted(at: storageURL) {
+            retryBlockedDecrypt()
+            return true
+        }
+
+        let decoded: [ConversationThread]
+        switch JSONStore.loadArray(ConversationThread.self, at: storageURL, name: "conversations") {
+        case .loaded(let loaded):
+            decoded = loaded
+        case .recovered(let loaded, _):
+            decoded = loaded
+        case .corrupt:
+            // The original is preserved by StoreRecovery; the file is readable, so the latch has
+            // done its job and can come off.
+            decoded = []
+        case .absent:
+            decoded = []
+        case .unreadable:
+            // Still protected (or genuinely unreadable). Stay blocked rather than overwrite.
+            return false
+        }
+
+        adoptReloadedThreads(decoded, detail: "retried")
+        return true
+    }
+
+    /// The encrypted half of `retryBlockedLoad()`: decrypt off the main actor, then merge through
+    /// the same path the plaintext branch uses.
+    ///
+    /// Mirrors `loadThreads()`'s encrypted branch, including holding `isLocked` for the window —
+    /// `save()` refuses to write while locked, which is what keeps a half-finished decrypt from
+    /// putting an empty history over the ciphertext. A failure leaves the store locked and the
+    /// latch on, and reports `.awaitingAuthentication`: the file is intact and simply needs the
+    /// normal unlock flow.
+    private func retryBlockedDecrypt() {
+        isLocked = true
+        let url = storageURL
+        let enc = encryption
+        Task { @MainActor [weak self] in
+            do {
+                let data = try await enc.decryptFile(at: url)
+                let decoded = try JSONDecoder().decode([ConversationThread].self, from: data)
+                guard let self else { return }
+                self.isLocked = false
+                self.adoptReloadedThreads(decoded, detail: "retriedEncrypted")
+            } catch {
+                self?.isLocked = true
+                PrivacyLog.conversation(.conversations, .awaitingAuthentication)
+            }
+        }
+    }
+
+    /// Merge a freshly re-read on-disk list into the in-memory one and reopen the store for writes.
+    ///
+    /// The merge is not a replace. Threads created while saves were blocked exist only in memory
+    /// and have never been written, so discarding them would turn a save outage into data loss;
+    /// on-disk threads win on id collision because they are the ones the store has been unable to
+    /// touch. The merged list is re-sorted newest-first, which is the ordering
+    /// `startThread`'s `insert(at: 0)` maintains everywhere else.
+    private func adoptReloadedThreads(_ decoded: [ConversationThread], detail: String) {
+        let onDiskIds = Set(decoded.map(\.id))
+        let unsaved = threads.filter { !onDiskIds.contains($0.id) }
+        threads = (decoded + unsaved).sorted { $0.updatedAt > $1.updatedAt }
+        trimOldThreads()
+        saveBlocked = false
+        PrivacyLog.conversation(.conversations, .loaded, count: threads.count,
+                                detail: PrivacyToken(detail))
+        recallCoordinator?.storeDidUnlock(threads: threads)
+        save()
     }
 
     // MARK: - Persistence
