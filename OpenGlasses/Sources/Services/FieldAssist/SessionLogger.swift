@@ -56,6 +56,10 @@ final class SessionLogger {
             case citation = "citation"
             case safetyAssessment = "safety_assessment"
             case captureRecordSaved = "capture_record"
+            /// A manual page was rendered and sent to the model as this turn's image (Plan EK).
+            case figureSent = "figure_sent"
+            /// A manual figure was put on the technician's phone.
+            case figureShown = "figure_shown"
             case error = "error"
         }
     }
