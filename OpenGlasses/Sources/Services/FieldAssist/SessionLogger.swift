@@ -66,6 +66,10 @@ final class SessionLogger {
             case pageVerified = "page_verified"
             /// A page was turned to inside the figure sheet.
             case pageViewed = "page_viewed"
+            /// The session learned which machine is in front of the technician (Plan EL).
+            case equipmentRecognised = "equipment_recognised"
+            /// …and gave it up again.
+            case equipmentCleared = "equipment_cleared"
             case error = "error"
         }
     }

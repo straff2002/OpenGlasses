@@ -17,6 +17,9 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var endLocation: GeoPoint?
     var escalations: [Escalation]
     var billableSeconds: TimeInterval
+    /// The machine the session is working on, once it has been recognised (Plan EL). Optional and
+    /// synthesized-key, so a session written before this existed decodes with it nil.
+    var equipment: EquipmentIdentity?
 
     enum Mode: String, Codable {
         /// AI is the remote expert; grounded by vault content.

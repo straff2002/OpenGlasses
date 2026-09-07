@@ -17,7 +17,10 @@ final class EquipmentLookupTool: NativeTool {
     technician can read the code/model aloud (pass 'query'), or point the glasses at the nameplate / \
     error display and omit 'query' (or set 'use_camera') to read it via on-device OCR. Returns the \
     matching reference section with its source file. Use before diagnosing so the answer is grounded. \
-    Requires an active session.
+    When a lookup or a nameplate read names exactly one model the vault covers, that model becomes \
+    the session's active equipment and every later answer is scoped to it — say so to the \
+    technician. Pass 'set_equipment' with a model or part of one to correct a wrong read ("no, it's \
+    the 070"), or 'clear_equipment' to forget it. Requires an active session.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -33,6 +36,14 @@ final class EquipmentLookupTool: NativeTool {
             "file": [
                 "type": "string",
                 "description": "Optional: restrict the search to a single vault file (e.g. 'error_codes.md')."
+            ],
+            "set_equipment": [
+                "type": "string",
+                "description": "Set the session's active equipment to this model (a full model number or part of one, e.g. '070'). Use when the technician corrects a nameplate read."
+            ],
+            "clear_equipment": [
+                "type": "boolean",
+                "description": "Forget the session's active equipment."
             ]
         ],
         "required": [] as [String]
@@ -71,6 +82,19 @@ final class EquipmentLookupTool: NativeTool {
         let forceCamera = (args["use_camera"] as? Bool) ?? false
         let restrictTo = args["file"] as? String
 
+        // Corrections first: they are what the technician says when the last read was wrong, and
+        // they must not be treated as a question about a machine.
+        if (args["clear_equipment"] as? Bool) == true {
+            let previous = session.activeEquipment?.modelToken
+            session.clearEquipment()
+            return previous.map { "Cleared the active equipment (was \($0))." }
+                ?? "No active equipment was set."
+        }
+        if let fragment = (args["set_equipment"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !fragment.isEmpty {
+            return setEquipment(fragment: fragment)
+        }
+
         // Camera/OCR path when requested, or when no spoken query was provided.
         if (forceCamera || query == nil || query?.isEmpty == true) {
             guard cameraService != nil else {
@@ -79,9 +103,55 @@ final class EquipmentLookupTool: NativeTool {
             return await lookupViaCamera(store: store, restrictTo: restrictTo)
         }
 
-        if let hit = search(query: query!, store: store, restrictTo: restrictTo) { return hit }
-        if let manual = manualFallback(query: query!, ocrText: nil, store: store) { return manual }
+        let recognised = recogniseEquipment(in: query!, source: .spoken)
+        if let ambiguous = recognised.ambiguity { return ambiguous }
+        let prefix = recognised.announcement.map { $0 + "\n\n" } ?? ""
+
+        if let hit = search(query: query!, store: store, restrictTo: restrictTo) { return prefix + hit }
+        if let manual = manualFallback(query: query!, ocrText: nil, store: store) { return prefix + manual }
+        if let sentence = session.equipmentScope(turn: query!).refusalSentence { return sentence }
         return "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail, or recommend escalation rather than guessing."
+    }
+
+    // MARK: - Equipment identity (Plan EL)
+
+    /// Recognition with memory: a query or a nameplate read that names exactly one of the vault's
+    /// models sets the session's active equipment. Several models is not an identification — the
+    /// technician is asked which, because guessing here poisons every answer that follows.
+    private func recogniseEquipment(in text: String, source: EquipmentIdentity.Source,
+                                    nameplateText: String? = nil) -> (announcement: String?, ambiguity: String?) {
+        let index = session.modelIndex
+        guard !index.isEmpty else { return (nil, nil) }
+        let matches = index.match(text: text)
+        guard !matches.isEmpty else { return (nil, nil) }
+        guard matches.count == 1 else {
+            let names = matches.map(\.name).joined(separator: ", ")
+            return (nil, "That reads as more than one model: \(names). Which one is it?")
+        }
+        let model = matches[0]
+        if session.activeEquipment?.heading == model.heading { return (nil, nil) }
+        let identity = EquipmentIdentity(model: model, token: model.name, source: source,
+                                         nameplateText: nameplateText)
+        session.setEquipment(identity)
+        return (identity.announcement, nil)
+    }
+
+    /// "No, it's the 070" — a fragment, matched as a substring of any spelling the vault lists.
+    private func setEquipment(fragment: String) -> String {
+        let index = session.modelIndex
+        guard !index.isEmpty else {
+            return "The \(session.activeVault?.manifest.name ?? "active") vault does not list models, so there is no equipment to set."
+        }
+        let matches = index.match(fragment: fragment)
+        guard let model = matches.first, matches.count == 1 else {
+            if matches.isEmpty {
+                return index.scopeSentence(unknown: fragment)
+            }
+            return "'\(fragment)' matches \(matches.map(\.name).joined(separator: ", ")). Which one is it?"
+        }
+        let identity = EquipmentIdentity(model: model, token: model.name, source: .spoken)
+        session.setEquipment(identity)
+        return identity.announcement + "\n\n=== \(model.file) ===\n\(model.heading)"
     }
 
     // MARK: - Reference-tier fall-through
@@ -99,7 +169,7 @@ final class EquipmentLookupTool: NativeTool {
             documentStore.passages(containingToken: token, namespace: namespace, limit: limit)
         }, provenance: { documentId in
             documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, policy: session.retrievalPolicy)
+        }, policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText, limit: 3))
         guard outcome.isSufficient else { return nil }
         return VaultRetriever.toolResult(outcome, query: query ?? "the label")
@@ -125,9 +195,19 @@ final class EquipmentLookupTool: NativeTool {
             return "I couldn't read any text on the label. Try moving closer or improving the lighting, or read the code aloud."
         }
 
-        // Search each plausible code/model token from the OCR text.
+        let label = "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n"
+
+        // The nameplate is the strongest identification there is, so this is where the session
+        // learns what it is standing in front of.
+        let recognised = recogniseEquipment(in: ocrText, source: .nameplate, nameplateText: ocrText)
+        if let ambiguous = recognised.ambiguity { return label + ambiguous }
+
+        // Search each plausible code/model token from the OCR text, the recognised model first —
+        // a nameplate's model number is longer than the generic token screen allows for.
         var matches: [(file: String, section: String)] = []
-        for token in candidateTokens(from: ocrText) {
+        var tokens = candidateTokens(from: ocrText)
+        if let active = session.activeEquipment { tokens.insert(active.modelToken, at: 0) }
+        for token in tokens {
             if let result = searchMatches(query: token, store: store, restrictTo: restrictTo) {
                 matches.append(contentsOf: result)
                 if matches.count >= 3 { break }
@@ -136,11 +216,14 @@ final class EquipmentLookupTool: NativeTool {
 
         if matches.isEmpty {
             if let manual = manualFallback(query: nil, ocrText: ocrText, store: store) {
-                return "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n\(manual)"
+                return label + manual
+            }
+            if let sentence = session.equipmentScope(turn: nil, nameplateText: ocrText).refusalSentence {
+                return label + sentence
             }
             return "Read this from the label via camera:\n\(ocrText)\n\n[No exact vault match. Identify the code/model from the text above and look it up, or ask the technician to confirm.]"
         }
-        return render(Array(matches.prefix(3)), prefix: "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n")
+        return render(Array(matches.prefix(3)), prefix: label + (recognised.announcement.map { $0 + "\n\n" } ?? ""))
     }
 
     /// Plausible code/model tokens from OCR text — shared with manual retrieval via `CodeTokenizer`
@@ -176,7 +259,14 @@ final class EquipmentLookupTool: NativeTool {
             }
             if titled.count >= 3 || (!preferTitled && mentions.count >= 3) { break }
         }
-        let matches = Array((titled + mentions).prefix(3))
+        // With a machine identified, its own section leads: the same spelling appears in a summary
+        // table and in half a dozen other models' rows, and the cap is three.
+        var ordered = titled + mentions
+        if let active = session.activeEquipment {
+            let activeFirst = ordered.filter { $0.section.contains(active.heading) }
+            ordered = activeFirst + ordered.filter { !$0.section.contains(active.heading) }
+        }
+        let matches = Array(ordered.prefix(3))
         return matches.isEmpty ? nil : matches
     }
 

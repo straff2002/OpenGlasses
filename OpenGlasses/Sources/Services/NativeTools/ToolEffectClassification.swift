@@ -218,6 +218,10 @@ extension MedicationIdentifierTool {
 extension MoneyIdentifierTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(idempotency: .intrinsic) }
 }
+// The lookup itself is a read and the camera path captures a photo; `set_equipment` /
+// `clear_equipment` also write the session's active equipment and its audit log. The row is the
+// strongest of those, which the camera already made `.actuation`, so recording the machine changes
+// nothing here — noted because the tool's semantics widened (Plan EL).
 extension EquipmentLookupTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(idempotency: .intrinsic) }
 }
