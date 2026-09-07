@@ -1,6 +1,6 @@
 # Plan EJ — Manual Retrieval Fidelity (what a real OEM manual pair exposed)
 
-**Status:** 📋 Planned 2026-09-07.
+**Status:** 🚧 Planned 2026-09-07. P1 implemented 2026-09-07 (ranking, heading detector, whole-line page markers, lookup preference); P2 and P3 outstanding.
 **Origin:** The first vault built from a real pair of OEM manuals — a Lennox SLP99UHVK gas furnace
 service manual (85 pages) and installation instructions (78 pages), 400 KB of extracted text, 692
 chunks — was imported headlessly through the shipped validator, importer, lookup tool, procedure
