@@ -73,12 +73,53 @@ final class DocumentChunkerTests: XCTestCase {
         XCTAssertEqual(DocumentChunker.detectHeading("12.1.2 Procedures"), "12.1.2 Procedures")
         XCTAssertEqual(DocumentChunker.detectHeading("Chapter 12"), "Chapter 12")
         XCTAssertEqual(DocumentChunker.detectHeading("SAFETY PROCEDURES"), "SAFETY PROCEDURES")
+        // A plain numbered heading survives the list-step screen: that rule keys on the separator
+        // after the number, not on the number itself.
+        XCTAssertEqual(DocumentChunker.detectHeading("1 Introduction"), "1 Introduction")
+        XCTAssertEqual(DocumentChunker.detectHeading("4.2 Gas Piping"), "4.2 Gas Piping")
+        // A multi-word all-letter title is a real place in a furnace manual, so it stays.
+        XCTAssertEqual(DocumentChunker.detectHeading("BOTTOM RETURN AIR"), "BOTTOM RETURN AIR")
     }
 
     func testDetectHeadingRejectsOrdinaryAndTooShortLines() {
         XCTAssertNil(DocumentChunker.detectHeading("This is a normal sentence."))
         XCTAssertNil(DocumentChunker.detectHeading("abc"))                 // < 4 chars
         XCTAssertNil(DocumentChunker.detectHeading("the quick brown fox")) // lowercase, unnumbered
+        // Mixed case and unnumbered: the ALL-CAPS rule does not reach it, so it is not a heading.
+        XCTAssertNil(DocumentChunker.detectHeading("Heating Sequence of Operation"))
+    }
+
+    /// Every line an OEM furnace manual printed that the old detector mistook for a section, and
+    /// that therefore appeared in a spoken citation as "§FIGURE 5" or "§7 - Inspect the condensate…".
+    func testDetectHeadingRejectsManualFurniture() {
+        let furniture = [
+            "FIGURE 5",                                                 // caption
+            "TABLE 22.",                                                // caption
+            "WARNING",                                                  // safety banner
+            "CAUTION",
+            "IMPORTANT",
+            "C 24VAXC COMMON",                                          // terminal designation
+            "7 - Inspect the condensate drain and trap for leaks and",  // list step
+            "16 - Mark and disconnect any remaining wiring to",         // list step
+            "1) Remove the burner box cover",                           // list step
+            "1 AFUE 98.1% 98.1% 98.2%",                                 // spec-table row
+            "0.5 / 1.5 0.5 / 1.5 0.5 / 1.5",                            // spec-table row
+            "3.5 / 10.0 3.5 / 10.0",                                    // spec-table row
+            "2.6 or greater 2.5 or less 1.1",                           // spec-table row
+            "1 hour soft lockout.",                                     // a sentence, numbered
+            "090XV60C 20A26 20A88 20A89",                               // part-number columns
+            "30 TABLE 30 on page 59 for allowable heating speeds."       // wrapped cross-reference
+        ]
+        for line in furniture {
+            XCTAssertNil(DocumentChunker.detectHeading(line), "should not be a heading: \(line)")
+        }
+    }
+
+    func testDetectHeadingCapsLengthSoACitationCanBeSpoken() {
+        let long = "5.4 " + String(repeating: "Requirement ", count: 10)
+        XCTAssertGreaterThan(long.count, 80)
+        XCTAssertNil(DocumentChunker.detectHeading(long))
+        XCTAssertNotNil(DocumentChunker.detectHeading("5.4 Requirement " + String(repeating: "x", count: 60)))
     }
 
     func testPageNumberDetection() {
@@ -86,6 +127,46 @@ final class DocumentChunkerTests: XCTestCase {
         XCTAssertEqual(DocumentChunker.pageNumber(in: "- 7 -"), 7)
         XCTAssertNil(DocumentChunker.pageNumber(in: "Page of contents"))
         XCTAssertNil(DocumentChunker.pageNumber(in: "ordinary text"))
+        // A marker is the whole line. A wrapped table-of-contents entry is not a page break.
+        XCTAssertNil(DocumentChunker.pageNumber(in: "Page 62 VII Typical Operating Characteristics"))
+        XCTAssertNil(DocumentChunker.pageNumber(in: "Page 34 TEST B Use an ohmmeter"))
+    }
+
+    func testMarkerLinesAreStrippedFromChunkText() {
+        // The extractor writes its own "Page N"; the publisher prints one too. Neither belongs in
+        // a passage the model quotes back.
+        let chunks = DocumentChunker().chunk("Page 3\n\nPage 3\nSome sentence.")
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertFalse(chunks[0].text.contains("Page 3"), chunks[0].text)
+        XCTAssertEqual(chunks[0].text, "Some sentence.")
+        XCTAssertEqual(chunks[0].page, 3)
+    }
+
+    func testPrintedHeaderDoesNotOverrideTheExtractorsPage() {
+        // Mismatched numbering: extraction says page 5, the publisher's running header says 3.
+        // The physical page wins — it is the one the reader can turn to.
+        let text = "Page 5\nPage 3\nThe inducer draws through the collector box."
+        let chunks = DocumentChunker().chunk(text)
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertEqual(chunks[0].page, 5)
+        XCTAssertFalse(chunks[0].text.contains("Page 3"), chunks[0].text)
+    }
+
+    func testAMarkerDeeperInThePageStillTurnsThePage() {
+        // Small target so each sentence lands in its own chunk and carries its own page.
+        let chunker = DocumentChunker(targetChars: 30, maxChars: 60, overlapChars: 0)
+        let text = """
+        Page 5
+        First body sentence on five.
+        Second body sentence on five.
+        Third body sentence on five.
+        Page 6
+        First body sentence on six.
+        """
+        let chunks = chunker.chunk(text)
+        XCTAssertTrue(chunks.contains { $0.page == 5 && $0.text.contains("on five") }, "\(chunks)")
+        XCTAssertTrue(chunks.contains { $0.page == 6 && $0.text.contains("on six") }, "\(chunks)")
+        XCTAssertNil(chunks.first { $0.text.contains("Page 5") || $0.text.contains("Page 6") })
     }
 
     func testUnpaginatedTextLeavesPageAndSectionNil() {
