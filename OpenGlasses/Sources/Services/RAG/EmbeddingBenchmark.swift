@@ -53,6 +53,60 @@ enum EmbeddingBenchmark {
         LabeledQuery(query: "how long is the guarantee", relevantId: "warranty"),
     ]
 
+    /// Questions the corpus above has no passage for. Recall alone cannot see the failure that
+    /// matters in the field — an assistant answering confidently from whatever the embedder ranked
+    /// first — so a retrieval measurement needs negatives as well as labels.
+    static let negatives: [String] = [
+        "what is the torque setting for the compressor mounting bolts",
+        "how do I calibrate the refrigerant charge on a heat pump",
+        "which fuse protects the outdoor condenser fan",
+        "what is the wiring colour code for the defrost board",
+    ]
+
+    /// Fraction of `results` (one entry per negative question, each with the ranked passages the
+    /// retriever produced for it) that `policy` refuses to answer from.
+    ///
+    /// The complement of a false-confidence rate: 1.0 means every out-of-scope question produced the
+    /// insufficiency sentence. Pure — it runs the shipped gate, including its lexical criterion, so
+    /// the number is the gate's behaviour and not a re-implementation of it.
+    static func insufficiencyRecall(policy: RetrievalEvidencePolicy,
+                                    results: [(query: String, ranked: [VaultRetriever.Passage])],
+                                    limit: Int = 4) -> Double {
+        guard !results.isEmpty else { return 0 }
+        let refused = results.reduce(0) { acc, r in
+            let terms = LexicalSupport.contentTerms(r.query)
+            return policy.decide(r.ranked, limit: limit, queryTerms: terms).isSufficient ? acc : acc + 1
+        }
+        return Double(refused) / Double(results.count)
+    }
+
+    /// The smoke corpus ranked for one query, shaped as retriever passages so the gate can be run
+    /// over it. Semantic only — the built-in corpus carries no code-like tokens.
+    static func rankedPassages(for query: String, using embedder: Embedder, limit: Int = 4) -> [VaultRetriever.Passage] {
+        guard let qv = embedder.embed(query) else { return [] }
+        return corpus.compactMap { sample -> VaultRetriever.Passage? in
+            guard let v = embedder.embed(sample.text) else { return nil }
+            let sim = Embedder.cosineSimilarity(qv, v)
+            return VaultRetriever.Passage(documentId: sample.id, documentName: sample.id, chunkIndex: 0,
+                                          text: sample.text, page: nil, section: nil,
+                                          similarity: sim, score: sim, matchedTokens: [])
+        }
+        .sorted { $0.similarity > $1.similarity }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    /// Insufficiency recall over the built-in negatives, using `embedder` to rank the smoke corpus.
+    /// Nil when the embedder can't produce vectors.
+    static func insufficiencySelfTest(using embedder: Embedder,
+                                      policy: RetrievalEvidencePolicy,
+                                      limit: Int = 4) -> Double? {
+        guard embedder.isAvailable else { return nil }
+        let results = negatives.map { (query: $0, ranked: rankedPassages(for: $0, using: embedder, limit: limit)) }
+        guard results.contains(where: { !$0.ranked.isEmpty }) else { return nil }
+        return insufficiencyRecall(policy: policy, results: results, limit: limit)
+    }
+
     /// Embed the corpus with `embedder`, rank each query by cosine, return recall@k over the built-in
     /// labels. Nil when the embedder can't produce vectors (no model available). Side-effect-free
     /// aside from the embedder itself.

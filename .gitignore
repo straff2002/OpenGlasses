@@ -94,3 +94,8 @@ Vendor/LlamaCpp/.build/
 # per-configuration ones a verification matrix needs (.dd-relsim, .dd-reldev, .dd-device …) so a
 # parallel build's output can never be picked up by `git add`.
 .dd-*/
+
+# Example vaults: authored core files are committed; the OEM manuals dropped into documents/ are not
+# (they are the manufacturer's copyright). The README in each documents/ folder stays.
+examples/vaults/*/documents/*
+!examples/vaults/*/documents/README.md

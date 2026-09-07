@@ -234,6 +234,11 @@ final class DocumentStore: ObservableObject {
     /// will be re-embedded on access (or eagerly via `reindexOutdated`).
     var currentEmbeddingVersionTag: String { embedder.version.tag }
 
+    /// The active embedding model's stable id (`nl-word.en`, `nl-sentence.en`, `nl-contextual.…`).
+    /// Similarity means something different on each, so a consumer that thresholds on similarity —
+    /// [[RetrievalEvidencePolicy]] — picks its defaults from this rather than assuming one backend.
+    var embeddingModelId: String { embedder.modelId }
+
     /// How many stored chunks were embedded by a model other than the active one (or are unstamped).
     /// Drives a "re-index now" affordance and lets tests assert migration progress.
     var outdatedChunkCount: Int {
