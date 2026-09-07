@@ -164,9 +164,16 @@ struct VaultPartsIndex: Equatable {
 
     // MARK: - Lookup
 
+    /// Uppercased and stripped of the punctuation a spoken or transcribed number picks up
+    /// ("14T65." / "#14T65"), so the same number reaches the same row however it was said.
+    static func normalise(_ number: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-/"))
+        return String(number.unicodeScalars.filter { allowed.contains($0) }).uppercased()
+    }
+
     /// The vault's row for a part number, matched as a whole token and case-insensitively.
     func part(number: String) -> Part? {
-        let needle = number.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let needle = Self.normalise(number)
         guard !needle.isEmpty else { return nil }
         if let exact = byNumber[needle] { return exact }
         // A superseded number resolves to the part that replaced it — the technician says what is

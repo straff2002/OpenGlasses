@@ -1,6 +1,8 @@
 # Plan EM — Work Record and Parts (what was recommended, what was done, what base needs)
 
-**Status:** 📋 Planned 2026-09-07. Sequenced after [Plan EL](EL-equipment-identity.md) so the record
+**Status:** ✅ P1 implemented 2026-09-08 (headless). P2 (delivery, composers, org-profile
+destinations, queue view, task list on the session screen) and P3 (with BL) not started.
+Sequenced after [Plan EL](EL-equipment-identity.md) so the record
 carries the equipment identity; builds on [Plan EK](EK-manual-structure-and-figures.md) P3's
 verified-page audit trail. Independent of [Plan BL](BL-ops-platform-agent-bridge.md) but is the
 payload BL will carry.
@@ -137,7 +139,7 @@ plain summary for a message body. They cannot disagree.
 
 ## Phases
 
-- **P1 — pure core (one PR).** `Task`, `PartsRequest`, `WorkRecord` and its deterministic
+- **P1 — pure core (one PR).** ✅ 2026-09-08. `Task`, `PartsRequest`, `WorkRecord` and its deterministic
   renderers (summary, JSON, PDF section), `VaultPartsIndex` + verification, device identity fields,
   `propose_task` / `task` / `parts_request` tools, session fields and events, `QueuedOp` kinds.
   Headless tests: the full task state machine by voice verbs; recommendation refused without a
@@ -170,3 +172,64 @@ plain summary for a message body. They cannot disagree.
   technician asked for. Stock is base's answer.
 - **Not in scope.** Scheduling, invoicing, a general job list across sessions (a job here is one
   session's reference), and any change to the live Gemini / OpenAI sessions.
+
+---
+
+## P1 findings (2026-09-08)
+
+**`Task` cannot be a top-level type in this module.** A module-level `struct Task` shadows
+`_Concurrency.Task` in every file that does not qualify it, and the app is full of `Task { … }`.
+It ships as `FieldSession.Task`, which keeps the plan's name and reads correctly at every use site
+(`session.tasks`, `FieldSession.Task.Status`). `PartsRequest`, `TaskPart` and `DeviceIdentityField`
+are top-level; only the one that collides is nested.
+
+**"Optional-or-empty so old sessions decode" is not enough for a collection.** Swift's synthesized
+`Decodable` throws `keyNotFound` for a missing key on a non-optional property — the property's
+default value is *not* consulted — so `tasks`, `partsRequests`, `identityFields` and `jobEvidence`
+would each have broken every session written before this PR. `FieldSession` now has a hand-written
+`init(from:)` using `decodeIfPresent ?? []`. It lives in an **extension**, because an initializer in
+the main declaration suppresses the memberwise init that `startSession` and half the test suite
+call. An optional field (`jobReference`, `equipment`) needed nothing, which is why EL P1 got away
+with adding one.
+
+**Evidence is one type, seen from two places.** `FieldSession.Evidence` (readings, photos, opened
+citations, verified pages) is used both as `Task.evidence` and as `FieldSession.jobEvidence`, rather
+than four flat arrays duplicated on each. A reading taken with no task running belongs to the visit,
+not to nothing, and the two collections have to render the same way in the record.
+
+**`activeTask` is the *last* task in progress, not the first.** "Add a task: cleaned the condensate
+trap" while something else is open means the technician has moved on; the evidence should follow
+them. This is also what makes an operator task usable while a recommended one is still running.
+
+**`accepted` stays a real resting state.** Accepting starts the task's procedure when it names one
+and otherwise makes the task active — but if something else is already in progress it rests at
+`accepted` and the `start` verb picks it up later, so two tasks are never in progress by accident.
+With no id given, `start` resolves to the most recent `accepted`-or-`deferred` task, which is what
+"pick that back up" means; `accept` / `decline` / `defer` resolve to the latest recommendation and
+`done` / `abandon` to the task in progress.
+
+**A capture record had no identity.** `CaptureRecord` carries `flowId` + `startedAt` and no id, so
+a task's `readings` had nothing to hold. It gained a *derived* `id` (`flowId@<ISO-8601 startedAt>`)
+rather than a stored one, so a record written before this PR identifies itself the same way.
+
+**The parts convention needs a scope rule, not just a table shape.** `parts.md` is read as parts
+throughout; in any other core file only the tables under a `## Parts` heading count. Without that,
+any core table with a "Part" column — a specifications table, a wiring legend — would become
+orderable stock. `Supersedes` turned out to be worth reading in both directions: a technician reads
+the number printed on the old component, and what the record should carry is the one that replaced it.
+
+**Verification has two routes and they measure differently.** Against the Lennox example: `14T65`
+resolves in `parts.md` and cites `parts.md § Conversion and high altitude (fits 070, 090XV36C,
+090XV48C, 110, 135)`; `67M41`, the defrost tempering kit, is named only on the service manual's
+wiring diagram and is deliberately **not** in `parts.md`, so it exercises the
+`passages(containingToken:)` route and cites the printed page; `99Z99` resolves nowhere and is
+recorded unverified and named out loud as unverified in the tool's reply. The example's core went
+from 25,243 to 29,242 characters against the validator's 32,768 budget.
+
+**What P1 does not do.** The plan's §3 says "readings before/after"; what is recorded is the
+capture-record ids in the order they were taken — the before/after split lives inside the capture
+flow's own fields, and inventing a second one here would be a second source of truth. There is no
+voice route to the job reference yet: it is `startSession(jobReference:)` and
+`FieldSessionService.setJobReference`, and P2's organisation-profile QR is where it gets one. The
+`sent` state of a `PartsRequest` is never entered, because nothing sends anything in P1 — the
+queued operations are durable local tombstones until P2 configures an endpoint.

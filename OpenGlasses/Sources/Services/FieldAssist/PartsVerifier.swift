@@ -74,10 +74,8 @@ struct PartsVerifier {
     // MARK: - Helpers
 
     /// Uppercased, stripped of the punctuation a spoken number picks up ("14T65." / "#14T65").
-    static func normalise(_ number: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-/"))
-        return String(number.unicodeScalars.filter { allowed.contains($0) }).uppercased()
-    }
+    /// The index normalises the same way, so a number reaches the same row by either route.
+    static func normalise(_ number: String) -> String { VaultPartsIndex.normalise(number) }
 
     /// "SLP99UHVK Service Manual, page 3" — the same shape every other citation in the app uses.
     static func citation(for passage: DocumentStore.Passage) -> String {
