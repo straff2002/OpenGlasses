@@ -9,11 +9,28 @@ import NaturalLanguage
 /// retrievable. A single sentence longer than `maxChars` is hard-split as a last resort.
 ///
 /// Each chunk also carries the page number and nearest section heading active at its first
-/// sentence, so retrieval can cite a locatable source ("§5.3, page 42"). Pages are detected from
-/// form feeds and whole-line "Page N" / "- N -" markers, which are then removed from the text a
-/// chunk quotes; sections from numbered/Chapter/ALL-CAPS heading lines, screened against the
-/// captions, banners, list steps and table rows an OEM manual is full of. Unpaginated input
-/// (e.g. a single OCR'd scan) leaves `page` nil.
+/// sentence, so retrieval can cite a locatable source ("§5.3, page 42"), plus what kind of page it
+/// came from and the figure that names it. Unpaginated input (e.g. a single OCR'd scan) leaves
+/// `page` nil.
+///
+/// **The input grammar.** A document may annotate itself, and both producers of vault text do —
+/// [[ManualStructure]] in the app and `Scripts/extract-manual-text.swift` on a Mac, each reading a
+/// PDF's type. Every annotation is stripped from the text a chunk quotes:
+///
+/// - `Page N` (or `- N -`) alone on a line opens a page; a form feed does too.
+/// - `## Heading` sets the section. The heading text stays in the chunk — it is content — the
+///   hashes do not.
+/// - `### Figure 58 — Integrated Control` sets `figure` for what follows on that page; the section
+///   is unchanged. On a drawing the page's first caption names the whole page and later ones do not
+///   override it, because the page is one picture.
+/// - `<!-- page: diagram -->` before any content on a page marks the page a drawing. Any other HTML
+///   comment is stripped and ignored, so an author can annotate freely.
+///
+/// **Lexical fallback.** When a document carries no `## ` heading at all — plain text, EPUB, a
+/// recognised scan, a PDF whose fonts are all one size and weight — sections are detected from the
+/// numbered/Chapter/ALL-CAPS shapes below, screened against the captions, banners, list steps and
+/// table rows an OEM manual is full of. When it carries any, that lexical detection is off for the
+/// whole document: type said what the sections are, and guessing beside it only adds noise.
 struct DocumentChunker {
 
     /// Soft target size — packing starts a new chunk once adding the next sentence would exceed this.
@@ -32,11 +49,21 @@ struct DocumentChunker {
         self.overlapChars = overlapChars
     }
 
+    /// What kind of page a chunk came off. A drawing's text is a bag of terminal labels: it embeds
+    /// to noise and crowds a semantic result, but it is exactly what an exact-token search is for.
+    enum Kind: String, Equatable, CaseIterable {
+        case prose
+        case diagram
+    }
+
     struct Chunk: Equatable {
         let index: Int
         let text: String
         let page: Int?
         let section: String?
+        var kind: Kind = .prose
+        /// The figure or table that names this chunk's place ("Figure 58", "Table 16").
+        var figure: String?
     }
 
     /// A sentence tagged with the page/section context active where it appears.
@@ -44,6 +71,8 @@ struct DocumentChunker {
         let text: String
         let page: Int?
         let section: String?
+        var kind: Kind = .prose
+        var figure: String?
     }
 
     func chunk(_ raw: String) -> [Chunk] {
@@ -51,7 +80,7 @@ struct DocumentChunker {
         guard !text.isEmpty else { return [] }
 
         let sentences = Self.taggedSentences(in: text)
-        var chunks: [(text: String, page: Int?, section: String?)] = []
+        var chunks: [(text: String, page: Int?, section: String?, kind: Kind, figure: String?)] = []
         var current: [Sentence] = []
         var currentLen = 0
 
@@ -59,12 +88,23 @@ struct DocumentChunker {
             guard !current.isEmpty else { return }
             let joined = current.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !joined.isEmpty, let first = current.first else { return }
-            chunks.append((joined, first.page, first.section))
+            chunks.append((joined, first.page, first.section, first.kind, first.figure))
         }
 
         for sentence in sentences {
             let s = sentence.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !s.isEmpty else { continue }
+
+            // Prose and a drawing never share a chunk. A chunk takes its kind and figure from its
+            // first sentence, so the tail of a page of prose running into a wiring diagram would
+            // otherwise swallow the diagram's labels and cite them as prose. No overlap is carried
+            // across the seam either — the two sides are not context for each other. Nothing moves
+            // in a document that is all one kind, which is every document without a diagram page.
+            if let open = current.first, open.kind != sentence.kind {
+                flush()
+                current = []
+                currentLen = 0
+            }
 
             // A single sentence too big to ever fit: flush what we have, then hard-split it.
             // The split pieces inherit the oversized sentence's page/section.
@@ -73,7 +113,7 @@ struct DocumentChunker {
                 current = []
                 currentLen = 0
                 for piece in Self.hardSplit(s, maxChars: maxChars) {
-                    chunks.append((piece, sentence.page, sentence.section))
+                    chunks.append((piece, sentence.page, sentence.section, sentence.kind, sentence.figure))
                 }
                 continue
             }
@@ -86,13 +126,15 @@ struct DocumentChunker {
                 currentLen = current.reduce(0) { $0 + $1.text.count + 1 }
             }
 
-            current.append(Sentence(text: s, page: sentence.page, section: sentence.section))
+            current.append(Sentence(text: s, page: sentence.page, section: sentence.section,
+                                    kind: sentence.kind, figure: sentence.figure))
             currentLen += s.count + 1
         }
         flush()
 
         return chunks.enumerated().map {
-            Chunk(index: $0.offset, text: $0.element.text, page: $0.element.page, section: $0.element.section)
+            Chunk(index: $0.offset, text: $0.element.text, page: $0.element.page, section: $0.element.section,
+                  kind: $0.element.kind, figure: $0.element.figure)
         }
     }
 
@@ -114,6 +156,8 @@ struct DocumentChunker {
         var bpIdx = 0
         var page = 1            // content before any marker is page 1 (only surfaced when paginated)
         var section: String? = nil
+        var kind = Kind.prose
+        var figure: String? = nil
         // Sentence ranges arrive in order, so the offset accumulates instead of being measured
         // from the start of the document each time (quadratic on a 200 KB manual).
         var cursor = text.startIndex
@@ -125,11 +169,14 @@ struct DocumentChunker {
             while bpIdx < breaks.count && breaks[bpIdx].offset <= offset {
                 page = breaks[bpIdx].page
                 section = breaks[bpIdx].section
+                kind = breaks[bpIdx].kind
+                figure = breaks[bpIdx].figure
                 bpIdx += 1
             }
             let s = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !s.isEmpty {
-                result.append(Sentence(text: s, page: scanned.paginated ? page : nil, section: section))
+                result.append(Sentence(text: s, page: scanned.paginated ? page : nil, section: section,
+                                       kind: kind, figure: figure))
             }
             return true
         }
@@ -142,15 +189,21 @@ struct DocumentChunker {
         return result
     }
 
-    /// A point in the text from which a new (page, section) state applies. Offsets are into the
-    /// scanned text, not the raw input.
-    private struct Breakpoint { let offset: Int; let page: Int; let section: String? }
+    /// A point in the text from which a new (page, section, kind, figure) state applies. Offsets
+    /// are into the scanned text, not the raw input.
+    private struct Breakpoint {
+        let offset: Int
+        let page: Int
+        let section: String?
+        var kind: Kind = .prose
+        var figure: String?
+    }
 
     /// One line-scanning pass over the raw text.
     private struct ScannedText {
         /// The text a chunk may quote: recognised page-marker lines removed, everything else intact.
         let text: String
-        /// Offset-keyed (page, section) state changes into `text`.
+        /// Offset-keyed (page, section, kind, figure) state changes into `text`.
         let breaks: [Breakpoint]
         /// Whether the document showed any pagination evidence at all (a form feed or a marker
         /// line). Without evidence, callers treat page as nil — a lone scanned image isn't
@@ -158,7 +211,8 @@ struct DocumentChunker {
         let paginated: Bool
     }
 
-    /// Scan the raw text once: strip marker lines, record where the page and section change.
+    /// Scan the raw text once: strip the marker and grammar lines, record where the page, section,
+    /// kind and figure change.
     ///
     /// **Page precedence.** Once a page has been opened — by a form feed or by a marker line — a
     /// further marker before any content on that page is the publisher's own running header and
@@ -166,42 +220,77 @@ struct DocumentChunker {
     /// its numbering after an unnumbered cover or roman-numeral front matter, and letting it win
     /// would cite a page the reader cannot turn to. Once a line of content has appeared, the next
     /// marker is a genuine page break — which is the only way a plain-text document paginates.
+    /// A grammar line (a comment, a `##` or `###` marker) is an annotation on the page, not content
+    /// on it, so an extractor may write one above the publisher's header without losing that rule.
     private static func scanLines(in raw: String) -> ScannedText {
+        // The grammar is always read; what the presence of a `## ` heading switches off is the
+        // lexical guessing beside it.
+        let lexical = !hasStructuredHeadings(raw)
         var cleaned = ""
         cleaned.reserveCapacity(raw.count)
         var length = 0                  // cleaned.count, tracked as we go
         var breaks: [Breakpoint] = []
         var page = 1
         var section: String? = nil
+        var kind = Kind.prose
+        var figure: String? = nil
         var paginated = false
         var pageOpen = false
         var contentSincePageOpen = false
         var line = ""
 
+        func mark() {
+            breaks.append(Breakpoint(offset: length, page: page, section: section, kind: kind, figure: figure))
+        }
+
         func endLine(terminator: Character?) {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            var keepText = true
+            var emitted: String? = line
             if let marker = pageNumber(in: trimmed) {
-                keepText = false        // marker lines are furniture; they never reach a chunk
+                emitted = nil           // marker lines are furniture; they never reach a chunk
                 paginated = true
                 if pageOpen && !contentSincePageOpen {
                     // A printed running header on a page already opened: page unchanged.
                 } else {
                     page = marker
+                    kind = .prose
+                    figure = nil
                     pageOpen = true
                     contentSincePageOpen = false
-                    breaks.append(Breakpoint(offset: length, page: page, section: section))
+                    mark()
                 }
+            } else if isComment(trimmed) {
+                emitted = nil           // an annotation, never quoted back
+                if trimmed == ManualStructure.diagramMarker, !contentSincePageOpen {
+                    kind = .diagram
+                    mark()
+                }
+            } else if let heading = structuredHeading(trimmed) {
+                section = heading
+                // A new section starts new material: the figure captioned above it no longer
+                // governs. On a drawing the page's own caption stands, because the page is one
+                // picture and the citation has to name what the reader will see.
+                if kind == .prose { figure = nil }
+                mark()
+                emitted = heading
+            } else if let caption = structuredCaption(trimmed) {
+                // On a drawing the first caption names the whole page; on a prose page each
+                // caption governs what follows it.
+                if kind == .prose || figure == nil {
+                    figure = caption.label
+                    mark()
+                }
+                emitted = caption.text
             } else if !trimmed.isEmpty {
-                if let heading = detectHeading(trimmed) {
+                if lexical, let heading = detectHeading(trimmed) {
                     section = heading
-                    breaks.append(Breakpoint(offset: length, page: page, section: section))
+                    mark()
                 }
                 contentSincePageOpen = true
             }
-            if keepText {
-                cleaned += line
-                length += line.count
+            if let emitted {
+                cleaned += emitted
+                length += emitted.count
             }
             if let terminator {
                 cleaned.append(terminator)
@@ -218,10 +307,12 @@ struct DocumentChunker {
                 cleaned.append(ch)
                 length += 1
                 page += 1
+                kind = .prose
+                figure = nil
                 paginated = true
                 pageOpen = true
                 contentSincePageOpen = false
-                breaks.append(Breakpoint(offset: length, page: page, section: section))
+                mark()
             } else {
                 line.append(ch)
             }
@@ -229,6 +320,40 @@ struct DocumentChunker {
         endLine(terminator: nil)
 
         return ScannedText(text: cleaned, breaks: breaks, paginated: paginated)
+    }
+
+    // MARK: - The structured grammar
+
+    /// Whether the document annotates its own sections. One `## ` line is enough: an extractor
+    /// that found any structure in the type found all of it, and mixing in lexical guesses beside
+    /// it is what produced `§1- DATA LOW CONNECTION`.
+    static func hasStructuredHeadings(_ raw: String) -> Bool {
+        raw.range(of: #"(?m)^[ \t]*##[ \t]+\S"#, options: .regularExpression) != nil
+    }
+
+    /// A whole-line HTML comment — an annotation the author or the extractor left for the chunker.
+    private static func isComment(_ trimmed: String) -> Bool {
+        trimmed.hasPrefix("<!--") && trimmed.hasSuffix("-->") && trimmed.count >= 7
+    }
+
+    /// The heading text of a `## ` line, else nil. Exactly two hashes — a third makes it `### `,
+    /// which is a caption and never matches this prefix.
+    private static func structuredHeading(_ trimmed: String) -> String? {
+        guard trimmed.hasPrefix("## ") else { return nil }
+        let text = trimmed.dropFirst(2).trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? nil : text
+    }
+
+    /// The figure a `### ` caption names, with the caption text that stays in the chunk.
+    private static func structuredCaption(_ trimmed: String) -> (label: String, text: String)? {
+        guard trimmed.hasPrefix("### ") else { return nil }
+        let text = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        guard let match = text.range(of: #"^(Figure|Table)\s+\S+"#,
+                                     options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let label = String(text[match])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \t.:\u{2014}\u{2013}-"))
+        return (label, String(text))
     }
 
     // MARK: - Detection

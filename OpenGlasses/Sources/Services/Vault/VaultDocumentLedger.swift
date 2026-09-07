@@ -20,9 +20,16 @@ struct VaultDocumentLedger: Codable, Equatable {
         let ocrPages: Int?
         /// Of the recognised pages, how many fell below the confidence floor.
         let lowConfidencePages: Int?
+        /// Section headings the extractor read off the document's type; nil on entries written
+        /// before structure existed. Zero means the chunker's lexical rules are what named the
+        /// sections.
+        let structuredHeadings: Int?
+        /// Pages that came out as drawings rather than prose.
+        let diagramPages: Int?
 
         init(file: String, title: String, documentId: String, contentHash: String, chunkCount: Int,
-             ocrPages: Int? = nil, lowConfidencePages: Int? = nil) {
+             ocrPages: Int? = nil, lowConfidencePages: Int? = nil,
+             structuredHeadings: Int? = nil, diagramPages: Int? = nil) {
             self.file = file
             self.title = title
             self.documentId = documentId
@@ -30,6 +37,8 @@ struct VaultDocumentLedger: Codable, Equatable {
             self.chunkCount = chunkCount
             self.ocrPages = ocrPages
             self.lowConfidencePages = lowConfidencePages
+            self.structuredHeadings = structuredHeadings
+            self.diagramPages = diagramPages
         }
 
         var usedRecognition: Bool { (ocrPages ?? 0) > 0 }

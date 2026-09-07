@@ -247,9 +247,12 @@ struct VaultManagerView: View {
         }
     }
 
-    /// "412 sections · 38 pages read by recognition · 3 low confidence".
+    /// "412 sections · 11 diagram pages · 38 pages read by recognition · 3 low confidence".
     static func entrySummary(_ entry: VaultDocumentLedger.Entry) -> String {
         var parts = ["\(entry.chunkCount) sections"]
+        if let diagrams = entry.diagramPages, diagrams > 0 {
+            parts.append("\(diagrams) diagram page\(diagrams == 1 ? "" : "s")")
+        }
         if let ocr = entry.ocrPages, ocr > 0 {
             parts.append("\(ocr) page\(ocr == 1 ? "" : "s") read by recognition")
             if let low = entry.lowConfidencePages, low > 0 {

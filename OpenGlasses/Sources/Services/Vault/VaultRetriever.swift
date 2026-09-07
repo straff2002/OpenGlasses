@@ -43,16 +43,44 @@ struct VaultRetriever {
         /// The passage's document was read, at least in part, by recognition rather than a text
         /// layer. Numbers are where recognition fails quietly, so the reader is told.
         var recognisedFromScan: Bool = false
+        /// What kind of page the passage came off (Plan EK).
+        var kind: DocumentChunker.Kind = .prose
+        /// The figure or table that names the passage's place ("Figure 58"), when it has one.
+        var figure: String?
 
         /// The sentence appended to a recognised passage's citation.
         static let provenanceNote = "(text recognised from a scan; verify figures against the printed page)"
 
-        /// Machine-attached citation: title, page, section. Never something the model recalled.
+        /// Machine-attached citation: title, page, and whichever of the figure or the section names
+        /// the place. Never something the model recalled.
+        ///
+        /// The figure comes first when there is one: on a drawing it is what the reader will see
+        /// when they turn to the page, and it is the thing a technician can point at. A drawing
+        /// with no caption still says so, because "page 44" of a wiring diagram and "page 44" of a
+        /// procedure are read very differently.
         var citation: String {
             var parts = [documentName]
             if let page { parts.append("page \(page)") }
-            if let section, !section.isEmpty { parts.append("§\(section)") }
+            if let figure, !figure.isEmpty {
+                parts.append(figure)
+            } else if kind == .diagram {
+                return parts.joined(separator: ", ") + " (diagram)"
+            } else if let section, !section.isEmpty {
+                parts.append("§\(section)")
+            }
             return parts.joined(separator: ", ")
+        }
+
+        /// How a drawing is announced to the model before its text, so a bag of terminal labels is
+        /// read as labels on a picture rather than as prose. Nil for an ordinary passage.
+        var kindLabel: String? {
+            guard kind == .diagram else { return nil }
+            // A table page meets the same test as a drawing and is accepted there (its rows stay
+            // token-searchable); calling it a wiring diagram would be a lie to the model.
+            var parts = [figure?.hasPrefix("Table") == true ? "table" : "wiring diagram"]
+            if let figure, !figure.isEmpty { parts.append(figure) }
+            if let page { parts.append("page \(page)") }
+            return "(" + parts.joined(separator: ", ") + ")"
         }
     }
 
@@ -141,7 +169,8 @@ struct VaultRetriever {
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
                        similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,
-                       recognisedFromScan: provenance?(raw.documentId) ?? false)
+                       recognisedFromScan: provenance?(raw.documentId) ?? false,
+                       kind: raw.kind, figure: raw.figure)
     }
 
     // MARK: - Rendering
@@ -152,7 +181,8 @@ struct VaultRetriever {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.text)\nSource: \(p.citation)\(p.recognisedFromScan ? " " + Passage.provenanceNote : "")"
+                "[\(i + 1)] \(p.kindLabel.map { $0 + " " } ?? "")\(p.text)\nSource: \(p.citation)"
+                    + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
             }.joined(separator: "\n\n")
             return """
             MANUAL PASSAGES (retrieved for this turn — the only reference material available beyond the vault core; \
@@ -170,7 +200,8 @@ struct VaultRetriever {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.text)\nSource: \(p.citation)\(p.recognisedFromScan ? " " + Passage.provenanceNote : "")"
+                "[\(i + 1)] \(p.kindLabel.map { $0 + " " } ?? "")\(p.text)\nSource: \(p.citation)"
+                    + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
             }.joined(separator: "\n\n")
             return "Manual passages for '\(query)' — answer using only these and cite each Source line you rely on:\n\n\(body)"
         case .insufficient(let reason):

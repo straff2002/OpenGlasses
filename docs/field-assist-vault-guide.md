@@ -62,6 +62,17 @@ swift extract-manual-text.swift RTU-500-service-manual.pdf
 
 It needs Apple's command-line developer tools (`xcode-select --install`). It writes `RTU-500-service-manual.md` beside the PDF and prints how many pages were recognised and how many came out low confidence. Put the `.md` in `documents/` instead of the PDF and give it the same title.
 
+The script also reads the manual's **structure from its type** and writes it into the Markdown: a
+line set in bold at the manual's body size becomes a `## Heading`, a bold `FIGURE 58` or `TABLE 16`
+caption becomes a `### Figure 58 — …` line, and a page that is mostly small labels with no sentences
+in it — a wiring diagram, a dimensions drawing, a table page — is tagged `<!-- page: diagram -->`.
+The closing summary says how many of each it found. That is what makes a citation read *page 62,
+§Turning Off Gas to Unit* rather than naming whatever line happened to be in capitals, and it is
+also how a wiring question reaches the wiring page. Everything the marks describe stays in the text,
+so the file is still yours to read and correct; if the extractor marked something wrongly, edit the
+line. Importing the PDF itself gets the same treatment inside the app, so the two are interchangeable
+— what Route C buys you is the chance to look first.
+
 It also warns, per page, when a manual prints its own page number at the top of the page and that number disagrees with the page's position in the PDF — usually an unnumbered cover or roman-numeral front matter shifting everything by a page or two — and counts them in the closing summary. Citations always name the physical page, the one you reach by counting from the front, so either fix the PDF (delete or add the front matter until the numbers line up) or accept the offset and tell your technicians about it. Zero warnings means a citation reads exactly as the page is printed.
 
 Page numbers are preserved automatically either way, so a citation reads *RTU-500 Service Manual, page 42* and the technician can open the paper copy to it. That only works if the PDF's pages match the printed pages, which is true of nearly every OEM PDF.
