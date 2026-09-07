@@ -42,6 +42,14 @@ final class FieldSessionService: ObservableObject {
     /// figure again" has something to reopen.
     private(set) var lastShownFigure: StagedFigure?
 
+    /// The machine the session believes is in front of the technician (Plan EL). Published so the
+    /// phone and the lens can say which model the answers are for.
+    @Published private(set) var activeEquipment: EquipmentIdentity?
+
+    /// The active vault's model index, derived once per session from its core headings. Empty for a
+    /// vault that names no models, which makes every identity feature a no-op there.
+    private(set) var modelIndex = VaultModelIndex(vaultName: "", files: [])
+
     private let sessionsRoot: URL
 
     init(sessionsRoot: URL? = nil) {
@@ -92,6 +100,8 @@ final class FieldSessionService: ObservableObject {
 
         activeSession = session
         activeVault = store
+        modelIndex = VaultModelIndex(store: store)
+        activeEquipment = nil
         library = ProcedureLibrary(store: store)
         let newLogger = SessionLogger(session: session, root: sessionsRoot.appendingPathComponent(session.id, isDirectory: true))
         logger = newLogger
@@ -106,7 +116,12 @@ final class FieldSessionService: ObservableObject {
         EscalationCoordinator.shared.reset()
         lastResumeAt = Date()
         history.insert(session, at: 0)
-        return session
+        // A work order that names the machine has already done the recognition. One model and one
+        // only: an asset id that matches several is not an identification.
+        if let assetId, case let matches = modelIndex.match(text: assetId), matches.count == 1 {
+            setEquipment(EquipmentIdentity(model: matches[0], token: matches[0].name, source: .asset))
+        }
+        return activeSession ?? session
     }
 
     /// Pause the active session (stops billable-time accumulation).
@@ -160,6 +175,8 @@ final class FieldSessionService: ObservableObject {
         logger.appendLifecycle(.sessionEnded, note: "outcome=\(outcome.rawValue), billable_seconds=\(Int(session.billableSeconds))")
         activeSession = nil
         activeVault = nil
+        activeEquipment = nil
+        modelIndex = VaultModelIndex(vaultName: "", files: [])
         stagedFigure = nil
         lastShownFigure = nil
         self.logger = nil
@@ -191,6 +208,59 @@ final class FieldSessionService: ObservableObject {
         logger.append(.init(timestamp: Date(), kind: .escalationResolved, text: note, payload: nil))
     }
 
+    // MARK: - Equipment identity (Plan EL)
+
+    /// Record the machine in front of the technician. Persists through the session's own update
+    /// path, so the audit record and a crash-restored session both carry it.
+    func setEquipment(_ identity: EquipmentIdentity) {
+        guard var session = activeSession else { return }
+        session.equipment = identity
+        activeSession = session
+        activeEquipment = identity
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        var payload: [String: AnyCodable] = ["model": AnyCodable(identity.modelToken),
+                                             "heading": AnyCodable(identity.heading),
+                                             "file": AnyCodable(identity.file),
+                                             "source": AnyCodable(identity.source.rawValue)]
+        // The nameplate's own text is audit material — it is what the recognition was based on —
+        // and it never goes anywhere near a prompt.
+        if let nameplate = identity.nameplateText { payload["nameplate_text"] = AnyCodable(nameplate) }
+        logger?.append(.init(timestamp: Date(), kind: .equipmentRecognised,
+                             text: identity.heading, payload: payload))
+    }
+
+    /// Forget it — a wrong read, or the technician has moved to another unit.
+    func clearEquipment() {
+        guard var session = activeSession else { return }
+        let previous = session.equipment
+        session.equipment = nil
+        activeSession = session
+        activeEquipment = nil
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        logger?.append(.init(timestamp: Date(), kind: .equipmentCleared, text: previous?.heading,
+                             payload: previous.map { ["model": AnyCodable($0.modelToken),
+                                                      "heading": AnyCodable($0.heading)] }))
+    }
+
+    /// Is this turn about a machine these manuals are for? Runs before retrieval everywhere, so a
+    /// question about another manufacturer's unit is answered with the scope sentence rather than
+    /// with passages that are genuinely about the subject and genuinely about the wrong machine.
+    func equipmentScope(turn: String?, nameplateText: String? = nil) -> EquipmentScopeCheck.Outcome {
+        EquipmentScopeCheck.check(text: turn, nameplateText: nameplateText,
+                                  index: modelIndex, active: activeEquipment)
+    }
+
+    /// The retriever's view of the active machine: every spelling of it, and every spelling of
+    /// every other model the vault names. Nil when nothing is active or the vault names no models.
+    var retrievalModelScope: VaultRetriever.ModelScope? {
+        guard let active = activeEquipment, !modelIndex.isEmpty else { return nil }
+        guard let model = modelIndex.models.first(where: { $0.heading == active.heading }) else { return nil }
+        return VaultRetriever.ModelScope(activeTokens: Set(model.tokens),
+                                         otherTokens: modelIndex.knownModelTokens)
+    }
+
     // MARK: - Prompt context
 
     /// Where a vault's reference-tier documents live. Injected by `AppState`; nil in headless
@@ -216,6 +286,9 @@ final class FieldSessionService: ObservableObject {
     func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
         var context = VaultPromptBuilder.promptContext(for: store)
+        if let equipment = activeEquipment {
+            context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
+        }
         if let runner {
             let procedureContext = runner.promptContext()
             if !procedureContext.isEmpty {
@@ -235,6 +308,21 @@ final class FieldSessionService: ObservableObject {
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
         guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        // Equipment before evidence. A question about a machine this vault is not for cannot be
+        // answered by any passage in it, however well the words line up (Plan EL §3), so the block
+        // becomes the scope sentence and the vault's rules relay it verbatim.
+        var scopeNote: String?
+        switch equipmentScope(turn: turn) {
+        case .unknownEquipment(_, let sentence):
+            stageFigure(nil)
+            return VaultRetriever.promptBlock(.insufficient(reason: sentence))
+        case .otherKnownModel(let token, let model):
+            if let active = activeEquipment {
+                scopeNote = EquipmentScopeCheck.otherModelNote(token: token, model: model, active: active)
+            }
+        case .inScope:
+            break
+        }
         let outcome = manualRetriever(store: store).retrieve(
             .init(turn: turn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
@@ -242,7 +330,8 @@ final class FieldSessionService: ObservableObject {
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
         // attached to a question about condensate.
         stageFigure(makeStagedFigure(for: Self.bestFigure(in: outcome.passages), vaultId: store.manifest.id))
-        return VaultRetriever.promptBlock(outcome)
+        let block = VaultRetriever.promptBlock(outcome)
+        return scopeNote.map { block + "\n\n" + $0 } ?? block
     }
 
     /// A retriever scoped to the active vault's namespace, or nil when there is no store.
@@ -255,7 +344,7 @@ final class FieldSessionService: ObservableObject {
             documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
         }, provenance: { documentId in
             documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, policy: retrievalPolicy)
+        }, policy: retrievalPolicy, modelScope: retrievalModelScope)
     }
 
     /// Whether the active vault has manuals available to search.
@@ -632,6 +721,10 @@ final class FieldSessionService: ObservableObject {
         let store = VaultRegistry.shared.store(for: manifest)
         activeSession = inProgress
         activeVault = store
+        modelIndex = VaultModelIndex(store: store)
+        // The machine is part of the session record, so a crash-restored session still knows what
+        // it is standing in front of.
+        activeEquipment = inProgress.equipment
         library = ProcedureLibrary(store: store)
         let restoredLogger = SessionLogger(session: inProgress, root: sessionsRoot.appendingPathComponent(inProgress.id, isDirectory: true))
         logger = restoredLogger

@@ -40,6 +40,10 @@ struct VaultRetriever {
         let score: Float
         /// Code-like tokens from the request found verbatim in this passage.
         let matchedTokens: [String]
+        /// Subtracted from `score` when this passage names a model the session is not working on
+        /// (Plan EL §4). Kept beside `score` rather than folded into it so a passage's own strength
+        /// stays readable in a log or a test while the ranking reflects the machine in the room.
+        var modelPenalty: Float = 0
         /// The passage's document was read, at least in part, by recognition rather than a text
         /// layer. Numbers are where recognition fails quietly, so the reader is told.
         var recognisedFromScan: Bool = false
@@ -74,6 +78,10 @@ struct VaultRetriever {
             return parts.joined(separator: ", ")
         }
 
+        /// The key the ranked list is sorted by: the passage's own score, less any model-mismatch
+        /// penalty.
+        var rankScore: Float { score - modelPenalty }
+
         /// How a drawing is announced to the model before its text, so a bag of terminal labels is
         /// read as labels on a picture rather than as prose. Nil for an ordinary passage.
         var kindLabel: String? {
@@ -95,18 +103,49 @@ struct VaultRetriever {
     /// Whether a document (by id) was read by recognition. Nil means "unknown", treated as no.
     typealias Provenance = (_ documentId: String) -> Bool
 
+    /// The machine the session is working on, and the other machines the vault covers (Plan EL).
+    ///
+    /// A manual for a family of units prints rows for all of them; the row for a *different* model
+    /// is worse than useless in front of a technician holding the one in `activeTokens`. This ranks
+    /// such a row down rather than dropping it — the model may still want it to say "that figure is
+    /// for the 090" — and it does so inside each of the two ranking groups, so Plan EJ's invariant
+    /// (an exact token hit outranks anything without one) is untouched.
+    struct ModelScope: Equatable {
+        /// Every spelling of the active model, uppercased.
+        var activeTokens: Set<String>
+        /// Every spelling of every *other* model the vault names, uppercased.
+        var otherTokens: Set<String>
+        var penalty: Float = 0.5
+
+        init(activeTokens: Set<String>, otherTokens: Set<String>, penalty: Float = 0.5) {
+            self.activeTokens = activeTokens
+            self.otherTokens = otherTokens.subtracting(activeTokens)
+            self.penalty = penalty
+        }
+
+        /// The penalty for one passage: it names another model and does not name this one.
+        func penalty(for text: String) -> Float {
+            guard !activeTokens.isEmpty, !otherTokens.isEmpty else { return 0 }
+            guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
+            return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
+        }
+    }
+
     var query: QueryFunction
     var tokenSearch: TokenSearch?
     var provenance: Provenance?
     var policy = RetrievalEvidencePolicy()
+    var modelScope: ModelScope?
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
          provenance: Provenance? = nil,
-         policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy()) {
+         policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy(),
+         modelScope: ModelScope? = nil) {
         self.query = query
         self.tokenSearch = tokenSearch
         self.provenance = provenance
         self.policy = policy
+        self.modelScope = modelScope
     }
 
     func retrieve(_ request: Request) -> RetrievalOutcome {
@@ -135,7 +174,7 @@ struct VaultRetriever {
             let key = "\(raw.documentId)#\(raw.chunkIndex)"
             let matched = boostTokens.filter { CodeTokenizer.contains(raw.text, token: $0) }
             let candidate = scored(raw, matched: matched)
-            if let existing = merged[key], existing.score >= candidate.score { return }
+            if let existing = merged[key], existing.rankScore >= candidate.rankScore { return }
             merged[key] = candidate
         }
         for q in queries {
@@ -154,7 +193,7 @@ struct VaultRetriever {
         // the best semantic passages take whatever `limit` leaves — a spoken sentence carrying a
         // code gets the code's row *and* its context.
         func precedes(_ a: Passage, _ b: Passage) -> Bool {
-            a.score != b.score ? a.score > b.score
+            a.rankScore != b.rankScore ? a.rankScore > b.rankScore
                 : (a.documentName, a.chunkIndex) < (b.documentName, b.chunkIndex)
         }
         let candidates = Array(merged.values)
@@ -172,6 +211,7 @@ struct VaultRetriever {
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
                        similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,
+                       modelPenalty: modelScope?.penalty(for: raw.text) ?? 0,
                        recognisedFromScan: provenance?(raw.documentId) ?? false,
                        kind: raw.kind, figure: raw.figure)
     }

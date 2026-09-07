@@ -349,6 +349,49 @@ final class ExampleVaultLennoxTests: XCTestCase {
         }
     }
 
+    // MARK: - Equipment identity (Plan EL)
+
+    func testTheSessionScopesItsAnswersToTheMachineItWasToldAbout() async throws {
+        let (directory, manualsPresent) = try stageExample()
+        guard manualsPresent else { throw XCTSkip("manuals not present in documents/; see documents/README.md") }
+
+        let store = makeStore()
+        let service = try startSession(from: directory, store: store)
+        let manifest = try XCTUnwrap(VaultRegistry.shared.manifest(id: Self.vaultId))
+        _ = try await VaultImporter.syncDocuments(manifest: manifest, into: store)
+
+        // With no equipment set, a question about another manufacturer's furnace is refused by
+        // name, and told which machines these manuals *are* for. This is the residue Plan EJ §2
+        // measured and could not close: the passages it would have returned are genuinely about
+        // heat exchangers, so no similarity or lexical rule reaches it.
+        for (turn, token) in [("how do I replace the heat exchanger on a Carrier 58MVB", "58MVB"),
+                              ("what is the defrost board wiring on a Trane XR15", "XR15")] {
+            let context = try XCTUnwrap(service.promptContext(turn: turn))
+            XCTAssertTrue(context.contains("MANUAL PASSAGES: none retrieved"), context.suffix(500).description)
+            XCTAssertTrue(context.contains("\(token) is not one of them"), context.suffix(500).description)
+            XCTAssertTrue(context.contains("cover Lennox SLP99 Furnace Service models SLP99UH070XV36BK"),
+                          context.suffix(500).description)
+        }
+        // …and a question about the furnace in front of them is untouched by any of it.
+        let inScope = try XCTUnwrap(service.promptContext(turn: "high fire manifold pressure"))
+        XCTAssertTrue(inScope.contains("MANUAL PASSAGES (retrieved"), inScope.suffix(600).description)
+
+        // Reading the nameplate once. From here the session knows the machine, says so in the
+        // prompt, and the record carries it.
+        let answer = try await EquipmentLookupTool(documentStore: store, sessionService: service)
+            .execute(args: ["query": "090XV60C"])
+        XCTAssertTrue(answer.hasPrefix("Active equipment: SLP99UH090XV60CK (from the technician)."), answer)
+        XCTAssertEqual(service.activeSession?.equipment?.modelToken, "SLP99UH090XV60CK")
+        let scoped = try XCTUnwrap(service.promptContext(turn: "high fire manifold pressure"))
+        XCTAssertTrue(scoped.contains("ACTIVE EQUIPMENT: SLP99UH090XV60CK"), scoped.prefix(4000).description)
+
+        // Another of the vault's own models is answered, not refused — a technician does compare
+        // units — and the prompt says which model the question was about.
+        let compared = try XCTUnwrap(service.promptContext(turn: "is the 070XV36B temperature rise the same"))
+        XCTAssertTrue(compared.contains("MANUAL PASSAGES"), compared.suffix(500).description)
+        XCTAssertTrue(compared.contains("not the active SLP99UH090XV60CK"), compared.suffix(500).description)
+    }
+
     // MARK: - Structure from type (Plan EK)
 
     func testTheManualsSectionsAreTheOnesPrintedInTheBook() async throws {

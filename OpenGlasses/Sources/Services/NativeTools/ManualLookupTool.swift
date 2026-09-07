@@ -15,8 +15,9 @@ final class ManualLookupTool: NativeTool {
     component, or procedure. Pass 'query' with what to look for, or omit it (or set 'use_camera') \
     to read a nameplate / fault display through the glasses camera and search on what it says. \
     Returns the matching manual passages, each with a Source line naming the manual and page — \
-    cite those lines. If it reports that the manuals do not cover the question, say so rather than \
-    answering from general knowledge. Requires an active session in a vault that has manuals.
+    cite those lines. If it reports that the manuals do not cover the question, or that they are \
+    not for the machine the question names, say so verbatim rather than answering from general \
+    knowledge. Requires an active session in a vault that has manuals.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -106,13 +107,20 @@ final class ManualLookupTool: NativeTool {
             return "No manual titled like '\(documentFilter)'. Loaded manuals: \(titles)."
         }
 
+        // A question about another manufacturer's machine cannot be answered from these manuals at
+        // any similarity, so it is refused before the search rather than after it (Plan EL §3).
+        if let sentence = session.equipmentScope(turn: query, nameplateText: ocrText).refusalSentence {
+            return ocrText.map { "Read from the label: \($0.replacingOccurrences(of: "\n", with: " "))\n\n" + sentence }
+                ?? sentence
+        }
+
         let retriever = VaultRetriever(query: { q, limit in
             documentStore.query(q, limit: limit, namespace: namespace, documentIds: documentIds)
         }, tokenSearch: { token, limit in
             documentStore.passages(containingToken: token, namespace: namespace, documentIds: documentIds, limit: limit)
         }, provenance: { documentId in
             documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, policy: session.retrievalPolicy)
+        }, policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText,
                                                procedureStep: nil, limit: session.manualPassageLimit))
         let label = query.flatMap { $0.isEmpty ? nil : $0 } ?? "what the label says"

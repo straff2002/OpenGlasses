@@ -1,6 +1,8 @@
 # Plan EL — Equipment Identity (the session knows what is in front of the technician)
 
-**Status:** 📋 Planned 2026-09-07. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425).
+**Status:** ✅ P1 implemented 2026-09-07 (headless). P2 (session card / HUD line / export surface /
+guide step 6) and P3 (nameplate fields beyond the model) not started. Stacked on
+[Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425) and [Plan EK](EK-manual-structure-and-figures.md).
 **Origin:** EJ P2 measured the evidence gate against the Lennox SLP99 pair and left a residue that
 words cannot close: a quarter of out-of-scope questions still get an answer, every one of them on a
 subject a furnace manual genuinely covers, asked about a machine it does not — *"replace the heat
@@ -101,7 +103,7 @@ Before retrieval, `FieldSessionService.manualPassagesContext` and both lookup to
 
 ## Phases
 
-- **P1 — pure core (one PR).** §1 index, §2 identity type + session field + service state + logging,
+- **P1 — pure core (one PR).** ✅ 2026-09-07. §1 index, §2 identity type + session field + service state + logging,
   tool arguments, §3 scope check wired into the three retrieval entry points, §4 penalty and prompt
   block. Headless tests: index derivation from the Lennox core; tool sets/clears identity through a
   fresh `FieldSessionService`; scope check refuses `58MVB` and `XR15` with the named sentence and
@@ -134,3 +136,68 @@ Before retrieval, `FieldSessionService.manualPassagesContext` and both lookup to
   wholes, and an ambiguous read asks rather than guesses.
 - **Not in scope.** Manufacturer detection without a model number, cross-vault switching on
   recognition ("this is a Carrier, load the Carrier vault"), and any change to the live sessions.
+
+---
+
+## P1 findings (2026-09-07)
+
+**The token rule in §1 could not have refused the questions the Acceptance names.** "At least 5
+characters with at least 2 digits and at least 1 letter" admits every spelling in the Lennox example
+and excludes `E223` and `p.64`, as the design says — and it also excludes `XR15`, `XR95` and `TEM6`,
+which are four characters long and are exactly the machines EJ §2 measured getting answered. It
+admits two other things that are not machines: `R-454B` and `R-410A`, which is the same shape as
+`E223` with one more letter, and `454B` / `060C`, which fall out of splitting a hyphenated form.
+What shipped instead, tested against both lists:
+
+- **four characters, two digits, at least one letter**, *minus* two shapes that are never a machine:
+  a single letter with digits and at most one trailing letter (`E223`, `E203`, `R-410A`, `R-22` — a
+  fault code or an ASHRAE refrigerant designation), and digits with one trailing letter (`454B`,
+  `060C`, `36B`). `XR15`, `58MVB`, `GMVC96`, `090-060C`, `SLP99UH090XV60CK` all survive.
+- **a heading token needs five**, a question's token four. A four-character heading token is more
+  often a family label than a model — `30RB` / `30XA` in the bundled refrigeration vault — and a
+  heading is the one place the guide can ask an author to write the model out; a question has to
+  take what the technician says. This is what makes the bundled vaults' index empty, and with it
+  every identity feature there a no-op, which is what the plan promised.
+
+**A refusal now needs the turn to name *no* model the vault knows, not merely one it doesn't.** The
+design says any unknown model-like token refuses. Run against a nameplate that is what it does: a
+nameplate read carries a serial number (`SER 5820A12345`), which is model-like and belongs to no
+model, so the camera path would have refused every machine it correctly recognised. The rule shipped
+is: refuse when the text carries model-like tokens and *none* of them is anything the vault's core
+names. That keeps every acceptance case (`58MVB`, `XR15` — a Lennox core says nothing about either)
+and costs one edge: "is the 58MVB the same as my 090XV60C" is answered rather than refused, which is
+the same call the design already made for known-but-different.
+
+**The vault's own prose is the safety net.** A token in a heading is a model; a token anywhere else
+in the core (`SLP99UHVK`, the series name in an H1; `65W77`, a changeover kit; `R-454B`) is merely
+known, and a known token is never refused. Without this, "what is the AFUE of the SLP99UHVK" — the
+name printed on the front of both manuals — would have been told the manuals are not about it.
+
+**Measured, `nl-word.en`, the Lennox pair, 701 chunks** (`RetrievalGateCalibrationTests`, 17
+in-scope / 18 out-of-scope after the three model-bearing questions were added):
+
+| | insufficiency recall | in-scope questions the check refuses |
+|---|---|---|
+| identity off (the measured gate alone) | 0.778 (14/18) | — |
+| **identity on** | **0.889 (16/18)** | **0.000** |
+
+Recall@4 and the gate's own numbers are untouched — the scope check runs before retrieval and
+refuses no in-scope question, so the default's recall@4 (0.765) and in-scope refusals (0.118) are
+the EK figures unchanged. The two questions identity adds are *"how do I replace the heat exchanger
+on a Carrier 58MVB"* and *"how do I wire a Trane XR95 two stage thermostat"* — both named in EJ §2
+as unreachable by any lexical rule. The two still answered are *"how do I charge the refrigerant on
+the outdoor unit"* and *"how do I reset the defrost board on a heat pump"*: neither names a model at
+all, so identity has nothing to compare and the plan's own non-goal (no manufacturer detection
+without a model number) is what leaves them. `XR15` and `GMVC96` were already refused by the lexical
+gate on this corpus, so identity's contribution is 2 questions and not 3.
+
+**The penalty moves a real row on the real manuals.** Table 39 of the service manual prints one set
+of manifold pressures for every model and a second set headed `-090-060C Only`. Among the passages
+that mention the manifold, that row sits at rank 8 with no identity and at rank 8 with the 090XV60C
+active; on a 070 it takes the 0.5 penalty and falls to rank 29. Nothing in the words of the question
+can make that choice, which is the whole argument for the feature.
+
+**What P1 does not do.** A wiring-diagram label (`24VAXC`) is model-shaped and lives only in the
+manuals, not in the core, so a turn that names one and nothing else would be refused. It has not
+been seen in a spoken turn and the fix — checking the manuals' tokens as well as the core's — costs
+an index over 700 chunks; recorded here rather than pre-emptively built.
