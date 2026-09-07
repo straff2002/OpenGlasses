@@ -1882,6 +1882,16 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         cancellables.append(fieldSessionToken)
 
+        // Field Assist: when a turn's evidence points at a wiring diagram, put the page on the
+        // phone while the model is still answering — speech cannot read a drawing back, and the
+        // model seeing it does not help the technician see it (Plan EK P2).
+        let figureToken = FieldSessionService.shared.$stagedFigure
+            .compactMap { $0 }
+            .sink { [weak self] staged in
+                self?.presentManualFigure(staged)
+            }
+        cancellables.append(figureToken)
+
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.
         let playbookHUDToken = playbookStore.$activeSession
@@ -2643,6 +2653,33 @@ class AppState: ObservableObject, AppStateProtocol {
         activePersona = nil
         updateLiveActivity()
         Task { await returnToWakeWord() }
+    }
+
+    // MARK: - Manual figures (Plan EK)
+
+    /// What the figure sheet is showing, or nil when it is closed. Identified by the citation, so
+    /// re-staging the drawing already on screen does not reopen the sheet over itself.
+    struct ManualFigureRequest: Identifiable, Equatable {
+        let presenter: ManualFigurePresenter
+        var id: String { presenter.citation }
+    }
+
+    /// Non-nil while the manual figure sheet should be presented.
+    @Published var manualFigureRequest: ManualFigureRequest?
+
+    /// Put a staged figure in front of the technician: the page on the phone, a one-line cue on
+    /// the lens, and a line in the session's audit log. Returns what the sheet will draw so a
+    /// caller (the `manual_figure` tool) can say whether a picture was available.
+    @discardableResult
+    func presentManualFigure(_ staged: FieldSessionService.StagedFigure) -> ManualFigurePresenter {
+        // Already on screen: staging the same drawing again (a follow-up question about it, or
+        // "show that again" while it is still up) must not re-log it or blink the sheet.
+        if let open = manualFigureRequest, open.id == staged.citation { return open.presenter }
+        let presenter = ManualFigurePresenter.present(staged, session: FieldSessionService.shared)
+        manualFigureRequest = ManualFigureRequest(presenter: presenter)
+        // The lens says where the drawing is and nothing else — it cannot render one legibly.
+        ManualFigureCue.show(staged, on: glassesDisplay)
+        return presenter
     }
 
     // MARK: - Phone-camera fallback (photo actions when glasses are off)

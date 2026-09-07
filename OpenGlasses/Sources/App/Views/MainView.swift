@@ -77,5 +77,10 @@ struct MainView: View {
         .sheet(item: $appState.pendingSiriContent) { link in
             SiriContentDetailView(link: link)
         }
+        // The manual page a Field Assist turn pointed at (Plan EK). Presented from here because a
+        // figure can be staged by a spoken turn on any tab, and the drawing is the answer.
+        .sheet(item: $appState.manualFigureRequest) { request in
+            ManualFigureSheet(presenter: request.presenter)
+        }
     }
 }
