@@ -18,6 +18,8 @@ struct FieldAssistSettingsView: View {
     @State private var licenseMessageIsError = false
     @State private var shareItem: ShareItem?
     @State private var exportError: String?
+    /// Whether the equipment row is showing its heading and provenance (Plan EL P2).
+    @State private var equipmentExpanded = false
 
     var body: some View {
         Form {
@@ -191,6 +193,8 @@ struct FieldAssistSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
 
+                        equipmentRows
+
                         HStack {
                             Button(session.pausedAt == nil ? "Pause" : "Resume") {
                                 if session.pausedAt == nil {
@@ -258,6 +262,86 @@ struct FieldAssistSettingsView: View {
             Button("OK") { exportError = nil }
         } message: {
             Text(exportError ?? "")
+        }
+    }
+
+    // MARK: - Equipment (the machine the session is working on)
+
+    /// The active machine on the session card: the model token, its heading, where the
+    /// recognition came from and when — plus one tap to correct it and one to forget it. A vault
+    /// whose core names no models draws nothing here at all.
+    @ViewBuilder
+    private var equipmentRows: some View {
+        let equipment = EquipmentSectionModel(host: sessionService)
+        switch equipment.state {
+        case .unavailable:
+            EmptyView()
+
+        case .unset(let choices):
+            equipmentPicker(equipment, choices: choices) {
+                Label("Set equipment", systemImage: "barcode.viewfinder")
+                    .font(.subheadline)
+            }
+
+        case .identified(let detail, let choices):
+            Button {
+                equipmentExpanded.toggle()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Equipment: \(detail.model)")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                        if equipmentExpanded {
+                            Text(detail.heading)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(detail.provenance)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: equipmentExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityLabel("Equipment \(detail.model), \(detail.provenance). Tap for details.")
+
+            HStack {
+                equipmentPicker(equipment, choices: choices) {
+                    Text("Change").font(.subheadline)
+                }
+                Spacer()
+                Button("Clear", role: .destructive) { equipment.clear() }
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    /// The vault's own model headings, as a menu. Selecting one records it as picked on the phone.
+    @ViewBuilder
+    private func equipmentPicker<Content: View>(
+        _ equipment: EquipmentSectionModel,
+        choices: [EquipmentSectionModel.Choice],
+        @ViewBuilder label: () -> Content
+    ) -> some View {
+        Menu {
+            ForEach(choices) { choice in
+                Button {
+                    equipment.select(choice)
+                } label: {
+                    if choice.isActive {
+                        Label(choice.name, systemImage: "checkmark")
+                    } else {
+                        Text(choice.name)
+                    }
+                }
+            }
+        } label: {
+            label()
         }
     }
 

@@ -21,13 +21,34 @@ struct EquipmentIdentity: Codable, Equatable {
     /// prompt or sent to a provider.
     let nameplateText: String?
 
-    enum Source: String, Codable {
+    enum Source: String, Codable, CaseIterable {
         /// The technician read the model aloud, or corrected it by voice.
         case spoken
         /// Read off the nameplate by on-device recognition.
         case nameplate
         /// The work order's asset id was itself a model this vault knows.
         case asset
+        /// Picked from the vault's own model list on the session card.
+        case manual
+
+        /// How the recognition is described in a sentence: "(from the nameplate)".
+        var provenancePhrase: String {
+            switch self {
+            case .spoken: return "from the technician"
+            case .nameplate: return "from the nameplate"
+            case .asset: return "from the work order"
+            case .manual: return "picked on the phone"
+            }
+        }
+    }
+
+    /// The wall clock a recognition is reported at — fixed format, fixed locale, so the prompt
+    /// block, the session card and the exported record all say the same thing.
+    static func clock(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 
     init(modelToken: String, heading: String, file: String, source: Source,
@@ -47,20 +68,12 @@ struct EquipmentIdentity: Codable, Equatable {
     }
 
     /// How the recognition is described in a sentence: "(from the nameplate)".
-    var provenancePhrase: String {
-        switch source {
-        case .spoken: return "from the technician"
-        case .nameplate: return "from the nameplate"
-        case .asset: return "from the work order"
-        }
-    }
+    var provenancePhrase: String { source.provenancePhrase }
 
     /// The line the model sees at the top of every turn while this equipment is active.
     var promptBlock: String {
-        let clock = DateFormatter()
-        clock.dateFormat = "HH:mm"
-        return "ACTIVE EQUIPMENT: \(modelToken) — \"\(heading)\" (\(provenancePhrase), "
-            + "\(clock.string(from: recognisedAt))). Answer for this model; say when a passage is for another model."
+        "ACTIVE EQUIPMENT: \(modelToken) — \"\(heading)\" (\(provenancePhrase), "
+            + "\(Self.clock(recognisedAt))). Answer for this model; say when a passage is for another model."
     }
 
     /// What the tool prefixes its answer with once it has recorded the machine.
