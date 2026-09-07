@@ -51,6 +51,13 @@ struct VaultManifest: Codable, Equatable {
         return document.file
     }
 
+    /// Location of a document's bundled original relative to the vault root, or nil when it has none.
+    func documentSourceRelativePath(_ document: VaultDocument) -> String? {
+        guard let source = document.source, !source.isEmpty else { return nil }
+        if let dir = documentsDir, !dir.isEmpty { return "\(dir)/\(source)" }
+        return source
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, version, files, documents
         case proceduresDir = "procedures_dir"
@@ -113,10 +120,32 @@ struct VaultDocument: Codable, Equatable {
     let title: String
     /// Free-text classification ("service_manual", "wiring", "install_guide"); informational.
     let kind: String?
+    /// The manufacturer's own PDF, beside the extracted text this document was made from — a file
+    /// name inside the same `documents_dir` (Plan EK P3).
+    ///
+    /// It is copied at install and hashed in the ledger but **never indexed**: the text is what is
+    /// searched, so an author's corrections to it still count. What the original buys is the page
+    /// itself — a technician following a manufacturer's SOP has to be able to see the page the
+    /// answer came from, in the manufacturer's document, not only a transcription of it.
+    let source: String?
+    /// Where the manufacturer publishes this manual. Opened outside the app, so it is a link and
+    /// never a substitute for the bundled original.
+    let sourceUrl: String?
 
-    init(file: String, title: String, kind: String? = nil) {
+    init(file: String, title: String, kind: String? = nil,
+         source: String? = nil, sourceUrl: String? = nil) {
         self.file = file
         self.title = title
         self.kind = kind
+        self.source = source
+        self.sourceUrl = sourceUrl
     }
+
+    enum CodingKeys: String, CodingKey {
+        case file, title, kind, source
+        case sourceUrl = "source_url"
+    }
+
+    /// Whether this document is itself the manufacturer's PDF (rather than text extracted from one).
+    var isPDF: Bool { file.lowercased().hasSuffix(".pdf") }
 }

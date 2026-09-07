@@ -26,10 +26,15 @@ struct VaultDocumentLedger: Codable, Equatable {
         let structuredHeadings: Int?
         /// Pages that came out as drawings rather than prose.
         let diagramPages: Int?
+        /// Hash of the manufacturer's original (`source`) as it was at import; nil when the
+        /// document bundles none. This is what "unmodified since import" is checked against, so it
+        /// is recorded even though the original is never indexed (Plan EK P3).
+        let sourceContentHash: String?
 
         init(file: String, title: String, documentId: String, contentHash: String, chunkCount: Int,
              ocrPages: Int? = nil, lowConfidencePages: Int? = nil,
-             structuredHeadings: Int? = nil, diagramPages: Int? = nil) {
+             structuredHeadings: Int? = nil, diagramPages: Int? = nil,
+             sourceContentHash: String? = nil) {
             self.file = file
             self.title = title
             self.documentId = documentId
@@ -39,6 +44,7 @@ struct VaultDocumentLedger: Codable, Equatable {
             self.lowConfidencePages = lowConfidencePages
             self.structuredHeadings = structuredHeadings
             self.diagramPages = diagramPages
+            self.sourceContentHash = sourceContentHash
         }
 
         var usedRecognition: Bool { (ocrPages ?? 0) > 0 }
@@ -49,6 +55,15 @@ struct VaultDocumentLedger: Codable, Equatable {
         let file: String
         let title: String
         let contentHash: String
+        /// Hash of the bundled original, when the document names one.
+        let sourceContentHash: String?
+
+        init(file: String, title: String, contentHash: String, sourceContentHash: String? = nil) {
+            self.file = file
+            self.title = title
+            self.contentHash = contentHash
+            self.sourceContentHash = sourceContentHash
+        }
     }
 
     /// The work a sync has to do.
@@ -92,7 +107,11 @@ struct VaultDocumentLedger: Codable, Equatable {
         let desiredByFile = Dictionary(uniqueKeysWithValues: desired.map { ($0.file, $0) })
         for entry in current.entries {
             guard let want = desiredByFile[entry.file] else { plan.toForget.append(entry); continue }
-            if want.contentHash == entry.contentHash && want.title == entry.title {
+            // The original counts as content: a swapped source PDF is a different manual to the
+            // technician holding it, even when the extracted text is byte-identical, and the ledger
+            // hash it is checked against has to be the one recorded for the file that is there now.
+            if want.contentHash == entry.contentHash && want.title == entry.title
+                && want.sourceContentHash == entry.sourceContentHash {
                 plan.unchanged.append(entry)
             } else {
                 plan.toForget.append(entry)
