@@ -199,6 +199,141 @@ final class DocumentChunkerTests: XCTestCase {
         XCTAssertNil(chunks.first { $0.page == nil })
     }
 
+    // MARK: - The structured grammar (Plan EK)
+
+    func testMarkdownHeadingSetsTheSectionAndKeepsItsTextWithoutTheHashes() {
+        let chunker = DocumentChunker(targetChars: 80, maxChars: 140, overlapChars: 0)
+        let chunks = chunker.chunk("""
+        Page 4
+
+        ## Turning Off Gas to Unit
+
+        Close the manual gas valve upstream of the union. Wait five minutes.
+        """)
+        XCTAssertTrue(chunks.allSatisfy { $0.section == "Turning Off Gas to Unit" }, "\(chunks)")
+        XCTAssertTrue(chunks.contains { $0.text.contains("Turning Off Gas to Unit") },
+                      "the heading is content and stays: \(chunks)")
+        XCTAssertNil(chunks.first { $0.text.contains("#") }, "the hashes are not: \(chunks)")
+        XCTAssertEqual(chunks.first?.page, 4)
+    }
+
+    func testFigureCaptionTagsFollowingChunksOfThePageAndResetsOnTheNext() {
+        let chunker = DocumentChunker(targetChars: 60, maxChars: 120, overlapChars: 0)
+        let chunks = chunker.chunk("""
+        Page 44
+
+        ### Figure 58 — Integrated Control
+
+        Terminal W1 is the low stage heat call.
+
+        Page 45
+
+        The blower door switch opens when the door is removed.
+        """)
+        XCTAssertTrue(chunks.contains { $0.page == 44 && $0.figure == "Figure 58" }, "\(chunks)")
+        XCTAssertTrue(chunks.contains { $0.text.contains("Figure 58 — Integrated Control") },
+                      "the caption is content and stays: \(chunks)")
+        // A figure belongs to its page: the next page starts clean.
+        XCTAssertTrue(chunks.contains { $0.page == 45 })
+        XCTAssertNil(chunks.first { $0.page == 45 && $0.figure != nil }, "\(chunks)")
+        // A caption is not a section.
+        XCTAssertNil(chunks.first { $0.section != nil }, "\(chunks)")
+    }
+
+    func testDiagramCommentTagsThePageAndItsFirstCaptionNamesTheWholePage() {
+        let chunker = DocumentChunker(targetChars: 60, maxChars: 120, overlapChars: 0)
+        let chunks = chunker.chunk("""
+        Page 44
+
+        <!-- page: diagram -->
+        ### Figure 58
+
+        W1 LOW STAGE HEAT
+        ### Table 18 — QUICK CONNECT TERMINALS
+        C 24VAXC COMMON
+
+        Page 45
+
+        The blower door switch opens when the door is removed.
+        """)
+        let drawing = chunks.filter { $0.page == 44 }
+        XCTAssertFalse(drawing.isEmpty)
+        XCTAssertTrue(drawing.allSatisfy { $0.kind == .diagram }, "\(drawing)")
+        // Later captions on a drawing do not override it: the page is one picture, and the citation
+        // has to name what the reader sees when they turn to it.
+        XCTAssertTrue(drawing.allSatisfy { $0.figure == "Figure 58" }, "\(drawing)")
+        XCTAssertTrue(chunks.contains { $0.page == 45 && $0.kind == .prose }, "\(chunks)")
+        XCTAssertNil(chunks.first { $0.text.contains("<!--") }, "\(chunks)")
+    }
+
+    func testCommentsAreStrippedAndOnlyTheDiagramOneMeansAnything() {
+        let chunks = DocumentChunker().chunk("""
+        Page 7
+
+        <!-- extracted 2026-09-07; check the manifold figures -->
+        ## Priming Condensate Trap
+
+        Pour ten fluid ounces of water into the trap before starting the unit.
+        """)
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertFalse(chunks[0].text.contains("extracted 2026"), chunks[0].text)
+        XCTAssertEqual(chunks[0].kind, .prose)
+        XCTAssertEqual(chunks[0].section, "Priming Condensate Trap")
+    }
+
+    func testAStructuredDocumentTurnsTheLexicalDetectorOff() {
+        // The residue EJ could not reach: an ALL-CAPS wiring fragment is shaped exactly like a real
+        // ALL-CAPS heading. Once the type has said what the sections are, guessing beside it only
+        // adds noise, so the lexical rules stand down for the whole document.
+        let chunker = DocumentChunker(targetChars: 80, maxChars: 140, overlapChars: 0)
+        let structured = chunker.chunk("""
+        ## Pressure Switches (Two)
+
+        The low pressure switch closes on a call for heat.
+
+        BOTH SENSOR
+        PRESS TO RESET
+        The high pressure switch opens above the rated draft.
+        """)
+        XCTAssertTrue(structured.allSatisfy { $0.section == "Pressure Switches (Two)" }, "\(structured)")
+
+        // The same text without a single `## ` line: the lexical rules apply exactly as before.
+        let lexical = chunker.chunk("""
+        The low pressure switch closes on a call for heat.
+
+        BOTH SENSOR
+        PRESS TO RESET
+        The high pressure switch opens above the rated draft.
+        """)
+        XCTAssertTrue(lexical.contains { $0.section == "PRESS TO RESET" }, "\(lexical)")
+    }
+
+    func testGrammarLinesDoNotMakeThePublishersHeaderTurnThePage() {
+        // The extractor writes its own marker, then the page's structure, and only then the page's
+        // own printed header. The physical page still wins, and the figure it tagged survives.
+        let chunks = DocumentChunker(targetChars: 80, maxChars: 140, overlapChars: 0).chunk("""
+        Page 44
+
+        <!-- page: diagram -->
+        ### Figure 58
+        Page 42
+        C 24VAXC COMMON
+        """)
+        XCTAssertTrue(chunks.allSatisfy { $0.page == 44 && $0.figure == "Figure 58" && $0.kind == .diagram },
+                      "\(chunks)")
+        XCTAssertNil(chunks.first { $0.text.contains("Page 42") }, "\(chunks)")
+    }
+
+    func testProseChunkBoundariesAreUnchangedByTheGrammar() {
+        // The grammar annotates; it must not repack. The same prose with and without the markers
+        // around it produces the same chunks.
+        let chunker = DocumentChunker(targetChars: 120, maxChars: 160, overlapChars: 30)
+        let prose = (1...20).map { "This is sentence number \($0) here." }.joined(separator: " ")
+        let plain = chunker.chunk(prose)
+        let annotated = chunker.chunk("<!-- extracted on a Mac -->\n" + prose)
+        XCTAssertEqual(plain.map(\.text), annotated.map(\.text))
+    }
+
     func testSectionHeadingTagsFollowingChunks() {
         let chunker = DocumentChunker(targetChars: 60, maxChars: 100, overlapChars: 0)
         let text = "5.3 Safety Requirements\nAll staff must wear helmets at all times. Visitors must sign in."
