@@ -114,24 +114,36 @@ chunks).
 - The `MANUAL PASSAGES` block labels a diagram passage as such (`[2] (wiring diagram, Figure 58,
   page 44) …`) so the model reads terminal labels as labels.
 
-### 4 · The figure reaches the model as a picture
+### 4 · The figure reaches the model as a picture, and the technician as a page
 
 - `FieldSessionService` records, per turn, the best diagram/figure passage among the evidence as
   `figureForTurn: (documentId, page, figure)`. A new `manual_figure` tool lets the model (or the
-  technician, by voice: "show me figure 65") request a specific figure or page; the tool resolves
-  it from the ledger and stages it the same way, answering in text what it staged.
+  technician, by voice: "show me figure 65", "show that figure again") request a specific figure or
+  page; the tool resolves it from the ledger and stages it the same way, answering in text what it
+  staged. The last figure stays on the session so it can be reopened.
 - In `LLMService.sendMessage`, when `imageData` is nil and the active field session has a staged
   figure whose source document is a PDF in the vault baseline, render that page with
   `PDFPageRasterizer` at a bounded DPI, pass it through `LLMImagePreparer`, and send it as the
   turn's image. The prompt block says `Figure 58 (page 44) is attached as this turn's image`. A
   camera frame, when the turn has one, wins the single slot and the figure stays a citation.
-- The Markdown route has no page to render: the citation still names the figure, and the tool
-  says the figure is not available as a picture from this document. That is the honest limit and
-  a reason to import the PDF rather than the extracted text.
+- **The phone shows the page.** Speech cannot read a drawing back, and the model seeing it does not
+  help the technician see it. A figure sheet on the phone, opened from the answer (and by the voice
+  requests above), shows the rendered page with pinch-zoom, the citation as its title, and a jump
+  to that page in the source PDF through PDFKit's own viewer — which is free with PDFKit and beats a
+  static image for a dense diagram. The audit log records which figure was shown. When a Display
+  device is connected, the lens gets a one-line cue (`Figure 58, page 44, on your phone`) and nothing
+  else: the HUD screen model has no image type and a lens display cannot make a wiring diagram
+  legible. No general manual browser.
+- The Markdown route has no page to render: the citation still names the figure, the sheet and the
+  tool say the figure is not available as a picture from this document. That is the honest limit and
+  a reason to import the PDF rather than the extracted text; the vault guide says so.
 - Gating: on for cloud providers, off for on-device models (`LLMService.isOnDevice`), following
-  the existing vision choice for a session; no new settings string in P1/P2.
+  the existing vision choice for a session; no new settings string in P2.
 - The rendered page is manual content, not a camera frame, so it does not pass the privacy filter,
   and it leaves the device only where the passages' text already does.
+- Two P1 follow-ups ride with P2: `NOTICE` joins the label list (an isolated bold `NOTICE` banner
+  is not a heading), and a **prose** chunk under a caption cites its `§Section` rather than the
+  figure — the figure names a drawing, the section names prose; a diagram chunk keeps `Figure N`.
 
 ## Phases
 
@@ -147,9 +159,10 @@ chunks).
   the local `source-pdfs/` when present (skip otherwise), and the extractor script re-run on both
   PDFs to confirm zero numbering warnings and headings that match the in-app route.
 - **P2 — the picture (one PR).** §4: figure staging, `manual_figure` tool, the `sendMessage`
-  seam, provider gating, prompt wording, audit-log line naming the figure sent. Headless tests use
-  a fixture PDF and a fake provider; the live edge is a device turn against a cloud provider,
-  recorded when run.
+  seam, provider gating, prompt wording, the phone figure sheet with PDFKit page jump, the lens cue,
+  audit-log lines naming the figure sent and shown, the two P1 follow-ups. Headless tests use a
+  fixture PDF and a fake provider; the sheet's view model is tested without SwiftUI; the live edge
+  is a device turn against a cloud provider, recorded when run.
 - **P3 — deferred.** Region-cropped figures (render only the figure's bounding box, not the whole
   page), and per-manual heading lists for PDFs whose type carries no structure.
 
