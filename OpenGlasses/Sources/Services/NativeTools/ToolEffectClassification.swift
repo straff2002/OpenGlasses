@@ -115,6 +115,12 @@ extension VoiceSkillsTool {
 extension PinFrameTool {
     var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
 }
+// Reads the manuals and puts a page on the phone. Nothing leaves the device and staging the same
+// figure twice leaves the same figure staged, so a redelivered call costs a redundant sheet at
+// worst.
+extension ManualFigureTool {
+    var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
+}
 extension NewTopicTool {
     var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
 }
