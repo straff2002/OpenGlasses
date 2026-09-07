@@ -1,0 +1,74 @@
+{
+  "id": "slp99_unit_size_code",
+  "title": "SLP99 Program the Unit Size Code (E203 / three bars)",
+  "version": "1.0.0",
+  "vault": "lennox_slp99",
+  "description": "Configure the integrated control's unit size code after a control replacement, when the LED shows three horizontal bars followed by E203 at power-up.",
+  "safety_notes": [
+    "Handle the integrated control with electrostatic-discharge precautions.",
+    "Do not touch the blower drive until its LEDs are off."
+  ],
+  "entry_step": "confirm_symptom",
+  "steps": [
+    {
+      "id": "confirm_symptom",
+      "title": "Confirm the symptom",
+      "instruction": "At 24 V power-up, does the seven-segment LED show three horizontal bars followed by E203, or a letter A to F?",
+      "expected_input": "three bars and E203, or a letter",
+      "citations": ["error_codes.md", "models.md"],
+      "branches": [
+        { "id": "unprogrammed", "condition": "Three bars then E203", "next": "read_nameplate" },
+        { "id": "programmed", "condition": "A letter A, b, C, d, E or F", "next": "verify_letter" }
+      ],
+      "default_next": "read_nameplate"
+    },
+    {
+      "id": "read_nameplate",
+      "title": "Read the model from the nameplate",
+      "instruction": "Read me the full model number from the unit nameplate, for example SLP99UH090XV60CK.",
+      "expected_input": "model number",
+      "citations": ["models.md"],
+      "default_next": "enter_field_test"
+    },
+    {
+      "id": "enter_field_test",
+      "title": "Enter programming mode",
+      "instruction": "Set the room thermostat to OFF so the control is idle. Push and hold the button next to the LED until a solid P is displayed, then release. The P starts blinking.",
+      "expected_input": "P blinking",
+      "citations": ["SLP99UHVK Installation Instructions"],
+      "default_next": "select_code"
+    },
+    {
+      "id": "select_code",
+      "title": "Select the code",
+      "instruction": "Push and hold the button. The control shows each unit size code for five seconds: A is 070-36B, b is 090-36C, C is 090-48C, d is 090-60C, E is 110-60C, F is 135-60D. Release when the code for your model is showing. It flashes for 10 seconds; during that time hold the button until the code stops blinking and disappears for two seconds. The control stores it and resets.",
+      "expected_input": "code stored, or the control returned to idle without storing",
+      "citations": ["models.md", "SLP99UHVK Installation Instructions"],
+      "branches": [
+        { "id": "stored", "condition": "The code stopped blinking and the control reset", "next": "verify_letter" },
+        { "id": "timed_out", "condition": "The 10 seconds expired or the control went idle without storing", "next": "enter_field_test" }
+      ],
+      "default_next": "verify_letter"
+    },
+    {
+      "id": "verify_letter",
+      "title": "Verify the stored code",
+      "instruction": "Cycle the 24 V power to the control. At power-up the LED shows the stored code. Does the letter match the model on the nameplate?",
+      "expected_input": "letter matches, letter wrong, or three bars",
+      "citations": ["models.md"],
+      "branches": [
+        { "id": "match", "condition": "The letter matches the nameplate model", "next": "done" },
+        { "id": "mismatch", "condition": "Wrong letter or three bars", "next": "enter_field_test" }
+      ],
+      "default_next": "done"
+    },
+    {
+      "id": "done",
+      "title": "Programmed",
+      "instruction": "The unit size code is stored. If E202 appears afterwards, the blower motor horsepower does not match the code; re-check the nameplate model against the code table.",
+      "terminal": true,
+      "outcome": "resolved",
+      "citations": ["error_codes.md"]
+    }
+  ]
+}

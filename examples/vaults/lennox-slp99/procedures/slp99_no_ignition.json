@@ -1,0 +1,110 @@
+{
+  "id": "slp99_no_ignition",
+  "title": "SLP99 No Ignition, Soft Lockout E270",
+  "version": "1.0.0",
+  "vault": "lennox_slp99",
+  "description": "Run down an E270 soft lockout (maximum retries, no flame sensed) through gas supply, ignitor, flame sensor and manifold pressure.",
+  "safety_notes": [
+    "Never use an open flame to test for gas leaks; use a leak-detection solution.",
+    "Turn power off at the disconnect before opening the burner compartment.",
+    "If the gas supply fails to shut off or the furnace overheats, shut the gas valve before the electrical supply."
+  ],
+  "entry_step": "watch_trial",
+  "steps": [
+    {
+      "id": "watch_trial",
+      "title": "Watch one ignition trial",
+      "instruction": "Cycle the call for heat to clear the soft lockout and watch a trial through the burner compartment sight glass. After the 15 second pre-purge and 20 second ignitor warm-up, does the ignitor glow, and do the burners light at all?",
+      "expected_input": "ignitor glows and burners light briefly, ignitor glows with no light-off, or no glow",
+      "citations": ["service_values.md"],
+      "branches": [
+        { "id": "no_glow", "condition": "The ignitor does not glow", "next": "check_ignitor" },
+        { "id": "glow_no_light", "condition": "The ignitor glows but the burners never light", "next": "check_gas_supply" },
+        { "id": "lights_then_drops", "condition": "Burners light then drop out within seconds", "next": "check_flame_sensor" }
+      ],
+      "default_next": "check_gas_supply"
+    },
+    {
+      "id": "check_ignitor",
+      "title": "Check the hot surface ignitor",
+      "instruction": "Power off. Unplug the ignitor and measure its resistance. An open ignitor, or one outside the specification in the Service Manual, is replaced; E207 or E290 in the history confirms it. What did you measure?",
+      "expected_input": "ignitor resistance",
+      "safety_note": "Power off at the disconnect before reaching into the burner compartment.",
+      "citations": ["error_codes.md", "SLP99UHVK Service Manual"],
+      "branches": [
+        { "id": "open", "condition": "Open or out of specification", "next": "replace_and_retest" },
+        { "id": "ok", "condition": "Within specification", "next": "check_ground" }
+      ],
+      "default_next": "check_ground"
+    },
+    {
+      "id": "check_ground",
+      "title": "Check ground and line voltage",
+      "instruction": "With power restored, measure line hot to line neutral at the control, which should be 97 to 132 volts AC, and line neutral to the low-voltage C terminal while the inducer and ignitor are energised, which should be about 0.75 volts and no more than 5. A high neutral-to-C reading means a poor ground, which also shortens ignitor life. What are the readings?",
+      "expected_input": "line voltage and neutral-to-C voltage",
+      "citations": ["service_values.md"],
+      "default_next": "escalate_control"
+    },
+    {
+      "id": "check_gas_supply",
+      "title": "Check gas supply and line pressure",
+      "instruction": "Confirm gas is on at the meter, the manual shut-off is open and the gas valve switch is ON. Connect a manometer to the supply pressure tap on the inlet side of the gas valve and read line pressure with the unit trying to fire. Natural gas should be 4.5 to 10.5 inches of water column, LP 11.0 to 13.0. What is the line pressure?",
+      "expected_input": "line pressure in inches of water column",
+      "citations": ["service_values.md"],
+      "branches": [
+        { "id": "low_supply", "condition": "Below the range, or no gas", "next": "supply_problem" },
+        { "id": "supply_ok", "condition": "Within range", "next": "check_manifold" }
+      ],
+      "default_next": "check_manifold"
+    },
+    {
+      "id": "check_manifold",
+      "title": "Check manifold pressure",
+      "instruction": "Move the manometer to the manifold tap on the outlet side of the gas valve, with the negative side teed into the regulator vent hose. If the burners will light at all, run low heat for 5 minutes and read. Low fire should be 0.40 to 0.95 inches natural gas, high fire 3.0 to 3.8. Is gas reaching the manifold during the trial, and is the value in range?",
+      "expected_input": "manifold pressure, or no gas at the manifold",
+      "citations": ["service_values.md"],
+      "branches": [
+        { "id": "no_gas_at_manifold", "condition": "No pressure at the manifold during the trial", "next": "escalate_control" },
+        { "id": "manifold_ok", "condition": "Pressure present and in range", "next": "check_flame_sensor" }
+      ],
+      "default_next": "check_flame_sensor"
+    },
+    {
+      "id": "check_flame_sensor",
+      "title": "Check the flame sensor",
+      "instruction": "Enter Field Test mode by holding the diagnostic button until a flashing dash shows, then jumper R to W1 to hold low fire. The display shows the flame signal. Normal is 2.6 microamps or more, low is 2.5 or less, and the control drops out at 1.1. If it is low, power off and clean the sensor on the left of the burner support with fine abrasive, then re-read. What is the flame signal?",
+      "expected_input": "flame signal in microamps",
+      "safety_note": "All safety switches stay in circuit during Field Test mode; do not bypass any of them.",
+      "citations": ["service_values.md", "error_codes.md"],
+      "branches": [
+        { "id": "signal_low", "condition": "Still 2.5 or less after cleaning", "next": "check_ground" },
+        { "id": "signal_ok", "condition": "2.6 or more", "next": "replace_and_retest" }
+      ],
+      "default_next": "replace_and_retest"
+    },
+    {
+      "id": "supply_problem",
+      "title": "Gas supply problem",
+      "instruction": "The furnace is not at fault. Low or absent line pressure is a supply issue: meter, regulator, or undersized or restricted piping. Record the reading and refer it to the gas supplier or the piping installer.",
+      "terminal": true,
+      "outcome": "escalated_supply",
+      "citations": ["service_values.md"]
+    },
+    {
+      "id": "escalate_control",
+      "title": "Control or gas valve suspected",
+      "instruction": "Gas supply is good but the valve is not opening, or the ignitor circuit is not being driven. E204, E205 or E290 in the history point at the gas valve wiring, its relay, or the ignitor circuit on the control. Do not open or adjust the gas valve; record the history and escalate for a control or valve replacement.",
+      "terminal": true,
+      "outcome": "escalated",
+      "citations": ["error_codes.md"]
+    },
+    {
+      "id": "replace_and_retest",
+      "title": "Replace, retest, record",
+      "instruction": "Fit the replacement part, restore power, and run a full heat cycle on low and high fire. Confirm the flame signal is 2.6 microamps or more and that no new code appears, then clear the error history and record the readings.",
+      "terminal": true,
+      "outcome": "resolved",
+      "citations": ["service_values.md"]
+    }
+  ]
+}

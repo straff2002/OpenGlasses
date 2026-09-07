@@ -185,7 +185,15 @@ final class FieldSessionService: ObservableObject {
 
     /// Where a vault's reference-tier documents live. Injected by `AppState`; nil in headless
     /// contexts, in which case the manual block is simply absent.
-    var documentStore: DocumentStore?
+    /// Setting a store adopts that store's embedding backend's measured gate defaults — similarity
+    /// means something different on each backend, so the gate cannot be one constant. Assign
+    /// `retrievalPolicy` after the store to override (tests pin a floor of 0 or 1.01 this way).
+    var documentStore: DocumentStore? {
+        didSet {
+            guard let documentStore else { return }
+            retrievalPolicy = .default(for: documentStore.embeddingModelId)
+        }
+    }
     /// The evidence gate for per-turn manual retrieval. Injectable so tests can pin the floor.
     var retrievalPolicy = RetrievalEvidencePolicy()
     /// How many manual passages a turn may carry.

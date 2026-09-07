@@ -189,6 +189,36 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertFalse(CodeTokenizer.contains("anything", token: ""))
     }
 
+    // MARK: - Lexical support
+
+    func testContentTermsKeepWordsAndDropFurniture() {
+        let terms = LexicalSupport.contentTerms("What is the manifold pressure on high fire?")
+        XCTAssertEqual(terms, ["manifold", "pressure", "high", "fire"], "\(terms)")
+        XCTAssertTrue(LexicalSupport.contentTerms("E223 on a 30RB unit").isDisjoint(with: ["e223", "30rb"]),
+                      "code-like tokens are the tokenizer's job, not the lexical gate's")
+        XCTAssertEqual(LexicalSupport.contentTerms("of by the and for is it"), [], "short function words never survive")
+    }
+
+    func testSuffixTrimmingMakesPluralsAndTensesAgree() {
+        XCTAssertEqual(LexicalSupport.contentTerms("pressures"), LexicalSupport.contentTerms("pressure"))
+        XCTAssertEqual(LexicalSupport.contentTerms("clocking"), LexicalSupport.contentTerms("clock"))
+        XCTAssertEqual(LexicalSupport.contentTerms("inspected"), LexicalSupport.contentTerms("inspect"))
+        XCTAssertEqual(LexicalSupport.contentTerms("switches"), LexicalSupport.contentTerms("switch"))
+        XCTAssertEqual(LexicalSupport.contentTerms("bypass"), ["bypass"], "a trailing double-s is not a plural")
+        // The rule is one pass of suffix trimming, not a stemmer: a silent-e verb does not agree
+        // with its past tense. Pinned so the limitation is a decision rather than a surprise.
+        XCTAssertNotEqual(LexicalSupport.contentTerms("primed"), LexicalSupport.contentTerms("prime"))
+    }
+
+    func testSharedTermCount() {
+        let query = LexicalSupport.contentTerms("what is the manifold pressure on high fire")
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "Measure the manifold pressures at the tap.",
+                                                      queryTerms: query), 2)
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "Torque the blower wheel set screw.",
+                                                      queryTerms: query), 0)
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "anything", queryTerms: []), 0)
+    }
+
     // MARK: - Retriever and evidence policy
 
     func testTokenBoostOutranksHigherSimilarityWithoutTheToken() {
@@ -235,6 +265,42 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(outcome.passages.first?.score, 0.25)
     }
 
+    func testATokenHitOutranksAnyUnmatchedPassageAndLeavesRoomForProse() {
+        // The invariant, stated directly: on the word-average embedder every passage in a manual
+        // scores about the same, so ranking by similarity buries the row that names the code.
+        let retriever = VaultRetriever(query: { _, _ in [
+            self.passage("d", 0, "General prose about heat calls and the LED menu.", sim: 0.99),
+            self.passage("d", 1, "More prose about the LED menu and diagnostics.", sim: 0.95),
+            self.passage("d", 2, "Third piece of prose about heating.", sim: 0.91)
+        ] }, tokenSearch: { _, _ in [
+            self.passage("d", 7, "E223 Low pressure switch failed open.", sim: 0, page: 20),
+            self.passage("d", 8, "E223 appears again in the installation table.", sim: 0, page: 47, name: "Other")
+        ] })
+        let outcome = retriever.retrieve(.init(turn: "the display shows E223 on a heat call", limit: 3))
+        let passages = outcome.passages
+        XCTAssertEqual(passages.count, 3)
+        XCTAssertEqual(passages[0].similarity, 0, "a token hit with similarity 0 outranks 0.99 without one")
+        XCTAssertEqual(passages[0].chunkIndex, 7)
+        XCTAssertEqual(passages[1].chunkIndex, 8)
+        XCTAssertEqual(passages.prefix(2).map(\.matchedTokens), [["E223"], ["E223"]])
+        // Fill, not replace: the slot the token hits leave goes to the best semantic passage.
+        XCTAssertEqual(passages[2].chunkIndex, 0)
+        XCTAssertEqual(passages[2].similarity, 0.99)
+    }
+
+    func testTokenHitsAreOrderedByScoreThenDeterministically() {
+        let retriever = VaultRetriever(query: { _, _ in [] }, tokenSearch: { token, _ in
+            token == "E5" ? [
+                self.passage("d", 4, "E5 and ZX9 both appear here.", sim: 0),
+                self.passage("d", 2, "E5 alone.", sim: 0, name: "Alpha"),
+                self.passage("d", 3, "E5 alone as well.", sim: 0, name: "Alpha")
+            ] : [self.passage("d", 4, "E5 and ZX9 both appear here.", sim: 0)]
+        })
+        let passages = retriever.retrieve(.init(turn: "E5 ZX9", limit: 4)).passages
+        XCTAssertEqual(passages.map(\.chunkIndex), [4, 2, 3], "two matched codes beat one; then name, then index")
+        XCTAssertEqual(passages[0].matchedTokens, ["E5", "ZX9"])
+    }
+
     func testProcedureStepParticipatesOnlyWhenGiven() {
         var seenQueries: [String] = []
         let retriever = VaultRetriever(query: { q, _ in seenQueries.append(q); return [] })
@@ -257,6 +323,81 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(policy.decide([weak], limit: 4), .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence))
         XCTAssertEqual(policy.decide([tokenHit], limit: 4), .sufficient([tokenHit]))
         XCTAssertEqual(policy.decide([strong, weak, tokenHit], limit: 1), .sufficient([strong]), "weak passages are dropped, limit applies")
+    }
+
+    func testRelativeMarginTrimsTheTailButCannotRejectAQuery() {
+        let policy = RetrievalEvidencePolicy(similarityFloor: 0.30, margin: 0.02)
+        func passage(_ index: Int, _ similarity: Float) -> VaultRetriever.Passage {
+            VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: index, text: "x", page: nil,
+                                   section: nil, similarity: similarity, score: similarity, matchedTokens: [])
+        }
+        let best = passage(0, 0.91), near = passage(1, 0.90), far = passage(2, 0.85)
+        XCTAssertEqual(policy.decide([best, near, far], limit: 4), .sufficient([best, near]))
+        // The best passage is always within `margin` of itself, so however tight the margin the
+        // list still yields evidence. A margin is a precision filter, never a rejection.
+        let tight = RetrievalEvidencePolicy(similarityFloor: 0.30, margin: 0)
+        XCTAssertEqual(tight.decide([best, near, far], limit: 4), .sufficient([best]))
+    }
+
+    func testLexicalCriterionRejectsAPassageThatSharesNothingWithTheQuestion() {
+        let policy = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 2)
+        func passage(_ index: Int, _ text: String) -> VaultRetriever.Passage {
+            VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: index, text: text, page: nil,
+                                   section: nil, similarity: 0.9, score: 0.9, matchedTokens: [])
+        }
+        let onTopic = passage(0, "Measure the manifold pressure at the tap on high fire.")
+        let offTopic = passage(1, "Route the flue vent through the sidewall with a coupling.")
+        let terms = LexicalSupport.contentTerms("what is the manifold pressure on high fire")
+        XCTAssertEqual(policy.decide([offTopic, onTopic], limit: 4, queryTerms: terms), .sufficient([onTopic]))
+        XCTAssertEqual(policy.decide([offTopic], limit: 4, queryTerms: terms),
+                       .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence))
+        // A code hit is evidence whatever it shares: the tokenizer already proved the passage names
+        // what was asked about.
+        let tokenHit = VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: 2, text: "E5 row",
+                                              page: nil, section: nil, similarity: 0, score: 0.25,
+                                              matchedTokens: ["E5"])
+        XCTAssertEqual(policy.decide([tokenHit], limit: 4, queryTerms: terms), .sufficient([tokenHit]))
+        // Without query terms the criterion is simply off, so the old two-argument gate is intact.
+        XCTAssertEqual(policy.decide([offTopic], limit: 4), .sufficient([offTopic]))
+    }
+
+    /// A flat shared-term count is unreachable for a question with fewer content terms than the
+    /// count, so a short in-scope question is refused by construction. The fraction lowers the bar
+    /// for short questions and never raises it for long ones.
+    func testRequiredSharedTermsScalesDownForShortQuestionsOnly() {
+        let flat = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3)
+        for count in 1...8 { XCTAssertEqual(flat.requiredSharedTerms(queryTermCount: count), 3) }
+
+        let scaled = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 1), 1)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 2), 2)   // ceil(1.5)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 3), 3)   // ceil(2.25)
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 8), 3)   // never above the count
+        // The fraction is inert while the lexical criterion itself is off.
+        XCTAssertEqual(RetrievalEvidencePolicy(sharedFraction: 0.6).requiredSharedTerms(queryTermCount: 2), 0)
+        // An empty question falls back to the flat count rather than to 1.
+        XCTAssertEqual(scaled.requiredSharedTerms(queryTermCount: 0), 3)
+
+        // End to end: a two-term question sharing both terms is evidence under the fraction and
+        // refused under the flat count.
+        let passage = VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: 0,
+                                             text: "The pre-purge time is fifteen seconds before the ignitor warm up begins.",
+                                             page: 3, section: nil, similarity: 0.9, score: 0.9, matchedTokens: [])
+        let terms = LexicalSupport.contentTerms("pre-purge time")
+        XCTAssertEqual(terms.count, 2, "\(terms.sorted())")
+        XCTAssertFalse(flat.decide([passage], limit: 4, queryTerms: terms).isSufficient)
+        XCTAssertTrue(scaled.decide([passage], limit: 4, queryTerms: terms).isSufficient)
+    }
+
+    func testPolicyDefaultsAreChosenPerEmbeddingBackend() {
+        let word = RetrievalEvidencePolicy.default(for: "nl-word.en")
+        XCTAssertEqual(word.minSharedTerms, 3, "the measured backend carries the lexical criterion")
+        XCTAssertEqual(word.sharedFraction, 0.75, "and the measured scaling for short questions")
+        XCTAssertEqual(word.similarityFloor, 0.30)
+        for unmeasured in ["nl-sentence.en", "nl-contextual.multi_v1"] {
+            XCTAssertEqual(RetrievalEvidencePolicy.default(for: unmeasured), RetrievalEvidencePolicy(),
+                           "unmeasured backends keep today's gate rather than a guess: \(unmeasured)")
+        }
     }
 
     func testRenderingStatesInsufficiencyExplicitly() {
@@ -503,5 +644,36 @@ final class VaultManualRetrievalTests: XCTestCase {
         _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
         let noDocs = try await tool.execute(args: ["query": "ZX9"])
         XCTAssertTrue(noDocs.contains("has no manuals"), noDocs)
+    }
+
+    func testCodeLikeLookupPrefersTheSectionTitledWithTheModel() async throws {
+        // The model is named in the file's introduction before it gets its own section. In plain
+        // file order the introduction (and any summary section) can push the model's own section
+        // past the three-result cap.
+        let core = """
+        # Models
+
+        This vault covers the RTU-500 rooftop unit and the accessories that fit it.
+
+        ## Accessory kits
+
+        The economizer kit fits the RTU-500 and the RTU-400.
+
+        ## RTU-500
+
+        Nominal cooling five tons. Factory charge R-410A. High-pressure switch opens at 610 psig.
+        """
+        let manifest = try VaultImporter.install(from: writeVault(coreText: core))
+        VaultRegistry.shared.reloadUserManifests()
+        VaultRegistry.shared.resetCache()
+        let service = FieldSessionService(sessionsRoot: tempRoot.appendingPathComponent("lookup", isDirectory: true))
+        _ = try service.startSession(vaultId: manifest.id, assetId: nil)
+
+        let result = try await EquipmentLookupTool(sessionService: service).execute(args: ["query": "RTU-500"])
+        let titled = try XCTUnwrap(result.range(of: "## RTU-500"))
+        let intro = try XCTUnwrap(result.range(of: "This vault covers"))
+        XCTAssertTrue(titled.lowerBound < intro.lowerBound,
+                      "the model's own section should come first:\n\(result)")
+        XCTAssertTrue(result.contains("Nominal cooling five tons"), result)
     }
 }

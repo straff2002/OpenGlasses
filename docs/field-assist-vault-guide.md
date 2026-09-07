@@ -62,6 +62,8 @@ swift extract-manual-text.swift RTU-500-service-manual.pdf
 
 It needs Apple's command-line developer tools (`xcode-select --install`). It writes `RTU-500-service-manual.md` beside the PDF and prints how many pages were recognised and how many came out low confidence. Put the `.md` in `documents/` instead of the PDF and give it the same title.
 
+It also warns, per page, when a manual prints its own page number at the top of the page and that number disagrees with the page's position in the PDF — usually an unnumbered cover or roman-numeral front matter shifting everything by a page or two — and counts them in the closing summary. Citations always name the physical page, the one you reach by counting from the front, so either fix the PDF (delete or add the front matter until the numbers line up) or accept the offset and tell your technicians about it. Zero warnings means a citation reads exactly as the page is printed.
+
 Page numbers are preserved automatically either way, so a citation reads *RTU-500 Service Manual, page 42* and the technician can open the paper copy to it. That only works if the PDF's pages match the printed pages, which is true of nearly every OEM PDF.
 
 A few habits that pay off:
@@ -103,6 +105,12 @@ The assistant is instructed by the manifest to remind the technician of safety s
 ### A nameplate reference
 
 `models.md` is where model and serial patterns live: what the numbers on the plate mean, refrigerant per model, nominal charge, controller type. When the camera reads a plate, the model number is matched against these sections the same way a fault code is.
+
+**Put every spelling of a model in that model's own heading.** Manuals and nameplates rarely agree — `SLP99UH090XV60CK` on the plate, `SLP99UHXV-090-60C` in the parts list, `090XV60C` in a table. A lookup returns whole `##` sections in file order and stops at three, so a spelling that appears anywhere earlier in the file — an introduction, a summary table, a compatibility note — spends one of those three slots and can push the model's own section out of the answer. A heading that carries all the spellings costs nothing and cannot be crowded out:
+
+```markdown
+## SLP99UH090XV60CK (SLP99UHXV-090-60C, 090XV60C, SLP99UH090V60CK)
+```
 
 ## Step 3 · Write the manifest
 
@@ -222,7 +230,11 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
 2. Say *"Start a session in Acme RTU Service."*
 3. Ask about a code you know is in the manual: *"What does fault ZX9 mean on the RTU-500?"* The answer should end with a source line naming the manual and page.
 4. Look at a nameplate and say *"Look up this nameplate."* The app reads the plate on the phone, matches the model against your core files, then against the manuals.
-5. Ask something the manuals do not cover, for example a torque spec that is not in the book. The correct answer is that the loaded manuals do not cover it and to escalate. If you get a confident answer instead, tell us; that is the behaviour the vault rules exist to prevent.
+5. Ask something the manuals do not cover, for example a torque spec that is not in the book. The correct answer is that the loaded manuals do not cover it and to escalate.
+
+   The check that produces that answer is measured, not assumed, and it is worth knowing what it can and cannot do. Against a real pair of furnace manuals it refused three out of four out-of-scope questions — a torque figure the book never gives, another manufacturer's efficiency rating, a price, a warranty procedure. What it does **not** refuse is a question about a subject your manuals genuinely cover but a machine they do not: ask about the heat exchanger on someone else's furnace and passages about heat exchangers come back, because they are about heat exchangers. There the vault's prompt rules and the page citation on every passage are what keep the answer honest — which is why the rules about fabricating and citing are required. The same check occasionally refuses a fair question whose wording shares little with the book's; rephrase it in the manual's own words and ask again.
+
+   If you get a confident answer where the book is silent, tell us; that is the behaviour the vault rules exist to prevent.
 6. End the session. The audit log records every question, answer, photo and citation, and a team licence can export it as PDF.
 
 > **Everything stays on the phone.** Manuals are indexed and searched on the device and never uploaded to us. The passages relevant to a question are sent to whichever AI model you configured, together with the question, in the same way the rest of the app works. If you use an on-device model, nothing leaves the phone at all.

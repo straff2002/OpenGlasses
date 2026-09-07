@@ -1,0 +1,97 @@
+{
+  "id": "slp99_pressure_switch_lockout",
+  "title": "SLP99 Pressure Switch Lockout (E223 / E227 / E271 / E272)",
+  "version": "1.0.0",
+  "vault": "lennox_slp99",
+  "description": "Work a low-pressure-switch fault on an SLP99UHVK from the vent and inducer through to the operating pressure signal, using TABLE 39 of the Service Manual.",
+  "safety_notes": [
+    "Turn power off at the disconnect before opening the heating compartment; the unit may have more than one power supply.",
+    "Do not adjust the pressure switches or the gas valve; they are factory set.",
+    "If gas is smelled at any point, stop, shut the gas valve, and call the gas supplier from outside."
+  ],
+  "entry_step": "confirm_code",
+  "steps": [
+    {
+      "id": "confirm_code",
+      "title": "Confirm the code",
+      "instruction": "Hold the diagnostic button until a solid E shows and release it to enter Error Code Recall. Which code is in the history: E223, E227, E271, or E272, or a high-switch code E225 or E226?",
+      "expected_input": "the code shown",
+      "citations": ["error_codes.md"],
+      "branches": [
+        { "id": "low_switch", "condition": "E223, E227, E271 or E272", "next": "check_vent" },
+        { "id": "high_switch", "condition": "E225 or E226", "next": "check_vent" },
+        { "id": "other", "condition": "A different code, or none", "next": "not_this_fault" }
+      ],
+      "default_next": "check_vent"
+    },
+    {
+      "id": "check_vent",
+      "title": "Check the exhaust and intake",
+      "instruction": "Inspect the exhaust and combustion-air intake pipes and their terminations for blockage, and check the connections are tight. Confirm the condensate trap is primed and draining. Is anything blocked or loose?",
+      "expected_input": "blocked, loose, or clear",
+      "citations": ["SLP99UHVK Installation Instructions"],
+      "branches": [
+        { "id": "blocked", "condition": "A blockage or loose joint was found", "next": "clear_and_retest" },
+        { "id": "clear", "condition": "Vent, intake and trap are clear", "next": "check_tubing" }
+      ],
+      "default_next": "check_tubing"
+    },
+    {
+      "id": "check_tubing",
+      "title": "Check the pressure switch tubing",
+      "instruction": "With power off, compare the four tubes to FIGURE 65: black from the low-fire switch front port to the gas valve positive port; red-and-black from the low-fire switch rear port to the gas valve negative port; red-and-black from the high-fire switch front port to the cold end header box negative port; black from the high-fire switch rear port to the header box positive port. Any tube kinked, split, wet, or on the wrong port?",
+      "expected_input": "tubing correct or a problem found",
+      "safety_note": "Power off at the disconnect before opening the heating compartment.",
+      "citations": ["service_values.md", "SLP99UHVK Installation Instructions"],
+      "branches": [
+        { "id": "tubing_fault", "condition": "A tube is damaged, wet, or misrouted", "next": "clear_and_retest" },
+        { "id": "tubing_ok", "condition": "Tubing matches FIGURE 65", "next": "measure_delta_p" }
+      ],
+      "default_next": "measure_delta_p"
+    },
+    {
+      "id": "measure_delta_p",
+      "title": "Measure the operating pressure signal",
+      "instruction": "Tee a manometer into the negative and positive lines between the gas valve and the pressure switch. Restore power, run low heat for 5 minutes, and read the operating pressure signal; then repeat on high heat. Tell me both readings in inches of water column.",
+      "expected_input": "low-fire and high-fire Delta P readings",
+      "citations": ["service_values.md", "SLP99UHVK Service Manual"],
+      "branches": [
+        { "id": "in_range", "condition": "Low 0.20 to 0.40 (0.15 to 0.35 on the 090XV60C) and high 0.95 to 1.25", "next": "switch_suspected" },
+        { "id": "out_of_range", "condition": "Either reading outside the TABLE 39 range", "next": "inducer_check" }
+      ],
+      "default_next": "inducer_check"
+    },
+    {
+      "id": "inducer_check",
+      "title": "Inducer and heat exchanger",
+      "instruction": "The signal is low, so the inducer is not moving enough air. Check the combustion air inducer for amp draw, bearing noise and wheel condition (E294 is the inducer over-current code), and inspect the cold end header box and secondary heat exchanger for condensate or debris. Report what you find.",
+      "expected_input": "inducer or exchanger finding",
+      "citations": ["error_codes.md", "SLP99UHVK Service Manual"],
+      "default_next": "clear_and_retest"
+    },
+    {
+      "id": "switch_suspected",
+      "title": "Switch or calibration suspected",
+      "instruction": "The pressure signal is within range, so suspect the switch itself or its calibration. Run a vent calibration from Field Test mode: hold the button until a solid C shows and release; the control displays CAL while it calibrates both switches. If the code returns with the signal still in range, the pressure switch is failing and is replaced as a factory-set part; do not adjust it.",
+      "terminal": true,
+      "outcome": "switch_or_calibration",
+      "citations": ["error_codes.md", "SLP99UHVK Installation Instructions"]
+    },
+    {
+      "id": "clear_and_retest",
+      "title": "Correct, clear and retest",
+      "instruction": "Correct what you found, restore power, and run a full heat cycle on low and high fire. Clear the error history with c in Error Code Recall only after the retest passes, so the record stays for the report.",
+      "terminal": true,
+      "outcome": "resolved",
+      "citations": ["error_codes.md"]
+    },
+    {
+      "id": "not_this_fault",
+      "title": "Different fault",
+      "instruction": "This procedure covers the pressure switch codes only. Look up the code shown in error_codes.md and follow its row instead.",
+      "terminal": true,
+      "outcome": "redirected",
+      "citations": ["error_codes.md"]
+    }
+  ]
+}

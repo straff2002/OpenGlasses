@@ -156,17 +156,27 @@ final class EquipmentLookupTool: NativeTool {
         return render(matches, prefix: "")
     }
 
+    /// At most three `##` sections, in vault file priority order. For a code-like query the
+    /// section *titled* with the code comes first: a model number is usually also mentioned in an
+    /// introduction or a summary table, and in plain file order those mentions push the model's own
+    /// section past the cap.
     private func searchMatches(query: String, store: VaultStore, restrictTo: String?) -> [(file: String, section: String)]? {
         let orderedFiles = orderedSearchFiles(manifestFiles: store.manifest.files, restrictTo: restrictTo)
-        var matches: [(file: String, section: String)] = []
+        let preferTitled = CodeTokenizer.isCodeLike(query)
+        var titled: [(file: String, section: String)] = []
+        var mentions: [(file: String, section: String)] = []
         for filename in orderedFiles {
             guard let contents = store.read(filename) else { continue }
-            for section in matchingSections(in: contents, query: query) {
-                matches.append((filename, section))
-                if matches.count >= 3 { break }
+            for match in matchingSections(in: contents, query: query) {
+                if preferTitled && match.inHeading {
+                    titled.append((filename, match.section))
+                } else {
+                    mentions.append((filename, match.section))
+                }
             }
-            if matches.count >= 3 { break }
+            if titled.count >= 3 || (!preferTitled && mentions.count >= 3) { break }
         }
+        let matches = Array((titled + mentions).prefix(3))
         return matches.isEmpty ? nil : matches
     }
 
@@ -184,8 +194,9 @@ final class EquipmentLookupTool: NativeTool {
     }
 
     /// Split markdown into sections by `##`/`###` headings and return sections whose heading or body
-    /// contains the query (case-insensitive). Matching is token-aware so "E5" doesn't match "E50".
-    private func matchingSections(in markdown: String, query: String) -> [String] {
+    /// contains the query (case-insensitive), each flagged with whether the match was in the
+    /// section's own heading line. Matching is token-aware so "E5" doesn't match "E50".
+    private func matchingSections(in markdown: String, query: String) -> [(section: String, inHeading: Bool)] {
         let lowerQuery = query.lowercased()
         var sections: [String] = []
         var current: [String] = []
@@ -204,7 +215,13 @@ final class EquipmentLookupTool: NativeTool {
         }
         flush()
 
-        return sections.filter { sectionMatches($0.lowercased(), query: lowerQuery) }
+        return sections.compactMap { section in
+            guard sectionMatches(section.lowercased(), query: lowerQuery) else { return nil }
+            let heading = section.prefix { $0 != "\n" }
+            let inHeading = (heading.hasPrefix("## ") || heading.hasPrefix("### "))
+                && sectionMatches(heading.lowercased(), query: lowerQuery)
+            return (section, inHeading)
+        }
     }
 
     /// Contains check that rejects a match glued to a trailing alphanumeric, so a short code like

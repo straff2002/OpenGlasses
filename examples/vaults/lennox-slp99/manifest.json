@@ -1,0 +1,23 @@
+{
+  "id": "lennox_slp99",
+  "name": "Lennox SLP99 Furnace Service",
+  "version": "1.0.0",
+  "files": ["safety.md", "error_codes.md", "models.md", "service_values.md"],
+  "documents_dir": "documents",
+  "documents": [
+    { "file": "SLP99UHVK-service-manual.md",             "title": "SLP99UHVK Service Manual",             "kind": "service_manual" },
+    { "file": "SLP99UHVK-installation-instructions.md",  "title": "SLP99UHVK Installation Instructions",  "kind": "install_guide" }
+  ],
+  "procedures_dir": "procedures",
+  "gating": { "iap": "enterprise" },
+  "prompt_rules": [
+    "Never fabricate equipment data, diagnostic codes, gas pressures, timings, or procedures.",
+    "Use only the vault contents, the retrieved manual passages, and the technician's stated observations.",
+    "Cite the source file or manual page on every factual claim.",
+    "If the manuals do not cover the question, say so and recommend escalation rather than guessing.",
+    "Remind the technician of the relevant safety steps before any action that opens an electrical panel, the gas train, the burner box, or the refrigerant circuit.",
+    "Values in the vault are measurements to compare against; never suggest adjusting the gas valve, the pressure switches, or the primary limit — the manuals say they are factory set."
+  ],
+  "source_attribution_format": "Source: {files}",
+  "source_attribution_required": true
+}
