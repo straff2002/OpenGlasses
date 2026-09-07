@@ -161,11 +161,11 @@ struct DocumentChunker {
     /// Scan the raw text once: strip marker lines, record where the page and section change.
     ///
     /// **Page precedence.** Once a page has been opened — by a form feed or by a marker line — a
-    /// further marker within that page's first two non-empty lines is the publisher's own running
-    /// header and does not renumber the page. Extraction knows the physical page; a printed header
-    /// may start its numbering after an unnumbered cover or roman-numeral front matter, and letting
-    /// it win would cite a page the reader cannot turn to. A marker deeper in the page is a genuine
-    /// page break, which is how a plain-text document paginates at all.
+    /// further marker before any content on that page is the publisher's own running header and
+    /// does not renumber the page. Extraction knows the physical page; a printed header may start
+    /// its numbering after an unnumbered cover or roman-numeral front matter, and letting it win
+    /// would cite a page the reader cannot turn to. Once a line of content has appeared, the next
+    /// marker is a genuine page break — which is the only way a plain-text document paginates.
     private static func scanLines(in raw: String) -> ScannedText {
         var cleaned = ""
         cleaned.reserveCapacity(raw.count)
@@ -175,7 +175,7 @@ struct DocumentChunker {
         var section: String? = nil
         var paginated = false
         var pageOpen = false
-        var linesSincePageOpen = 0
+        var contentSincePageOpen = false
         var line = ""
 
         func endLine(terminator: Character?) {
@@ -184,12 +184,12 @@ struct DocumentChunker {
             if let marker = pageNumber(in: trimmed) {
                 keepText = false        // marker lines are furniture; they never reach a chunk
                 paginated = true
-                if pageOpen && linesSincePageOpen < 2 {
-                    linesSincePageOpen += 1     // a printed running header: page unchanged
+                if pageOpen && !contentSincePageOpen {
+                    // A printed running header on a page already opened: page unchanged.
                 } else {
                     page = marker
                     pageOpen = true
-                    linesSincePageOpen = 0
+                    contentSincePageOpen = false
                     breaks.append(Breakpoint(offset: length, page: page, section: section))
                 }
             } else if !trimmed.isEmpty {
@@ -197,7 +197,7 @@ struct DocumentChunker {
                     section = heading
                     breaks.append(Breakpoint(offset: length, page: page, section: section))
                 }
-                linesSincePageOpen += 1
+                contentSincePageOpen = true
             }
             if keepText {
                 cleaned += line
@@ -220,7 +220,7 @@ struct DocumentChunker {
                 page += 1
                 paginated = true
                 pageOpen = true
-                linesSincePageOpen = 0
+                contentSincePageOpen = false
                 breaks.append(Breakpoint(offset: length, page: page, section: section))
             } else {
                 line.append(ch)

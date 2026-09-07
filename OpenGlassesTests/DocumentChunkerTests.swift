@@ -152,7 +152,7 @@ final class DocumentChunkerTests: XCTestCase {
         XCTAssertFalse(chunks[0].text.contains("Page 3"), chunks[0].text)
     }
 
-    func testAMarkerDeeperInThePageStillTurnsThePage() {
+    func testEveryMarkerAfterContentTurnsThePage() {
         // Small target so each sentence lands in its own chunk and carries its own page.
         let chunker = DocumentChunker(targetChars: 30, maxChars: 60, overlapChars: 0)
         let text = """
@@ -167,6 +167,16 @@ final class DocumentChunkerTests: XCTestCase {
         XCTAssertTrue(chunks.contains { $0.page == 5 && $0.text.contains("on five") }, "\(chunks)")
         XCTAssertTrue(chunks.contains { $0.page == 6 && $0.text.contains("on six") }, "\(chunks)")
         XCTAssertNil(chunks.first { $0.text.contains("Page 5") || $0.text.contains("Page 6") })
+    }
+
+    func testAOneLinePageStillTurnsThePage() {
+        // The running-header rule must not swallow a real page break on a sparse document: one
+        // line of content is enough to make the next marker a page turn.
+        let chunker = DocumentChunker(targetChars: 40, maxChars: 80, overlapChars: 0)
+        let text = "Page 1\n\nFault code ZX9 means low charge.\n\nPage 2\n\nThe switch opens at 610 psig."
+        let chunks = chunker.chunk(text)
+        XCTAssertTrue(chunks.contains { $0.page == 1 && $0.text.contains("ZX9") }, "\(chunks)")
+        XCTAssertTrue(chunks.contains { $0.page == 2 && $0.text.contains("610 psig") }, "\(chunks)")
     }
 
     func testUnpaginatedTextLeavesPageAndSectionNil() {
