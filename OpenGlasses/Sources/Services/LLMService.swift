@@ -1722,11 +1722,31 @@ class LLMService: ObservableObject {
                     case .success(let text): resultContent = text
                     case .failure(let error): resultContent = "Error: \(error)"
                     }
+                    // A capture tool returns its photo as a base64 marker inside its text. Send it
+                    // as pixels — a transcript of an image is not an image (issue 427).
+                    let split = ToolResultImage.extract(from: resultContent)
+                    let canSeeIt = split.image != nil && config.visionEnabled
                     // Frame untrusted external content as data, not instructions.
-                    let framed = self.wrapToolResultForModel(toolName: outcome.invocation.name, content: resultContent)
+                    let framed = self.wrapToolResultForModel(
+                        toolName: outcome.invocation.name,
+                        content: split.image != nil && !canSeeIt
+                            ? ToolResultImage.textWithImageOmitted(split.text)
+                            : split.text)
+                    var toolResult: [String: Any] = [
+                        "type": "tool_result", "tool_use_id": id, "content": framed,
+                    ]
+                    if canSeeIt, let image = split.image {
+                        // Anthropic tool_result content takes the same typed blocks a user turn
+                        // does, so the image rides inside the result itself.
+                        toolResult["content"] = [
+                            ["type": "text", "text": framed],
+                            ["type": "image",
+                             "source": ["type": "base64", "media_type": "image/jpeg",
+                                        "data": image.base64EncodedString()]],
+                        ]
+                    }
                     self.conversationHistory.append([
-                        "role": "user",
-                        "content": [["type": "tool_result", "tool_use_id": id, "content": framed]]
+                        "role": "user", "content": [toolResult],
                     ] as [String: Any])
                 }
                 for id in state.malformedIds {
@@ -1915,7 +1935,10 @@ class LLMService: ObservableObject {
                 // Shape of the request, not its contents — and not `baseURL` either: a custom
                 // endpoint URL is the wearer's own server, often on their home network.
                 let messageCount = (body["messages"] as? [[String: Any]])?.count ?? 0
-                let hasImage = imageData != nil && supportsVision
+                // Honest even when the image came from a tool result rather than the user turn:
+                // a `capture_photo` round-trip used to log `textOnly` while carrying a photo.
+                let hasImage = (imageData != nil && supportsVision)
+                    || ToolResultImage.historyCarriesImage(messages)
                 let bodySize = request.httpBody?.count ?? 0
                 PrivacyLog.model(.requestSent, provider: PrivacyToken(provider.rawValue),
                                  model: PrivacyToken(config.model), count: messageCount,
@@ -2033,13 +2056,32 @@ class LLMService: ObservableObject {
                     case .success(let text): resultContent = text
                     case .failure(let error): resultContent = "Error: \(error)"
                     }
+                    // See the Anthropic path: a capture tool's photo must reach the model as an
+                    // image part, not as base64 in the tool message's text (issue 427).
+                    let split = ToolResultImage.extract(from: resultContent)
+                    let canSeeIt = split.image != nil && config.visionEnabled
                     // Frame untrusted external content as data, not instructions.
-                    let framed = self.wrapToolResultForModel(toolName: outcome.invocation.name, content: resultContent)
+                    let framed = self.wrapToolResultForModel(
+                        toolName: outcome.invocation.name,
+                        content: split.image != nil && !canSeeIt
+                            ? ToolResultImage.textWithImageOmitted(split.text)
+                            : split.text)
                     self.conversationHistory.append([
                         "role": "tool",
                         "tool_call_id": callId,
                         "content": framed
                     ])
+                    // An OpenAI `tool` message may only carry text, so the image follows as its
+                    // own user turn. `image_url` is the shape `HistoryHygiene.pruneImages`
+                    // recognises, so a stale tool photo is pruned exactly like a stale user photo.
+                    if canSeeIt, let image = split.image {
+                        self.conversationHistory.append(["role": "user", "content": [
+                            ["type": "text",
+                             "text": ToolResultImage.attachmentCaption(toolName: outcome.invocation.name)],
+                            ["type": "image_url",
+                             "image_url": ["url": "data:image/jpeg;base64,\(image.base64EncodedString())"]],
+                        ]])
+                    }
                 }
             },
             finalize: { [weak self] turn in
@@ -2142,9 +2184,25 @@ class LLMService: ObservableObject {
                     case .success(let text): resultContent = text
                     case .failure(let error): resultContent = "Error: \(error)"
                     }
+                    // Same split as the OpenAI-compatible path — this backend speaks the chat
+                    // shape too, so the image cannot ride inside the `tool` message (issue 427).
+                    let split = ToolResultImage.extract(from: resultContent)
+                    let canSeeIt = split.image != nil && config.visionEnabled
                     // Frame untrusted external content as data, not instructions.
-                    let framed = self.wrapToolResultForModel(toolName: outcome.invocation.name, content: resultContent)
+                    let framed = self.wrapToolResultForModel(
+                        toolName: outcome.invocation.name,
+                        content: split.image != nil && !canSeeIt
+                            ? ToolResultImage.textWithImageOmitted(split.text)
+                            : split.text)
                     self.conversationHistory.append(["role": "tool", "tool_call_id": callId, "content": framed])
+                    if canSeeIt, let image = split.image {
+                        self.conversationHistory.append(["role": "user", "content": [
+                            ["type": "text",
+                             "text": ToolResultImage.attachmentCaption(toolName: outcome.invocation.name)],
+                            ["type": "image_url",
+                             "image_url": ["url": "data:image/jpeg;base64,\(image.base64EncodedString())"]],
+                        ]])
+                    }
                 }
             },
             finalize: { [weak self] turn in
@@ -2637,13 +2695,26 @@ class LLMService: ObservableObject {
                 guard let self else { return }
                 // Gemini batches all function responses into one `function` message.
                 var functionResponseParts: [[String: Any]] = []
+                // Images ride in a user turn after it — a functionResponse carries JSON, not parts.
+                var attachedImages: [(name: String, data: Data)] = []
                 for outcome in outcomes {
                     let name = outcome.invocation.name
                     let resultContent: [String: Any]
                     switch outcome.result {
                     case .success(let text):
+                        // A capture tool's photo becomes an `inlineData` part below, never base64
+                        // text in the function response (issue 427).
+                        let split = ToolResultImage.extract(from: text)
+                        let canSeeIt = split.image != nil && config.visionEnabled
+                        if canSeeIt, let image = split.image {
+                            attachedImages.append((name: name, data: image))
+                        }
                         // Frame untrusted external content as data, not instructions.
-                        resultContent = ["result": self.wrapToolResultForModel(toolName: name, content: text)]
+                        resultContent = ["result": self.wrapToolResultForModel(
+                            toolName: name,
+                            content: split.image != nil && !canSeeIt
+                                ? ToolResultImage.textWithImageOmitted(split.text)
+                                : split.text)]
                     case .failure(let error):
                         resultContent = ["error": error]
                     }
@@ -2652,6 +2723,15 @@ class LLMService: ObservableObject {
                     ])
                 }
                 self.conversationHistory.append(["role": "function", "parts": functionResponseParts])
+                for attached in attachedImages {
+                    // `inlineData` is both Gemini's user-image shape and what
+                    // `HistoryHygiene.pruneImages` strips, so these prune like user photos.
+                    self.conversationHistory.append(["role": "user", "parts": [
+                        ["text": ToolResultImage.attachmentCaption(toolName: attached.name)],
+                        ["inlineData": ["mimeType": "image/jpeg",
+                                        "data": attached.data.base64EncodedString()]],
+                    ]])
+                }
             },
             finalize: { [weak self] turn in
                 guard let self else { throw LLMError.invalidResponse("Gemini") }

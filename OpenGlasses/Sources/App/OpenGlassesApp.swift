@@ -485,7 +485,15 @@ struct OpenGlassesApp: App {
                             return
                         }
 
-                        if !appState.wakeWordService.isListening && !appState.isListening && appState.isConnected && !appState.micMuted && !Config.silentMode {
+                        // The master toggle belongs here too: without it the app brought the
+                        // listener up on foreground and heard a wake word while listening was
+                        // switched off (issue 427 follow-up).
+                        if WakeAutoRestartPolicy.shouldRestart(
+                            listeningEnabled: appState.listeningEnabled,
+                            silentMode: Config.silentMode,
+                            isConnected: appState.isConnected,
+                            micMuted: appState.micMuted,
+                            alreadyListening: appState.wakeWordService.isListening || appState.isListening) {
                             // Re-configure audio session in case Bluetooth route changed
                             await appState.wakeWordService.reconfigureAudioSessionIfNeeded()
                             // Small delay for route to stabilize after foregrounding
@@ -2028,6 +2036,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.glassesDisplay.flash("⚠️ \(error.localizedDescription)")
             }
         }
+
+        // A wake word must not be heard while the master toggle is off. The service restarts
+        // itself on route changes and after interruptions, so it needs the toggle too — the
+        // AppState-side callers already check it (issue 427 follow-up).
+        wakeWordService.shouldAutoRestart = { Config.listeningEnabled }
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
@@ -3653,17 +3666,28 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter ensureEngine: run the audio-engine keepalive first — needed after TTS playback,
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
-        // The user may have disabled listening while the turn was finishing — a finish stage
-        // must never turn the microphone back on behind their back. Log it: a silent return here
-        // is indistinguishable in the field from the mic failing to reopen after the reply.
-        guard listeningEnabled else {
-            PrivacyLog.wakeWord(.listenerSkippedDisabled)
+        // The user may have disabled listening while the turn was finishing — a finish stage must
+        // never turn the microphone back on behind their back. But it must still CLOSE the
+        // conversation: returning with `inConversation` left true stranded the app until a
+        // force-quit, because every later wake word was then dropped as `alreadyProcessing`.
+        // `returnToWakeWord()` re-checks the toggle before it goes near the mic.
+        if FinishStagePolicy.action(listeningEnabled: listeningEnabled,
+                                    inConversation: inConversation) == .endConversation {
+            if !listeningEnabled { PrivacyLog.wakeWord(.listenerSkippedDisabled) }
+            await returnToWakeWord()
             return
         }
-        if inConversation {
+        do {
             if ensureEngine { try? await wakeWordService.ensureAudioEngineRunning() }
-            // The engine keepalive suspends; re-check the user didn't flip the toggle meanwhile.
-            guard listeningEnabled, inConversation else { return }
+            // The engine keepalive suspends; re-check the user didn't flip the toggle meanwhile —
+            // and close the conversation if they did, for the same reason as above.
+            guard listeningEnabled else {
+                PrivacyLog.wakeWord(.listenerSkippedDisabled)
+                await returnToWakeWord()
+                return
+            }
+            // Someone else ended the conversation while we were suspended; they own the teardown.
+            guard inConversation else { return }
             isListening = true
             // CO Item 4: if what we just said was a question, give the user room to think before
             // the silence window ends the conversation out from under them.
@@ -3671,8 +3695,6 @@ class AppState: ObservableObject, AppStateProtocol {
             transcriptionService.startRecording()
             // CO Item 3: a turn is over, so anything held while it ran can be answered now.
             replayHeldUtteranceIfFresh()
-        } else {
-            await returnToWakeWord()
         }
     }
 

@@ -49,6 +49,16 @@ class WakeWordService: NSObject, ObservableObject {
     /// consumed instead of auto-restarting a competing recognizer. `private(set)` rather than
     /// `private` so the shared-engine handoff can be asserted in tests.
     private(set) var suppressAutoRestart = false
+
+    /// Whether an automatic restart (route change, interruption ended, `resumeListening`) may
+    /// re-open the microphone. Injected by `AppState` from the master listening toggle.
+    ///
+    /// `startListening()` enforces push-to-talk but never knew about the master toggle, so the
+    /// service restarted itself on a route change and heard a wake word while listening was
+    /// switched off (issue 427 follow-up). Explicit callers still decide for themselves — this
+    /// gates only the restarts the service initiates on its own. Defaults to "allowed" so the
+    /// service keeps working standalone (and in tests) until AppState wires the toggle in.
+    var shouldAutoRestart: () -> Bool = { true }
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest? {
         didSet { tapState.setRequest(recognitionRequest) }   // keep the tap's view in sync (Plan BE)
@@ -323,6 +333,11 @@ class WakeWordService: NSObject, ObservableObject {
             // Only restart if Bluetooth (glasses) route is available
             let route = AVAudioSession.sharedInstance().currentRoute
             let hasBluetooth = route.inputs.contains { $0.portType == .bluetoothHFP }
+            guard shouldAutoRestart() else {
+                PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
+                                 detail: PrivacyToken("listeningDisabled"))
+                return
+            }
             if hasBluetooth {
                 PrivacyLog.audio(.wakeWord, .interruptionEnded,
                                  detail: PrivacyToken("bluetoothActive"))
@@ -371,6 +386,11 @@ class WakeWordService: NSObject, ObservableObject {
                 cleanupAudioEngine()
                 isListening = false
                 onBluetoothReconnected?()
+                // The glasses coming back is not permission to listen: the master toggle decides.
+                guard shouldAutoRestart() else {
+                    PrivacyLog.wakeWord(.listenerSkippedDisabled)
+                    return
+                }
                 Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     audioSessionConfigured = false
@@ -483,6 +503,10 @@ class WakeWordService: NSObject, ObservableObject {
 
     func resumeListening() {
         guard !isListening else { return }
+        guard shouldAutoRestart() else {
+            PrivacyLog.wakeWord(.listenerSkippedDisabled)
+            return
+        }
         Task { try? await startListening() }
     }
 
