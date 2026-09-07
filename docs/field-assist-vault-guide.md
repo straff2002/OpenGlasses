@@ -127,6 +127,36 @@ The assistant is instructed by the manifest to remind the technician of safety s
 ## SLP99UH090XV60CK (SLP99UHXV-090-60C, 090XV60C, SLP99UH090V60CK)
 ```
 
+### Parts, so a number the assistant says can be checked
+
+A part number is the one thing on a job report that somebody else acts on: base orders against it.
+So the app never writes a number down without looking it up first, and a number it cannot find is
+recorded and spoken as **unverified** rather than quietly trusted.
+
+Give it something to look up. Add a `parts.md` core file — or a `## Parts` section in any core file —
+with a table whose first two columns are `Part` and `Description`. `Fits` and `Supersedes` are
+optional, and `Supersedes` is what lets a technician read the old number off a component and get
+the one to order:
+
+```markdown
+## Conversion kits
+
+| Part  | Description                                | Fits                | Supersedes |
+|-------|--------------------------------------------|---------------------|------------|
+| 65W77 | LP/propane changeover kit, 0-10,000 ft      | 070, 110, 135       |            |
+| 20A26 | LP/propane changeover kit, 0-4,500 ft       | 090 models          | 20A11      |
+```
+
+Only `parts.md` is read as parts throughout; in any other core file, only the tables under a
+`## Parts` heading count — so a specifications table that happens to have a "Part" column cannot
+leak in. Put the file in `files` in the manifest like any other core file, and keep the core inside
+its 32 KB budget: a full price book belongs in `documents`, not here.
+
+A number that is not in the table is still checked against the manuals as a whole word, and the page
+it is found on is what the record cites. A vault with no parts table is not broken — every number is
+simply verified against the manuals alone, and a vault with neither records them unverified, which
+is the honest answer.
+
 ## Step 3 · Write the manifest
 
 This is the whole file for the folder above.

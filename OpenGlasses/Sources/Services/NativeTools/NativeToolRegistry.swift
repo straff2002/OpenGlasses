@@ -179,6 +179,11 @@ final class NativeToolRegistry {
             register(EquipmentLookupTool(cameraService: cameraService, documentStore: documentStore))
             // manual_lookup searches the vault's imported OEM manuals (reference tier, Plan ED).
             register(ManualLookupTool(documentStore: documentStore, cameraService: cameraService))
+            // The work record (Plan EM): a recommendation is an object the technician decides on,
+            // and a part number is only written down once it has been looked up.
+            register(ProposeTaskTool())
+            register(TaskTool())
+            register(PartsRequestTool())
             // manual_figure puts a numbered drawing on the phone and in the next turn's image slot.
             register(ManualFigureTool(documentStore: documentStore))
             // Safety Assessment (HECA) — camera high-energy hazard assessment via SafetyAssessmentService.shared.

@@ -159,7 +159,13 @@ enum SessionExporter {
             proceduresRun: proceduresRun,
             captures: captures,
             citations: citations,
-            escalations: escalations
+            escalations: escalations,
+            // Assembled from the session itself, not from the log: the tasks, parts and identity
+            // fields are session state, so the exported record and the read-back the technician
+            // confirmed are the same object rendered twice.
+            workRecord: WorkRecord(
+                session: session,
+                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId)
         )
     }
 
@@ -198,6 +204,11 @@ enum SessionExporter {
 
             layout.section("Summary")
             for line in summaryLines(document) { layout.body(line) }
+
+            if let record = document.workRecord {
+                layout.section("Work Record")
+                for line in record.summaryLines { layout.body(line) }
+            }
 
             if !document.proceduresRun.isEmpty {
                 layout.section("Procedures")

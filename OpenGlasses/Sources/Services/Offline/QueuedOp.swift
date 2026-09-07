@@ -7,6 +7,8 @@ enum OpKind: String, Codable {
     case llmGrounding   // a question asked offline → answer when back online
     case auditExport    // generate / upload the session audit export
     case captureRecord  // a finished capture-flow record (Plan U) — typed so a networked sink can route it
+    case workRecord     // the deterministic record of one visit (Plan EM) — what base is sent at the end
+    case partsRequest   // a stock check (Plan EM) — leaves on its own, before the job is finished
 }
 
 /// Where an operation is in its lifecycle.
@@ -49,6 +51,21 @@ struct QueuedOp: Identifiable, Codable, Equatable {
     static func make(kind: OpKind, sessionId: String, json: [String: Any]) -> QueuedOp {
         let data = (try? JSONSerialization.data(withJSONObject: json)) ?? Data()
         return QueuedOp(kind: kind, sessionId: sessionId, payload: data)
+    }
+
+    /// The visit's deterministic record, encoded as the JSON a job system consumes. The same bytes
+    /// `WorkRecord.json` produces, so what is queued and what is exported cannot disagree.
+    static func make(workRecord: WorkRecord) -> QueuedOp {
+        QueuedOp(kind: .workRecord, sessionId: workRecord.sessionId, payload: workRecord.json)
+    }
+
+    /// One stock check, encoded on its own so it can leave before the record does.
+    static func make(partsRequest: PartsRequest, sessionId: String) -> QueuedOp {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return QueuedOp(kind: .partsRequest, sessionId: sessionId,
+                        payload: (try? encoder.encode(partsRequest)) ?? Data())
     }
 
     /// Decode the payload back to a JSON dictionary (empty if it isn't one).

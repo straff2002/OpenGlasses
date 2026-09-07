@@ -72,6 +72,13 @@ struct CaptureRecord: Codable, Equatable {
         self.finishedAt = finishedAt
     }
 
+    /// A stable identifier for one run of one flow, derived rather than stored so a record written
+    /// before this existed still identifies itself the same way. It is what a task's `readings`
+    /// list holds, so the work record can name the readings taken while that task was active.
+    var id: String {
+        "\(flowId)@\(ISO8601DateFormatter().string(from: startedAt))"
+    }
+
     /// Upsert a captured field by name (a re-answer replaces the prior value).
     mutating func set(_ field: String, value: CaptureValue, provenance: Provenance) {
         let entry = CapturedField(field: field, value: value, provenance: provenance)

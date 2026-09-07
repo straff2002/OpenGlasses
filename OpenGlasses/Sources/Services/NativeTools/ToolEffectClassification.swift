@@ -124,6 +124,13 @@ extension ManualFigureTool {
 extension NewTopicTool {
     var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
 }
+// The work-record tools (Plan EM). All three write session state and the append-only audit log and
+// nothing else — the queued operations they leave behind are local tombstones until an endpoint is
+// configured, so nothing has left the device when one of these returns. None is idempotent: a
+// redelivered call is a second recommendation, a second decision, or a second order.
+extension ProposeTaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+extension TaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+extension PartsRequestTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 
 // MARK: External mutations
 
