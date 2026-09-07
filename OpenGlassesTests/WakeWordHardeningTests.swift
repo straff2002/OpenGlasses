@@ -86,6 +86,29 @@ final class WakeWordHardeningTests: XCTestCase {
         box.dispatch(buffer)   // no request, no forwarders → must be a safe no-op
     }
 
+    // MARK: - Shared-engine handoff (issue 427)
+
+    /// Handing the running engine to `TranscriptionService` tears down the wake-word recognizer.
+    /// `isListening` has to fall with it: `startListening()` opens with
+    /// `guard !isListening else { return }`, so a stale `true` turned every later auto-restart
+    /// into a silent no-op — the wake word worked exactly once per launch, and the only cure in
+    /// the field was force-quitting the app.
+    ///
+    /// `startListening()` is deliberately not called here: it requests speech permission.
+    @MainActor
+    func testSharedEnginePauseClearsIsListeningSoARestartCanTakeHold() {
+        let svc = WakeWordService()
+        svc.isListening = true
+
+        svc.pauseRecognitionForSharedEngine()
+
+        XCTAssertFalse(svc.isListening,
+                       "the recognizer is gone, so startListening's guard must not see a listener")
+        XCTAssertTrue(svc.suppressAutoRestart,
+                      "the cancel is intentional — its error callback must not spin up a rival recognizer")
+        XCTAssertNil(svc.recognitionTask)
+    }
+
     // MARK: - Config flag
 
     func testOnDeviceWakeWordDefaultsOn() {

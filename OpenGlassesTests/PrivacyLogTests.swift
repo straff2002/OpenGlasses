@@ -559,6 +559,39 @@ final class PrivacyLogTests: XCTestCase {
         XCTAssertEqual(summary.description, "timedOut(URLError)#\(URLError.Code.timedOut.rawValue)")
     }
 
+    /// Issue 427: when the DAT session reports an error during startup, the abort line has to
+    /// carry the SDK's own reason — the whole point of the change is that the failure stops
+    /// reading as a generic `streamNotReady`.
+    func testCameraSessionStartAbortedCarriesTheUnderlyingReason() {
+        let line = PrivacyEventEncoder.encode(
+            PrivacyLog.camera(.glasses, .sessionStartAborted,
+                              state: PrivacyToken("starting"),
+                              error: SafeErrorSummary(MaliciousEnumError.refusedHost("SENTINELHOST"))))
+        XCTAssertTrue(line.contains("event=sessionStartAborted"), line)
+        XCTAssertTrue(line.contains("state=starting"), line)
+        XCTAssertTrue(line.contains("refusedHost"), line)
+        XCTAssertFalse(line.contains("SENTINEL"), line)
+    }
+
+    /// Issue 427: `NSCocoaErrorDomain` used to share `NSURLErrorDomain`'s mapping, so a
+    /// locked-device read failure (`NSFileReadNoPermissionError`, 257) — the exact error that
+    /// blocked conversation saves for a whole process — was logged as `badServerResponse` and
+    /// sent every reader of that line to the network layer.
+    func testCocoaErrorsMapToStorageNotBadServerResponse() {
+        let cocoa = NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError)
+        let summary = SafeErrorSummary(cocoa)
+        XCTAssertEqual(summary.category, .storage)
+        XCTAssertEqual(summary.description, "storage(NSError)#257")
+
+        // The URL domain keeps the mapping it had.
+        let url = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadServerResponse)
+        XCTAssertEqual(SafeErrorSummary(url).category, .badServerResponse)
+
+        // Anything else is still `unknown`.
+        let other = NSError(domain: "com.example.Sentinel", code: 42)
+        XCTAssertEqual(SafeErrorSummary(other).category, .unknown)
+    }
+
     func testHTTPStatusesMapToBoundedCategories() {
         XCTAssertEqual(SafeErrorSummary.http(status: 401).category, .unauthorized)
         XCTAssertEqual(SafeErrorSummary.http(status: 403).category, .forbidden)

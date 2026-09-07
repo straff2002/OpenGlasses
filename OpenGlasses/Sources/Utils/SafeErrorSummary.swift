@@ -89,8 +89,17 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         let bridged = error as NSError
         let detail = PrivacyToken.caseName(of: error)
             ?? PrivacyToken(String(describing: type(of: error)))
-        let isKnownDomain = bridged.domain == NSURLErrorDomain || bridged.domain == NSCocoaErrorDomain
-        self.init(category: isKnownDomain ? .badServerResponse : .unknown,
+        // The bridged domain says which subsystem failed, so it picks the category. Cocoa's
+        // domain is the file/archiving layer, not the network: a locked-device read failure
+        // (NSFileReadNoPermissionError, 257) used to render as `badServerResponse`, which sent
+        // every reader of that line looking at the wrong subsystem entirely.
+        let category: Category
+        switch bridged.domain {
+        case NSURLErrorDomain: category = .badServerResponse
+        case NSCocoaErrorDomain: category = .storage
+        default: category = .unknown
+        }
+        self.init(category: category,
                   detail: detail,
                   code: bridged.code == 0 ? nil : bridged.code)
     }

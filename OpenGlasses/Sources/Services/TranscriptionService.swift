@@ -96,7 +96,12 @@ class TranscriptionService: ObservableObject {
     }
 
     func startRecording() {
-        guard !isRecording else { return }
+        // A second start on a live recorder is a no-op, and a silent one used to leave no trace
+        // at all — the other half of "the assistant spoke and then nothing happened".
+        guard !isRecording else {
+            PrivacyLog.speech(.dictation, .startSkippedAlreadyRecording)
+            return
+        }
 
         didReceiveSpeech = false
         lastSpeechObservedAt = nil

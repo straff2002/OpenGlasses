@@ -1768,6 +1768,33 @@ class LLMService: ObservableObject {
     /// closure; a bool flag with one realistic writer needs no stronger isolation.
     nonisolated(unsafe) private static var customEndpointRejectsTools = false
 
+    /// Whether a provider reaching the OpenAI-compatible path can be handed a `tools` payload.
+    ///
+    /// This is an exhaustive switch on purpose. The bug it exists to prevent (issue 427) was a
+    /// hand-written `||` chain that silently omitted `.xai` and `.minimax` when they were added
+    /// to the `sendOpenAICompatible` route — the turn logged `nativeTools` while the request
+    /// carried none, so voice commands never triggered a tool call on those providers. An
+    /// exhaustive switch makes the next provider a compile error instead of a silent omission.
+    ///
+    /// The providers returning `false` here (`anthropic`, `chatgpt`, `gemini`, `geminiVertex`,
+    /// `local`, `appleOnDevice`) each have their own request builder and never reach this
+    /// predicate; `false` is simply the answer for "an OpenAI-style `tools` array", not a
+    /// statement that they lack tool calling.
+    nonisolated static func providerSupportsTools(_ provider: LLMProvider,
+                                                  customEndpointRejectsTools: Bool) -> Bool {
+        switch provider {
+        case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter:
+            return true
+        // Custom endpoints get tools too (Gemini/vLLM/newer Ollama all speak OpenAI function
+        // calling); the ones that 400 on a `tools` payload are retried once without tools and
+        // remembered for the rest of the session.
+        case .custom:
+            return !customEndpointRejectsTools
+        case .anthropic, .chatgpt, .gemini, .geminiVertex, .local, .appleOnDevice:
+            return false
+        }
+    }
+
     private func sendOpenAICompatible(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         try enforceMedicalRemoteBoundary(config)
         let provider = config.llmProvider
@@ -1861,11 +1888,10 @@ class LLMService: ObservableObject {
                                         disableThinking: smallContext || (imageData != nil && supportsVision))
 
                 // Only attach Tools if the provider reliably supports function calling.
-                // Custom endpoints get tools too (Gemini/vLLM/newer Ollama all speak OpenAI
-                // function calling); the ones that 400 on a `tools` payload are retried once
-                // without tools below and remembered for the rest of the session.
-                let providerSupportsTools = provider == .openai || provider == .groq || provider == .zai || provider == .qwen || provider == .openrouter
-                    || (provider == .custom && !Self.customEndpointRejectsTools)
+                let providerSupportsTools = Self.providerSupportsTools(
+                    provider,
+                    customEndpointRejectsTools: Self.customEndpointRejectsTools
+                )
 
                 if includeTools && providerSupportsTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil

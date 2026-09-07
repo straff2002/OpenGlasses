@@ -73,6 +73,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// BR P2: listener on the DeviceSession's error stream (update-required and terminal
     /// device errors surface here, not on the camera Stream's errorPublisher).
     private var sessionErrorTask: Task<Void, Never>?
+    /// The most recent error the DeviceSession's error stream delivered, kept only for the
+    /// duration of one `ensureSession()` attempt.
+    ///
+    /// The watcher used to log each session error and then drop it unless
+    /// `DATCompatibilityMessage` recognised it, so a session that died 120 ms into startup was
+    /// still waited on for the full grace window and then reported as the generic
+    /// `streamNotReady` — four attempts, ~21 s, and a user-facing reason that named nothing.
+    /// Holding the error lets the start wait fail fast *with the SDK's own reason*.
+    private var lastSessionError: Error?
     /// The most recent stream error seen while waiting for `.streaming`. Cleared at the top of
     /// each warmup wait, so it only ever describes the attempt in progress.
     private var lastStreamError: StreamError?
@@ -211,6 +220,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private func ensureSession() async throws {
         guard streamSession == nil else { return }
 
+        // Fresh attempt, fresh verdict: an error from a previous attempt must not abort this one.
+        lastSessionError = nil
+
         // First call: start tracking the devices list, and give the listener a beat to
         // deliver the current snapshot before we pick a selector.
         if devicesListenerToken == nil {
@@ -260,6 +272,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
             let stoppedGraceEnd = ContinuousClock.now + .seconds(2)
             while ContinuousClock.now < deadline {
                 if deviceSession.state == .started { break }
+                // The SDK has already said why this session will not start. Waiting out the rest
+                // of the window cannot change that, and the generic timeout that follows throws
+                // away the only useful diagnostic — so stop here and carry the real error.
+                if let sessionError = lastSessionError, deviceSession.state != .started {
+                    PrivacyLog.camera(.glasses, .sessionStartAborted,
+                                      state: PrivacyToken(String(describing: deviceSession.state)),
+                                      error: SafeErrorSummary(sessionError))
+                    throw sessionError
+                }
                 // .stopped inside the first moments can be the pre-transition resting state;
                 // only treat it as terminal once the state machine has had time to move.
                 if deviceSession.state == .stopped && ContinuousClock.now > stoppedGraceEnd { break }
@@ -270,6 +291,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
         guard deviceSession.state == .started else {
             PrivacyLog.camera(.glasses, .sessionNotStarted,
                               state: PrivacyToken(String(describing: deviceSession.state)))
+            // Prefer the SDK's reason over "stream not ready" whenever there is one: the retry
+            // loop's `sessionAttemptFailed` line and the error the caller finally sees should
+            // both name what actually happened.
+            if let sessionError = lastSessionError { throw sessionError }
             throw CameraError.streamNotReady
         }
 
@@ -319,6 +344,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             for await error in session.errorStream() {
                 guard let self, !Task.isCancelled else { return }
                 PrivacyLog.camera(.glasses, .sessionError, error: SafeErrorSummary(error))
+                self.lastSessionError = error
                 if let notice = DATCompatibilityMessage.message(for: error) {
                     self.compatibilityNotice = notice
                     self.debug(notice)

@@ -521,6 +521,10 @@ enum PrivacyLog {
         case permissionRevalidating, registrationState, notRegistered
         case permissionRetry, permissionChecked, permissionFailed
         case sessionBound, sessionNotStarted, sessionError, sessionAttemptFailed
+        /// The start wait stopped early because the SDK had already reported a session error —
+        /// that error is then thrown instead of the generic "stream not ready", so the attempt
+        /// carries the real reason.
+        case sessionStartAborted
         case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture
@@ -1185,6 +1189,10 @@ enum PrivacyLog {
     /// distance: a small integer confidence bucket, not a fragment of what was heard.
     enum WakeEvent: String {
         case listenerStarted, listenerSkippedPushToTalk, listenAttemptFailed
+        /// A finish stage declined to re-open the mic because the wearer had disabled listening.
+        /// Without this line the turn simply ends and the log goes quiet, which reads in the
+        /// field as "after TTS nothing happened".
+        case listenerSkippedDisabled
         case onDeviceUnavailable, contextConfigured
         case detected, fuzzyDetected, bargeIn, stopCommand
         case recognitionFailed, sustainedSilence, audioResumed
@@ -1216,6 +1224,10 @@ enum PrivacyLog {
 
     enum SpeechEvent: String {
         case started, stopped, suspended, resumed, reconfigured
+        /// `startRecording()` called while a recording was already in flight — a no-op that is
+        /// otherwise invisible, and one of the two ways a turn can silently fail to re-open the
+        /// mic after the assistant finishes speaking.
+        case startSkippedAlreadyRecording
         case recognizerUnavailable, engineShared, engineDedicated, engineRebuilt
         case engineFailed, sessionFailed
         case transcriptDelivered, noSpeechDetected, recognitionFailed
