@@ -485,6 +485,10 @@ final class ExampleVaultLennoxTests: XCTestCase {
             XCTAssertEqual(sheet.headerLine, "Extracted text \u{00B7} page \(passage.page ?? 0)")
             XCTAssertEqual(sheet.paging.currentPage, passage.page)
             XCTAssertTrue(sheet.paging.pageCount > 50, "a whole manual pages: \(sheet.paging.pageCount)")
+            // A chunk carries the page its *first* sentence is on, so a page swallowed whole by a
+            // chunk that started on the page before has no stored text of its own. How many pages
+            // survive that, on a real manual, is printed rather than assumed.
+            print("[LENNOX] \(citation.title): \(sheet.paging.pageCount) pages hold stored text")
 
             // The page behind the chip is the page the sentence came from, not a page with the
             // same number in another manual.

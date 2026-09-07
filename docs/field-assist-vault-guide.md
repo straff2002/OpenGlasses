@@ -77,6 +77,8 @@ It also warns, per page, when a manual prints its own page number at the top of 
 
 **Import the PDF rather than the extracted text when you want the drawings.** Both routes give the same citations and the same answers, but only the PDF keeps the *pages*: when a question reaches a wiring diagram, the app opens that page on the technician's phone — the real drawing, zoomable — and sends it to the assistant as a picture, so the answer is read off the diagram rather than off the list of terminal labels underneath it. A manual imported as extracted text still cites its figures correctly; it simply has no page to show, and the app says so when a technician asks to see one. Route C is for looking at what the extractor read and correcting it; if the drawings matter, import the PDF once you have.
 
+**Bundle the original beside the extracted text for anything a manufacturer requires as an SOP.** If you take Route C — or receive a manual as text from anyone — put the manufacturer's PDF in `documents/` beside it and name it in the manifest as that document's `source`. It is copied into the vault and hashed, and it is never indexed, so the text stays what gets searched and your corrections to it still count. What it buys is the page itself: a technician who taps a citation sees the manufacturer's own page, and the header says so and says whether the file is still byte-for-byte the one you imported. Without it the same citation opens the extracted text and says, in as many words, that the original is not in this vault — which is exactly what a compliance reviewer will ask.
+
 Page numbers are preserved automatically either way, so a citation reads *RTU-500 Service Manual, page 42* and the technician can open the paper copy to it. That only works if the PDF's pages match the printed pages, which is true of nearly every OEM PDF.
 
 A few habits that pay off:
@@ -139,7 +141,10 @@ This is the whole file for the folder above.
   "documents": [
     { "file": "RTU-500-service-manual.pdf", "title": "RTU-500 Service Manual", "kind": "service_manual" },
     { "file": "RTU-500-wiring.pdf",         "title": "RTU-500 Wiring",         "kind": "wiring" },
-    { "file": "RTU-700-install-guide.pdf",  "title": "RTU-700 Install Guide",  "kind": "install_guide" }
+    { "file": "RTU-700-install-guide.pdf",  "title": "RTU-700 Install Guide",  "kind": "install_guide" },
+    { "file": "RTU-900-service-manual.md",  "title": "RTU-900 Service Manual",  "kind": "service_manual",
+      "source": "RTU-900-service-manual.pdf",
+      "source_url": "https://example.com/manuals/RTU-900-service-manual.pdf" }
   ],
   "procedures_dir": "procedures",
   "gating": { "iap": "enterprise" },
@@ -162,6 +167,8 @@ This is the whole file for the folder above.
 | `version` | Bump it when you re-import. |
 | `files` | The core files, in the order you want them read. |
 | `documents_dir` / `documents` | The manuals. `title` is what the technician hears in a citation; `kind` is a free-text label. |
+| `source` (per document) | Optional. The manufacturer's own PDF, sitting in the same folder, for a document you imported as extracted text. Copied and hashed at import, never indexed. Tapping a citation can then show the manufacturer's page rather than the transcription of it. |
+| `source_url` (per document) | Optional. Where the manufacturer publishes this manual, as an `https://` link. Offered as a button that opens outside the app; it is never a substitute for bundling the original. |
 | `procedures_dir` | Omit it if you have no procedures. |
 | `gating` | Always `{ "iap": "enterprise" }` for a custom vault. |
 | `prompt_rules` | The rules the assistant follows while this vault is active. |
@@ -248,7 +255,8 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
    The check that produces that answer is measured, not assumed, and it is worth knowing what it can and cannot do. Against a real pair of furnace manuals it refused three out of four out-of-scope questions — a torque figure the book never gives, another manufacturer's efficiency rating, a price, a warranty procedure. What it does **not** refuse is a question about a subject your manuals genuinely cover but a machine they do not: ask about the heat exchanger on someone else's furnace and passages about heat exchangers come back, because they are about heat exchangers. There the vault's prompt rules and the page citation on every passage are what keep the answer honest — which is why the rules about fabricating and citing are required. The same check occasionally refuses a fair question whose wording shares little with the book's; rephrase it in the manual's own words and ask again.
 
    If you get a confident answer where the book is silent, tell us; that is the behaviour the vault rules exist to prevent.
-6. End the session. The audit log records every question, answer, photo and citation, and a team licence can export it as PDF.
+6. **Tap the citation under the answer.** Every source an answer names becomes a chip; tapping one opens that page. The header tells you which document you are looking at — *Manufacturer's document · page 42 of 118 · unmodified since import*, or *Extracted text · page 42* with a line saying whether the original is bundled — and you can swipe through the manual and tap once to come back to the cited page. A chip naming a core file opens that file at the section it cites, ready to correct. If a chip opens a page that does not answer the question, the manual's page numbering is off by a page or two; see Step 1.
+7. End the session. The audit log records every question, answer, photo and citation — including which citations were opened and which document each was read in — and a team licence can export it as PDF.
 
 > **Everything stays on the phone.** Manuals are indexed and searched on the device and never uploaded to us. The passages relevant to a question are sent to whichever AI model you configured, together with the question, in the same way the rest of the app works. If you use an on-device model, nothing leaves the phone at all.
 
