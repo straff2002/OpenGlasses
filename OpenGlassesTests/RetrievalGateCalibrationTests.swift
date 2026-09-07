@@ -221,12 +221,15 @@ final class RetrievalGateCalibrationTests: XCTestCase {
                            "a margin cannot make a query insufficient: \(name)")
         }
 
-        // The lexical criterion is the only one that rejects anything here.
         let chosen = try XCTUnwrap(scores["default(for: nl-word)"])
-        XCTAssertGreaterThan(chosen.insufficiency, baseline.insufficiency,
-                             "the chosen default must reject more than the floor alone")
 
         if Embedder().modelId.hasPrefix("nl-word") {
+            // The lexical criterion is the only one that rejects anything on this backend, which is
+            // why the measured default carries it. Asserted only here: on a backend whose defaults
+            // are still today's gate, `default(for:)` is the baseline by construction.
+            XCTAssertGreaterThan(chosen.insufficiency, baseline.insufficiency,
+                                 "the chosen default must reject more than the floor alone")
+
             // On the word-average backend the two similarity ranges overlap completely, which is
             // why no floor and no margin can separate them. Guarded by backend: a sentence or
             // contextual model may well separate them, and that measurement is still pending.
