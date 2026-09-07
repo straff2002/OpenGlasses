@@ -97,16 +97,15 @@ struct DocumentRAGTool: NativeTool {
         return "Relevant passages for '\(query)' — answer using only these, and cite the document name and (when shown) the page, figure or section:\n\n\(body)"
     }
 
-    /// A speakable source locator for a passage: page, then whichever of the figure or the section
-    /// names the place (the figure first — it is what the reader sees on the page), and the chunk
-    /// index only when the document carried no markers at all.
+    /// A speakable source locator for a passage: page, then the name of the place — the figure on a
+    /// drawing, the section in prose — and the chunk index only when the document carried no
+    /// markers at all. Same rule as [[VaultRetriever]]'s citation: a figure names a drawing, so
+    /// prose printed under a caption is still located by its section.
     private func locator(for p: DocumentStore.Passage) -> String {
         var parts: [String] = []
         if let page = p.page { parts.append("page \(page)") }
-        if let figure = p.figure, !figure.isEmpty {
-            parts.append(figure)
-        } else if p.kind == .diagram {
-            parts.append("diagram")
+        if p.kind == .diagram {
+            parts.append(p.figure.flatMap { $0.isEmpty ? nil : $0 } ?? "diagram")
         } else if let section = p.section, !section.isEmpty {
             parts.append(section)
         }
