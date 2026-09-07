@@ -1,9 +1,9 @@
 # Plan EK — Manual Structure and Figures (headings from type, diagrams as pictures)
 
-**Status:** 🚧 P1 implemented 2026-09-07 (headless; §1–§3 and the extractor script). P2 (the picture
-to the model) not started. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What P1
-found, including two rules the design did not have and one measured cost, is in **P1 findings**
-below.
+**Status:** 🚧 P1 + P2 implemented 2026-09-07 (headless); a device turn against a cloud provider is
+pending. Stacked on [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425). What each phase found —
+including two rules the design did not have, one measured cost, and the P1 rule P2 had to work
+around — is in **P1 findings** and **P2 findings** below.
 **Origin:** EJ P1 tightened the lexical heading rules and left a residue it could not reach: an
 ALL-CAPS wiring-diagram fragment (`§BOTH SENSOR`, `§1- DATA LOW CONNECTION`, `§PRESS TO RESET`,
 `§TEST B`) is indistinguishable by any rule over letters from a real heading like
@@ -158,7 +158,7 @@ chunks).
   terminal label reaching a diagram chunk with a figure citation; the PDF route exercised through
   the local `source-pdfs/` when present (skip otherwise), and the extractor script re-run on both
   PDFs to confirm zero numbering warnings and headings that match the in-app route.
-- **P2 — the picture (one PR).** §4: figure staging, `manual_figure` tool, the `sendMessage`
+- **P2 — the picture (one PR). Done 2026-09-07.** §4: figure staging, `manual_figure` tool, the `sendMessage`
   seam, provider gating, prompt wording, the phone figure sheet with PDFKit page jump, the lens cue,
   audit-log lines naming the figure sent and shown, the two P1 follow-ups. Headless tests use a
   fixture PDF and a fake provider; the sheet's view model is tested without SwiftUI; the live edge
@@ -282,3 +282,42 @@ remains is cover-page and banner furniture set as isolated bold lines (`NOTICE`,
 USA`, `FRONT VIEW`): harmless, page-1-ish, and not worth a rule that would cost real headings.
 EJ's "two words or more" check in `ExampleVaultLennoxTests` is gone with them — one-word sections
 are now `General`, `Filters` and the diagnostic codes, each a real place in the book.
+
+## P2 findings (2026-09-07)
+
+**The figure goes to the model and to the technician from one staging.** Retrieval happens once,
+inside `manualPassagesContext`, so that is where the turn's drawing is staged: the best diagram (or
+figure-bearing) passage among the evidence, cleared by the next turn that finds none. Everything
+downstream reads that one published value — `LLMService` decides the image slot, the phone opens the
+sheet, the lens flashes its line — so nothing searches the manuals twice and the three surfaces
+cannot disagree about which drawing this turn is about.
+
+**The prompt says "attached" only after the page has rendered.** The plan has the sentence appended
+to the `MANUAL PASSAGES` block, which is built before anything is rendered; a render that then
+failed (a missing baseline file, a page out of range) would leave the prompt promising a picture the
+model never got, which is exactly the class of lie the whole retrieval design exists to prevent. The
+sentence is therefore appended to the end of the system prompt, after the render returns bytes. The
+cost is adjacency: it no longer sits directly under the passages it refers to, so it names the
+citation explicitly and says the page is a manual page rather than a camera photo — which it had to
+say anyway, because the vision block above it describes the glasses camera.
+
+**A chunk takes its figure from its first sentence, so a caption below a heading is invisible to
+it.** P1's rule (a chunk's kind and figure come from where it starts) means a text manual written as
+`## Section` then `### Figure 9` then prose stores that chunk with no figure at all — the chunk
+starts at the heading, where no figure was in force. Nothing here is wrong for the PDF route, where
+a producer writes the page's own caption at the top of a drawing, but a hand-written vault document
+has to put the caption above the prose it captions for the figure to be stored. The test fixture
+does; the vault guide's `### ` example already reads that way.
+
+**Two citations changed under the P1 follow-up**, both for the better — prose printed under a table
+caption now cites the section it is in: `SLP99UHVK Service Manual, page 29, §Soft Disable` (was
+`page 29, Table 19`) and `SLP99UHVK Installation Instructions, page 64, §High Altitude Information`
+(was `page 64, Table 38`). No other citation in the Lennox pair moved, and no drawing's did — a
+diagram still cites its figure, which is the whole point of the rule.
+
+**What is still device-pending.** No turn has gone to a cloud provider with a rendered page attached:
+the seam, the decision, the render, the prompt line and the audit event are tested headlessly and the
+sheet's content is decided by a view model with no SwiftUI in it, but whether a 150-dpi letter page
+is legible *enough* to a given model for 8-point terminal labels is a question only a real turn
+answers. If it is not, the answer is P3's crop rather than a higher DPI: the whole page at a
+readable label size is a much larger image than the drawing at one.

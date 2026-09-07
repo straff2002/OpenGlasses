@@ -75,6 +75,8 @@ line. Importing the PDF itself gets the same treatment inside the app, so the tw
 
 It also warns, per page, when a manual prints its own page number at the top of the page and that number disagrees with the page's position in the PDF — usually an unnumbered cover or roman-numeral front matter shifting everything by a page or two — and counts them in the closing summary. Citations always name the physical page, the one you reach by counting from the front, so either fix the PDF (delete or add the front matter until the numbers line up) or accept the offset and tell your technicians about it. Zero warnings means a citation reads exactly as the page is printed.
 
+**Import the PDF rather than the extracted text when you want the drawings.** Both routes give the same citations and the same answers, but only the PDF keeps the *pages*: when a question reaches a wiring diagram, the app opens that page on the technician's phone — the real drawing, zoomable — and sends it to the assistant as a picture, so the answer is read off the diagram rather than off the list of terminal labels underneath it. A manual imported as extracted text still cites its figures correctly; it simply has no page to show, and the app says so when a technician asks to see one. Route C is for looking at what the extractor read and correcting it; if the drawings matter, import the PDF once you have.
+
 Page numbers are preserved automatically either way, so a citation reads *RTU-500 Service Manual, page 42* and the technician can open the paper copy to it. That only works if the PDF's pages match the printed pages, which is true of nearly every OEM PDF.
 
 A few habits that pay off:
