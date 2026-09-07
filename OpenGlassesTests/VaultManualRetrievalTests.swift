@@ -189,6 +189,36 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertFalse(CodeTokenizer.contains("anything", token: ""))
     }
 
+    // MARK: - Lexical support
+
+    func testContentTermsKeepWordsAndDropFurniture() {
+        let terms = LexicalSupport.contentTerms("What is the manifold pressure on high fire?")
+        XCTAssertEqual(terms, ["manifold", "pressure", "high", "fire"], "\(terms)")
+        XCTAssertTrue(LexicalSupport.contentTerms("E223 on a 30RB unit").isDisjoint(with: ["e223", "30rb"]),
+                      "code-like tokens are the tokenizer's job, not the lexical gate's")
+        XCTAssertEqual(LexicalSupport.contentTerms("of by the and for is it"), [], "short function words never survive")
+    }
+
+    func testSuffixTrimmingMakesPluralsAndTensesAgree() {
+        XCTAssertEqual(LexicalSupport.contentTerms("pressures"), LexicalSupport.contentTerms("pressure"))
+        XCTAssertEqual(LexicalSupport.contentTerms("clocking"), LexicalSupport.contentTerms("clock"))
+        XCTAssertEqual(LexicalSupport.contentTerms("inspected"), LexicalSupport.contentTerms("inspect"))
+        XCTAssertEqual(LexicalSupport.contentTerms("switches"), LexicalSupport.contentTerms("switch"))
+        XCTAssertEqual(LexicalSupport.contentTerms("bypass"), ["bypass"], "a trailing double-s is not a plural")
+        // The rule is one pass of suffix trimming, not a stemmer: a silent-e verb does not agree
+        // with its past tense. Pinned so the limitation is a decision rather than a surprise.
+        XCTAssertNotEqual(LexicalSupport.contentTerms("primed"), LexicalSupport.contentTerms("prime"))
+    }
+
+    func testSharedTermCount() {
+        let query = LexicalSupport.contentTerms("what is the manifold pressure on high fire")
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "Measure the manifold pressures at the tap.",
+                                                      queryTerms: query), 2)
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "Torque the blower wheel set screw.",
+                                                      queryTerms: query), 0)
+        XCTAssertEqual(LexicalSupport.sharedTermCount(text: "anything", queryTerms: []), 0)
+    }
+
     // MARK: - Retriever and evidence policy
 
     func testTokenBoostOutranksHigherSimilarityWithoutTheToken() {
@@ -293,6 +323,52 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(policy.decide([weak], limit: 4), .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence))
         XCTAssertEqual(policy.decide([tokenHit], limit: 4), .sufficient([tokenHit]))
         XCTAssertEqual(policy.decide([strong, weak, tokenHit], limit: 1), .sufficient([strong]), "weak passages are dropped, limit applies")
+    }
+
+    func testRelativeMarginTrimsTheTailButCannotRejectAQuery() {
+        let policy = RetrievalEvidencePolicy(similarityFloor: 0.30, margin: 0.02)
+        func passage(_ index: Int, _ similarity: Float) -> VaultRetriever.Passage {
+            VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: index, text: "x", page: nil,
+                                   section: nil, similarity: similarity, score: similarity, matchedTokens: [])
+        }
+        let best = passage(0, 0.91), near = passage(1, 0.90), far = passage(2, 0.85)
+        XCTAssertEqual(policy.decide([best, near, far], limit: 4), .sufficient([best, near]))
+        // The best passage is always within `margin` of itself, so however tight the margin the
+        // list still yields evidence. A margin is a precision filter, never a rejection.
+        let tight = RetrievalEvidencePolicy(similarityFloor: 0.30, margin: 0)
+        XCTAssertEqual(tight.decide([best, near, far], limit: 4), .sufficient([best]))
+    }
+
+    func testLexicalCriterionRejectsAPassageThatSharesNothingWithTheQuestion() {
+        let policy = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 2)
+        func passage(_ index: Int, _ text: String) -> VaultRetriever.Passage {
+            VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: index, text: text, page: nil,
+                                   section: nil, similarity: 0.9, score: 0.9, matchedTokens: [])
+        }
+        let onTopic = passage(0, "Measure the manifold pressure at the tap on high fire.")
+        let offTopic = passage(1, "Route the flue vent through the sidewall with a coupling.")
+        let terms = LexicalSupport.contentTerms("what is the manifold pressure on high fire")
+        XCTAssertEqual(policy.decide([offTopic, onTopic], limit: 4, queryTerms: terms), .sufficient([onTopic]))
+        XCTAssertEqual(policy.decide([offTopic], limit: 4, queryTerms: terms),
+                       .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence))
+        // A code hit is evidence whatever it shares: the tokenizer already proved the passage names
+        // what was asked about.
+        let tokenHit = VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: 2, text: "E5 row",
+                                              page: nil, section: nil, similarity: 0, score: 0.25,
+                                              matchedTokens: ["E5"])
+        XCTAssertEqual(policy.decide([tokenHit], limit: 4, queryTerms: terms), .sufficient([tokenHit]))
+        // Without query terms the criterion is simply off, so the old two-argument gate is intact.
+        XCTAssertEqual(policy.decide([offTopic], limit: 4), .sufficient([offTopic]))
+    }
+
+    func testPolicyDefaultsAreChosenPerEmbeddingBackend() {
+        let word = RetrievalEvidencePolicy.default(for: "nl-word.en")
+        XCTAssertEqual(word.minSharedTerms, 3, "the measured backend carries the lexical criterion")
+        XCTAssertEqual(word.similarityFloor, 0.30)
+        for unmeasured in ["nl-sentence.en", "nl-contextual.multi_v1"] {
+            XCTAssertEqual(RetrievalEvidencePolicy.default(for: unmeasured), RetrievalEvidencePolicy(),
+                           "unmeasured backends keep today's gate rather than a guess: \(unmeasured)")
+        }
     }
 
     func testRenderingStatesInsufficiencyExplicitly() {

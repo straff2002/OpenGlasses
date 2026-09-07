@@ -129,7 +129,8 @@ struct VaultRetriever {
         let candidates = Array(merged.values)
         let ranked = candidates.filter { !$0.matchedTokens.isEmpty }.sorted(by: precedes)
             + candidates.filter { $0.matchedTokens.isEmpty }.sorted(by: precedes)
-        return policy.decide(ranked, limit: request.limit)
+        return policy.decide(ranked, limit: request.limit,
+                             queryTerms: LexicalSupport.contentTerms(parts.joined(separator: " ")))
     }
 
     private func scored(_ raw: DocumentStore.Passage, matched: [String]) -> Passage {
@@ -189,30 +190,86 @@ enum RetrievalOutcome: Equatable {
     }
 }
 
-/// The evidence gate. A passage counts as evidence when its embedding similarity clears the floor
-/// **or** it contains a code-like token from the request verbatim — an exact fault-code hit is
-/// strong evidence even at a low cosine. Nothing counts → the fixed insufficient sentence, which
-/// the vault's prompt rules already tell the model to relay rather than improve on.
+/// The evidence gate. A passage counts as evidence when it contains a code-like token from the
+/// request verbatim — an exact fault-code hit is strong evidence even at a low cosine — or when it
+/// clears every similarity-side criterion below. Nothing counts → the fixed insufficient sentence,
+/// which the vault's prompt rules already tell the model to relay rather than improve on.
+///
+/// Three criteria, each independently switchable so a backend can use only what its scores support:
+/// - `similarityFloor` — an absolute cosine floor.
+/// - `margin` — a *relative* criterion: within `margin` of the best passage in the ranked list.
+///   Note what this can and cannot do: the best passage always satisfies it, so a margin trims a
+///   weak tail but can never on its own make a query insufficient.
+/// - `minSharedTerms` — [[LexicalSupport]] content-word overlap with the question.
+///
+/// **Measured, not assumed** (2026-09-07, simulator, `nl-word.en`, the Lennox SLP99 manual pair,
+/// 685 chunks, 12 in-scope and 12 out-of-scope questions):
+/// similarity was flat and the two sides overlapped completely — positives min 0.838 / median 0.888
+/// / max 0.917, negatives min 0.846 / median 0.876 / max 0.897 — so neither the floor nor the margin
+/// can separate them at any setting, and the shipped 0.30 floor refused nothing at all. Only the
+/// lexical criterion moves insufficiency recall off zero. See `RetrievalGateCalibrationTests`
+/// for the instrument and `docs/plans/EJ-manual-retrieval-fidelity.md` §2 for the table.
 struct RetrievalEvidencePolicy: Equatable {
     var similarityFloor: Float = 0.30
+    /// Maximum shortfall from the best passage's similarity. `.infinity` disables the criterion.
+    var margin: Float = .infinity
+    /// Content terms a non-token passage must share with the question. 0 disables the criterion.
+    var minSharedTerms: Int = 0
     var tokenBoost: Float = 0.25
     var maxBoost: Float = 0.5
 
     static let insufficientSentence =
         "The loaded manuals do not cover this. Ask the technician for the model number, or recommend escalation rather than guessing."
 
-    init(similarityFloor: Float = 0.30, tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {
+    init(similarityFloor: Float = 0.30, margin: Float = .infinity, minSharedTerms: Int = 0,
+         tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {
         self.similarityFloor = similarityFloor
+        self.margin = margin
+        self.minSharedTerms = minSharedTerms
         self.tokenBoost = tokenBoost
         self.maxBoost = maxBoost
     }
 
-    func isEvidence(_ passage: VaultRetriever.Passage) -> Bool {
-        passage.similarity >= similarityFloor || !passage.matchedTokens.isEmpty
+    /// The defaults measured for an embedding backend, chosen by [[Embedder]] `modelId` prefix.
+    ///
+    /// - `nl-word` — **measured** on the Lennox pair (see the type's doc comment). The floor stays
+    ///   at 0.30 because nothing in that backend's range is near it, the margin stays off because a
+    ///   relative criterion cannot reject a query, and `minSharedTerms` is 3 — the measured knee:
+    ///   1 shared term refuses 1 out-of-scope question in 6, 3 refuses 2 in 3 while *raising*
+    ///   recall@4 (off-topic passages stop crowding the top four), and 4 refuses all of them but
+    ///   also a sixth of the in-scope ones and drops recall@4 from 0.83 to 0.58. A technician who
+    ///   has to rephrase is recoverable; one third of out-of-scope questions still getting an
+    ///   answer is the residue, and the vault's prompt rules and citations carry it from there.
+    /// - `nl-sentence`, `nl-contextual` — **unmeasured — device run pending.** Left at today's
+    ///   values (floor 0.30, no margin, no lexical criterion) rather than guessed: their cosines
+    ///   span a different range and the lexical rule may be unnecessary once similarity separates.
+    static func `default`(for modelId: String) -> RetrievalEvidencePolicy {
+        if modelId.hasPrefix("nl-word") {
+            return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3)
+        }
+        return RetrievalEvidencePolicy()
     }
 
-    func decide(_ ranked: [VaultRetriever.Passage], limit: Int) -> RetrievalOutcome {
-        let evidence = ranked.filter(isEvidence)
+    /// Whether a passage is evidence. `bestSimilarity` and `queryTerms` are what the relative and
+    /// lexical criteria need; omitting either switches that criterion off, so the two-argument form
+    /// is exactly the original floor-or-token gate.
+    func isEvidence(_ passage: VaultRetriever.Passage,
+                    bestSimilarity: Float? = nil,
+                    queryTerms: Set<String>? = nil) -> Bool {
+        if !passage.matchedTokens.isEmpty { return true }
+        guard passage.similarity >= similarityFloor else { return false }
+        if let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
+        if minSharedTerms > 0, let queryTerms {
+            guard LexicalSupport.sharedTermCount(text: passage.text, queryTerms: queryTerms) >= minSharedTerms else {
+                return false
+            }
+        }
+        return true
+    }
+
+    func decide(_ ranked: [VaultRetriever.Passage], limit: Int, queryTerms: Set<String>? = nil) -> RetrievalOutcome {
+        let best = ranked.map(\.similarity).max()
+        let evidence = ranked.filter { isEvidence($0, bestSimilarity: best, queryTerms: queryTerms) }
         guard !evidence.isEmpty else { return .insufficient(reason: Self.insufficientSentence) }
         return .sufficient(Array(evidence.prefix(max(limit, 1))))
     }
