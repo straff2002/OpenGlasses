@@ -1,0 +1,172 @@
+# Plan EM — Work Record and Parts (what was recommended, what was done, what base needs)
+
+**Status:** 📋 Planned 2026-09-07. Sequenced after [Plan EL](EL-equipment-identity.md) so the record
+carries the equipment identity; builds on [Plan EK](EK-manual-structure-and-figures.md) P3's
+verified-page audit trail. Independent of [Plan BL](BL-ops-platform-agent-bridge.md) but is the
+payload BL will carry.
+**Origin:** With EJ/EK/EL a Field Assist session can answer from the manuals, show the page, and
+know which machine it is talking about. Nothing ties that to a decision. The session audit log
+records questions, answers, tool calls, photos, procedure steps and outcomes, citations and
+escalations, and exports as PDF; procedures end in a named outcome; capture flows record typed
+readings; the offline queue syncs typed operations to a configured sink. There is no object that
+says *the assistant recommended replacing the flame sensor, the technician accepted, here is the
+evidence it was done, here are the parts to order*. That object is what a job system, a dispatcher
+or a customer's compliance reviewer wants back from a site visit — and the part numbers on it are
+what base validates against stock.
+**Priority:** P1 for the Field Assist commercial track: it is the deliverable a paying customer
+receives per job.
+**Surfaces:** Session state, three tools, the export, the offline queue, the share/compose paths;
+a task list on the session screen in P2. Voice-first throughout.
+
+Decisions taken with the product owner (2026-09-07): a task may be created by the operator without
+a recommendation; a parts request may be raised without an active task (it is tagged to the job);
+base's stock answer is **reported to the technician, never allowed to change a recommendation**;
+a model-written summary is never the record — the deterministic summary is, and a model paraphrase
+may sit beside it, labelled.
+
+---
+
+## Verified starting point
+
+- `FieldSession` (`Codable`, synthesized keys) has `assetId`, mode, outcome, location, escalations,
+  billable time. `SessionLogger` has typed events with payloads; `SessionExport` renders transcript,
+  photos, procedure runs, capture runs, citations, escalations to JSON and PDF via `SessionExporter`.
+- `ProcedureRunner` completes with an `outcome` string; `ProcedureLibrary` loads a vault's
+  procedures; `CaptureFlow` records typed fields against an asset (`CaptureRecord` →
+  `captureRecordSaved` event, `QueuedOp.captureRecord`).
+- `OfflineQueue` / `QueuedOp` (`logEntry`, `photoUpload`, `llmGrounding`, `auditExport`,
+  `captureRecord`) with pending / in-flight / done / conflict / failed states and a configured sink.
+- Delivery today: the session export leaves through the system share sheet (`ShareSheet`, so Mail,
+  Messages, AirDrop, Files, installed apps, with the PDF attached); `send_via` opens email, WhatsApp
+  or Telegram by URL scheme (text only, no attachment).
+- The vault already carries part numbers as prose: the Lennox example's `models.md` lists
+  conversion kits (`65W77`, `20A26`, `20A88`, `20A89`), high-altitude pressure switches (`14T65`,
+  `20A87`), the pressure test adapter `10L34`, transformer kit `27J32`, sensor kit `27V53`; the
+  installation instructions carry a repair parts list (p.69) and the integrated control's own part
+  number on its diagram (p.44). `CodeTokenizer` recognises them as code-like; nothing indexes them.
+- Organisation profiles ([Plan CT](CT-org-configuration-profiles.md)) can carry per-org settings;
+  nothing carries delivery destinations yet.
+
+## Product promise
+
+"Every recommendation is a task the technician accepts or declines by voice. Every task done carries
+its evidence. Every part named comes from the book. At the end of the job the record goes to base
+by whatever channel the organisation uses, and base's answer about parts comes back to the glasses."
+
+## Design
+
+### 1 · Recommendation as a structured act
+
+A `propose_task` tool the model calls instead of recommending in prose: `title`, `why`,
+`procedure_id` (optional; must exist in the vault), `parts` (part numbers; each verified against the
+vault, see §4), `safety_note`, `citation`. The tool validates (procedure exists, parts resolve),
+records a `Task` in state `recommended`, and returns the sentence to speak: *"I recommend checking the
+pressure switch tubing. Say 'do it' to add it to the job."* A recommendation without a citation is
+refused by the tool — the model may only recommend what it can cite.
+
+### 2 · The operator decides, and the evidence attaches
+
+`Task` (`Codable`): id, title, why, origin (`recommended` | `operator`), status
+(`recommended` → `accepted` | `declined` | `deferred`; `accepted` → `in_progress` → `done` |
+`abandoned`), linked `procedureId` and its outcome, `parts` (numbers, verified flag, page),
+`readings` (capture-record ids), `photos`, `citationsOpened` / `pagesVerified` (EK P3 events),
+`completionNote` (what the technician said they did), timestamps and elapsed time.
+
+A `task` tool handles the voice verbs: *"do it"* / *"skip that"* / *"later"* on the latest
+recommendation; *"add a task: cleaned the condensate trap"* creates an operator task already
+`in_progress`; *"done"* / *"replaced the ignitor, 47 ohms before"* closes the active task with the
+note. Accepting a task with a procedure starts it; the procedure's terminal outcome closes the task.
+Readings, photos and verified pages recorded while a task is active attach to it; with none active
+they attach to the job. Declines and deferrals are kept — "recommended, not done" is information.
+
+### 3 · Job and work record
+
+`FieldSession` gains `jobReference: String?` (entered at start by voice or from an organisation
+profile QR; `assetId` stays) and `tasks: [Task]`, `partsRequests: [PartsRequest]`,
+`equipment` (from EL). `WorkRecord` is assembled deterministically at session end (and on demand:
+*"read back the job"*): equipment identity (model, serial, board part number, firmware/version,
+refrigerant — each with source and time), tasks by status with evidence, readings before/after,
+parts used and requested, pages verified against the manufacturer's document, time per task,
+escalations, and what was declined. The technician hears it and confirms before anything leaves
+(*"send it"*). An optional model paraphrase can be attached, labelled as such; it is never the
+record.
+
+### 4 · Parts and device identity base can trust
+
+- **Parts convention in the vault.** A `parts.md` core file (or `## Parts` sections per model)
+  with `| Part | Description | Fits | Supersedes |`. `VaultPartsIndex` — pure over the core files
+  like EL's model index — maps part tokens to description, models and file/heading. The Lennox
+  example gets one built from its accessories and conversion tables; the guide tells authors how.
+- **Verification before it is written.** A part number named by the model or the technician is
+  looked up as an exact token in the parts index, then the manuals (`passages(containingToken:)`),
+  and recorded with the page it was found on. A number nothing knows is recorded as **unverified**
+  and spoken as such — base validates a number that came from the book, not from a misheard sentence.
+- **Device identity fields.** Model and serial from the nameplate (on-device text recognition, read
+  back for confirmation before recording, because digits are where recognition fails quietly);
+  board/component part number and firmware or software version where the technician can see them;
+  refrigerant type and charge from the plate. Each is a named field with `source`
+  (`nameplate` | `spoken` | `display`) and time. EL's identity supplies the model.
+- **`PartsRequest`**: part number, description, quantity, `taskId` (optional), model it fits,
+  urgency, `onVan: Bool`, verified flag and page, status (`requested` → `sent` → `answered`) and
+  base's answer text when one arrives. Raised by voice (*"request two 14T65 pressure switches for
+  this job"*) or from an accepted task that names a part. Goes out with the work record and on its
+  own as a queued operation, so a stock check can leave before the job is finished.
+- **Base's answer is reported, not acted on.** When a reply arrives (BL's bridge; until then a
+  message read out like any other), it is spoken and attached to the request. It never changes a
+  task or a recommendation by itself.
+
+### 5 · Delivery: by whatever channel the organisation uses
+
+One record, three shapes from the same data: PDF for a person, structured JSON for a system, a short
+plain summary for a message body. They cannot disagree.
+
+- **Composer, with the operator's thumb on Send.** *"Send the job report to base"* / *"email this
+  to the office"* opens the in-app Mail or Messages composer (`MFMailComposeViewController` /
+  `MFMessageComposeViewController`) with recipient, subject and summary pre-filled and the PDF and
+  JSON attached. iOS requires the person to tap Send — which is the human-in-the-loop step.
+  WhatsApp / Telegram through the existing `send_via` get the summary text and job reference (their
+  schemes cannot attach a file). The share sheet remains for everything else.
+- **Recipients from the organisation.** The CT profile gains `delivery`: default addresses and
+  numbers, an endpoint, and the channels allowed (site data is the organisation's call). The
+  technician can override by naming a contact through the existing contact lookup.
+- **Unattended delivery.** `QueuedOp.workRecord` and `QueuedOp.partsRequest` through the offline
+  queue to the organisation's endpoint (which emails or files server-side), and to the operations
+  platform when BL lands. Composer and queue are not exclusive: a record can go both ways.
+- **Nothing is silently lost.** A dismissed composer leaves the record `pending` in the queue view;
+  the session card shows unsent records; "send it" retries.
+
+## Phases
+
+- **P1 — pure core (one PR).** `Task`, `PartsRequest`, `WorkRecord` and its deterministic
+  renderers (summary, JSON, PDF section), `VaultPartsIndex` + verification, device identity fields,
+  `propose_task` / `task` / `parts_request` tools, session fields and events, `QueuedOp` kinds.
+  Headless tests: the full task state machine by voice verbs; recommendation refused without a
+  citation or with an unknown procedure; parts verified / unverified from the Lennox core and
+  manuals; the record rendered from a scripted session; old sessions decode without the new fields;
+  export includes tasks and parts.
+- **P2 — delivery and surface (one PR).** Composer paths with attachments, CT profile `delivery`,
+  channel restrictions, queue view for pending records, the session screen's task list and read-back,
+  HUD line for the active task, guide section for `parts.md` and delivery setup. Live edge: one
+  real email and one real message from a device, recorded when run.
+- **P3 — with BL.** Post the record and parts requests to the operations platform; speak its
+  answers. Deferred to BL's own phases.
+
+## Acceptance
+
+- A scripted session on the Lennox vault: the model proposes "check pressure switch tubing" with
+  the procedure and `14T65`; "do it" starts the procedure; its outcome closes the task; "request
+  two 14T65 for this job" creates a verified request citing the manual page; "add a task: cleaned
+  the condensate trap" and "done" record an operator task; the read-back names all three with their
+  status; the export carries them; an unknown part `99Z99` is recorded unverified and spoken as such.
+- No task, request or record ever leaves the device without either the operator's Send tap or a
+  configured endpoint under the organisation profile.
+- Bundled vaults without a parts file behave as before; every existing test stays green.
+
+## Risks and non-goals
+
+- **Voice verbs are ambiguous** ("done" could close a task or a procedure step). The tool resolves
+  against the active task first and confirms aloud what it closed.
+- **A parts index cannot know stock or price**; the record says what the book says and what the
+  technician asked for. Stock is base's answer.
+- **Not in scope.** Scheduling, invoicing, a general job list across sessions (a job here is one
+  session's reference), and any change to the live Gemini / OpenAI sessions.
