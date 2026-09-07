@@ -89,6 +89,12 @@ final class RetrievalGateCalibrationTests: XCTestCase {
         "refrigerant charge weight",
         "defrost board wiring",
         "duct sizing chart",
+        // Model-bearing out-of-scope questions (Plan EL). Every one asks about a subject this
+        // furnace manual genuinely covers, on a machine it does not — the residue no lexical rule
+        // can reach, and the only kind equipment identity can (the Carrier 58MVB question above is
+        // one of them, and was in the set before this plan existed).
+        "what is the defrost board wiring on a Trane XR15",
+        "which pressure switch does a Goodman GMVC96 take",
     ]
 
     /// The gate variants compared. `margin` and `minSharedTerms` are switched on one at a time so
@@ -293,6 +299,62 @@ final class RetrievalGateCalibrationTests: XCTestCase {
             XCTAssertLessThanOrEqual(chosen.falseRefusals, flat.falseRefusals,
                                      "scaling the count must refuse no more in-scope questions than the flat count")
         }
+    }
+
+    // MARK: - Identity (Plan EL)
+
+    /// The same instrument with the equipment check in front of it: how many out-of-scope questions
+    /// are refused when the gate is the only thing standing there, and how many when the question's
+    /// *subject equipment* is compared against the vault's models first.
+    func testEquipmentIdentityRefusesWhatWordOverlapCannot() async throws {
+        let store = try await ingestManuals()
+        let index = try lennoxCoreIndex()
+        let policy = RetrievalEvidencePolicy.default(for: Embedder().modelId)
+        let open = retriever(over: store, policy: RetrievalEvidencePolicy(similarityFloor: 0))
+
+        func gateRefuses(_ query: String) -> Bool {
+            !policy.decide(open.retrieve(.init(turn: query, limit: 25)).passages, limit: 4,
+                           queryTerms: LexicalSupport.contentTerms(query)).isSufficient
+        }
+        func identityRefuses(_ query: String) -> String? {
+            EquipmentScopeCheck.check(text: query, index: index, active: nil).refusalSentence
+        }
+
+        let gateOnly = Self.negatives.filter { gateRefuses($0) }
+        let withIdentity = Self.negatives.filter { gateRefuses($0) || identityRefuses($0) != nil }
+        let refusedInScope = Self.positives.filter { identityRefuses($0.query) != nil }
+
+        print("[GATE] identity off | insufficiency recall "
+              + "\(fmt(Float(gateOnly.count) / Float(Self.negatives.count))) (\(gateOnly.count)/\(Self.negatives.count))")
+        print("[GATE] identity on  | insufficiency recall "
+              + "\(fmt(Float(withIdentity.count) / Float(Self.negatives.count))) (\(withIdentity.count)/\(Self.negatives.count))")
+        print("[GATE] identity adds: \(withIdentity.filter { !gateOnly.contains($0) })")
+        print("[GATE] still answered with identity on: \(Self.negatives.filter { !withIdentity.contains($0) })")
+
+        // The scope check is a claim about the equipment, not about the words, so it must cost
+        // nothing on the in-scope side: not one question about this furnace may be turned away by it.
+        XCTAssertTrue(refusedInScope.isEmpty, "identity refuses in-scope questions: \(refusedInScope.map(\.query))")
+        XCTAssertGreaterThan(withIdentity.count, gateOnly.count,
+                             "identity must reject questions the measured gate lets through")
+
+        // Named, because these are the exact questions Plan EJ §2 recorded as unreachable.
+        for query in ["how do I replace the heat exchanger on a Carrier 58MVB",
+                      "what is the defrost board wiring on a Trane XR15",
+                      "which pressure switch does a Goodman GMVC96 take"] {
+            let sentence = try XCTUnwrap(identityRefuses(query), query)
+            XCTAssertTrue(sentence.hasPrefix("The loaded manuals cover Lennox SLP99 Furnace Service models"), sentence)
+        }
+    }
+
+    /// The example vault's core, read off disk — the same headings the app's index is built from.
+    private func lennoxCoreIndex() throws -> VaultModelIndex {
+        let dir = Self.documentsDirectory.deletingLastPathComponent()
+        let manifest = try JSONDecoder().decode(
+            VaultManifest.self, from: Data(contentsOf: dir.appendingPathComponent("manifest.json")))
+        let files = try manifest.files.map {
+            (filename: $0, contents: try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8))
+        }
+        return VaultModelIndex(vaultName: manifest.name, files: files)
     }
 
     // MARK: - Helpers
