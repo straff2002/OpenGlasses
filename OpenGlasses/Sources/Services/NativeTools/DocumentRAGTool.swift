@@ -94,7 +94,7 @@ struct DocumentRAGTool: NativeTool {
             "[\(i + 1)] From \"\(p.documentName)\" (\(locator(for: p)), score \(String(format: "%.2f", p.similarity))):\n\(p.text)"
         }.joined(separator: "\n\n")
 
-        return "Relevant passages for '\(query)' — answer using only these, and cite the document name and (when shown) the page/section:\n\n\(body)"
+        return "Relevant passages for '\(query)' — answer using only these, and cite the document name and (when shown) the page, figure or section:\n\n\(body)"
     }
 
     /// A speakable source locator for a passage: page, then whichever of the figure or the section
