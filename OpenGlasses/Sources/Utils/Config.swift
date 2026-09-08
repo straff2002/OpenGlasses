@@ -31,6 +31,7 @@ struct Config {
         "homeAssistantToken",
         "broadcastStreamKey",
         "expertTurnCredential",
+        "fieldAssistDeliveryToken",
     ]
 
     /// JSON `Data` blobs that embed secrets (provider API keys, gateway tokens, MCP
@@ -3528,6 +3529,20 @@ struct Config {
 
     static func setFieldAssistDefaultMode(_ mode: String) {
         UserDefaults.standard.set(mode, forKey: "fieldAssistDefaultMode")
+    }
+
+    // MARK: - Field Assist job reports (Plan EM P2)
+
+    /// Where a finished job report may go, and to whom. The endpoint's bearer token lives in the
+    /// Keychain (`DeliverySettings.load()` fetches it); everything else is an ordinary preference
+    /// beside the rest of Field Assist. An organisation profile is where these belong eventually —
+    /// see `DeliverySettings.applying(organisation:)`.
+    static var deliverySettings: DeliverySettings {
+        DeliverySettings.load()
+    }
+
+    static func setDeliverySettings(_ settings: DeliverySettings) {
+        settings.save()
     }
 
     // MARK: - Agent Check Intervals

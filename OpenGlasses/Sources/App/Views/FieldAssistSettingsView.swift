@@ -20,6 +20,18 @@ struct FieldAssistSettingsView: View {
     @State private var exportError: String?
     /// Whether the equipment row is showing its heading and provenance (Plan EL P2).
     @State private var equipmentExpanded = false
+    /// Where job reports may go, and to whom (Plan EM P2).
+    @State private var delivery = DeliverySettings()
+    /// The recipient fields as typed. Kept raw so the list is only parsed on the way out — a
+    /// getter that re-joins what you are typing eats the comma you just pressed.
+    @State private var emailRecipientsText = ""
+    @State private var messageRecipientsText = ""
+    /// The task whose detail is open on the session card.
+    @State private var expandedTaskId: String?
+    /// The read-back, shown as well as spoken — a technician confirms what they can see.
+    @State private var readBack: [String]?
+    /// Why a report could not be staged, in the policy's own words.
+    @State private var deliveryError: String?
 
     var body: some View {
         Form {
@@ -176,6 +188,9 @@ struct FieldAssistSettingsView: View {
                     Text("Optional. When a technician escalates, the expert pool is paged with the live join URL via this Slack-compatible webhook (in addition to an on-device notification).")
                 }
 
+                // ──────────────── Job reports (Plan EM P2)
+                jobReportSection
+
                 // ──────────────── Active session
                 Section("Active Session") {
                     if let session = sessionService.activeSession {
@@ -194,6 +209,8 @@ struct FieldAssistSettingsView: View {
                         }
 
                         equipmentRows
+
+                        taskRows
 
                         HStack {
                             Button(session.pausedAt == nil ? "Pause" : "Resume") {
@@ -251,6 +268,9 @@ struct FieldAssistSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
         .onAppear {
+            delivery = Config.deliverySettings
+            emailRecipientsText = delivery.emailRecipients.joined(separator: ", ")
+            messageRecipientsText = delivery.messageRecipients.joined(separator: ", ")
             license.loadStored()
             // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.
             if enabled && !Config.fieldAssistUnlocked { enabled = false }
@@ -258,10 +278,234 @@ struct FieldAssistSettingsView: View {
         .sheet(item: $shareItem) { item in
             ShareSheet(items: item.items)
         }
+        .sheet(isPresented: Binding(get: { readBack != nil }, set: { if !$0 { readBack = nil } })) {
+            readBackSheet
+        }
         .alert("Export failed", isPresented: .constant(exportError != nil)) {
             Button("OK") { exportError = nil }
         } message: {
             Text(exportError ?? "")
+        }
+        .alert("Can't send that report", isPresented: .constant(deliveryError != nil)) {
+            Button("OK") { deliveryError = nil }
+        } message: {
+            Text(deliveryError ?? "")
+        }
+    }
+
+    // MARK: - Job reports (where the finished record goes)
+
+    /// Recipients, the organisation's endpoint, and which channels a report may use.
+    ///
+    /// Local for now. These are the organisation's call rather than each technician's — site data
+    /// usually is — and an organisation profile is where they will come from; the merge rule is
+    /// already written (`DeliverySettings.applying(organisation:)`), so this screen becomes the
+    /// override rather than the source.
+    @ViewBuilder
+    private var jobReportSection: some View {
+        Section {
+            TextField("office@example.com, dispatch@example.com", text: $emailRecipientsText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.emailAddress)
+                .onChange(of: emailRecipientsText) { _, value in
+                    delivery.emailRecipients = Self.recipients(from: value)
+                    Config.setDeliverySettings(delivery)
+                }
+            TextField("+64 21 000 000", text: $messageRecipientsText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.phonePad)
+                .onChange(of: messageRecipientsText) { _, value in
+                    delivery.messageRecipients = Self.recipients(from: value)
+                    Config.setDeliverySettings(delivery)
+                }
+        } header: {
+            Text("Job Reports")
+        } footer: {
+            Text("Where a finished job report goes when nobody names anybody. The first line is email, the second is Messages; separate several with commas. Saying \u{201C}send the job report to base\u{201D} fills the composer in and you tap Send.")
+        }
+
+        Section {
+            TextField("https://ops.example.com/job-reports", text: Binding(
+                get: { delivery.endpoint },
+                set: { delivery.endpoint = $0; Config.setDeliverySettings(delivery) }))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            SecureField("Bearer token (optional)", text: Binding(
+                get: { delivery.endpointToken },
+                set: { delivery.endpointToken = $0; Config.setDeliverySettings(delivery) }))
+        } header: {
+            Text("Office Endpoint")
+        } footer: {
+            Text("Optional. With an endpoint set, job records and parts requests are posted there through the offline queue — no tap needed — and retried until they arrive. The token is kept in the Keychain, never in preferences.")
+        }
+
+        Section {
+            ForEach(DeliveryChannel.allCases) { channel in
+                Toggle(channel.label, isOn: Binding(
+                    get: { delivery.allowedChannels.contains(channel) },
+                    set: { allowed in
+                        if allowed { delivery.allowedChannels.insert(channel) }
+                        else { delivery.allowedChannels.remove(channel) }
+                        Config.setDeliverySettings(delivery)
+                    }))
+                    .tint(AppAccent.color)
+                    .disabled(channel == .endpoint && !delivery.hasEndpoint)
+            }
+        } header: {
+            Text("Allowed Channels")
+        } footer: {
+            Text("Which routes a job report may leave by. Site data is the organisation's call — switch a channel off and the assistant refuses it out loud and names the ones that are allowed. The endpoint becomes available once one is configured above.")
+        }
+    }
+
+    /// "office@x, dispatch@y" → two recipients; blank entries are dropped rather than stored.
+    static func recipients(from raw: String) -> [String] {
+        raw.split(whereSeparator: { $0 == "," || $0 == ";" || $0 == "\n" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    // MARK: - Tasks (what was recommended, decided and done)
+
+    /// The job's tasks on the session card, with the read-back and the report button beside them.
+    /// P1 recorded all of this and showed none of it; a wrong decision needs a screen to be seen on.
+    @ViewBuilder
+    private var taskRows: some View {
+        let model = TaskSectionModel(host: sessionService, unsentCount: unsentRecordCount)
+        let rows = model.rows
+
+        HStack {
+            Text(rows.isEmpty ? "Tasks" : "Tasks — \(model.headline)")
+                .font(.subheadline)
+            Spacer()
+        }
+
+        if rows.isEmpty {
+            Text(model.emptyMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(rows) { row in
+                Button {
+                    expandedTaskId = (expandedTaskId == row.id) ? nil : row.id
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.title)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(row.statusLabel)
+                                .font(.caption2.weight(.medium))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                                .foregroundStyle(.secondary)
+                        }
+                        if let evidence = row.evidence {
+                            Text(evidence).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if expandedTaskId == row.id {
+                            if row.isOperatorAdded {
+                                Text("Added by the technician").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let why = row.why {
+                                Text("Why: \(why)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let procedure = row.procedureLine {
+                                Text(procedure).font(.caption).foregroundStyle(.secondary)
+                            }
+                            ForEach(row.parts, id: \.self) { part in
+                                Text("Part: \(part)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let note = row.completionNote {
+                                Text("Note: \(note)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let citation = row.citation {
+                                Text("Cited \(citation)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let safety = row.safetyNote {
+                                Text(safety).font(.caption).foregroundStyle(OGTheme.warnLabel)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let unsent = model.unsentLine {
+            Text(unsent)
+                .font(.caption)
+                .foregroundStyle(OGTheme.warnLabel)
+        }
+
+        HStack {
+            Button("Read back the job") {
+                let model = TaskSectionModel(host: sessionService)
+                readBack = model.readBack
+                if let speech = model.readBackSpeech {
+                    Task { await appState.speechService.speak(speech) }
+                }
+            }
+            .buttonStyle(.bordered)
+            .font(.subheadline)
+
+            Spacer()
+
+            Button("Send report…") { sendReport() }
+                .buttonStyle(.bordered)
+                .font(.subheadline)
+        }
+    }
+
+    /// The read-back on screen as well as in the ear — a technician confirms what they can see.
+    @ViewBuilder
+    private var readBackSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array((readBack ?? []).enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.callout)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle("The job so far")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { readBack = nil }
+                }
+            }
+        }
+    }
+
+    /// How many of this job's records the queue is still holding.
+    private var unsentRecordCount: Int {
+        guard let id = sessionService.activeSession?.id else { return 0 }
+        return QueuedRecordRows.outstandingCount(in: appState.offlineQueue.all(limit: 200), sessionId: id)
+    }
+
+    /// Stage the default delivery — the same route the spoken "send the job report" takes, so the
+    /// button and the sentence cannot end up doing different things.
+    private func sendReport() {
+        guard let record = sessionService.workRecord() else { return }
+        let policy = DeliveryPolicy(settings: Config.deliverySettings)
+        guard let channel = policy.defaultChannel else {
+            deliveryError = "No channel is allowed for job reports. Set one up under Job Reports above."
+            return
+        }
+        switch policy.decide(channel: channel) {
+        case .refused(let reason):
+            deliveryError = reason
+        case .allowed(let recipients):
+            sessionService.stageDelivery(DeliveryRequest.make(
+                record: record, channel: channel, recipients: recipients,
+                attachments: sessionService.reportAttachments()))
         }
     }
 

@@ -8,6 +8,8 @@ struct SyncStatusView: View {
     @ObservedObject private var engine: SyncEngine
     @ObservedObject private var reachability: Reachability
     @State private var ops: [QueuedOp] = []
+    /// The job records and stock checks that have not reached anybody (Plan EM P2).
+    @State private var records: [QueuedRecordRow] = []
 
     init(engine: SyncEngine, reachability: Reachability) {
         _engine = ObservedObject(wrappedValue: engine)
@@ -37,6 +39,45 @@ struct SyncStatusView: View {
                 .disabled(engine.isFlushing || !reachability.isOnline || appState.offlineQueue.pendingCount == 0)
             }
 
+            if !records.isEmpty {
+                Section {
+                    ForEach(records) { row in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(row.title).font(.subheadline)
+                                Spacer()
+                                stateBadge(row.state)
+                            }
+                            Text(row.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if row.attempts > 0 {
+                                Text("\(row.attempts) attempt\(row.attempts == 1 ? "" : "s") so far")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            HStack(spacing: 16) {
+                                Button("Retry") { retry(row) }
+                                    .buttonStyle(.bordered)
+                                    .font(.subheadline)
+                                if row.canDeliver {
+                                    Button("Send by email instead") {
+                                        appState.deliverQueuedRecord(row)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .font(.subheadline)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } header: {
+                    Text("Job Reports Not Yet Sent")
+                } footer: {
+                    Text("A record stays here until the office has it. Retry sends it again through the queue; sending it by email opens the composer with the record in the body, and you tap Send.")
+                }
+            }
+
             Section("Queue") {
                 if ops.isEmpty {
                     Text("Nothing queued — you're all caught up.")
@@ -63,7 +104,20 @@ struct SyncStatusView: View {
         .onAppear(perform: reload)
     }
 
-    private func reload() { ops = appState.offlineQueue.all(limit: 100) }
+    private func reload() {
+        ops = appState.offlineQueue.all(limit: 100)
+        records = QueuedRecordRows.rows(from: ops)
+    }
+
+    /// Put a row back in the queue and drain it. `attempts` resets, because a technician asking
+    /// again is a fresh try, not the seventh of six.
+    private func retry(_ row: QueuedRecordRow) {
+        appState.offlineQueue.mark(row.id, state: .pending, attempts: 0)
+        Task {
+            await appState.syncEngine.flush()
+            reload()
+        }
+    }
 
     private func label(for kind: OpKind) -> String {
         switch kind {

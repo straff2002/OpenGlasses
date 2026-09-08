@@ -108,6 +108,10 @@ final class FieldSessionService: ObservableObject {
         modelIndex = VaultModelIndex(store: store)
         partsIndex = VaultPartsIndex(store: store)
         activeEquipment = nil
+        stagedDelivery = nil
+        lastDeliveryCancelled = false
+        taskCue = nil
+        deliveryLogger = nil
         library = ProcedureLibrary(store: store)
         let newLogger = SessionLogger(session: session, root: sessionsRoot.appendingPathComponent(session.id, isDirectory: true))
         logger = newLogger
@@ -192,6 +196,9 @@ final class FieldSessionService: ObservableObject {
         partsIndex = VaultPartsIndex(files: [])
         stagedFigure = nil
         lastShownFigure = nil
+        stagedDelivery = nil
+        taskCue = nil
+        deliveryLogger = logger
         self.logger = nil
         lastResumeAt = nil
         runner = nil
@@ -390,6 +397,7 @@ final class FieldSessionService: ObservableObject {
         logger?.append(.init(timestamp: now, kind: .taskStarted, text: title,
                              payload: ["task_id": AnyCodable(task.id),
                                        "origin": AnyCodable(task.origin.rawValue)]))
+        raiseTaskCue(task, phase: .started)
         return task
     }
 
@@ -448,6 +456,7 @@ final class FieldSessionService: ObservableObject {
         }
 
         let updated = task(id: id) ?? existing
+        if updated.status == .inProgress { raiseTaskCue(updated, phase: .started) }
         logger?.append(.init(timestamp: now, kind: .taskDecision, text: updated.title, payload: [
             "task_id": AnyCodable(id),
             "decision": AnyCodable(decision.rawValue),
@@ -473,6 +482,7 @@ final class FieldSessionService: ObservableObject {
         let updated = task(id: id) ?? existing
         logger?.append(.init(timestamp: now, kind: .taskStarted, text: updated.title,
                              payload: ["task_id": AnyCodable(id)]))
+        raiseTaskCue(updated, phase: .started)
         return updated
     }
 
@@ -512,6 +522,7 @@ final class FieldSessionService: ObservableObject {
             "note": AnyCodable(note ?? ""),
             "outcome": AnyCodable(updated.procedureOutcome ?? "")
         ]))
+        raiseTaskCue(updated, phase: status == .done ? .done : .abandoned)
         return updated
     }
 
@@ -601,6 +612,111 @@ final class FieldSessionService: ObservableObject {
         // Time on site as it is right now, without disturbing the session's own accounting.
         if let lastResumeAt { snapshot.billableSeconds += Date().timeIntervalSince(lastResumeAt) }
         return WorkRecord(session: snapshot, vaultName: activeVault?.manifest.name ?? session.vaultId)
+    }
+
+    // MARK: Delivery (Plan EM P2)
+
+    /// The report waiting for the operator's thumb, or nil when none is.
+    ///
+    /// Published, and staged rather than sent: the app root subscribes and opens the composer, the
+    /// same way a staged figure reaches the phone. `deliver_report` never presents anything itself,
+    /// so it behaves identically with no app around it.
+    @Published private(set) var stagedDelivery: DeliveryRequest?
+
+    /// True once a composer was dismissed without sending. The session card says so, because a
+    /// record nobody sent is the one thing a technician must not discover a week later.
+    @Published private(set) var lastDeliveryCancelled = false
+
+    /// The line the lens flashes when a task starts or closes, or nil when nothing has happened.
+    @Published private(set) var taskCue: TaskHUDCue.Cue?
+
+    /// The logger of the session a report belongs to, kept alive past `endSession` so a composer
+    /// still open when the session closes can still write its outcome into that session's log.
+    /// Appending is all it is used for — the session metadata is already final.
+    private var deliveryLogger: SessionLogger?
+
+    /// Where a report's files come from. Overridable so a headless test can stage a delivery
+    /// without rendering a PDF, and so a caller that has already exported does not export twice.
+    var reportAttachmentsProvider: (() -> [DeliveryRequest.Attachment])?
+
+    /// The work order PDF and the JSON record for the active session, exported now.
+    ///
+    /// Empty when the export refuses — a device without the team entitlement still gets the spoken
+    /// summary and a message body, and is told the files are not attached rather than being handed
+    /// an empty PDF.
+    func reportAttachments() -> [DeliveryRequest.Attachment] {
+        if let reportAttachmentsProvider { return reportAttachmentsProvider() }
+        guard let record = workRecord(), let urls = try? exportSession(formats: [.json, .pdf]) else {
+            return []
+        }
+        return urls.compactMap { url in
+            switch url.pathExtension.lowercased() {
+            case "pdf": return DeliveryRequest.Attachment(url: url, kind: .pdf,
+                                                          filename: record.reportFileStem + ".pdf")
+            case "json": return DeliveryRequest.Attachment(url: url, kind: .json,
+                                                           filename: record.reportFileStem + ".json")
+            default: return nil
+            }
+        }
+    }
+
+    /// Put a report in front of the operator. Publishing it is what opens the composer; nothing
+    /// has been sent when this returns.
+    func stageDelivery(_ request: DeliveryRequest) {
+        lastDeliveryCancelled = false
+        stagedDelivery = request
+    }
+
+    func clearStagedDelivery() {
+        stagedDelivery = nil
+    }
+
+    /// The composer closed. Write what happened to the audit log, move the stock checks this report
+    /// carried to `sent` when it was actually sent, and clear the staging either way.
+    ///
+    /// A cancelled report changes nothing else: the queued record stays `pending`, which is what
+    /// makes "nothing is silently lost" true rather than aspirational.
+    func completeDelivery(_ request: DeliveryRequest, outcome: DeliveryOutcome) {
+        if stagedDelivery?.id == request.id { stagedDelivery = nil }
+        lastDeliveryCancelled = !outcome.isSent
+
+        if outcome.isSent, !request.partsRequestIds.isEmpty {
+            let ids = Set(request.partsRequestIds)
+            mutateSession { session in
+                for idx in session.partsRequests.indices
+                where ids.contains(session.partsRequests[idx].id)
+                    && session.partsRequests[idx].status == .requested {
+                    session.partsRequests[idx].status = .sent
+                }
+            }
+        }
+
+        let kind: SessionLogger.Event.Kind
+        switch outcome {
+        case .sent: kind = .reportSent
+        case .saved, .handedOff, .cancelled: kind = .reportCancelled
+        case .failed: kind = .reportFailed
+        }
+        var payload: [String: AnyCodable] = [
+            "channel": AnyCodable(request.channel.rawValue),
+            "outcome": AnyCodable(outcome.auditLabel),
+            "recipients": AnyCodable(request.recipients.count),
+            "attachments": AnyCodable(request.attachments.map(\.kind.rawValue)),
+            "parts_requests": AnyCodable(request.partsRequestIds.count)
+        ]
+        // The addresses themselves are not written down — how many there were is what an audit
+        // needs, and a work order that leaks a customer's inbox is a different problem.
+        if case .failed(let reason) = outcome { payload["error"] = AnyCodable(reason) }
+        // The active session's log when this report belongs to it; the log of the session that
+        // just ended when a composer outlived it. Never somebody else's log.
+        let target = activeSession?.id == request.sessionId ? logger
+            : (deliveryLogger?.session.id == request.sessionId ? deliveryLogger : nil)
+        target?.append(.init(timestamp: Date(), kind: kind, text: request.subject, payload: payload))
+    }
+
+    /// Flash a task on the lens. Set by the task mutators; cleared by whoever showed it.
+    private func raiseTaskCue(_ task: FieldSession.Task, phase: TaskHUDCue.Cue.Phase) {
+        taskCue = TaskHUDCue.Cue(taskId: task.id, title: task.title, phase: phase)
     }
 
     // MARK: - Prompt context

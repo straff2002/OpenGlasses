@@ -83,6 +83,12 @@ final class SessionLogger {
             /// A nameplate or display field was written down, with its source.
             case identityFieldRecorded = "identity_field_recorded"
             case jobReferenceSet = "job_reference_set"
+            /// The job report left by a channel the technician chose (Plan EM P2).
+            case reportSent = "report_sent"
+            /// …or the composer was dismissed, and the record is still in the queue.
+            case reportCancelled = "report_cancelled"
+            /// …or the channel refused it.
+            case reportFailed = "report_failed"
             case error = "error"
         }
     }

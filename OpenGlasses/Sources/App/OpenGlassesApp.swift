@@ -741,7 +741,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// On-device translation (BY P3) — sessions are served by `TranslationEngineHost` in the
     /// app root; the engine itself is UI-free.
     let translationEngine = AppleTranslationEngine()
-    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: LocalSyncSink())
+    /// The queue's delivery target. `EndpointSyncSink` posts job records and stock checks to the
+    /// organisation's endpoint when one is configured (Plan EM P2) and hands everything else — and
+    /// everything, when no endpoint is set — to the local sink that was there before.
+    lazy var syncEngine = SyncEngine(queue: offlineQueue,
+                                     sink: EndpointSyncSink(fallback: LocalSyncSink()))
 
     /// Alternative hands-free triggers (Additional Capabilities #5) — shake/acoustic/volume, all
     /// opt-in, each routing to the same entry point as the wake word.
@@ -1915,6 +1919,28 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         cancellables.append(equipmentToken)
 
+        // Field Assist: a report the technician asked for is staged on the session and presented
+        // from here — the tool never presents anything itself, so it behaves the same headless
+        // (Plan EM P2). The composer is the operator's thumb on Send.
+        let deliveryToken = FieldSessionService.shared.$stagedDelivery
+            .compactMap { $0 }
+            .sink { [weak self] request in
+                self?.presentDelivery(request)
+            }
+        cancellables.append(deliveryToken)
+
+        // Field Assist: the lens says what task is in hand, on the same transient path the figure
+        // and equipment cues use — one line when a task starts and one when it closes, nothing
+        // persistent (Plan EM P2).
+        let taskCueToken = FieldSessionService.shared.$taskCue
+            .compactMap { $0 }
+            .removeDuplicates()
+            .sink { [weak self] cue in
+                guard let self else { return }
+                TaskHUDCue.show(cue, on: self.glassesDisplay)
+            }
+        cancellables.append(taskCueToken)
+
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.
         let playbookHUDToken = playbookStore.$activeSession
@@ -2697,6 +2723,116 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Non-nil while the manual figure sheet should be presented.
     @Published var manualFigureRequest: ManualFigureRequest?
+
+    // MARK: - Job reports (Plan EM P2)
+
+    /// A composer waiting to be shown, with the channel already resolved against what this device
+    /// can actually do. Identified by the request, so re-staging the same report does not blink it.
+    struct DeliveryComposerRequest: Identifiable, Equatable {
+        let request: DeliveryRequest
+        let model: ReportComposerModel
+        var id: String { request.id }
+        var channel: DeliveryChannel { request.channel }
+    }
+
+    /// Non-nil while the Mail or Messages composer should be presented.
+    @Published var deliveryComposerRequest: DeliveryComposerRequest?
+    /// The job report in the share sheet, for a channel that has no composer of its own.
+    @Published var deliveryShareItem: ShareItem?
+
+    /// Put a staged report in front of the operator.
+    ///
+    /// The channel the technician asked for is not always one this device has: a phone with no Mail
+    /// account cannot show a mail composer, and the honest fallback is the share sheet with both
+    /// files rather than a composer that never appears. Whatever happens, `completeDelivery` is
+    /// what the record follows — a dismissed composer leaves it queued.
+    func presentDelivery(_ request: DeliveryRequest) {
+        let session = FieldSessionService.shared
+        session.clearStagedDelivery()
+        let resolution = ReportComposerAvailability.resolveOnDevice(request.channel)
+        if let note = resolution.note {
+            addDebugEvent(note)
+            Task { await speechService.speak(note) }
+        }
+        switch resolution.channel {
+        case .email:
+            deliveryComposerRequest = DeliveryComposerRequest(
+                request: request, model: ReportComposerModel(request: request))
+        case .messages:
+            deliveryComposerRequest = DeliveryComposerRequest(
+                request: request,
+                model: ReportComposerModel(
+                    request: request,
+                    canSendAttachments: ReportComposerAvailability.messagesCanAttach))
+        case .shareSheet:
+            let model = ReportComposerModel(request: request)
+            var items: [Any] = [model.filledBody]
+            items.append(contentsOf: request.attachments.map(\.url))
+            deliveryShareItem = ShareItem(items: items) { [weak self] completed in
+                self?.finishDelivery(request, outcome: completed ? .sent : .cancelled)
+            }
+        case .whatsapp, .telegram:
+            // The URL-scheme channels: the existing send_via path opens the app with the summary
+            // filled in, and can never tell us whether the person tapped Send — so the report is
+            // recorded as handed off and the record stays in the queue.
+            let channel = resolution.channel.rawValue
+            let body = ReportComposerModel(request: request).filledBody
+            Task { [weak self] in
+                let reply = try? await MultiChannelMessageTool().execute(args: [
+                    "channel": channel,
+                    "to": request.recipients.first ?? "",
+                    "body": body
+                ])
+                await MainActor.run {
+                    guard let self else { return }
+                    if let reply { self.addDebugEvent(reply) }
+                    self.finishDelivery(request, outcome: .handedOff)
+                }
+            }
+        case .endpoint:
+            // Nobody taps anything: the record goes into the durable queue and the endpoint sink
+            // delivers it. "Sent" is what the queue says, not what this method hopes.
+            offlineQueue.enqueue(QueuedOp.make(workRecord: request.record))
+            Task { [weak self] in
+                guard let self else { return }
+                await self.syncEngine.flush()
+                let stillQueued = QueuedRecordRows.outstandingCount(
+                    in: self.offlineQueue.all(limit: 200), sessionId: request.sessionId) > 0
+                self.finishDelivery(request, outcome: stillQueued ? .handedOff : .sent)
+            }
+        }
+    }
+
+    /// A composer closed, a share finished, or a hand-off returned. One place, so the record's own
+    /// state and the audit line cannot be updated by one path and skipped by another.
+    func finishDelivery(_ request: DeliveryRequest, outcome: DeliveryOutcome) {
+        deliveryComposerRequest = nil
+        deliveryShareItem = nil
+        FieldSessionService.shared.completeDelivery(request, outcome: outcome)
+        switch outcome {
+        case .sent:
+            addDebugEvent("Job report sent by \(request.channel.label).")
+        case .failed(let reason):
+            addDebugEvent("Job report failed: \(reason)")
+            Task { await speechService.speak("The job report could not be sent. It is still saved and queued.") }
+        case .cancelled, .saved, .handedOff:
+            addDebugEvent("Job report not confirmed sent — it stays in the queue.")
+        }
+    }
+
+    /// Send a record the queue is still holding, by email, from the sync screen. Summary only:
+    /// the exported files belong to a session that may be long finished, and a body a person can
+    /// read is better than an attachment that may no longer be on disk.
+    func deliverQueuedRecord(_ row: QueuedRecordRow) {
+        guard let record = row.record else { return }
+        let policy = DeliveryPolicy(settings: Config.deliverySettings)
+        guard case .allowed(let recipients) = policy.decide(channel: .email) else {
+            deliveryShareItem = ShareItem(items: [record.summary])
+            return
+        }
+        presentDelivery(DeliveryRequest.make(record: record, channel: .email,
+                                             recipients: recipients, attachments: []))
+    }
 
     /// A core file of the active vault, opened from a citation so the technician can check it and
     /// an author can correct it on the spot.
