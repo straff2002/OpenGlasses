@@ -42,7 +42,8 @@ plan doc's status, then **remove** the row here — shipped rows are deleted, ne
 
 ## A. Buildable now (headless follow-up PRs)
 
-**Refreshed 2026-09-08** against a code-verified review of every plan (previous pass: 2026-08-22).
+**Refreshed 2026-09-08** against a code-verified review of every plan (previous pass: 2026-08-22);
+T's ConflictResolver row closed 2026-09-09 ([#443](https://github.com/straff2002/OpenGlasses/pull/443)).
 Removed as verified shipped: [AK](standalone-chat-experience.md)'s SSE session seam and the three
 streaming defects (BM P9); [AM](embedding-quality-upgrade.md)'s two benchmark rows stay under A3 —
 the plan is code-complete and they are the optional default-flip evidence it names.
@@ -61,7 +62,6 @@ plans that are drafted or planned with nothing built.
 
 | Plan | Outstanding item | Notes |
 |---|---|---|
-| [T](T-offline-field-queue-and-sync.md) | Persist `ConflictResolver.knownVersion`, and stop `resolve()` advancing the baseline inside the `.conflict` branch | The baseline is an in-memory `[String: Int]`, so every relaunch resets each session to version 0 and the first flush after launch cannot detect a conflict it should |
 | [BH](BH-gateway-remote-invoke.md) | Three open safety gaps: drop `type:"req"` frames until the connect handshake completes; reclass `getTranscript` out of the default-on `.observe` class; attribute remote `speak` text to its source | All three re-verified in `OpenClawEventClient`, `RemoteGlassesCommand`, `RemoteCommandExecutor`. The origin-aware policy/audit refactor the doc still calls "scheduled" shipped as BN P2 |
 | [AR](gateway-device-pairing.md) | Accept a `device.paired` token only mid-bootstrap; wire `startPairing`/`onPairingStatusChange` into `GatewaySettingsView`; consume `payload.url` | `OpenClawEventClient` accepts the token unconditionally; `startPairing` has zero callers and the status callback zero subscribers |
 | [CJ](CJ-survey-hardening-sweep.md) item 1 · [L](L-webrtc-expert-transport.md) · [M](M-webrtc-infra-and-audio.md) | WebRTC signaling security triad — path-traversal guard on static serving, per-room creator tokens, per-IP rate limits on create/join. This is also L/M's room-token gate | The room ID is still a bare capability string embedded in the viewer URL; no token, rate-limit or traversal code in `WebRTCStreamingService` |
