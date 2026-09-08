@@ -296,7 +296,67 @@ final class OfflineQueueTests: XCTestCase {
         guard case .conflict = resolver.resolve(op: op("s", at: 2), serverVersion: 5) else {
             return XCTFail("server advance should conflict")
         }
-        XCTAssertEqual(resolver.knownVersion(for: "s"), 5)   // baseline adopted
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 3, "a conflict must not move the baseline")
+    }
+
+    func testConflictDoesNotAdvanceBaselineForLaterOpsInTheSameFlush() {
+        // The whole point of surfacing a conflict: every later op in that session is measured
+        // against the version the device actually synced to, not the one that just conflicted.
+        let resolver = ConflictResolver()
+        resolver.setKnownVersion(3, for: "s")
+        let first = resolver.resolve(op: op("s", at: 1), serverVersion: 5)
+        let second = resolver.resolve(op: op("s", at: 2), serverVersion: 5)
+        guard case .conflict(let firstReason) = first, case .conflict(let secondReason) = second else {
+            return XCTFail("both ops in the flush should conflict")
+        }
+        XCTAssertEqual(firstReason, secondReason, "the delta is measured from the same baseline")
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 3)
+    }
+
+    func testAcknowledgeAdoptsServerVersionAndUnblocksTheNextOp() {
+        let resolver = ConflictResolver()
+        resolver.setKnownVersion(3, for: "s")
+        guard case .conflict = resolver.resolve(op: op("s", at: 1), serverVersion: 5) else {
+            return XCTFail("server advance should conflict")
+        }
+        resolver.acknowledge(serverVersion: 5, for: "s")
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 5)
+        XCTAssertEqual(resolver.resolve(op: op("s", at: 2), serverVersion: 5), .accept(newVersion: 5))
+    }
+
+    func testAcceptAdvancesBaselineAndOtherSessionsAreIndependent() {
+        let resolver = ConflictResolver()
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 0, "in-memory default starts fresh")
+        XCTAssertEqual(resolver.resolve(op: op("s", at: 1), serverVersion: 0), .accept(newVersion: 0))
+        resolver.setKnownVersion(2, for: "s")
+        XCTAssertEqual(resolver.resolve(op: op("s", at: 2), serverVersion: 1), .accept(newVersion: 2),
+                       "a server behind us keeps our higher baseline")
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 2)
+        guard case .conflict = resolver.resolve(op: op("other", at: 3), serverVersion: 1) else {
+            return XCTFail("a different session tracks its own baseline")
+        }
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 2)
+    }
+
+    func testConflictBaselineSurvivesRestart() {
+        // Backed by the queue file, a relaunch mid-outage must not reset the session to version 0
+        // and manufacture a conflict on the first flush after restart.
+        let path = tempPath()
+        do {
+            let queue = OfflineQueue(path: path)
+            let resolver = ConflictResolver(store: queue)
+            resolver.setKnownVersion(4, for: "s")
+            XCTAssertEqual(resolver.resolve(op: op("s", at: 1), serverVersion: 7), .conflict(
+                reason: "3 changes happened on the server while you were offline"))
+            resolver.acknowledge(serverVersion: 7, for: "s")
+        }   // released → db closed
+
+        let reopened = OfflineQueue(path: path)
+        let resolver = ConflictResolver(store: reopened)
+        XCTAssertEqual(resolver.knownVersion(for: "s"), 7, "baseline persisted in the queue file")
+        XCTAssertEqual(resolver.resolve(op: op("s", at: 2), serverVersion: 7), .accept(newVersion: 7),
+                       "no spurious conflict on the first flush after relaunch")
+        XCTAssertEqual(resolver.knownVersion(for: "unseen"), 0)
     }
 }
 
