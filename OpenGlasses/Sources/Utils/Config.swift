@@ -2877,6 +2877,15 @@ struct Config {
 
     static func setMemoryNudgesEnabled(_ enabled: Bool) { memoryNudgesEnabled = enabled }
 
+    /// When on, a completed turn is also read by the configured model for relationships the
+    /// on-device patterns miss, and what it finds enters the knowledge graph as an unconfirmed
+    /// claim until it is heard again. Off by default, and inert unless Agent Mode is on, HIPAA
+    /// mode is off, and the active model runs in the cloud — the turn's text has to leave the
+    /// device for this, which is the whole reason it is a separate switch.
+    @UserDefaultsBacked("brainEnrichmentEnabled", default: false) static var brainEnrichmentEnabled: Bool
+
+    static func setBrainEnrichmentEnabled(_ enabled: Bool) { brainEnrichmentEnabled = enabled }
+
     // MARK: - Teleprompter
 
     /// Default pacing mode for new teleprompter sessions.

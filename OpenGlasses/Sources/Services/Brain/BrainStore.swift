@@ -888,7 +888,11 @@ enum BrainRelationExtractor {
         s.trimmingCharacters(in: CharacterSet(charactersIn: " .,;:"))
     }
 
-    private static func isUsableName(_ s: String) -> Bool {
+    /// Whether a captured span is plausibly a name: non-empty, at most 60 characters, and not
+    /// beginning with a stopword. Internal rather than private because the enrichment parser has
+    /// to hold a model's proposed names to exactly the bound the patterns hold their own to —
+    /// duplicating the rule there would be two rules that agree until one of them is edited.
+    static func isUsableName(_ s: String) -> Bool {
         guard !s.isEmpty, s.count <= 60 else { return false }
         let first = s.components(separatedBy: " ").first?.lowercased() ?? ""
         return !stopwords.contains(first)

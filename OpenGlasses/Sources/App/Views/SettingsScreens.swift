@@ -105,6 +105,7 @@ struct AIPersonalitySettingsScreen: View {
     @State private var intentClassifierEnabled = Config.intentClassifierEnabled
     @State private var userMemoryEnabled = Config.userMemoryEnabled
     @State private var memoryNudgesEnabled = Config.memoryNudgesEnabled
+    @State private var brainEnrichmentEnabled = Config.brainEnrichmentEnabled
     @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
     @State private var autoModelRoutingEnabled = Config.autoModelRoutingEnabled
 
@@ -202,6 +203,11 @@ struct AIPersonalitySettingsScreen: View {
                     title: "Memory Suggestions",
                     isOn: $memoryNudgesEnabled,
                     info: "After you state a durable fact (\"my daughter's name is Mia\") or repeat a multi-step request, the assistant offers a spoken nudge to remember it or save it as a skill — you confirm by voice. With Agentic Features on, these are saved automatically instead of nudged. Off by default."
+                )
+                InfoToggle(
+                    title: "Memory Enrichment",
+                    isOn: $brainEnrichmentEnabled,
+                    info: "Sends the text of your turns to your configured AI provider so it can spot relationships the on-device patterns miss (who works where, who lives where, who knows whom). What it finds is filed as unconfirmed until you say it again in another conversation. Needs Agentic Features on and a cloud model \u{2014} it never runs in HIPAA mode, and never on an on-device model. Off by default."
                 )
 
                 NavigationLink {
@@ -383,6 +389,7 @@ struct AIPersonalitySettingsScreen: View {
         Config.setIntentClassifierEnabled(intentClassifierEnabled)
         Config.setUserMemoryEnabled(userMemoryEnabled)
         Config.setMemoryNudgesEnabled(memoryNudgesEnabled)
+        Config.setBrainEnrichmentEnabled(brainEnrichmentEnabled)
         Config.setConversationPersistenceEnabled(conversationPersistenceEnabled)
 
         appState.restartWakeWordIfDirect()
