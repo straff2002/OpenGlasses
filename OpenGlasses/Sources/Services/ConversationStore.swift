@@ -78,6 +78,11 @@ class ConversationStore: ObservableObject {
     /// conversation persistence working with recall unavailable.
     weak var recallCoordinator: ConversationRecallCoordinator?
 
+    /// Called with the id of the thread that has just stopped being the active one — whether it
+    /// ended, or a new thread replaced it. One seam rather than a `distill` call scattered across
+    /// the six places a thread changes; `AppState` wires it to the brain's distillation pass.
+    var onThreadLeft: (@MainActor (String) -> Void)?
+
     var storageDirectory: URL { storageURL.deletingLastPathComponent() }
 
     /// Key for persisting the active thread ID across restarts.
@@ -136,6 +141,7 @@ class ConversationStore: ObservableObject {
     /// Start a new conversation thread.
     @discardableResult
     func startThread(mode: String, personaId: String? = nil) -> ConversationThread {
+        let replaced = activeThreadId
         let thread = ConversationThread(mode: mode, personaId: personaId)
         threads.insert(thread, at: 0)
         activeThreadId = thread.id
@@ -150,6 +156,7 @@ class ConversationStore: ObservableObject {
         PrivacyLog.conversation(.conversations, .threadStarted,
                                 thread: PrivateIdentifier(thread.id),
                                 detail: PrivacyToken(personaId == nil ? "global" : "persona"))
+        if let replaced, replaced != thread.id { onThreadLeft?(replaced) }
         return thread
     }
 
@@ -211,10 +218,12 @@ class ConversationStore: ObservableObject {
             threads[idx].summary = Self.generateSummary(from: threads[idx].messages)
         }
         threads[idx].updatedAt = Date()
+        let ended = threads[idx].id
         save()
         activeThreadId = nil
         persistActiveSession()
         PrivacyLog.conversation(.conversations, .threadEnded)
+        onThreadLeft?(ended)
     }
 
     /// Give a still-default thread a title derived from its first user message. Safe to call

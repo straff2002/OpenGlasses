@@ -27,8 +27,17 @@ final class MemoryLoopService: ObservableObject {
     private var turnsSinceNudge: Int
 
     weak var presence: PresenceMonitor?
+    /// The conversation a saved fact came from. Wired by `AppState`; `nil` keeps the loop working
+    /// with the fact simply unattributed — the graph then treats it as a claim from nowhere, which
+    /// can be reinforced but never corroborated.
+    weak var conversationStore: ConversationStore?
     /// Speak a nudge through TTS. Wired by `AppState`.
     var speak: ((String) -> Void)?
+    /// One structured completion against the wearer's configured provider — the seam
+    /// `LLMService.completeStructured(systemPrompt:userText:jsonSchema:)` is wired into by
+    /// `AppState`. A closure rather than a service reference so the loop owns no model, and so
+    /// nothing here can reach the network unless someone wired it.
+    var completeStructured: ((String, String, [String: Any]) async -> [String: Any]?)?
 
     init(skillDetector: SkillPatternDetector = SkillPatternDetector(), nudgeCooldownTurns: Int = 4) {
         self.skillDetector = skillDetector
@@ -49,6 +58,55 @@ final class MemoryLoopService: ObservableObject {
         let turn = CompletedTurn(userText: userText, assistantText: assistantText, toolNames: toolNames)
         let actions = decide(turn: turn, nudgesEnabled: nudges, agentMode: agent, present: isPresent)
         perform(actions)
+    }
+
+    /// Read a completed turn for relationships the on-device patterns missed, and file what comes
+    /// back as *unconfirmed*.
+    ///
+    /// Deliberately separate from `observeTurn`: that path is pure of the network and stays that
+    /// way. This one sends the wearer's words to the configured model, so it is refused outright
+    /// unless [[RelationEnrichmentPolicy]] agrees, and it runs after the reply has already been
+    /// accepted — a memory pass must never be something the wearer waits for. Only the wearer's
+    /// own utterance is sent: the assistant's reply is the model's own prose, and mining it for
+    /// facts would let the model corroborate itself.
+    ///
+    /// Nothing here throws or surfaces. A failed call, an empty answer and a refusal the wearer
+    /// asked for are each one counted line and no edges; the feature merely being off is silent.
+    func enrich(turn: CompletedTurn, sessionID: String?) async {
+        let outcome = RelationEnrichmentPolicy.decide(
+            agentMode: Config.agentModeEnabled,
+            enrichmentEnabled: Config.brainEnrichmentEnabled,
+            hipaaMode: Config.hipaaMode,
+            provider: Config.activeModel?.llmProvider)
+        if let reason = outcome.skipReason {
+            // Only the refusals the wearer asked for and did not get: a wearer who never switched
+            // enrichment on would otherwise get one line per turn for a feature that is simply off.
+            if reason.isWorthLogging {
+                PrivacyLog.store(.brain, .saveSkipped, detail: PrivacyToken(reason.rawValue))
+            }
+            return
+        }
+
+        let utterance = turn.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !utterance.isEmpty, let complete = completeStructured else { return }
+
+        let answer = await complete(RelationEnrichmentParser.systemPrompt, utterance,
+                                    RelationEnrichmentParser.jsonSchema)
+        let relations = RelationEnrichmentParser.relations(from: answer, sourceText: utterance)
+        guard !relations.isEmpty else {
+            PrivacyLog.store(.brain, .saveSkipped, detail: PrivacyToken("nothingUsable"))
+            return
+        }
+
+        let brain = BrainStore.shared
+        for relation in relations {
+            brain.addEdge(srcKind: relation.srcKind, srcName: relation.src,
+                          relation: relation.relation, dstKind: relation.dstKind,
+                          dstName: relation.dst, sessionID: sessionID,
+                          confidence: brain.policy.provisionalConfidence, state: .provisional)
+        }
+        PrivacyLog.store(.brain, .ingested, count: relations.count,
+                         detail: PrivacyToken("enrichment"))
     }
 
     /// Decide what to do for a turn. Deterministic given the flags + internal detector/cooldown
@@ -86,7 +144,8 @@ final class MemoryLoopService: ObservableObject {
         for action in actions {
             switch action {
             case .saveFact(let payload):
-                BrainStore.shared.ingest(text: payload, sourceRef: "memory-loop", sourceKind: "fact")
+                BrainStore.shared.ingest(text: payload, sourceRef: "memory-loop", sourceKind: "fact",
+                                         sessionID: conversationStore?.activeThreadId)
             case .saveSkill(let trigger, let instruction):
                 VoiceSkillStore.shared.save(VoiceSkill(id: UUID().uuidString, trigger: trigger,
                                                        instruction: instruction, createdAt: Date()))

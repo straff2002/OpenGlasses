@@ -1572,6 +1572,12 @@ enum PrivacyLog {
         case recordWritten, writeFailed, cleared, evicted, deleteFailed
         case migrated, legacyRetired, legacyRetireFailed
         case ingested, reembedded, appended, recovered
+        /// A distillation pass over the knowledge graph: how many rows it changed, of how many
+        /// considered. Counts only — which fact was promoted or retired is the wearer's content.
+        case distilled
+        /// A relation refused by the closed vocabulary. The count is the whole event: the
+        /// rejected string came from free text, so it is counted in memory and never logged.
+        case dropped
     }
 
     @discardableResult

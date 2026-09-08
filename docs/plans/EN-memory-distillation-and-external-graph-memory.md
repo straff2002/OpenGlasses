@@ -1,8 +1,8 @@
 # Plan EN — Memory Distillation and External Graph Memory (a graph that changes its mind)
 
-**Status:** 📋 Planned 2026-09-08. Headless core first (P1 + P2 pure engines); the single live LLM
-call in P2 and the first connection to a self-hosted server in P3 are the deferred edges. Normal
-house rhythm: one PR for the whole plan, the edges named rather than pretended.
+**Status:** 🚧 P1–P3 implemented 2026-09-08 (headless; the live enrichment call and the first
+connection to a self-hosted server are the pending edges). Normal house rhythm: one PR for the whole
+plan, the edges named rather than pretended.
 **Origin:** `BrainStore.ingest(text:subject:sourceRef:sourceKind:)` writes straight into the
 permanent graph, and `addEdge` is `INSERT OR IGNORE` against `UNIQUE(src_id, relation, dst_id)`.
 Two consequences fall out of that one line. First, a repeat observation is *silently discarded* —
@@ -243,6 +243,157 @@ The external server is a *peer* memory the model may call, not a mirror.
 `.redact`; `requires_agent_mode` decodes `true` for it and `false` for the five existing entries;
 and an entry referencing `{port}` without a matching field is rejected by `validationError`, as the
 existing unmatched-placeholder test already proves for `{host}`.
+
+## P1 findings (2026-09-08)
+
+**Eight columns, not six.** The design named `session_id`, `confidence`, `state`, `observations`,
+`valid_from` and `superseded_at`. Two more were needed for the rules to be computable at all.
+`last_seen`, because expiry is "last observed longer ago than the window" and `created_at` is the
+*first* sighting — the very asymmetry the Origin section complains about. And `distinct_sessions`,
+because "corroborated across two conversations" cannot be told from a single `session_id` column
+that the newest observation overwrites; counting at write time is the only way a repeat inside one
+session and a repeat across two are different rows.
+
+**Migration is column-by-column, and a fresh database is not migrated.** `PRAGMA table_info` is read
+before the `ALTER TABLE`s and only the columns actually missing are added, so a crash halfway
+through leaves `user_version` at 0 and the next launch completes the job rather than failing on a
+duplicate column. A database that has no `edges` table yet is created at version 1 directly and logs
+no `.migrated` line: a migration count of zero and "there was nothing to carry" are different
+statements, and only one of them is true on a first launch.
+
+**The upsert never bumps confidence.** A repeat increments `observations`, moves `last_seen`, counts
+a new session and takes `MAX(confidence, incoming)` — but it does not add anything. Confidence is
+owned entirely by the distiller, which emits it as an *absolute* value computed from the entry
+confidence and the observation count. That is what makes `decide` idempotent: apply its decisions,
+feed the result back in, and every candidate reads `.keep`. A delta-based increment would have made
+every extra pass a promotion.
+
+**`Policy.default` needed a dial the plan did not name.** Shipped: provisional 0.5, direct claim 1.0,
+reinforcement increment 0.15, **same-session ceiling 0.75**, promotion threshold 0.8, corroborating
+sessions 2, confidence floor 0.6, expiry window 14 days, ingests between passes 20. The ceiling is
+the addition. Without it, 0.5 + three increments crosses 0.8 and a wearer who restates something
+three times in one conversation promotes it by arithmetic — which is exactly the rule the design
+wrote down ("a wearer restating something twice in a minute is one claim, not two") and could not
+otherwise enforce.
+
+**A twice-in-one-session guess lands in a deliberate limbo.** 0.5 + 0.15 = 0.65: above the 0.6 floor,
+so it never expires; below the 0.8 threshold and capped by the ceiling, so it never promotes. It
+stays, and it reads `(unconfirmed)`, until a second conversation corroborates it. This is intended —
+the alternative is either dropping a claim the wearer made twice or promoting one nobody confirmed —
+but it means the graph accumulates a long tail of unconfirmed edges that only the ceiling keeps
+honest.
+
+**Supersession wins over promotion within a single pass.** An edge decided `.promote` and then found
+to be the older destination of a functional relation is overwritten with `.supersede`: there is
+nothing to promote an edge *into* if it is no longer current. Order-independence comes from deciding
+into a dictionary keyed by edge id and applying supersession last, not from sorting the input.
+
+**One thread-lifecycle seam, not six call sites.** `ConversationStore.onThreadLeft` fires from
+`endThread` and from `startThread` when it replaces a live thread — the case nobody ever calls
+`endThread` for — and `AppState` wires it to the pass. A `distill` call copied into each of the
+places a thread changes would have been forgotten in the next one. `resumeThread` deliberately does
+*not* fire it: switching back to an old conversation is not leaving the graph in a state that needs
+tidying, and the ingest budget (every 20 ingests) covers the long session that never ends at all.
+
+**"An exact repeat reinforces without a second row" is a store test, not a distiller test.** The plan
+filed it under `BrainDistillerTests`, but a pure engine over values has no rows to count; the claim
+is about the `ON CONFLICT` clause. It lives in `BrainStoreTests.testAddEdgeAndNeighbors`, which now
+asserts one row and two observations where it used to assert only that the duplicate was ignored.
+
+**A retired fact had no way back, and now has one** (review fix). "Nothing is deleted, history stays"
+is the right rule for supersession and the wrong one for a wearer who moves back: a second
+"Maria lives in Wellington" lands on the row supersession stamped, and the original upsert left it
+stamped, so the graph would have insisted on Auckland forever. A **direct** restatement now revives
+the row — permanent, `superseded_at` cleared, `valid_from` set to now, so the very next pass retires
+Auckland by the same recency rule that retired Wellington. A *provisional* repeat does not: a guess
+cannot overturn a decision the distiller already made. The pass also rolls back rather than commits
+if any statement in its transaction fails — a pass that promoted an edge but failed to retire the
+one it replaced would leave two present-tense answers to the same question, which is the state this
+whole plan exists to end.
+
+## P2 findings (2026-09-08)
+
+**`backgrounded:` was dropped from the gate's signature.** The design listed
+`decide(agentMode:enrichmentEnabled:hipaaMode:provider:backgrounded:)`, but none of the four
+conditions reads it: the on-device exclusion is unconditional, so a background flag could only ever
+have changed an answer the provider check already gave. A parameter no rule consults is a parameter
+that will grow a rule by accident, so the gate takes four inputs and the reason for the on-device
+exclusion is written beside it instead.
+
+**A fifth refusal, for a phone with no model at all.** `provider` is optional, because
+`Config.activeModel` is; `nil` yields `.noProvider` rather than being folded into
+`.onDeviceProvider`, so the log line distinguishes "you have not set up a model" from "your model
+runs on the phone", which are different things for the wearer to do something about.
+
+**Only the wearer's own utterance is sent.** Not the assistant's reply. Three reasons, in order of
+weight: the reply is the model's own prose, so mining it for relations lets the model corroborate
+itself into the graph; `evidence` has to be checkable against exactly one string, and two sources
+would mean a span could "come from" text the wearer never said; and less text leaves the device.
+Evidence matching is case-insensitive — a model that re-capitalises a span is still pointing at the
+wearer's words, and an absent span is still absent.
+
+**The schema `completeStructured` needed is an object wrapping the array, not the array.** It is
+handed straight to Anthropic as an `input_schema` under a forced `tool_choice`, to OpenAI-shaped
+providers as function `parameters`, and through `GeminiSchemaTranslator` as a `responseSchema` — all
+three want a top-level object, so the shape is `{"relations": [...]}` with `relations` required and
+each item requiring all six keys. `relation` and both kind fields carry `enum` lists, so a
+well-behaved provider is constrained to the same vocabulary the parser enforces; a test asserts the
+two lists are literally the same, because a closed list the model cannot see is a list it guesses
+around and every guess is a silent drop.
+
+**The ontology decides what a relation points at, not the answer.** `dstKind` must be present and
+must be one of the five kinds — a missing or nonsense value is a refusal — but the value actually
+stored comes from `RelationOntology.destinationKind(for:)`. A model that calls Wellington an
+organisation still gets a place in the graph.
+
+**`BrainRelationExtractor.isUsableName` was widened from `private` to internal** rather than having
+its 60-character-and-no-leading-stopword bound restated in the parser. Two statements of one rule
+agree until one of them is edited.
+
+**The call site starts a task rather than awaiting one.** `enrich` is fired from the same `accept:`
+closure as `observeTurn`, after the reply has been accepted, and nothing waits for it; a logged
+refusal, a failed provider call and an empty answer are each one counted `PrivacyLog` line and no
+edges. It
+runs on the main actor (the service is `@MainActor`, as is everything it touches), which is
+harmless because every step that takes time is a suspension, not work.
+
+**A refusal is logged only when the wearer asked for the feature.** `SkipReason.isWorthLogging` is
+false for `agentModeOff` and `enrichmentDisabled` and true for `hipaaMode`, `onDeviceProvider` and
+`noProvider`, so the privacy log names the refusals a wearer would otherwise mistake for a broken
+feature instead of writing a line per turn for everyone who never switched enrichment on.
+
+**Deferred edge, unchanged:** the live provider call, measured on a device. The wiring, the gate,
+the prompt, the schema and the parser are all exercised headlessly; what no test here can tell you
+is what a real model returns for a real turn.
+
+## P3 findings (2026-09-08)
+
+**The optional `Bool` needed the same explicit decode every other defaulted field needs.** Swift's
+synthesized `Decodable` ignores a property's default and demands the key, so `requires_agent_mode`
+is read with `decodeIfPresent(Bool.self) ?? false` in the hand-written initialiser the entry already
+had. The five entries that shipped before it decode unchanged, and a test asserts the flag is true
+for exactly one row of the six.
+
+**Two placeholders, and the existing validator already covered them.** `http://{host}:{port}/mcp`
+needs both fields, and `validationError`'s unmatched-placeholder rule is written over
+`placeholderKeys` rather than over `{host}` specifically — so an entry referencing `{port}` with no
+matching field is rejected for free. The test the plan asked for confirms that rather than
+introducing anything.
+
+**The egress default needed no argument, which is the point.** `.redact` is hardcoded in
+`makeServerConfig` with no per-entry override, so a memory server — exactly the kind of server it
+would be tempting to trust — gets the same outbound screen as everything else, and
+`testBundledCatalogueLoadsAndEveryEntryIsValid` covers it by iterating every bundled row.
+
+**The Agent-Mode gate is visible, not hidden.** A gated row stays in the list, greyed, with
+"Requires Agent Mode" where its transport and auth line would be, and the install screen refuses
+with the footer `MCPServerSettingsView` already uses. A hidden row cannot tell the wearer why the
+thing they were looking for is not there.
+
+**Nothing in this phase touches `BrainStore`, `BrainTool` or the router.** The entry is a catalogue
+row and a decoded field; the external server is a peer memory the model may call, and a `recall`
+result is never ingested. The plan's "not a sync target" is enforced by there being no code that
+could do it.
 
 ## Out of scope, noted for their own PRs
 

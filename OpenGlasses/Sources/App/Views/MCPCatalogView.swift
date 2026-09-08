@@ -10,17 +10,25 @@ struct MCPCatalogView: View {
 
     private let catalog = MCPCatalog.bundled()
 
+    /// Read the way the other Agent-Mode-gated screens read it.
+    private var agentModeOn: Bool { Config.agentModeEnabled }
+
     var body: some View {
         Group {
             if let catalog, !catalog.entries.isEmpty {
                 List {
                     Section {
                         ForEach(catalog.entries) { entry in
+                            // A gated entry stays visible but unreachable: the wearer should be
+                            // able to see what is on offer and why it isn't available, which a
+                            // hidden row cannot say.
+                            let gated = entry.requiresAgentMode && !agentModeOn
                             NavigationLink {
                                 MCPCatalogInstallView(entry: entry, onInstall: onInstall)
                             } label: {
-                                entryRow(entry)
+                                entryRow(entry, gated: gated)
                             }
+                            .disabled(gated)
                         }
                     } footer: {
                         Text("Every install lands on the \"Redact\" data policy and is screened by the egress + tool-poisoning checks before the AI can use its tools. Open Safety & Trust to review or change a server's policy.")
@@ -40,23 +48,26 @@ struct MCPCatalogView: View {
     }
 
     @ViewBuilder
-    private func entryRow(_ entry: MCPCatalogEntry) -> some View {
+    private func entryRow(_ entry: MCPCatalogEntry, gated: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: entry.icon)
                 .font(.title3)
                 .frame(width: 28)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(gated ? Color.secondary : Color.accentColor)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.label)
-                    .foregroundStyle(Color(.label))
-                Text("\(entry.transport.label) · \(entry.auth.kind.label)")
+                    .foregroundStyle(gated ? Color.secondary : Color(.label))
+                Text(gated ? "Requires Agent Mode"
+                           : "\(entry.transport.label) · \(entry.auth.kind.label)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.label), \(entry.transport.label), \(entry.auth.kind.label)")
+        .accessibilityLabel(gated
+            ? "\(entry.label), requires Agent Mode"
+            : "\(entry.label), \(entry.transport.label), \(entry.auth.kind.label)")
     }
 }
 
@@ -71,9 +82,15 @@ struct MCPCatalogInstallView: View {
     @State private var values: [String: String] = [:]
     @State private var token: String = ""
 
-    /// True once every URL placeholder has a non-blank value.
+    /// Whether this entry wants Agent Mode the wearer hasn't turned on.
+    private var blockedByAgentMode: Bool {
+        entry.requiresAgentMode && !Config.agentModeEnabled
+    }
+
+    /// True once every URL placeholder has a non-blank value — and the entry is allowed to
+    /// install at all.
     private var canInstall: Bool {
-        entry.resolvedURL(from: values) != nil
+        !blockedByAgentMode && entry.resolvedURL(from: values) != nil
     }
 
     var body: some View {
@@ -154,7 +171,11 @@ struct MCPCatalogInstallView: View {
                 }
                 .disabled(!canInstall)
             } footer: {
-                Text("Installs on the safe \"Redact\" data policy. You can change it later under Safety & Trust.")
+                if blockedByAgentMode {
+                    Text("Requires Agent Mode. Enable Agent Mode first, then install this server.")
+                } else {
+                    Text("Installs on the safe \"Redact\" data policy. You can change it later under Safety & Trust.")
+                }
             }
         }
         .navigationTitle(entry.label)

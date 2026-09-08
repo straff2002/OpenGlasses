@@ -1558,6 +1558,25 @@ class AppState: ObservableObject, AppStateProtocol {
         MemoryLoopService.shared.configure(presence: presenceMonitor) { [weak self] message in
             Task { @MainActor in await self?.speechService.speak(message) }
         }
+        // A silently saved fact belongs to the conversation it was said in: that is what lets the
+        // brain tell "heard twice in two conversations" from "restated in one breath".
+        MemoryLoopService.shared.conversationStore = conversationStore
+        // ...and, when the wearer has switched enrichment on, the loop's one way to ask a model
+        // what the patterns missed. A closure, so the loop holds no model and can reach nothing
+        // on its own.
+        MemoryLoopService.shared.completeStructured = { [weak self] system, text, schema in
+            guard let self else { return nil }
+            return await self.llmService.completeStructured(
+                systemPrompt: system, userText: text, jsonSchema: schema)
+        }
+
+        // ...and when a conversation is left behind, the brain revises itself: what two sessions
+        // corroborated becomes permanent, a newer answer retires the one it replaced, and a claim
+        // heard once a fortnight ago and never again is dropped. One seam, so no caller has to
+        // remember to run it.
+        conversationStore.onThreadLeft = { sessionID in
+            BrainStore.shared.distill(sessionID: sessionID)
+        }
 
         // Memory & Recall Phase 4 — on-device usage insights from conversation history.
         InsightsService.shared.configure(conversationStore: conversationStore)
@@ -4637,6 +4656,17 @@ class AppState: ObservableObject, AppStateProtocol {
                     // offer to remember it (or silently save it in Agent Mode).
                     MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
                                                          toolNames: nativeToolRouter.takeTurnToolNames())
+
+                    // ...and, if the wearer has asked for it, one structured pass over the same
+                    // turn for the relationships the patterns can't see. Started rather than
+                    // awaited: the reply is already accepted, and a memory pass is never
+                    // something to wait for. It refuses itself when the conditions aren't met.
+                    let enrichedTurn = CompletedTurn(userText: query, assistantText: response)
+                    let enrichedSession = conversationStore.activeThreadId
+                    Task {
+                        await MemoryLoopService.shared.enrich(turn: enrichedTurn,
+                                                              sessionID: enrichedSession)
+                    }
 
                     // Plan CG: an explicit multiple-choice reply renders as band-selectable
                     // HUD buttons; selecting one feeds the option back as the next user turn.
