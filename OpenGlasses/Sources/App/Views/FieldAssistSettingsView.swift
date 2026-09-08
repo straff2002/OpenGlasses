@@ -32,6 +32,10 @@ struct FieldAssistSettingsView: View {
     @State private var readBack: [String]?
     /// Why a report could not be staged, in the policy's own words.
     @State private var deliveryError: String?
+    /// How many of this job's records the queue is still holding. Read on appearance and when a
+    /// delivery finishes rather than from the view body — the queue is SQLite, and the body is
+    /// re-evaluated on every published change the session makes.
+    @State private var unsentRecordCount = 0
 
     var body: some View {
         Form {
@@ -271,10 +275,13 @@ struct FieldAssistSettingsView: View {
             delivery = Config.deliverySettings
             emailRecipientsText = delivery.emailRecipients.joined(separator: ", ")
             messageRecipientsText = delivery.messageRecipients.joined(separator: ", ")
+            refreshUnsentCount()
             license.loadStored()
             // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.
             if enabled && !Config.fieldAssistUnlocked { enabled = false }
         }
+        .onChange(of: sessionService.lastDeliveryCancelled) { _, _ in refreshUnsentCount() }
+        .onChange(of: sessionService.activeSession?.id) { _, _ in refreshUnsentCount() }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: item.items)
         }
@@ -484,10 +491,13 @@ struct FieldAssistSettingsView: View {
         }
     }
 
-    /// How many of this job's records the queue is still holding.
-    private var unsentRecordCount: Int {
-        guard let id = sessionService.activeSession?.id else { return 0 }
-        return QueuedRecordRows.outstandingCount(in: appState.offlineQueue.all(limit: 200), sessionId: id)
+    private func refreshUnsentCount() {
+        guard let id = sessionService.activeSession?.id else {
+            unsentRecordCount = 0
+            return
+        }
+        unsentRecordCount = QueuedRecordRows.outstandingCount(
+            in: appState.offlineQueue.all(limit: 200), sessionId: id)
     }
 
     /// Stage the default delivery — the same route the spoken "send the job report" takes, so the
