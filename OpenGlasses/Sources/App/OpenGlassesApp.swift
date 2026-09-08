@@ -1558,6 +1558,17 @@ class AppState: ObservableObject, AppStateProtocol {
         MemoryLoopService.shared.configure(presence: presenceMonitor) { [weak self] message in
             Task { @MainActor in await self?.speechService.speak(message) }
         }
+        // A silently saved fact belongs to the conversation it was said in: that is what lets the
+        // brain tell "heard twice in two conversations" from "restated in one breath".
+        MemoryLoopService.shared.conversationStore = conversationStore
+
+        // ...and when a conversation is left behind, the brain revises itself: what two sessions
+        // corroborated becomes permanent, a newer answer retires the one it replaced, and a claim
+        // heard once a fortnight ago and never again is dropped. One seam, so no caller has to
+        // remember to run it.
+        conversationStore.onThreadLeft = { sessionID in
+            BrainStore.shared.distill(sessionID: sessionID)
+        }
 
         // Memory & Recall Phase 4 — on-device usage insights from conversation history.
         InsightsService.shared.configure(conversationStore: conversationStore)

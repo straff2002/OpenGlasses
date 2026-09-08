@@ -27,6 +27,10 @@ final class MemoryLoopService: ObservableObject {
     private var turnsSinceNudge: Int
 
     weak var presence: PresenceMonitor?
+    /// The conversation a saved fact came from. Wired by `AppState`; `nil` keeps the loop working
+    /// with the fact simply unattributed — the graph then treats it as a claim from nowhere, which
+    /// can be reinforced but never corroborated.
+    weak var conversationStore: ConversationStore?
     /// Speak a nudge through TTS. Wired by `AppState`.
     var speak: ((String) -> Void)?
 
@@ -86,7 +90,8 @@ final class MemoryLoopService: ObservableObject {
         for action in actions {
             switch action {
             case .saveFact(let payload):
-                BrainStore.shared.ingest(text: payload, sourceRef: "memory-loop", sourceKind: "fact")
+                BrainStore.shared.ingest(text: payload, sourceRef: "memory-loop", sourceKind: "fact",
+                                         sessionID: conversationStore?.activeThreadId)
             case .saveSkill(let trigger, let instruction):
                 VoiceSkillStore.shared.save(VoiceSkill(id: UUID().uuidString, trigger: trigger,
                                                        instruction: instruction, createdAt: Date()))
