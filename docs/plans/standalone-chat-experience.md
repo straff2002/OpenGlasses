@@ -1,6 +1,6 @@
 # Plan AK — Standalone Chat Experience (use OpenGlasses without the glasses)
 
-**Status: 🚧 Phase 1 built on `feat/standalone-chat-phase1`.** First-class **Chat tab**
+**Status: ✅ Phases 1–3 shipped on main (`b7bdacf`), hardened by BM P9.** First-class **Chat tab**
 (replaces History) with a live `ChatThreadView` + docked `ChatComposer` (extracted from the
 Voice-tab bar); **rich rendering** via the pure `MarkdownBlockParser` (8 unit tests) +
 `MessageContentView` (markdown + fenced code with copy) + coral-tinted shared `MessageBubble`;
@@ -15,18 +15,16 @@ streaming for Anthropic + OpenAI-compatible, gated behind `onToken` (non-chat ca
 buffered path byte-for-byte) — the streaming helpers reconstruct the same `message`/`content`
 shape so the existing tool loop is reused. ⚠️ Compile-verified only.
 
-**Re-scoped 2026-07-10 (review; fixes scheduled as Plan BM P9):** "needs real keys + device" was
+**Re-scoped 2026-07-10 (review; fixes shipped as Plan BM P9, `83507f2`, [#202](https://github.com/straff2002/OpenGlasses/pull/202)):** "needs real keys + device" was
 too pessimistic — both SSE helpers hardcode `URLSession.shared` (`LLMService.swift:1556/:1615`);
 with an injected session (the `MockURLProtocol` pattern from `MCPTransportTests.swift:66-91`) the
-verification becomes **headless fixture tests**; only a live-credential smoke stays device-bound.
-The review also found two real defects the "unverified" label was hiding: **mid-stream `error`
-events return partial content as a successful turn** (persisted + appended to history — the
-Anthropic event switch `default: break`s at `:1638-1663`; same shape on the OpenAI path via the
-`choices` guard and premature EOF), and **every tool-loop iteration streams** with an accumulator
-that never resets (`OpenGlassesApp.swift:2826`), so bubbles can concatenate intermediate+final
-text — the doc's "only the final turn streams" claim (and the code comment at `:1251`) are false.
-Chat SSE also has none of the retry/classification voice got from `RealtimeReconnect` (Plan BD) —
-a transient 429 throws straight to `errorMessage`. All folded into BM P9.
+verification became **headless fixture tests** (`LLMStreamingTests`); only a live-credential smoke
+stays device-bound. The review also found two real defects the "unverified" label was hiding:
+**mid-stream `error` events returning partial content as a successful turn**, and **every
+tool-loop iteration streaming** with an accumulator that never reset, so bubbles could concatenate
+intermediate+final text. Chat SSE also had none of the retry/classification voice got from
+`RealtimeReconnect` (Plan BD) — a transient 429 threw straight to `errorMessage`. All three fixed in
+BM P9, with headless regression coverage.
 
 **Builds on:** the existing [`ChatInputBar`](../../OpenGlasses/Sources/App/Views/VoiceTab.swift) (text + photo attach, vision-gated), [`ConversationStore`](../../OpenGlasses/Sources/Services/ConversationStore.swift) (threads + messages, active-thread tracking, resume/replay), [`ConversationHistoryView`](../../OpenGlasses/Sources/App/Views/ConversationHistoryView.swift) (`MessageBubble` + thread list), [`MainView`](../../OpenGlasses/Sources/App/Views/MainView.swift) tab bar, and [`LLMService.sendMessage`](../../OpenGlasses/Sources/Services/LLMService.swift).
 

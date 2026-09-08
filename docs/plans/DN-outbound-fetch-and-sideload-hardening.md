@@ -1,6 +1,6 @@
 # Plan DN — Outbound Fetch and Skill-Pack Sideload Hardening
 
-**Status:** 🟡 In progress — P0–P3 engineering checkpoints implemented 2026-09-06; focused runtime, Release-artifact and physical-device network evidence remain.
+**Status:** 🚧 P0–P3 engineering checkpoints implemented 2026-09-06; focused runtime, Release-artifact and physical-device network evidence remain.
 **Origin:** 2026-08-26 adversarial review findings 5 (High) and 8 (Medium).
 **Priority:** P0 for QR redirects/DNS; do not approve distribution of the re-enabled hardened paths until the compiled adversarial suite and device evidence pass.
 
@@ -130,7 +130,7 @@ Relevant seams:
 **Tests.** Opening a deep link produces zero transport calls before consent; redirect is refused;
 mixed public/private DNS answers fail closed; oversized chunked response cancels.
 
-## P1 — Pinned, policy-driven HTTP client 🟡 implemented; runtime/device evidence pending
+## P1 — Pinned, policy-driven HTTP client 🚧 implemented; runtime/device evidence pending
 
 Build a small `BoundedHTTPClient` with injected resolver, connector, clock, and policy. Do not put this
 policy into a general app-wide `URLSession` extension; callers must opt into a named fetch profile.
@@ -163,7 +163,7 @@ public→private redirect; cross-origin redirect; downgrade; loop; too many hops
 chunked cap; MIME mismatch; TLS hostname mismatch; credential stripping. All use fakes/local fixtures,
 not live internet.
 
-## P2 — Consent-first sideload state machine 🟡 implemented; runtime evidence pending
+## P2 — Consent-first sideload state machine 🚧 implemented; runtime evidence pending
 
 Implement a pure, replay-resistant state machine:
 
@@ -187,7 +187,7 @@ received → awaitingConsent → downloading → inspecting → awaitingInstall 
 deletes staging; tampering after review fails hash check; install review enumerates native targets;
 network errors do not automatically retry.
 
-## P3 — Streaming archive limits before allocation 🟡 implemented; manifest-first admission and runtime evidence pending
+## P3 — Streaming archive limits before allocation 🚧 implemented; manifest-first admission and runtime evidence pending
 
 Replace `ZipArchiveReader`'s trust in declared output size with a budgeted API.
 

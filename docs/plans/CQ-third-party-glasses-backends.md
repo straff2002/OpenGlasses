@@ -1,6 +1,6 @@
 # Plan CQ — Third-Party Glasses Backends (camera seam + two device classes)
 
-**Status:** 🚧 P0 + P1 + B/P4 built (2026-08-09) — the shared foundation plus the Track B protocol core, all fully headless; every phase that can be finished without hardware.
+**Status:** 🚧 P0 + P1 + B/P4 built and merged 2026-08-22 (`647473e`/`89e4f08`, [#312](https://github.com/straff2002/OpenGlasses/pull/312); suite green at 2883 tests) — the shared foundation plus the Track B protocol core, all fully headless; every phase that can be finished without hardware.
 
 **P0 ✅** `GlassesTier` + pure `GlassesTierPolicy` (most-capable-wins; "not connected" stays
 distinct from "connected but limited"), widened `MicRoutePolicy.glassesNameMarkers` guarded by a
@@ -15,7 +15,9 @@ consuming files changed. `CameraCapabilities` + pure `CameraFeatureGate` turn a 
 into copy a user can read; `startStreaming()` now refuses with that copy rather than failing
 obscurely. Readiness is asked as `isReady(configuringIfNeeded:)` because the Meta backend
 configures the SDK on demand to answer, and that prompts for Bluetooth — correct at a capture,
-wrong from a view body.
+wrong from a view body. **Since extended:** Plan EO P1 ([#439](https://github.com/straff2002/OpenGlasses/pull/439),
+2026-09-08) added HEVC/codec negotiation to `MetaCameraBackend` — the "none of the ~50 consuming
+files changed" framing above describes P1's own extraction, not the file's current size.
 
 **P4 ✅** the Track B protocol core, also headless: `CRC16Modbus` (written from the published
 catalogue parameters, pinned by the catalogue's own check value), `CapturePacket` (six-byte header,

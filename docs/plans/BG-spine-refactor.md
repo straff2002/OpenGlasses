@@ -1,6 +1,7 @@
 # Plan BG — Spine Refactor (phased): single-source tool prompts, flow engine, provider adapters, audio-engine merge
 
-**Status:** 🚧 Phased, one PR per phase. **P1 shipped** (registry-generated tool prompts).
+**Status:** ✅ Phased, one PR per phase, all shipped; on-glasses smoke test of the P2 voice path
+still owed. **P1 shipped** (registry-generated tool prompts).
 **P3 shipped** (one tool-loop driver). **P4 shipped** (merged realtime audio engine).
 **P5 shipped incrementally** (`@UserDefaultsBacked` cohorts, model types → `Models/`, NotesTool rename).
 **P2 complete:** pure `VoiceCommandParser`; `ConversationFlowEngine` + `VoiceCommandHandler`

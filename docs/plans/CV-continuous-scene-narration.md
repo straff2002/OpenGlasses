@@ -1,6 +1,6 @@
 # Plan CV — Continuous Scene Narration
 
-**Status: 🚧 P1–P3 shipped 2026-08-23**, with the ambient-captions interaction and
+**Status: ✅ P1–P3 shipped 2026-08-23**, with the ambient-captions interaction and
 **camera ownership** both resolved and built (2026-08-23) — the loop is built, wired, honest about
 what it can't do, and it now starts the camera it needs instead of explaining why there isn't one.
 Only P4 (device measurement, incl. an accessibility review with a wearer who would use it) remains,

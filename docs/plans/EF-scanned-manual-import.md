@@ -1,7 +1,7 @@
 # Plan EF — Scanned Manual Import (OCR for PDFs without a text layer)
 
-**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green; oldest-phone timing with a
-real scanned OEM manual pending). What landed: `ScannedPageReader` seam with a Vision-backed
+**Status:** ✅ P1 + P2 implemented 2026-09-03 (headless suite green); oldest-phone timing with a
+real scanned OEM manual still owed on device. What landed: `ScannedPageReader` seam with a Vision-backed
 production reader; `VaultDocumentExtractor` decides per page (text layer where one exists, the
 reader where not), keeps physical page numbers, and reports `ocrPages` / `lowConfidencePages`;
 `ScanRenderPolicy` (200 dpi, 150 under thermal pressure, confidence floor 0.5) and

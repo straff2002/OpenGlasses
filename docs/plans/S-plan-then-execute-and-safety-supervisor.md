@@ -26,6 +26,11 @@ appends only (user, summary) to history, and falls back to single-shot on any pa
 **Deferred to Phase 2 (optional polish):** an LLM complexity classifier (vs the keyword heuristic) and parallel-safe
 concurrent steps (build-order item 9).
 
+**Post-Phase-1 hardening (since landed elsewhere):** `3794e11` made the high-impact confirmation gate args-aware
+instead of tool-name-only; `be7cad4` + `5ea3a11` (Plan DJ, 2026-08-28) introduced `ToolAuthorizationPolicy`/
+`ComposedToolPolicy` as a single execution authority and deleted the old `NativeToolRegistry.executeTool` path —
+`SafetySupervisor`'s veto now sits ahead of that one authority rather than a parallel gate.
+
 ---
 
 ## Why now / what it builds on

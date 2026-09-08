@@ -20,17 +20,18 @@ equally stale).
 
 **2026-07-10 review notes:**
 - **Item 3 (shared `DeviceSession`) split:** `DeviceSessionCoordinator` is currently **dormant
-  code** — referenced by nothing outside its own file and tests; `CameraService.swift:153` and
-  `GlassesDisplayService.swift:439` still create sessions independently. The *adoption* (both
+  code** — referenced by nothing outside its own file and tests; `Camera/MetaCameraBackend.swift:249,252`
+  and `Display/MetaDisplayBackend.swift:229` still create sessions independently. The *adoption* (both
   services acquire/release through the coordinator, each still effectively sole owner) is a
   headless refactor buildable now with the existing fake-session seam; only *simultaneous
   camera+HUD* validation needs glasses. Adopt early — dormant ref-counting logic silently drifts
   from the real session lifecycle (e.g. the display reconnect path) the longer it waits.
-- **Item 6's PIN half is extracted to Plan BM P10 as a real gap, not a product decision:** Simple
-  Mode (shipped `e5cdddc`) has an unauthenticated exit toggle (`SettingsView.swift:603-606`) —
-  anyone holding the phone regains the full Settings surface, decrypted API-key fields included,
-  while conversations already have a biometric lock. Full multi-profile storage stays conditional
-  here.
+- **Item 6's PIN half was extracted to Plan BM P10 as a real gap, not a product decision — shipped
+  (`b1496ad`, [#203](https://github.com/straff2002/OpenGlasses/pull/203)):** Simple Mode (shipped
+  `e5cdddc`) had an unauthenticated exit toggle (`SettingsView.swift:603-606`) — anyone holding the
+  phone could regain the full Settings surface, decrypted API-key fields included, while
+  conversations already had a biometric lock. The owner gate on the exit toggle now closes that.
+  Full multi-profile storage stays conditional here.
 
 ---
 

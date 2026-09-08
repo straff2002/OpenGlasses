@@ -4,11 +4,24 @@
 **Origin:** 2026-08-27 ecosystem review — verified gap: a dropped RTMP connection mid-broadcast dies silently.
 **Priority:** P1 is the user-visible bug ("my stream just stopped"); P2/P3 are capability growth.
 
+**Note (2026-09-08): partially superseded.** [Plan CY](CY-broadcast-resilience-and-quality.md)
+([#337](https://github.com/straff2002/OpenGlasses/pull/337), merged 2026-08-25 — two days before
+this plan was drafted) already shipped the reconnect/backoff/session-state core this plan's P1 asked
+for: `BroadcastSessionMachine` (idle→connecting→live→reconnecting(attempt:)→failed, exactly the
+state machine proposed below) and `BroadcastReconnectPolicy` (1/2/4…60s capped exponential backoff,
+stable-reset, give-up budget) in
+`OpenGlasses/Sources/Services/BroadcastResilience.swift`, plus adaptive bitrate this plan didn't even
+ask for. What's still genuinely missing from P1: a **spoken TTS notice** on first drop / give-up —
+CY's reconnect path logs and calls `PrivacyLog` but never speaks. P2 (multi-destination fan-out) and
+P3 (caption-burned evidentiary export) remain entirely unbuilt.
+
 `BroadcastService` ([BroadcastService.swift](../../OpenGlasses/Sources/Services/BroadcastService.swift))
-has no reconnect, retry, or backoff anywhere. `StreamRecoveryPolicy` looks adjacent but is Plan BR's
-*camera*-stream recovery — it restores frames from the glasses to the phone, and nothing restores the
-phone-to-RTMP leg. A network blip during a live broadcast today ends the broadcast, and the wearer
-(whose phone is pocketed) finds out from their audience.
+previously had no reconnect, retry, or backoff anywhere — that gap is now closed by CY, above.
+`StreamRecoveryPolicy` looks adjacent but is Plan BR's
+*camera*-stream recovery — it restores frames from the glasses to the phone, distinct from the
+phone-to-RTMP leg CY's `BroadcastReconnectPolicy` now covers. A network blip during a live broadcast
+now reconnects rather than ending the broadcast silently; the remaining gap is that it does so
+without telling the wearer.
 
 ---
 
@@ -23,10 +36,13 @@ phone-to-RTMP leg. A network blip during a live broadcast today ends the broadca
 
 ## Decisions and invariants
 
-1. **Reconnect is policy, not wiring.** A pure `BroadcastRecoveryPolicy` decides, from
+1. ~~**Reconnect is policy, not wiring.** A pure `BroadcastRecoveryPolicy` decides, from
    `(consecutiveFailures, elapsedSinceLastHealthy, userStopped)`, one of
    `reconnect(delay:)` / `giveUp(reason:)`. Exponential backoff 2 s → 30 s cap, bounded attempts
-   (default 5), reset on a healthy interval. Testable as a table, no network.
+   (default 5), reset on a healthy interval. Testable as a table, no network.~~ **Already exists,**
+   shipped by Plan CY as `BroadcastReconnectPolicy` (1/2/4…60s capped exponential backoff, stable-reset,
+   give-up budget) driving `BroadcastSessionMachine`. This plan's P1 scope reduces to the one thing CY
+   didn't build: a spoken TTS notice on first drop and on give-up (one-notice-per-episode).
 2. **A reconnecting broadcast is announced, not silent.** State gains
    `.reconnecting(attempt:delay:)`; TTS gets one spoken notice on first drop and one on give-up —
    not one per attempt (the wearer can't act on a countdown).

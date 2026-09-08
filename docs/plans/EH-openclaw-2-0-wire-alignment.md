@@ -1,6 +1,6 @@
 # Plan EH — OpenClaw 2.0 Wire Alignment & New Surfaces
 
-**Status:** 🚧 P1 implemented 2026-09-03 (branch `feat/eh-p1-openclaw-2-wire`; full unit suite 381 suites green, Release build green, privacy scanner PASS); P2–P4 planned
+**Status:** 🚧 P1 implemented 2026-09-03 ([#404](https://github.com/straff2002/OpenGlasses/pull/404); full unit suite 381 suites green, Release build green, privacy scanner PASS); P2–P4 planned
 **Origin:** OpenClaw v2026.8.1 ("OpenClaw 2.0", 2026-08-31) and v2026.8.2 (2026-09-01). The wire was
 verified against the gateway's own protocol schemas and method catalog on `main` (2026-09-02), not
 against the release prose.

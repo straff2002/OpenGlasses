@@ -1,8 +1,8 @@
 # Plan BT — Reading Companion
 
-**Status: 🚧 All phases shipped (P1–P4, 2026-07-16) — session core, live mode, Q&A wiring,
+**Status: ✅ All phases shipped (P1–P4, 2026-07-16) — session core, live mode, Q&A wiring,
 review remediation, stats/HUD surface, reference-copy alignment; headless throughout. Device
-smoke owed and remains the real gate (OCR quality, thresholds, battery — plus the e-reader
+smoke still owed and remains the real gate (OCR quality, thresholds, battery — plus the e-reader
 glare pass).** A continuous *reading session* vertical: the glasses
 read along with a physical book or e-reader, answer questions grounded in **what the
 reader has actually seen**, and turn each session into retention artifacts (recap, study

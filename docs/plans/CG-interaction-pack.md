@@ -1,6 +1,6 @@
 # Plan CG — Choice Buttons, Dwell Capture & Badge Scan (interaction pack)
 
-**Status: 🚧 P1+P2 shipped (2026-08-02); P3 device smoke deferred** — `ChoiceDetector` /
+**Status: ✅ P1+P2 shipped (2026-08-02); P3 device smoke still owed** — `ChoiceDetector` /
 `DwellTracker` / `BadgeFieldParser` pure cores with full negative-case suites; wiring:
 Direct-mode replies tap `ChoiceDetector` and present a band-selectable choice screen
 (selection re-enters as the next user turn), `DwellCaptureService` runs Vision objectness

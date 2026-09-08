@@ -1,10 +1,13 @@
 # Plan CM — DAT 0.9.0 Feature Unlocks
 
-**Status: 📋 Planned** — follow-up to the SDK 0.9.0 adoption ([#298](https://github.com/straff2002/OpenGlasses/pull/298)).
-The bump was API migration only; this plan turns the *new capabilities* into features. One
-shared gate: the glasses-side DAT rollout for 0.9.0 hadn't shipped as of 2026-08-05
-(`datAppOnTheGlassesUpdateRequired` on every session), so **all device smoke tests here queue
-behind the same rollout** — but every core below is headless-buildable now, per house style.
+**Status: 🚧 Partially shipped, elsewhere.** Follow-up to the SDK 0.9.0 adoption ([#298](https://github.com/straff2002/OpenGlasses/pull/298)).
+The bump was API migration only; this plan turns the *new capabilities* into features. P5 shipped
+under Plan DQ (`cc358be`, [#334](https://github.com/straff2002/OpenGlasses/pull/334)); P1's stream
+half shipped as `CameraStreamStatePolicy` ([#323](https://github.com/straff2002/OpenGlasses/pull/323)).
+The rest of P1, and P2–P4, remain unbuilt. The glasses-side DAT rollout for 0.9.0 hadn't shipped as
+of 2026-08-05 (`datAppOnTheGlassesUpdateRequired` on every session); `CameraStreamStatePolicy` is
+device-traced 2026-08-23 describing the live 0.9 doff pause, so **the rollout has demonstrably
+landed** and no longer gates device smoke here.
 
 What 0.9.0 gives us that 0.8.0 didn't:
 
@@ -34,6 +37,10 @@ inside of a case.
 - **Caveat baked into the policy:** 0.9.0 conflates fold and doff in one case — treat both as
   "not being worn"; do not attempt to distinguish.
 - Device-pending: none for the core; live verification of signal timing only.
+- **The stream half of this row already shipped, opportunistically:** `CameraStreamStatePolicy`
+  ([#323](https://github.com/straff2002/OpenGlasses/pull/323)) handles the 0.9 doff-pause for the
+  camera *stream*, device-traced 2026-08-23. `WearStatePolicy`'s broader fan-out to the meeting
+  recorder, ambient captions, video recording, Live Coach, and `PowerPolicyService` is still unbuilt.
 
 ## P2 — Background meeting recording from glasses (PR 2, spike-gated)
 
@@ -73,11 +80,12 @@ With full if/else in the component builder and sanctioned flex on buttons:
   expressions instead of pre-shaped model branches where that simplifies call sites.
 - Tests: tree-shape assertions, headless (same seams as X/Y plan suites).
 
-## P5 — Crash-reporting opt-out (rider, ship-time decision)
+## P5 — Crash-reporting opt-out (rider, ship-time decision) — ✅ shipped
 
 Set `MWDAT > CrashReporting > OptOut = true` in the committed Info.plist: no crash telemetry
 to Meta by default, consistent with the privacy posture and the Medical Compliance story.
-One-line change + a note in `docs/BUILDING.md`; fold into whichever PR ships first.
+Shipped in `cc358be` ([#334](https://github.com/straff2002/OpenGlasses/pull/334)) under Plan DQ,
+not this plan.
 
 ## Order & gating
 

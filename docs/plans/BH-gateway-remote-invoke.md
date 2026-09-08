@@ -115,8 +115,9 @@ action+disposition, and rate state is one shared bucket set — a chatty MCP pee
 gateway's budget, and BL P4's "every call attributed to the peer's API key" is unimplementable.
 Small refactor before BL P4: thread an `origin` through `decide()` and the audit entry, and key
 rate state per origin. (Peer identity for inbound MCP callers is BL P4; the gateway-socket
-identity is Plan AR.) **This refactor is scheduled as Plan BN P2**; the shared confirm surface it
-pairs with is BN P1.
+identity is Plan AR.) **This refactor shipped as Plan BN P2** (2026-07-12), the day after this
+section was written; the shared confirm surface it pairs with, BN P1, shipped the same day
+([#205](https://github.com/straff2002/OpenGlasses/pull/205)).
 
 ### Same-theme hardening (fold into this PR — small, adjacent)
 - **Token hygiene:** the gateway token is interpolated into the WS URL

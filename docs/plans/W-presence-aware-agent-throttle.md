@@ -6,7 +6,7 @@
 
 **Effort:** ~2–3 days.
 
-**Status:** 🚧 Core shipped (`feat/presence-aware-throttle`). Deterministic core complete and headless-tested:
+**Status:** ✅ Core shipped (`feat/presence-aware-throttle`). Deterministic core complete and headless-tested:
 - **Model + policy** — `EngagementMode` (`active`/`present`/`idle`/`away`, ranked + `Comparable`), `Autonomy` (`autoAct`/`recommend`/`paused`), `ThrottleDecision`, and the pure `ThrottlePolicy.decide(mode:minMode:)` implementing the plan table (active 1.0 → present 2.0 → idle 4.0/recommend → away paused). `minMode` floor lets a safety-critical loop (hazard navigation) declare a minimum it can never be throttled below; `ThrottleDecision.interval(base:)` applies the multiplier (`.infinity` when paused).
 - **Presence fusion** — `PresenceSignals` snapshot + pure `PresenceEvaluator` (voice / last-interaction age / connectivity / foreground → mode, with `away` on disconnected-or-backgrounded honouring the MLX foreground-only constraint), `PresenceThresholds` (30 s active window, 5 min idle, 12 s debounce), and `ModeDebouncer` — **rises commit instantly** (prompt resume on re-engagement), **drops dwell** (no flap on a single missed tick). `PresenceMonitor` is an injectable `@MainActor ObservableObject` whose `update(now:)` is fully deterministic under test.
 - **Tests:** 21 headless (`PresenceThrottleTests`) covering the policy table + `minMode`, fusion bands, debounce flap-resistance, and the settle-to-idle → instant-resume monitor flow. Full suite 652 green, Debug + Release.

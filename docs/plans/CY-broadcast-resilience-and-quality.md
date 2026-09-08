@@ -3,9 +3,12 @@
 **Status: 🚧 Core shipped 2026-08-24**
 ([#337](https://github.com/straff2002/OpenGlasses/pull/337)) — P1 (pure policy cores), P2 (edge wiring: status
 observation, reconnection, adaptive bitrate, configurable encoding) and P3 (Settings + live health
-readout) landed. P4 — device/network smoke against a real ingest — is deferred: it needs glasses,
-an uplink that can be made to fail on demand, and a streaming account, none of which exist at a
-desk.
+readout) landed. **First hardware run 2026-08-27** found the app reporting "Live" while the ingest
+received zero bytes — fixed with a `hasSentAnything`-gated readout and unconditional stall→reconnect
+detection (`BroadcastStallPolicy`, cumulative-bytes signal); root cause not proven (suspected
+HaishinKit socket viability flap), but the guard holds regardless (see P4 below). Still owed on
+hardware: a real mid-stream drop, clean republish, congestion adaptation, 30 fps end-to-end, and
+give-up-budget tuning, none of which exist at a desk.
 
 Going live is the one feature where the failure is invisible to the person it happens to. The
 wearer is looking at the world, not at the phone; the LIVE badge stays lit whether or not anything

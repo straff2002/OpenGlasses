@@ -23,34 +23,33 @@ purge exists as code, not behavior; and Plan U's CaptureRecords now feed the que
 (`CaptureFlowService.swift:125-128` enqueues a `.logEntry` per finished flow) — "broader op feeds"
 is partially eaten.
 
-**Durability gaps found in the 2026-07-10 review (small, headless, fix before or with the sink):**
-- **`inFlight` stranding = silent permanent loss.** `SyncEngine.flush` marks ops `.inFlight` before
-  the async deliver (`SyncEngine.swift:78`); killed mid-delivery, they stay `inFlight` forever —
-  `pending()` selects only `'pending'` and nothing resets `inFlight → pending` at startup.
-- **No launch-time flush.** Flush fires only on a reachability *change* (`Reachability.swift:39-42`
-  guards `online != isOnline`; `initiallyOnline: true`). Capture offline → force-quit → relaunch on
-  WiFi never syncs until the network flaps or the user finds the manual button.
-- **Unbounded growth:** `done` tombstones + delivered photos accumulate (see above); `flush()`
-  drains one `pending(limit: 500)` pass without looping; `failed`/`conflict` ops are terminal dead
-  rows (badges only — no retry/resolve/purge UI).
-- **`ConflictResolver` latent bugs (fatal on first live use):** it *advances* the baseline inside
-  the conflict branch (`ConflictResolver.swift:34`), so only the first op of a session surfaces as
-  a conflict and the rest silently last-writer-win — contradicting the "conflict surfaced not
-  overwritten" claim; and `knownVersion` is in-memory only (`:16`), so every restart resets
-  baselines to 0 and the first post-restart sync produces spurious conflicts.
+**Durability gaps found in the 2026-07-10 review — mostly closed:**
+- **`inFlight` stranding, no launch-time flush, and unbounded growth — fixed in `ef196c2` (Plan BM P1,
+  2026-07-11).** `SyncEngine.runMaintenance()` now recovers stranded `inFlight` ops back to `pending` on
+  open, flushes at launch (not just on a reachability edge), and wires `purgeDone`/`prunePhotoEvidence`
+  to a real post-flush/app-launch trigger.
+- **`ConflictResolver` latent bugs — fixed 2026-09-09 ([#443](https://github.com/straff2002/OpenGlasses/pull/443)).** It *advanced* the baseline
+  inside the conflict branch, so only the first op of a session surfaced as a conflict and the rest
+  silently last-writer-won; and `knownVersion` was in-memory only, so every restart reset baselines
+  to 0 and the first post-restart sync produced spurious conflicts. Now a conflict leaves the baseline
+  where it is and adoption is an explicit `acknowledge(serverVersion:for:)`; baselines go through a
+  `ConflictBaselineStore` seam whose durable implementation is `OfflineQueue` itself (a
+  `conflict_baselines` table in the queue's own SQLite file, beside the ops it gates).
 - **Absolute-path payloads:** `photoUpload`/`auditExport` ops store `url.path`
   (`FieldSessionService.swift:223,305`); iOS container UUIDs change on update/restore, invalidating
   queued paths. No delivery-time existence check; no defined sink behavior for a dangling ref.
 
+**New OpKinds (2026-09-08):** `0e76b1c` (Plan EM) added `workRecord`/`partsRequest` OpKinds, riding
+the same durable queue.
+
 **Still deferred — re-scoped 2026-07-10:** a real **networked sink, now with a concrete v1 target:
 Plan BL's A2A peer** — build `PeerSyncSink: SyncSink` delivering queued ops as A2A `tasks.send`
-headless against BL's `MockOpsPeer`, with the `inFlight` recovery, launch-time flush, persisted
-conflict baselines, and advance-on-conflict fixes above as named prerequisites (this also gives
-`ConflictResolver` its first consumer). Routing `SessionLogger` entries is plain headless plumbing
-(buildable now, not device-pending). `llmGrounding` routing is near-superseded: the open question
-below prefers MLX-first answering, and BL P1's persisted-pending-task pattern covers the ask-later
-UX — keep as low-priority backlog. **New buildable-now item:** wire `purgeDone` +
-`prunePhotoEvidence` to a real trigger (post-flush and/or app-launch).
+headless against BL's `MockOpsPeer` — its named prerequisites (`inFlight` recovery, launch flush,
+persisted conflict baselines, advance-on-conflict) have all shipped, so it waits only on BL (and
+gives `ConflictResolver` its first consumer). Routing
+`SessionLogger` entries is plain headless plumbing (buildable now, not device-pending).
+`llmGrounding` routing is near-superseded: the open question below prefers MLX-first answering, and
+BL P1's persisted-pending-task pattern covers the ask-later UX — keep as low-priority backlog.
 
 ---
 

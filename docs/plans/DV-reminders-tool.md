@@ -1,6 +1,6 @@
 # Plan DV — Reminders Tool
 
-**Status:** 🟠 Core create/list/complete contract implemented through DY P0 (2026-08-30);
+**Status:** 🚧 Core create/list/complete contract implemented through DY P0 (2026-08-30);
 location alarms, named lists, and notes remain
 **Origin:** 2026-08-27 ecosystem review — a gap two independent implementations surfaced: we have
 alarms, timers, geofences, and calendar, but originally had no planned Reminders/EventKit seam.

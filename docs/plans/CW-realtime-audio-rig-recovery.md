@@ -1,6 +1,6 @@
 # Plan CW — Realtime Audio Rig Recovery
 
-**Status: 🚧 Core shipped 2026-08-22** — P1 + P2 + two of P3's three items landed; P4 device
+**Status: 🚧 Core shipped 2026-08-22** ([#314](https://github.com/straff2002/OpenGlasses/pull/314)) — P1 + P2 + two of P3's three items landed; P4 device
 verification is still owed, and one P3 item (drain the playout tail at hang-up) is deferred with a
 reason recorded below.
 
@@ -137,10 +137,12 @@ Three small ones, each a known way for the *next* session to come up wrong:
 
 ## Riders
 
-- **Route-pinned cues.** Any tone that belongs to a live session — start, end, error — must be
-  rendered through *that session's* engine, not a private one, or it plays out of the phone speaker
-  after a route switch instead of in the wearer's ear. Cheap to get right while P3 is already in the
-  teardown ordering; wrong by default otherwise.
+- **Route-pinned cues — outstanding, not yet built.** Any tone that belongs to a live session —
+  start, end, error — must be rendered through *that session's* engine, not a private one, or it
+  plays out of the phone speaker after a route switch instead of in the wearer's ear.
+  `TextToSpeechService.playTone` still builds a private `AVAudioPlayer` per tone — exactly the path
+  this rider says must not be used. Cheap to get right while P3 is already in the teardown ordering;
+  wrong by default otherwise.
 - **Per-route input gain.** The phone mic at arm's length reads much quieter than a glasses mic at
   the temple, and every downstream threshold — barge-in, and CU P2's acoustic detector — is
   calibrated against that level. A clamped per-`MicRoute` gain belongs with CU P2's threshold work,

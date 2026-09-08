@@ -1,13 +1,14 @@
 # Plan AP — Audio-Session Resilience P2 (self-healing realtime audio: interruptions, route changes, Bluetooth input)
 
-**Status:** 🚧 Core shipped (this branch). Follow-up to [Audio-Session Resilience](audio-session-resilience.md)
+**Status:** ✅ Core shipped (this branch). Follow-up to [Audio-Session Resilience](audio-session-resilience.md)
 (#114). Pure `AudioInterruptionPolicy` + `AudioRoutePolicy` + both realtime managers reworked
 (permanent engine, serial lifecycle queue, idempotent node/tap guards, generation counter,
 interruption/route recovery, BT-input selection + speaker fallback). **15 new tests** (9 interruption +
-6 route), 20 audio tests total; Debug + Release green. No new SPM dependency. Live recovery on real
-interruptions/route flips is device-pending (can't be exercised on the simulator). `stopCapture()`
+6 route), 20 audio tests total; Debug + Release green. No new SPM dependency. `stopCapture()`
 kept **synchronous** (the teardown barrier runs on the lifecycle queue) so the two session managers'
-call sites are untouched. Cross-subsystem lease coordinator shipped as **Plan AS**.
+call sites are untouched. Cross-subsystem lease coordinator shipped as **Plan AS**. Live
+interruption/route-flip recovery still owed on device — one audio session shared with AS/BJ/BO's
+on-glasses smoke test.
 
 **Doc corrections (2026-07-10 review):**
 - **File names are stale throughout this doc:** BG P4 (`5e5bc15`) merged the twin audio managers into
@@ -19,15 +20,13 @@ call sites are untouched. Cross-subsystem lease coordinator shipped as **Plan AS
   was resolved as **log-only** (`RealtimeAudioEngine.swift:506-508` — no HUD/TTS surfacing exists, so
   the "using phone audio" user-facing promise below is *not* implemented; either close it or make
   surfacing a small named follow-up).
-- **Unflagged ownership hole in this plan's own recovery path (belongs to no other plan):**
-  `resumeAfterInterruptionOnQueue` calls `AVAudioSession.sharedInstance().setActive(true)` directly
-  (`RealtimeAudioEngine.swift:414-416`) with **no `currentOwner` check** — if another owner acquired
-  the session during the interruption (mode switch during the call, wake word reclaimed), the resume
-  reactivates over them. Contrast `WakeWordService.handleAudioInterruption`, which guards
-  (`WakeWordService.swift:297-301`). This is the exact bug class Plan AS exists to prevent, and Plan
-  BJ explicitly scopes realtime activation out. **Fix here (ledger check before reactivating) before
-  any device validation.** (The route-reset path is fine — it re-enters via `setupAudioSession`,
-  which re-acquires through the coordinator.)
+- **Unflagged ownership hole in this plan's own recovery path — fixed.** `resumeAfterInterruptionOnQueue`
+  now checks `AudioInterruptionPolicy.mayResume(engineOwner:currentOwner:)` against
+  `AudioSessionCoordinator.shared.currentOwner` before reactivating, closing the gap where another
+  owner (mode switch during the call, wake word reclaimed) could have the resume reactivate over it.
+  Plan BJ (#218/#220/#222) shipped the prerequisite off-main activation seam this fix builds on.
+  (The route-reset path was already fine — it re-enters via `setupAudioSession`, which re-acquires
+  through the coordinator.)
 - **Device validation re-scoped:** fold AP's live interruption/route recovery check into Plan BJ's
   on-glasses smoke test (BJ's list already includes phone-call interruption recovery + BT route
   change) — one device session, not two. Plan BJ also notes this engine's deliberate main-thread

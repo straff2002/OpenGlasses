@@ -1,6 +1,6 @@
 # Plan CB — Live-Session Vision Detail & Async Delivery
 
-**Status:** 🚧 P1–P3 shipped in one PR (2026-07-30) — `LiveInjectionEnvelope`/`LiveSessionInjecting` +
+**Status:** ✅ P1–P3 shipped in one PR (2026-07-30); device smoke still owed — `LiveInjectionEnvelope`/`LiveSessionInjecting` +
 `sendText`/`sendHighResImage` on both live services, `AsyncDeliveryPhrasing`, `LookCloselyPolicy` +
 `look_closely` tool (BV-gated, 6 s timeout, injector resolved per-call via `AppState.activeLiveInjector`),
 live-session suppression of the Direct-mode "still working" TTS, agent-result delivery via in-session

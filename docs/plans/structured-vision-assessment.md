@@ -1,6 +1,6 @@
 # Plan AD — Structured Vision Assessment (schema-validated `analyzeFrame`)
 
-**Status: 🚧 Core shipped on `feat/structured-vision` (Phases 1–3).** Drafted + built 2026-06-19.
+**Status: ✅ Complete.** Drafted + built 2026-06-19.
 Shipped: the pure core (`AssessmentCard`/`AssessmentTier`/`AssessmentFinding`/`InstrumentReading`,
 `UnitNormalizer`, `AssessmentSchema`/registry, tolerant `AssessmentJSON`); `LLMService.analyzeFrameStructured`
 + per-provider `StructuredVisionParser` (forced tool-use / function / JSON, text fallback);

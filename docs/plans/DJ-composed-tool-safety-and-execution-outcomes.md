@@ -1,7 +1,7 @@
 # Plan DJ — Composed-Tool Safety and Uncertain Execution Outcomes
 
-**Status:** 🚧 All phases built, in review as a stacked series (2026-08-28): P0 #358 → P1 #361 →
-P2 #362 → P3 #363. Every exit criterion is test-covered by the stack except the release-log
+**Status:** ✅ All phases shipped and merged (all four merged 2026-08-27): P0 [#358](https://github.com/straff2002/OpenGlasses/pull/358) → P1 [#361](https://github.com/straff2002/OpenGlasses/pull/361) →
+P2 [#362](https://github.com/straff2002/OpenGlasses/pull/362) → P3 [#363](https://github.com/straff2002/OpenGlasses/pull/363). Every exit criterion is test-covered by the stack except the release-log
 criterion, which P3 met at the execution boundary only — app-wide logging remains
 [[DM-privacy-safe-production-logging]]'s scope.
 **Origin:** 2026-08-26 adversarial review findings 1 (Critical) and 9 (Medium).

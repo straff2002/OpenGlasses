@@ -1,6 +1,6 @@
 # Plan CI — Broadcast Chat Read-Aloud (two-way streaming)
 
-**Status: 🚧 P1+P2 shipped (2026-08-02); P3 device smoke deferred** — `TwitchChatMessageParser`
+**Status: ✅ P1+P2 shipped (2026-08-02); P3 device smoke still owed** — `TwitchChatMessageParser`
 (IRCv3 tags, `/me` ACTION, tag escaping, emote-range stripping, UTF-8 names; hostile-input
 fixtures: control chars, 10k-char lines, tag injection — output always TTS-safe plain text) +
 `ChatReadbackPolicy` (rate cap, bounded drop-oldest queue, 30 s dedup with "times N", URL/

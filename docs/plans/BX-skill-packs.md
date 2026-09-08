@@ -1,6 +1,7 @@
 # Plan BX — Skill Packs & In-App Catalog
 
-**Status: 🚧 P1 shipped (2026-07-31)** — `SkillPackManifest` (+ `lossyDecode` with named-action drop
+**Status: ✅ P1–P3 shipped (2026-07-31–08-01); plan complete except P4 (JS handlers, deferred by
+design).** `SkillPackManifest` (+ `lossyDecode` with named-action drop
 report), `SkillPackValidator` (caps, shapes, native-collision, Plan R screen **at reject severity** —
 for a pack, install *is* the trust decision, so quarantine-level scanner findings refuse rather than
 badge), `SkillPackSignature` (ed25519 over manifest + sorted payload hashes; production key is a

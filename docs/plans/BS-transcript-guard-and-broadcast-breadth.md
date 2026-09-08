@@ -1,8 +1,10 @@
 # Plan BS — STT Transcript Guard & Broadcast Breadth
 
-**Status: 🚧 Implemented — all three phases in one PR ([#238](https://github.com/straff2002/OpenGlasses/pull/238), 2026-07-15); endpoint/device smoke owed.**
+**Status: ✅ Implemented — all three phases in one PR ([#238](https://github.com/straff2002/OpenGlasses/pull/238), 2026-07-15); endpoint/device smoke still owed.**
 Two workstreams in one plan: a correctness fix for the speech stack, and feature breadth
-for the RTMP broadcast vertical.
+for the RTMP broadcast vertical. P2's original "silent while listening is disabled" mic-audio
+limitation was closed by [Plan CZ](CZ-independent-capture-audio.md)'s `CaptureAudioRouter`
+(`ecf75c7`, 2026-08-24), which gave capture its own microphone source independent of the assistant.
 
 **As-built notes:**
 - P1: ambient captions and memory rewind turn out to use Apple Speech/Deepgram (not the

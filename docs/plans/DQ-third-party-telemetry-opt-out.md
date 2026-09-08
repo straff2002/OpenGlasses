@@ -1,6 +1,6 @@
 # Plan DQ — Third-Party Telemetry Opt-Out and Privacy-Manifest Honesty
 
-**Status:** 🚧 **P0 ✅ shipped**, **P1 ✅**, **P2 ✅ copy / 🟡 device verification**.
+**Status:** ✅ **P0 ✅ shipped**, **P1 ✅**, **P2 ✅ copy** — device packet-capture confirmation still owed.
 P0 landed ahead of this document being updated: the `MWDAT` dict in `OpenGlasses/Info.plist` carries
 both `Analytics > OptOut` and `CrashReporting > OptOut` (the opt-out went further than the plan
 scoped — analytics as well as crashes), and `MetaTelemetryBlock` was added as a `URLProtocol`
@@ -181,7 +181,7 @@ exists; test 2 covers every machine either way, because it reads what was actual
 Item 3 landed in `.claude/rules/dat-conventions.md` as a telemetry-posture bullet alongside the
 existing data-collection note. The submission-checklist half is still open, with P0 item 4.
 
-## P2 — User-facing transparency ✅ copy / 🟡 device verification
+## P2 — User-facing transparency ✅ copy / device verification still owed
 
 1. Ensure the in-app privacy disclosure copy states plainly that the app sends no analytics or crash
    telemetry to the developer or the wearables SDK vendor, consistent with the manifest.

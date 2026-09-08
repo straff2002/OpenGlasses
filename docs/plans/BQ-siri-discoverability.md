@@ -1,6 +1,6 @@
 # Plan BQ — Siri & Apple Intelligence Discoverability
 
-**Status: 🚧 P1 shipped ([#231](https://github.com/straff2002/OpenGlasses/pull/231)); P2 in review; P3 planned.**
+**Status: 🚧 P1/P2/P3 + follow-up all shipped** ([#231](https://github.com/straff2002/OpenGlasses/pull/231)/[#232](https://github.com/straff2002/OpenGlasses/pull/232)/[#233](https://github.com/straff2002/OpenGlasses/pull/233)/[#234](https://github.com/straff2002/OpenGlasses/pull/234)); **on-device Apple Intelligence smoke owed.**
 
 *P2 as-built notes:* one generic `GlassesContentEntity` (not per-type entities — the
 metadata surface stayed small and the processor accepted it); the `OpenIntent` presents a
@@ -127,7 +127,7 @@ mutation persists via `Config` and calls `updateAppShortcutParameters()`.
 query results (enabled-only, string matching over name+synonyms); guard behaviour. No
 `.shared` service touched (Wearables fatals headless).
 
-## P2 / PR2 — Content entities + Spotlight index 🟡
+## P2 / PR2 — Content entities + Spotlight index (shipped)
 
 **Adapter seam (pure):** `SiriContentSource` protocol — `type`, `records() -> [IndexableRecord]`
 (`id`, `contentType`, `title`, `text`, `keywords`, `date`, `location?`). One small adapter per
@@ -170,7 +170,7 @@ delete operations; `SpotlightIndexService` (edge) applies them via `CSSearchable
 re-plans on store change notifications and app-foreground, full purge on toggle-off/HIPAA.
 Tests cover the planner exhaustively; the edge is a dumb executor.
 
-## P3 / PR3 — Onscreen content + camera App Schema (code shipped, device-gated) 🟡
+## P3 / PR3 — Onscreen content + camera App Schema (shipped; on-device Apple Intelligence smoke owed)
 
 - `siriOnscreenContent` modifier: `NSUserActivity` + `appEntityIdentifier` donation from
   `ChatThreadView` (thread title/summary only) and `SiriContentDetailView` — "Siri,
@@ -181,7 +181,7 @@ Tests cover the planner exhaustively; the edge is a dumb executor.
   verified): `startCapture` requires `captureMode`/`timerDuration`/`device`, each an
   `@AppEnum(schema: .camera.*)` — v1 honours mode (photo→silent capture, video→recorder),
   timer/device accepted but immediate/glasses-only.
-- **Assistant schema** (follow-up PR): `@AppIntent(schema: .assistant.activate)` twin of
+- **Assistant schema** — shipped same-day as a follow-up ([#234](https://github.com/straff2002/OpenGlasses/pull/234)): `@AppIntent(schema: .assistant.activate)` twin of
   `AskOpenGlassesIntent` — registers OpenGlasses as a *voice assistant* for the side-button
   assistant slot. iOS 26.2+ only (`@available`-gated; the domain doesn't exist below), and
   the schema contract requires `supportedModes = .foreground` instead of `openAppWhenRun`

@@ -11,19 +11,23 @@
 Every control on the watch is a remote for the phone, and the remote has no batteries of its own.
 [`WatchConnectivityService.sendCommand`](../../OpenGlassesWatch/WatchConnectivityService.swift)
 opens with `guard WCSession.default.isReachable else { … }`, so the instant the phone is in another
-room, in a bag on the far side of a workshop, or simply asleep past the WCSession timeout, all six
-buttons in [`WatchMainView`](../../OpenGlassesWatch/WatchMainView.swift) stop working at once. There
-is no local state, no transcript, and no answer path: the watch holds nothing but a reachability flag
-and a set of command names.
+room, in a bag on the far side of a workshop, or simply asleep past the WCSession timeout, all seven
+controls in [`WatchMainView`](../../OpenGlassesWatch/WatchMainView.swift) (nine commands:
+`toggleListen`, `toggleRecord`, `toggleVideo`, `capturePhoto`, `quickAction`, `persona`,
+`resumeThread`, `sleep`, `connect`) stop working at once. There is no local state, no transcript, and
+no answer path: the watch holds nothing but a reachability flag and a set of command names.
+(`photo`/`describe`/`ask` are phone-side handler cases in `WatchConnectivityService`, not watch-side
+controls — there is no watch button for any of them today.)
 
-For most of those commands that is *correct and unavoidable*. `photo`, `describe`, `capturePhoto`,
-`toggleVideo` and `connect` all drive glasses hardware through the DAT SDK, which lives on the phone
-and cannot be anywhere else — the phone is the only device paired to the glasses. Routing them
-anywhere would be a lie.
+For most of the watch's own controls that is *correct and unavoidable*. `toggleVideo`, `capturePhoto`
+and `connect` all drive glasses hardware through the DAT SDK, which lives on the phone and cannot be
+anywhere else — the phone is the only device paired to the glasses. Routing them anywhere would be a
+lie.
 
-But `ask` is not hardware. It is a question. A question needs a network and a model, both of which a
-cellular or Wi-Fi-connected watch has independently of the phone. Today it fails identically to the
-camera commands, and the user is given the same blank unreachable state for a request that could
+But a question is not hardware. It needs a network and a model, both of which a cellular or
+Wi-Fi-connected watch has independently of the phone. Today an `ask`-shaped request has no watch
+surface at all, and even the watch's own commands fail identically to the camera commands when the
+phone is unreachable — the user is given the same blank unreachable state for a request that could
 plainly have been served.
 
 The failure is also badly presented: reachability is a single boolean driving the whole screen, so the
@@ -58,7 +62,8 @@ Rules, each with a reason it exists:
 
 | Rule | Behaviour |
 |---|---|
-| Command needs glasses hardware (`photo`, `describe`, `capturePhoto`, `toggleVideo`, `connect`, `sleep`) | `.viaPhone` when reachable, else `.unavailable(.needsPhone)` — **never** `.direct`; there is no camera on the wrist and a fallback that pretends otherwise is worse than a disabled button |
+| Command needs glasses hardware (`capturePhoto`, `toggleVideo`, `toggleRecord`, `connect`, `sleep`) | `.viaPhone` when reachable, else `.unavailable(.needsPhone)` — **never** `.direct`; there is no camera on the wrist and a fallback that pretends otherwise is worse than a disabled button |
+| App-level, phone-owned state (`toggleListen`, `quickAction`, `persona`, `resumeThread`) | `.viaPhone` when reachable, else `.unavailable(.needsPhone)` — same reasoning as hardware commands: personas/threads/quick-actions live in `Config`/`ConversationStore` on the phone today, not on the watch |
 | `ask`, phone reachable | `.viaPhone` — the phone has the personas, the vault, the tools, the frame; prefer it whenever it exists |
 | `ask`, phone unreachable, endpoint configured | `.direct` |
 | `ask`, phone unreachable, no endpoint | `.unavailable(.notConfigured)` — actionable, and the action is on the phone |

@@ -1,6 +1,6 @@
 # Plan EL — Equipment Identity (the session knows what is in front of the technician)
 
-**Status:** ✅ P1 + P2 implemented 2026-09-08 (headless); device smoke pending. P3 (nameplate fields
+**Status:** 🚧 P1 + P2 implemented 2026-09-08 (headless); device smoke pending. P3 (nameplate fields
 beyond the model) not started. Stacked on
 [Plan EJ](EJ-manual-retrieval-fidelity.md) (PR #425) and [Plan EK](EK-manual-structure-and-figures.md).
 **Origin:** EJ P2 measured the evidence gate against the Lennox SLP99 pair and left a residue that
