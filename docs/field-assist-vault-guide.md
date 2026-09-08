@@ -289,9 +289,42 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
 
    If you get a confident answer where the book is silent, tell us; that is the behaviour the vault rules exist to prevent.
 7. **Tap the citation under the answer.** Every source an answer names becomes a chip; tapping one opens that page. The header tells you which document you are looking at — *Manufacturer's document · page 42 of 118 · unmodified since import*, or *Extracted text · page 42* with a line saying whether the original is bundled — and you can swipe through the manual and tap once to come back to the cited page. A chip naming a core file opens that file at the section it cites, ready to correct. If a chip opens a page that does not answer the question, the manual's page numbering is off by a page or two; see Step 1.
-8. End the session. The audit log records every question, answer, photo and citation — including which citations were opened and which document each was read in — and the machine the session identified, printed at the top of the exported work order (*Equipment: RTU-500 — from the nameplate at 14:02*). A team licence can export the record as PDF.
+8. **Ask for the job so far.** Say *"read back the job"* — or tap **Read back the job** on the Active Session card — and the assistant speaks the work record: the machine, each task with its status and evidence, the parts requested, the pages verified against the manufacturer's document, and the time on site. It is assembled from what was recorded and nothing else; no model writes it, so two identical visits read identically. This is what the technician confirms before anything is sent.
+9. End the session. The audit log records every question, answer, photo and citation — including which citations were opened and which document each was read in — and the machine the session identified, printed at the top of the exported work order (*Equipment: RTU-500 — from the nameplate at 14:02*). A team licence can export the record as PDF.
 
 > **Everything stays on the phone.** Manuals are indexed and searched on the device and never uploaded to us. The passages relevant to a question are sent to whichever AI model you configured, together with the question, in the same way the rest of the app works. If you use an on-device model, nothing leaves the phone at all.
+
+## Step 7 · Send the job report
+
+At the end of a visit there is one record: what was recommended, what the technician decided, what was done and on what evidence, and what base is being asked for. It leaves in three shapes off the same data — a PDF a person reads, a JSON file a job system parses, and a short summary that fits in a message — so they cannot disagree with each other.
+
+### Set the destinations once
+
+In **Settings › Field Assist › Job Reports**:
+
+- **Email / Messages recipients** — where a report goes when nobody names anybody. Separate several with commas. A technician can always override by naming a contact out loud.
+- **Office endpoint** (optional) — an HTTPS URL your own system answers on. With one set, job records and parts requests are posted there through the offline queue with no tap at all, retried until they arrive. The optional bearer token is kept in the device Keychain and never in preferences, never in an export.
+- **Allowed channels** — which routes a report may leave by: Email, Messages, WhatsApp, Telegram, Share…, Endpoint. **What may carry site data is the organisation's call, not each technician's.** Switch a channel off and the assistant refuses it out loud and names the ones that are allowed. The endpoint becomes selectable once one is configured.
+
+### Sending it
+
+Say *"send the job report to base"*, *"email this to the office"*, *"message the job to Dave"* or *"share the report"* — or tap **Send report…** on the Active Session card. The composer opens on the phone with everything filled in, and **the technician taps Send**. iOS does not let an app send mail or a message on someone's behalf, and that requirement is the point rather than an obstacle: nothing leaves the device without either a person's tap or the endpoint the organisation configured.
+
+What each channel carries:
+
+| Channel | Body | Attachments |
+|---|---|---|
+| Email | The full work record | Work order PDF + JSON record |
+| Messages | Short summary and the job reference | The PDF, when the device can attach one; the body says so when it cannot |
+| WhatsApp / Telegram | Short summary and the job reference | None — these open by URL scheme and cannot carry a file |
+| Share… | The full record | Both files, to anywhere the share sheet reaches |
+| Endpoint | The JSON record, posted | — |
+
+Recipients need an address the channel can use: a contact name resolves to a phone number for the message channels, and an email needs an actual address — the assistant says so rather than guessing one, because the wrong inbox is the one mistake here that nobody would notice.
+
+### Nothing is silently lost
+
+A composer you dismiss sends nothing, and nothing pretends otherwise: the record stays in the queue, any parts requests stay *requested*, and the Active Session card says **Unsent**. Open **Settings › Field Assist › Field Sync** to see every job report and parts request the office has not received, listed by job reference with what is in it. Each row has **Retry**, which puts it back through the queue, and a work record also offers **Send by email instead**, which opens the composer with the record in the body. WhatsApp and Telegram cannot tell the app whether you tapped Send in them, so a report handed to one of those is recorded as not confirmed and stays queued — deliberately.
 
 ## Updating a vault
 

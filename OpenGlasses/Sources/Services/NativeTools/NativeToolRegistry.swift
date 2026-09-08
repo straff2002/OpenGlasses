@@ -184,6 +184,9 @@ final class NativeToolRegistry {
             register(ProposeTaskTool())
             register(TaskTool())
             register(PartsRequestTool())
+            // deliver_report stages the finished record for the composer; iOS makes the technician
+            // tap Send, which is the human-in-the-loop step rather than an obstacle.
+            register(DeliverReportTool())
             // manual_figure puts a numbered drawing on the phone and in the next turn's image slot.
             register(ManualFigureTool(documentStore: documentStore))
             // Safety Assessment (HECA) — camera high-energy hazard assessment via SafetyAssessmentService.shared.

@@ -88,5 +88,25 @@ struct MainView: View {
             VaultFileCitationSheet(vaultId: request.vaultId, filename: request.filename,
                                    section: request.section)
         }
+        // The job report, filled in and waiting for the operator's thumb (Plan EM P2). Presented
+        // from here because "send the job report" can be said on any tab, and a report nobody can
+        // see is a report nobody can send.
+        .sheet(item: $appState.deliveryComposerRequest) { request in
+            switch request.channel {
+            case .messages:
+                ReportMessageComposer(model: request.model) { outcome in
+                    appState.finishDelivery(request.request, outcome: outcome)
+                }
+                .ignoresSafeArea()
+            default:
+                ReportMailComposer(model: request.model) { outcome in
+                    appState.finishDelivery(request.request, outcome: outcome)
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .sheet(item: $appState.deliveryShareItem) { item in
+            ShareSheet(items: item.items, onComplete: item.onComplete)
+        }
     }
 }
