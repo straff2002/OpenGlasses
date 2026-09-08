@@ -1,7 +1,7 @@
 # Plan EM — Work Record and Parts (what was recommended, what was done, what base needs)
 
-**Status:** ✅ P1 implemented 2026-09-08 (headless). P2 (delivery, composers, org-profile
-destinations, queue view, task list on the session screen) and P3 (with BL) not started.
+**Status:** ✅ P1 + P2 implemented 2026-09-08 (headless); one real email and one real message
+from a device still pending. P3 (with BL) not started.
 Sequenced after [Plan EL](EL-equipment-identity.md) so the record
 carries the equipment identity; builds on [Plan EK](EK-manual-structure-and-figures.md) P3's
 verified-page audit trail. Independent of [Plan BL](BL-ops-platform-agent-bridge.md) but is the
@@ -146,10 +146,11 @@ plain summary for a message body. They cannot disagree.
   citation or with an unknown procedure; parts verified / unverified from the Lennox core and
   manuals; the record rendered from a scripted session; old sessions decode without the new fields;
   export includes tasks and parts.
-- **P2 — delivery and surface (one PR).** Composer paths with attachments, CT profile `delivery`,
-  channel restrictions, queue view for pending records, the session screen's task list and read-back,
-  HUD line for the active task, guide section for `parts.md` and delivery setup. Live edge: one
-  real email and one real message from a device, recorded when run.
+- **P2 — delivery and surface (one PR).** ✅ 2026-09-08. Composer paths with attachments,
+  `DeliverySettings`/`DeliveryPolicy` (shaped for CT's profile to supply later), channel
+  restrictions, `deliver_report` + staging, `EndpointSyncSink`, queue view for pending records, the
+  session screen's task list and read-back, HUD line for the active task, guide Step 7. Live edge:
+  one real email and one real message from a device, **not yet run** — no device in this session.
 - **P3 — with BL.** Post the record and parts requests to the operations platform; speak its
   answers. Deferred to BL's own phases.
 
@@ -233,3 +234,65 @@ voice route to the job reference yet: it is `startSession(jobReference:)` and
 `FieldSessionService.setJobReference`, and P2's organisation-profile QR is where it gets one. The
 `sent` state of a `PartsRequest` is never entered, because nothing sends anything in P1 — the
 queued operations are durable local tombstones until P2 configures an endpoint.
+
+
+---
+
+## P2 findings (2026-09-08)
+
+**A staged report is the only shape that stays honest headless.** `deliver_report` builds the
+request and publishes it on the session; `AppState` subscribes and opens the composer, exactly the
+way `manual_figure` reaches the phone. The tool therefore behaves identically with no app around
+it, which is what makes every one of its decisions — channel, recipients, refusal — a headless
+test rather than a UI test. It also means the WhatsApp/Telegram route goes through staging too and
+is fired by the app from `MultiChannelMessageTool`, rather than the tool opening a URL itself.
+
+**Only a confirmed send is a send, and three of the five outcomes are not one.** Mail's *saved*
+(a draft), a dismissal, and a hand-off to an app that reports nothing back all leave the record
+where it was: the queued operation stays `pending` and the `PartsRequest`s stay `requested`. The
+hand-off case needed its own outcome (`DeliveryOutcome.handedOff`) because WhatsApp and Telegram
+are opened by URL scheme and *cannot* tell us whether the person tapped Send — calling that "sent"
+would mark parts ordered that nobody ordered. The endpoint channel is the same shape: it enqueues
+and reports what the queue then says, rather than what it hoped.
+
+**Mail and Messages number their results differently.** `MFMailComposeResult` is
+cancelled/saved/sent/failed (0–3); `MessageComposeResult` is cancelled/sent/failed (0–2). A
+`.sent` case matched on the wrong enumeration silently marks a cancelled report as sent, so the
+mapping is its own pure type (`ReportComposerOutcome`) with the raw values pinned in a test.
+
+**`canSendMail()` is false on the simulator, and that is the general case, not a test artefact.**
+A phone with no Mail account, or an iPad with no SMS, has the same problem. `ReportComposerAvailability`
+resolves the channel against what the device can actually do and falls back to the share sheet with
+both files, saying so out loud — a composer that cannot appear is worse than a different route.
+
+**A name cannot become an email address here.** `ContactLookupHelper` returns phone numbers, which
+is all `send_via` ever needed. So a spoken contact resolves for Messages/WhatsApp/Telegram and an
+email needs an actual address; the tool says that rather than guessing, because the wrong inbox is
+the one mistake in this flow nobody would notice until the customer's job record was in it.
+
+**The bearer token is absent from `DeliverySettings` by construction, not by discipline.** Its
+`CodingKeys` omit it, so it cannot reach the stored blob, a future exported organisation profile,
+or anything else the type is serialised into; `load`/`save` move it through the Keychain, and the
+key joins `Config.migratableStringSecretKeys` so it is also masked in diagnostics.
+
+**`EndpointSyncSink` composes rather than replaces.** It handles `workRecord` and `partsRequest`
+and delegates every other kind — and *everything*, when no endpoint is configured — to
+`LocalSyncSink`, so a device that has never been told where base is behaves exactly as it did
+before this PR. 409 is the only 4xx treated as a conflict (the receiver saying the job moved on,
+which is what `ConflictResolver` was written for); the rest are permanent, because burning six
+attempts on a malformed body helps nobody.
+
+**A composer can outlive its session.** "Send it" then "end session" leaves the sheet open, and
+`endSession` had already released the logger — so the outcome would have been written nowhere. The
+service now keeps the ended session's logger for exactly this, and writes the outcome only when the
+request's session id matches, so a late completion can never land in a different visit's log. What
+it still cannot do is move that session's parts requests to `sent`: they belong to a session that
+is no longer active. Sending before ending is the flow the surfaces encourage.
+
+**What P2 does not do.** No organisation profile supplies these settings — CT is not built — so
+they are device-local, with `DeliverySettings.applying(organisation:)` written and tested against
+the ceiling rule (an organisation may subtract a channel, never add one the device refused) so the
+handover is a wiring change. "Send by email instead" on the sync screen sends the record as the
+body without attachments: the exported files belong to a session that may be long finished, and a
+body a person can read beats an attachment that may no longer be on disk. And no real email or
+message has left a device yet — the live edge named in the phase list stands.
