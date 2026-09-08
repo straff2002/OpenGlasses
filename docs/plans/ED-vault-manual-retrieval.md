@@ -1,6 +1,9 @@
 # Plan ED — Vault Manual Retrieval (OEM manuals as a retrieved tier in Field Assist)
 
-**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green; P3 device edge pending). What
+**Status:** ✅ P1 + P2 implemented 2026-09-03 (headless suite green); scanned-PDF OCR — originally
+this plan's P3 — was promoted to its own [Plan EF](EF-scanned-manual-import.md), which has since
+shipped its own P1+P2. Still owed on device: oldest-phone latency measurement and a pilot fixture
+with a real customer manual. What
 landed: `VaultManifest.documents` / `documents_dir` with a hand-written decoder so every existing
 manifest still decodes; `VaultDocumentExtractor` (per-page PDF joined by form feeds, EPUB, Markdown,
 text; scanned PDFs refused with a named reason); `CodeTokenizer` hoisted out of equipment lookup;

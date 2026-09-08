@@ -1,6 +1,6 @@
 # Plan CP — Outbound Frame Privacy Pipeline
 
-**Status:** 📋 Planned
+**Status:** ✅ P1+P2 shipped, same commit that added this doc (`d209b57`, [#303](https://github.com/straff2002/OpenGlasses/pull/303), 2026-08-08). P3 device measurement (sustained fps, drop counts under motion, thermal) still owed.
 **Completes:** Plan CO Item 0, which covered model-facing egress and explicitly deferred this half
 **Shape:** two pure cores (P1), the relay and its wiring (P2), device measurement (P3). One PR.
 

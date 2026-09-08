@@ -1,6 +1,10 @@
 # Plan DH — Local Gemma as the Universal Keyless Tier
 
-**Status:** 🚧 P1 shipped 2026-08-25 · P2 shipped 2026-08-27 · P3/P4 remain
+**Status:** 🚧 P1 shipped 2026-08-25 · P2 shipped 2026-08-27 · P3 partially corrected from the
+device 2026-08-27 (a photo turn Jetsam-killed the app on a 12 GB phone at 6.2 GB footprint; fixed
+by gating on measured headroom via `MemoryHeadroom` + `insufficientMemoryForPhoto` refusal +
+restored aspect-preserving pre-resize) — full decode-latency/Metal-contention measurement and P4
+remain
 
 ## Why
 

@@ -1,6 +1,6 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 📝 Revised 2026-09-03 — partner-configured edition (packs, tiers, EI issuance); still not scheduled
+**Status:** 📝 Revised 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition (packs, tiers, EI issuance); still not scheduled
 **Depends on:** Plan F/licensing primitives (Ed25519 verification), Plan BX (signed-manifest +
 lossy-decode precedent), Plan BM P10 (`OwnerGateMachine`), Plan CD P1 (the onboarding-flag hazard),
 Plan EE (tiers on every piece of evidence, licence payload v2), Plan EG (vault packs, the `packs`
@@ -45,10 +45,11 @@ The primitives for the fix are almost all already here:
 | A precedent for policy removing capabilities | HIPAA mode — an external policy hard-disables features and the app says so |
 
 **So the QR is not the hard part.** The hard part is that
-[`Config.swift`](../../OpenGlasses/Sources/Utils/Config.swift) is 3,277 lines of 45
-`@UserDefaultsBacked` properties plus a long tail of hand-written accessors, with **no export, no
-import, no versioning and no enumerable schema**. A profile cannot be applied to a settings surface
-that cannot enumerate itself. That is the work; everything else is adapters.
+[`Config.swift`](../../OpenGlasses/Sources/Utils/Config.swift) is 3,747 lines of 56
+`@UserDefaultsBacked` properties (measured 2026-09-08; was 3,277 lines / 45 at the 2026-09-03
+revision) plus a long tail of hand-written accessors, with **no export, no import, no versioning and
+no enumerable schema**. A profile cannot be applied to a settings surface that cannot enumerate
+itself. That is the work; everything else is adapters.
 
 The one genuinely new UI piece is a live-camera QR scanner — every existing decode path reads a
 *captured* frame (glasses camera or a still), and there is no scanner view.
@@ -587,7 +588,7 @@ between exactly the right two devices. A QR there would be strictly worse than w
 
   What remains is a price, not a decision: a Medical Compliance fleet licence has to mirror or
   deliberately depart from the per-region IAP pricing, and that is a sales question, not a schema one.
-- **Should the profile be able to set HIPAA mode?** Leaning firmly yes, `.ceiling`-only (pin it on,
-  never off), because a Medical Compliance site licence and a pinned HIPAA mode are the same purchase
-  — see above. It is still the most consequential toggle in the app, so it wants its own review rather
-  than a line in a settings table, but the direction is no longer in doubt.
+- ~~Should the profile be able to set HIPAA mode?~~ **Resolved above, affirmatively:** yes,
+  `.ceiling`-only (pin it on, never off) — a Medical Compliance site licence and a pinned HIPAA mode
+  are the same purchase (see *Which tiers may an org grant?*). It is still the most consequential
+  toggle in the app, so it still wants its own review before shipping, but the direction is settled.

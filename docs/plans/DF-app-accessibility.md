@@ -1,6 +1,6 @@
 # Plan DF — App Accessibility: VoiceOver, Dynamic Type & Contrast
 
-**Status:** 🚧 P1 shipped 2026-08-25 (with DG P1, one PR) · **P2 complete 2026-08-26** — the
+**Status:** ✅ P1 shipped 2026-08-25 (with DG P1, one PR) · **P2 complete 2026-08-26** — the
 critical path (onboarding + sign-in, session surface, captions overlay, settings hub +
 accessibility category) is operable with VoiceOver alone, with session state **announced** from
 the state machine and deduplicated against the app's own audio · **P3 complete 2026-08-26** —

@@ -5,12 +5,11 @@
 adopted by the two realtime managers + wake-word baseline (exclusive owners) and live translation +
 TTS (coexisting riders). The coordinator is now the complete source of truth for audio usage
 (`audioActivity`). The only remaining item — trimming `AppState.switchMode`'s hardware-settling
-sleep (`OpenGlassesApp.swift:1086`, still the 500 ms `Task.sleep`) — **re-sequenced 2026-07-10:
-after Plan BJ PR1.** BJ's single `sessionIOQueue` totally orders activate/deactivate, which is
-precisely what makes the "wait for the session to release" hack removable deterministically —
-trimming it before BJ means device-tuning a race BJ then restructures. Re-scoped as: after BJ PR1,
-replace the sleep with an awaited coordinator release barrier; device-validate. No new SPM
-dependency.
+sleep (`OpenGlassesApp.swift:1086`, still the 500 ms `Task.sleep`) — was **re-sequenced 2026-07-10:
+after Plan BJ PR1**, and BJ PR1 has since merged, so the trim is now unblocked. BJ's single
+`sessionIOQueue` totally orders activate/deactivate, which is precisely what makes the "wait for the
+session to release" hack removable deterministically. Remaining: replace the sleep with an awaited
+coordinator release barrier; device-validate. No new SPM dependency.
 
 **Plan BJ cross-reference (2026-07-10 — three claims below are corrected by BJ):**
 1. "Stale teardown is structurally impossible" is decision-time true, execution-time false:
@@ -18,9 +17,9 @@ dependency.
    `deactivationQueue` while `acquire` activates inline on the caller's thread — a delayed
    deactivation can land after a newer owner's activation. BJ Correction 1 (one serial queue +
    ledger re-check at execution) closes it.
-2. `assumeOwnership` is slated for **retirement** in BJ PR2 once wake word activates via the new
-   no-deactivate/no-fallback `reconfigure` (which preserves this plan's "hand-tuned options must not
-   change" contract by construction). Read the wake-word mechanism below as the pre-BJ design.
+2. `assumeOwnership` was **not** retired in BJ PR2 — BJ deliberately kept it
+   (`WakeWordService.swift:236-237`), and adoption has since widened to `TranscriptionService` and
+   `StandaloneMicTapService`. Read the wake-word mechanism below as still current.
 3. The "dedicated deactivation queue" description becomes one shared `sessionIOQueue` under BJ.
 
 **Known non-participants (2026-07-10 inventory — direct session callers the ledger never

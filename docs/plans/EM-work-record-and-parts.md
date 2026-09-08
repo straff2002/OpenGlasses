@@ -1,6 +1,6 @@
 # Plan EM — Work Record and Parts (what was recommended, what was done, what base needs)
 
-**Status:** ✅ P1 + P2 implemented 2026-09-08 (headless); one real email and one real message
+**Status:** 🚧 P1 + P2 implemented 2026-09-08 (headless); one real email and one real message
 from a device still pending. P3 (with BL) not started.
 Sequenced after [Plan EL](EL-equipment-identity.md) so the record
 carries the equipment identity; builds on [Plan EK](EK-manual-structure-and-figures.md) P3's

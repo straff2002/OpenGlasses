@@ -1,11 +1,12 @@
 # Plan CN — Agent Vision Attachment (a delegated run can see)
 
-**Status:** ✅ P1+P2 built (2026-08-08), full suite green. P3 (live gateway round-trip, device
+**Status:** 🚧 P1+P2 built (2026-08-08), full suite green. P3 (live gateway round-trip, device
 smoke) deferred as planned. **Wire answered by Plan EH P1 (2026-09-03):** the gateway's `sessions.send`
 schema carries the frame as `attachments: [{type, mimeType, fileName, content, sizeBytes}]` and
 advertises its per-image ceiling in `hello-ok.policy.attachments.maxImageBytes`, so the attachment
-setting now defaults **on** and oversize frames are dropped client-side before sending. The live
-round trip itself is EF P4.
+setting now defaults **on** and oversize frames are dropped client-side before sending — but that
+default-on flip rests on a schema reading never exercised against a live gateway. The live
+round trip itself is EH P4.
 **Depends on:** Plan N (Remote Agent Harness), Plan CE (Frame Pinning), Plan CB (live-session vision detail)
 **Shape:** deterministic core first (P1), seam widening + adapters (P2), live/device edge deferred (P3)
 
@@ -99,7 +100,7 @@ interpolated at the call site.
 
 ### Config
 
-- `agentVisionAttachmentEnabled` — **default off**.
+- `agentVisionAttachmentEnabled` — **default on**, since EH P1 ([#404](https://github.com/straff2002/OpenGlasses/pull/404)); was default off before the gateway's `attachments` schema was confirmed.
 - `agentVisionAttachmentMaxPinAge` — default 120 s.
 
 **Tests** (`OpenGlassesTests/AgentAttachmentTests.swift`): full policy truth table walked by
@@ -128,9 +129,9 @@ single aiming gesture across every model-facing surface.
 
 ### `OpenClawAgentHarness`
 
-`image_base64` + `image_mime` alongside `prompt` in the `agent.start` params. Whether the gateway
-accepts unknown params or rejects the call is unverified (see *Open questions*), which is the main
-reason the setting ships off.
+`image_base64` + `image_mime` alongside `prompt` in the `agent.start` params. **Superseded by EH P1:**
+the frame now rides the gateway's `attachments` list on `sessions.send` instead, per the confirmed
+2.0 schema (see *Open questions* for what's still unverified against a live gateway).
 
 ### `CustomAgentHarness`
 
@@ -177,9 +178,11 @@ without failing the run; prompt carries the provenance line iff an attachment is
 
 ## Open questions
 
-1. **Unknown-param behaviour on the gateway.** If it 400s rather than ignoring `image_base64`, we
-   need either a capability probe or a retry-without-image fallback. Not built speculatively — find
-   out against a live endpoint first. This is the main reason the setting ships off.
+1. **Attachment acceptance on a real gateway.** The setting now ships **on** against the published
+   `attachments`/`maxImageBytes` schema (EH P1), but that reading has never been exercised against a
+   live OpenClaw 2.0 gateway — whether it actually accepts the attachment within the advertised
+   ceiling is still unverified (EH P4). Not built speculatively beyond the schema; find out against
+   a live endpoint.
 3. **Should a pin auto-attach even for non-referential prompts?** Argument for: taking a pin is itself
    a statement of intent. Argument against: pins persist across topics, so an hour-old workflow could
    attach a frame to an unrelated task. Currently resolved by `maxPinAge`; revisit if 120 s proves wrong.

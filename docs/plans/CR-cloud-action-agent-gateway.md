@@ -13,7 +13,10 @@ connected apps (P4), live/device edge deferred (P5)
 
 We have a complete gateway *client* and no gateway. `OpenClawEventClient` handshakes, signs a device
 identity into a challenge nonce, parses `heartbeat`/`cron` events, and services inbound remote-invoke
-frames. `OpenClawBridge` dispatches work over `sessions.send`. Both are tested. Neither has ever
+frames. `OpenClawBridge` dispatches work over `sessions.send`. Both are tested. **Dependency note:**
+Plan EH's OpenClaw 2.0 wire rewrite ([#404](https://github.com/straff2002/OpenGlasses/pull/404),
+2026-09-03) postdates this claim and changed the client's wire shape — re-verify against EH before
+building this plan's reference backend. Neither has ever
 completed a round trip against a server we control, and the consequence is spread across the index:
 
 - **AR** — "Deferred: live approval round-trip (backend-pending)"

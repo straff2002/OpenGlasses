@@ -1,7 +1,11 @@
 # Plan DZ — Local GGUF Runtime and Durable Agent Loops
 
-**Status:** 🚧 In progress — **P0 / PR1 ✅ complete**, **P1 / PR2 ✅ complete** (all flags off);
-PR3 onward not started.
+**Status:** 🚧 In progress — **P0 / PR1 ✅ complete**, **P1 / PR2 ✅ complete**, **P1 / PR3 ✅ complete**
+([#414](https://github.com/straff2002/OpenGlasses/pull/414)), **P2 / PR4 ✅ complete**
+([#417](https://github.com/straff2002/OpenGlasses/pull/417)), **P2 / PR5 ✅ complete**
+([#418](https://github.com/straff2002/OpenGlasses/pull/418)) — all flags off, structural proof only:
+no MLX or GGUF weights loaded on real hardware yet. PR6 (durable scheduler), PR7 (memory curation),
+PR8 (multimodal adapter), and PR9 (skill-pack storage) not started.
 **Priority:** P1 for the text-only GGUF runtime and model acquisition path; P1 reliability work for
 scheduled tasks; P2 for memory curation; vision and skill-pack storage remain gated follow-ups.
 

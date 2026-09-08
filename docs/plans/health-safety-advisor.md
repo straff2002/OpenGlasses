@@ -1,12 +1,12 @@
 # Plan AB — Personal Health-Safety Advisor
 
-**Status: 🚧 Core shipped.** The deterministic core is built and tested: pure `SubstanceCatalog`
+**Status: 🚧 Core shipped; the OCR-label camera path is the one unbuilt item.** The deterministic core is built and tested: pure `SubstanceCatalog`
 (drug-class / food-tag / condition synonyms), `VaultGrounding` (selects the relevant vault meds /
 conditions / allergies), `InteractionRubric` (curated **high-severity** interactions — authoritative,
 the LLM can't downgrade a hit), and `HealthSafetyResponseBuilder` (cite + mandatory disclaimer). The
 `@MainActor HealthSafetyAdvisor` reads the Medical-Compliance-gated Health Vault, runs the rubric, and
 grounds the LLM long-tail via `completeStateless`; `HealthSafetyTool` (`health_check` —
-`can_i_take`/`can_i_eat`) is registered + advertised in both prompt builders. 14 tests green in
+`can_i_take`/`can_i_eat`) is registered + advertised in both prompt builders. 34 tests green in
 Release.
 
 **Updated 2026-07-10 (code-verified review):**
@@ -18,23 +18,19 @@ Release.
   glue (a `use_camera` flag that captures, OCRs, feeds `label_text`; or a `food_label`
   `AssessmentSchema` on the Plan AD vision substrate for a typed ingredients/warnings read). Only
   *accuracy on real labels* stays device-gated.
-- **Three rubric false-negative gaps found (one small PR):**
-  1. `.anticoagulated` ConditionTag is parsed from the vault (`SubstanceCatalog.swift:109`) but
-     `check()` never consults it — the flagship high-severity NSAID rule keys only on the *drug
-     class* (`InteractionRubric.swift:33`), so a vault saying "on blood thinners" with no
-     recognized drug name misses the hit.
-  2. `.asthma` is declared and parsed but no rule uses it — NSAID + aspirin-exacerbated respiratory
-     disease is a textbook curated-tier interaction. Dead tag = silent gap.
-  3. `Substance.isClassified` is never used: an unrecognized brand name produces "No high-severity
-     interactions found in your vault for X" — the same authoritative-sounding negative as a
-     genuinely-checked substance. Unrecognized must read "I don't recognise X in my interaction
-     table" so the deterministic layer's silence isn't dressed as clearance.
-- **Upstream bypass to close:** nothing forces the LLM to call `health_check` — in Direct mode the
-  model can answer "can I take ibuprofen?" from its own weights, with no rubric, citation, or
-  disclaimer. Add a system-prompt rule (health/medication safety questions MUST route through
-  `health_check`); the tool description alone is advisory. (Verified solid: the disclaimer cannot
-  be bypassed *within* the tool — `compose()` appends it unconditionally — and the
-  Medical-Compliance gate is service-layer, `HealthSafetyAdvisor.swift:28-30`.)
+- **Three rubric false-negative gaps — shipped in BM P4 (`7ec070f`, [#197](https://github.com/straff2002/OpenGlasses/pull/197)):**
+  1. `.anticoagulated` is now consumed by `check()` (`InteractionRubric.swift:35`) — a vault saying
+     "on blood thinners" with no recognized drug name now hits the flagship high-severity NSAID rule.
+  2. `.asthma` now feeds a rule — NSAID + aspirin-exacerbated respiratory disease
+     (`InteractionRubric.swift:44-48`).
+  3. `Substance.isClassified` is now consulted (`HealthSafetyResponseBuilder.swift:48-50`): an
+     unrecognized brand name reads "I don't recognise X in my interaction table" instead of the
+     same authoritative-sounding negative a genuinely-checked substance gets.
+- **Upstream bypass — closed.** A system-prompt rule now forces health/medication safety questions
+  through `health_check` (`SystemPromptBuilder.swift:26-30`, BM P4/#197) — Direct mode can no longer
+  answer "can I take ibuprofen?" from the model's own weights with no rubric, citation, or
+  disclaimer. (The disclaimer was already solid within the tool — `compose()` appends it
+  unconditionally — and the Medical-Compliance gate is service-layer, `HealthSafetyAdvisor.swift:28-30`.)
 
 Original plan below.
 

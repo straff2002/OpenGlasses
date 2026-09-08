@@ -30,24 +30,15 @@ now** following the `VisionAssessTool` pattern (each tool checks for an active s
 offers the resolved value); only accuracy validation is device-pending. Also: wiring the
 named-region precondition source (the `insideRegion` seam exists, unset — AppState wires only
 `offlineQueue` + `location`; one lookup closure over GeofenceTool's regions; fine at the back of
-the queue since no shipped flow declares a precondition); folding the record into `SessionExporter`
-audit JSON (buildable now, cheap — closes the "audit-ready record" promise, currently true only via
-the sync queue).
+the queue since no shipped flow declares a precondition).
 
-**New items from the 2026-07-10 review:**
-- **Schema versioning is now a real migration surface.** `CaptureFlow` has no version field;
-  `BindingType` is a strict enum; `CaptureFlowLibrary.load()` `try?`-decodes and `compactMap`s
-  failures away **silently** (`CaptureFlowLibrary.swift:34-50`). Any v2 binding type — or a typo in
-  a hand-edited overlay — makes the flow silently vanish from the library. Since the author UI now
-  puts user-authored JSON in vault overlays traveling between app versions, add `schema_version` +
-  a lossy-decode-with-rejection-report (the `MCPCatalog.loadStrict` pattern,
-  `MCPCatalog.swift:160-177`) before authored flows proliferate. There is also **no in-app import
-  path** — an authored flow that fails validation just never appears, no feedback.
-- **Type the queue payload.** CaptureRecords enqueue as bare `.logEntry`
-  (`CaptureFlowService.swift:127`) — a networked sink (Plan T → BL's A2A peer) can't distinguish a
-  typed CaptureRecord from any other log entry without payload-sniffing. Add a `captureRecord`
-  OpKind (or payload envelope) now; with it, a finished inspection flows field → queue → ops
-  platform with zero new U-side work once T's `PeerSyncSink` lands.
+**Shipped since (`29e85cd`, Plan BM P2, 2026-07-11):** schema versioning as a real migration
+surface — `CaptureFlow.schemaVersion` + a lossy-decode-with-rejection-report on
+`CaptureFlowLibrary.loadStrict` (the `MCPCatalog.loadStrict` pattern), so a v2 binding type or a
+typo in a hand-edited overlay no longer vanishes silently; a typed `.captureRecord` OpKind so a
+networked sink (Plan T → BL's A2A peer) can distinguish a CaptureRecord from any other log entry
+without payload-sniffing; and the record now folds into `SessionExporter` audit JSON, closing the
+"audit-ready record" promise beyond just the sync queue.
 
 ---
 

@@ -1,6 +1,6 @@
 # Plan CU — Voice Turn Latency & Instrumentation
 
-**Status: 🚧 P1 shipped, P2 PR1 built 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`. The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 is next** — it is what P1 exists to make measurable.
+**Status: 🚧 P1 + P2 PR1 shipped 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311), [#320](https://github.com/straff2002/OpenGlasses/pull/320)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`; `EndOfTurnPolicy`/`SpeechActivityGate`/`MicInputGain` behind the detector seam, none installed yet (27 tests). The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 PR2 (Silero backend) is next.**
 
 Every Direct-mode turn pays a fixed floor of dead air before the model is even asked.
 `TranscriptionService` commits a turn on a silence timer whose window is
@@ -261,9 +261,12 @@ is the fallback if the package pulls in more than the VAD path.
 
 Two changes that plausibly halve local TTFT:
 
-- **KV prefix cache across turns** — `LocalLLMService` has no prompt cache today, so our
-  `SystemPromptBuilder` prompt (large, and it grows with every tool we add) is prefilled on **every
-  turn** instead of once per session.
+- **KV prefix cache across turns** — the substrate has shifted since this was written: Plan DZ's
+  llama.cpp backend now exists and clears the KV cache per request **by policy**
+  (`LlamaCppLocalInferenceBackend.swift:523`), so "no prompt cache" no longer describes the whole
+  local-model substrate, only that policy choice. Our `SystemPromptBuilder` prompt (large, and it
+  grows with every tool we add) is still prefilled on **every turn** instead of once per session —
+  revisiting the clear-per-request policy is now the concrete lever.
 - **Per-model routing-prompt sizing** — a capable model needs a short instruction; a small model
   needs the fully-worked examples. One prompt for both means either the big model reads an essay or
   the small one guesses.

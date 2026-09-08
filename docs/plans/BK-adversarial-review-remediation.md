@@ -1,6 +1,11 @@
 # Plan BK — Adversarial Review Remediation (local model, agentic gating, feature honesty)
 
-**Status:** 📋 Planned
+**Status:** ✅ Shipped (2026-07-12/13, one PR per phase) — P0 `e75c0b4`; P1 geofencing `35b2b42`
+([#208](https://github.com/straff2002/OpenGlasses/pull/208)); P2 local-model prompt budget `24ae5a8`
+([#213](https://github.com/straff2002/OpenGlasses/pull/213)); P2b model cascade `2b43eb1`
+([#214](https://github.com/straff2002/OpenGlasses/pull/214)); P2c narrate model switches `05f0d5f`
+([#215](https://github.com/straff2002/OpenGlasses/pull/215)); P3 `c28b0e8`; P4 `9f92286`; P5
+`a205790`; P6 `6ca4783`.
 **Origin:** Adversarial review (2026-07-10) of local-model paths, agentic/gateway gating, and
 feature-claim honesty. Each finding below was re-verified against source before inclusion.
 

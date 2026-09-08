@@ -2,10 +2,12 @@
 
 **Status:** 🚧 Core shipped. `PerceptualHash` (pure dHash + Hamming) and `FrameGate` (pure decision:
 threshold + EMA + heartbeat + `dedupRatio`) are built and wired into `FrameThrottler` behind
-`Config.frameDedupEnabled` (default **off** → byte-for-byte today's behaviour). 18 tests green in
-Release (11 `FrameGateTests` + 7 unchanged `FrameThrottlerTests`). No new SPM dependency. Deferred
-(device-pending): flip the default on after on-device sanity-checking that motion still flows; optional
-Settings UI for the advanced threshold.
+`Config.frameDedupEnabled` (default **off** → byte-for-byte today's behaviour). Settings UI for the
+advanced threshold shipped 2026-06-30 (`LiveVisionSettingsView`, `fd59f82`). 21 tests green in
+Release. No new SPM dependency. **2026-08-23 finding (`1b2947f`):** the ~20 s latency this plan
+flagged as a device risk was traced to camera cold-start, not the dedup gate itself — fixed with
+`FrameThrottler.requestFreshFrame()` (see [Plan CX](CX-live-session-vision-choice.md)). Deferred
+(device-pending): flip the default on after on-device sanity-checking that motion still flows.
 
 ## The problem
 `FrameThrottler` ([Sources/Services/GeminiLive/FrameThrottler.swift](../../OpenGlasses/Sources/Services/GeminiLive/FrameThrottler.swift))

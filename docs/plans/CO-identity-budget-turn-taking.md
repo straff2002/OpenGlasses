@@ -34,8 +34,10 @@ because two constraints pull in opposite directions:
 
 So v1 covers egress to third-party models — `liveSession`, `directModelTurn`, `pinnedFrame`, and
 CN's `agentAttachment` — which is both the highest-stakes path and the cheap one. Recording,
-broadcast and expert streams are **not covered**, and the Settings copy now says so outright rather
-than implying the opposite. Applied at the chokepoints, the same shape `FramePin` uses and for the
+broadcast and expert streams were **not covered** at v1 ship time, and the Settings copy said so
+outright rather than implying the opposite — **since closed same-day by [Plan CP](CP-outbound-frame-privacy.md)**
+([#303](https://github.com/straff2002/OpenGlasses/pull/303)), whose `OutboundFrameRelay` now covers
+those paths too. Applied at the chokepoints, the same shape `FramePin` uses and for the
 same reason: filtering inside `CameraService` would catch consumers that must not be filtered.
 
 A pin is filtered **once, at pin time**, so every downstream use — sharp-inject, heartbeat resends,
@@ -47,8 +49,9 @@ sampled `isEnabled` once at construction so a mid-session toggle would never hav
 judgement as the BK P6 removal in that file — don't ship a surface that doesn't do what its name says.
 
 **Tests** (`PrivacyFilterScopeTests`): every model-facing consumer filtered; face recognition
-exempt; recording/broadcast asserted *not* covered, so the day someone builds the 30 fps pipeline
-this test fails and reminds them to update the Settings copy; `allCases` walked so a new consumer
+exempt; recording/broadcast were asserted *not* covered at ship time — the day someone built the
+30 fps pipeline was the same day ([Plan CP](CP-outbound-frame-privacy.md), 2026-08-08), so that
+assertion has since flipped along with the Settings copy; `allCases` walked so a new consumer
 must classify itself.
 
 **Still open:** the recording and broadcast paths. They need a dedicated off-main blur pipeline, and
@@ -242,4 +245,7 @@ shorter than today's 2.0 s for any input.
 1. **Does the ambiguity outcome belong in the tool surface as well as auto-announce?** Currently
    auto-announce only. The tool's caller is a model that could ask a better-targeted question than a
    fixed string.
-2. **Recording and broadcast blur** (Item 0). Needs an off-main pipeline; scoped out deliberately.
+2. ~~**Recording and broadcast blur** (Item 0). Needs an off-main pipeline; scoped out deliberately.~~
+   **Resolved same-day:** [Plan CP](CP-outbound-frame-privacy.md) shipped the off-main pipeline
+   (`OutboundFrameRelay`) 2026-08-08 ([#303](https://github.com/straff2002/OpenGlasses/pull/303)) —
+   recording, broadcast, WebRTC, and both expert transports are now covered.

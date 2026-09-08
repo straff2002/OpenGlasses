@@ -1,6 +1,6 @@
 # Plan AN — Projects (scoped persona + documents + conversations)
 
-**Status: 🚧 Core shipped.** Documents scope to the active project namespace (`DocumentRAGTool` +
+**Status: ✅ Shipped.** Documents scope to the active project namespace (`DocumentRAGTool` +
 `DocumentStore.list/documentCount(namespace:)`); conversations carry `personaId` on
 `ConversationThread` (legacy threads decode to `nil`) with `threads(forPersona:)` + a Chat-tab project
 filter; the active project's knowledge base is grounded into both prompt builders via the pure
@@ -12,15 +12,14 @@ green in Release. No new SPM packages.
 `ProjectBundle`/`ProjectBundleCodec` + `ProjectExporter`; export via share sheet in
 `ProjectDetailView.swift:99-110`, import via file picker in `PersonasView.swift:144-146`.
 
-**The real deferred item is a leak found in review (scheduled as Plan BM P8):** the project
-boundary is violated today — `BrainTool` queries docs and memory with `namespace: nil`
-(`BrainTool.swift:187,180`), which `DocumentStore.fetchChunks` treats as ALL namespaces
-(`DocumentStore.swift:346-352`), so `brain ask` in an unscoped chat quotes every project's
-documents and crosses persona memory namespaces; `TeleprompterTool.swift:77` resolves documents by
-name across all namespaces. `DocumentRAGTool` scopes correctly. The invariant this plan's "global
-fallthrough" open question never stated: **global never sees project docs** — the inverse
-direction is the one violated. Fix: thread the same `activeNamespace` closure into `BrainTool`
-(memory: nil → `["global", activePersonaId]`); decide `TeleprompterTool` policy.
+**The real deferred item was a leak found in review — closed in Plan BM P8 (`238f787`,
+[#193](https://github.com/straff2002/OpenGlasses/pull/193)):** the project boundary was violated —
+`BrainTool` queried docs and memory with `namespace: nil`, which `DocumentStore.fetchChunks`
+treated as ALL namespaces, so `brain ask` in an unscoped chat quoted every project's documents and
+crossed persona memory namespaces; `TeleprompterTool.swift:77` resolved documents by name across
+all namespaces too. `DocumentRAGTool` already scoped correctly. Both `BrainTool` and
+`TeleprompterTool` now go through a shared `scopedNamespaces()` helper, closing the invariant this
+plan's "global fallthrough" open question never stated: **global never sees project docs.**
 
 **Builds on:** the [`Persona`](../../OpenGlasses/Sources/Utils/Config.swift) system (Config + [`PersonasView`](../../OpenGlasses/Sources/App/Views/PersonasView.swift) + [`PersonaPickerSheet`](../../OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift)), the [`DocumentStore`](../../OpenGlasses/Sources/Services/RAG/DocumentStore.swift) `namespace` column (Plan [O](O-document-rag.md)), and [`ConversationStore`](../../OpenGlasses/Sources/Services/ConversationStore.swift) threads.
 

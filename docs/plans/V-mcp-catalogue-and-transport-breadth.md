@@ -19,22 +19,23 @@
   `MockOpsPeer`, a headless peer double to build the handshake against. Schedule with or before BL
   PR2, which depends on it; live validation is then a one-off. (Selecting an SSE server still
   throws `notYetSupported` cleanly today.)
-- **New, smallest/highest-leverage item: a catalog-expressible custom auth-header kind.**
-  `makeServerConfig` prefills only `Authorization: Bearer` (`MCPCatalog.swift:111-114`) and
-  `MCPAuthKind` has no header-key case — but the transport already applies arbitrary
-  `server.headers` and the manual editor already has an editable header-name field, so a user can
-  hand-add an `X-API-Key` peer today; the catalog just can't express it. Add
-  `{"kind": "header", "header": "X-API-Key"}` (new `MCPAuthKind` case + `makeServerConfig` branch +
-  install-screen field) — prerequisite for Plan BL P1's one-tap peer install.
 - The `MCPOAuth` device-code/PKCE flow + Keychain token refresh — **keep deferred, deprioritized
   below the header item**: nothing on the current roadmap needs it (BL uses `X-API-Key`; every
   catalog OAuth entry has the paste-token fallback).
 
+**Shipped since (`40341e0` / PR [#200](https://github.com/straff2002/OpenGlasses/pull/200), Plan BM P6, 2026-07-11):** the
+catalog-expressible custom auth-header kind — `MCPAuthKind.header` (`{"kind": "header", "header": "X-API-Key"}`) with a
+`makeServerConfig` branch + install-screen field, so a user can pick an `X-API-Key` peer from the
+catalog instead of hand-adding one; this was the prerequisite for Plan BL P1's one-tap peer
+install. Also shipped: `MCPClient.rediscoverAtLaunch()`, closing the launch-time re-discovery gap
+noted below.
+
 **Trust-model clarifications (2026-07-10):** the poisoning screen runs at **manual discovery time
 only** — `discoverAllTools`'s sole caller is the "Discover Tools" button (`MCPServersView.swift:156-163`),
-verdicts live in memory, and after relaunch MCP tools are simply *absent* until the user re-taps
-discover (quietly breaking "tap Notion, done"). A launch-time re-discovery would re-run the scan and
-close both gaps; per-call protection is solely the Plan R egress screen in `NativeToolRouter`. And
+verdicts live in memory, and after relaunch MCP tools were previously simply *absent* until the user
+re-tapped discover (quietly breaking "tap Notion, done"). **Resolved:** `MCPClient.rediscoverAtLaunch()`
+now re-runs the scan at launch, closing this gap; per-call protection is solely the Plan R egress
+screen in `NativeToolRouter`. And
 "vetted" attaches to the catalog *template*, not the user-filled endpoint (`{host}` entries) —
 `.redact` + the scanner still apply, but the trust language shouldn't be read as endpoint vetting.
 

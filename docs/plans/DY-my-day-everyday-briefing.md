@@ -1,7 +1,7 @@
 # Plan DY — My Day: Everyday Briefing and Preparation
 
-**Status:** 🟠 P0–P4 implementation and automated verification complete (2026-08-31);
-physical-device routing, permission/lock/audio, oldest-phone latency, and accessibility walkthroughs pending
+**Status:** ✅ P0–P4 implementation and automated verification complete (2026-08-31);
+physical-device routing, permission/lock/audio, oldest-phone latency, and accessibility walkthroughs still owed
 **Origin:** The opportunity assessment names Everyday Briefing as the P1 daily-retention loop and
 places it before differentiated intelligence such as the private-memory timeline.
 **Priority:** P1 everyday product, immediately after the DK privacy close-out.

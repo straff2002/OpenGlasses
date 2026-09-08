@@ -1,11 +1,14 @@
 # Plan CZ — Independent Capture Audio
 
-**Status: 🚧 Core shipped 2026-08-24** — P1 (`AudioSourceArbiter`, `AssistantAudioGate`), P2
+**Status: ✅ Core shipped 2026-08-24** — P1 (`AudioSourceArbiter`, `AssistantAudioGate`), P2
 (`StandaloneMicTapService`), P3 (`CaptureAudioRouter` + broadcast/recorder wiring) and P4 (setting +
-copy) landed together. P5 device verification is owed: no hardware in this session, and the two
-things that matter most here — whether the standalone engine actually comes up on a Bluetooth
-glasses route, and whether the assistant is genuinely inaudible in the captured file — cannot be
-asserted headlessly.
+copy) landed together. **Hardware pass 2026-08-27** found a real mid-recording handover (listening
+off→on) killed the recording — two `AVAudioEngine`s each took their tap format from whatever route
+they started on, and a format change mid-capture failed the `AVAssetWriter` silently; fixed with
+`CaptureAudioNormalizer` (per-source format pinning/conversion at the router boundary) plus recorder
+hardening and diagnostics. Still owed on device: whether the standalone engine comes up on a
+Bluetooth glasses route, and whether the assistant is genuinely inaudible in the captured file — see
+P5 below.
 
 ## Why
 

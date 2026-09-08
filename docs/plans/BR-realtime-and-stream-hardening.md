@@ -1,6 +1,6 @@
 # Plan BR — Realtime Session & Camera Stream Hardening
 
-**Status: 🚧 Implemented (PR [#236](https://github.com/straff2002/OpenGlasses/pull/236), 2026-07-15); on-device smoke owed.** Four
+**Status: ✅ Implemented (PR [#236](https://github.com/straff2002/OpenGlasses/pull/236), 2026-07-15); on-device smoke still owed.** Four
 verified gaps (P4 added after a gateway-hygiene review), each with a deterministic core;
 one PR. Sourced from a systematic review of community work on comparable glasses apps
 (techniques adopted on their own merits) — everything below was checked against this

@@ -1,14 +1,17 @@
 # Plan AX — Typed Memory Taxonomy (project-scoped recall + relevance over the existing stores)
 
-**Status: 🚧 Core shipped ([#128](https://github.com/straff2002/OpenGlasses/pull/128)).** **Re-scoped
-after auditing the code** — most of what an earlier draft proposed already exists, so this plan targets
-only the genuine gaps. Shipped in #128: **project-scoped memory** (`ProjectMemory` +
+**Status: ✅ Re-scoped and shipped ([#128](https://github.com/straff2002/OpenGlasses/pull/128)).**
+**Re-scoped after auditing the code** — most of what an earlier draft proposed already exists, so this
+plan targeted only the genuine gaps. Shipped in #128: **project-scoped memory** (`ProjectMemory` +
 `ProjectMemoryScope`/`ProjectMemoryFormatter` + `project_memory` table on `BrainStore` + `project_note`
 tool + flag-gated injection) and **relevance retrieval** (threading the turn into
 `SemanticMemoryStore.systemPromptContext(query:)` at all call sites); both default-on for beta. The
-audit also retired the dead `UserMemoryStore` (its only live replacement is `SemanticMemoryStore`).
-Deterministic cores are pure and tested; **zero LLM calls**. Still planned: an optional `project` kind
-classifier and unifying the two fact stores. No new SPM dependency. Strictly on-device.
+audit also retired the dead `UserMemoryStore` entirely (its call sites rerouted to
+`SemanticMemoryStore.systemPromptContext(query:)`, which already retrieves by relevance) — so Gap 2
+below is moot, not deferred: there is no second store left to teach relevance retrieval to.
+Deterministic cores are pure and tested; **zero LLM calls**. Remaining items are decisions, not planned
+work: an optional `project` kind classifier (build only if free-text seeding needs it). No new SPM
+dependency. Strictly on-device.
 
 ## What already exists (and why the original plan shrank)
 An audit of the memory subsystem found three of the four "kinds" already modelled, plus the
@@ -41,11 +44,10 @@ What's actually missing is narrow and concrete.
    global; project state is transient and scoped. A field tech mid-way through a walk-in cooler job at
    Site 7 should have "compressor swap is next" surface while that job is open — and stop competing for
    prompt space once it's done.
-2. **`UserMemoryStore` still dumps everything.** `SemanticMemoryStore` already retrieves by relevance;
-   `UserMemoryStore.systemPromptContext()` does not. As the user accumulates facts (up to the 3000-char
-   budget), every prompt carries all of them. This is the same bloat the
-   [skill retrieval](skill-self-evolution.md) companion fixes for skills — and the fix is the same
-   shape (embed the turn, keep the relevant, always-keep the cheap/durable ones).
+2. **~~`UserMemoryStore` still dumps everything~~ — moot: `UserMemoryStore` no longer exists.** The
+   audit that shipped this plan retired it outright; its call sites route through
+   `SemanticMemoryStore.systemPromptContext(query:)`, which already retrieves by relevance. There is
+   no second, dump-all fact store left to fix.
 
 ## What we build
 ### Gap 1 — Project-scoped memory (pure core + thin store extension)
@@ -59,14 +61,11 @@ What's actually missing is narrow and concrete.
 - **Active project** comes from `FieldSessionService` (an active job session); when none is active the
   block is empty. An explicit "I'm working on X" can seed a record via the classifier (below).
 
-### Gap 2 — Relevance retrieval for `UserMemoryStore`
-- Bring `UserMemoryStore` up to the behaviour `SemanticMemoryStore` already has: a `for turn:`
-  overload on `systemPromptContext` that, when `Config.userMemoryRetrievalEnabled` is on and the set is
-  past a floor, injects only the facts relevant to the turn (embedding similarity over `key + value`),
-  always keeping the shortest/most-durable few. Reuses the same `Embedder` seam and the same
-  selection shape as `SkillRetriever` — consider a shared pure ranker so memory and skills don't carry
-  two copies of the logic.
-- Default **off**; below the floor it dumps all (today's behaviour, unchanged).
+### Gap 2 — moot (`UserMemoryStore` retired)
+- The original plan was to bring `UserMemoryStore` up to the relevance-retrieval behaviour
+  `SemanticMemoryStore` already had. Instead, `UserMemoryStore` was retired outright and its call
+  sites rerouted to `SemanticMemoryStore.systemPromptContext(query:)` — so the target behaviour was
+  reached by deleting the store that lacked it, not by extending it. Nothing left to build here.
 
 ### Optional glue — a lightweight kind tag (only if it earns its keep)
 - **`MemoryClassifier`** (pure, zero LLM) — `classify(_ text:) -> MemoryKind` where
@@ -80,16 +79,16 @@ What's actually missing is narrow and concrete.
 In:
 - `Sources/Services/Brain/ProjectMemory.swift`, `ProjectMemoryScope.swift`,
   `ProjectMemoryFormatter.swift` (pure core) + a `project_memory` table in `BrainStore`.
-- `UserMemoryStore.systemPromptContext(for turn:)` relevance overload + `Config.userMemoryRetrievalEnabled`.
+- Relevance retrieval via `SemanticMemoryStore.systemPromptContext(query:)` at all call sites —
+  shipped by threading the turn through, not by a `UserMemoryStore` overload (that store no longer
+  exists).
 - `(optional)` `Sources/Services/Brain/MemoryClassifier.swift` for routing only.
 - Prompt wiring: inject the project block (when a job is active) and pass the turn to
-  `UserMemoryStore`, behind default-off flags so today's prompt is reproduced exactly.
+  `SemanticMemoryStore`, both default-on for beta.
 
 Out (deferred):
 - A standalone `TypedMemoryStore` — **explicitly not building**; it duplicates `SemanticMemoryStore`.
 - Re-typing existing facts/diary entries — new memories route going forward; no back-fill.
-- Consolidating `UserMemoryStore` and `SemanticMemoryStore` into one — they coexist today; unifying
-  them is its own plan, not a prerequisite here.
 - A user-facing memory editor by kind — read path first.
 
 ## Architecture — the seam
@@ -117,14 +116,15 @@ prompt is assembled exactly as today.
    if needed). Deterministic; no store, no model.
 2. **`project_memory` table** in `BrainStore` + round-trip / scoping tests.
 3. **Project block wiring** — inject when `FieldSessionService` has an active job, behind a flag.
-4. **`UserMemoryStore` relevance overload** — mirror `SemanticMemoryStore`; ideally factor the ranker
-   shared with `SkillRetriever`.
+4. ~~`UserMemoryStore` relevance overload~~ — moot; `UserMemoryStore` was retired instead, and its
+   call sites route through `SemanticMemoryStore.systemPromptContext(query:)`, which already ranks
+   by relevance.
 
 ## Tests
 - `ProjectMemoryScope.eligible`: only the active project's records pass; no active project → empty;
   multiple projects don't bleed.
 - `ProjectMemoryFormatter.block`: empty → ""; formats eligible records under one heading.
-- `UserMemoryStore` retrieval: below floor → all (unchanged); above floor → relevant subset + always
+- `SemanticMemoryStore` retrieval: below floor → all (unchanged); above floor → relevant subset + always
   the shortest/durable few; empty turn → all.
 - `(if built)` `MemoryClassifier`: project cue → `.project`; preference cue → `.preference`; ambiguous
   → `.semantic` (never a confident wrong kind).
@@ -138,8 +138,9 @@ prompt is assembled exactly as today.
 - **Classifier necessity.** If `FieldSessionService` already names the active job, project seeding may
   not need a text classifier at all — prefer the explicit signal; add the classifier only if free-text
   "I'm working on X" capture proves worth it.
-- **Two fact stores.** `UserMemoryStore` (JSON, dump-all) and `SemanticMemoryStore` (SQLite, retrieval)
-  overlap. This plan only teaches the former to retrieve; whether they should merge is a separate call.
+- ~~**Two fact stores.**~~ Resolved by deletion: `UserMemoryStore` was retired outright, not merged;
+  `SemanticMemoryStore` is now the sole fact store. Whether `SemanticMemoryStore` and `BrainStore`
+  themselves should unify remains a separate, still-open decision.
 
 ## Why this matters
 The audit turned a big speculative feature into a small, honest one: the assistant already remembers

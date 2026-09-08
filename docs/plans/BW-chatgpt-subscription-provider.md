@@ -1,7 +1,8 @@
 # Plan BW — ChatGPT Subscription Sign-In (Codex OAuth provider)
 
-**Status: 🚧 Shipped through P4's code half; account-scoped models + advanced device-code
-fallback added 2026-08-29 — on-device verification checklist pending.** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
+**Status: ✅ Shipped through P4's code half; account-scoped models + advanced device-code
+fallback added 2026-08-29 — on-device verification checklist still owed (wire-format fixes
+2026-08-31–09-04 show partial live exercise against a real ChatGPT account).** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
 stream accumulator), P3 (`ChatGPTOAuthService`, `LLMProvider.chatgpt`, `sendChatGPT`, shared
 `OAuthSignInRows` in the model editor), and P4's codeable half — stateless helpers
 (summarization, `analyzeFrame`, structured vision/completion via forced function-call), the

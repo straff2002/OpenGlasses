@@ -1,7 +1,7 @@
 # Plan DK — Protected Conversation Recall Index
 
-**Status:** 🚧 P0–P3 implementation complete (2026-08-30); full suite and Release simulator gates
-are green, with oldest-supported-phone footprint and lifecycle smoke evidence still required.
+**Status:** ✅ P0–P3 implementation complete (2026-08-30); full suite and Release simulator gates
+are green — oldest-supported-phone footprint and lifecycle smoke evidence still owed on device.
 **Origin:** 2026-08-26 adversarial review finding 2 (High).
 **Priority:** P0 privacy remediation; ship before expanding recall or conversation-lock features.
 

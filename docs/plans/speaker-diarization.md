@@ -6,45 +6,34 @@ provider seam) is built and tested (24 tests); the `DeepgramSTTService`/`Deepgra
 transport + flag-gated `AmbientCaptionService` path + `DiarizationSettingsView` are in. Off by
 default. Closes the long-standing gap noted in `CLAUDE.md`.
 
-**Status corrected 2026-07-10 — two whole layers are unshipped, not just the live socket:**
-1. **Speaker chips are never rendered.** `CaptionEntry.speaker` is populated
-   (`AmbientCaptionService.swift:18-20,235-243`) and `speakerRegistry` exists, but **no view
-   consumes either** — `AmbientCaptionOverlay` has zero speaker/chip references, while
-   `DiarizationSettingsView.swift:72` instructs "Tap a speaker chip on a caption to name them," a
-   UI that does not exist. Even with a working socket the feature is invisible.
-2. **`DeepgramBatchService` is dead code** — zero call sites. The diarized meeting transcripts,
-   attributed summaries, and `BrainStore` attribution this plan promises (build-order step 3) are
-   none of them wired; `AudioRecordingService`/`MeetingAssistantService` contain no speaker
-   references.
+**Status corrected 2026-07-10, since shipped:**
+1. **Speaker chips now render, with tap-to-name.** `SpeakerChipModel` shipped in
+   [#201](https://github.com/straff2002/OpenGlasses/pull/201) (2026-07-12) — `AmbientCaptionOverlay`
+   consumes `CaptionEntry.speaker`/`speakerRegistry` and `DiarizationSettingsView.swift:72`'s "tap a
+   speaker chip to name them" instruction now describes a real UI.
+2. **`DeepgramBatchService` is wired.** It is now called from `RecordingTranscriber` (meeting
+   recorder, 2026-08-05) for diarized recorded-meeting transcripts. Still unwired: meeting-summary
+   and `BrainStore` speaker attribution — `MeetingAssistantService`/`MeetingSummaryTool` still carry
+   no speaker references.
 
-**HIPAA claim corrected:** "hard-disables" is a **start-time gate, not a service-layer
-invariant** — `Config.isDiarizationConfigured` (includes `!hipaaMode`) is checked at session start
-and in batch, but `DeepgramSTTService.start()` checks only key presence
-(`DeepgramSTTService.swift:31`) and `sendAudio`/`connect` never re-check. Enabling HIPAA mode
-mid-session does **not** stop a running diarized stream — room audio keeps flowing to Deepgram
-until captions restart. Fix: gate `start()`/`sendAudio` on `Config.isDiarizationConfigured` and/or
-have the HIPAA toggle stop ambient captions.
+**HIPAA claim corrected — now fixed.** "Hard-disables" was a **start-time gate, not a service-layer
+invariant** — `DeepgramSTTService.start()` checked only key presence and `sendAudio`/`connect` never
+re-checked, so enabling HIPAA mode mid-session did not stop a running diarized stream. Closed in
+`0290119` (Plan BM P0): `DeepgramSTTService.sendAudio` now re-checks `Config.isDiarizationConfigured`
+on every buffer, making the HIPAA guard a true runtime invariant, not just a start-time one.
 
-**Bystander consent is undisclosed.** This streams *ambient room audio* — everyone's voice. The
-only disclosure is one settings line about "raw audio"; nothing about other people's voices,
-two-party-consent jurisdictions, or Deepgram retention/training terms. The app ships a *visual*
-bystander privacy filter with no audio analogue or copy acknowledging the asymmetry. The open
-question "tie into Plan R consent" was never resolved — resolve it.
+**Bystander consent — copy shipped.** `DiarizationSettingsView` now carries bystander-consent copy
+acknowledging that this streams *ambient room audio* — everyone's voice, not just the wearer's.
 
-**Re-scoped deferred list (2026-07-10, in priority order):**
-1. **Chips UI + tap-to-name** (was unlisted) — small SwiftUI work in `AmbientCaptionOverlay`; the
-   settings view already assumes it exists. Do this first.
-2. **Runtime HIPAA guard + bystander-consent copy** (new) — cheap; closes the doc/code gap above.
-3. **Batch/meeting/brain integration — re-scoped on-device-first:** sherpa-onnx is already vendored
-   (`SHERPA_ONNX_ENABLED`, powering Kokoro + SenseVoice) and its C API ships **offline speaker
-   diarization** (segmentation + embedding models). Recorded `.m4a` → sherpa-onnx diarization +
-   SenseVoice transcription → the already-tested `SpeakerSegmentMerger`/`SpeakerRegistry`, with no
-   new dependency, working *in* HIPAA mode (where the medical meeting-transcript use case is
-   strongest). Deepgram batch becomes the opt-in quality fallback — `DeepgramBatchService` as
-   primary is plausibly superseded.
-4. **Live WebSocket device validation — hold** until chips render; validating an invisible feature
-   proves nothing user-facing. (Live diarized captions remain cloud-only — SenseVoice is not
-   streaming.)
+**Re-scoped deferred list (2026-07-10) — status:**
+1. **Chips UI + tap-to-name — shipped** ([#201](https://github.com/straff2002/OpenGlasses/pull/201), 2026-07-12).
+2. **Runtime HIPAA guard + bystander-consent copy — shipped** (`0290119`, Plan BM P0).
+3. **Batch/meeting/brain integration — partially shipped.** `DeepgramBatchService` is now called
+   from `RecordingTranscriber`, but the on-device-first path (sherpa-onnx offline speaker
+   diarization, so HIPAA-mode recorded meetings get diarization without cloud) is not built — the
+   HIPAA/no-cloud batch path still falls back to undiarized on-device ASR. Meeting-summary and
+   `BrainStore` speaker attribution also remain unwired.
+4. **Live WebSocket device validation — still held**, now unblocked now that chips render.
 
 **Resolved open questions (close them):** key in Keychain ✓ (`DiarizationConfig.swift:8-17`),
 model picker with `nova-3` default ✓, not gated on `agentModeEnabled` ✓. Minor: `connect` sets

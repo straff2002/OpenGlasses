@@ -1,6 +1,7 @@
 # Plan CD — Fork-Surfaced Correctness Remediation
 
-**Status:** 🚧 P1–P3 implemented in one PR (2026-07-30) — `WearablesBootstrap` + `Config.isPastOnboarding`
+**Status:** ✅ P1–P3 implemented in one PR (2026-07-30); device smoke of the Connect flow and enabling
+tests in the Xcode Cloud workflow (App Store Connect config, not code) still owed — `WearablesBootstrap` + `Config.isPastOnboarding`
 gates on every reachable SDK path; `PhraseMatcher` + demotion rules in `VoiceCommandParser`, barge-in
 path unified onto it; both 0.x deps pinned exact; tracked `tests.yml` workflow added. Owed: device
 smoke of the Connect flow from the desync state, and enabling tests in the Xcode Cloud workflow

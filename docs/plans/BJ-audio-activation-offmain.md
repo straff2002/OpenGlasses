@@ -1,6 +1,6 @@
 # Plan BJ — Off-Main Audio-Session Activation (Thread Performance hang-risk)
 
-**Status:** 🚧 Code complete — PR1 seam + serialization merged
+**Status:** ✅ Code complete — PR1 seam + serialization merged
 ([#218](https://github.com/straff2002/OpenGlasses/pull/218)), PR2 wiring merged (core
 [#220](https://github.com/straff2002/OpenGlasses/pull/220), leaves
 [#222](https://github.com/straff2002/OpenGlasses/pull/222)); Plan BO
