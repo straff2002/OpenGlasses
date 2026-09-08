@@ -100,6 +100,12 @@ enum StreamConfigPolicy {
     /// resolution string `Config.cameraResolution` stores. Used to preview the derived encode
     /// bitrate in Settings before a stream exists; the recorder itself measures real frames.
     /// Unknown strings fall through to `.high`, matching how `CameraService` maps them.
+    ///
+    /// **This table is a preview, not the truth.** These numbers were written down from the
+    /// SDK's documented tiers; what a tier actually resolves to on a given SDK and device is
+    /// `StreamingResolution.videoFrameSize`, which `MetaCameraBackend` now logs for all three
+    /// tiers at capability creation (`tierResolved`), and the decoded frame's own dimensions are
+    /// logged on top of that. Read the log before trusting this table (EO P1).
     static func encodedSize(for resolution: String) -> (width: Int, height: Int) {
         switch resolution {
         case "low": return (360, 640)

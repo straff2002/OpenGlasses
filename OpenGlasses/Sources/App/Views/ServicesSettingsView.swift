@@ -44,6 +44,7 @@ struct ServicesSettingsView: View {
     // Camera
     @State private var cameraResolution: String = Config.cameraResolution
     @State private var cameraFrameRate: Int = Config.cameraFrameRate
+    @State private var cameraCodec: String = Config.cameraCodec
     /// Recording bitrate override in bits/sec; 0 means "let VideoBitratePolicy derive it".
     @State private var recordingBitrate: Int = Config.recordingBitrateOverride ?? 0
     @State private var showFolderPicker = false
@@ -444,10 +445,18 @@ struct ServicesSettingsView: View {
                 .onChange(of: cameraFrameRate) { _, value in
                     Config.setCameraFrameRate(value)
                 }
+
+                Picker("Video Codec", selection: $cameraCodec) {
+                    Text("HEVC (Default)").tag(StreamCodecPolicy.hevcSetting)
+                    Text("Raw").tag(StreamCodecPolicy.rawSetting)
+                }
+                .onChange(of: cameraCodec) { _, value in
+                    Config.setCameraCodec(value)
+                }
             } header: {
                 Text("Camera")
             } footer: {
-                Text("Changes take effect next time the camera session starts. Higher settings use more battery.")
+                Text("Changes take effect next time the camera session starts. Higher settings use more battery.\n\nHEVC sends compressed video and the phone decodes it, which is what lets the higher resolutions actually arrive. Switch to Raw only if compressed video misbehaves on your glasses.")
             }
 
             // MARK: Recording & Transcripts
