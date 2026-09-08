@@ -6,7 +6,7 @@ import SQLite3
 /// here synchronously, so a dropped connection mid-procedure never loses work. Ops are inserted
 /// once and only their `state`/`attempts` mutate; `done` rows are tombstones until `purgeDone`.
 @MainActor
-final class OfflineQueue {
+final class OfflineQueue: ConflictBaselineStore {
     private var db: OpaquePointer?
 
     /// `path` is injectable so tests can use a throwaway file (and reopen it to prove survival).
@@ -34,6 +34,12 @@ final class OfflineQueue {
         )
         """)
         exec("CREATE INDEX IF NOT EXISTS idx_ops_state ON ops(state)")
+        exec("""
+        CREATE TABLE IF NOT EXISTS conflict_baselines (
+            session_id TEXT PRIMARY KEY,
+            version INTEGER NOT NULL
+        )
+        """)
         recoverInFlight()
     }
 
@@ -153,6 +159,31 @@ final class OfflineQueue {
 
     var pendingCount: Int { count(where: "state = 'pending'") }
     var conflictCount: Int { count(where: "state = 'conflict'") }
+
+    // MARK: - Conflict baselines
+
+    /// Durable per-session sync baselines for `ConflictResolver`, kept in this same file so they
+    /// can't drift from the ops they gate — and so a relaunch mid-outage doesn't reset every
+    /// session to version 0 and manufacture conflicts on the first flush after restart.
+    func baseline(for sessionId: String) -> Int? {
+        var stmt: OpaquePointer?
+        let sql = "SELECT version FROM conflict_baselines WHERE session_id = ?"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, sessionId)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int(stmt, 0))
+    }
+
+    func setBaseline(_ version: Int, for sessionId: String) {
+        var stmt: OpaquePointer?
+        let sql = "INSERT OR REPLACE INTO conflict_baselines (session_id, version) VALUES (?, ?)"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, sessionId)
+        sqlite3_bind_int(stmt, 2, Int32(version))
+        _ = sqlite3_step(stmt)
+    }
 
     // MARK: - SQLite plumbing
 
