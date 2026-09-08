@@ -143,7 +143,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>OpenGlasses needs camera access to capture photos and video for the AI to analyze.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>OpenGlasses looks up contacts so you can make calls and send messages by name through your glasses.</string>
+	<string>OpenGlasses looks up contacts so you can make calls, send messages and address email by name through your glasses.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>OpenGlasses reads your health data (steps, workouts) to report fitness activity through your glasses. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
 	<key>NSHealthUpdateUsageDescription</key>
