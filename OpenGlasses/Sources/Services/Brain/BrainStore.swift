@@ -28,16 +28,36 @@ final class BrainStore: ObservableObject {
     struct Edge: Equatable {
         let srcName: String
         let srcKind: String
-        let relation: String  // "works_at", "lives_in", "founded", "leads", "married_to", "studied_at", "invested_in", "mentioned_in"
+        /// Always a member of [[RelationOntology]]`.allowed` — `addEdge` drops anything else.
+        let relation: String
         let dstName: String
         let dstKind: String
         let sourceRef: String?
         let createdAt: Date
 
+        // The distillation tier. Defaulted so every reader written before it existed still
+        // compiles, and so a row carried over by the schema migration reads exactly as it did.
+        var state: BrainDistiller.State = .permanent
+        var confidence: Double = 1.0
+        var observations: Int = 1
+        var distinctSessions: Int = 1
+        /// When this claim became current; `nil` only for a row no migration has touched.
+        var validFrom: Date?
+        /// The last time it was observed — repetition moves this, `validFrom` stays put.
+        var lastSeen: Date?
+        /// Set when a newer claim retired this one. Nothing is deleted; history is stamped.
+        var supersededAt: Date?
+
+        /// How the edge reads to the model. The failure mode that matters is a guess or a
+        /// retired fact being read as a present-tense truth, so both say so in words.
         var sentence: String {
-            let verb = relation.replacingOccurrences(of: "_", with: " ")
             let cite = sourceRef.map { " (from \($0))" } ?? ""
-            return "\(srcName) \(verb) \(dstName)\(cite)"
+            if supersededAt != nil || state == .superseded {
+                return "\(srcName) \(RelationOntology.pastPhrase(for: relation)) \(dstName)\(cite)"
+            }
+            let verb = RelationOntology.phrase(for: relation)
+            let marker = state == .provisional ? " (unconfirmed)" : ""
+            return "\(srcName) \(verb) \(dstName)\(cite)\(marker)"
         }
     }
 
@@ -75,14 +95,35 @@ final class BrainStore: ObservableObject {
     private let dbURL: URL
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    /// The dials the distillation pass turns on. Injectable so a test can compress a fortnight
+    /// into a millisecond, or a twenty-ingest budget into two.
+    let policy: BrainDistiller.Policy
+
+    /// Ingests since the last distillation pass. A long session distils on the way rather than
+    /// waiting for an end that may never come.
+    private var ingestsSinceDistillation = 0
+
+    /// `PRAGMA user_version` of the schema this build writes.
+    private static let schemaVersion: Int32 = 1
+
     // MARK: - Init
 
     /// `directory` is injectable so tests can point at a temp folder.
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, policy: BrainDistiller.Policy = .default) {
         let docs = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.policy = policy
         dbURL = docs.appendingPathComponent("brain.sqlite")
         openDatabase()
+        // A database that already has an `edges` table predates the tiered schema; a fresh one is
+        // created with it. Telling them apart is what keeps a first launch from logging a
+        // migration that carried nothing.
+        let inherited = tableExists("edges")
         createTables()
+        if inherited {
+            migrateSchemaIfNeeded()
+        } else {
+            exec("PRAGMA user_version = \(Self.schemaVersion)")
+        }
     }
 
     deinit {
@@ -145,53 +186,198 @@ final class BrainStore: ObservableObject {
 
     // MARK: - Edges
 
-    /// Add a typed edge, upserting both endpoints. Duplicate (src, relation, dst) edges are ignored.
+    /// Add a typed edge, upserting both endpoints.
+    ///
+    /// A repeat is no longer thrown away: re-observing the same `(src, relation, dst)` bumps the
+    /// observation count, moves the last-seen stamp, and counts the session if it is a new one —
+    /// still one row, but a row that now carries how often and how widely it has been heard. A
+    /// relation outside [[RelationOntology]] is dropped and counted rather than stored.
+    ///
+    /// The tier defaults reproduce what every caller meant before the tier existed: a directly
+    /// stated claim, permanent, full confidence.
+    ///
+    /// A retired claim can also come back. Nothing here is deleted, so "Maria lives in Wellington"
+    /// after a move to Auckland lands on the row that supersession stamped; a *direct* restatement
+    /// revives it — current again, valid from now, so the next pass retires Auckland by the same
+    /// recency rule that retired Wellington. A provisional repeat does not: a guess cannot overturn
+    /// what a distillation already decided.
     func addEdge(srcKind: String, srcName: String, relation: String,
-                 dstKind: String, dstName: String, sourceRef: String? = nil) {
+                 dstKind: String, dstName: String, sourceRef: String? = nil,
+                 sessionID: String? = nil,
+                 confidence: Double = 1.0,
+                 state: BrainDistiller.State = .permanent,
+                 now: Date = Date()) {
+        let canonical = RelationOntology.canonical(relation)
+        guard RelationOntology.isAllowed(canonical) else {
+            RelationOntology.recordDrop(canonical)
+            return
+        }
         let srcId = upsertEntity(kind: srcKind, name: srcName)
         let dstId = upsertEntity(kind: dstKind, name: dstName)
         let sql = """
-        INSERT OR IGNORE INTO edges (id, src_id, relation, dst_id, source_ref, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO edges (id, src_id, relation, dst_id, source_ref, created_at,
+                           session_id, confidence, state, observations, distinct_sessions,
+                           valid_from, last_seen, superseded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, NULL)
+        ON CONFLICT(src_id, relation, dst_id) DO UPDATE SET
+            observations = observations + 1,
+            last_seen = excluded.last_seen,
+            distinct_sessions = distinct_sessions + (
+                CASE WHEN excluded.session_id IS NOT NULL
+                      AND (session_id IS NULL OR session_id <> excluded.session_id)
+                     THEN 1 ELSE 0 END),
+            session_id = COALESCE(excluded.session_id, session_id),
+            confidence = MAX(confidence, excluded.confidence),
+            state = CASE WHEN state = 'superseded' AND excluded.state <> 'permanent' THEN 'superseded'
+                         WHEN excluded.state = 'permanent' THEN 'permanent'
+                         ELSE state END,
+            superseded_at = CASE WHEN state = 'superseded' AND excluded.state = 'permanent'
+                                 THEN NULL ELSE superseded_at END,
+            valid_from = CASE WHEN state = 'superseded' AND excluded.state = 'permanent'
+                              THEN excluded.valid_from ELSE valid_from END,
+            source_ref = COALESCE(source_ref, excluded.source_ref)
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
+        let stamp = now.timeIntervalSince1970
         sqlite3_bind_text(stmt, 1, UUID().uuidString, -1, SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, srcId, -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 3, relation, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, canonical, -1, SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 4, dstId, -1, SQLITE_TRANSIENT)
         if let ref = sourceRef {
             sqlite3_bind_text(stmt, 5, ref, -1, SQLITE_TRANSIENT)
         } else {
             sqlite3_bind_null(stmt, 5)
         }
-        sqlite3_bind_double(stmt, 6, Date().timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 6, stamp)
+        if let sessionID, !sessionID.isEmpty {
+            sqlite3_bind_text(stmt, 7, sessionID, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(stmt, 7)
+        }
+        sqlite3_bind_double(stmt, 8, confidence)
+        sqlite3_bind_text(stmt, 9, state.rawValue, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 10, stamp)
+        sqlite3_bind_double(stmt, 11, stamp)
         _ = sqlite3_step(stmt)
     }
 
     /// Edges touching the named entity, in either direction, newest first.
-    func neighbors(of name: String, limit: Int = 12) -> [Edge] {
+    ///
+    /// Retired edges are excluded by default: the callers spend a five- or eight-row budget on
+    /// this, and history should not eat a slot the present tense needed. Ask for it and it comes
+    /// back — behind the current facts, and rendered in the past tense.
+    func neighbors(of name: String, limit: Int = 12, includeSuperseded: Bool = false) -> [Edge] {
         let norm = escapedSQL(name.lowercased())
         let sql = """
-        SELECT s.name, s.kind, e.relation, d.name, d.kind, e.source_ref, e.created_at
+        SELECT \(Self.edgeColumns)
         FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
-        WHERE s.normalized = '\(norm)' OR d.normalized = '\(norm)'
-        ORDER BY e.created_at DESC LIMIT \(limit)
+        WHERE (s.normalized = '\(norm)' OR d.normalized = '\(norm)')\(Self.currencyClause(includeSuperseded))
+        ORDER BY (e.superseded_at IS NULL) DESC, e.created_at DESC LIMIT \(limit)
         """
         return fetchEdges(sql)
     }
 
     /// Everyone/everything with the given relation to the named entity
     /// ("who works_at Acme?" → people with works_at edges into Acme).
-    func sources(relation: String, dstName: String, limit: Int = 12) -> [Edge] {
+    func sources(relation: String, dstName: String, limit: Int = 12,
+                 includeSuperseded: Bool = false) -> [Edge] {
         let sql = """
-        SELECT s.name, s.kind, e.relation, d.name, d.kind, e.source_ref, e.created_at
+        SELECT \(Self.edgeColumns)
         FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
-        WHERE e.relation = '\(escapedSQL(relation))' AND d.normalized = '\(escapedSQL(dstName.lowercased()))'
-        ORDER BY e.created_at DESC LIMIT \(limit)
+        WHERE e.relation = '\(escapedSQL(RelationOntology.canonical(relation)))'
+          AND d.normalized = '\(escapedSQL(dstName.lowercased()))'\(Self.currencyClause(includeSuperseded))
+        ORDER BY (e.superseded_at IS NULL) DESC, e.created_at DESC LIMIT \(limit)
         """
         return fetchEdges(sql)
+    }
+
+    // MARK: - Distillation
+
+    /// Revise the graph: promote what has been corroborated, retire what a newer claim replaced,
+    /// drop what was said once and never again. Pure decisions ([[BrainDistiller]]), applied here
+    /// in one transaction so a half-distilled graph is never readable.
+    ///
+    /// `sessionID` names the conversation that just ended; it is carried for the record only —
+    /// the pass itself looks at the whole graph, because an expiry window and a supersession both
+    /// concern edges no session touched.
+    @discardableResult
+    func distill(sessionID: String? = nil, now: Date = Date()) -> BrainDistiller.Summary {
+        let candidates = distillationCandidates()
+        let decisions = BrainDistiller.decide(candidates: candidates, now: now, policy: policy)
+        let summary = BrainDistiller.Summary(decisions)
+        ingestsSinceDistillation = 0
+        guard summary.changed > 0 else { return summary }
+
+        // All of it or none of it: a pass that promoted an edge but failed to retire the one it
+        // replaced would leave two present-tense answers to the same question, which is the exact
+        // state this whole change exists to end.
+        exec("BEGIN IMMEDIATE")
+        var applied = true
+        for decision in decisions where applied {
+            let id = escapedSQL(decision.id)
+            switch decision {
+            case .promote(_, let confidence):
+                applied = exec("""
+                UPDATE edges SET state = 'permanent', confidence = \(Self.number(confidence)),
+                                 valid_from = COALESCE(valid_from, created_at)
+                WHERE id = '\(id)'
+                """)
+            case .reinforce(_, let confidence):
+                applied = exec("UPDATE edges SET confidence = \(Self.number(confidence)) WHERE id = '\(id)'")
+            case .supersede(_, let at):
+                applied = exec("""
+                UPDATE edges SET state = 'superseded',
+                                 superseded_at = \(Self.number(at.timeIntervalSince1970))
+                WHERE id = '\(id)'
+                """)
+            case .expire:
+                applied = exec("DELETE FROM edges WHERE id = '\(id)'")
+            case .keep:
+                break
+            }
+        }
+        guard applied else {
+            exec("ROLLBACK")
+            PrivacyLog.store(.brain, .writeFailed, count: summary.changed, total: summary.considered)
+            return BrainDistiller.Summary()
+        }
+        exec("COMMIT")
+
+        PrivacyLog.store(.brain, .distilled, count: summary.changed, total: summary.considered)
+        return summary
+    }
+
+    /// Every edge, flattened to the values the rules read. `valid_from` / `last_seen` fall back to
+    /// `created_at` so a row a migration has not stamped still reasons correctly.
+    private func distillationCandidates() -> [BrainDistiller.Candidate] {
+        let sql = """
+        SELECT e.id, s.name, e.relation, d.name, e.state, e.confidence, e.observations,
+               e.distinct_sessions, COALESCE(e.valid_from, e.created_at),
+               COALESCE(e.last_seen, e.created_at), e.superseded_at
+        FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
+        """
+        var rows: [BrainDistiller.Candidate] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return rows }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            rows.append(BrainDistiller.Candidate(
+                id: String(cString: sqlite3_column_text(stmt, 0)),
+                srcName: String(cString: sqlite3_column_text(stmt, 1)),
+                relation: String(cString: sqlite3_column_text(stmt, 2)),
+                dstName: String(cString: sqlite3_column_text(stmt, 3)),
+                state: BrainDistiller.State(rawValue: String(cString: sqlite3_column_text(stmt, 4))) ?? .permanent,
+                confidence: sqlite3_column_double(stmt, 5),
+                observations: Int(sqlite3_column_int(stmt, 6)),
+                distinctSessions: Int(sqlite3_column_int(stmt, 7)),
+                validFrom: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 8)),
+                lastSeen: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 9)),
+                supersededAt: sqlite3_column_type(stmt, 10) != SQLITE_NULL
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 10)) : nil))
+        }
+        return rows
     }
 
     // MARK: - Encounters
@@ -368,21 +554,34 @@ final class BrainStore: ObservableObject {
     /// and the text matches no subject-led pattern on its own (e.g. the fact is just
     /// "works at Stripe"), retries with the subject prepended. Known people mentioned in the text
     /// gain a `mentioned_in` edge to the source when `sourceRef` and `sourceKind` are provided.
-    func ingest(text: String, subject: String? = nil, sourceRef: String? = nil, sourceKind: String? = nil) {
+    /// `sessionID` is the conversation the text came from, when the caller knows it. It is what
+    /// lets corroboration mean "heard in two different conversations" rather than "said twice in
+    /// one breath"; callers that have no conversation to name pass nothing and lose nothing.
+    func ingest(text: String, subject: String? = nil, sourceRef: String? = nil,
+                sourceKind: String? = nil, sessionID: String? = nil) {
         var relations = BrainRelationExtractor.extract(from: text)
         if relations.isEmpty, let subject, !subject.isEmpty {
             relations = BrainRelationExtractor.extract(from: "\(subject) \(text)")
         }
         for r in relations {
             addEdge(srcKind: r.srcKind, srcName: r.src, relation: r.relation,
-                    dstKind: r.dstKind, dstName: r.dst, sourceRef: sourceRef)
+                    dstKind: r.dstKind, dstName: r.dst, sourceRef: sourceRef, sessionID: sessionID)
         }
         if let ref = sourceRef, let kind = sourceKind {
             for person in entityNames(mentionedIn: text, kind: "person") where person.lowercased() != ref.lowercased() {
                 addEdge(srcKind: "person", srcName: person, relation: "mentioned_in",
-                        dstKind: kind, dstName: ref, sourceRef: nil)
+                        dstKind: kind, dstName: ref, sourceRef: nil, sessionID: sessionID)
             }
         }
+        noteIngestAgainstBudget(sessionID: sessionID)
+    }
+
+    /// A long session should not have to end before the graph tidies itself, so every so many
+    /// ingests the pass runs anyway.
+    private func noteIngestAgainstBudget(sessionID: String?) {
+        ingestsSinceDistillation += 1
+        guard ingestsSinceDistillation >= policy.ingestsBetweenPasses else { return }
+        distill(sessionID: sessionID)   // resets the counter
     }
 
     // MARK: - Stats
@@ -415,6 +614,10 @@ final class BrainStore: ObservableObject {
             UNIQUE(kind, normalized)
         )
         """)
+        // The eight columns after `created_at` are the distillation tier. `UNIQUE(src_id,
+        // relation, dst_id)` is retained deliberately: supersession is about *different*
+        // destinations, and the constraint is what turns a repeat into an update rather than a
+        // second row. A database that predates them gets them by `migrateSchemaIfNeeded`.
         exec("""
         CREATE TABLE IF NOT EXISTS edges (
             id TEXT PRIMARY KEY,
@@ -423,6 +626,14 @@ final class BrainStore: ObservableObject {
             dst_id TEXT NOT NULL,
             source_ref TEXT,
             created_at REAL NOT NULL,
+            session_id TEXT,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            state TEXT NOT NULL DEFAULT 'permanent',
+            observations INTEGER NOT NULL DEFAULT 1,
+            distinct_sessions INTEGER NOT NULL DEFAULT 1,
+            valid_from REAL,
+            last_seen REAL,
+            superseded_at REAL,
             UNIQUE(src_id, relation, dst_id)
         )
         """)
@@ -462,7 +673,91 @@ final class BrainStore: ObservableObject {
         exec("CREATE INDEX IF NOT EXISTS idx_needs_person ON needs(person)")
     }
 
+    // MARK: - Schema migration
+
+    /// Bring a pre-tier `edges` table up to the current schema, additively.
+    ///
+    /// The whole risk of this change is one `ALTER TABLE` sequence running against a database
+    /// nobody can inspect, so: no table is rewritten, no row is deleted, no constraint changes,
+    /// and every new column has a default that reproduces exactly what the row already meant —
+    /// permanent, full confidence, one observation, one session. If any statement fails,
+    /// `user_version` stays 0 and the store reads as it did before; the next launch tries again,
+    /// and only adds the columns still missing.
+    ///
+    /// Eight columns, not the six the plan first named. `last_seen` because expiry needs the time
+    /// of the *last* sighting and `created_at` is the first; `distinct_sessions` because "heard in
+    /// two different conversations" cannot be told from a single `session_id`.
+    private func migrateSchemaIfNeeded() {
+        guard userVersion() < Self.schemaVersion else { return }
+        let present = Set(columnNames(of: "edges"))
+        let additions: [(column: String, sql: String)] = [
+            ("session_id", "ALTER TABLE edges ADD COLUMN session_id TEXT"),
+            ("confidence", "ALTER TABLE edges ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0"),
+            ("state", "ALTER TABLE edges ADD COLUMN state TEXT NOT NULL DEFAULT 'permanent'"),
+            ("observations", "ALTER TABLE edges ADD COLUMN observations INTEGER NOT NULL DEFAULT 1"),
+            ("distinct_sessions", "ALTER TABLE edges ADD COLUMN distinct_sessions INTEGER NOT NULL DEFAULT 1"),
+            ("valid_from", "ALTER TABLE edges ADD COLUMN valid_from REAL"),
+            ("last_seen", "ALTER TABLE edges ADD COLUMN last_seen REAL"),
+            ("superseded_at", "ALTER TABLE edges ADD COLUMN superseded_at REAL"),
+        ]
+        for addition in additions where !present.contains(addition.column) {
+            guard exec(addition.sql) else { return }
+        }
+        // `valid_from` and `last_seen` cannot be added with a non-constant default, so they are
+        // backfilled: an edge that was already here has been valid, and last seen, since it was
+        // written.
+        guard exec("UPDATE edges SET valid_from = created_at WHERE valid_from IS NULL"),
+              exec("UPDATE edges SET last_seen = created_at WHERE last_seen IS NULL") else { return }
+        let carried = count("edges")
+        guard exec("PRAGMA user_version = \(Self.schemaVersion)") else { return }
+        PrivacyLog.store(.brain, .migrated, count: carried)
+    }
+
+    private func userVersion() -> Int32 {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return sqlite3_column_int(stmt, 0)
+    }
+
+    private func tableExists(_ table: String) -> Bool {
+        let sql = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '\(escapedSQL(table))'"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    private func columnNames(of table: String) -> [String] {
+        var names: [String] = []
+        var stmt: OpaquePointer?
+        let sql = "PRAGMA table_info(\(table))"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return names }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let raw = sqlite3_column_text(stmt, 1) { names.append(String(cString: raw)) }
+        }
+        return names
+    }
+
     // MARK: - Helpers
+
+    /// The edge projection every read shares, so a new column is added in one place.
+    private static let edgeColumns = """
+    s.name, s.kind, e.relation, d.name, d.kind, e.source_ref, e.created_at, e.state, \
+    e.confidence, e.observations, e.distinct_sessions, e.valid_from, e.last_seen, e.superseded_at
+    """
+
+    private static func currencyClause(_ includeSuperseded: Bool) -> String {
+        includeSuperseded ? "" : "\n  AND e.superseded_at IS NULL"
+    }
+
+    /// A `Double` as SQL. Locale-independent, because a comma decimal separator would be a
+    /// syntax error rather than a wrong number.
+    private static func number(_ value: Double) -> String {
+        String(format: "%.6f", value)
+    }
 
     private func entityId(kind: String, name: String) -> String? {
         let sql = "SELECT id FROM entities WHERE kind = ? AND normalized = ?"
@@ -488,7 +783,17 @@ final class BrainStore: ObservableObject {
                 dstName: String(cString: sqlite3_column_text(stmt, 3)),
                 dstKind: String(cString: sqlite3_column_text(stmt, 4)),
                 sourceRef: sqlite3_column_type(stmt, 5) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 5)) : nil,
-                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 6))
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 6)),
+                state: BrainDistiller.State(rawValue: String(cString: sqlite3_column_text(stmt, 7))) ?? .permanent,
+                confidence: sqlite3_column_double(stmt, 8),
+                observations: Int(sqlite3_column_int(stmt, 9)),
+                distinctSessions: Int(sqlite3_column_int(stmt, 10)),
+                validFrom: sqlite3_column_type(stmt, 11) != SQLITE_NULL
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 11)) : nil,
+                lastSeen: sqlite3_column_type(stmt, 12) != SQLITE_NULL
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 12)) : nil,
+                supersededAt: sqlite3_column_type(stmt, 13) != SQLITE_NULL
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 13)) : nil
             ))
         }
         return rows
@@ -516,7 +821,9 @@ final class BrainStore: ObservableObject {
 
 /// Pattern-based (zero LLM calls) extraction of typed relations from prose.
 /// Tuned for precision over recall: a missed edge costs nothing — the text is still findable via
-/// semantic search — but a wrong edge pollutes graph answers.
+/// semantic search — but a wrong edge pollutes graph answers. Every relation it produces is
+/// checked against [[RelationOntology]] on the way out, so the patterns cannot quietly widen the
+/// vocabulary the rest of the graph reasons over.
 enum BrainRelationExtractor {
 
     struct Relation: Equatable {
@@ -567,6 +874,9 @@ enum BrainRelationExtractor {
                 let src = clean(String(text[srcRange]))
                 let dst = clean(String(text[dstRange]))
                 guard isUsableName(src), isUsableName(dst), src.lowercased() != dst.lowercased() else { return }
+                // The patterns and the ontology are two statements of the same vocabulary; this
+                // is where they are held to it, so neither can drift on its own.
+                guard RelationOntology.isAllowed(relation) else { return }
                 let rel = Relation(srcKind: "person", src: src, relation: relation, dstKind: dstKind, dst: dst)
                 if !results.contains(rel) { results.append(rel) }
             }
