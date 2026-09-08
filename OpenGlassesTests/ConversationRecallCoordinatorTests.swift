@@ -28,7 +28,8 @@ final class ConversationRecallCoordinatorTests: XCTestCase {
     }
 
     private func waitUntilReady(_ coordinator: ConversationRecallCoordinator) async {
-        for _ in 0..<200 {
+        // Ten seconds is a ceiling, not a race: a loaded CI runner once took more than a second to bring the coordinator up.
+        for _ in 0..<2000 {
             if case .ready = coordinator.state { return }
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
@@ -37,7 +38,8 @@ final class ConversationRecallCoordinatorTests: XCTestCase {
 
     private func waitUntil(_ predicate: @escaping () -> Bool,
                            failure: String) async {
-        for _ in 0..<200 {
+        // Ten seconds is a ceiling, not a race: a loaded CI runner once took more than a second to bring the coordinator up.
+        for _ in 0..<2000 {
             if predicate() { return }
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
