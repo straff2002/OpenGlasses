@@ -2492,6 +2492,19 @@ struct Config {
         UserDefaults.standard.set(fps, forKey: "cameraFrameRate")
     }
 
+    /// Codec the glasses are asked to send: "hevc" (default) or "raw". Raw pixels are ~1.4 MB a
+    /// frame at 720p, which the glasses link cannot carry, so the SDK's ladder steps the source
+    /// down and the delivered rate sags; compressed frames are decoded on the phone. "raw" stays
+    /// available because a firmware that mishandles compressed video must not need a reinstall
+    /// to work around. Anything unrecognised reads as the default — see `StreamCodecPolicy`.
+    static var cameraCodec: String {
+        UserDefaults.standard.string(forKey: "cameraCodec") ?? StreamCodecPolicy.hevcSetting
+    }
+
+    static func setCameraCodec(_ codec: String) {
+        UserDefaults.standard.set(codec, forKey: "cameraCodec")
+    }
+
     // MARK: - LLM Image Compression
 
     /// How hard to shrink photos before they go to a vision model. Stored as the preset's raw

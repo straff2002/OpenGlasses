@@ -155,6 +155,7 @@
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_http._tcp</string>
+			<string>_bonjour._tcp</string>
 		</array>
 		<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OpenGlasses uses your location to provide contextually relevant answers based on where you are.</string>

@@ -47,6 +47,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
     // MARK: - HEVC Decoder Stall Detection
     /// Timestamp of the last successfully decoded video frame.
     private var lastFrameTime: Date = .distantPast
+    /// EO P1: the decoder and the two liveness clocks, off the main actor. One instance for the
+    /// life of the backend — a stream teardown resets it rather than replacing it, so the
+    /// listener closure can capture it once.
+    private let framePipeline = GlassesFramePipeline()
     /// Stall detection timer — fires if no frame arrives for 1.5 seconds.
     private var stallDetectionTask: Task<Void, Never>?
     /// Whether we're currently recovering from a stall (prevents re-entrant recovery).
@@ -318,9 +322,23 @@ final class MetaCameraBackend: GlassesCameraBackend {
             }
         }()
         let fps = UInt(Config.cameraFrameRate)
+        // EO P1: the tier the SDK resolves is the only number that matters, and until now no log
+        // has ever carried it — `capabilityCreated` reports the *label*. Record what all three
+        // tiers actually are on this SDK and device, and which one was asked for.
+        for tier in StreamingResolution.allCases {
+            let size = tier.videoFrameSize
+            PrivacyLog.camera(.glasses, .tierResolved,
+                              detail: PrivacyToken(tier == resolution ? "requested" : "available"),
+                              resolution: PrivacyToken(String(describing: tier)),
+                              width: Int(size.width), height: Int(size.height))
+        }
+        // EO P1: hvc1 by default. Raw pixels do not fit the link, so the ladder steps the source
+        // down and the delivered rate sags no matter what was asked for; compressed frames are
+        // decoded in-process by `GlassesFramePipeline`.
+        let codec = StreamCodecPolicy.videoCodec(for: Config.cameraCodec)
         guard let camera = try deviceSession.addCamera(
             config: MWDATCamera.StreamConfiguration(
-                videoCodec: .raw,
+                videoCodec: codec,
                 resolution: resolution,
                 frameRate: fps
             )
@@ -333,6 +351,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         attachListeners(to: camera.stream)
         // (session error watcher already attached above, before start)
         PrivacyLog.camera(.glasses, .capabilityCreated,
+                          detail: PrivacyToken.caseName(of: codec),
                           resolution: PrivacyToken(effectiveResolution), frameRate: Int(fps))
     }
 
@@ -356,6 +375,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// Attach all publishers to the session (state, video frames, photo data, errors).
     private func attachListeners(to session: MWDATCamera.Stream) {
         var frameCount = 0
+        // EO P1: the size the app actually receives, logged on the first frame and whenever it
+        // changes. The SDK's ladder can step the source down mid-stream, and until now the only
+        // size in any log was the tier *label* we asked for.
+        var lastLoggedFrameSize: CGSize = .zero
 
         session.statePublisher.listen { [weak self] state in
             Task { @MainActor in
@@ -423,17 +446,28 @@ final class MetaCameraBackend: GlassesCameraBackend {
             }
         }.store(in: streamListenerBag)
 
+        // EO P1: the decoder and the liveness clocks live off the main actor, in the pipeline.
+        // Captured by value so the listener never touches `self` before it hops.
+        let pipeline = framePipeline
         session.videoFramePublisher.listen { [weak self] frame in
-            // Immediate pixel buffer copy: `makeUIImage()` copies the pixel data out of
-            // the VideoToolbox buffer pool right away, preventing VT pool exhaustion
-            // that can occur if the buffer is held across async boundaries.
-            let image = frame.makeUIImage()
+            // Runs on the SDK's delivery thread, and everything expensive stays here.
+            // `makeUIImage()` copies the pixel data out of the VideoToolbox buffer pool right
+            // away, preventing VT pool exhaustion if the buffer were held across an async
+            // boundary; a compressed sample is decoded inline instead, and either way what
+            // crosses to the main actor is a finished picture — plus whether that picture is new
+            // or the last good one handed over again while the decoder waits for a keyframe.
+            let picture = pipeline.picture(for: frame)
             Task { @MainActor in
-                guard let self, let image else { return }
+                guard let self, let image = picture.image else { return }
                 frameCount += 1
-                self.lastFrameTime = Date()
+                // Only a fresh picture makes the frame clock fresh. The app still sees the held
+                // image — that is the point of holding one — but `lastFrameTime` also gates the
+                // photo-capture fallback, and stamping it here would let that fallback hand over
+                // a picture as old as the encoder's keyframe interval while looking seconds new.
+                if picture.isFresh { self.lastFrameTime = Date() }
                 self.latestFrame = image
-                if frameCount <= 3 || frameCount % 30 == 0 {
+                if frameCount <= 3 || frameCount % 30 == 0 || image.size != lastLoggedFrameSize {
+                    lastLoggedFrameSize = image.size
                     PrivacyLog.camera(.glasses, .frameReceived,
                                       width: Int(image.size.width),
                                       height: Int(image.size.height), count: frameCount)
@@ -926,6 +960,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         isStreaming = true
         events.send(.streamingChanged(true))
         lastFrameTime = Date()
+        framePipeline.restartClocks()
         startStallDetection()
     }
 
@@ -943,6 +978,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private func startStallDetection() {
         stopStallDetection()
         lastFrameTime = Date()
+        framePipeline.restartClocks()
         stallDetectionTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 500_000_000) // Check every 0.5s
@@ -955,11 +991,23 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 // doesn't fire the instant the tap resumes the stream).
                 if !StreamRecoveryPolicy.shouldRecoverFromStall(state: self.streamSession?.state) {
                     self.lastFrameTime = Date()
+                    self.framePipeline.restartClocks()
                     continue
                 }
 
-                let elapsed = Date().timeIntervalSince(self.lastFrameTime)
-                if elapsed > 1.5 {
+                // EO P1: two clocks, two different faults. Frames stopping because the glasses
+                // stopped sending is the stall this detector was written for; frames arriving
+                // and never becoming pictures is a decoder problem, and tearing the stream down
+                // for it restarts the wait for a keyframe — i.e. makes it worse.
+                switch self.framePipeline.verdict() {
+                case .healthy:
+                    continue
+                case .decodeStalled:
+                    PrivacyLog.camera(.decoder, .stalled,
+                                      seconds: self.framePipeline.secondsSinceLastPicture())
+                    self.framePipeline.rebuildDecoder()
+                case .linkStalled:
+                    let elapsed = Date().timeIntervalSince(self.lastFrameTime)
                     PrivacyLog.camera(.glasses, .stallDetected, seconds: elapsed)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
@@ -996,6 +1044,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             try await ensureSession()
             try await waitForStreaming()
             lastFrameTime = Date()
+            framePipeline.restartClocks()
             consecutiveRecoveryFailures = 0
             PrivacyLog.camera(.glasses, .stallRecovered)
         } catch {
@@ -1025,6 +1074,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         cameraCapability = nil
         streamSession = nil
         activeStreamResolution = nil
+        // The next stream gets a fresh decompression session, and reports its own frame shape.
+        framePipeline.reset()
         PrivacyLog.camera(.glasses, .capabilityTornDown)
     }
 
@@ -1067,6 +1118,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         latestFrame = nil
         events.send(.frame(nil))
         lastFrameTime = .distantPast
+        framePipeline.reset()
         PrivacyLog.camera(.glasses, .sessionReset)
     }
 

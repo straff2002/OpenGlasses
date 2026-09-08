@@ -1,8 +1,8 @@
 # Plan EO — HEVC Glasses Stream (compressed frames, decoded on the phone)
 
-**Status:** 📋 Planned 2026-09-07. Headless core first (P1); the numbers that decide the defaults
-come from one device session (P2) and are to be written into **P2 findings** below before P3 is
-touched.
+**Status:** 🚧 P1 implemented 2026-09-08 (headless; P2 device session pending). The numbers that
+decide the defaults come from one device session (P2) and are to be written into **P2 findings**
+below before P3 is touched.
 **Origin:** The glasses stream is requested as **raw** pixels
 (`MetaCameraBackend.ensureSession`, `videoCodec: .raw`) and every frame is turned into a `UIImage`
 by the SDK's helper. A raw 720×1280 frame is ~1.4 MB; at any frame rate that is tens of megabits a
@@ -180,6 +180,85 @@ alone. All of it goes in **P2 findings** with the raw numbers.
 - Passthrough recording: write the compressed hvc1 samples to the file without decoding, which the
   vendor sample does and which would take the recorder's CPU cost to near zero — worth it only if
   P2 shows software decode at the chosen rate is a measurable drain.
+
+## P1 findings (2026-09-08)
+
+**The pure/impure line the plan drew does not fall where the plan put it.** `StreamCodecPolicy`,
+`StreamLiveness` and the keyframe hold are pure and went where the Files list says. But
+`MetaCameraBackend` is `@MainActor`, and its frame listener runs on the SDK's delivery thread, so
+the closure cannot touch `self` before it hops — which means the decoder and the two clocks cannot
+live on the backend at all. They live in a third file, `GlassesFramePipeline`, a plain class the
+listener calls directly and the backend holds one of; the only thing that crosses to the main
+actor is still a `UIImage`. Decoding happens inline on the delivery thread under a lock rather
+than on a queue of its own, which is also the back-pressure: a phone that cannot keep up holds the
+listener instead of growing a queue of stale frames.
+
+**The keyframe hold is a rule, not decoder plumbing, so it moved.** The plan puts it inside
+`VideoDecoder`; it is written as `KeyframeHold` beside `StreamLiveness`, because the plan's own
+test list asks `StreamLivenessTests` to prove "a keyframe ends the hold" and a rule that is tested
+somewhere should be readable there too.
+
+**"Retry the frame once" is narrower than it sounds.** A rebuild re-arms the hold, so the retried
+frame only reaches the new session if it is itself a keyframe — which is precisely the frame a
+fresh session may start on. A P-frame that arrived at the moment the session died is dropped, and
+the app shows the last good picture until the next keyframe. That is the correct behaviour and it
+is worth stating, because "retry" otherwise reads as a promise that no frame is lost.
+
+**The plan did not say which rule wins when both apply.** Rebuild-and-retry and the three-failure
+invalidate can both be true of the same failure (three consecutive `kVTInvalidSessionErr`s). The
+limit outranks the rebuild — a session already rebuilt twice is not fixed by a third — and the
+ordering is asserted rather than left to reading order.
+
+**`decodeStalled` will fire repeatedly if the glasses encoder's keyframe interval is longer than
+1.5 s.** The rule as written — samples arriving, no picture for 1.5 s, rebuild the decoder — cannot
+tell "the decoder is broken" from "the decoder is correctly waiting for a keyframe that has not
+come yet". Each rebuild is cheap and simply re-arms the hold, so nothing breaks; it shows up as
+repeated `.decoder/rebuilt` lines. P2 reads the keyframe interval off the lock/unlock trace: if it
+is longer than the threshold, the response should learn to wait while the hold is on rather than
+rebuild.
+
+**Keyframe detection.** `CMSampleBufferGetSampleAttachmentsArray(_:createIfNecessary: false)`, first
+entry, `kCMSampleAttachmentKey_NotSync`. Absent array, absent entry and absent key all read as
+*sync*, which is right: the attachment is written only for non-sync samples, so absence is the
+common case for a keyframe.
+
+**Logging volume.** `tierResolved` is three lines per capability creation (one per tier, with the
+requested one marked) — the first record we will have of what a tier resolves to rather than what
+it is called. `frameShape` is logged when a shape first appears and whenever it changes, not
+strictly once, so a stream that starts arriving decoded and later arrives compressed is visible.
+The decoded frame's own dimensions are on `frameReceived`, now emitted on any size change as well
+as on the first frames.
+
+**The voice-link floor is untouched**, as the plan requires: `StreamConfigPolicy.effectiveResolution`
+is unchanged. `encodedSize(for:)` kept its table and gained the comment saying the log is the truth.
+
+**The plan's `CIContext` would have failed at the lock screen.** The plan turns the decoded pixel
+buffer into a `UIImage` through one reused `CIContext`. A `CIContext` renders through Metal, and iOS
+denies GPU access to a backgrounded app, so with the screen locked every decode would have succeeded
+and every `createCGImage` returned nil — the app would see only the held last-good frame, and the
+stall detector would rebuild, every 1.5 s, a decoder that is not broken. That defeats the exact
+reason the plan chose the software decoder, so the mechanism gives way to the purpose: the
+conversion is pure CPU instead. The session already asks for 32BGRA, IOSurface-backed buffers, so
+the base address is locked read-only and a `CGContext` laid over it makes the image, which copies
+the pixels out and hands the buffer straight back to the pool.
+
+**What the simulator round trip proved, and what it could not.** The iOS 27 simulator on Apple
+silicon *can* create an hvc1 `VTCompressionSession`, so `VideoDecoderRoundTripTests` ran rather than
+skipping — all five cases, no skips. It proved the parts that are ours: a 320×240 HEVC keyframe
+decodes back to a 320×240 `UIImage`; a session invalidated by hand between
+two frames is rebuilt and the next keyframe decodes (the lock-screen failure, reproduced without a
+lock screen); a mid-GOP sample fed to a fresh decoder yields the last good picture, which at the
+start of a stream is nothing; the same sample decodes once the session has had its keyframe, so the
+hold is a hold and not a failure; and a change of format description rebuilds rather than failing
+against the old one. It also showed the software-first specification is *honoured* here — a
+one-off probe asserted `isSoftwareDecoder` and passed, and no `softwareUnavailable` line was
+emitted, so the fallback path is untested by these runs.
+
+What it cannot prove is everything the glasses contribute: whether the SDK helper returns nil for an
+hvc1 frame (the whole two-shape branch is exercised only by its pure test), what tier `.high`
+resolves to on real hardware, what the encoder's keyframe interval is, whether iOS really tears the
+session down at lock, and what any of it costs in CPU or battery. Those are P2's numbers, and none
+of them are guessed at here.
 
 ## Out of scope, noted for their own PRs
 

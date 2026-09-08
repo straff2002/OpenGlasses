@@ -537,6 +537,15 @@ enum PrivacyLog {
         case captureRequested, captureRejected, captureTimedOut, captureFallbackUsed
         case photoReceived, photoUnexpected, photoCaptured, photoNotSaved
         case stallDetected, stallRecovery, stallRecovered, stallRecoveryFailed
+        /// EO P1. `tierResolved` reports what a `StreamingResolution` tier actually resolves to
+        /// on this SDK and device (width/height), instead of the label we asked for — until now
+        /// no log has ever recorded what "high" delivers. `frameShape` says which branch of the
+        /// frame listener ran: the SDK helper produced a picture, or the sample was still
+        /// compressed and went to the decoder. The decoder's own lifecycle is `rebuilt` (a dead
+        /// session replaced), `softwareUnavailable` (the software-first specification was
+        /// refused and the default one was used) and `stalled` (samples arriving, no picture).
+        case tierResolved, frameShape
+        case rebuilt, softwareUnavailable, stalled
     }
 
     @discardableResult
