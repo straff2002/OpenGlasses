@@ -74,6 +74,28 @@
       "scopes": ["Read issues", "Create issues", "Search projects"],
       "icon": "list.bullet.rectangle.fill",
       "notes": "Linear's hosted MCP endpoint. Listed for completeness; live connection lands when SSE + OAuth ship."
+    },
+    {
+      "id": "graph_memory",
+      "label": "Graph Memory",
+      "transport": "http",
+      "url_template": "http://{host}:{port}/mcp",
+      "auth": {
+        "kind": "bearer",
+        "hint": "The bearer token you started your memory server with."
+      },
+      "fields": [
+        { "key": "host", "label": "Server host / IP", "placeholder": "127.0.0.1" },
+        { "key": "port", "label": "Port", "placeholder": "8080" }
+      ],
+      "scopes": [
+        "remember \u2014 store something you tell it",
+        "recall \u2014 look up what it holds",
+        "forget \u2014 remove something from it"
+      ],
+      "icon": "brain",
+      "requires_agent_mode": true,
+      "notes": "A memory server you run yourself, on your own machine. The assistant can ask it to remember, recall and forget \u2014 but it is a second memory beside the one on this phone, not a copy of it: nothing from your on-device brain is ever sent to it, and nothing it returns is written back in. Outbound arguments are screened before they leave the device."
     }
   ]
 }

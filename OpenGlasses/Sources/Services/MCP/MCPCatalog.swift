@@ -55,11 +55,16 @@ struct MCPCatalogEntry: Decodable, Identifiable, Equatable {
     var scopes: [String] = []
     var icon: String = "puzzlepiece.extension"
     var notes: String = ""
+    /// Whether this server may only be installed with Agent Mode on. The catalogue had no agent
+    /// gate at all before, and the five entries that shipped without one keep the default — a row
+    /// opts *in* to the gate, so nothing changes for a server that never asked for it.
+    var requiresAgentMode: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, label, transport
         case urlTemplate = "url_template"
         case auth, fields, scopes, icon, notes
+        case requiresAgentMode = "requires_agent_mode"
     }
 
     // `id`/`label`/`urlTemplate` decode leniently (default ""), so a present-but-empty value is
@@ -76,6 +81,7 @@ struct MCPCatalogEntry: Decodable, Identifiable, Equatable {
         scopes      = try c.decodeIfPresent([String].self, forKey: .scopes) ?? []
         icon        = try c.decodeIfPresent(String.self, forKey: .icon) ?? "puzzlepiece.extension"
         notes       = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        requiresAgentMode = try c.decodeIfPresent(Bool.self, forKey: .requiresAgentMode) ?? false
     }
 }
 

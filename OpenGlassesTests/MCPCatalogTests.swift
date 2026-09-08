@@ -214,6 +214,80 @@ final class MCPCatalogTests: XCTestCase {
 
     // MARK: - Bundled catalogue
 
+
+    // MARK: - The self-hosted graph-memory entry
+
+    private func bundledGraphMemory() throws -> MCPCatalogEntry {
+        let catalog = try XCTUnwrap(MCPCatalog.bundled(Bundle(for: MCPClient.self)))
+        return try XCTUnwrap(catalog.entries.first { $0.id == "graph_memory" },
+                             "the bundled catalogue should offer a self-hosted graph-memory server")
+    }
+
+    /// The entry is on the shipped Streamable HTTP path with a bearer token and two fields — not
+    /// the deferred SSE one, which would list a server that cannot actually connect.
+    func testGraphMemoryEntryDecodesWithBothFieldsAndItsTransport() throws {
+        let entry = try bundledGraphMemory()
+        XCTAssertEqual(entry.transport, .http)
+        XCTAssertTrue(entry.transport.isLive)
+        XCTAssertEqual(entry.auth.kind, .bearer)
+        XCTAssertEqual(entry.fields.map(\.key), ["host", "port"])
+        XCTAssertEqual(Set(entry.placeholderKeys), ["host", "port"])
+        XCTAssertNil(entry.validationError)
+    }
+
+    /// Both halves of the address are the wearer's to give, and a half-filled one must never
+    /// resolve into a URL that quietly points somewhere else.
+    func testGraphMemoryURLNeedsBothHostAndPort() throws {
+        let entry = try bundledGraphMemory()
+        XCTAssertEqual(entry.resolvedURL(from: ["host": "127.0.0.1", "port": "8080"]),
+                       "http://127.0.0.1:8080/mcp")
+        XCTAssertNil(entry.resolvedURL(from: ["host": "127.0.0.1"]))
+        XCTAssertNil(entry.resolvedURL(from: ["host": "127.0.0.1", "port": "  "]))
+        XCTAssertNil(entry.resolvedURL(from: ["host": " ", "port": "8080"]))
+    }
+
+    /// A memory server is exactly the kind of server it would be tempting to trust, so it gets
+    /// the same safe default as everything else: the outbound screen, not `.allow`.
+    func testGraphMemoryInstallLandsOnRedact() throws {
+        let entry = try bundledGraphMemory()
+        let config = try XCTUnwrap(entry.makeServerConfig(
+            values: ["host": "127.0.0.1", "port": "8080"], token: "tok"))
+        XCTAssertEqual(config.policy, .redact)
+        XCTAssertEqual(config.transport, .http)
+        XCTAssertEqual(config.headers["Authorization"], "Bearer tok")
+    }
+
+    /// The catalogue had no agent gate before this entry, so the field opts in rather than out:
+    /// this row wants Agent Mode, and the five that shipped without one are untouched.
+    func testRequiresAgentModeIsSetHereAndNowhereElse() throws {
+        let catalog = try XCTUnwrap(MCPCatalog.bundled(Bundle(for: MCPClient.self)))
+        for entry in catalog.entries {
+            XCTAssertEqual(entry.requiresAgentMode, entry.id == "graph_memory",
+                           "\(entry.id) has the wrong agent-mode requirement")
+        }
+    }
+
+    /// An entry that never mentions the field decodes as ungated — the default is what keeps a
+    /// third-party catalogue row from becoming accidentally agent-only.
+    func testRequiresAgentModeDefaultsToFalseWhenAbsent() throws {
+        XCTAssertFalse(try entry("ha").requiresAgentMode)
+    }
+
+    /// The two-field template has the same trap the one-field one does: a placeholder with no
+    /// field behind it can never be filled, so the entry is refused rather than shipped broken.
+    func testEntryWithUnmatchedPortPlaceholderRejected() throws {
+        let json = Data("""
+        { "version": 1, "servers": [
+            { "id": "bad", "label": "Bad", "transport": "http",
+              "url_template": "http://{host}:{port}/mcp", "auth": {"kind":"bearer"},
+              "fields": [{ "key": "host", "label": "Host" }] }
+        ]}
+        """.utf8)
+        let (catalog, rejected) = try MCPCatalog.loadStrict(from: json)
+        XCTAssertTrue(catalog.entries.isEmpty)
+        XCTAssertTrue(rejected.first?.contains("{port}") ?? false, "got: \(rejected)")
+    }
+
     func testBundledCatalogueLoadsAndEveryEntryIsValid() throws {
         // The catalogue ships in the app bundle; locate it via an app-target class.
         let catalog = try XCTUnwrap(MCPCatalog.bundled(Bundle(for: MCPClient.self)),
