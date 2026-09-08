@@ -28,11 +28,13 @@ is partially eaten.
   2026-07-11).** `SyncEngine.runMaintenance()` now recovers stranded `inFlight` ops back to `pending` on
   open, flushes at launch (not just on a reachability edge), and wires `purgeDone`/`prunePhotoEvidence`
   to a real post-flush/app-launch trigger.
-- **`ConflictResolver` latent bugs (still open):** it still *advances* the baseline inside the
-  conflict branch (`ConflictResolver.swift:34`), so only the first op of a session surfaces as
-  a conflict and the rest silently last-writer-win — contradicting the "conflict surfaced not
-  overwritten" claim; and `knownVersion` is still in-memory only (`:16`), so every restart resets
-  baselines to 0 and the first post-restart sync produces spurious conflicts.
+- **`ConflictResolver` latent bugs — fixed 2026-09-09 ([#443](https://github.com/straff2002/OpenGlasses/pull/443)).** It *advanced* the baseline
+  inside the conflict branch, so only the first op of a session surfaced as a conflict and the rest
+  silently last-writer-won; and `knownVersion` was in-memory only, so every restart reset baselines
+  to 0 and the first post-restart sync produced spurious conflicts. Now a conflict leaves the baseline
+  where it is and adoption is an explicit `acknowledge(serverVersion:for:)`; baselines go through a
+  `ConflictBaselineStore` seam whose durable implementation is `OfflineQueue` itself (a
+  `conflict_baselines` table in the queue's own SQLite file, beside the ops it gates).
 - **Absolute-path payloads:** `photoUpload`/`auditExport` ops store `url.path`
   (`FieldSessionService.swift:223,305`); iOS container UUIDs change on update/restore, invalidating
   queued paths. No delivery-time existence check; no defined sink behavior for a dangling ref.
@@ -42,8 +44,9 @@ the same durable queue.
 
 **Still deferred — re-scoped 2026-07-10:** a real **networked sink, now with a concrete v1 target:
 Plan BL's A2A peer** — build `PeerSyncSink: SyncSink` delivering queued ops as A2A `tasks.send`
-headless against BL's `MockOpsPeer`, with the persisted conflict baselines and advance-on-conflict
-fixes above as named prerequisites (this also gives `ConflictResolver` its first consumer). Routing
+headless against BL's `MockOpsPeer` — its named prerequisites (`inFlight` recovery, launch flush,
+persisted conflict baselines, advance-on-conflict) have all shipped, so it waits only on BL (and
+gives `ConflictResolver` its first consumer). Routing
 `SessionLogger` entries is plain headless plumbing (buildable now, not device-pending).
 `llmGrounding` routing is near-superseded: the open question below prefers MLX-first answering, and
 BL P1's persisted-pending-task pattern covers the ask-later UX — keep as low-priority backlog.
