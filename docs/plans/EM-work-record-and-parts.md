@@ -265,10 +265,13 @@ A phone with no Mail account, or an iPad with no SMS, has the same problem. `Rep
 resolves the channel against what the device can actually do and falls back to the share sheet with
 both files, saying so out loud — a composer that cannot appear is worse than a different route.
 
-**A name cannot become an email address here.** `ContactLookupHelper` returns phone numbers, which
-is all `send_via` ever needed. So a spoken contact resolves for Messages/WhatsApp/Telegram and an
-email needs an actual address; the tool says that rather than guessing, because the wrong inbox is
-the one mistake in this flow nobody would notice until the customer's job record was in it.
+**A name can become an email address, but only an unambiguous one.** `ContactLookupHelper` now
+returns email addresses alongside phone numbers, so a spoken contact resolves for email as well as
+Messages/WhatsApp/Telegram. One contact — home and work addresses included, since the composer
+shows the address before anybody taps Send — is used. A name Contacts has no address for, or one
+that fits two people, still asks for the address and names the candidates rather than guessing,
+because the wrong inbox is the one mistake in this flow nobody would notice until the customer's
+job record was in it.
 
 **The bearer token is absent from `DeliverySettings` by construction, not by discipline.** Its
 `CodingKeys` omit it, so it cannot reach the stored blob, a future exported organisation profile,

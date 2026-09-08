@@ -43,17 +43,23 @@ final class DeliverReportTool: NativeTool {
     private let injectedSession: FieldSessionService?
     /// The delivery rules in force. Injectable so a test does not depend on this device's settings.
     private let settings: () -> DeliverySettings
-    /// Contact-name → address resolution. Injected so a headless test never touches Contacts.
+    /// Contact-name → phone number resolution. Injected so a headless test never touches Contacts.
     private let resolveContact: (String) -> [String]
+    /// Contact-name → email resolution. Injected for the same reason.
+    private let resolveEmail: (String) -> [ContactLookupHelper.ResolvedEmail]
 
     init(sessionService: FieldSessionService? = nil,
          settings: @escaping () -> DeliverySettings = { DeliverySettings.load() },
          resolveContact: @escaping (String) -> [String] = { name in
              ContactLookupHelper.resolve(name: name).map(\.phoneNumber)
+         },
+         resolveEmail: @escaping (String) -> [ContactLookupHelper.ResolvedEmail] = { name in
+             ContactLookupHelper.resolveEmails(name: name)
          }) {
         self.injectedSession = sessionService
         self.settings = settings
         self.resolveContact = resolveContact
+        self.resolveEmail = resolveEmail
     }
 
     private var session: FieldSessionService { injectedSession ?? .shared }
@@ -95,11 +101,11 @@ final class DeliverReportTool: NativeTool {
 
     /// What the technician said turned into an address this channel can use.
     ///
-    /// A name only becomes a number through the contact lookup the messaging tools already use.
-    /// Email is different and deliberately so: Contacts is asked for phone numbers here, so a name
-    /// cannot become an email address — the tool says that plainly rather than guessing an address,
-    /// which is the one mistake in this whole flow nobody would notice until the wrong person had
-    /// the customer's job record.
+    /// A name becomes a number — or an address — through the contact lookup the messaging tools
+    /// already use. Either way the tool never invents a recipient: a name Contacts does not know,
+    /// or one that fits two people, gets a question rather than a guess, because the wrong inbox is
+    /// the one mistake in this whole flow nobody would notice until the wrong person had the
+    /// customer's job record.
     private func resolve(spoken raw: String?, for channel: DeliveryChannel) -> RecipientResolution {
         let wanted = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !wanted.isEmpty else { return .resolved([]) }
@@ -109,11 +115,16 @@ final class DeliverReportTool: NativeTool {
             // Neither takes a recipient; naming one is not an error, it is simply not used.
             return .resolved([])
         case .email:
-            guard wanted.contains("@") else {
-                return .refused("I can only address an email to an address, and '\(wanted)' isn't one. "
+            if wanted.contains("@") { return .resolved([wanted]) }
+            switch ContactLookupHelper.pickEmail(from: resolveEmail(wanted)) {
+            case .one(let match):
+                return .resolved([match.address])
+            case .none:
+                return .refused("No contact matching '\(wanted)' has an email address I can use. "
                                 + "Say the address, or set the office address in Settings → Field Assist → Job reports.")
+            case .ambiguous(let names):
+                return .refused("'\(wanted)' could be \(Self.orList(names)). Say which one, or say the address.")
             }
-            return .resolved([wanted])
         case .messages, .whatsapp, .telegram:
             if ContactLookupHelper.isPhoneNumber(wanted) { return .resolved([wanted]) }
             let matches = resolveContact(wanted)
@@ -123,6 +134,12 @@ final class DeliverReportTool: NativeTool {
             }
             return .resolved([first])
         }
+    }
+
+    /// Names read back the way a person would say them: "Dave Smith or Dave Jones".
+    private static func orList(_ names: [String]) -> String {
+        guard let last = names.last, names.count > 1 else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " or " + last
     }
 
     /// An address this channel can use, or the sentence explaining why there is none.

@@ -346,10 +346,52 @@ final class DeliveryTests: XCTestCase {
 
     func testTheToolWillNotGuessAnEmailAddressFromAName() async throws {
         let service = try liveSession()
-        let tool = DeliverReportTool(sessionService: service, settings: { self.settings() })
+        let tool = DeliverReportTool(sessionService: service, settings: { self.settings() },
+                                     resolveEmail: { _ in [] })
         let reply = try await tool.execute(args: ["channel": "email", "to": "Dave"])
-        XCTAssertTrue(reply.contains("isn't one"), reply)
-        XCTAssertNil(service.stagedDelivery)
+        XCTAssertTrue(reply.contains("has an email address I can use"), reply)
+        XCTAssertNil(service.stagedDelivery, "a name nobody can address stages nothing")
+    }
+
+    func testTheToolEmailsTheContactWhoseNameTheTechnicianSaid() async throws {
+        let service = try liveSession()
+        let tool = DeliverReportTool(sessionService: service, settings: { self.settings() },
+                                     resolveEmail: { name in
+                                         name.lowercased() == "dave"
+                                             ? [.init(name: "Dave Smith", address: "dave@example.com", label: "work")]
+                                             : []
+                                     })
+
+        let reply = try await tool.execute(args: ["channel": "email", "to": "Dave"])
+        XCTAssertEqual(service.stagedDelivery?.channel, .email)
+        XCTAssertEqual(service.stagedDelivery?.recipients, ["dave@example.com"])
+        XCTAssertTrue(reply.contains("dave@example.com"), reply)
+    }
+
+    func testTheToolAsksWhichDaveWhenTheNameFitsTwoPeople() async throws {
+        let service = try liveSession()
+        let tool = DeliverReportTool(sessionService: service, settings: { self.settings() },
+                                     resolveEmail: { _ in
+                                         [.init(name: "Dave Smith", address: "dave@example.com", label: "work"),
+                                          .init(name: "Dave Jones", address: "djones@example.com", label: "home")]
+                                     })
+
+        let reply = try await tool.execute(args: ["channel": "email", "to": "Dave"])
+        XCTAssertTrue(reply.contains("Dave Smith"), reply)
+        XCTAssertTrue(reply.contains("Dave Jones"), reply)
+        XCTAssertNil(service.stagedDelivery, "an ambiguous name stages nothing")
+    }
+
+    func testAnEmailAddressSpokenOutrightNeverReachesTheContactLookup() async throws {
+        let service = try liveSession()
+        let tool = DeliverReportTool(sessionService: service, settings: { self.settings() },
+                                     resolveEmail: { name in
+                                         XCTFail("an address is already an address: \(name)")
+                                         return []
+                                     })
+
+        _ = try await tool.execute(args: ["channel": "email", "to": "site@example.com"])
+        XCTAssertEqual(service.stagedDelivery?.recipients, ["site@example.com"])
     }
 
     func testTheToolNeedsASessionAndSaysSo() async throws {
