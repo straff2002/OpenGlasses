@@ -31,7 +31,7 @@ struct BrainTool: NativeTool {
                 "question": ["type": "string", "description": "On 'query': what to look up across memory. On 'recall': what to find in past conversations (may include 'yesterday'/'last week')."],
                 "person": ["type": "string", "description": "On 'person'/'encounters'/'save_need'/'needs'/'resolve_need'/'forget': the person or entity name."],
                 "source": ["type": "string", "description": "On 'link': subject entity (e.g. 'Alice')."],
-                "relation": ["type": "string", "description": "On 'link': works_at, lives_in, founded, leads, married_to, studied_at, invested_in, attended, or knows."],
+                "relation": ["type": "string", "description": "On 'link': one of works_at, leads, reports_to, founded, owns, invested_in, member_of, lives_in, based_in, married_to, parent_of, sibling_of, studied_at, attended, or knows."],
                 "target": ["type": "string", "description": "On 'link': object entity (e.g. 'Acme')."],
                 "text": ["type": "string", "description": "On 'save_need': the follow-up (e.g. 'wants an intro to Dana'). On 'resolve_need': optional text to match the need to close."],
             ],
@@ -96,17 +96,15 @@ struct BrainTool: NativeTool {
                   let dst = (args["target"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !dst.isEmpty else {
                 return "A link needs source, relation, and target (e.g. Alice / works_at / Acme)."
             }
-            let normalizedRelation = relation.lowercased().replacingOccurrences(of: " ", with: "_")
-            let dstKind: String
-            switch normalizedRelation {
-            case "lives_in": dstKind = "place"
-            case "married_to", "knows": dstKind = "person"
-            case "attended": dstKind = "event"
-            default: dstKind = "org"
+            let normalizedRelation = RelationOntology.canonical(relation)
+            guard RelationOntology.isAllowed(normalizedRelation) else {
+                return "I don't record a relationship called \"\(relation)\". Use one of: " +
+                       RelationOntology.sortedRelations.joined(separator: ", ") + "."
             }
             brain.addEdge(srcKind: "person", srcName: src, relation: normalizedRelation,
-                          dstKind: dstKind, dstName: dst, sourceRef: "told directly")
-            return "Linked: \(src) \(normalizedRelation.replacingOccurrences(of: "_", with: " ")) \(dst)."
+                          dstKind: RelationOntology.destinationKind(for: normalizedRelation),
+                          dstName: dst, sourceRef: "told directly")
+            return "Linked: \(src) \(RelationOntology.phrase(for: normalizedRelation)) \(dst)."
 
         case "encounters", "sightings":
             let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
