@@ -76,8 +76,16 @@ xcuserdata/
 *.xcuserstate
 *.pbxproj.backup
 
-# Xcode Cloud post-clone tool downloads (XcodeGen release)
+# Post-clone tool downloads — the pinned, checksum-verified XcodeGen and gitleaks
 .ci-tools/
+
+# Release evidence, generated per run rather than committed. Both are reproducible from the
+# commit (Scripts/generate-sbom.sh is byte-deterministic), so a copy in the tree is a copy that
+# can go stale and be believed. CI uploads them as artifacts instead.
+sbom.cdx.json
+sbom-again.cdx.json
+dossier.md
+release-dossier-*.md
 
 # MediaPipe Tasks binaries — fetched by Scripts/fetch-mediapipe-frameworks.sh (too large
 # to commit: the graph static libraries exceed GitHub's 100 MB per-file limit)
