@@ -355,10 +355,11 @@ final class ManualCitationSheetTests: XCTestCase {
         XCTAssertTrue(lines.contains("\(Self.looseManual), page 1 — not opened"), "\(lines)")
 
         // And it survives the JSON write → decode round-trip a reviewer receives.
-        _ = try SessionExporter.export(sessionDir: dir, formats: [.json])
+        let leases = try SessionExporter.export(sessionDir: dir, formats: [.json])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(SessionExport.self,
-                                          from: Data(contentsOf: dir.appendingPathComponent("audit_export.json")))
+                                          from: Data(contentsOf: try XCTUnwrap(leases.first).fileURL))
         XCTAssertEqual(reloaded.citations.first { $0.source == opened.label }?.verifiedAgainst, "manufacturer_pdf")
     }
 

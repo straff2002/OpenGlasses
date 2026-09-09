@@ -62,8 +62,8 @@ struct SafetyAssessmentTool: NativeTool {
                 return "No safety assessment to export yet. Say \"assess this site\" first."
             }
             do {
-                let url = try SafetyReportPDF.write(report)
-                return "Exported safety report PDF: \(url.lastPathComponent). It's saved and ready to share."
+                let lease = try SafetyReportPDF.makeLease(for: report)
+                return "Prepared the safety report PDF: \(lease.displayName). It's held in protected storage for up to an hour and then cleared."
             } catch {
                 return "Couldn't create the PDF: \(error.localizedDescription)"
             }

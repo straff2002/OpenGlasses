@@ -46,13 +46,23 @@ enum SafetyReportPDF {
         }
     }
 
-    /// Write the PDF to a file (temp dir by default) and return its URL.
-    @discardableResult
-    static func write(_ report: SafetyReport, to directory: URL? = nil) throws -> URL {
-        let dir = directory ?? FileManager.default.temporaryDirectory
-        let url = dir.appendingPathComponent("HECA-\(report.id).pdf")
-        try data(for: report).write(to: url, options: .atomic)
-        return url
+    /// Stage the PDF into a protected export session and return its lease.
+    ///
+    /// The report names a worksite, its hazards and what is or is not controlled there, so it goes
+    /// through the same staging every other export now does: protected and backup-excluded before
+    /// the first byte, removed whole if the write or an attribute fails, and released when the
+    /// share ends, the app backgrounds or the TTL passes. The previous behaviour — an
+    /// `HECA-<id>.pdf` left in the shared temporary directory under its own report id — is what
+    /// this replaces.
+    @MainActor
+    static func makeLease(for report: SafetyReport,
+                          coordinator: StagedExportCoordinator = .safetyReport) throws -> StagedExportLease {
+        let lease = try coordinator.makeLease(data: data(for: report),
+                                              fileExtension: "pdf",
+                                              displayName: "HECA-\(report.id).pdf",
+                                              fallbackName: "safety-report.pdf")
+        PrivacyLog.transfer(.safetyExport, .exported, count: report.present.count)
+        return lease
     }
 
     // MARK: - Body

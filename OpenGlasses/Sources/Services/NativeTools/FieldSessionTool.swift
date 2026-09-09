@@ -172,10 +172,10 @@ final class FieldSessionTool: NativeTool {
         default: formats = [.json, .pdf]
         }
         do {
-            let urls = try service.exportSession(formats: formats)
-            if urls.isEmpty { return "Nothing to export — no session found." }
-            let names = urls.map { $0.lastPathComponent }.joined(separator: ", ")
-            return "Exported session record: \(names). Saved in the session folder for warranty/EPA/work-order use."
+            let leases = try service.exportSession(formats: formats)
+            if leases.isEmpty { return "Nothing to export — no session found." }
+            let names = leases.map(\.displayName).joined(separator: ", ")
+            return "Exported session record: \(names). Held in protected storage for up to an hour so you can share it; the session log itself stays on the device and can be re-exported any time."
         } catch {
             return "Could not export: \(error.localizedDescription)"
         }

@@ -19,12 +19,22 @@ final class SafetyReportPDFTests: XCTestCase {
         XCTAssertEqual(data.prefix(4), Data("%PDF".utf8))   // valid PDF header
     }
 
-    func testWriteProducesFile() throws {
+    func testLeaseProducesProtectedFile() throws {
         let report = try SafetyReport.from(json: ["summary": "Clear site.", "assessments": []])
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("heca-pdf-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = try SafetyReportPDF.write(report, to: dir)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
-        XCTAssertEqual(url.pathExtension, "pdf")
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("heca-pdf-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let coordinator = StagedExportCoordinator(
+            channel: .safetyExport, rootDirectoryName: "unused",
+            store: ProtectedExportFileStore(rootDirectoryName: "unused", root: root))
+
+        let lease = try SafetyReportPDF.makeLease(for: report, coordinator: coordinator)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lease.fileURL.path))
+        XCTAssertEqual(lease.fileURL.pathExtension, "pdf")
+        XCTAssertEqual(lease.displayName, "HECA-\(report.id).pdf")
+        // The on-disk name is a UUID; the report id travels only as the display name.
+        XCTAssertFalse(lease.fileURL.lastPathComponent.contains(report.id))
+        coordinator.release(lease)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lease.sessionDirectory.path))
     }
 }

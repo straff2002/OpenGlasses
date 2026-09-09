@@ -271,6 +271,8 @@ struct OpenGlassesApp: App {
                 appState.medicalExportService.leases.scavenge()
                 // Same, for a diagnostics bundle whose share never finished.
                 DiagnosticExportCoordinator.shared.scavenge()
+                // And for the agent archive, safety report and field session record.
+                StagedExportCoordinator.scavengeAll()
                 // Plan BQ: refresh Siri's phrase predictions for the parameterized
                 // shortcuts (persona + action catalog) against current runtime data.
                 OpenGlassesShortcuts.updateAppShortcutParameters()
@@ -1288,6 +1290,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // A diagnostics bundle is the same bargain: written for one share, gone when the
             // screen that asked for it is.
             Task { @MainActor in DiagnosticExportCoordinator.shared.handleBackground() }
+            Task { @MainActor in StagedExportCoordinator.handleBackgroundAll() }
         }
 
         // Hands-free "new topic" — the new_topic tool posts this; clear the LLM's context

@@ -646,14 +646,17 @@ final class FieldSessionService: ObservableObject {
     /// an empty PDF.
     func reportAttachments() -> [DeliveryRequest.Attachment] {
         if let reportAttachmentsProvider { return reportAttachmentsProvider() }
-        guard let record = workRecord(), let urls = try? exportSession(formats: [.json, .pdf]) else {
+        guard let record = workRecord(), let leases = try? exportSession(formats: [.json, .pdf]) else {
             return []
         }
-        return urls.compactMap { url in
-            switch url.pathExtension.lowercased() {
-            case "pdf": return DeliveryRequest.Attachment(url: url, kind: .pdf,
+        // The attachments point at staged files. Their leases stay held by the coordinator until
+        // the composer is done with them and the app backgrounds, or the TTL sweeps them — the
+        // filename the recipient sees is the report stem, never the on-disk UUID.
+        return leases.compactMap { lease in
+            switch lease.fileURL.pathExtension.lowercased() {
+            case "pdf": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
                                                           filename: record.reportFileStem + ".pdf")
-            case "json": return DeliveryRequest.Attachment(url: url, kind: .json,
+            case "json": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .json,
                                                            filename: record.reportFileStem + ".json")
             default: return nil
             }
@@ -1161,19 +1164,25 @@ final class FieldSessionService: ObservableObject {
     // MARK: - Export
 
     /// Export a session's compliance artifacts (consolidated JSON audit and/or PDF work order).
-    /// Defaults to the active session, falling back to the most recent. Returns the written file URLs.
-    func exportSession(id: String? = nil, formats: Set<SessionExporter.Format> = [.json, .pdf]) throws -> [URL] {
+    /// Defaults to the active session, falling back to the most recent. Returns one protected
+    /// staging lease per artifact; holding a lease is what keeps its file.
+    @discardableResult
+    func exportSession(id: String? = nil,
+                       formats: Set<SessionExporter.Format> = [.json, .pdf]) throws -> [StagedExportLease] {
         guard let sessionId = id ?? activeSession?.id ?? history.first?.id else {
             throw FieldSessionError.noActiveSession
         }
         let dir = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
-        let urls = try SessionExporter.export(sessionDir: dir, formats: formats)
+        let leases = try SessionExporter.export(sessionDir: dir, formats: formats)
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
+        // The op records which formats were produced, never their paths: a staged artifact's path
+        // is a lease that outlives neither the share nor the TTL, and the queue is durable.
         offlineQueue?.enqueue(QueuedOp.make(
             kind: .auditExport, sessionId: sessionId,
-            json: ["files": urls.map(\.path), "exportedAt": Date().timeIntervalSince1970]))
-        return urls
+            json: ["formats": formats.map(\.rawValue).sorted(),
+                   "exportedAt": Date().timeIntervalSince1970]))
+        return leases
     }
 
     // MARK: - History
