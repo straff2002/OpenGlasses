@@ -64,6 +64,9 @@ struct FitnessCoachingTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.fitnessCoaching) else {
+            return AIFeatureGate.disabledMessage(.fitnessCoaching)
+        }
         guard let action = args["action"] as? String else {
             return "No action specified."
         }

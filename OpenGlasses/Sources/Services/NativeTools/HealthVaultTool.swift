@@ -40,6 +40,9 @@ final class HealthVaultTool: NativeTool {
     private static let logFiles = ["biometrics", "conditions", "dietary_context", "lab_baselines", "medications", "wearables"]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.healthVault) else {
+            return AIFeatureGate.disabledMessage(.healthVault)
+        }
         guard VaultRegistry.shared.isUnlocked(Self.vaultId) else {
             return "The Personal Health Vault is locked. It unlocks with the Medical Compliance subscription."
         }

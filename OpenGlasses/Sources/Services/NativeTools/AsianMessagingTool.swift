@@ -23,6 +23,9 @@ struct AsianMessagingTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.messaging) else {
+            return AIFeatureGate.disabledMessage(.messaging)
+        }
         guard let appName = args["app"] as? String else {
             return "Please specify the app name."
         }

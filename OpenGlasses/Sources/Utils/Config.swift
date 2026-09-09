@@ -3383,6 +3383,48 @@ struct Config {
 
     static func setMCPServerEnabled(_ enabled: Bool) { mcpServerEnabled = enabled }
 
+    // MARK: - Per-feature AI switches (W08.1 / W08.5)
+
+    /// One switch per sensitive AI feature, so a release can disable a model, a tool or a whole use
+    /// case without disabling the app — and without leaving the data that feature collected behind.
+    /// `AIFeatureRegistry` is the inventory these back; `AIFeatureGate` is what reads them at each
+    /// feature's entry point. Every one defaults **on**, because these are switches over features
+    /// that already shipped: the default preserves today's behaviour and the switch is what is new.
+    /// A feature that already had its own switch keeps it rather than gaining a second.
+
+    /// Recognising and naming faces from the camera. Biometric.
+    @UserDefaultsBacked("faceRecognitionEnabled", default: true) static var faceRecognitionEnabled: Bool
+
+    /// Continuous on-screen transcription of nearby speech.
+    @UserDefaultsBacked("ambientCaptionsEnabled", default: true) static var ambientCaptionsEnabled: Bool
+
+    /// The AI's access to the personal health vault. Health data.
+    @UserDefaultsBacked("healthVaultAIEnabled", default: true) static var healthVaultAIEnabled: Bool
+
+    /// Identifying a medication from its label. Health data.
+    @UserDefaultsBacked("medicationIdentifierEnabled", default: true) static var medicationIdentifierEnabled: Bool
+
+    /// "Can I take / can I eat" advice against the wearer's own health record. Health data.
+    @UserDefaultsBacked("healthSafetyAdvisorEnabled", default: true) static var healthSafetyAdvisorEnabled: Bool
+
+    /// First-aid protocol coaching and camera triage. Health data, life-safety.
+    @UserDefaultsBacked("firstAidAssistEnabled", default: true) static var firstAidAssistEnabled: Bool
+
+    /// Workout coaching, form checking and HealthKit writes. Health data.
+    @UserDefaultsBacked("fitnessCoachingEnabled", default: true) static var fitnessCoachingEnabled: Bool
+
+    /// The high-energy control assessment. Worker safety.
+    @UserDefaultsBacked("safetyAssessmentEnabled", default: true) static var safetyAssessmentEnabled: Bool
+
+    /// Field Assist session capture and audited export. Worker safety.
+    @UserDefaultsBacked("fieldAssistToolsEnabled", default: true) static var fieldAssistToolsEnabled: Bool
+
+    /// AI control of lights, locks and scenes. External actuation.
+    @UserDefaultsBacked("smartHomeControlEnabled", default: true) static var smartHomeControlEnabled: Bool
+
+    /// AI sending messages and email on the wearer's behalf. External actuation.
+    @UserDefaultsBacked("aiMessagingEnabled", default: true) static var aiMessagingEnabled: Bool
+
     /// Master toggle for the Accessibility Tier (A1 Reading Accessibility). When off, the
     /// ReadingAccessibilityTool is not registered.
     @UserDefaultsBacked("accessibilityModeEnabled", default: false) static var accessibilityModeEnabled: Bool

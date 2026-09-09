@@ -30,6 +30,9 @@ struct MultiChannelMessageTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.messaging) else {
+            return AIFeatureGate.disabledMessage(.messaging)
+        }
         guard let channel = args["channel"] as? String else {
             return "No channel specified. Use 'email', 'whatsapp', or 'telegram'."
         }

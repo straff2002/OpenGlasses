@@ -34,6 +34,9 @@ struct FirstAidTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.firstAidAssist) else {
+            return AIFeatureGate.disabledMessage(.firstAidAssist)
+        }
         let service = FirstAidAssistService.shared
         switch (args["action"] as? String ?? "").lowercased() {
         case "start":

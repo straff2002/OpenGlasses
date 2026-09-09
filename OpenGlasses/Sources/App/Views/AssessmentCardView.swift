@@ -69,7 +69,7 @@ struct AssessmentCardView: View {
             Image(systemName: card.tier.systemImage).foregroundStyle(tierLabelColor)
             VStack(alignment: .leading, spacing: 1) {
                 Text(card.title).font(.headline)
-                Text("AI vision · \(card.tier.displayLabel)")
+                Text(presentation.attributionText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(AppAccent.aiCoral)
             }
@@ -112,17 +112,30 @@ struct AssessmentCardView: View {
         }
     }
 
+    /// Certainty, view limits and escalation. The old footer printed "Confidence 100%" on every
+    /// card because the schemas hard-coded it; a band is shown only when the evidence supports one,
+    /// and the escalation line is unconditional.
     private var footer: some View {
-        HStack {
-            Text("Confidence \(Int((card.confidence * 100).rounded()))%")
-                .font(.caption2).foregroundStyle(.secondary)
-            Spacer()
-            if let disclaimer = card.disclaimer, !disclaimer.isEmpty {
-                Text(disclaimer).font(.caption2).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
+        VStack(alignment: .leading, spacing: 4) {
+            if let limits = presentation.limitationsText {
+                Label(limits, systemImage: "eye.trianglebadge.exclamationmark")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Label(presentation.escalationText, systemImage: "person.fill.checkmark")
+                .font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+            HStack(alignment: .top) {
+                Text(presentation.certaintyText)
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                if let disclaimer = card.disclaimer, !disclaimer.isEmpty {
+                    Text(disclaimer).font(.caption2).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
             }
         }
     }
+
+    private var presentation: AssessmentPresentation { AssessmentPresentation(card) }
 
     // MARK: - Helpers
 
@@ -132,6 +145,7 @@ struct AssessmentCardView: View {
     /// Border wash / status-dot fill — the uncorrected hue.
     private func color(for tier: AssessmentTier) -> Color {
         switch tier {
+        case .unknown: return .secondary
         case .ok: return OGTheme.ok
         case .caution: return OGTheme.warn
         case .critical: return OGTheme.error
@@ -141,6 +155,7 @@ struct AssessmentCardView: View {
     /// Text / glyph colour — the WCAG-AA-audited label variant.
     private func labelColor(for tier: AssessmentTier) -> Color {
         switch tier {
+        case .unknown: return .secondary
         case .ok: return OGTheme.okLabel
         case .caution: return OGTheme.warnLabel
         case .critical: return OGTheme.errorLabel

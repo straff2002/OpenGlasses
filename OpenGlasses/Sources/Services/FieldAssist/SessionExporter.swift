@@ -43,7 +43,8 @@ enum SessionExporter {
     @discardableResult
     static func export(sessionDir: URL,
                        formats: Set<Format> = [.json, .pdf],
-                       coordinator: StagedExportCoordinator? = nil) throws -> [StagedExportLease] {
+                       coordinator: StagedExportCoordinator? = nil,
+                       provenance: AIProvenance? = nil) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device at any tier.
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
@@ -52,7 +53,7 @@ enum SessionExporter {
         guard FileManager.default.fileExists(atPath: sessionDir.path) else {
             throw ExportError.sessionNotFound(sessionDir)
         }
-        guard let document = buildExport(sessionDir: sessionDir) else {
+        guard let document = buildExport(sessionDir: sessionDir, provenance: provenance) else {
             throw ExportError.metadataUnreadable
         }
         var leases: [StagedExportLease] = []
@@ -80,7 +81,7 @@ enum SessionExporter {
     // MARK: - Reconstruction
 
     /// Reconstruct the consolidated export from the session metadata + append-only event log.
-    static func buildExport(sessionDir: URL) -> SessionExport? {
+    static func buildExport(sessionDir: URL, provenance: AIProvenance? = nil) -> SessionExport? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let metaData = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
@@ -192,7 +193,12 @@ enum SessionExporter {
             // confirmed are the same object rendered twice.
             workRecord: WorkRecord(
                 session: session,
-                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId)
+                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId),
+            // The record contains machine-written turns, so it says which machine wrote them. The
+            // digest identifies the instruction version; the instructions themselves — and the
+            // manual pages the answers cited — stay out of the export.
+            provenance: provenance ?? AIProvenance.forActiveModel(
+                promptSources: [FieldAssistProvenance.promptIdentity])
         )
     }
 
@@ -220,7 +226,12 @@ enum SessionExporter {
     /// Render the work order at exactly `url`. As with `writeJSON`, the caller owns the location.
     static func writePDF(_ document: SessionExport, to url: URL) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
-        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
+            kCGPDFContextCreator as String: "OpenGlasses — contains AI-generated content",
+            kCGPDFContextSubject as String: "Field session record with AI-generated assistant turns. Model not recorded.",
+        ]
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         let layout = PDFLayout(pageRect: pageRect, margin: 50)
 
         try renderer.writePDF(to: url) { context in
@@ -282,6 +293,10 @@ enum SessionExporter {
                     layout.body("[\(Self.time(entry.timestamp))] \(who): \(entry.text)")
                 }
             }
+
+            layout.section("Provenance")
+            layout.body(document.provenance?.footerLine
+                ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
         }
     }
 

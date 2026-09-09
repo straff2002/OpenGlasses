@@ -45,6 +45,9 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
     init() {}
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.smartHomeControl) else {
+            return AIFeatureGate.disabledMessage(.smartHomeControl)
+        }
         guard let action = args["action"] as? String else {
             return "No action specified. Use 'on', 'off', 'toggle', 'set', 'brightness', 'temperature', 'lock', 'unlock', 'scene', 'list', or 'list_scenes'."
         }

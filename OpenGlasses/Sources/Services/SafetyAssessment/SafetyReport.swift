@@ -46,6 +46,36 @@ struct SafetyReport: Codable, Identifiable {
     let createdAt: Date
     let summary: String
     let findings: [HazardFinding]   // all 13, present or not
+    /// Which model produced this report, and when (W08.3). Optional so reports persisted before
+    /// provenance existed still decode.
+    let provenance: AIProvenance?
+    /// What the model said it could not see (W08.2) — a partial view, an obstruction, its own named
+    /// limits. Printed in the PDF caveat so a shared report says what was outside the frame.
+    let limitations: [String]
+
+    init(id: String, createdAt: Date, summary: String, findings: [HazardFinding],
+         provenance: AIProvenance? = nil, limitations: [String] = []) {
+        self.id = id
+        self.createdAt = createdAt
+        self.summary = summary
+        self.findings = findings
+        self.provenance = provenance
+        self.limitations = limitations
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, createdAt, summary, findings, provenance, limitations
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        findings = try c.decodeIfPresent([HazardFinding].self, forKey: .findings) ?? []
+        provenance = try c.decodeIfPresent(AIProvenance.self, forKey: .provenance)
+        limitations = try c.decodeIfPresent([String].self, forKey: .limitations) ?? []
+    }
 
     /// Present hazards.
     var present: [HazardFinding] { findings.filter(\.isPresent) }
@@ -98,10 +128,20 @@ struct SafetyReport: Codable, Identifiable {
         }
     }
 
+    /// What the model reported it could not see, as plain phrases for the PDF caveat.
+    static func limitations(in json: [String: Any]) -> [String] {
+        let indicators = InputQualityIndicators.fromModelPayload(json)
+        var out: [String] = []
+        if indicators.modelReportedPartialView { out.append(InputQualityPolicy.partialViewReason) }
+        if indicators.modelReportedOcclusion { out.append(InputQualityPolicy.occlusionReason) }
+        return out + indicators.modelReportedLimitations
+    }
+
     /// Decode + validate the `{ summary, assessments: [...] }` model output into a report. Unknown
     /// category ids are ignored; any of the 13 the model omitted are filled in as not-present, so the
     /// report always contains exactly the 13 canonical hazards.
-    static func from(json: [String: Any], id: String = UUID().uuidString, createdAt: Date = Date()) throws -> SafetyReport {
+    static func from(json: [String: Any], id: String = UUID().uuidString, createdAt: Date = Date(),
+                     provenance: AIProvenance? = nil) throws -> SafetyReport {
         let dto: DTO
         do { dto = try AssessmentJSON.decode(DTO.self, from: json) }
         catch { throw AssessmentSchemaError.malformedPayload("safety_assessment: \(error)") }
@@ -126,6 +166,7 @@ struct SafetyReport: Codable, Identifiable {
         let findings = HighEnergyHazard.allCases.map { byHazard[$0] ?? HazardFinding(hazard: $0) }
         return SafetyReport(id: id, createdAt: createdAt,
                             summary: dto.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
-                            findings: findings)
+                            findings: findings, provenance: provenance,
+                            limitations: Self.limitations(in: json))
     }
 }

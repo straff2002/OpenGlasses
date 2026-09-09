@@ -66,7 +66,23 @@ final class StructuredVisionService: ObservableObject {
     /// shared card overlay and mirrors to the HUD.
     func present(_ card: AssessmentCard) {
         latest = card
-        mirrorToHUD(card)
+        publish(card)
+    }
+
+    /// Where the once-per-session AI disclosure goes for the chat/voice surfaces. A closure rather
+    /// than a direct TTS call so a headless test can observe it; `AppState` points it at the speech
+    /// path. The HUD copy rides along on the card's own line rather than replacing it.
+    var announceDisclosure: ((String) -> Void)?
+
+    /// The session-scoped disclosure ledger. Injectable so a test gets a fresh session.
+    var disclosureLedger: AIDisclosureLedger = .shared
+
+    /// Mirror to the HUD, prefixing the AI disclosure the first time an assessment is presented in
+    /// this session.
+    private func publish(_ card: AssessmentCard) {
+        let disclosure = disclosureLedger.consume(.assessment)
+        if let disclosure { announceDisclosure?(disclosure) }
+        mirrorToHUD(card, prefix: disclosure)
     }
 
     // MARK: - Core (testable)
@@ -87,6 +103,10 @@ final class StructuredVisionService: ObservableObject {
         if Config.visionPrivacyCategoriesEnabled {
             (systemPrompt, jsonSchema) = AssessmentPrivacy.augment(systemPrompt: systemPrompt, jsonSchema: jsonSchema)
         }
+        // Every vertical is asked what it could not see, at the same chokepoint privacy reporting
+        // uses, so a new schema inherits the uncertainty capability without knowing it exists.
+        (systemPrompt, jsonSchema) = AssessmentPrompt.augmentingViewLimits(systemPrompt: systemPrompt,
+                                                                          jsonSchema: jsonSchema)
 
         guard let json = await analyze(systemPrompt, userText, imageData, jsonSchema, "assessment") else {
             throw StructuredVisionError.analysisFailed
@@ -96,8 +116,15 @@ final class StructuredVisionService: ObservableObject {
         if Config.visionPrivacyCategoriesEnabled {
             card = card.addingFindings(AssessmentPrivacy.findings(for: AssessmentPrivacy.reportedCategories(in: json)))
         }
+        card = AssessmentQualifier.qualify(
+            card,
+            quality: InputQualityPolicy.evaluate(
+                ImageQualityProbe.indicators(for: imageData)
+                    .merging(InputQualityIndicators.fromModelPayload(json))),
+            provenance: AIProvenance.forActiveModel(
+                promptSources: [systemPrompt, String(describing: jsonSchema)]))
         latest = card
-        mirrorToHUD(card)
+        publish(card)
         return card
     }
 
@@ -119,13 +146,15 @@ final class StructuredVisionService: ObservableObject {
 
     // MARK: - HUD
 
-    private func mirrorToHUD(_ card: AssessmentCard) {
+    private func mirrorToHUD(_ card: AssessmentCard, prefix: String? = nil) {
         let icon: GlassesDisplayService.HUDIcon
         switch card.tier {
+        case .unknown: icon = .info
         case .ok: icon = .success
         case .caution: icon = .warning
         case .critical: icon = .hazard
         }
-        glassesDisplay?.showNavigation("\(card.title): \(card.summary)", icon: icon)
+        let body = AssessmentPresentation(card).spokenSummary
+        glassesDisplay?.showNavigation(prefix.map { "\($0) \(body)" } ?? body, icon: icon)
     }
 }

@@ -62,7 +62,7 @@ enum AssessmentPrivacy {
     static func findings(for reported: [String]) -> [AssessmentFinding] {
         reported.map {
             AssessmentFinding(label: "Privacy: \(displayName($0)) visible",
-                              detail: "Contents not read", severity: .caution, confidence: 1.0)
+                              detail: "Contents not read", severity: .caution)
         }
     }
 
@@ -83,9 +83,6 @@ extension AssessmentCard {
     /// A copy with extra findings appended (fields are immutable by design).
     func addingFindings(_ extra: [AssessmentFinding]) -> AssessmentCard {
         guard !extra.isEmpty else { return self }
-        return AssessmentCard(kind: kind, title: title, subtitle: subtitle, tier: tier,
-                              summary: summary, findings: findings + extra,
-                              recommendedAction: recommendedAction, stillNeeded: stillNeeded,
-                              readings: readings, confidence: confidence, disclaimer: disclaimer)
+        return with(findings: findings + extra)
     }
 }
