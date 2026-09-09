@@ -1,20 +1,20 @@
-# Compliance assessment and remediation plans
+# Plan EP: Compliance Programme (assessment and remediation plans)
 
 **Assessment date:** 4 September 2026
 **Repository baseline:** `b2b5190f2c3a55064242d6bd45a16c006c65d55b`
 **Status:** Assessment complete; remediation is in progress; controls and certification have not been approved or attested.
-**Location:** `/plans` means this repository's top-level `plans/` directory.
+**Location:** these plans live in `docs/plans/` as EP–EV, alongside the feature plans.
 
 OpenGlasses has substantial security engineering, but the repository does **not establish readiness for SOC 2 attestation or ISO 27001, ISO 27701, or ISO 42001 certification**. Concrete product gaps remain alongside organizational evidence that must be obtained from management. EU AI Act applicability requires decisions for each use case and market; it is not established by a product-wide label.
 
 ## Read in this order
 
-1. [Detailed assessment and evidence](00-compliance-assessment.md): boundary, strengths, 23 findings, risk rationale, and source limitations.
-2. [Integrated remediation roadmap](04-remediation-roadmap.md): eight workstreams, task acceptance criteria, dependencies, proposed owners, milestones, and evidence collection.
-3. [SOC 2 readiness plan](01-soc2-readiness-plan.md): service scope, Trust Services Criteria mapping, examination evidence.
-4. [ISO 27001 ISMS plan](02-iso27001-isms-plan.md): management system and Annex A coverage.
-5. [ISO 27701 privacy plan](03-iso27701-privacy-plan.md): PIMS, controller/processor responsibilities, data lifecycle and privacy rights.
-6. [ISO 42001 and EU AI Act plan](05-ai-governance-and-eu-ai-act-plan.md): intended-use classification, current legal timeline, AI assurance and transparency.
+1. [Detailed assessment and evidence](EQ-compliance-assessment.md): boundary, strengths, 23 findings, risk rationale, and source limitations.
+2. [Integrated remediation roadmap](EU-remediation-roadmap.md): eight workstreams, task acceptance criteria, dependencies, proposed owners, milestones, and evidence collection.
+3. [SOC 2 readiness plan](ER-soc2-readiness.md): service scope, Trust Services Criteria mapping, examination evidence.
+4. [ISO 27001 ISMS plan](ES-iso27001-isms.md): management system and Annex A coverage.
+5. [ISO 27701 privacy plan](ET-iso27701-privacy.md): PIMS, controller/processor responsibilities, data lifecycle and privacy rights.
+6. [ISO 42001 and EU AI Act plan](EV-ai-governance-and-eu-ai-act.md): intended-use classification, current legal timeline, AI assurance and transparency.
 
 ## Implementation checkpoint — 6 September 2026
 
@@ -51,4 +51,4 @@ P0 means start immediately and resolve or restrict the affected release/use case
 - Keep actual personnel records, credentials, incident details, customer data, audit samples, supplier contracts and test captures in a restricted evidence system. These plans contain source-level findings and proposed work only.
 - The current Pages workflow publishes the repository root. Treat files committed here as potentially public until an allowlisted publishing directory is implemented (F15). No deployment, commit or push was performed; remediation code and plan updates are uncommitted working-tree changes.
 
-Baseline editions are SOC 2 using the 2017 TSC with 2022 revised points of focus; ISO/IEC 27001:2022 including Amendment 1:2024; ISO/IEC 27701:2025; and ISO/IEC 42001:2023. Framework mappings are planning aids, subject to verification against licensed standards and the agreed audit scope. The [AI plan](05-ai-governance-and-eu-ai-act-plan.md) distinguishes current Commission guidance from article text not yet consolidated for the 2026 AI Omnibus.
+Baseline editions are SOC 2 using the 2017 TSC with 2022 revised points of focus; ISO/IEC 27001:2022 including Amendment 1:2024; ISO/IEC 27701:2025; and ISO/IEC 42001:2023. Framework mappings are planning aids, subject to verification against licensed standards and the agreed audit scope. The [AI plan](EV-ai-governance-and-eu-ai-act.md) distinguishes current Commission guidance from article text not yet consolidated for the 2026 AI Omnibus.

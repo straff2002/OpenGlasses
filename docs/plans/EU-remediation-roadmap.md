@@ -1,7 +1,7 @@
 # Integrated remediation roadmap
 
 **Status:** Proposed 2026-09-04; technical checkpoints for W02.1, W04.1, W04.2, W05.1 and W05.5 are in progress as of 2026-09-06. No framework readiness, operating effectiveness or certification is asserted.
-**Baseline:** [23 findings](00-compliance-assessment.md).
+**Baseline:** [23 findings](EQ-compliance-assessment.md).
 **Scheduling convention:** Day 0 is sponsor approval and allocation of owners/resources, not a legal grace period. Address applicable legal duties and immediate exposure now, regardless of the planning horizon.
 
 ## 1. Accountability and sequencing
@@ -53,7 +53,7 @@ flowchart LR
 
 ## 3. W02 — Secure every network boundary
 
-Reuse [DO](../docs/plans/DO-local-network-transport-hardening.md) and [DN](../docs/plans/DN-outbound-fetch-and-sideload-hardening.md), confirming remaining work from code rather than old plan status.
+Reuse [DO](DO-local-network-transport-hardening.md) and [DN](DN-outbound-fetch-and-sideload-hardening.md), confirming remaining work from code rather than old plan status.
 
 | Task | Action | Acceptance and evidence |
 |---|---|---|
@@ -66,7 +66,7 @@ Reuse [DO](../docs/plans/DO-local-network-transport-hardening.md) and [DN](../do
 
 ## 4. W03 — Make retention, deletion and exports consistent
 
-Reuse [DL](../docs/plans/DL-medical-secret-and-export-lifecycle.md)'s implemented protected-export approach. Expand the lifecycle to all sensitive stores instead of duplicating isolated medical logic.
+Reuse [DL](DL-medical-secret-and-export-lifecycle.md)'s implemented protected-export approach. Expand the lifecycle to all sensitive stores instead of duplicating isolated medical logic.
 
 | Task | Action | Acceptance and evidence |
 |---|---|---|
@@ -86,7 +86,7 @@ Reuse [DL](../docs/plans/DL-medical-secret-and-export-lifecycle.md)'s implemente
 | W04.2 — 🟡 LLM-boundary checkpoint implemented 2026-09-06 | A central medical inference policy now resolves cloud/unusable selections to a downloaded local model or refuses while medical local-only mode is active. Main, cascade, stateless, summary, structured vision/text, fast-tier/local-agent and named cloud-provider boundaries are guarded; web-search cloud fallback is suppressed. | Focused routing/provider tests passed within the 114-test combined run. Still required: synthetic network canaries; STT/TTS, realtime, translations, memory and tool inventory; queued/in-flight mode changes; device traffic; content-free route diagnostics; and precise Apple Health/workout labelling. |
 | W04.3 | Make consent/authority records versioned and withdrawable. Separate wearer action approval, bystander/subject enrollment decisions and enterprise/legal authority. Add capture/recipient visibility appropriate to audio/HUD use. | New, changed and withdrawn purposes have deterministic behavior; consent is tied to purpose/data/recipient/version. A wearer cannot attest another person's consent without an approved process. OS camera permission is not treated as subject agreement. |
 | W04.4 | Classify external tools by effects/capabilities. Require explicit authorization for writes, messaging, physical action and sensitive-data disclosure. Exclude quarantined descriptions; re-review changed server definitions. | Malicious definitions and tool outputs cannot obtain secrets, broaden grants or trigger unapproved native/MCP/custom/gateway actions. Approval binds server identity, tool/version, arguments and one action/session scope; rejects replay and changed arguments. |
-| W04.5 | Reconcile privacy notice, manifests, settings and actual SDK/provider traffic. Preserve [DM](../docs/plans/DM-privacy-safe-production-logging.md)/[DQ](../docs/plans/DQ-third-party-telemetry-opt-out.md) safeguards and validate current release artifacts. | Claim-to-evidence review includes account linkage, required-reason APIs, data purposes, SDK declarations and restricted-mode packet captures. Support/diagnostic exports are minimized, deliberate and retention-bound. |
+| W04.5 | Reconcile privacy notice, manifests, settings and actual SDK/provider traffic. Preserve [DM](DM-privacy-safe-production-logging.md)/[DQ](DQ-third-party-telemetry-opt-out.md) safeguards and validate current release artifacts. | Claim-to-evidence review includes account linkage, required-reason APIs, data purposes, SDK declarations and restricted-mode packet captures. Support/diagnostic exports are minimized, deliberate and retention-bound. |
 
 **Exit gate:** privacy/security sign off on representative end-to-end routes, not just a regex redactor or preference binding. Enterprise policy cannot be weakened by a lower-trust tool, remote prompt or fallback model.
 
@@ -108,11 +108,11 @@ Reuse [DL](../docs/plans/DL-medical-secret-and-export-lifecycle.md)'s implemente
 |---|---|---|
 | W06.1 | Pin third-party Actions by reviewed commit, set minimal permissions at workflow/job level, verify XcodeGen downloads, align authoritative manifests/lockfiles and require frozen package resolution. | Two clean CI paths resolve the approved graph; differences fail a gate. Dependency changes have reviews; tool/download integrity failure blocks execution. Record toolchain, SDK, model and binary digests. |
 | W06.2 | Protect branches/releases with independent reviews and required tests/security gates. Add dependency/secret scanning and vulnerability intake/triage with explicit SLAs. | Export actual repository settings, demonstrate an intentionally failing PR cannot merge/release, and record emergency-change retrospective. Tests run on the committed release revision, not an unrelated local build. |
-| W06.3 | Restrict Pages to a staged allowlisted website directory; inventory other artifacts/log uploads. | Artifact listing contains only approved public site paths; automated gate rejects `/plans`, credentials, source/build products and internal evidence unless explicitly approved for publication. No historical secret leak is assumed; run separate authorized history/artifact triage if indicated. |
+| W06.3 | Restrict Pages to a staged allowlisted website directory; inventory other artifacts/log uploads. | Artifact listing contains only approved public site paths; automated gate rejects `docs/plans`, credentials, source/build products and internal evidence unless explicitly approved for publication. No historical secret leak is assumed; run separate authorized history/artifact triage if indicated. |
 | W06.4 | Produce release SBOM/dependency and model manifests; verify signed pack keys and provenance. Keep signing secrets out of command-line arguments, source and logs. | Release dossier links source review, workflow, tests, manifests, signer identity, artifact digest and distribution version. Rotation/revocation drill works without exposing keys. |
 | W06.5 | Require targeted security regression and integration verification for W02–W05/W08. | Device/simulator/network tests cover real entry points, protected-data availability, background states, extensions and external services. No passing-unit-test-only claim substitutes for a failing integration boundary. |
 
-**Exit gate:** release owner can reconstruct exactly what was approved, built, tested and distributed. Existing [DP](../docs/plans/DP-release-entitlement-boundary.md) build-boundary work should be verified and reused.
+**Exit gate:** release owner can reconstruct exactly what was approved, built, tested and distributed. Existing [DP](DP-release-entitlement-boundary.md) build-boundary work should be verified and reused.
 
 ## 8. W07 — Operate access, incident and continuity controls
 
@@ -128,7 +128,7 @@ Reuse [DL](../docs/plans/DL-medical-secret-and-export-lifecycle.md)'s implemente
 
 ## 9. W08 — Govern AI purpose, behavior and changes
 
-Detailed implementation packages and legal dependencies are in [05-ai-governance-and-eu-ai-act-plan.md](05-ai-governance-and-eu-ai-act-plan.md).
+Detailed implementation packages and legal dependencies are in [05-ai-governance-and-eu-ai-act-plan.md](EV-ai-governance-and-eu-ai-act.md).
 
 | Task | Action | Acceptance and evidence |
 |---|---|---|
