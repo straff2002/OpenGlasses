@@ -32,6 +32,7 @@ final class WeatherTool: NativeTool, @unchecked Sendable {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.weatherLookup) else { return MedicalEgressRefusal.userMessage }
         let (lat, lon) = await resolveCoordinates(args: args)
 
         guard let lat, let lon else {

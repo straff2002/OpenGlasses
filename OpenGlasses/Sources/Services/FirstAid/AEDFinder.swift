@@ -66,6 +66,9 @@ struct AEDFinder {
 
     /// Query Overpass and return the nearest AED within `radiusMeters` (nil if none found).
     func nearestAED(latitude: Double, longitude: Double, radiusMeters: Int = 2000) async throws -> AED? {
+        // The wearer's coordinates go to a public directory. In local-only mode the caller falls
+        // back to its offline guidance rather than pinning the wearer on a public map.
+        try MedicalEgressGuard.check(.aedDirectory)
         let data = try await fetch(Self.overpassURL(latitude: latitude, longitude: longitude, radiusMeters: radiusMeters))
         return Self.nearest(try Self.parse(data), toLat: latitude, lon: longitude)
     }

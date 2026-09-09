@@ -36,6 +36,12 @@ actor HomeAssistantEntityCache {
             return
         }
 
+        guard MedicalEgressGuard.allows(.homeAssistantEntityCache),
+              let url = try? EndpointPolicy.require(url: url, for: .homeAssistantEntityCache) else {
+            PrivacyLog.homeBridge(.homeAssistant, .notConfigured)
+            return
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

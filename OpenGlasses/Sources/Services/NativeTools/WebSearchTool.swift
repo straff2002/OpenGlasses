@@ -17,10 +17,19 @@ struct WebSearchTool: NativeTool {
         "required": ["query"]
     ]
 
+    /// The refusal a wearer sees rather than a silently empty search.
+    static let localOnlyMessage =
+        "Cloud search is unavailable in medical local-only mode. "
+        + MedicalEgressRefusal.userMessage
+
     func execute(args: [String: Any]) async throws -> String {
         guard let query = args["query"] as? String, !query.isEmpty else {
             return "No search query provided."
         }
+
+        // The tool is already absent from the tool list in HIPAA mode; this covers the paths that
+        // reach it another way (a cascade retry, an agent harness, a stale schema).
+        guard MedicalEgressGuard.allows(.webSearch) else { return Self.localOnlyMessage }
 
         // Try Perplexity first if configured
         if Config.isPerplexityConfigured {

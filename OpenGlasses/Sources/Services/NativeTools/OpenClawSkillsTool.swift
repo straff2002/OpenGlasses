@@ -32,6 +32,7 @@ struct OpenClawSkillsTool: NativeTool {
     weak var openClawBridge: OpenClawBridge?
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.openClawSkillCatalog) else { return MedicalEgressRefusal.userMessage }
         guard let action = args["action"] as? String else {
             return "No action specified."
         }

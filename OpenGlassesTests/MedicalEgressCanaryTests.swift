@@ -234,6 +234,65 @@ final class MedicalEgressCanaryTests: XCTestCase {
         XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
     }
 
+    // MARK: - Tools
+
+    /// One drive per tool, through `execute` — the surface the model actually reaches — asserting
+    /// the transport saw nothing and the wearer got a sentence rather than an empty result.
+    func testNoNativeToolReachesTheTransportInLocalOnly() async throws {
+        setMode(.localOnly)
+
+        let webSearch = try await WebSearchTool().execute(args: ["query": "chest pain protocol"])
+        XCTAssertTrue(webSearch.contains("Cloud search is unavailable"), webSearch)
+
+        let weather = try await WeatherTool(locationService: LocationService()).execute(args: [:])
+        XCTAssertEqual(weather, MedicalEgressRefusal.userMessage)
+
+        let news = try await NewsTool().execute(args: ["topic": "cardiology"])
+        XCTAssertEqual(news, MedicalEgressRefusal.userMessage)
+
+        let currency = try await CurrencyTool().execute(args: ["amount": 10, "from": "USD", "to": "NZD"])
+        XCTAssertEqual(currency, MedicalEgressRefusal.userMessage)
+
+        let aircraft = try await AircraftOverheadTool(locationService: LocationService()).execute(args: [:])
+        XCTAssertEqual(aircraft, MedicalEgressRefusal.userMessage)
+
+        let home = try await HomeAssistantTool().execute(args: ["action": "list"])
+        XCTAssertEqual(home, MedicalEgressRefusal.userMessage)
+
+        let skills = try await OpenClawSkillsTool().execute(args: ["action": "list"])
+        XCTAssertEqual(skills, MedicalEgressRefusal.userMessage)
+
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [], "a native tool reached the transport")
+    }
+
+    /// The counterpart: with the mode off, the same drive must reach the transport. Without this
+    /// half a tool that is simply broken would pass the probe above.
+    ///
+    /// **Known limitation:** `URLProtocol.registerClass` reaches `URLSession.shared` but not a
+    /// session built from a freshly constructed configuration, so the tools that make their own
+    /// session (news, currency, Home Assistant, the web-search providers) are covered above by
+    /// their refusal text rather than by the counter. The AED lookup runs on the shared session,
+    /// so it carries the "the drive really does reach the wire" half for this group.
+    func testTheSameToolDriveReachesTheTransportWithTheGuardOff() async {
+        setMode(.off)
+        _ = try? await AEDFinder().nearestAED(latitude: -41.29, longitude: 174.78)
+        XCTAssertEqual(EgressCanaryURLProtocol.seen.count, 1)
+        XCTAssertEqual(EgressCanaryURLProtocol.seen.first?.host, "overpass-api.de")
+    }
+
+    func testAEDLookupRefusesRatherThanPinningTheWearerOnAPublicMap() async {
+        setMode(.localOnly)
+        do {
+            _ = try await AEDFinder().nearestAED(latitude: -41.29, longitude: 174.78)
+            XCTFail("the wearer's coordinates went to a public directory in local-only mode")
+        } catch let refusal as MedicalEgressRefusal {
+            XCTAssertEqual(refusal.route, .aedDirectory)
+        } catch {
+            XCTFail("expected a MedicalEgressRefusal, got \(error)")
+        }
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
     // MARK: - Helpers
 
     private static func cloudConfig() -> ModelConfig {
