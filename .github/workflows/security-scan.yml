@@ -112,6 +112,11 @@ jobs:
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        # Advisory until the repository's Dependency graph is switched on (Settings → Code security
+        # → Dependency graph): without it the action refuses to run at all, which is a settings
+        # failure, not a dependency finding. Remove `continue-on-error` in the same change that
+        # enables the graph, so the gate becomes blocking the moment it can see anything.
+        continue-on-error: true
         with:
           # High and critical block. Moderate and low are reported in the job summary and do not
           # fail the run: a gate that fires on every transitive low is a gate people learn to
