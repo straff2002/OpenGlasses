@@ -63,6 +63,31 @@ enum OwnerGatePolicy {
     }
 }
 
+/// Outcome of an owner-authorization request for an operation that must fail **closed**.
+///
+/// Distinct from `OwnerGatePolicy.grantWithoutPrompt`, which deliberately fails OPEN for the
+/// Simple Mode gate (it cannot be stronger than the device, and locking the owner out of their own
+/// settings would be worse). Destructive operations on compliance evidence take the opposite
+/// default: without a positive decision there is no authorization, so `unavailable` is a refusal.
+enum OwnerAuthorization: Equatable {
+    case granted
+    case denied
+    /// No positive decision could be obtained — no device authentication configured, the prompt
+    /// could not be presented, or evaluation errored.
+    case unavailable
+
+    var isGranted: Bool { self == .granted }
+
+    /// Stable token for audit records; never localized, never free text.
+    var auditToken: String {
+        switch self {
+        case .granted: return "granted"
+        case .denied: return "denied"
+        case .unavailable: return "unavailable"
+        }
+    }
+}
+
 /// Thin `LAContext` edge for the owner gate: Face ID / Touch ID with device-passcode fallback
 /// (`.deviceOwnerAuthentication` includes both). Same shape as `BiometricLockView`'s HIPAA lock.
 enum OwnerGateAuth {
@@ -77,6 +102,22 @@ enum OwnerGateAuth {
         }
         context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, _ in
             DispatchQueue.main.async { completion(success) }
+        }
+    }
+
+    /// Fail-CLOSED owner authorization for destructive operations on compliance evidence.
+    ///
+    /// Unlike ``authenticate(reason:completion:)`` this never converts "no device authentication
+    /// available" into a grant: the caller gets `.unavailable` and must refuse.
+    static func authorize(reason: String, completion: @escaping (OwnerAuthorization) -> Void) {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            DispatchQueue.main.async { completion(.unavailable) }
+            return
+        }
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, _ in
+            DispatchQueue.main.async { completion(success ? .granted : .denied) }
         }
     }
 }
