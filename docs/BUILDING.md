@@ -195,6 +195,35 @@ means the generator either picks it up from the manifest it already reads, or it
 input adding here. A manifest that silently loses a component is worse than none, because it is
 believed.
 
+**A release gets a dossier.** `Scripts/release-dossier.sh` writes one Markdown file for a commit
+and a built artifact: the commit and its link, the CI run URL when `GITHUB_RUN_ID` is set, the
+provenance record and SBOM digests, the artifact's sha256, its `CFBundleShortVersionString` and
+`CFBundleVersion` read from the artifact's own `Info.plist` (an `.ipa`, `.app` or `.xcarchive`),
+the signing identity from `codesign -dv --verbose=2`, and the list of gates that guard the branch.
+
+```bash
+./Scripts/release-dossier.sh --commit <sha> \
+  --artifact build/OpenGlasses.ipa \
+  --provenance provenance.txt      # downloaded from the CI run's artifacts
+```
+
+**When to run it: on a tag, or at App Store submission.** It is not wired into a release
+workflow, because there is no release workflow — the store build runs in Xcode Cloud, whose
+configuration lives in App Store Connect where the repository cannot see or version it. A job
+that has never run is not evidence of anything. The `Release dossier` workflow
+(`workflow_dispatch`) produces the source half on demand for any commit; the artifact half needs
+running the script on the machine that holds the build.
+
+It reads no secret. `codesign -dv` reports the certificate subject — an organisation name and a
+team identifier, both printed on every App Store listing — and never touches a key.
+
+Every field the script could not fill says so in the document, and the reason lands in a **Gaps**
+section. A dossier with no artifact says it describes the source and not a release; a dossier
+generated from a dirty tree says the artifact may not match the commit. An unstated absence reads
+as a claim, so none of them are left unstated. One gap will not close from inside this repository:
+Apple re-signs and re-packages what it distributes, so the digest that identifies the shipped
+build is the one App Store Connect reports, and it has to be captured there.
+
 **The published website is staged, not the checkout.** `Scripts/stage-pages-site.sh` copies an
 explicit allowlist into `_site/` and then independently refuses to publish a tree containing a
 denied path. Adding a page to the site means adding it to that allowlist.
