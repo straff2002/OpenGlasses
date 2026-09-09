@@ -559,7 +559,9 @@ enum SensitiveStore: String, CaseIterable {
                           deleteAll: .unavailable("the journal is the at-most-once evidence; retention prunes it"),
                           deleteSubject: .notSubjectLinked,
                           owner: "ProtectedOperationJournal",
-                          ownerPaths: ["OpenGlasses/Sources/Services/NativeTools/OperationJournal.swift"],
+                          // OperationJournalStorage is the file seam the journal writes through.
+                          ownerPaths: ["OpenGlasses/Sources/Services/NativeTools/OperationJournal.swift",
+                                       "OpenGlasses/Sources/Services/NativeTools/OperationJournalStorage.swift"],
                           location: "Application Support/OperationJournal/operations.json")
 
         case .remoteInvokeAudit:
