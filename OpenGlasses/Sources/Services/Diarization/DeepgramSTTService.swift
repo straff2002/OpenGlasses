@@ -35,7 +35,7 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
     /// Arm the provider. The socket opens on the first `sendAudio` so it can use the buffer's
     /// real sample rate.
     func start() {
-        guard isConfigured() else {
+        guard isConfigured(), MedicalEgressGuard.allows(.deepgramLiveTranscription) else {
             state = .error("Diarization not available")
             return
         }
@@ -57,7 +57,7 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
         // Runtime invariant: the moment diarization stops being configured (HIPAA flipped on, or
         // opt-in revoked) mid-session, stop egressing audio and tear the socket down. The next
         // captured buffer closes the stream even if nothing else told us to stop.
-        guard isConfigured() else {
+        guard isConfigured(), MedicalEgressGuard.allows(.deepgramLiveTranscription) else {
             if wantsConnection || webSocketTask != nil { stop() }
             return
         }
@@ -80,6 +80,12 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
         let key = Config.deepgramAPIKey
         guard !key.isEmpty, let url = Config.deepgramStreamingURL(sampleRate: sampleRate) else {
             state = .error("Deepgram not configured")
+            return
+        }
+        // Last check before the socket is built. `start()` and `sendAudio` both gate too, but the
+        // request is constructed here, so this is the line that has to be true.
+        guard MedicalEgressGuard.allows(.deepgramLiveTranscription) else {
+            state = .error(MedicalEgressRefusal.userMessage)
             return
         }
         var request = URLRequest(url: url)
