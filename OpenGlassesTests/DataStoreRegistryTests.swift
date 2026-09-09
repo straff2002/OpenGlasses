@@ -191,6 +191,36 @@ final class DataStoreRegistryTests: XCTestCase {
                        "the matrix must describe locations, never carry a live path")
     }
 
+    // MARK: - The generated matrix
+
+    private static let planPath = "docs/plans/ET-iso27701-privacy.md"
+    private static let beginMarker = "<!-- BEGIN GENERATED: data-lifecycle-matrix -->"
+    private static let endMarker = "<!-- END GENERATED: data-lifecycle-matrix -->"
+
+    /// The privacy plan's data-lifecycle matrix is rendered from the registry, so the document
+    /// cannot drift from the code. Run with `TEST_RUNNER_UPDATE_PLAN_DOCS=1` to rewrite it.
+    func testPlanMatrixMatchesTheRegistry() throws {
+        let url = Self.repoRoot.appendingPathComponent(Self.planPath)
+        let document = try String(contentsOf: url, encoding: .utf8)
+        guard let begin = document.range(of: Self.beginMarker),
+              let end = document.range(of: Self.endMarker) else {
+            return XCTFail("\(Self.planPath) has lost its generated-matrix markers")
+        }
+
+        let expected = "\n" + SensitiveStore.markdownTable() + "\n"
+        let actual = String(document[begin.upperBound..<end.lowerBound])
+        guard actual != expected else { return }
+
+        if ProcessInfo.processInfo.environment["UPDATE_PLAN_DOCS"] != nil {
+            let updated = document.replacingCharacters(
+                in: begin.upperBound..<end.lowerBound, with: expected)
+            try updated.write(to: url, atomically: true, encoding: .utf8)
+            return
+        }
+        XCTFail("\(Self.planPath)'s data-lifecycle matrix is stale. Regenerate it with "
+                + "TEST_RUNNER_UPDATE_PLAN_DOCS=1 on the xcodebuild invocation.")
+    }
+
     // MARK: - Attribute truth
     //
     // The simulator does not reliably report file protection back, so protection is asserted only

@@ -43,6 +43,82 @@ This is a starting inventory; W01 must reconcile it against every persistence wr
 
 For each inventory record capture: accountable entity and role; data subjects; source; purposes; data categories and sensitivity; lawful basis and any additional condition; collection triggers; notice/consent versions; processors and other recipients; locations and transfers; access roles; retention trigger and period; deletion/export mechanism; backup behavior; linked risks and controls; technical owner; evidence date; and change-review date. Record uncertain fields explicitly.
 
+### 2.1 Data-lifecycle matrix
+
+The matrix the exit gate asks the privacy owner to sign. It is **generated** from
+`OpenGlasses/Sources/Services/Privacy/DataStoreRegistry.swift` by `DataStoreRegistryTests`, which
+also scrapes the sources for anything that opens SQLite, writes into the app container, encodes
+structured content into preferences or adds a Keychain item, and fails when it finds an owner
+nobody registered. Regenerate with
+`TEST_RUNNER_UPDATE_PLAN_DOCS=1 xcodebuild test -only-testing:OpenGlassesTests/DataStoreRegistryTests`;
+do not edit the table by hand.
+
+The values are descriptive, not aspirational: `platformDefault` means the owner sets no protection
+attribute at all, and a deletion column reading "none" is a finding rather than a decision. The
+subject column distinguishes the wearer from a third party who never installed the app.
+
+<!-- BEGIN GENERATED: data-lifecycle-matrix -->
+| Store | Owner | Data class | Subject | Protection | Backup excluded | Retention | Delete all | Delete subject |
+|---|---|---|---|---|---|---|---|---|
+| agentDocuments | `AgentDocumentStore` | personalMemory | wearer | platformDefault | no | none | `AgentDocumentStore.save(_:content:) to default content` | `AgentDocumentStore.removeLines(containing:)` |
+| agentNotificationQueue | `AgentNotificationQueue` | personalMemory | wearer | platformDefault | no | none | none — entries are consumed as the agent triages them | n/a — no subject linkage |
+| agentSchedule | `AgentScheduler` | personalMemory | wearer | platformDefault | no | none | none — tasks are cancelled individually | n/a — no subject linkage |
+| brainGraph | `BrainStore` | knowledgeGraph | thirdPartySubject | platformDefault | no | none | none — no whole-graph clear; erasure is per entity | `BrainStore.forget(entityName:)` |
+| capturedPhotos | `AppState` | media | thirdPartySubject | platformDefault | no | none | none — photos are the wearer's media, managed in Photos | none — a photo is not indexed by who appears in it |
+| clinicalAuditLog | `HIPAAComplianceService` | operationalAudit | wearer | complete | yes | cap 1000 | `HIPAAComplianceService.clearAuditLog` | none — an audit entry is evidence; it is content-free by design |
+| clinicalConfiguration | `FHIRConfigurationStore` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
+| clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | complete | yes | HIPAA retention days; disabled at zero | `HIPAAComplianceService.secureDelete` | none — transcripts are filed by session, not by patient |
+| contextualNotes | `ContextualNoteStore` | personalMemory | wearer | platformDefault | no | none | none — the wearer's own notes, removed by query | `ContextualNoteStore.deleteMatching(_:)` |
+| conversationRecallIndex | `ConversationIndex` | derivedIndex | wearer | processMemoryOnly | yes | none | `ConversationIndex.clear()` | `ConversationIndex.delete(threadID:)` |
+| conversationThreads | `ConversationStore` | conversationContent | wearer | complete | no | none | `ConversationStore.deleteAllThreads()` | `ConversationStore.deleteThread(_:)` |
+| debugEventLog | `AppState` | operationalAudit | wearer | platformDefault | no | ring-capped on write | none — the ring overwrites itself | n/a — no subject linkage |
+| diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
+| evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | platformDefault | no | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
+| faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | no | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
+| fieldDeliverySettings | `DeliverySettings` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
+| fieldSessionLogs | `SessionLogger` | operationalAudit | wearer | platformDefault | no | none | none — a session log is the engineer's compliance record | n/a — no subject linkage |
+| geofenceReminders | `GeofenceTool` | locationData | wearer | platformDefault | no | none | none — reminders are removed individually as they fire | n/a — no subject linkage |
+| installedSkills | `InstalledSkillStore` | skillDefinition | none | platformDefault | no | none | none — skills are uninstalled individually | n/a — no subject linkage |
+| keychainClinicalCredentials | `KeychainFHIRSecretStore` | credential | thirdPartySubject | keychainWhenUnlockedThisDeviceOnly | yes | none | none — credentials are removed per FHIR server | `FHIRCredentialStore.deleteContext(serverID:)` |
+| keychainConversationKey | `ConversationEncryptionService` | credential | wearer | keychainWhenUnlockedThisDeviceOnlyWithUserPresence | yes | none | `ConversationEncryptionService.deleteKey()` | n/a — no subject linkage |
+| keychainDeviceIdentity | `OpenClawDeviceIdentity` | credential | none | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — the identity is the device's, not a subject's | n/a — no subject linkage |
+| keychainOAuthTokens | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — tokens are removed per provider on sign-out | n/a — no subject linkage |
+| keychainProviderKeys | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — keys are removed per provider | n/a — no subject linkage |
+| keychainServiceTokens | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — tokens are removed per service | n/a — no subject linkage |
+| licence | `LicenseService` | credential | wearer | platformDefault | no | none | none — the licence is the wearer's entitlement, cleared by unlicensing | n/a — no subject linkage |
+| medicalExports | `MedicalExportFileStore` | exportArtifact | thirdPartySubject | complete | yes | TTL sweep | `MedicalExportFileStore.revokeAll()` | none — an export is a lease, released rather than searched |
+| notificationDigest | `NotificationDigestService` | personalMemory | wearer | platformDefault | no | none | none — the digest is rebuilt from the current window | n/a — no subject linkage |
+| objectMemory | `ObjectMemoryStore` | personalMemory | wearer | platformDefault | no | none | none — entries are removed one object at a time | `ObjectMemoryStore.delete(_:)` |
+| offlineQueue | `OfflineQueue` | operationalAudit | wearer | platformDefault | no | purgeDone plus a photo-evidence byte budget | `OfflineQueue.deleteAll()` | `OfflineQueue.delete(id:)` |
+| operationJournal | `ProtectedOperationJournal` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | OperationJournalRetention (age and count) | none — the journal is the at-most-once evidence; retention prunes it | n/a — no subject linkage |
+| playbooks | `PlaybookStore` | skillDefinition | wearer | platformDefault | no | none | none — playbooks are the wearer's authored content, removed individually | n/a — no subject linkage |
+| preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
+| ragDocuments | `DocumentStore` | documentCorpus | wearer | platformDefault | no | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
+| readingSessions | `ReadingSessionStore` | personalMemory | wearer | complete | yes | none | none — sessions are removed individually | n/a — no subject linkage |
+| recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | platformDefault | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |
+| recordings | `VideoRecordingService` | media | thirdPartySubject | platformDefault | no | none | none — recordings are the wearer's media, removed individually | none — a recording is not indexed by who appears in it |
+| remoteInvokeAudit | `RemoteInvokeService` | operationalAudit | wearer | platformDefault | no | cap 50 | none — the trail is what makes remote invocation reviewable | n/a — no subject linkage |
+| safetyAssessments | `SafetyAssessmentStore` | operationalAudit | none | platformDefault | no | none | none — assessment history is the site record | n/a — no subject linkage |
+| savedLocations | `SaveLocationTool` | locationData | wearer | platformDefault | no | none | none — the wearer's own places, removed individually | n/a — no subject linkage |
+| savedNotes | `NotesStorage` | personalMemory | wearer | platformDefault | no | cap 50 | none — the wearer's own notes; the cap is what expires them | none — free-text notes are not indexed by person |
+| semanticMemory | `SemanticMemoryStore` | personalMemory | wearer | platformDefault | no | expiry skipped on read; budget eviction | `SemanticMemoryStore.clearAll()` | `SemanticMemoryStore.forget(_:)` |
+| skillPacks | `SkillPackStore` | skillDefinition | none | platformDefault | no | none | none — packs are uninstalled individually | n/a — no subject linkage |
+| socialContext | `SocialContextStore` | socialProfile | thirdPartySubject | platformDefault | no | none | none — people are forgotten one at a time | `SocialContextStore.clearFacts(for:)` |
+| speakerNames | `SpeakerRegistry` | biometric | thirdPartySubject | platformDefault | no | none | none — names are cleared per speaker | `SpeakerRegistry.setName(nil, for:)` |
+| spotlightIndex | `SpotlightIndexService` | derivedIndex | wearer | operatingSystemManaged | no | none | `SpotlightIndexService.purgeAll()` | `SpotlightIndexing.delete(ids:)` |
+| stagedExports | `StagedExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | `StagedExportCoordinator.revokeAll()` | none — an export is a lease, released rather than searched |
+| studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
+| teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |
+| usage | `UsageStore` | operationalAudit | none | platformDefault | no | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
+| vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
+| vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |
+| voiceSkills | `VoiceSkillStore` | skillDefinition | wearer | platformDefault | no | none | none — skills are removed individually by name | n/a — no subject linkage |
+<!-- END GENERATED: data-lifecycle-matrix -->
+
+Not yet signed. Open before sign-off: approved retention periods per data class (W03.3), the
+backup and erasure semantics decision (W03.5), and a peer that acknowledges a queued deletion
+request rather than merely accepting it.
+
 ## 3. Verified gaps and proposed engineering work
 
 ### PIM-01 — Preserve bystander filtering during background streaming
