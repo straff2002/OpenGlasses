@@ -1,0 +1,57 @@
+name: Release dossier
+
+# On-demand release dossier for one commit (W06.4).
+#
+# workflow_dispatch only, and deliberately so. There is no release workflow in this repository —
+# the store build happens in Xcode Cloud, whose configuration lives in App Store Connect where
+# the repo cannot see or version it. Wiring a dossier job into a release pipeline that does not
+# exist would produce a job that has never run, and a job that has never run is not evidence of
+# anything. Run this by hand at a tag or at submission; see docs/BUILDING.md.
+#
+# What it can produce here is the source half: commit, spec version, SBOM digest and component
+# counts, the CI run URL, and the list of gates. The artifact half — the .ipa digest, the shipped
+# CFBundleVersion and the signing identity — needs the built artifact, which only exists on the
+# machine that built it. Run the script there with --artifact, or accept the dossier's own Gaps
+# section saying that half is missing. It says so either way; that is the point of the section.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit, tag or branch to write the dossier for'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  dossier:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The dossier reads an arbitrary revision, so it needs the history to resolve one, and
+          # tags are not fetched by default.
+          fetch-depth: 0
+          ref: ${{ inputs.commit || github.sha }}
+
+      - name: Write the dossier
+        id: dossier
+        run: |
+          set -euo pipefail
+          path="$(./Scripts/release-dossier.sh --output dossier.md)"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Show it
+        run: cat dossier.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the dossier
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dossier
+          path: |
+            dossier.md
+            sbom.cdx.json
+          retention-days: 365

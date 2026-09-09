@@ -100,6 +100,8 @@ Camera and display features depend on the device and SDK support. Ray-Ban Displa
 
 Contributions are welcome—from new tools and integrations to better local inference, translations, and everyday usability. Fork the project and open a pull request.
 
+Found a security defect? Please report it privately—see [SECURITY.md](SECURITY.md) for the channels, the response targets and the safe-harbour terms.
+
 OpenGlasses is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
 
 Built by [Skunk0](https://github.com/straff2002) at **Skunkworks NZ**. Independent of Meta and Anthropic.

@@ -1,0 +1,148 @@
+# gitleaks configuration (W06.2).
+#
+# Run by .github/workflows/security-scan.yml — over the pull request's own commits on a PR, and
+# over the full history on the weekly schedule. Also runnable locally:
+#
+#   PATH="$(./Scripts/install-gitleaks.sh):$PATH"
+#   gitleaks dir . --redact --no-banner
+#
+# Two rules govern every entry below.
+#
+# 1. Allowlist a VALUE or a value-plus-path, never a directory. `paths = ['''OpenGlassesTests/''']`
+#    would silence the whole test suite, and a real credential is at least as likely to be pasted
+#    into a test as anywhere else — test fixtures are exactly where "just for now" credentials go
+#    to live forever. Every entry here names the specific string it exempts.
+#
+# 2. Nothing prints a matched value. The workflow passes --redact and the scan output is a log a
+#    third party can read; a scanner that echoes what it found has published the secret it was
+#    hired to catch. Keep --redact on every invocation, including local ones.
+#
+# When a new finding appears, the first question is whether it is real. If it is, the fix is
+# rotation and history triage, not an entry in this file. If it is not, add the narrowest entry
+# that clears it and say why here.
+
+title = "OpenGlasses secret scanning"
+
+[extend]
+# gitleaks' own detector set, which is the point of using it. Adding to it is fine; replacing it
+# with a hand-written subset would mean the gate only catches what someone already thought of.
+useDefault = true
+
+# --- Allowlists -------------------------------------------------------------------------------
+#
+# Baseline as of 2026-09-10: a clean scan of the working tree found twelve `generic-api-key`
+# matches, all false positives, all covered below. A thirteenth-style match
+# (`api_key=HUNTER2HUNTER2HUNTER2` in the same redaction fixture) does not currently fire but is
+# the same class of string and is covered by the same entry, so a detector tweak upstream does not
+# turn it into a new finding to re-triage.
+
+[[allowlists]]
+description = """
+Curve25519 type names, not keys. `let privateKey: Curve25519.Signing.PrivateKey` is a Swift
+property declaration; the "value" the detector picked up is a CryptoKit type. Scoped to the
+CryptoKit type name so an actual base64 key assigned to a variable of any name still fires.
+"""
+regexTarget = "line"
+regexes = ['''Curve25519\.Signing\.(Private|Public)Key''']
+
+[[allowlists]]
+description = """
+The privacy-canary fixtures. PrivacyCanaryTests and DiagnosticExportTests plant deliberately
+credential-shaped strings and then assert that the export and log paths refuse to emit them —
+being secret-shaped is the whole point of the fixture, and a scanner flagging them is the
+scanner agreeing with the test. Scoped to the literal canary tokens.
+"""
+regexes = [
+  '''CANARY-7f3a-SECRET''',
+  '''CANARY-VISITOR-91''',
+]
+
+[[allowlists]]
+description = """
+Redaction-test inputs in DiagnosticsReportBuilderTests: a fabricated RTMP stream key and a
+fabricated API key, each paired in the fixture with the redacted string the builder must produce.
+Scoped to the two literals, and to the file that owns them.
+"""
+condition = "AND"
+paths = ['''OpenGlassesTests/DiagnosticsReportBuilderTests\.swift''']
+regexes = [
+  '''live-9f2b-7c41-abcd''',
+  '''HUNTER2HUNTER2HUNTER2''',
+]
+
+[[allowlists]]
+description = """
+Lennox furnace model numbers in EquipmentIdentityTests (SLP99UH…), which are equipment
+nameplate codes the Field Assist equipment matcher parses. They read as high-entropy tokens and
+are printed on the side of the appliance. Scoped to the model-number shape and that test file.
+"""
+condition = "AND"
+paths = ['''OpenGlassesTests/EquipmentIdentityTests\.swift''']
+regexes = ['''SLP99UH[0-9]{3}XV[0-9]{2}[A-Z]{2}''']
+
+[[allowlists]]
+description = """
+`secretsMigratedToKeychain_v1` is a UserDefaults key NAME — the flag recording that the one-time
+Keychain migration has run. It appears in Config.swift and in the test that exercises the
+migration. The name contains "secret"; the value it guards is a boolean.
+"""
+regexes = ['''secretsMigratedToKeychain_v1''']
+
+[[allowlists]]
+description = """
+The tracked signing-key template. secrets/field-assist-signing-key.txt.example documents the
+file's shape for the Field Assist licence generator; the real key is gitignored and lives
+off-repo. Scoped to the placeholder literal and that one path, NOT to secrets/ — if a real key
+is ever committed into that directory the scan must still fire, which is most of the reason the
+directory is watched at all.
+"""
+condition = "AND"
+paths = ['''secrets/field-assist-signing-key\.txt\.example''']
+regexes = ['''PUT_YOUR_BASE64_PRIVATE_KEY_HERE''']
+
+[[allowlists]]
+description = """
+Compliance prose. The ISO 27001 control mapping in docs/plans contains phrases like "key
+handling" and "secret" in ordinary sentences. Scoped to the plans directory AND to Markdown
+tables, so a credential pasted into a plan's code block still fires. The optional `docs/`
+covers the pre-move path (`plans/02-iso27001-isms-plan.md`) that the history scan still walks.  The optional
+leading plus is not decoration: in a history scan gitleaks matches against the DIFF line, which
+carries a '+', so an anchored table-row pattern silently stops applying the moment the scan
+switches from the working tree to the commit graph. It cost one confused rescan to find.
+"""
+condition = "AND"
+paths = ['''(docs/)?plans/.*\.md''']
+regexTarget = "line"
+regexes = ['''^\+?\s*\|.*\|\s*$''']
+
+# --- History ----------------------------------------------------------------------------------
+#
+# The two entries below exempt specific historical COMMITS, not paths or values, because the
+# content they cover no longer exists in the tree. Scoping by commit means a revert that brings
+# any of it back fires again, which is the behaviour we want. The first full-history scan
+# (2026-09-10, 814 commits) found exactly these and nothing else. That is a statement about what
+# this scanner's rule set covers, not a guarantee that the history is clean.
+
+[[allowlists]]
+description = """
+56c0d5121c introduced MCPSecurityTests with fabricated credentials written out in full — an
+OpenAI-shaped key, a GitHub token, a Slack token, a Google API key, AWS's published example
+access key ID and a JWT — as inputs to the `SecretPatterns` detector tests. The file has since
+been rewritten to assemble every fixture at runtime from a short prefix plus a generated body,
+precisely so that secret scanners stop flagging test data. Only the history still carries them.
+"""
+condition = "AND"
+commits = ["56c0d5121cb09942df3e6fde25bcd8ca7d6cd020"]
+paths = ['''OpenGlassesTests/MCPSecurityTests\.swift''']
+
+[[allowlists]]
+description = """
+0fe3fb9bb5 added a since-deleted handoff document whose `curl` recipes carry a
+`Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==` header — RFC 6455's published example nonce,
+base64 for "the sample nonce". A WebSocket key is a per-handshake nonce sent in clear on every
+connection; it is not a credential. The gateway token in the same recipe was read from a config
+file through a shell substitution and was never committed.
+"""
+condition = "AND"
+commits = ["0fe3fb9bb570680d33e3a5dcee41ee06978a1c46"]
+paths = ['''docs/MAIA-FIX-HANDOFF\.md''']

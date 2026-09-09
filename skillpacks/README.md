@@ -20,7 +20,7 @@ https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json
    `docs/plans/BX-skill-packs.md`).
 2. Sign it — prints the pack signature for the index entry:
    ```
-   swift Scripts/skillpack-sign.swift sign-pack <packDir> secrets/skillpack-signing-key.txt
+   swift Scripts/skillpack-sign.swift sign-pack <packDir> --key-file secrets/skillpack-signing-key.txt
    ```
 3. Zip the folder (`cd <packDir> && zip -X -r ../<id>.zip .`), host the zip somewhere stable, and
    note its SHA256 (`shasum -a 256 <id>.zip`).
@@ -29,7 +29,7 @@ https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json
    `packSignature`.
 5. Re-sign the index and overwrite `catalog.json` with the printed envelope:
    ```
-   swift Scripts/skillpack-sign.swift sign-catalog skillpacks/index.json secrets/skillpack-signing-key.txt > skillpacks/catalog.json
+   swift Scripts/skillpack-sign.swift sign-catalog skillpacks/index.json --key-file secrets/skillpack-signing-key.txt > skillpacks/catalog.json
    ```
 6. Update `testCommittedCatalogVerifiesAgainstProductionKey` with the new envelope bytes (it pins
    catalog ↔ embedded key coherence), run the suite, commit both together, push. Pages redeploys
@@ -45,9 +45,21 @@ swift Scripts/skillpack-sign.swift keygen secrets/skillpack-signing-key.txt
 
 `keygen` writes the private half to that path with mode 0600, refuses to overwrite an existing
 file, and prints **only** the public key. **A private key is written to a file at generation and is
-never printed** — not by a script, not into a terminal, a chat, or a log. The signing subcommands
-take the key file's path (as above) rather than the key itself, so it never reaches shell history
-either. A key that has been printed is a key that must be rotated.
+never printed** — not by a script, not into a terminal, a chat, or a log. A key that has been
+printed is a key that must be rotated.
+
+The signing subcommands take `--key-file <path>` — a path, never the key — or `--key-file -` to
+read it from stdin, which is what a CI secret should be piped into:
+
+```
+printf '%s' "$SIGNING_KEY" | swift Scripts/skillpack-sign.swift sign-catalog index.json --key-file -
+```
+
+A key passed as an argument is **refused**, not merely discouraged. Arguments are visible in `ps`
+to anyone on the machine, written to shell history, echoed by CI logs and captured in crash
+reports; a key that has gone through any of those is compromised. The tools used to accept the
+base64 key inline as an alternative to a path — "you could pass a path instead" is not a control,
+so they no longer do.
 
 The private key lives off-repo in `secrets/` (gitignored), with the Field Assist licensing key —
 one key signs both this catalog and `vaultpacks/catalog.json`. The public half is embedded at

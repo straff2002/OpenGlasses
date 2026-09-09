@@ -1,0 +1,15 @@
+# Pinned upstream versions for the vendored sherpa-onnx + onnxruntime iOS xcframeworks.
+#
+# Machine-readable: `key=value`, one per line, `#` comments ignored — the same shape as
+# Vendor/LlamaCpp/REVISION. Read by Scripts/generate-sbom.sh.
+#
+# Unlike the llama.cpp engine, these binaries are COMMITTED under Frameworks/ rather than fetched
+# or built, so there is no download to verify and no SHA256SUMS: the digest of record is the git
+# tree the commit carries, which the SBOM records as a property. What was missing was the
+# upstream versions in a form something other than a source comment could read. This is that
+# file; Package.swift now points at it rather than restating it.
+
+sherpa_onnx_version=1.13.3
+sherpa_onnx_license=Apache-2.0
+onnxruntime_version=1.26.0
+onnxruntime_license=MIT
