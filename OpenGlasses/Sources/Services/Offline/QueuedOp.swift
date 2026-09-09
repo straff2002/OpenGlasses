@@ -9,6 +9,10 @@ enum OpKind: String, Codable {
     case captureRecord  // a finished capture-flow record (Plan U) — typed so a networked sink can route it
     case workRecord     // the deterministic record of one visit (Plan EM) — what base is sent at the end
     case partsRequest   // a stock check (Plan EM) — leaves on its own, before the job is finished
+    /// A subject the wearer erased locally, queued so a peer that holds a copy is told to erase it
+    /// too. The payload carries the subject's identity and nothing about them — the point of the
+    /// op is that the copy must go, not what the copy said.
+    case subjectErasure
 }
 
 /// Where an operation is in its lifecycle.

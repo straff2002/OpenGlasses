@@ -128,6 +128,7 @@ struct SyncStatusView: View {
         case .captureRecord: return "Capture record"
         case .workRecord:    return "Work record"
         case .partsRequest:  return "Parts request"
+        case .subjectErasure: return "Deletion request"
         }
     }
 

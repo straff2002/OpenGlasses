@@ -1572,6 +1572,9 @@ enum PrivacyLog {
         /// Reviewed tool-definition digests per server, and the versioned consent register. Both
         /// hold one-way digests and closed-vocabulary fields only.
         case toolDefinitionDigests, consentRecords
+        /// A coordinated erasure walk. What is recorded is how many stores completed of how many
+        /// were walked — never the subject, whose whole point is that they are being forgotten.
+        case subjectErasure
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,

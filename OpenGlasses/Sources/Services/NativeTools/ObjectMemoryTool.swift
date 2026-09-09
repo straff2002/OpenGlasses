@@ -117,8 +117,14 @@ class ObjectMemoryStore {
     static let shared = ObjectMemoryStore()
     private let key = "objectMemory"
 
+    /// Injectable so an erasure test can seed and clear entries without touching the wearer's own
+    /// preference domain.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
     func all() -> [ObjectMemoryEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let entries = try? JSONDecoder().decode([ObjectMemoryEntry].self, from: data) else {
             return []
         }
@@ -149,7 +155,7 @@ class ObjectMemoryStore {
 
     private func persist(_ entries: [ObjectMemoryEntry]) {
         if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }
