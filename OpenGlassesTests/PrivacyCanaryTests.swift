@@ -245,6 +245,28 @@ final class PrivacyCanaryTests: XCTestCase {
                 coordinator.finishShare(bundle, outcome: .completed)
             },
 
+            Probe(subsystem: "compliance audit trail", expects: "[medical]") {
+                // The audit log is the one store that is *meant* to describe clinical operations,
+                // which is exactly why its fields are typed: the canary is planted in every slot
+                // a caller can still reach, including the ones that used to be free text.
+                await MainActor.run {
+                    let mode = Config.hipaaMode
+                    defer { Config.hipaaMode = mode }
+                    Config.hipaaMode = true
+                    let service = HIPAAComplianceService(store: MemoryAuditLogStore(),
+                                                         checkpoints: InMemoryAuditCheckpointStore())
+                    service.log(action: Canary.person, detail: Canary.medication)
+                    service.record(.clinicalExport, target: .export, purpose: .treatment,
+                                   subject: Canary.documentTitle, correlation: Canary.secret)
+                    service.record(.transcriptSaved, target: .transcript,
+                                   subject: Canary.transcript, correlation: Canary.url)
+                    // The export is the artifact a reviewer receives; it must be clean too.
+                    let exported = service.exportAuditLog()
+                    XCTAssertFalse(exported.uppercased().contains(Canary.stem),
+                                   "a canary reached the exported audit log")
+                }
+            },
+
             Probe(subsystem: "server errors at their call sites", expects: "[model] model") {
                 // The four error shapes the classification table calls out, each summarised the
                 // way its own subsystem summarises it.
