@@ -497,7 +497,9 @@ enum SensitiveStore: String, CaseIterable {
                           deleteAll: .api("HIPAAComplianceService.clearAuditLog"),
                           deleteSubject: .unavailable("an audit entry is evidence; it is content-free by design"),
                           owner: "HIPAAComplianceService",
-                          ownerPaths: ["OpenGlasses/Sources/Services/HIPAAComplianceService.swift"],
+                          // The service owns the log; FileAuditLogStore is the file it writes through.
+                          ownerPaths: ["OpenGlasses/Sources/Services/HIPAAComplianceService.swift",
+                                       "OpenGlasses/Sources/Services/AuditLogStore.swift"],
                           location: "Documents/hipaa_audit_log.json")
 
         case .clinicalConfiguration:
