@@ -84,6 +84,30 @@ extension OperationJournal {
     var recoveredOperations: [OperationRecord] {
         records.filter { $0.recoveredFromRestart && $0.isUnresolved }
     }
+
+    /// Every operation whose fate is still open, whether this process started it or inherited it
+    /// from one that died.
+    ///
+    /// This is the query a recovery surface reads: "these things may or may not have happened".
+    /// No UI presents it yet — the affordance is owed — but the state it would show is here and
+    /// under test, rather than being reconstructed later from a log.
+    var unresolvedOperations: [OperationRecord] {
+        records.filter(\.isUnresolved)
+    }
+
+    /// Settle an operation from an answer obtained after the fact — a tool that grew a status
+    /// endpoint, or a person who checked and can say.
+    ///
+    /// Distinct from ``resolve(operationID:outcome:at:)`` on purpose: reconciliation applies only
+    /// to a row that is still open. An operation that already settled is not re-decided by
+    /// someone looking at it later.
+    @discardableResult
+    func reconcile(operationID: String, outcome: ToolExecutionOutcome,
+                   at now: Date = Date()) -> OperationResolution {
+        guard let record = records.first(where: { $0.operationID == operationID }),
+              record.isUnresolved else { return .unknownOperation }
+        return resolve(operationID: operationID, outcome: outcome, at: now)
+    }
 }
 
 // MARK: - Retention
@@ -215,8 +239,7 @@ final class ProtectedOperationJournal: OperationJournal {
 
     static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
 
-    private let directory: URL
-    private let fileURL: URL
+    private let storage: OperationJournalStorage
     private let retention: OperationJournalRetention
     private var rows: [OperationRecord] = []
     /// Fail closed after an unreadable/corrupt store or a failed write. Reconstructing the service
@@ -226,30 +249,29 @@ final class ProtectedOperationJournal: OperationJournal {
     /// same session can be answered with the real result. Never encoded, never written to disk.
     private var completedValues: [String: String] = [:]
     private static let memoLimit = 32
-    /// Whether the last write applied the protection attribute without error. The simulator's
-    /// filesystem accepts the attribute and then reports none back, so this — not a read-back — is
-    /// what a headless test can check.
-    private(set) var protectionApplied = false
+    /// Whether the last load had to drop an incomplete tail. The rows before it were recovered;
+    /// the damaged bytes were moved aside rather than overwritten.
+    private(set) var quarantinedDamagedTail = false
 
     var records: [OperationRecord] { rows }
 
-    init(directory: URL? = nil, retention: OperationJournalRetention = .default,
+    convenience init(directory: URL? = nil, retention: OperationJournalRetention = .default,
+                     now: Date = Date()) {
+        self.init(storage: FileOperationJournalStorage(directory: directory),
+                  retention: retention, now: now)
+    }
+
+    /// The storage seam exists so the failures that decide whether a consequential call may run —
+    /// a full disk, protected data still locked, a process killed mid-write — can be exercised.
+    init(storage: OperationJournalStorage, retention: OperationJournalRetention = .default,
          now: Date = Date()) {
-        self.directory = directory ?? Self.defaultDirectory()
-        self.fileURL = self.directory.appendingPathComponent("operations.json")
+        self.storage = storage
         self.retention = retention
         storageAvailable = load()
         guard storageAvailable else { return }
         recoverInterruptedOperations(at: now)
         prune(at: now)
         storageAvailable = persist()
-    }
-
-    private static func defaultDirectory() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("OperationJournal", isDirectory: true)
     }
 
     // MARK: Journal
@@ -412,19 +434,47 @@ final class ProtectedOperationJournal: OperationJournal {
     // MARK: Storage
 
     private func load() -> Bool {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return true }
+        let data: Data?
         do {
-            let data = try Data(contentsOf: fileURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            rows = try decoder.decode([OperationRecord].self, from: data)
-            return true
+            data = try storage.load()
         } catch {
-            // Do not turn a locked, unreadable, or corrupt history into an empty one and overwrite
-            // its bytes. A consequential operation is safer to refuse until recovery is explicit.
+            // Storage could not answer at all — protected data still locked, most often. That is
+            // not an empty history, and it must never be written over as though it were.
             PrivacyLog.store(.operationJournal, .loadFailed, error: SafeErrorSummary(error))
             return false
         }
+        guard let data else { return true }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let decoded = try? decoder.decode([OperationRecord].self, from: data) {
+            rows = decoded
+            return true
+        }
+
+        // A process killed between records leaves a file that ends inside a row. The rows that
+        // landed are recovered — losing them is how an operation gets run a second time — and the
+        // damaged bytes are moved aside under their own name before anything replaces them.
+        if let prefix = OperationJournalSalvage.completeRecordPrefix(of: data),
+           let salvaged = try? decoder.decode([OperationRecord].self, from: prefix) {
+            do {
+                try storage.quarantineDamaged()
+            } catch {
+                PrivacyLog.store(.operationJournal, .loadFailed, error: SafeErrorSummary(error))
+                return false
+            }
+            rows = salvaged
+            quarantinedDamagedTail = true
+            PrivacyLog.store(.operationJournal, .salvaged, count: salvaged.count)
+            return true
+        }
+
+        // Nothing whole to recover. Do not turn an unreadable or corrupt history into an empty one
+        // and overwrite its bytes: a consequential operation is safer refused until recovery is
+        // explicit.
+        PrivacyLog.store(.operationJournal, .loadFailed,
+                         error: SafeErrorSummary(OperationJournalFault.undecodable))
+        return false
     }
 
     @discardableResult
@@ -432,18 +482,7 @@ final class ProtectedOperationJournal: OperationJournal {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                                                    attributes: [.protectionKey: Self.fileProtection])
-            try encoder.encode(rows).write(to: fileURL, options: .atomic)
-            // An atomic write replaces the inode, so the attribute is re-applied every time rather
-            // than set once at creation.
-            try FileManager.default.setAttributes([.protectionKey: Self.fileProtection],
-                                                  ofItemAtPath: fileURL.path)
-            protectionApplied = true
-            var url = fileURL
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? url.setResourceValues(values)
+            try storage.save(try encoder.encode(rows))
             return true
         } catch {
             PrivacyLog.store(.operationJournal, .saveFailed, error: SafeErrorSummary(error))
@@ -452,5 +491,14 @@ final class ProtectedOperationJournal: OperationJournal {
     }
 
     /// The store's location, for the protection assertion in tests and for diagnostics.
-    var storeURL: URL { fileURL }
+    var storeURL: URL { storage.storeURL }
+
+    /// Whether the last write applied the protection attribute without error.
+    var protectionApplied: Bool { storage.protectionApplied }
+}
+
+/// Why a journal could not be read back.
+enum OperationJournalFault: Error {
+    /// The stored bytes are neither decodable nor salvageable. Kept, not replaced.
+    case undecodable
 }
