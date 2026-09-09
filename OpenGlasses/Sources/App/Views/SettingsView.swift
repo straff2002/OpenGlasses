@@ -963,7 +963,7 @@ struct HardwarePrivacyView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device — no images leave your phone. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses sends no analytics and no crash reports to its developer, and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses sends no analytics and no crash reports to its developer, and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {

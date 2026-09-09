@@ -62,7 +62,9 @@ struct FingerspellingModelBundle: Equatable {
         let files = bundle.requiredFiles
         var completed = 0
         for path in files {
-            guard let url = bundle.huggingFaceResolveURL(for: path) else {
+            guard let candidate = bundle.huggingFaceResolveURL(for: path),
+                  let url = try? EndpointPolicy.requireOpenable(url: candidate,
+                                                                for: .fingerspellingModelDownload) else {
                 throw FingerspellingDownloadError.notConfigured
             }
             let dest = destination.appendingPathComponent(path)

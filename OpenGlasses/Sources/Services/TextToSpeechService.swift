@@ -52,6 +52,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Fetch the voices the given API key can actually use. Public-library voices are
     /// often rejected on free accounts, so the picker loads the account's own voices.
     static func fetchElevenLabsVoices(apiKey: String) async throws -> [ElevenLabsVoice] {
+        try MedicalEgressGuard.check(.elevenLabsVoiceCatalog)
         guard let url = URL(string: "https://api.elevenlabs.io/v1/voices") else {
             throw TTSError.invalidURL
         }
@@ -250,8 +251,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // only with the model present *and* the binary compiled in (always false in the shipped
         // build → the chain collapses to ElevenLabs/AVSpeech exactly as before).
         let availability = TTSEngineSelector.Availability(
+            // Medical local-only removes the cloud voice from the chain rather than failing the
+            // utterance: Kokoro and the iOS voice are already the fallback, and a wearer in a
+            // clinical setting still needs to be spoken to.
             elevenLabsReady: !elevenLabsKey.isEmpty
                 && !elevenLabsQuotaExhausted
+                && MedicalEgressGuard.allows(.elevenLabsSpeechSynthesis)
                 && (reachability?.isOnline ?? true),
             kokoroReady: kokoroEngine.isReady
         )
@@ -578,13 +583,19 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     // MARK: - ElevenLabs TTS
 
-    private func speakWithElevenLabs(text: String, apiKey: String) async throws {
+    /// Internal rather than private so the medical egress canary can drive the exact point where
+    /// the ElevenLabs request is built, instead of inferring it from playback.
+    func speakWithElevenLabs(text: String, apiKey: String) async throws {
         let voiceId = Config.elevenLabsVoiceId
         let urlString = "https://api.elevenlabs.io/v1/text-to-speech/\(voiceId)"
 
         guard let url = URL(string: urlString) else {
             throw TTSError.invalidURL
         }
+
+        // Defence in depth: the engine chain already drops ElevenLabs in local-only mode, but the
+        // request is built here, so the refusal belongs here too. Throwing advances the chain.
+        try MedicalEgressGuard.check(.elevenLabsSpeechSynthesis)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

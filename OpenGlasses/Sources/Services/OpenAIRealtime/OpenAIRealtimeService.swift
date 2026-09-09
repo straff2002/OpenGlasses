@@ -109,6 +109,10 @@ class OpenAIRealtimeService: ObservableObject {
     // MARK: - Connect / Disconnect
 
     func connect() async -> Bool {
+        guard MedicalEgressGuard.allows(.openAIRealtimeSession) else {
+            connectionState = .error(MedicalEgressRefusal.userMessage)
+            return false
+        }
         guard !apiKey.isEmpty else {
             connectionState = .error("No OpenAI API key configured")
             return false

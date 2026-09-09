@@ -764,6 +764,9 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var pendingSiriContent: SiriContentLink?
 
     // OpenClaw + Realtime sessions
+    /// Ends live sessions whose route medical local-only has just closed. Holds weak references
+    /// only — it listens, it does not own.
+    let egressCoordinator = MedicalEgressCoordinator()
     let openClawBridge = OpenClawBridge()
     let openClawEventClient = OpenClawEventClient()
     /// Remote invoke (Plan BH): gateway-initiated device commands, deny-by-default.
@@ -1079,6 +1082,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.
         hipaaService.onModeChanged = { [weak ambientCaptions, weak self] in
             ambientCaptions?.reconfigureForModeChange()
+            // A guard stops the next request; it cannot close a socket that is already streaming.
+            // Every live session on a route the mode has just closed ends here.
+            self?.egressCoordinator.modeDidChange()
             // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
             if Config.hipaaMode {
                 self?.webHUDMirror.stop()
@@ -1086,6 +1092,14 @@ class AppState: ObservableObject, AppStateProtocol {
                 // created under the looser regime must not survive into the stricter one.
                 self?.medicalExportService.leases.revokeAll()
             }
+        }
+        // Everything that can hold a socket open on a route the medical mode governs. Registration
+        // is weak, so this list is a statement about which sessions exist, not about lifetime.
+        for participant: any MedicalEgressTeardown in [
+            geminiLiveSession, openAIRealtimeSession, openClawBridge, openClawEventClient,
+            hermesBridge, webRTCStreaming, MCPGlassesServer.shared
+        ] {
+            egressCoordinator.register(participant)
         }
         // Same teardown when translation settings change under a live session (BY P2) — the
         // backend branch is picked at session start, so a settings flip must restart it.

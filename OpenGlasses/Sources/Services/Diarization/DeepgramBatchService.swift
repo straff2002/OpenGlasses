@@ -33,6 +33,7 @@ struct DeepgramBatchService {
 
     /// Testable seam: upload raw bytes (lets the upload be exercised without a file on disk).
     func diarize(audioData: Data, mimeType: String, key: String, url: URL) async throws -> [SpeakerTurn] {
+        try MedicalEgressGuard.check(.deepgramBatchTranscription)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Token \(key)", forHTTPHeaderField: "Authorization")

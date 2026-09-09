@@ -535,9 +535,11 @@ class PlaybookStore: ObservableObject {
         guard step.type == .http else { return "Current step is not an HTTP step." }
 
         let urlString = Self.interpolate(step.httpURL, variables: session.variables)
-        guard let url = URL(string: urlString) else {
-            _ = addResultToCurrentStep("Invalid URL: \(urlString)", success: false)
-            return "Invalid URL: \(urlString)"
+        // A playbook step's URL is interpolated from session variables, which the model can set,
+        // so it is exactly the shape the endpoint rule exists for.
+        guard let url = try? EndpointPolicy.requireOpenable(urlString, for: .playbookHTTPStep) else {
+            _ = addResultToCurrentStep("URL not permitted: \(urlString)", success: false)
+            return "URL not permitted: \(urlString)"
         }
 
         var request = URLRequest(url: url, timeoutInterval: 30)

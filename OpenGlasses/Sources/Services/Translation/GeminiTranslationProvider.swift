@@ -39,6 +39,9 @@ final class GeminiTranslationProvider: ObservableObject, TranslationCaptionProvi
 
     func start(direction: TranslationDirectionPolicy) throws {
         guard isConfigured() else { throw TranslationProviderError.notConfigured }
+        // Cloud translation borrows the realtime transport but is a separate purpose with its own
+        // opt-in, so it asks about its own route rather than relying on the session's answer.
+        try MedicalEgressGuard.check(.cloudTranslationCaptions)
         wantsSession = true
         accumulator.reset()
 
@@ -87,7 +90,7 @@ final class GeminiTranslationProvider: ObservableObject, TranslationCaptionProvi
     /// buffers before `.ready` (or during a reconnect) are discarded, never buffered — captions
     /// are a live surface and stale audio is worse than a gap.
     func sendAudio(_ buffer: AVAudioPCMBuffer) {
-        guard isConfigured() else {
+        guard isConfigured(), MedicalEgressGuard.allows(.cloudTranslationCaptions) else {
             if wantsSession { stop() }
             return
         }

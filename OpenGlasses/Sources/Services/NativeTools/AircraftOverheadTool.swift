@@ -29,6 +29,7 @@ final class AircraftOverheadTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.aircraftOverhead) else { return MedicalEgressRefusal.userMessage }
         guard let location = locationService.currentLocation else {
             return "I don't have your location yet. Make sure location access is enabled and try again."
         }

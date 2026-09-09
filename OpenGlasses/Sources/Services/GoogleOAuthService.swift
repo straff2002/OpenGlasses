@@ -126,6 +126,11 @@ final class GoogleOAuthService: NSObject, ObservableObject {
     }
 
     private func performTokenRequest(_ request: URLRequest) async throws -> GoogleOAuth.TokenResponse {
+        // Linking an account is a credential leaving the device; local-only refuses it rather
+        // than letting a new provider be attached while the mode is on.
+        try MedicalEgressGuard.check(.googleOAuthToken)
+        _ = try EndpointPolicy.require(url: request.url ?? URL(fileURLWithPath: "/"), for: .googleOAuthToken)
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1

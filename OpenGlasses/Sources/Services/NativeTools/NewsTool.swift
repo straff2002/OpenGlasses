@@ -16,6 +16,7 @@ struct NewsTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.newsHeadlines) else { return MedicalEgressRefusal.userMessage }
         let topic = args["topic"] as? String
 
         var urlString = "https://news.google.com/rss?hl=en&gl=US&ceid=US:en"

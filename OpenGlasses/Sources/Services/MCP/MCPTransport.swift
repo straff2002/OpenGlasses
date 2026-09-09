@@ -191,7 +191,12 @@ struct HTTPTransport: MCPTransport {
 
     private func sendHTTP(_ payload: [String: Any], server: MCPServerConfig,
                           sessionID: String?) async throws -> (Data, URLResponse) {
-        guard !server.url.isEmpty, let url = URL(string: server.url) else {
+        guard !server.url.isEmpty else { throw MCPTransportError.badURL }
+        // MCP servers commonly live on the wearer's own machine, which is why the route declares
+        // itself local-network; the policy still refuses a credential-bearing or non-web URL.
+        try MedicalEgressGuard.check(.mcpHTTPTransport)
+        guard let url = try? EndpointPolicy.require(url: URL(string: server.url) ?? URL(fileURLWithPath: "/"),
+                                                    for: .mcpHTTPTransport) else {
             throw MCPTransportError.badURL
         }
         var request = URLRequest(url: url)

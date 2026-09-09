@@ -53,11 +53,14 @@ struct HuggingFaceModelInstaller {
     /// URLSession.
     static let live = HuggingFaceModelInstaller(
         listFiles: { bundle in
-            let (data, response) = try await URLSession.shared.data(from: bundle.huggingFaceTreeAPIURL)
+            let listing = try EndpointPolicy.requireOpenable(url: bundle.huggingFaceTreeAPIURL,
+                                                             for: .ttsVoiceModelDownload)
+            let (data, response) = try await URLSession.shared.data(from: listing)
             try checkOK(response)
             return try parseTree(data)
         },
         downloadFile: { url, destination in
+            let url = try EndpointPolicy.requireOpenable(url: url, for: .ttsVoiceModelDownload)
             let (tempURL, response) = try await URLSession.shared.download(from: url)
             try checkOK(response)
             try? FileManager.default.removeItem(at: destination)

@@ -54,7 +54,9 @@ struct LocalModelRepositoryClient: LocalModelRepositoryMetadataFetching {
         components.path = path
         if !query.isEmpty { components.queryItems = query }
         guard let endpoint = components.url,
-              LocalModelRepositoryReference.isAllowedDownloadURL(endpoint) else {
+              LocalModelRepositoryReference.isAllowedDownloadURL(endpoint),
+              (try? EndpointPolicy.requireOpenable(url: endpoint,
+                                                   for: .localModelRepositoryMetadata)) != nil else {
             throw ClientError.requestNotBuildable
         }
 

@@ -24,6 +24,7 @@ struct HomeAssistantTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.homeAssistantCommand) else { return MedicalEgressRefusal.userMessage }
         guard !Config.homeAssistantURL.isEmpty else {
             return "Home Assistant not configured. Add your HA URL and access token in Settings → Services."
         }
@@ -228,9 +229,9 @@ struct HomeAssistantTool: NativeTool {
     }
 
     private func haRequest(url: String, method: String, body: [String: Any]? = nil) async throws -> Data {
-        guard let requestURL = URL(string: url) else {
-            throw URLError(.badURL)
-        }
+        // Home Assistant is one of the documented local-network exceptions, so the private-address
+        // and cleartext rules relax here — but only here, and only for a private destination.
+        let requestURL = try EndpointPolicy.requireOpenable(url, for: .homeAssistantCommand)
         var request = URLRequest(url: requestURL)
         request.httpMethod = method
         request.setValue("Bearer \(Config.homeAssistantToken)", forHTTPHeaderField: "Authorization")

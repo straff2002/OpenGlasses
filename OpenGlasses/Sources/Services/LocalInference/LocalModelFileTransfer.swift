@@ -109,7 +109,8 @@ final class LocalModelBackgroundTransfer: NSObject, LocalModelFileTransferring, 
     }
 
     func transfer(_ request: LocalModelFileTransferRequest) async throws -> LocalModelFileTransferOutcome {
-        guard LocalModelRepositoryReference.isAllowedDownloadURL(request.url) else {
+        guard LocalModelRepositoryReference.isAllowedDownloadURL(request.url),
+              (try? EndpointPolicy.requireOpenable(url: request.url, for: .localModelDownload)) != nil else {
             throw LocalModelFileTransferError.redirectRefused
         }
         return try await withCheckedThrowingContinuation { continuation in

@@ -24,6 +24,7 @@ struct CurrencyTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard MedicalEgressGuard.allows(.currencyRates) else { return MedicalEgressRefusal.userMessage }
         let amount: Double
         if let a = args["amount"] as? Double {
             amount = a
