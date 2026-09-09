@@ -302,7 +302,9 @@ struct AuditEvent: Codable, Identifiable, Equatable, Sendable {
                 throw DecodingError.dataCorruptedError(forKey: .at, in: container,
                                                        debugDescription: "unparseable timestamp")
             }
-            at = parsed
+            // Re-truncate after parsing: the formatter's millisecond round trip is not bit-exact on
+            // every Foundation, and equality must hold for the stored and the constructed value.
+            at = Self.truncated(parsed)
             kind = try container.decode(AuditEventKind.self, forKey: .kind)
             actorClass = try container.decode(AuditActorClass.self, forKey: .actorClass)
             targetClass = try container.decode(AuditTargetClass.self, forKey: .targetClass)
