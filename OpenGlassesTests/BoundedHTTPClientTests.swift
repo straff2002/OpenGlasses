@@ -210,6 +210,195 @@ final class BoundedHTTPClientTests: XCTestCase {
         }
     }
 
+    // MARK: - First-byte and idle deadlines
+
+    /// A scripted peer for `readResponse`: each step says how much virtual time passes and what
+    /// the socket then produced. No sockets and no real waiting, so both deadlines are exact.
+    private final class ScriptedPeer {
+        enum Step {
+            /// After `delay` seconds the peer delivered these bytes.
+            case after(TimeInterval, String, complete: Bool)
+            /// The peer says nothing for as long as it is given.
+            case silent
+        }
+
+        private(set) var clock: TimeInterval = 0
+        private(set) var budgets: [TimeInterval] = []
+        private var steps: [Step]
+
+        init(_ steps: [Step]) { self.steps = steps }
+
+        func now() -> TimeInterval { clock }
+
+        func receive(budget: TimeInterval) -> BoundedHTTPClient.ReceivedChunk {
+            budgets.append(budget)
+            guard !steps.isEmpty else { clock += budget; return .lapsed }
+            switch steps.removeFirst() {
+            case .silent:
+                clock += budget
+                return .lapsed
+            case .after(let delay, let bytes, let complete):
+                clock += delay
+                return .bytes(Data(bytes.utf8), complete: complete)
+            }
+        }
+    }
+
+    private static let okHead = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\n"
+
+    private func readResponse(
+        _ peer: ScriptedPeer,
+        profile: BoundedHTTPClient.Profile = .qrContext,
+        sink: @escaping BoundedHTTPClient.BodySink = { _ in }
+    ) async throws -> BoundedHTTPClient.Response {
+        let parser = HTTPResponseParser(url: URL(string: "https://example.test/x")!,
+                                        profile: profile, sink: sink)
+        return try await BoundedHTTPClient.readResponse(
+            into: parser,
+            profile: profile,
+            now: peer.now,
+            receive: { peer.receive(budget: $0) })
+    }
+
+    func testFirstByteDeadlineFailsWhenTheServerAcceptsAndSaysNothing() async {
+        let peer = ScriptedPeer([.silent])
+        await assertError(.firstByteTimeout) { _ = try await self.readResponse(peer) }
+        XCTAssertEqual(peer.budgets, [BoundedHTTPClient.Profile.qrContext.firstByteTimeout],
+                       "the first read is budgeted by the first-byte deadline, not the total one")
+    }
+
+    func testFirstByteDeadlineBoundary() async throws {
+        let deadline = BoundedHTTPClient.Profile.qrContext.firstByteTimeout
+
+        let inTime = ScriptedPeer([.after(deadline - 0.1, Self.okHead + "hello", complete: true)])
+        var body = Data()
+        let response = try await readResponse(inTime, sink: { body.append($0) })
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(String(decoding: body, as: UTF8.self), "hello")
+
+        let tooLate = ScriptedPeer([.after(deadline + 0.1, Self.okHead + "hello", complete: true)])
+        await assertError(.firstByteTimeout) { _ = try await self.readResponse(tooLate) }
+    }
+
+    func testIdleDeadlineFailsWhenTheBodyStallsMidStream() async {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 10\r\n\r\n"
+        let peer = ScriptedPeer([.after(1, head + "hel", complete: false), .silent])
+        await assertError(.idleTimeout) { _ = try await self.readResponse(peer) }
+        XCTAssertEqual(peer.budgets.last, BoundedHTTPClient.Profile.qrContext.idleTimeout,
+                       "once bytes have flowed the gap is bounded by the idle deadline")
+    }
+
+    func testIdleDeadlineBoundary() async throws {
+        let idle = BoundedHTTPClient.Profile.qrContext.idleTimeout
+
+        let inTime = ScriptedPeer([
+            .after(1, Self.okHead + "hel", complete: false),
+            .after(idle - 0.1, "lo", complete: false),
+        ])
+        var body = Data()
+        let response = try await readResponse(inTime, sink: { body.append($0) })
+        XCTAssertEqual(response.byteCount, 5)
+        XCTAssertEqual(String(decoding: body, as: UTF8.self), "hello")
+
+        let tooLate = ScriptedPeer([
+            .after(1, Self.okHead + "hel", complete: false),
+            .after(idle + 0.1, "lo", complete: false),
+        ])
+        await assertError(.idleTimeout) { _ = try await self.readResponse(tooLate) }
+    }
+
+    func testResponseCannotExtendItsOwnDeadlines() async {
+        // A long-lived Keep-Alive, a large declared length and two empty reads: none of them is
+        // progress, so the idle window keeps running from the last byte the peer actually sent.
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nKeep-Alive: timeout=600\r\n"
+            + "Content-Length: 4096\r\n\r\n"
+        let peer = ScriptedPeer([
+            .after(1, head + "hel", complete: false),
+            .after(0.5, "", complete: false),
+            .after(0.5, "", complete: false),
+            .silent,
+        ])
+        await assertError(.idleTimeout) { _ = try await self.readResponse(peer) }
+        let idle = BoundedHTTPClient.Profile.qrContext.idleTimeout
+        XCTAssertEqual(peer.budgets.last ?? 0, idle - 1, accuracy: 0.0001,
+                       "empty reads must not restart the idle window")
+    }
+
+    func testProfileDeadlinesAreOrderedAndPublicProfilesAreTighter() {
+        for profile in [BoundedHTTPClient.Profile.qrContext, .signedCatalog, .skillPack] {
+            XCTAssertLessThan(profile.idleTimeout, profile.firstByteTimeout, profile.name)
+            XCTAssertLessThan(profile.firstByteTimeout, profile.totalTimeout, profile.name)
+        }
+        #if DEBUG
+        XCTAssertGreaterThan(BoundedHTTPClient.Profile.internalSkillPack.firstByteTimeout,
+                             BoundedHTTPClient.Profile.skillPack.firstByteTimeout,
+                             "the LAN dev profile is the loose one, and it is Debug-only")
+        XCTAssertGreaterThan(BoundedHTTPClient.Profile.internalSkillPack.idleTimeout,
+                             BoundedHTTPClient.Profile.skillPack.idleTimeout)
+        #endif
+    }
+
+    // MARK: - Pinned endpoint versus verified hostname
+
+    func testConnectionPlanPinsTheAddressAndKeepsTheRequestHostname() throws {
+        let request = BoundedHTTPClient.PinnedRequest(
+            url: URL(string: "https://example.test/context?q=1")!,
+            address: "93.184.216.34", host: "example.test", port: 443, usesTLS: true)
+        let plan = try XCTUnwrap(BoundedHTTPClient.PinnedConnectionPlan(request: request))
+
+        XCTAssertEqual(plan.endpointHost, "93.184.216.34", "the socket goes to the approved peer")
+        XCTAssertEqual(plan.tlsServerName, "example.test")
+        XCTAssertEqual(plan.certificateHostname, "example.test")
+        XCTAssertNotEqual(plan.tlsServerName, plan.endpointHost,
+                          "pinning the address must never become trusting a cert for the address")
+        XCTAssertEqual(plan.hostHeader, "example.test")
+        XCTAssertEqual(plan.requestTarget, "/context?q=1")
+        XCTAssertEqual(plan.port, 443)
+    }
+
+    func testConnectionPlanForANumericHostIsConsistentWithThePolicy() throws {
+        // A URL whose host is already numeric resolves to itself, so endpoint and verified name
+        // are the same literal — the policy is unchanged, not specially relaxed.
+        let request = BoundedHTTPClient.PinnedRequest(
+            url: URL(string: "https://93.184.216.34/context")!,
+            address: "93.184.216.34", host: "93.184.216.34", port: 443, usesTLS: true)
+        let plan = try XCTUnwrap(BoundedHTTPClient.PinnedConnectionPlan(request: request))
+        XCTAssertEqual(plan.endpointHost, "93.184.216.34")
+        XCTAssertEqual(plan.tlsServerName, "93.184.216.34")
+        XCTAssertEqual(plan.certificateHostname, plan.tlsServerName)
+
+        // IPv6 literals are bracketed in the Host header; the cleartext Debug profile has no name
+        // to verify at all.
+        let cleartext = BoundedHTTPClient.PinnedRequest(
+            url: URL(string: "http://[fd00::1]:8080/pack.zip")!,
+            address: "fd00::1", host: "fd00::1", port: 8080, usesTLS: false)
+        let cleartextPlan = try XCTUnwrap(BoundedHTTPClient.PinnedConnectionPlan(request: cleartext))
+        XCTAssertNil(cleartextPlan.tlsServerName)
+        XCTAssertNil(cleartextPlan.certificateHostname)
+        XCTAssertEqual(cleartextPlan.hostHeader, "[fd00::1]:8080")
+    }
+
+    func testConnectionPlanAfterARedirectCarriesTheRedirectTargetHost() async throws {
+        let first = URL(string: "https://one.test/context")!
+        let second = URL(string: "https://two.test/final")!
+        let (client, recorder) = client(
+            addresses: ["one.test": ["93.184.216.34"], "two.test": ["1.1.1.1"]],
+            scripts: [first.absoluteString: .redirect(second.absoluteString),
+                      second.absoluteString: .ok("final")]
+        )
+
+        _ = try await client.fetchData(first, profile: .qrContext)
+
+        let requests = await recorder.requests
+        XCTAssertEqual(requests.count, 2)
+        let plan = try XCTUnwrap(BoundedHTTPClient.PinnedConnectionPlan(request: requests[1]))
+        XCTAssertEqual(plan.tlsServerName, "two.test", "the second hop verifies its own hostname")
+        XCTAssertEqual(plan.certificateHostname, "two.test")
+        XCTAssertEqual(plan.hostHeader, "two.test")
+        XCTAssertEqual(plan.endpointHost, "1.1.1.1", "pinned to the redirect target's approved peer")
+        XCTAssertEqual(plan.requestTarget, "/final")
+    }
+
     private func assertError(
         _ expected: BoundedHTTPClient.ClientError,
         operation: () async throws -> Void
