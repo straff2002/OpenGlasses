@@ -59,8 +59,9 @@ extension RemoteGlassesCommand {
         }
     }
 
-    /// Every canonical wire name — advertised to the gateway at connect time
-    /// (`OpenClawConnectParams.deviceCapabilities`) so the agent knows the command surface
+    /// Every canonical wire name — the command surface a node advertises at connect time
+    /// (`OpenClawConnectParams.build(commands:)`, a flat list of names; neither socket passes it
+    /// until the node role lands in Plan EH P3) so the agent knows the command surface
     /// without a round-trip. Tests assert each entry round-trips through the parser.
     static let allCanonicalActions: [String] = [
         "capture_photo",
