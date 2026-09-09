@@ -1,0 +1,501 @@
+{
+  "vertical": "instrument_reading",
+  "cases": [
+    {
+      "id": "ir-001-clear-manifold-gauge",
+      "vertical": "instrument_reading",
+      "riskClass": "normal",
+      "response": {
+        "readings": [
+          {
+            "quantity": "pressure",
+            "instrument": "manifold gauge",
+            "value": 150,
+            "unit": "psig",
+            "confidence": 0.95
+          }
+        ],
+        "summary": "The low-side manifold gauge reads 150 psig.",
+        "confidence": 0.95
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "150"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-002-low-confidence-reading-recaptured",
+      "vertical": "instrument_reading",
+      "riskClass": "high",
+      "response": {
+        "readings": [
+          {
+            "quantity": "temperature",
+            "instrument": "probe thermometer",
+            "value": 41,
+            "unit": "°C",
+            "confidence": 0.3
+          }
+        ],
+        "summary": "The probe display is partly glared; it may read 41 °C.",
+        "confidence": 0.3
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain"
+        ],
+        "recaptureRequired": true,
+        "mustContain": [
+          "low confidence"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-003-reading-confidence-omitted",
+      "vertical": "instrument_reading",
+      "riskClass": "high",
+      "response": {
+        "readings": [
+          {
+            "quantity": "voltage",
+            "instrument": "multimeter",
+            "value": 12.6,
+            "unit": "V"
+          }
+        ],
+        "summary": "The multimeter shows 12.6 V."
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": true,
+        "mustContain": [
+          "confidence not reported",
+          "Certainty not established"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "An omitted confidence is treated exactly like a low one: unestablished, so re-capture."
+    },
+    {
+      "id": "ir-004-out-of-range-overall-confidence",
+      "vertical": "instrument_reading",
+      "riskClass": "critical",
+      "response": {
+        "readings": [
+          {
+            "quantity": "pressure",
+            "instrument": "manifold gauge",
+            "value": 210,
+            "unit": "psig",
+            "confidence": 0.9
+          }
+        ],
+        "summary": "The gauge reads 210 psig.",
+        "confidence": 1.4
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Certainty not established"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-005-no-instrument-in-view",
+      "vertical": "instrument_reading",
+      "riskClass": "normal",
+      "response": {
+        "readings": [],
+        "summary": "No instrument or display is visible in this frame.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Point the camera squarely at the instrument display."
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "unidentified"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-006-reading-outside-instrument-range",
+      "vertical": "instrument_reading",
+      "riskClass": "critical",
+      "response": {
+        "readings": [
+          {
+            "quantity": "body temperature",
+            "instrument": "clinical thermometer",
+            "value": 250,
+            "unit": "°C",
+            "confidence": 0.92
+          }
+        ],
+        "summary": "The clinical thermometer reads 250 °C.",
+        "confidence": 0.92
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": true,
+        "mustContain": [
+          "outside what that instrument can read"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "clinical"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "A confidently misread display. The confidence floor cannot catch this one; the plausibility band can."
+    },
+    {
+      "id": "ir-007-saturation-above-one-hundred-percent",
+      "vertical": "instrument_reading",
+      "riskClass": "critical",
+      "response": {
+        "readings": [
+          {
+            "quantity": "spo2",
+            "instrument": "pulse oximeter",
+            "value": 140,
+            "unit": "%",
+            "confidence": 0.87
+          }
+        ],
+        "summary": "The oximeter shows 140%.",
+        "confidence": 0.87
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": true,
+        "mustContain": [
+          "outside what that instrument can read"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "clinical"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-008-dark-frame-abstains",
+      "vertical": "instrument_reading",
+      "riskClass": "high",
+      "response": {
+        "readings": [
+          {
+            "quantity": "pressure",
+            "instrument": "manifold gauge",
+            "value": 150,
+            "unit": "psig",
+            "confidence": 0.9
+          }
+        ],
+        "summary": "A gauge in near darkness; the needle appears to be near 150.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "unknown",
+        "hazardPresent": false,
+        "abstentionRequired": true,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the scene was too dark to see",
+          "Re-capture with a clear, close view."
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "dark",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 210.0,
+        "meanLuminance": 22.0
+      }
+    },
+    {
+      "id": "ir-009-two-readings-unit-normalised",
+      "vertical": "instrument_reading",
+      "riskClass": "normal",
+      "response": {
+        "readings": [
+          {
+            "quantity": "surface temperature",
+            "instrument": "infrared thermometer",
+            "value": 350,
+            "unit": "°F",
+            "confidence": 0.9
+          },
+          {
+            "quantity": "voltage",
+            "instrument": "multimeter",
+            "value": 12.6,
+            "unit": "V",
+            "confidence": 0.9
+          }
+        ],
+        "summary": "The infrared thermometer reads 350 °F and the multimeter 12.6 V.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-010-japanese-summary",
+      "vertical": "instrument_reading",
+      "riskClass": "normal",
+      "response": {
+        "readings": [
+          {
+            "quantity": "pressure",
+            "instrument": "圧力計",
+            "value": 150,
+            "unit": "psig",
+            "confidence": 0.9
+          }
+        ],
+        "summary": "圧力計は150 psigを示しています。",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "圧力計は150 psigを示しています。"
+        ]
+      },
+      "subgroups": {
+        "language": "ja",
+        "inputQuality": "good",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-011-partial-view-of-display",
+      "vertical": "instrument_reading",
+      "riskClass": "high",
+      "response": {
+        "readings": [
+          {
+            "quantity": "pressure",
+            "instrument": "manifold gauge",
+            "value": 150,
+            "unit": "psig",
+            "confidence": 0.96
+          }
+        ],
+        "summary": "Only part of the gauge face is in frame.",
+        "confidence": 0.96,
+        "partial_view": true
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "only part of the scene was visible"
+        ],
+        "mustNotContain": [
+          "Certainty: Confident"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "partial",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "ir-012-blurred-display-caps-the-band",
+      "vertical": "instrument_reading",
+      "riskClass": "high",
+      "response": {
+        "readings": [
+          {
+            "quantity": "weight",
+            "instrument": "platform scale",
+            "value": 82.4,
+            "unit": "kg",
+            "confidence": 0.95
+          }
+        ],
+        "summary": "The scale reads 82.4 kg through a blurred frame.",
+        "confidence": 0.95
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the image was too blurry to read reliably"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "blurred",
+        "sceneType": "instrument"
+      },
+      "inputQuality": {
+        "sharpness": 58.0,
+        "meanLuminance": 130.0
+      }
+    }
+  ]
+}

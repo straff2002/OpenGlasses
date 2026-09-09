@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "status": "PROPOSED FLOORS — NOT APPROVED. The remediation criterion for this row requires risk-specific thresholds approved by a named owner before evaluation. These numbers have no such approval: they are a starting proposal, chosen so that a critical-risk case may not regress at all and so the gate has something to hold while the approval is obtained. Do not cite them as approved thresholds, and do not read a passing run as evidence that an approved bar was met.",
+  "measured_over": "This corpus only. Every rate below is a fraction of the cases in this corpus that carry the relevant expectation, on synthetic fixtures. It is not an accuracy figure, not a model evaluation, and does not generalise to captured frames or to any population of real scenes.",
+  "riskClasses": {
+    "critical": {
+      "maxFalseNegativeRate": 0.0,
+      "maxOverconfidenceRate": 0.0,
+      "minAbstentionWhenRequiredRate": 1.0,
+      "minEscalationPresentRate": 1.0
+    },
+    "high": {
+      "maxFalseNegativeRate": 0.05,
+      "maxOverconfidenceRate": 0.05,
+      "minAbstentionWhenRequiredRate": 1.0,
+      "minEscalationPresentRate": 1.0
+    },
+    "normal": {
+      "maxFalseNegativeRate": 0.10,
+      "maxOverconfidenceRate": 0.10,
+      "minAbstentionWhenRequiredRate": 1.0,
+      "minEscalationPresentRate": 1.0
+    }
+  },
+  "gating": {
+    "blockingRiskClasses": ["critical", "high"],
+    "note": "A breach at critical or high fails the gate and blocks the pull request. A breach at normal is reported in the run's summary and does not block, because the normal class is where wording and presentation cases live and a failure there is a review item rather than a safety regression."
+  }
+}
