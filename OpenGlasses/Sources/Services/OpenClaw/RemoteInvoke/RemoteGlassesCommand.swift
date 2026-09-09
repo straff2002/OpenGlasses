@@ -27,11 +27,13 @@ enum RemoteGlassesCommand: Equatable {
 }
 
 /// Consent classes for remote commands (Plan BH). The user consents per class, not per verb:
-/// - `observe` — read device/session state (status, capabilities, transcript).
+/// - `observe` — read device/session state (status, capabilities).
 /// - `output` — make the device present something (speak, HUD, save a note).
-/// - `capture` — turn a sensor on: photo, video, audio, transcription, translation. The
-///   surveillance class; **off by default** and additionally routed through
-///   `HighImpactToolPolicy`-style confirmation UX at the executor.
+/// - `capture` — turn a sensor on — or read what one recorded (the transcript): photo, video,
+///   audio, transcription, translation, transcript reads. The surveillance class; **off by
+///   default** and additionally routed through `HighImpactToolPolicy`-style confirmation UX at
+///   the executor. Reading back recorded conversation is the same wiretap exposure as recording
+///   it, so it earns the same consent, the same announcement and the same tight rate budget.
 /// - `halt` — stop commands (including `stopAll`). Not user-toggleable: a remote agent may
 ///   always *reduce* device activity while Agent Mode is on; it can never start capture through
 ///   this class. Still rate-limited and audited.
@@ -45,19 +47,21 @@ enum RemoteCommandClass: String, CaseIterable, Equatable {
 extension RemoteGlassesCommand {
     var commandClass: RemoteCommandClass {
         switch self {
-        case .deviceStatus, .deviceCapabilities, .getTranscript:
+        case .deviceStatus, .deviceCapabilities:
             return .observe
         case .speak, .displayShow, .displayClear, .addNote:
             return .output
-        case .capturePhoto, .startAudioRecording, .startVideo, .startTranslation, .startTranscription:
+        case .capturePhoto, .startAudioRecording, .startVideo, .startTranslation,
+             .startTranscription, .getTranscript:
             return .capture
         case .stopAudioRecording, .stopVideo, .stopTranslation, .stopTranscription, .stopAll:
             return .halt
         }
     }
 
-    /// Every canonical wire name — advertised to the gateway at connect time
-    /// (`OpenClawConnectParams.deviceCapabilities`) so the agent knows the command surface
+    /// Every canonical wire name — the command surface a node advertises at connect time
+    /// (`OpenClawConnectParams.build(commands:)`, a flat list of names; neither socket passes it
+    /// until the node role lands in Plan EH P3) so the agent knows the command surface
     /// without a round-trip. Tests assert each entry round-trips through the parser.
     static let allCanonicalActions: [String] = [
         "capture_photo",

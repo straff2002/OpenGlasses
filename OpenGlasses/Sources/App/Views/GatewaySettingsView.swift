@@ -144,11 +144,11 @@ struct GatewaySettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Toggle("Status & transcript (observe)", isOn: $remoteObserve)
+            Toggle("Status & capabilities (observe)", isOn: $remoteObserve)
                 .onChange(of: remoteObserve) { _, v in Config.remoteInvokeObserveEnabled = v }
             Toggle("Speak & display (output)", isOn: $remoteOutput)
                 .onChange(of: remoteOutput) { _, v in Config.remoteInvokeOutputEnabled = v }
-            Toggle("Camera & recording (capture)", isOn: $remoteCapture)
+            Toggle("Camera, recording & transcript (capture)", isOn: $remoteCapture)
                 .onChange(of: remoteCapture) { _, v in Config.remoteInvokeCaptureEnabled = v }
             NavigationLink {
                 RemoteInvokeAuditView(service: appState.remoteInvoke)
@@ -163,7 +163,7 @@ struct GatewaySettingsView: View {
         } header: {
             Text("Remote Invoke")
         } footer: {
-            Text("Lets a gateway agent ask the glasses to act (speak, show text, check status — and with capture enabled, take photos or record). Everything is denied while Agent Mode is off; capture always asks for confirmation and announces itself before a sensor starts.")
+            Text("Lets a gateway agent ask the glasses to act (speak, show text, check status — and with capture enabled, take photos, record, or read back the recent transcript). Everything is denied while Agent Mode is off; capture always asks for confirmation and announces itself before a sensor starts or recorded speech is read back.")
         }
     }
 

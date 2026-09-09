@@ -54,8 +54,9 @@ Concretely missing:
   (command class, `Config.agentModeEnabled`, per-class user toggles, rate state).
   - Everything is **deny-by-default when Agent Mode is off** (house rule: all
     gateway/autonomous features gate on `agentModeEnabled`).
-  - Command classes: *observe* (status, capabilities, transcript), *output* (speak, display),
-    *capture* (photo, video, audio recording, transcription, translation). Capture is its own
+  - Command classes: *observe* (status, capabilities), *output* (speak, display),
+    *capture* (photo, video, audio recording, transcription, translation, and reading back the
+    transcript — recorded speech is the same exposure whether you record it or read it). Capture is its own
     consent toggle and routes through the Plan BC `HighImpactToolPolicy` gate when that lands
     (BH does not block on BC — until then capture defaults OFF).
   - Simple token-bucket rate limit per class; over-limit → `deny(.rateLimited)`.
@@ -109,10 +110,15 @@ enums should converge rather than duplicate.
   Covered by `OpenClawEventClientScriptedSocketTests`
   (`testRequestBeforeHelloOkIsDroppedWithoutReply`, `testHeartbeatBeforeHelloOkIsNotSpoken`). The
   ws:// LAN caveat is now stated in the threat model above.
-- **`getTranscript` is misclassed.** It's *observe* (default ON) yet returns the last 20 ambient
-  captions (`OpenGlassesApp.swift:3017-3022`) silently — recorded conversation content is
-  capture-adjacent by this doc's own wiretap framing. Give it its own toggle or promote it to
-  the capture class.
+- **`getTranscript` was misclassed — fixed 2026-09-09 ([#445](https://github.com/straff2002/OpenGlasses/pull/445)).** It was *observe* (default ON)
+  yet returned the last 20 ambient captions silently — recorded conversation content, which is
+  capture-adjacent by this doc's own wiretap framing. It is now in the **capture** class, which
+  gives it the whole capture posture for free rather than a bespoke fourth toggle: off by
+  default, confirm → announce → read at the executor ("Remote agent wants to read the recent
+  transcript" / "Remote transcript read"), the tight 4/min capture bucket, and the same audit
+  row. The wire name is unchanged (`get_transcript`); only its consent class moved. Settings copy
+  moved with it — the observe toggle now reads "Status & capabilities", the capture toggle
+  "Camera, recording & transcript".
 - **`speak` lacks source attribution.** The executor speaks remote text verbatim
   (`RemoteCommandExecutor.swift:99-101`) — indistinguishable from the local assistant. Align
   with BL P2 / BK P2c narration ("Message from the gateway: …").
