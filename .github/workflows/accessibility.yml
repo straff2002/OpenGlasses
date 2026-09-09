@@ -17,7 +17,8 @@ name: Accessibility Audit
 # So: nightly, plus a manual dispatch, plus a label. Label it `accessibility` on a PR that touches
 # the accessibility surface and the audit runs against that PR before it merges.
 #
-# The runner notes from tests.yml all apply here (macos-26 for the SDK, XcodeGen from brew,
+# The runner notes from tests.yml all apply here (macos-26 for the SDK, XcodeGen pinned and
+# checksum-verified,
 # MediaPipe fetched and cached, SPM checkouts cached, watch targets skipped,
 # SWIFT_EMIT_LOC_STRINGS=NO so the tracked string catalog cannot churn).
 
@@ -60,8 +61,12 @@ jobs:
           xcodebuild -version
           sw_vers
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      # brew installs whatever version the tap holds that morning and verifies nothing this
+      # repository states. XcodeGen writes the project file every build compiles, so the pinned,
+      # sha256-verified install is the same standard the vendored binaries already meet. The
+      # script appends its bin directory to $GITHUB_PATH, so later steps just find it.
+      - name: Install XcodeGen (pinned, checksum-verified)
+        run: ./Scripts/install-xcodegen.sh
 
       - name: Cache MediaPipe frameworks
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -10,8 +10,10 @@ name: Unit Tests
 #
 # Runner notes (proven against this codebase on GitHub-hosted runners):
 # - macos-26 for the iOS 26 SDK; macos-15's Xcode is too old for HaishinKit/the deployment target.
-# - brew install xcodegen works on GitHub Actions (the ghcr.io resolution failure is Xcode Cloud
-#   only — see ci_scripts/ci_post_clone.sh, which installs from a GitHub release instead).
+# - XcodeGen is installed from the pinned, sha256-verified GitHub release (Scripts/install-xcodegen.sh
+#   + Scripts/xcodegen-pin.env), not from brew — the same tool Xcode Cloud installs, which is the
+#   point. brew would work here (the ghcr.io resolution failure is Xcode Cloud only) but it
+#   installs an unpinned, unverified version.
 # - Watch targets are skipped: the watchOS platform isn't needed to run the iOS unit tests and
 #   slows the build.
 # - SWIFT_EMIT_LOC_STRINGS=NO so the build can't churn the tracked Localizable.xcstrings.
@@ -60,8 +62,12 @@ jobs:
           xcodebuild -version
           sw_vers
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      # brew installs whatever version the tap holds that morning and verifies nothing this
+      # repository states. XcodeGen writes the project file every build compiles, so the pinned,
+      # sha256-verified install is the same standard the vendored binaries already meet. The
+      # script appends its bin directory to $GITHUB_PATH, so later steps just find it.
+      - name: Install XcodeGen (pinned, checksum-verified)
+        run: ./Scripts/install-xcodegen.sh
 
       # The MediaPipe binaries (Plan CK) are fetched, not committed — the graph static
       # libraries exceed GitHub's per-file size limit. Cached so the ~440 MB download
