@@ -174,6 +174,27 @@ The unit workflow also writes a `provenance.txt` artifact (retained 90 days): co
 macOS build, Xcode and SDK versions, the XcodeGen pin, the lockfile digest and the digest of each
 `Vendor/*/SHA256SUMS`. It is what lets a green run still mean something months later.
 
+**Every run produces an SBOM.** `Scripts/generate-sbom.sh` writes a CycloneDX 1.5 document from
+the pins already in the repository — `ci_scripts/Package.resolved`, the `Vendor/*/REVISION` and
+`SHA256SUMS` files, the MediaPipe fetch script's archive digests, `Scripts/xcodegen-pin.env`,
+`Scripts/gitleaks-pin.env` and the model catalogues — with a hash on every component that has
+one. It needs no network, so an SBOM can be produced for any commit, including an old one.
+
+It is deterministic on purpose: the timestamp comes from `SOURCE_DATE_EPOCH` or HEAD's committer
+date and the serial number is derived from the component list by hash, so the same commit yields
+a byte-identical document. The `sbom` job runs it twice and diffs, because a manifest nobody can
+regenerate is a manifest nobody can check.
+
+```bash
+./Scripts/generate-sbom.sh                 # writes sbom.cdx.json
+```
+
+Extraction from Swift sources is anchored and asserted — if a pattern stops matching, the script
+fails rather than emitting a smaller SBOM. Adding a dependency, a vendored binary or a model
+means the generator either picks it up from the manifest it already reads, or it needs a new
+input adding here. A manifest that silently loses a component is worse than none, because it is
+believed.
+
 **The published website is staged, not the checkout.** `Scripts/stage-pages-site.sh` copies an
 explicit allowlist into `_site/` and then independently refuses to publish a tree containing a
 denied path. Adding a page to the site means adding it to that allowlist.

@@ -168,6 +168,73 @@ jobs:
           path: TestResults.xcresult
           retention-days: 7
 
+  # What went into the build, as a document (W06.4). The provenance record above says what the
+  # machine was; this says what the software was — third-party packages, vendored binaries,
+  # verified tooling and model weights, with a digest wherever one exists.
+  #
+  # Cheap Linux job, no Xcode: every input is a file already in the checkout, because an SBOM
+  # that needs the network cannot be produced for an old commit, which is when anyone wants one.
+  #
+  # The determinism check is the point of running it twice. A manifest nobody can regenerate is a
+  # manifest nobody can check, and a second run that differs means either an input moved or the
+  # generator has a clock or a random number in it. Both are failures worth a red job.
+  sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The generator reads HEAD's committer date for the timestamp, and a shallow clone still
+          # has that. fetch-depth is left at the default deliberately: nothing here walks history.
+          fetch-depth: 1
+
+      - name: Generate the SBOM
+        run: ./Scripts/generate-sbom.sh --output sbom.cdx.json
+
+      - name: Regenerate and diff
+        run: |
+          set -euo pipefail
+          ./Scripts/generate-sbom.sh --output sbom-again.cdx.json
+          if ! diff -u sbom.cdx.json sbom-again.cdx.json; then
+            echo "::error::The SBOM is not reproducible — two runs of the generator over the same"
+            echo "::error::commit produced different documents. Look for a wall-clock timestamp or"
+            echo "::error::a random serial number; the generator must derive both from the commit."
+            exit 1
+          fi
+          echo "Reproducible: two runs over ${{ github.sha }} produced identical documents."
+          rm sbom-again.cdx.json
+
+      - name: Summarise
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          bom = json.load(open("sbom.cdx.json"))
+          components = bom["components"]
+          counts = {}
+          for component in components:
+              counts[component["type"]] = counts.get(component["type"], 0) + 1
+          hashed = sum(1 for c in components if c.get("hashes"))
+          gaps = [c["name"] for c in components
+                  if any(p["name"] == "openglasses:pin-gap" for p in c.get("properties", []))]
+          print("### SBOM\n")
+          print("`%s` — %d components\n" % (bom["serialNumber"], len(components)))
+          for kind, count in sorted(counts.items()):
+              print("- %s: %d" % (kind, count))
+          print("\n%d of %d carry a digest.\n" % (hashed, len(components)))
+          if gaps:
+              print("Components fetched with no revision pin and no recorded digest:\n")
+              for name in sorted(gaps):
+                  print("- `%s`" % name)
+          PY
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          retention-days: 90
+
   # Path filters in GitHub Actions are workflow-level, and this workflow's filter belongs to the
   # unit gate above — narrowing it to the security surface would stop that gate running on
   # everything else. So the security job's trigger is computed here instead: one cheap Linux job
