@@ -5,7 +5,7 @@ name: Safety Evaluation
 # fails the pull request when a critical- or high-risk threshold is breached.
 #
 # It exists because a prompt, schema or routing change could previously ship without anything having
-# measured what it does to a safety output. This job is deliberately narrow — two test classes, no
+# measured what it does to a safety output. This job is deliberately narrow — three test classes, no
 # UI tests, no full suite — so it is cheap enough to run on every pull request that touches one of
 # the paths below, and so a red run points at the change that caused it.
 #
@@ -114,6 +114,7 @@ jobs:
             -derivedDataPath .derived \
             -resultBundlePath SafetyEvalResults.xcresult \
             -only-testing:OpenGlassesTests/SafetyEvalGateTests \
+            -only-testing:OpenGlassesTests/SafetyEvalHarnessTests \
             -only-testing:OpenGlassesTests/PromptVersionRegistryTests \
             -skipPackagePluginValidation \
             -skipMacroValidation \

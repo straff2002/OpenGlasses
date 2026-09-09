@@ -75,6 +75,7 @@ env TEST_RUNNER_SAFETY_EVAL_UPDATE_DIGESTS="${SAFETY_EVAL_UPDATE_DIGESTS:-0}" \
     -destination "$DESTINATION" \
     -derivedDataPath "$DERIVED" \
     -only-testing:OpenGlassesTests/SafetyEvalGateTests \
+    -only-testing:OpenGlassesTests/SafetyEvalHarnessTests \
     -only-testing:OpenGlassesTests/PromptVersionRegistryTests \
     -collect-test-diagnostics never \
     SWIFT_EMIT_LOC_STRINGS=NO \

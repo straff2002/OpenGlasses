@@ -26,6 +26,7 @@ frames and a budget for provider calls. **Model-side evaluation is not done and 
 
 The harness is `OpenGlassesTests/SafetyEvalHarness.swift`, the report `SafetyEvalReport.swift`, the
 gate `SafetyEvalGateTests.swift`, and the change detection `PromptVersionRegistryTests.swift`.
+`SafetyEvalHarnessTests.swift` runs the harness against deliberately wrong expectations, because every case in this corpus passes — so without it, the only path anyone had ever seen the gate take was the agreeing one, and a metric wired to a constant `false` would have kept the report printing 0.0%.
 
 ## Licence and provenance of the cases
 
