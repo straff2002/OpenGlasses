@@ -1,6 +1,6 @@
 # Plan BH — Gateway Remote Invoke (agent-initiated glasses control)
 
-**Status:** 🚧 Core shipped — pure `RemoteCommandParser` (alias table, total: command / unsupported /
+**Status:** ✅ Shipped — pure `RemoteCommandParser` (alias table, total: command / unsupported /
 malformed) + `RemoteCommandPolicy` (deny-by-default on `agentModeEnabled`, per-class consent
 toggles with capture OFF, `halt` class for stops, token-bucket rate limits) + `RemoteInvokeReply`
 envelope + `RemoteCommandExecutor` (closure seams onto the live services; capture = confirm →
@@ -9,7 +9,7 @@ audit ring) wired into `OpenClawEventClient` (`type:"req"` frames answered on th
 socket). Settings: per-class toggles + activity log in Gateway settings. Hardening riders:
 reconnect jitter, `LLMImagePreparer.isDegenerate` frame guard, `SecretInputField` (paste + reveal)
 swapped into 12 token/key forms. Token-in-URL hygiene was already fixed (handshake auth +
-`LogRedaction`). Follow-up shipped: signed Ed25519 device identity on both gateway handshakes (`OpenClawDeviceIdentity` + shared `OpenClawConnectParams`, protocol v3/v4 — remote gateways can zero-scope token-only connects), capability advertisement at connect time, and `device.event` push (connection + glasses attach/detach, observe-consent-gated). Deferred: live end-to-end against a real gateway (device/backend-pending).
+`LogRedaction`). Follow-up shipped: signed Ed25519 device identity on both gateway handshakes (`OpenClawDeviceIdentity` + shared `OpenClawConnectParams`, protocol v3/v4 — remote gateways can zero-scope token-only connects), capability advertisement at connect time, and `device.event` push (connection + glasses attach/detach, observe-consent-gated). All three risks from the 2026-07-10 review are now closed (the pre-auth frame gate, `getTranscript`'s consent class, and source attribution on spoken text), so nothing is left to build here. The only remaining item is the live end-to-end round-trip against a real gateway, which is backend-pending and tracked as Plan EH P4.
 
 ## The problem
 The gateway link is one-directional in practice: the phone initiates every exchange
@@ -119,9 +119,19 @@ enums should converge rather than duplicate.
   row. The wire name is unchanged (`get_transcript`); only its consent class moved. Settings copy
   moved with it — the observe toggle now reads "Status & capabilities", the capture toggle
   "Camera, recording & transcript".
-- **`speak` lacks source attribution.** The executor speaks remote text verbatim
-  (`RemoteCommandExecutor.swift:99-101`) — indistinguishable from the local assistant. Align
-  with BL P2 / BK P2c narration ("Message from the gateway: …").
+- **`speak` lacked source attribution — fixed 2026-09-09 ([#518](https://github.com/straff2002/OpenGlasses/pull/518)).** The executor spoke
+  remote text verbatim, indistinguishable from the local assistant, so the wearer could not tell an
+  instruction they had asked for from one a remote — possibly prompt-injected — agent pushed.
+  Remote speech is now attributed at the point it is spoken: `RemoteSpeechAttribution.spoken(_:from:)`
+  produces "Message from the gateway: …" for the gateway socket and "Message from <peer>: …" for an
+  MCP peer, matching the BL P2 / BK P2c narration convention. Prefix and body are deliberately **one**
+  string passed to **one** `speak` call: a wearer's "stop" barge-in can then never leave an
+  unattributed body playing, and the audit/TTS timing stays a single event. The identity the service
+  already used for policy and audit is threaded the last hop —
+  `RemoteInvokeService.handleFrame(_:origin:)` now passes its `origin` to
+  `RemoteCommandExecutor.execute(_:origin:)`. The HUD path is left alone: `display_show` already
+  renders through a notification titled "Agent", which is attribution enough for a visual surface.
+  Length capping and sanitization of remote text stay the separate event-text hygiene item below.
 - **Scope statement:** deny-by-default covers `type:"req"` frames only; inbound *event* text
   (`heartbeat`/`cron` → `onNotification` → TTS/LLM, `OpenClawEventClient.swift:271-346`) is
   unscreened. BK P0 gates the delegate loop; the event *text* deserves BL P2's hygiene

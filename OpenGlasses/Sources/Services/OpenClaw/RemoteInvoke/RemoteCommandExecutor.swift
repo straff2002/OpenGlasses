@@ -9,6 +9,8 @@ import Foundation
 ///   `HighImpactToolPolicy` UX applied to remote actuation), then **announces itself** (TTS)
 ///   before the sensor turns on — or, for a transcript read, before recorded speech leaves the
 ///   device. Nothing remote is ever silent.
+/// - Anything the device *says* on a remote caller's behalf names that caller first
+///   (`RemoteSpeechAttribution`), so nothing remote is unattributed either.
 /// - `deviceCapabilities` reports what is *currently* true, not what the app theoretically has —
 ///   the closure reads live service state.
 @MainActor
@@ -61,7 +63,10 @@ final class RemoteCommandExecutor {
         self.deps = deps
     }
 
-    func execute(_ command: RemoteGlassesCommand) async -> Outcome {
+    /// `origin` is the caller the service already used for policy and audit; it reaches here
+    /// so spoken text can name its source. Defaulted to the gateway — the only caller that
+    /// existed before Plan BN P2 — so existing call sites keep their meaning.
+    func execute(_ command: RemoteGlassesCommand, origin: RemoteCommandOrigin = .gateway) async -> Outcome {
         // Capture-class commands: confirm, then announce, then act — in that order.
         if command.commandClass == .capture {
             guard await deps.confirmCapture(captureSummary(for: command)) else { return .declined }
@@ -98,7 +103,7 @@ final class RemoteCommandExecutor {
                 deps.stopTranscription()
                 return .success(["transcription": "stopped"])
             case .speak(let text):
-                await deps.speak(text)
+                await deps.speak(RemoteSpeechAttribution.spoken(text, from: origin))
                 return .success(["spoke": "true"])
             case .displayShow(let text, let icon):
                 guard deps.displayShow(text, icon) else {
