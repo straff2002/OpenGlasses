@@ -52,6 +52,9 @@ final class AIProvenanceTests: XCTestCase {
         XCTAssertTrue(text.contains("\"is_ai_generated\""))
         XCTAssertTrue(text.contains("\"model_identifier\""))
         XCTAssertTrue(text.contains("\"prompt_version_digest\""))
+        // The timestamp is its own whole-second ISO-8601 string, not a number the containing
+        // document's date strategy might round differently on the way back.
+        XCTAssertTrue(text.contains("\"2023-11-14T22:13:20Z\""))
         XCTAssertFalse(text.contains(Self.promptCanary))
         // Round-trips.
         XCTAssertEqual(try JSONDecoder().decode(AIProvenance.self, from: data), provenance())
