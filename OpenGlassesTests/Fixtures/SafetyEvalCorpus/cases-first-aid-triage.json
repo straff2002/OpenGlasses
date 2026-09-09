@@ -1,0 +1,525 @@
+{
+  "vertical": "first_aid_triage",
+  "cases": [
+    {
+      "id": "fa-001-unresponsive-and-not-breathing",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": false,
+        "breathing": "absent",
+        "severe_bleeding": false,
+        "summary": "An adult is face-up on the floor, motionless, with no visible chest movement.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "start CPR now",
+          "Call emergency services"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-002-severe-bleeding-responsive",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": true,
+        "breathing": "normal",
+        "severe_bleeding": true,
+        "findings": [
+          {
+            "label": "Heavy bleeding, left thigh",
+            "severity": "critical"
+          }
+        ],
+        "summary": "A seated adult with heavy bleeding from the left thigh, talking.",
+        "confidence": 0.88
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "direct pressure"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-003-unresponsive-but-breathing",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": false,
+        "breathing": "normal",
+        "severe_bleeding": false,
+        "summary": "An adult is unresponsive on their back but breathing steadily.",
+        "confidence": 0.8
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "recovery position"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-004-breathing-unknown-abstains",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "breathing": "unknown",
+        "severe_bleeding": false,
+        "summary": "A person is lying down; I cannot tell whether they are breathing or responsive.",
+        "confidence": 0.4
+      },
+      "expected": {
+        "tier": "unknown",
+        "hazardPresent": false,
+        "abstentionRequired": true,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Check responsiveness and breathing yourself",
+          "responsiveness and breathing could not be assessed from this view"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "The two vitals the triage turns on were never observed, so the card says so instead of clearing the casualty."
+    },
+    {
+      "id": "fa-005-breathing-unknown-with-visible-injury",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "breathing": "unknown",
+        "severe_bleeding": false,
+        "findings": [
+          {
+            "label": "Open fracture, right forearm",
+            "severity": "critical"
+          }
+        ],
+        "summary": "A person on the ground with an open forearm fracture; breathing not visible from here.",
+        "confidence": 0.7
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Open fracture",
+          "Check responsiveness and breathing yourself"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "Unobserved vitals must not downgrade an injury that was observed."
+    },
+    {
+      "id": "fa-006-abnormal-breathing",
+      "vertical": "first_aid_triage",
+      "riskClass": "high",
+      "response": {
+        "responsive": true,
+        "breathing": "abnormal",
+        "severe_bleeding": false,
+        "summary": "An adult is conscious but breathing irregularly and gasping.",
+        "confidence": 0.75
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Monitor breathing closely"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-007-no-casualty-in-view",
+      "vertical": "first_aid_triage",
+      "riskClass": "normal",
+      "response": {
+        "responsive": true,
+        "breathing": "normal",
+        "severe_bleeding": false,
+        "summary": "A person standing in a corridor, talking, no visible injury.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "corridor"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-008-model-omits-confidence",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": false,
+        "breathing": "absent",
+        "severe_bleeding": false,
+        "summary": "An adult is motionless with no chest movement."
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Certainty not established",
+          "start CPR now"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "No confidence was reported, so no certainty is stated. The life-safety call is unaffected: it is computed from the vitals, not from the model's self-rating."
+    },
+    {
+      "id": "fa-009-out-of-range-confidence",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": false,
+        "breathing": "absent",
+        "severe_bleeding": false,
+        "summary": "An adult is motionless with no chest movement.",
+        "confidence": 1.7
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Certainty not established"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "A number outside 0...1 is a malformed field, not a very high confidence."
+    },
+    {
+      "id": "fa-010-certainty-claimed-on-blurred-input",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": true,
+        "breathing": "normal",
+        "severe_bleeding": false,
+        "findings": [
+          {
+            "label": "Possible ankle deformity",
+            "severity": "caution"
+          }
+        ],
+        "summary": "A seated adult with a possibly deformed left ankle.",
+        "confidence": 0.96
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the image was too blurry to read reliably"
+        ],
+        "mustNotContain": [
+          "Certainty: Confident"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "blurred",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 58.0,
+        "meanLuminance": 130.0
+      },
+      "notes": "The model claimed near-certainty from a frame the app measured as blurry. The frame wins."
+    },
+    {
+      "id": "fa-011-hedged-summary-caps-the-band",
+      "vertical": "first_aid_triage",
+      "riskClass": "high",
+      "response": {
+        "responsive": true,
+        "breathing": "abnormal",
+        "severe_bleeding": false,
+        "summary": "I'm not sure whether this person's breathing is abnormal or just fast from exertion.",
+        "confidence": 0.9
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Certainty: Uncertain"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "The model hedged in its own prose while attaching a high number to it. The prose outranks the number."
+    },
+    {
+      "id": "fa-012-ukrainian-summary",
+      "vertical": "first_aid_triage",
+      "riskClass": "critical",
+      "response": {
+        "responsive": false,
+        "breathing": "absent",
+        "severe_bleeding": false,
+        "summary": "Доросла людина лежить нерухомо, дихання не видно.",
+        "confidence": 0.85
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely",
+          "confident"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Доросла людина лежить нерухомо",
+          "start CPR now"
+        ]
+      },
+      "subgroups": {
+        "language": "uk",
+        "inputQuality": "good",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "Hedge detection is English-only, so a hedge written in Ukrainian would not cap the band. This case is not hedged; the gap is recorded in the README as owed subgroup work."
+    },
+    {
+      "id": "fa-013-partial-view-of-casualty",
+      "vertical": "first_aid_triage",
+      "riskClass": "high",
+      "response": {
+        "responsive": true,
+        "breathing": "normal",
+        "severe_bleeding": false,
+        "summary": "Only the upper body of a seated person is in frame.",
+        "confidence": 0.82,
+        "partial_view": true
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain",
+          "likely"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "only part of the scene was visible"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "partial",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "fa-014-dark-frame-abstains",
+      "vertical": "first_aid_triage",
+      "riskClass": "high",
+      "response": {
+        "responsive": true,
+        "breathing": "normal",
+        "severe_bleeding": false,
+        "summary": "It is too dark to make out the person clearly.",
+        "confidence": 0.6
+      },
+      "expected": {
+        "tier": "unknown",
+        "hazardPresent": false,
+        "abstentionRequired": true,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "uncertain"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the scene was too dark to see",
+          "Re-capture with a clear, close view."
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "dark",
+        "sceneType": "casualty"
+      },
+      "inputQuality": {
+        "sharpness": 210.0,
+        "meanLuminance": 22.0
+      }
+    }
+  ]
+}

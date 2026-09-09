@@ -1,0 +1,149 @@
+name: Safety Evaluation
+
+# The safety-evaluation gate (W08.4): runs the versioned corpus in
+# OpenGlassesTests/Fixtures/SafetyEvalCorpus through the app's real assessment-handling path and
+# fails the pull request when a critical- or high-risk threshold is breached.
+#
+# It exists because a prompt, schema or routing change could previously ship without anything having
+# measured what it does to a safety output. This job is deliberately narrow — three test classes, no
+# UI tests, no full suite — so it is cheap enough to run on every pull request that touches one of
+# the paths below, and so a red run points at the change that caused it.
+#
+# The thresholds this enforces are PROPOSED, not approved (thresholds.json says so, and the suite
+# asserts that it says so). A green run means no regression against a corpus of synthetic cases.
+#
+# Setup is inlined rather than shared. The composite action .github/actions/xcode-project, which
+# already collapses these steps for the unit-test gate, lives on the CI-hardening branch and is not
+# on this one; a rebase after that lands should replace the four steps between checkout and
+# "Pick a simulator" with `uses: ./.github/actions/xcode-project`.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      # The handling path the corpus evaluates.
+      - 'OpenGlasses/Sources/Services/StructuredVision/**'
+      - 'OpenGlasses/Sources/Services/SafetyAssessment/**'
+      - 'OpenGlasses/Sources/Services/FirstAid/**'
+      - 'OpenGlasses/Sources/Services/HealthSafety/**'
+      - 'OpenGlasses/Sources/Services/Provenance/**'
+      - 'OpenGlasses/Sources/Services/LLM/UncertaintyDetector.swift'
+      # The prompt builders. A wording change here changes what the model is asked for, which is a
+      # behaviour change the corpus has to be re-read against.
+      - 'OpenGlasses/Sources/Services/SystemPromptBuilder.swift'
+      # The corpus, its thresholds, the digest snapshot and the harness itself.
+      - 'OpenGlassesTests/Fixtures/SafetyEvalCorpus/**'
+      - 'OpenGlassesTests/SafetyEval*.swift'
+      - 'OpenGlassesTests/PromptVersionRegistry*.swift'
+      # This gate's own definition and the local runner that mirrors it.
+      - '.github/workflows/safety-eval.yml'
+      - 'Scripts/safety-eval-report.sh'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nothing here writes to the repository. Uploading an artifact is artifact-scoped and needs no
+# `contents: write`.
+permissions:
+  contents: read
+
+jobs:
+  safety-eval:
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache MediaPipe frameworks
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Vendor/MediaPipeTasks/Frameworks
+          key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
+
+      - name: Fetch MediaPipe frameworks
+        run: ./Scripts/fetch-mediapipe-frameworks.sh
+
+      - name: Fetch llama.cpp framework
+        run: ./Scripts/fetch-llamacpp-framework.sh
+
+      - name: Cache SPM checkouts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .spm-checkouts
+          key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Skip Watch targets
+        run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
+
+      - name: Generate Xcode project
+        run: ./Scripts/generate-xcodeproj.sh
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          phones = [d for devs in data.values() for d in devs if "iPhone" in d["name"]]
+          if not phones:
+              sys.exit("no available iPhone simulator on this image")
+          print(phones[-1]["udid"])')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+
+      - name: Run the safety-evaluation gate
+        timeout-minutes: 50
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project OpenGlasses.xcodeproj \
+            -scheme OpenGlasses \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath .derived \
+            -resultBundlePath SafetyEvalResults.xcresult \
+            -only-testing:OpenGlassesTests/SafetyEvalGateTests \
+            -only-testing:OpenGlassesTests/SafetyEvalHarnessTests \
+            -only-testing:OpenGlassesTests/PromptVersionRegistryTests \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -clonedSourcePackagesDirPath .spm-checkouts \
+            -collect-test-diagnostics never \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            SWIFT_EMIT_LOC_STRINGS=NO \
+            2>&1 | tee xcodebuild-safety-eval.log \
+              | grep --line-buffered -E "Test Case|Executed [0-9]+ test|error:|\*\* TEST" \
+            || { tail -200 xcodebuild-safety-eval.log; exit 1; }
+
+      # The Markdown summary the harness writes, on the job page itself, so a reviewer sees which
+      # cases moved without downloading anything.
+      - name: Publish the evaluation summary
+        if: always()
+        run: |
+          if [ -f .safety-eval/safety-eval-report.md ]; then
+            cat .safety-eval/safety-eval-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'The gate did not get far enough to write a report.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SafetyEvalResults
+          path: |
+            SafetyEvalResults.xcresult
+            .safety-eval/
+          retention-days: 7

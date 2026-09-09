@@ -122,7 +122,7 @@ final class StructuredVisionService: ObservableObject {
                 ImageQualityProbe.indicators(for: imageData)
                     .merging(InputQualityIndicators.fromModelPayload(json))),
             provenance: AIProvenance.forActiveModel(
-                promptSources: [systemPrompt, String(describing: jsonSchema)]))
+                promptSources: [systemPrompt, AIProvenance.canonicalJSON(jsonSchema)]))
         latest = card
         publish(card)
         return card

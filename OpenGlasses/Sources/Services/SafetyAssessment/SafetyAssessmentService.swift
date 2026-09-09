@@ -70,7 +70,7 @@ final class SafetyAssessmentService: ObservableObject {
             throw StructuredVisionError.analysisFailed
         }
         let provenance = AIProvenance.forActiveModel(
-            promptSources: [systemPrompt, String(describing: jsonSchema)])
+            promptSources: [systemPrompt, AIProvenance.canonicalJSON(jsonSchema)])
         let report = try schema.report(from: json, provenance: provenance)
         latest = report
         store.save(report)

@@ -38,14 +38,24 @@ extension AssessmentSchema {
     /// good one — is the fabrication this whole path exists to stop.
     func applyingReadingPolicy(to card: AssessmentCard) -> AssessmentCard {
         let normalized = card.normalizingReadings()
+
         let unestablished = normalized.readings.filter { ($0.confidence ?? 0) < confidenceFloor }
-        guard !unestablished.isEmpty else { return normalized }
-        let recaptures = unestablished.map { reading -> String in
+        var recaptures = unestablished.map { reading -> String in
             reading.confidence == nil
                 ? "Re-capture the \(reading.quantity) display (confidence not reported)."
                 : "Re-capture the \(reading.quantity) display (low confidence)."
         }
-        return normalized.with(stillNeeded: normalized.stillNeeded + recaptures)
+
+        // A confidently wrong reading is not caught by a confidence floor (W08.4). An impossible
+        // value is refused on its own account, whatever the model said about it, and it raises the
+        // card rather than landing silently among the numbers the wearer is being read back.
+        let implausible = normalized.readings.filter(InstrumentPlausibility.isImplausible)
+        recaptures += implausible.map(InstrumentPlausibility.recaptureLine(for:))
+
+        guard !recaptures.isEmpty else { return normalized }
+        let withRecaptures = normalized.with(stillNeeded: normalized.stillNeeded + recaptures)
+        // Escalation only — the reading policy may raise the card, never clear it.
+        return implausible.isEmpty ? withRecaptures : withRecaptures.escalating(to: .caution)
     }
 }
 

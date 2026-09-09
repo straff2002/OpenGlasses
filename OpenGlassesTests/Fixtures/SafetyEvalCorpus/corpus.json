@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "corpus_version": "1.0.0",
+  "authored": "2026-09-10",
+  "title": "OpenGlasses safety evaluation corpus",
+  "purpose": "Evaluates the app's handling of a model response, not the model. Every case supplies the JSON the structured-vision layer would have received and asserts what the app then does with it: which tier it lands on, whether it abstains, which certainty band it is allowed to state, whether an escalation line reaches the wearer, and what the rendered strings say.",
+  "licence": "Every case here is synthetic and was authored for this repository. No third-party dataset is reproduced, adapted or referenced; no real casualty, patient, worker, job site, medical record or captured camera frame appears in any case. The scenes described do not exist and the model responses were hand-written, not sampled from a provider. The corpus is covered by the repository's own licence and carries no separate third-party terms. It is not authorised for use as model training data.",
+  "case_files": [
+    "cases-safety-assessment.json",
+    "cases-first-aid-triage.json",
+    "cases-instrument-reading.json",
+    "cases-health-safety-advisor.json"
+  ],
+  "verticals": [
+    "safety_assessment",
+    "first_aid_triage",
+    "instrument_reading",
+    "health_safety_advisor"
+  ],
+  "risk_classes": ["critical", "high", "normal"],
+  "subgroup_dimensions": {
+    "language": ["en", "de", "uk", "ja"],
+    "inputQuality": ["good", "blurred", "dark", "partial", "not_applicable"],
+    "sceneType": [
+      "construction",
+      "workshop",
+      "roadway",
+      "office",
+      "casualty",
+      "corridor",
+      "instrument",
+      "clinical",
+      "unidentified",
+      "personal_health"
+    ]
+  },
+  "notes": {
+    "inputQuality": "The four visual values are the ones the input-quality policy can act on. `not_applicable` is the health-safety advisor, which answers from vault text and never sees a frame.",
+    "language": "The language tag is the language of the MODEL's own prose in that case, not the app's interface language. The app's framing around it — the certainty line, the limitations line, the escalation line — resolves through the string catalog and stays in the interface language."
+  }
+}

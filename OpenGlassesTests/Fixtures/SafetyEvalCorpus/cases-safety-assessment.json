@@ -1,0 +1,542 @@
+{
+  "vertical": "safety_assessment",
+  "cases": [
+    {
+      "id": "sa-001-fall-from-elevation-uncontrolled",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "Two workers on an unguarded roof edge at about four metres, no anchor points in view.",
+        "assessments": [
+          {
+            "category": "fall_from_elevation",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "No guardrail, no anchor, no harness visible.",
+            "evidence": [
+              {
+                "note": "worker at open edge",
+                "box_2d": [
+                  200,
+                  300,
+                  700,
+                  620
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Fall from Elevation",
+          "qualified safety inspector"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "construction"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-002-suspended-load-indirect-control-only",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "A crane lifts a bundle of steel over a partly cleared laydown area.",
+        "assessments": [
+          {
+            "category": "suspended_load",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": true,
+            "comments": "Tape and a spotter only; no engineered exclusion.",
+            "indirect_control": "Spotter and exclusion tape"
+          }
+        ]
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Suspended Load"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "construction"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-003-no-hazards-clear-office",
+      "vertical": "safety_assessment",
+      "riskClass": "normal",
+      "response": {
+        "summary": "An office desk with a laptop and a mug. Not a job-site scene.",
+        "assessments": []
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "No high-energy hazards detected in view."
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "office"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-004-electrical-contact-direct-control",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "A panel is open for work, isolated and locked out with a personal lock and tag.",
+        "assessments": [
+          {
+            "category": "electrical_contact",
+            "is_present": true,
+            "has_direct_control": true,
+            "has_indirect_control": false,
+            "comments": "LOTO applied and verified.",
+            "direct_control": "De-energised, locked and tagged out, tested dead"
+          }
+        ]
+      },
+      "expected": {
+        "tier": "ok",
+        "hazardPresent": false,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Direct control"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "workshop"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "A directly controlled hazard is correctly not escalated: the point of the control test is that it can be passed."
+    },
+    {
+      "id": "sa-005-arc-flash-occluded-view",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "An energised switchboard being worked on; a cabinet door blocks part of the working space.",
+        "assessments": [
+          {
+            "category": "arc_flash",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "No arc-rated clothing visible on the worker at the board."
+          }
+        ],
+        "view_obstructed": true,
+        "view_limitations": [
+          "the open cabinet door hid the lower half of the board"
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Arc Flash",
+          "something was blocking the view",
+          "the open cabinet door hid the lower half of the board"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "partial",
+        "sceneType": "workshop"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-006-excavation-low-light",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "An unshored trench about two metres deep, spoil piled at the edge, late in the day.",
+        "assessments": [
+          {
+            "category": "excavation",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "No shoring, no benching, spoil at the lip."
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Trench / Excavation",
+          "the scene was poorly lit"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "dark",
+        "sceneType": "construction"
+      },
+      "inputQuality": {
+        "sharpness": 210.0,
+        "meanLuminance": 52.0
+      }
+    },
+    {
+      "id": "sa-007-dark-frame-no-hazards-abstains",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "Dark frame; nothing identifiable in the scene.",
+        "assessments": []
+      },
+      "expected": {
+        "tier": "unknown",
+        "hazardPresent": false,
+        "abstentionRequired": true,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the scene was too dark to see",
+          "Re-capture with a clear, close view."
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "dark",
+        "sceneType": "unidentified"
+      },
+      "inputQuality": {
+        "sharpness": 210.0,
+        "meanLuminance": 22.0
+      },
+      "notes": "The all-clear this frame cannot support must not be issued: an unlit scene is unassessed, not safe."
+    },
+    {
+      "id": "sa-008-mobile-equipment-partial-view",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "A loader reversing near workers on foot at a haul road edge.",
+        "assessments": [
+          {
+            "category": "mobile_equipment",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": true,
+            "comments": "No physical separation between plant and people.",
+            "indirect_control": "High-visibility vests"
+          }
+        ],
+        "partial_view": true
+      },
+      "expected": {
+        "tier": "caution",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Mobile Equipment",
+          "only part of the scene was visible"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "partial",
+        "sceneType": "roadway"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-009-blurred-and-partial-no-hazards-abstains",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "A blurred, partly framed view of what may be a plant room.",
+        "assessments": [],
+        "partial_view": true
+      },
+      "expected": {
+        "tier": "unknown",
+        "hazardPresent": false,
+        "abstentionRequired": true,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "the image was too blurry to read reliably",
+          "only part of the scene was visible"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "blurred",
+        "sceneType": "unidentified"
+      },
+      "inputQuality": {
+        "sharpness": 58.0,
+        "meanLuminance": 130.0
+      },
+      "notes": "Two independent limitations at once make a frame unassessable even where neither alone is severe."
+    },
+    {
+      "id": "sa-010-severely-blurred-hazard-not-masked",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "A worker near an open edge, high up; the frame is badly blurred.",
+        "assessments": [
+          {
+            "category": "fall_from_elevation",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "No edge protection visible."
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Fall from Elevation",
+          "the image was too blurry to read reliably"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "blurred",
+        "sceneType": "construction"
+      },
+      "inputQuality": {
+        "sharpness": 14.0,
+        "meanLuminance": 128.0
+      },
+      "notes": "Abstention may replace an unearned all-clear and nothing else. A hazard reported through a bad frame still ranks the card."
+    },
+    {
+      "id": "sa-011-multiple-hazards-worst-wins",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "A boiler house: a leaking steam line beside an open live panel.",
+        "assessments": [
+          {
+            "category": "steam",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": true,
+            "comments": "Signage only.",
+            "indirect_control": "Warning signage"
+          },
+          {
+            "category": "electrical_contact",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "Panel open and energised, no barrier."
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Electrical Contact",
+          "Steam"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "workshop"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      }
+    },
+    {
+      "id": "sa-012-unknown-category-ignored",
+      "vertical": "safety_assessment",
+      "riskClass": "high",
+      "response": {
+        "summary": "A hot work area with an unextinguished cutting torch beside solvent drums.",
+        "assessments": [
+          {
+            "category": "fire",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "Ignition source beside flammables, no fire watch."
+          },
+          {
+            "category": "asteroid_impact",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "not a category this app defines"
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Fire"
+        ],
+        "mustNotContain": [
+          "asteroid"
+        ]
+      },
+      "subgroups": {
+        "language": "en",
+        "inputQuality": "good",
+        "sceneType": "workshop"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "A category the app does not define is dropped rather than rendered: the model does not get to extend the hazard catalogue at runtime."
+    },
+    {
+      "id": "sa-013-german-summary-hazard-present",
+      "vertical": "safety_assessment",
+      "riskClass": "critical",
+      "response": {
+        "summary": "Ein Arbeiter steht ungesichert auf einem Dachrand in etwa vier Metern Höhe.",
+        "assessments": [
+          {
+            "category": "fall_from_elevation",
+            "is_present": true,
+            "has_direct_control": false,
+            "has_indirect_control": false,
+            "comments": "Keine Absturzsicherung erkennbar."
+          }
+        ]
+      },
+      "expected": {
+        "tier": "critical",
+        "hazardPresent": true,
+        "abstentionRequired": false,
+        "escalationRequired": true,
+        "allowedCertainty": [
+          "none"
+        ],
+        "recaptureRequired": false,
+        "mustContain": [
+          "Ein Arbeiter steht ungesichert",
+          "qualified safety inspector"
+        ]
+      },
+      "subgroups": {
+        "language": "de",
+        "inputQuality": "good",
+        "sceneType": "construction"
+      },
+      "inputQuality": {
+        "sharpness": 240.0,
+        "meanLuminance": 132.0
+      },
+      "notes": "The model's own prose reaches the wearer as written; the app's framing around it stays in the app's language."
+    }
+  ]
+}
