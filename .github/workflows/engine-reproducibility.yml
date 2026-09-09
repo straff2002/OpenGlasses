@@ -28,13 +28,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The default GITHUB_TOKEN permission set is whatever the repository's default happens to be, which
+# changes under you when an org setting moves. Declare it: nothing in this workflow writes to the
+# repository. Uploading an artifact is an artifact-scope operation and does not need `contents:
+# write` — a token that can push is a token a compromised action can push with.
+permissions:
+  contents: read
+
 jobs:
   rebuild:
     runs-on: macos-26
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show toolchain
         run: |

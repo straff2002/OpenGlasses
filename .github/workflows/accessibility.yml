@@ -33,6 +33,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The default GITHUB_TOKEN permission set is whatever the repository's default happens to be, which
+# changes under you when an org setting moves. Declare it: nothing in this workflow writes to the
+# repository. Uploading an artifact is an artifact-scope operation and does not need `contents:
+# write` — a token that can push is a token a compromised action can push with.
+permissions:
+  contents: read
+
 jobs:
   audit:
     # On a PR this runs only when the `accessibility` label is on it. Deliberately a label test
@@ -46,7 +53,7 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show toolchain
         run: |
@@ -57,7 +64,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Cache MediaPipe frameworks
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: Vendor/MediaPipeTasks/Frameworks
           key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
@@ -70,7 +77,7 @@ jobs:
       # must run before any package resolution. Cached on the pinned revision: the cache misses
       # only when REVISION moves, and a miss costs one from-source build rather than one per run.
       - name: Cache llama.cpp framework
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: Vendor/LlamaCpp/Frameworks
           key: llamacpp-framework-${{ hashFiles('Vendor/LlamaCpp/REVISION', 'Scripts/build-llamacpp-framework.sh') }}
@@ -79,7 +86,7 @@ jobs:
         run: ./Scripts/fetch-llamacpp-framework.sh
 
       - name: Cache SPM checkouts
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .spm-checkouts
           key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
@@ -123,7 +130,7 @@ jobs:
 
       - name: Upload result bundle
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: AccessibilityResults
           path: AccessibilityResults.xcresult
