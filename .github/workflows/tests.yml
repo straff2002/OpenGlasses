@@ -1,12 +1,17 @@
 name: Unit Tests
 
-# Runs OpenGlassesTests on every PR — the tracked test gate (Plan CD P1).
+# Runs OpenGlassesTests on every PR — the tracked test gate (Plan CD P1) — plus a narrower
+# security-regression suite on PRs that touch the security surface.
 #
 # This file is force-added past the `.github/` gitignore (same as pages.yml): the ignore exists to
 # keep *personal* workflows local, but the test gate has to travel with the repo. It exists because
 # the launch/Connect crash fixed in Plan CD was reachable for months while 224 test files never ran
 # in any tracked CI — Xcode Cloud's workflow config lives in App Store Connect where the repo
 # can't see or version it.
+#
+# The twelve steps that turn a checkout into a generated project and a booted simulator live in
+# .github/actions/xcode-project, so the two macOS jobs below cannot drift apart in how they build
+# the thing they test.
 #
 # Runner notes (proven against this codebase on GitHub-hosted runners):
 # - macos-26 for the iOS 26 SDK; macos-15's Xcode is too old for HaishinKit/the deployment target.
@@ -57,82 +62,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Blocking, and first, because it needs no toolchain: a direct NSLog/print in production
+      # sources, a log line interpolating a credential- or content-named value, or an
+      # unexplained allowlist entry should cost twenty seconds of Linux-free macOS time, not a
+      # twenty-minute build. The structural half of this gate is PrivacyLogTests in the suite
+      # below; this is the global backstop every new file inherits without anyone remembering.
+      - name: Privacy-logging gate
+        run: ./Scripts/check-privacy-logging.sh
+
       - name: Show toolchain
         run: |
           xcodebuild -version
           sw_vers
 
-      # brew installs whatever version the tap holds that morning and verifies nothing this
-      # repository states. XcodeGen writes the project file every build compiles, so the pinned,
-      # sha256-verified install is the same standard the vendored binaries already meet. The
-      # script appends its bin directory to $GITHUB_PATH, so later steps just find it.
-      - name: Install XcodeGen (pinned, checksum-verified)
-        run: ./Scripts/install-xcodegen.sh
-
-      # The MediaPipe binaries (Plan CK) are fetched, not committed — the graph static
-      # libraries exceed GitHub's per-file size limit. Cached so the ~440 MB download
-      # doesn't repeat every run; the fetch script is idempotent on a cache hit.
-      - name: Cache MediaPipe frameworks
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: Vendor/MediaPipeTasks/Frameworks
-          key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
-
-      - name: Fetch MediaPipe frameworks
-        run: ./Scripts/fetch-mediapipe-frameworks.sh
-
-      # The engine is committed, so this verifies the bytes in the tree against the digests
-      # committed beside them rather than building anything. That a clone links exactly what was
-      # reviewed is worth one shasum pass per run; proving those bytes still come from the pinned
-      # sources is the engine-reproducibility workflow's job, not this one's.
-      - name: Fetch llama.cpp framework
-        run: ./Scripts/fetch-llamacpp-framework.sh
-
-      # Obtaining the engine must not edit what is committed about it. It used to: an explained
-      # digest difference rewrote SHA256SUMS in the workspace, so the test comparing the two was
-      # comparing the build to itself. This fails the run if that ever comes back.
-      - name: Vendor digests survive the build
-        run: git diff --exit-code Vendor/LlamaCpp
-
-      # Every run re-clones the full SPM graph — WebRTC, HaishinKit, mlx-swift-lm and the
-      # HuggingFace packages — before a line of app code compiles. The checkouts are identical
-      # between runs unless the pins move, so -clonedSourcePackagesDirPath (set on the xcodebuild
-      # invocation below) puts them at a stable path this can cache.
-      #
-      # DerivedData is deliberately NOT cached. A restored build directory carries absolute paths
-      # and module timestamps from another machine, and this repo has already lost time to
-      # stale-artefact failures that look like source bugs. Caching the inputs is safe; caching
-      # the outputs is not.
-      - name: Cache SPM checkouts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .spm-checkouts
-          key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
-          restore-keys: |
-            spm-${{ runner.os }}-
-
-      - name: Skip Watch targets
-        run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
-
-      - name: Generate Xcode project
-        run: ./Scripts/generate-xcodeproj.sh
-
-      # Xcode Cloud builds what ci_scripts/Package.resolved pins; this workflow used to let
-      # xcodebuild resolve the graph fresh, treating the same file as nothing but a cache key. Two
-      # pipelines resolving independently is two chances to compile a different dependency graph
-      # from the same commit — and the one that ships is the one nobody's tests ran against. Copy
-      # the tracked lockfile into the generated project, exactly as ci_post_clone.sh does, and pass
-      # -onlyUsePackageVersionsFromResolvedFile below so a pin that cannot be satisfied fails the
-      # run instead of quietly resolving to something else.
-      #
-      # Path-based local packages (Vendor/SherpaOnnx, MediaPipeTasks, LlamaCpp) are absent from the
-      # resolved file by design — they have no remote version to pin.
-      - name: Freeze package resolution to the tracked lockfile
-        run: |
-          dst=OpenGlasses.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-          mkdir -p "$dst"
-          cp ci_scripts/Package.resolved "$dst/Package.resolved"
-          echo "Frozen to $(grep -c '\"identity\"' ci_scripts/Package.resolved) pins."
+      - name: Prepare the Xcode project
+        id: project
+        uses: ./.github/actions/xcode-project
 
       # What this run actually used, written down. A green test run only means something if you
       # can say later which toolchain, SDK, dependency graph and vendored binaries produced it —
@@ -174,19 +119,6 @@ jobs:
             done
           } | tee provenance.txt
 
-      - name: Pick a simulator
-        id: sim
-        run: |
-          UDID=$(xcrun simctl list devices available --json | python3 -c '
-          import json, sys
-          data = json.load(sys.stdin)["devices"]
-          phones = [d for devs in data.values() for d in devs if "iPhone" in d["name"]]
-          if not phones:
-              sys.exit("no available iPhone simulator on this image")
-          print(phones[-1]["udid"])')
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$UDID" || true
-
       - name: Run unit tests
         # Below the job's 90-minute cap so a hung run fails while there is still budget to
         # report it. Healthy runs have measured 16-24 minutes, so this is about twice the
@@ -197,6 +129,8 @@ jobs:
           # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
           # plugins, so without them the run dies on 'Plugin "CudaBuild" from package "mlx-swift"
           # must be enabled before it can be used' before any test executes.
+          # -onlyUsePackageVersionsFromResolvedFile: build the graph the lockfile pins, or fail —
+          # see the freeze step in .github/actions/xcode-project.
           # 2>&1: xcodebuild reports its errors on stderr — without merging, the failure tail
           # below shows package resolution instead of the actual cause.
           # -test-timeouts-enabled: a single wedged test fails itself, by name, instead of
@@ -206,7 +140,7 @@ jobs:
           xcodebuild test \
             -project OpenGlasses.xcodeproj \
             -scheme OpenGlasses \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.project.outputs.simulator-udid }}" \
             -resultBundlePath TestResults.xcresult \
             -skipPackagePluginValidation \
             -skipMacroValidation \
@@ -232,4 +166,116 @@ jobs:
         with:
           name: TestResults
           path: TestResults.xcresult
+          retention-days: 7
+
+  # Path filters in GitHub Actions are workflow-level, and this workflow's filter belongs to the
+  # unit gate above — narrowing it to the security surface would stop that gate running on
+  # everything else. So the security job's trigger is computed here instead: one cheap Linux job
+  # that diffs the pull request against its merge base and says whether the surface moved.
+  #
+  # The workflow's existing `paths-ignore` is untouched. It has no negation patterns (`**.md` and
+  # `docs/**`), so its semantics are exactly what they read as; nothing here depends on that
+  # beyond leaving it alone.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      security: ${{ steps.filter.outputs.security }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Did the security surface change?
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request — running the security regression suite unconditionally."
+            echo "security=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          changed="$(git diff --name-only "$base" HEAD)"
+          echo "Changed files:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+          # Security-relevant surface: the network/containment policies, the pack and vision
+          # admission paths, every native tool (the action surface), the compliance router, the
+          # LLM egress point, and CI itself — a workflow change can disable the gate.
+          pattern='^(OpenGlasses/Sources/Services/(Security|SkillPacks|Vision|NativeTools)/'
+          pattern="$pattern"'|OpenGlasses/Sources/Services/(HIPAAComplianceService|LLMService)\.swift$'
+          pattern="$pattern"'|\.github/(workflows|actions)/)'
+          if printf '%s\n' "$changed" | grep -Eq "$pattern"; then
+            echo "security=true" >> "$GITHUB_OUTPUT"
+            echo "-> security surface touched; the regression suite will run."
+          else
+            echo "security=false" >> "$GITHUB_OUTPUT"
+            echo "-> security surface untouched; skipping the regression suite."
+          fi
+
+  # A named, blocking gate for the controls W02-W05 and W08 rest on. The full suite above already
+  # contains these classes, so on a PR that touches the security surface this is deliberately
+  # redundant compute — bought for one property the full run cannot give: a required check whose
+  # name says what it protects, so branch protection can require *this* rather than "all tests
+  # passed", and a red one names the boundary that broke instead of a number.
+  security-regression:
+    needs: scope
+    if: needs.scope.outputs.security == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Privacy-logging gate
+        run: ./Scripts/check-privacy-logging.sh
+
+      - name: Prepare the Xcode project
+        id: project
+        uses: ./.github/actions/xcode-project
+
+      - name: Run the security regression suite
+        timeout-minutes: 45
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project OpenGlasses.xcodeproj \
+            -scheme OpenGlasses \
+            -destination "platform=iOS Simulator,id=${{ steps.project.outputs.simulator-udid }}" \
+            -resultBundlePath SecurityResults.xcresult \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -clonedSourcePackagesDirPath .spm-checkouts \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -only-testing:OpenGlassesTests/BoundedHTTPClientTests \
+            -only-testing:OpenGlassesTests/SkillPackCatalogTests \
+            -only-testing:OpenGlassesTests/SkillPackSideloadTests \
+            -only-testing:OpenGlassesTests/BookFileExtractorTests \
+            -only-testing:OpenGlassesTests/UntrustedNetworkFeaturePolicyTests \
+            -only-testing:OpenGlassesTests/LocalServiceExposurePolicyTests \
+            -only-testing:OpenGlassesTests/ComposedToolContainmentTests \
+            -only-testing:OpenGlassesTests/OutboundFramePrivacyTests \
+            -only-testing:OpenGlassesTests/PrivacyFilterScopeTests \
+            -only-testing:OpenGlassesTests/MedicalComplianceTests \
+            -only-testing:OpenGlassesTests/MedicalLLMRoutingPolicyTests \
+            -only-testing:OpenGlassesTests/OperationJournalTests \
+            -only-testing:OpenGlassesTests/SafetyGateTests \
+            -only-testing:OpenGlassesTests/PrivacyCanaryTests \
+            -only-testing:OpenGlassesTests/PrivacyLogTests \
+            -only-testing:OpenGlassesTests/TelemetryOptOutGuardTests \
+            SWIFT_EMIT_LOC_STRINGS=NO \
+            2>&1 | tee security.log | grep --line-buffered -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
+            || { tail -100 security.log; exit 1; }
+
+      - name: Upload result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SecurityResults
+          path: SecurityResults.xcresult
           retention-days: 7

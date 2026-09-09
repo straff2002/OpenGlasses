@@ -46,6 +46,8 @@ Carthage/Build/
 # the directory is what lets the negation below be heard at all.
 .github/*
 !.github/workflows/
+# …and the composite action the workflows share (same reasoning as above).
+!.github/actions/
 .impeccable.md
 CLAUDE.md
 AGENTS.md
