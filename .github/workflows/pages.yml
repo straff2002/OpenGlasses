@@ -1,11 +1,25 @@
 name: Deploy to GitHub Pages
+
+# Publishes the *staged* site, not the checkout.
+#
+# This used to upload `path: .` — every tracked file in the repository. Nothing had leaked, but
+# what reached the public artifact was decided by `.gitignore` rather than by anyone's judgement:
+# compliance evidence under plans/, signing overlays under Config/, and the whole source tree were
+# all one `git add` away from being published with no diff to review.
+#
+# Scripts/stage-pages-site.sh copies an explicit allowlist into _site/ and then, independently,
+# refuses to hand over a staged tree containing a denied path. It fails the job rather than
+# publishing, so an over-broad allowlist stops the deploy instead of shipping.
+
 on:
   push:
     branches: [main]
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,9 +28,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - name: Stage the allowlisted site
+        run: ./Scripts/stage-pages-site.sh
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v5
