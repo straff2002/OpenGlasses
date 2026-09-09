@@ -40,22 +40,45 @@ enum ToolAuthorizationPolicy {
         let safetyContext: SafetyContext
         /// How a composition whose resolved target the router would gate is handled.
         let composedTargets: ComposedToolPolicy.Mode
+        /// Which side of the app this call is about to be dispatched on.
+        let seam: ToolDispatchSeam
+        /// What running this call does that a person would want to have been asked about.
+        let effectClass: ToolEffectClass
 
         /// The default context has no rules enabled and reads no settings — the router always
-        /// passes a live one, so this keeps a policy assertion free of global state.
+        /// passes a live one, so this keeps a policy assertion free of global state. `seam` and
+        /// `effectClass` follow the same convention: the router resolves the real values, and the
+        /// defaults here describe the one call shape that needs no authorization at all.
         init(call: ResolvedToolCall, agentModeEnabled: Bool,
              safetyContext: SafetyContext = SafetyContext(
                 now: Date(), location: nil, homeRegion: nil, enabledRules: [],
                 quietHoursStart: 0, quietHoursEnd: 0),
-             composedTargets: ComposedToolPolicy.Mode = .refuse) {
+             composedTargets: ComposedToolPolicy.Mode = .refuse,
+             seam: ToolDispatchSeam = .native,
+             effectClass: ToolEffectClass = .readOnly) {
             self.call = call
             self.agentModeEnabled = agentModeEnabled
             self.safetyContext = safetyContext
             self.composedTargets = composedTargets
+            self.seam = seam
+            self.effectClass = effectClass
         }
     }
 
     static func evaluate(_ input: Input) -> ToolAuthorizationDecision {
+        // The effect-class floor can only ever *strengthen* the ladder's verdict, so it is applied
+        // to the result rather than spliced into the middle: a refusal, a safety block and a
+        // presence hold all still win, and only an `allow` can be raised to a confirmation.
+        let decision = ladder(input)
+        guard case .allow = decision,
+              input.effectClass.requiresBoundApproval(on: input.seam) else { return decision }
+        let summary = ToolEffectClassifier.approvalSummary(
+            tool: input.call.name, args: input.call.arguments.rawValues,
+            effectClass: input.effectClass, seam: input.seam)
+        return .confirm(summary: attributed(summary, call: input.call))
+    }
+
+    private static func ladder(_ input: Input) -> ToolAuthorizationDecision {
         let call = input.call
         let name = call.name
         let args = call.arguments.rawValues

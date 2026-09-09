@@ -234,6 +234,12 @@ enum PrivacyLog {
         case blockedBySafety, heldForReengagement, noConfirmationCoordinator
         case confirmationRequired, declinedByUser, egressWithheld, alreadyJournaled
         case operationJournalUnavailable
+        /// The wearer withdrew consent for the asking source, so nothing was even asked.
+        case consentWithdrawn
+        /// An approval existed but was not bound to this call — replayed, expired, or given for
+        /// different arguments, a different tool or a different server. The refusal class itself
+        /// goes to the authorization ring; this is the dispatch-side counterpart.
+        case approvalNotBound
     }
 
     @discardableResult
@@ -1563,6 +1569,9 @@ enum PrivacyLog {
         case evolvedSkills, usage, playbooks, operationJournal
         case readingSessions, studyDecks, recordedSessions, skillPacks, skillHub
         case offlineQueue, homeGrid
+        /// Reviewed tool-definition digests per server, and the versioned consent register. Both
+        /// hold one-way digests and closed-vocabulary fields only.
+        case toolDefinitionDigests, consentRecords
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,

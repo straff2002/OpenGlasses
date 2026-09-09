@@ -49,7 +49,10 @@ final class ToolAuthorizationEventLog {
     }
 
     /// Short, stable, one-way. Correlates records within a session without carrying the value.
-    static func fingerprint(_ value: String) -> String {
+    ///
+    /// `nonisolated` because it is pure arithmetic over a string and is the app's one agreed way to
+    /// name a value without carrying it — the consent surface needs it off the main actor too.
+    nonisolated static func fingerprint(_ value: String) -> String {
         SHA256.hash(data: Data(value.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 }

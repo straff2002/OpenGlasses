@@ -163,7 +163,7 @@ enum ToolDeclarations {
                 : tool.inputSchema
             return [
                 "name": tool.qualifiedName,
-                "description": "[\(tool.serverLabel)] \(tool.description)",
+                "description": MCPToolDeclarationPolicy.description(for: tool),
                 "parameters": schema,
             ] as [String: Any]
         }
