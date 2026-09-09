@@ -11,8 +11,10 @@ struct AgenticFeaturesView: View {
     @State private var visionAttachment = Config.agentVisionAttachmentEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
     @State private var tasks: [AgentScheduler.ScheduledTask] = AgentScheduler.savedTasks()
-    @State private var showShareSheet = false
-    @State private var exportURL: URL?
+    @State private var exportShare: ShareItem?
+    /// The staged archive currently on disk. Held so a screen the wearer leaves without sharing
+    /// does not strand the single most concentrated copy of their data.
+    @State private var exportLease: StagedExportLease?
     @State private var agentModelReady = Config.agentModelDownloaded
     @State private var agentDownloadError: String?
     @State private var selectedAgentModelId = Config.agentModelId
@@ -333,11 +335,10 @@ struct AgenticFeaturesView: View {
         .sheet(item: $editingDocument) { type in
             AgentDocumentEditorView(type: type, store: agentDocs)
         }
-        .sheet(isPresented: $showShareSheet) {
-            if let url = exportURL {
-                ShareSheet(items: [url])
-            }
+        .sheet(item: $exportShare) { item in
+            ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+        .onDisappear { releaseOutstandingExport() }
     }
 
     private func modelShortName(_ id: String) -> String {
@@ -371,16 +372,33 @@ struct AgenticFeaturesView: View {
     }
 
     private func exportData() {
+        releaseOutstandingExport()
         do {
-            let url = try AgentDataExporter.exportAll(
+            let lease = try AgentDataExporter.exportAll(
                 agentDocs: agentDocs,
                 memoryStore: appState.userMemory,
                 conversationStore: appState.conversationStore
             )
-            exportURL = url
-            showShareSheet = true
+            exportLease = lease
+            StagedExportCoordinator.agentArchive.beginShare(lease)
+            exportShare = ShareItem(
+                items: [ProtectedExportActivityItem(fileURL: lease.fileURL,
+                                                    displayName: lease.displayName)]
+            ) { completed in
+                StagedExportCoordinator.agentArchive.finishShare(
+                    lease, outcome: completed ? .completed : .cancelled)
+                exportLease = nil
+            }
         } catch {
             PrivacyLog.transfer(.agentExport, .fileFailed, error: SafeErrorSummary(error))
+        }
+    }
+
+    /// An archive the wearer never handed to a share provider must not outlive the screen.
+    private func releaseOutstandingExport() {
+        if let exportLease {
+            StagedExportCoordinator.agentArchive.release(exportLease)
+            self.exportLease = nil
         }
     }
 }

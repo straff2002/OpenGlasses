@@ -54,8 +54,11 @@ class FaceRecognitionService: ObservableObject {
 
     private let storageURL: URL
 
-    init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    /// `directory` is injectable so a test can enrol and erase faceprints in a temporary folder
+    /// rather than in the wearer's own database.
+    init(directory: URL? = nil) {
+        let docs = directory
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         storageURL = docs.appendingPathComponent("known_faces.json")
         loadFaces()
     }
@@ -163,6 +166,17 @@ class FaceRecognitionService: ObservableObject {
             return "Forgot \(name) (\(removed) face\(removed == 1 ? "" : "s") removed)."
         }
         return "No face found for '\(name)'."
+    }
+
+    /// Forget everyone. Faceprints are biometrics belonging to people who never installed this
+    /// app, so the store owes a whole-database erase and not only a per-name one.
+    @discardableResult
+    func forgetAllFaces() -> Int {
+        let removed = knownFaces.count
+        guard removed > 0 else { return 0 }
+        knownFaces.removeAll()
+        saveFaces()
+        return removed
     }
 
     /// List all known faces

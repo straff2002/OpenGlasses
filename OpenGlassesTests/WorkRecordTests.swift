@@ -548,13 +548,15 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertEqual(record.partsRequests.map(\.quantity), [2])
 
         // …and it survives the write → decode round trip, and reaches the PDF.
-        let urls = try SessionExporter.export(sessionDir: dir, formats: [.json, .pdf])
-        XCTAssertEqual(urls.count, 2)
+        let leases = try SessionExporter.export(sessionDir: dir, formats: [.json, .pdf])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        XCTAssertEqual(leases.count, 2)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        let reloaded = try decoder.decode(
-            SessionExport.self, from: Data(contentsOf: dir.appendingPathComponent("audit_export.json")))
+        let reloaded = try decoder.decode(SessionExport.self, from: Data(contentsOf:
+            try XCTUnwrap(leases.first { $0.displayName == "audit_export.json" }).fileURL))
         XCTAssertEqual(reloaded.workRecord, record)
-        let pdf = try Data(contentsOf: dir.appendingPathComponent("work_order.pdf"))
+        let pdf = try Data(contentsOf:
+            try XCTUnwrap(leases.first { $0.displayName == "work_order.pdf" }).fileURL)
         XCTAssertEqual(pdf.prefix(4), Data("%PDF".utf8))
         XCTAssertGreaterThan(pdf.count, 800)
     }

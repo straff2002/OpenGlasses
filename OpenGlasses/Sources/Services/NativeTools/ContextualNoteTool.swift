@@ -122,8 +122,14 @@ class ContextualNoteStore {
     static let shared = ContextualNoteStore()
     private let key = "contextualNotes"
 
+    /// Injectable so an erasure test can seed and clear notes without touching the wearer's own
+    /// preference domain.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
     func all() -> [ContextualNote] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let notes = try? JSONDecoder().decode([ContextualNote].self, from: data) else { return [] }
         return notes
     }
@@ -147,17 +153,25 @@ class ContextualNoteStore {
         }
     }
 
+    /// Remove every note `search(_:)` would return for `query`. The two used to disagree — the
+    /// delete lowercased the note but not the query, and looked at fewer fields — so a note the
+    /// wearer could find by name was a note they could not delete by name.
     func deleteMatching(_ query: String) -> Int {
+        let q = query.lowercased()
         var notes = all()
         let before = notes.count
-        notes.removeAll { $0.content.lowercased().contains(query) || $0.tags.contains(query) }
+        notes.removeAll { note in
+            note.content.lowercased().contains(q)
+                || note.tags.contains { $0.lowercased().contains(q) }
+                || (note.locationName?.lowercased().contains(q) ?? false)
+        }
         persist(notes)
         return before - notes.count
     }
 
     private func persist(_ notes: [ContextualNote]) {
         if let data = try? JSONEncoder().encode(notes) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 }

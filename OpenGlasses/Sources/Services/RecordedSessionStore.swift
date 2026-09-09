@@ -90,6 +90,16 @@ final class RecordedSessionStore: ObservableObject {
         persist()
     }
 
+    /// Remove every recorded session and the audio each one names. What a coordinated erasure
+    /// reaches: a recording is not indexed by who is audible in it, so per-subject removal is not
+    /// something this store can honestly offer, and the whole-store delete is.
+    @discardableResult
+    func deleteAll() -> Int {
+        let doomed = sessions
+        doomed.forEach { delete($0) }
+        return doomed.count
+    }
+
     func delete(_ session: RecordedSession) {
         let storedSession = sessions.first(where: { $0.id == session.id }) ?? session
         sessions.removeAll { $0.id == session.id }

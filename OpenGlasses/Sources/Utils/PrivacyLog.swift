@@ -1572,6 +1572,9 @@ enum PrivacyLog {
         /// Reviewed tool-definition digests per server, and the versioned consent register. Both
         /// hold one-way digests and closed-vocabulary fields only.
         case toolDefinitionDigests, consentRecords
+        /// A coordinated erasure walk. What is recorded is how many stores completed of how many
+        /// were walked — never the subject, whose whole point is that they are being forgotten.
+        case subjectErasure
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,
@@ -1635,6 +1638,12 @@ enum PrivacyLog {
         /// events that were already logged, so the lifecycle is what is recorded here: a lease
         /// made, shared, released, or scavenged after a crash. Never the file, never its bytes.
         case diagnosticsExport
+        /// A HECA safety-assessment PDF, by its lease. The report names a worksite and its
+        /// hazards, so as with every other export only the lifecycle is recorded.
+        case safetyExport
+        /// A Field Assist session's audit JSON and work-order PDF, by their leases. The record
+        /// names a customer, an asset and an engineer; the lifecycle is all that is logged.
+        case fieldSessionExport
     }
 
     enum TransferEvent: String {

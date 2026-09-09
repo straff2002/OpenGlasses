@@ -105,15 +105,21 @@ class SocialContextStore {
     static let shared = SocialContextStore()
     private let key = "socialContext"
 
+    /// Injectable so an erasure test can seed and clear a person without touching the wearer's
+    /// own preference domain.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
     private func load() -> [PersonEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let entries = try? JSONDecoder().decode([PersonEntry].self, from: data) else { return [] }
         return entries
     }
 
     private func persist(_ entries: [PersonEntry]) {
         if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: key)
         }
     }
 

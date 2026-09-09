@@ -85,23 +85,27 @@ final class SessionExporterTests: XCTestCase {
         XCTAssertEqual(gauge.method, "voice_number")
 
         // And it survives the JSON write → decode round-trip.
-        _ = try SessionExporter.export(sessionDir: sessionDir, formats: [.json])
+        let leases = try SessionExporter.export(sessionDir: sessionDir, formats: [.json])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(
-            SessionExport.self,
-            from: Data(contentsOf: sessionDir.appendingPathComponent("audit_export.json")))
+            SessionExport.self, from: Data(contentsOf: try XCTUnwrap(leases.first).fileURL))
         XCTAssertEqual(reloaded.captures, export.captures)
     }
 
     func testExportWritesJSONAndPDFFiles() throws {
         _ = try makePopulatedSession()
-        let urls = try SessionExporter.export(sessionDir: sessionDir, formats: [.json, .pdf])
-        XCTAssertEqual(urls.count, 2)
+        let leases = try SessionExporter.export(sessionDir: sessionDir, formats: [.json, .pdf])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        XCTAssertEqual(leases.count, 2)
 
-        let json = sessionDir.appendingPathComponent("audit_export.json")
-        let pdf = sessionDir.appendingPathComponent("work_order.pdf")
+        let json = try XCTUnwrap(leases.first { $0.displayName == "audit_export.json" }).fileURL
+        let pdf = try XCTUnwrap(leases.first { $0.displayName == "work_order.pdf" }).fileURL
         XCTAssertTrue(FileManager.default.fileExists(atPath: json.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: pdf.path))
+        // The artifacts are staged, not left beside the session log.
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: sessionDir.appendingPathComponent("audit_export.json").path))
 
         // The PDF should have real content (non-trivial size) and a %PDF header.
         let pdfData = try Data(contentsOf: pdf)

@@ -27,13 +27,24 @@ enum SessionExporter {
         }
     }
 
-    /// Produce the requested export artifacts in the session directory; returns their URLs.
+    /// Produce the requested export artifacts in protected staging; returns a lease per artifact.
     ///
     /// Entitlement is enforced here rather than only at the settings screen: the export tool and the
     /// session service both reach this directly. Once entitlement is revoked no new artifact is
-    /// produced; artifacts already written stay on disk and remain the user's record.
+    /// produced.
+    ///
+    /// The artifacts used to be written into the session directory, unprotected and included in
+    /// backups, and left there indefinitely. They are *derived*: the durable record is the
+    /// session's own `session.json` + `log.jsonl`, and `buildExport` rebuilds an identical
+    /// document from them at any time. So the shareable copy now lives on a lease — protected and
+    /// backup-excluded before its first byte, removed whole on a write or attribute failure,
+    /// released when the share ends or the app backgrounds, and swept after its TTL — and nothing
+    /// the engineer owns is lost by that, because re-exporting reproduces it.
     @discardableResult
-    static func export(sessionDir: URL, formats: Set<Format> = [.json, .pdf]) throws -> [URL] {
+    static func export(sessionDir: URL,
+                       formats: Set<Format> = [.json, .pdf],
+                       coordinator: StagedExportCoordinator? = nil) throws -> [StagedExportLease] {
+        let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device at any tier.
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
             throw ExportError.notEntitled
@@ -44,10 +55,26 @@ enum SessionExporter {
         guard let document = buildExport(sessionDir: sessionDir) else {
             throw ExportError.metadataUnreadable
         }
-        var urls: [URL] = []
-        if formats.contains(.json) { urls.append(try writeJSON(document, to: sessionDir)) }
-        if formats.contains(.pdf) { urls.append(try writePDF(document, to: sessionDir)) }
-        return urls
+        var leases: [StagedExportLease] = []
+        do {
+            if formats.contains(.json) {
+                leases.append(try coordinator.makeLease(
+                    fileExtension: "json", displayName: "audit_export.json",
+                    fallbackName: "audit_export.json") { try writeJSON(document, to: $0) })
+            }
+            if formats.contains(.pdf) {
+                leases.append(try coordinator.makeLease(
+                    fileExtension: "pdf", displayName: "work_order.pdf",
+                    fallbackName: "work_order.pdf") { try writePDF(document, to: $0) })
+            }
+        } catch {
+            // Partial failure leaves no half-made export set: the artifact that did succeed is
+            // released before the error surfaces.
+            leases.forEach { coordinator.release($0) }
+            throw error
+        }
+        PrivacyLog.transfer(.fieldSessionExport, .exported, count: leases.count)
+        return leases
     }
 
     // MARK: - Reconstruction
@@ -179,19 +206,19 @@ enum SessionExporter {
 
     // MARK: - JSON
 
-    static func writeJSON(_ document: SessionExport, to dir: URL) throws -> URL {
+    /// Write the consolidated audit JSON at exactly `url`. The caller owns the location — which is
+    /// a protected session directory on every production path.
+    static func writeJSON(_ document: SessionExport, to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let url = dir.appendingPathComponent("audit_export.json")
         try encoder.encode(document).write(to: url, options: .atomic)
-        return url
     }
 
     // MARK: - PDF
 
-    static func writePDF(_ document: SessionExport, to dir: URL) throws -> URL {
-        let url = dir.appendingPathComponent("work_order.pdf")
+    /// Render the work order at exactly `url`. As with `writeJSON`, the caller owns the location.
+    static func writePDF(_ document: SessionExport, to url: URL) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
         let layout = PDFLayout(pageRect: pageRect, margin: 50)
@@ -256,7 +283,6 @@ enum SessionExporter {
                 }
             }
         }
-        return url
     }
 
     /// One line per distinct source: what was cited, and whether anybody looked at the page it

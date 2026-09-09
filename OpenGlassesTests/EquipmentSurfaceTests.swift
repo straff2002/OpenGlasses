@@ -228,16 +228,18 @@ final class EquipmentSurfaceTests: XCTestCase {
                        + EquipmentIdentity.clock(Date(timeIntervalSince1970: 1_757_000_520)))
         XCTAssertEqual(lines.dropFirst().first, "Asset: Unit 47B")
 
-        let urls = try SessionExporter.export(sessionDir: dir, formats: [.pdf])
-        let pdf = try XCTUnwrap(PDFDocument(url: try XCTUnwrap(urls.first)))
+        let leases = try SessionExporter.export(sessionDir: dir, formats: [.pdf])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        let pdf = try XCTUnwrap(PDFDocument(url: try XCTUnwrap(leases.first).fileURL))
         let text = (pdf.string ?? "").replacingOccurrences(of: "\n", with: " ")
         XCTAssertTrue(text.contains("Equipment: SLP99UH090XV60CK"), text.prefix(400).description)
     }
 
     func testWorkOrderWithoutEquipmentPrintsNoSuchLine() throws {
         let dir = try runSession(equipment: nil)
-        let urls = try SessionExporter.export(sessionDir: dir, formats: [.pdf])
-        let pdf = try XCTUnwrap(PDFDocument(url: try XCTUnwrap(urls.first)))
+        let leases = try SessionExporter.export(sessionDir: dir, formats: [.pdf])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        let pdf = try XCTUnwrap(PDFDocument(url: try XCTUnwrap(leases.first).fileURL))
         XCTAssertFalse((pdf.string ?? "").contains("Equipment:"))
     }
 }

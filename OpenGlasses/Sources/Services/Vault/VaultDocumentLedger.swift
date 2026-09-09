@@ -98,6 +98,35 @@ struct VaultDocumentLedger: Codable, Equatable {
         try encoder.encode(self).write(to: directory.appendingPathComponent(Self.filename), options: .atomic)
     }
 
+    // MARK: - Deletion
+
+    /// Drop one document's entry and return it, so the caller can also forget its chunks in
+    /// `DocumentStore`. The ledger and the SQLite store are two halves of one record; erasing
+    /// either alone leaves a sync that would resurrect the other.
+    @discardableResult
+    mutating func remove(documentId: String) -> Entry? {
+        guard let index = entries.firstIndex(where: { $0.documentId == documentId }) else { return nil }
+        return entries.remove(at: index)
+    }
+
+    /// Forget one document in the ledger on disk. Returns the entry that was removed, if any.
+    @discardableResult
+    static func forget(documentId: String, in directory: URL) throws -> Entry? {
+        var ledger = load(from: directory)
+        guard let removed = ledger.remove(documentId: documentId) else { return nil }
+        try ledger.save(to: directory)
+        return removed
+    }
+
+    /// Empty the ledger on disk, returning how many entries went.
+    @discardableResult
+    static func clear(in directory: URL) throws -> Int {
+        let ledger = load(from: directory)
+        guard !ledger.entries.isEmpty else { return 0 }
+        try VaultDocumentLedger().save(to: directory)
+        return ledger.entries.count
+    }
+
     // MARK: - Diff
 
     /// Unchanged hash → keep. Changed hash → forget the old id, ingest anew. Missing from the
