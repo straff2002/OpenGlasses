@@ -49,7 +49,8 @@ final class EndpointPolicyTests: XCTestCase {
 
     func testLocalRoutesMayReachPrivateSpace() {
         for route: NetworkRoute in [.mcpHTTPTransport, .hermesBridgeSession, .homeAssistantCommand,
-                                    .webHUDMirrorListener, .loopbackOAuthCallback] {
+                                    .webHUDMirrorListener, .loopbackOAuthCallback,
+                                    .openClawGatewaySocket] {
             XCTAssertNil(EndpointPolicy.validate("http://192.168.1.20:8123/api", for: route, build: .release).rejection,
                          route.rawValue)
         }
@@ -60,7 +61,7 @@ final class EndpointPolicyTests: XCTestCase {
     func testALocalExceptionCannotAuthoriseAnUnrelatedRoute() {
         let lan = "http://192.168.1.20:8123/api"
         XCTAssertNil(EndpointPolicy.validate(lan, for: .mcpHTTPTransport, build: .release).rejection)
-        for route: NetworkRoute in [.webSearch, .llmCompletion, .openClawGatewaySocket,
+        for route: NetworkRoute in [.webSearch, .llmCompletion, .twitchChatSocket,
                                     .elevenLabsSpeechSynthesis, .fhirExport, .localModelDownload] {
             guard case .privateHostNotPermitted(_, let named)? =
                     EndpointPolicy.validate(lan, for: route, build: .release).rejection else {
@@ -83,12 +84,15 @@ final class EndpointPolicyTests: XCTestCase {
                                         for: .openClawGatewaySocket, build: .release).rejection else {
             return XCTFail("cleartext ws to a public host was allowed")
         }
+        // A self-hosted gateway on the wearer's own machine is the ordinary case, not a workaround.
+        XCTAssertNil(EndpointPolicy.validate("ws://127.0.0.1:8765/ws",
+                                             for: .openClawGatewaySocket, build: .release).rejection)
         XCTAssertNil(EndpointPolicy.validate("ws://192.168.1.9:8765/",
                                              for: .hermesBridgeSession, build: .release).rejection)
     }
 
     func testCleartextHTTPToAPublicHostIsRejectedInRelease() {
-        for route: NetworkRoute in [.webSearch, .llmCompletion, .clawHubCatalog, .openClawGatewaySocket] {
+        for route: NetworkRoute in [.webSearch, .llmCompletion, .clawHubCatalog, .expertSignaling] {
             guard case .cleartextHTTPNotPermitted? =
                     EndpointPolicy.validate("http://example.com/x", for: route, build: .release).rejection else {
                 return XCTFail("\(route.rawValue) allowed cleartext to a public host")

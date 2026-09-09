@@ -198,10 +198,17 @@ final class NetworkRouteRegistryTests: XCTestCase {
         }
     }
 
-    func testPrivateNetworkIsOnlyReachableFromLocalRoutes() {
+    /// The private-network exception is a short, named list. Pinning it here means widening it is
+    /// an edit somebody has to justify, not a side effect of adding a route.
+    func testPrivateNetworkIsOnlyReachableFromTheNamedLocalClasses() {
+        let permitted: Set<NetworkEndpointClass> = [.localNetwork, .loopback, .gateway]
+        for endpointClass in NetworkEndpointClass.allCases {
+            XCTAssertEqual(endpointClass.permitsPrivateNetwork, permitted.contains(endpointClass),
+                           endpointClass.rawValue)
+        }
         for route in NetworkRoute.allCases {
-            let expected = route.endpointClass == .localNetwork || route.endpointClass == .loopback
-            XCTAssertEqual(route.endpointClass.permitsPrivateNetwork, expected, "\(route.rawValue)")
+            XCTAssertEqual(route.endpointClass.permitsPrivateNetwork,
+                           permitted.contains(route.endpointClass), route.rawValue)
         }
     }
 }

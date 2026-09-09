@@ -25,6 +25,32 @@ enum NetworkDataClass: String, CaseIterable, Sendable {
     case telemetryFree
 }
 
+extension NetworkDataClass {
+    /// The `NSPrivacyCollectedDataType` this class has to appear as in `PrivacyInfo.xcprivacy`,
+    /// or nil when it needs no declaration. `PrivacyManifestReconciliationTests` walks the registry
+    /// against the manifest so a new route cannot start sending a category the manifest denies.
+    var privacyManifestType: String? {
+        switch self {
+        case .audio: return "NSPrivacyCollectedDataTypeAudioData"
+        case .transcript, .promptText: return "NSPrivacyCollectedDataTypeOtherUserContent"
+        case .frame: return "NSPrivacyCollectedDataTypePhotosorVideos"
+        case .healthFact: return "NSPrivacyCollectedDataTypeHealth"
+        case .location: return "NSPrivacyCollectedDataTypePreciseLocation"
+        case .contactData: return "NSPrivacyCollectedDataTypeContacts"
+        case .credential:
+            // The user's own key, sent to the vendor it belongs to so that vendor can serve them.
+            // Apple's categories describe data the developer collects about the user; this is
+            // neither collected by us nor about them.
+            return nil
+        case .modelAsset:
+            // The outbound half is an identifier; the bytes travel inbound.
+            return nil
+        case .telemetryFree:
+            return nil
+        }
+    }
+}
+
 /// Where a route's endpoint lives. Drives which addresses `EndpointPolicy` will accept.
 enum NetworkEndpointClass: String, CaseIterable, Sendable {
     /// A cloud service whose host the user configured (their API key, their account).
@@ -40,9 +66,16 @@ enum NetworkEndpointClass: String, CaseIterable, Sendable {
     /// An OpenClaw-style agent gateway.
     case gateway
 
-    /// Only these two classes may address loopback or RFC1918 space.
+    /// Which classes may address loopback or RFC1918 space.
+    ///
+    /// `gateway` is here because an agent gateway has a first-class LAN mode — the gateway config
+    /// carries a `lanURL` alongside its tunnel URL, and a self-hosted gateway on the wearer's own
+    /// machine is the ordinary case, not a workaround. Everything else must reach a public host.
     var permitsPrivateNetwork: Bool {
-        self == .localNetwork || self == .loopback
+        switch self {
+        case .localNetwork, .loopback, .gateway: return true
+        case .userConfiguredCloud, .firstPartyCloud, .publicWeb: return false
+        }
     }
 
     /// Cleartext `http` is tolerated only where the destination is provably on the wearer's own
@@ -407,6 +440,27 @@ enum NetworkRouteRegistry {
         "NetworkInterceptor":
             "A URLProtocol diagnostic observer. It re-issues a request another route already originated and guarded, so counting it again would double-count."
     ]
+
+    /// Manifest declarations no single route owns, with why they are nonetheless correct.
+    /// Kept short for the same reason as the transport exemptions: a list of excuses that grows is
+    /// a manifest that has stopped describing the app.
+    static let manifestDeclarationsWithoutADedicatedRoute: [String: String] = [
+        "NSPrivacyCollectedDataTypeFitness":
+            "HealthKit workout and step figures reach a provider inside llmCompletion's tool results rather than on a transport of their own; the route records the clinical half of that payload as healthFact."
+    ]
+
+    /// Every `NSPrivacyCollectedDataType` the registry says the app must declare.
+    static var requiredPrivacyManifestTypes: Set<String> {
+        var types = Set(NetworkRoute.allCases
+            .flatMap(\.dataClasses)
+            .compactMap(\.privacyManifestType))
+        // A search query is user content, but Apple has a narrower category for it and the app
+        // sends one, so the narrower category is the honest declaration.
+        if NetworkRoute.allCases.contains(.webSearch) {
+            types.insert("NSPrivacyCollectedDataTypeSearchHistory")
+        }
+        return types
+    }
 
     static func route(owningType: String) -> NetworkRoute? {
         NetworkRoute.allCases.first { $0.owningTypes.contains(owningType) }
