@@ -20,10 +20,10 @@ final class MedicationIdentifierTool: NativeTool {
         "required": [] as [String]
     ]
 
-    private let cameraService: CameraService
+    private let cameraService: any FilteredStillProviding
     private let ocr: OCRService
 
-    init(cameraService: CameraService, ocr: OCRService = OCRService()) {
+    init(cameraService: any FilteredStillProviding, ocr: OCRService = OCRService()) {
         self.cameraService = cameraService
         self.ocr = ocr
     }
@@ -35,12 +35,13 @@ final class MedicationIdentifierTool: NativeTool {
         guard VaultRegistry.shared.isUnlocked("health") else {
             return "Medication identification needs the Medical Compliance subscription (it reads your Health Vault)."
         }
-        let data: Data?
-        if let frame = cameraService.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.85) {
-            data = jpeg
-        } else {
-            data = try? await cameraService.capturePhoto()
-        }
+        // On-device OCR — nothing leaves the process, so the on-device scope passes the pixels
+        // through untouched. Requested through the chokepoint anyway: that is where the
+        // classification is recorded (W04.1). The cross-check that follows reads a local
+        // vault; neither the label nor the photo is sent anywhere.
+        let data = await cameraService.filteredStill(for: .onDeviceVision,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.85)
         guard let data else {
             return "Couldn't capture an image. Hold the label steady in view and try again."
         }

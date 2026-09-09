@@ -26,7 +26,10 @@ final class StudyService: ObservableObject {
     /// (systemPrompt, userText, jsonSchema) → JSON object. Set by `configure(...)`; tests inject a fake.
     var generate: ((String, String, [String: Any]) async -> [String: Any]?)?
     weak var documentStore: DocumentStore?
-    private weak var camera: CameraService?
+    /// The still source, typed as the privacy chokepoint (W04.1). Scanning is on-device OCR, so
+    /// the scope is an on-device one — but it is still requested through the accessor, so the
+    /// classification is written at the call site instead of inferred from a missing filter call.
+    weak var camera: (any FilteredStillProviding)?
     /// JPEG → recognized text (OCR). Set by `configure(...)`; tests inject a fake.
     var ocr: ((Data) async -> String)?
 
@@ -48,7 +51,8 @@ final class StudyService: ObservableObject {
 
     init() {}
 
-    func configure(llm: LLMService, documentStore: DocumentStore?, tts: TextToSpeechService, camera: CameraService? = nil) {
+    func configure(llm: LLMService, documentStore: DocumentStore?, tts: TextToSpeechService,
+                   camera: (any FilteredStillProviding)? = nil) {
         self.documentStore = documentStore
         self.camera = camera
         self.generate = { [weak llm] systemPrompt, userText, jsonSchema in
@@ -72,12 +76,9 @@ final class StudyService: ObservableObject {
     /// Capture the current camera frame and ingest it.
     func scanPage() async -> String {
         guard let camera else { return "Camera unavailable — connect the glasses or use the phone camera." }
-        let data: Data
-        if let frame = camera.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.8) {
-            data = jpeg
-        } else if let captured = try? await camera.capturePhoto() {
-            data = captured
-        } else {
+        guard let data = await camera.filteredStill(for: .onDeviceVision,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.8) else {
             return "I couldn't capture the page. Point the glasses at it and try again."
         }
         return await ingestScannedImage(data)

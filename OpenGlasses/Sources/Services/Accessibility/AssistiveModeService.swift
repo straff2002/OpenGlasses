@@ -17,7 +17,8 @@ final class AssistiveModeService: ObservableObject {
     /// Seconds between ambient analyses. Conservative to limit battery + API cost.
     var interval: TimeInterval = 6
 
-    private weak var camera: CameraService?
+    /// The still source, typed as the privacy chokepoint (W04.1).
+    weak var camera: (any FilteredStillProviding)?
     private weak var llm: LLMService?
     private weak var tts: TextToSpeechService?
 
@@ -36,7 +37,7 @@ final class AssistiveModeService: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func start(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {
+    func start(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         guard !isActive else { return }
         self.camera = camera
         self.llm = llm
@@ -59,7 +60,7 @@ final class AssistiveModeService: ObservableObject {
         PrivacyLog.vision(.assistiveMode, .stopped)
     }
 
-    func toggle(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {
+    func toggle(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         isActive ? stop() : start(camera: camera, llm: llm, tts: tts)
     }
 
@@ -109,10 +110,13 @@ final class AssistiveModeService: ObservableObject {
         await tts.speak(spoken, urgency: advice.urgency.speechUrgency)
     }
 
-    private func currentFrameData(_ camera: CameraService) async -> Data? {
-        if let frame = camera.latestFrame, let data = frame.jpegData(compressionQuality: 0.7) {
-            return data
-        }
-        return try? await camera.capturePhoto()
+    /// The ambient loop points a camera at the world continuously and sends what it sees to a
+    /// cloud model, so every frame it takes is filtered under `.assistiveGuidance`. A tick with no
+    /// filtered still available simply does not run.
+    /// Internal, not private, for the same reason as `LiveCoachService.currentFrame` — the loop
+    /// needs a model and a voice, the frame acquisition does not.
+    func currentFrameData(_ camera: any FilteredStillProviding) async -> Data? {
+        await camera.filteredStill(for: .assistiveGuidance, source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.7)
     }
 }

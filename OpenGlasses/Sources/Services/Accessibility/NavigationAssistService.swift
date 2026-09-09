@@ -17,7 +17,8 @@ final class NavigationAssistService: ObservableObject {
     /// Faster than A3 scene mode — mobility hazards are time-sensitive.
     var interval: TimeInterval = 2.5
 
-    private weak var camera: CameraService?
+    /// The still source, typed as the privacy chokepoint (W04.1).
+    weak var camera: (any FilteredStillProviding)?
     private weak var llm: LLMService?
     private weak var tts: TextToSpeechService?
 
@@ -29,7 +30,7 @@ final class NavigationAssistService: ObservableObject {
 
     private init() {}
 
-    func configure(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {
+    func configure(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         self.camera = camera
         self.llm = llm
         self.tts = tts
@@ -81,10 +82,7 @@ final class NavigationAssistService: ObservableObject {
         analyzing = true
         defer { analyzing = false }
 
-        guard let frame = camera.latestFrame, let cg = frame.cgImage else { return }
-        // Skip dark/flat frames to save tokens and avoid confident wrong calls.
-        guard Self.isFrameUsable(cg) else { return }
-        guard let data = frame.jpegData(compressionQuality: 0.7) else { return }
+        guard let data = await usableFrameData(camera) else { return }
 
         guard let raw = await llm.analyzeFrame(systemPrompt: Self.systemPrompt,
                                                userText: "What hazards or landmarks should I know about right now?",
@@ -102,6 +100,19 @@ final class NavigationAssistService: ObservableObject {
         let hudIcon: GlassesDisplayService.HUDIcon = advice.urgency == .high ? .hazard : .navigation
         glassesDisplay?.showNavigation(advice.advice, icon: hudIcon)
         await tts.speak(advice.advice, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
+    }
+
+    /// The frame this loop will send, or nil if there isn't one worth sending.
+    ///
+    /// Filtered first, then judged: the quality check reads the same pixels that will be sent, so
+    /// there is no window in which an unfiltered frame exists outside the chokepoint. Internal
+    /// rather than private so the privacy routing can be driven without a model or a voice.
+    func usableFrameData(_ camera: any FilteredStillProviding) async -> Data? {
+        guard let still = await camera.filteredStill(for: .assistiveGuidance).still,
+              let cg = still.image.cgImage else { return nil }
+        // Skip dark/flat frames to save tokens and avoid confident wrong calls.
+        guard Self.isFrameUsable(cg) else { return nil }
+        return still.jpegData(compressionQuality: 0.7)
     }
 
     // MARK: - Frame quality (pure, testable)

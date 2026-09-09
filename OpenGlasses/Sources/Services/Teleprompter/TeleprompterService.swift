@@ -54,7 +54,7 @@ final class TeleprompterService: ObservableObject {
 
     /// Glasses camera for vision capture (Phase 4). When nil (tests / no glasses), `scanPage`
     /// reports unavailable; `ingestScannedImage` is driven directly instead.
-    weak var camera: CameraService?
+    weak var camera: (any FilteredStillProviding)?
     /// JPEG → recognized text (on-device OCR). Injectable so the scan flow is unit-testable
     /// without Vision or a camera; defaults to `OCRService`.
     var ocr: ((Data) async -> String)? = { await OCRService().recognizeText(in: $0).text }
@@ -187,12 +187,11 @@ final class TeleprompterService: ObservableObject {
     /// Capture the current camera view and OCR it into the scan buffer. Returns a spoken status.
     func scanPage() async -> String {
         guard let camera else { return "Camera unavailable — connect the glasses to scan a page." }
-        let data: Data
-        if let frame = camera.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.8) {
-            data = jpeg
-        } else if let captured = try? await camera.capturePhoto() {
-            data = captured
-        } else {
+        // On-device OCR: the page never leaves, so the scope is an on-device one — but the still is
+        // still requested through the chokepoint, so a later change of sink changes one word here.
+        guard let data = await camera.filteredStill(for: .onDeviceVision,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.8) else {
             return "I couldn't capture the page. Point the glasses at it and try again."
         }
         return await ingestScannedImage(data)

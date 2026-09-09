@@ -15,7 +15,9 @@ final class SafetyAssessmentService: ObservableObject {
     @Published private(set) var isAnalyzing = false
 
     let schema = SafetyAssessmentSchema()
-    private weak var camera: CameraService?
+    /// The still source — see `StructuredVisionService.camera` for why this is the chokepoint
+    /// protocol rather than `CameraService`.
+    weak var camera: (any FilteredStillProviding)?
 
     /// Where the generic result card is published — defaults to the shared service; tests inject a
     /// fresh one so they don't drive the host-app's real HUD/Wearables.
@@ -39,7 +41,7 @@ final class SafetyAssessmentService: ObservableObject {
 
     init() {}
 
-    func configure(camera: CameraService, llm: LLMService) {
+    func configure(camera: any FilteredStillProviding, llm: LLMService) {
         self.camera = camera
         self.analyze = { [weak llm] systemPrompt, imageData, jsonSchema, toolName in
             await llm?.analyzeFrameStructured(
@@ -89,12 +91,11 @@ final class SafetyAssessmentService: ObservableObject {
     /// Grab the current camera frame and assess it.
     func assessCurrentFrame() async throws -> SafetyReport {
         guard let camera else { throw StructuredVisionError.noFrame }
-        let data: Data
-        if let frame = camera.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.7) {
-            data = jpeg
-        } else if let captured = try? await camera.capturePhoto() {
-            data = captured
-        } else {
+        // A job-site frame is the most populated frame this app takes, and it is about to be sent
+        // to a cloud model. Filtered under `.visionAssessment`, or not assessed at all.
+        guard let data = await camera.filteredStill(for: .visionAssessment,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.7) else {
             throw StructuredVisionError.noFrame
         }
         return try await assess(imageData: data)

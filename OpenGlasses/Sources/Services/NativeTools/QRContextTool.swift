@@ -13,12 +13,12 @@ struct QRContextTool: NativeTool {
     let name = "qr_context"
     let description = "Scan a QR code and load its content as context. For museum/venue QR codes, loads exhibit info, floor maps, and guides. For procedure QR codes, creates a step-by-step playbook. Use when user says 'scan that QR code' or 'load context' at a museum, venue, or workplace."
 
-    let cameraService: CameraService
+    let cameraService: any FilteredStillProviding
     private let networkDecision: UntrustedNetworkFeaturePolicy.Decision
     private let fetch: (URL) async throws -> (Data, HTTPURLResponse)
 
     init(
-        cameraService: CameraService,
+        cameraService: any FilteredStillProviding,
         networkDecision: UntrustedNetworkFeaturePolicy.Decision =
             UntrustedNetworkFeaturePolicy.currentDecision(for: .qrContextFetch),
         fetch: @escaping (URL) async throws -> (Data, HTTPURLResponse) = { url in
@@ -60,8 +60,8 @@ struct QRContextTool: NativeTool {
             return await loadContext(from: urlString, createPlaybook: createPlaybook)
         }
 
-        // Scan QR from camera
-        guard let frame = await MainActor.run(body: { cameraService.latestFrame }),
+        // Scan QR from camera — on-device Vision, emits the payload string only (W04.1).
+        guard let frame = await cameraService.filteredStill(for: .onDeviceVision).image,
               let cgImage = frame.cgImage else {
             return "No camera frame available. Make sure the glasses are connected and pointed at the QR code."
         }

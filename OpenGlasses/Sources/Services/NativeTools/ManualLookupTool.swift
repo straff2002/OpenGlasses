@@ -39,12 +39,13 @@ final class ManualLookupTool: NativeTool {
     ]
 
     private let documentStore: DocumentStore?
-    private let cameraService: CameraService?
+    private let cameraService: (any FilteredStillProviding)?
     private let ocr: OCRService
     /// Session to read the active vault from; nil means the shared service. Injectable for tests.
     private let injectedSession: FieldSessionService?
 
-    init(documentStore: DocumentStore?, cameraService: CameraService? = nil, ocr: OCRService = OCRService(),
+    init(documentStore: DocumentStore?, cameraService: (any FilteredStillProviding)? = nil,
+         ocr: OCRService = OCRService(),
          sessionService: FieldSessionService? = nil) {
         self.documentStore = documentStore
         self.cameraService = cameraService
@@ -80,12 +81,10 @@ final class ManualLookupTool: NativeTool {
             guard let cameraService else {
                 return "Specify what to look up in the manuals (a fault code, model, or component)."
             }
-            let data: Data?
-            if let frame = cameraService.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.9) {
-                data = jpeg
-            } else {
-                data = try? await cameraService.capturePhoto()
-            }
+            // On-device OCR of a nameplate or fault code; the still never leaves (W04.1).
+            let data = await cameraService.filteredStill(for: .onDeviceVision,
+                                                        source: .cachedFrameThenPhoto)
+                .jpegData(compressionQuality: 0.9)
             guard let data else { return "Could not capture an image. Ask the technician to read the code aloud." }
             let text = await ocr.recognizeText(in: data).text
             guard !text.isEmpty else {

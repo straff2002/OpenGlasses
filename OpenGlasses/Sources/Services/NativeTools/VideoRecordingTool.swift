@@ -91,7 +91,7 @@ struct VideoRecordingTool: NativeTool {
                     recorder.autoTranscribe = transcribe
                     // Encode at the size frames actually arrive in, so the derived bitrate
                     // matches the picture (the 720x1280 fallback is the glasses' native tier).
-                    let frameSize = camera.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                    let frameSize = camera.latestStillSize ?? CGSize(width: 720, height: 1280)
                     // W04.1: the shared blur relay, never `camera.framePublisher`. The app-side
                     // record button was moved onto the relay in Plan CP and this path was not, so
                     // a recording started by voice wrote raw pixels to disk while the Settings

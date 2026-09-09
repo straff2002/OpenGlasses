@@ -52,7 +52,7 @@ final class EquipmentLookupTool: NativeTool {
     /// Files searched first, in priority order. Remaining vault files are searched after these.
     private static let priorityFiles = ["error_codes.md", "manufacturers.md"]
 
-    private let cameraService: CameraService?
+    private let cameraService: (any FilteredStillProviding)?
     private let ocr: OCRService
     /// Reference-tier fall-through: a code that lives only in an imported manual resolves here
     /// after the markdown core misses. Nil when no store was wired (headless contexts).
@@ -60,7 +60,7 @@ final class EquipmentLookupTool: NativeTool {
     /// Session to read the active vault from; nil means the shared service. Injectable for tests.
     private let injectedSession: FieldSessionService?
 
-    init(cameraService: CameraService? = nil, ocr: OCRService = OCRService(),
+    init(cameraService: (any FilteredStillProviding)? = nil, ocr: OCRService = OCRService(),
          documentStore: DocumentStore? = nil, sessionService: FieldSessionService? = nil) {
         self.cameraService = cameraService
         self.ocr = ocr
@@ -181,12 +181,10 @@ final class EquipmentLookupTool: NativeTool {
         guard let cameraService else {
             return "Camera not available. Ask the technician to read the code aloud."
         }
-        let data: Data?
-        if let frame = cameraService.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.9) {
-            data = jpeg
-        } else {
-            data = try? await cameraService.capturePhoto()
-        }
+        // On-device OCR of the nameplate; the still never leaves (W04.1).
+        let data = await cameraService.filteredStill(for: .onDeviceVision,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.9)
         guard let data else {
             return "Could not capture an image. Ask the technician to read the code aloud."
         }

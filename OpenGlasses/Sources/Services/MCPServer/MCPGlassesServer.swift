@@ -215,7 +215,7 @@ final class MCPGlassesServer: ObservableObject {
         }
         switch (request.method, request.path) {
         case ("GET", "/see_glasses"):
-            return seeGlasses()
+            return await seeGlasses()
         case ("GET", "/glasses_status"):
             return glassesStatus()
         case ("POST", "/send_to_glasses"):
@@ -246,8 +246,12 @@ final class MCPGlassesServer: ObservableObject {
         return diff == 0
     }
 
-    private func seeGlasses() -> Data {
-        guard let frame = camera?.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.7) else {
+    /// Serves a still to whatever client asked for one — another process, often another machine.
+    /// That is an egress by any reading, so it goes through the chokepoint under
+    /// `.remoteFrameRequest`, and an unfilterable frame is a 503 rather than a raw one (W04.1).
+    private func seeGlasses() async -> Data {
+        guard let jpeg = await camera?.filteredStill(for: .remoteFrameRequest)
+            .jpegData(compressionQuality: 0.7) else {
             return Self.httpResponse(status: "503 Service Unavailable", json: ["error": "no frame available"])
         }
         lastServedFrameAt = Date()
@@ -258,7 +262,7 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     private func glassesStatus() -> Data {
-        let hasFrame = camera?.latestFrame != nil
+        let hasFrame = camera?.hasLatestStill ?? false
         var payload: [String: Any] = ["connected": hasFrame]
         if let served = lastServedFrameAt {
             payload["frame_age_ms"] = Int(Date().timeIntervalSince(served) * 1000)

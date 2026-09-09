@@ -14,7 +14,7 @@ import UIKit
 /// The public surface is deliberately identical to what it was before the split — roughly fifty
 /// files consume this type, and none of them should have to know a backend exists.
 @MainActor
-class CameraService: ObservableObject {
+class CameraService: ObservableObject, FilteredStillProviding {
     @Published var lastPhoto: UIImage?
     @Published var isCaptureInProgress: Bool = false
     @Published var isStreaming: Bool = false
@@ -52,8 +52,30 @@ class CameraService: ObservableObject {
     /// Combine publisher for video frames (used by recording/broadcast services).
     let framePublisher = PassthroughSubject<UIImage, Never>()
 
-    /// The most recent video frame captured from the glasses camera
+    /// The most recent video frame captured from the glasses camera.
+    ///
+    /// **Raw pixels.** Only the consumers `OutboundFrameConsumer` lists under an unfiltered scope
+    /// may read this — the on-device Vision taps, the phone's own preview, face recognition. Every
+    /// reader that sends a still to a model, writes one to disk or Photos, or hands one to another
+    /// process goes through `filteredStill(for:source:)` instead, and
+    /// `OutboundFrameConsumerTests` fails the build for a reader that does neither.
     private(set) var latestFrame: UIImage?
+
+    /// Whether a still exists at all, without handing anyone the pixels. What a liveness or
+    /// readiness check actually wants — reading `latestFrame != nil` for it puts a raw-pixel read
+    /// in a file that has no business holding one.
+    var hasLatestStill: Bool { latestFrame != nil }
+
+    /// The dimensions of the latest still, without the pixels. Video bitrate and output size are
+    /// derived from this; the frame itself is not needed and must not be taken.
+    var latestStillSize: CGSize? { latestFrame?.size }
+
+    /// The still-image blur chokepoint. Wired by `AppState`, which owns the filter.
+    ///
+    /// Weak, and deliberately optional: absent, every filtered scope returns
+    /// `.unavailable(.filterNotWired)` rather than raw pixels, so forgetting the wiring costs the
+    /// feature rather than the bystander.
+    weak var privacyFilter: (any StillImageFiltering)?
 
     /// Optional callback to report SDK registration progress (state 0–3) back to UI.
     var onRegistrationProgress: ((Int) -> Void)?
@@ -274,6 +296,57 @@ class CameraService: ObservableObject {
                                   state: GlassesPhotoAlbumPolicy.statusToken(status))
             }
         }
+    }
+
+    // MARK: - Filtered stills (W04.1)
+
+    /// The single way to obtain a camera still for a purpose.
+    ///
+    /// Replaces the `latestFrame ?? capturePhoto()` fallback that used to be copied into every
+    /// reader, and folds the privacy decision into it so the two cannot drift apart. The scope is
+    /// required, not defaulted: a reader that has not decided what its still is *for* has not
+    /// decided whether a bystander's face may travel with it.
+    ///
+    /// Fails closed at every step. No frame is `.unavailable(.noStill)`; a filtered scope with no
+    /// filter wired is `.unavailable(.filterNotWired)`; a filtered scope the filter cannot serve
+    /// right now — backgrounded, device locked, Vision failed — is `.unavailable(.filterUnavailable)`.
+    /// None of them return the source pixels.
+    func filteredStill(for scope: PrivacyFilterScope,
+                       source: FilteredStillSource = .cachedFrameOnly) async -> FilteredStillResult {
+        var image: UIImage?
+        /// The bytes a capture arrived as, kept so an unfiltered path can hand them straight on
+        /// instead of paying a decode and a re-encode for pixels nothing changed.
+        var capturedData: Data?
+
+        switch source {
+        case .cachedFrameOnly:
+            image = latestFrame
+        case .cachedFrameThenPhoto:
+            if let cached = latestFrame {
+                image = cached
+            } else if let captured = try? await capturePhoto() {
+                capturedData = captured
+                image = UIImage(data: captured)
+            }
+        case .photoOnly:
+            if let captured = try? await capturePhoto() {
+                capturedData = captured
+                image = UIImage(data: captured)
+            }
+        }
+
+        guard let image else { return .unavailable(.noStill) }
+        guard scope.isFiltered else {
+            return .still(FilteredStill(image: image, scope: scope, sourceData: capturedData))
+        }
+        guard let privacyFilter else { return .unavailable(.filterNotWired) }
+        guard let filtered = privacyFilter.filteredOrUnavailable(image, for: scope) else {
+            return .unavailable(.filterUnavailable)
+        }
+        // Identity, not equality: the filter hands back the very same image when it was a no-op
+        // (filter off, or Vision verified no faces), and only then may the original bytes stand in.
+        return .still(FilteredStill(image: filtered, scope: scope,
+                                    sourceData: filtered === image ? capturedData : nil))
     }
 
     // MARK: - Audio Session Helpers

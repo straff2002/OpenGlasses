@@ -8,7 +8,7 @@ struct BarcodeScannerTool: NativeTool {
     let name = "scan_code"
     let description = "Scan QR codes or barcodes from the camera. Returns the decoded content (URLs, text, product codes). Works offline."
 
-    let cameraService: CameraService
+    let cameraService: any FilteredStillProviding
 
     var parametersSchema: [String: Any] {
         [
@@ -26,8 +26,10 @@ struct BarcodeScannerTool: NativeTool {
     func execute(args: [String: Any]) async throws -> String {
         let scanType = (args["type"] as? String ?? "any").lowercased()
 
-        // Get the latest frame from the camera
-        guard let frame = await MainActor.run(body: { cameraService.latestFrame }) else {
+        // Barcode decoding is an on-device Vision pass that emits a string, so the on-device
+        // scope passes the pixels through — but the still comes from the chokepoint like every
+        // other (W04.1).
+        guard let frame = await cameraService.filteredStill(for: .onDeviceVision).image else {
             return "No camera frame available. Make sure the glasses are connected and the camera is active."
         }
 

@@ -50,6 +50,24 @@ enum PrivacyFilterScope: String, CaseIterable {
     case broadcast
     /// Expert streaming (peer-to-peer and meeting-link transports). Covered as of Plan CP.
     case expertStream
+    /// A still assessed by a vision vertical — structured vision and the HECA safety assessment.
+    /// The frame is sent to a cloud model with a schema attached; an egress like any other, and
+    /// one that runs on a job site full of people who did not choose to be in it.
+    case visionAssessment
+    /// A still from one of the continuous guidance loops — assistive mode, navigation assist, the
+    /// live coach. Each sends a frame to a cloud model every few seconds for as long as it runs,
+    /// which makes it the highest-volume still egress in the app.
+    case assistiveGuidance
+    /// A still a native tool captured on the wearer's instruction and then sent to the model,
+    /// attached to a session log, or both — `capture_photo`, `photo_log`, the money identifier.
+    case toolPhotoCapture
+    /// A still written to the Photos library. The library is shared with every other app the
+    /// wearer has granted it to and syncs off the device, so a bystander in a saved capture has
+    /// left this app entirely.
+    case photoLibrary
+    /// A still served to an external client that asked for one — the local MCP server's
+    /// `see_glasses`. The client is another process, often another machine.
+    case remoteFrameRequest
     /// The live camera preview drawn on the phone's own screen. Never filtered: the pixels reach a
     /// display the wearer is already holding and go nowhere else, and blurring the preview would
     /// misrepresent what the glasses are actually sending to the consumers that *are* filtered.
@@ -64,7 +82,8 @@ enum PrivacyFilterScope: String, CaseIterable {
     var isFiltered: Bool {
         switch self {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
-             .recording, .broadcast, .expertStream:
+             .recording, .broadcast, .expertStream, .visionAssessment, .assistiveGuidance,
+             .toolPhotoCapture, .photoLibrary, .remoteFrameRequest:
             return true
         case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision:
             return false
@@ -78,7 +97,8 @@ enum PrivacyFilterScope: String, CaseIterable {
         switch self {
         case .recording, .broadcast, .expertStream: return true
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
-             .sceneNarration, .onDevicePreview, .onDeviceVision: return false
+             .sceneNarration, .onDevicePreview, .onDeviceVision, .visionAssessment,
+             .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest: return false
         }
     }
 }
@@ -96,7 +116,7 @@ enum PrivacyFaceDetectionResult: Equatable {
 /// gate-at-the-chokepoint shape `FramePin` uses, and for the same reason: filtering inside
 /// `CameraService` would catch consumers that must not be filtered.
 @MainActor
-class PrivacyFilterService: ObservableObject {
+class PrivacyFilterService: ObservableObject, StillImageFiltering {
     @Published var isEnabled = false
     @Published var facesBlurredCount: Int = 0
 
@@ -173,13 +193,41 @@ class PrivacyFilterService: ObservableObject {
     /// it on, the source image is returned only after Vision successfully reports no faces.
     /// Suspension or any conversion/detection/composite failure returns an opaque replacement.
     func processFrame(_ image: UIImage) -> UIImage {
-        guard isEnabled else { return image }
+        switch attemptProcess(image) {
+        case .success(let processed): return processed
+        case .failure(let failure): return failClosedFrame(like: image, reason: failure.reason)
+        }
+    }
+
+    /// The same decision as `processFrame`, reporting failure as `nil` instead of substituting an
+    /// opaque frame.
+    ///
+    /// Both answers are fail-closed — neither ever returns unfiltered pixels — but they suit
+    /// different callers. A live session expects an image every poll and an opaque one is the least
+    /// disruptive way to say "not this frame". A still reader is about to spend a model call, a file
+    /// write or a Photos entry on this one image, and would rather be told it cannot have it.
+    func processFrameOrUnavailable(_ image: UIImage) -> UIImage? {
+        switch attemptProcess(image) {
+        case .success(let processed):
+            return processed
+        case .failure(let failure):
+            PrivacyLog.camera(.privacyFilter, .frameRejected, detail: PrivacyToken(failure.reason))
+            return nil
+        }
+    }
+
+    /// Why a frame could not be filtered. Carried rather than logged in place so the two public
+    /// entry points above can each log it in their own shape exactly once.
+    private struct FilterFailure: Error { let reason: String }
+
+    private func attemptProcess(_ image: UIImage) -> Result<UIImage, FilterFailure> {
+        guard isEnabled else { return .success(image) }
         guard availability.isAvailable else {
-            return failClosedFrame(like: image,
-                                   reason: availability.unavailableReason?.rawValue ?? "suspended")
+            return .failure(FilterFailure(
+                reason: availability.unavailableReason?.rawValue ?? "suspended"))
         }
         guard let cgImage = image.cgImage else {
-            return failClosedFrame(like: image, reason: "conversionFailed")
+            return .failure(FilterFailure(reason: "conversionFailed"))
         }
 
         let faceRects: [CGRect]
@@ -187,15 +235,15 @@ class PrivacyFilterService: ObservableObject {
         case .success(let detected):
             faceRects = detected
         case .failure:
-            return failClosedFrame(like: image, reason: "detectionFailed")
+            return .failure(FilterFailure(reason: "detectionFailed"))
         }
-        guard !faceRects.isEmpty else { return image }  // verified no-face result
+        guard !faceRects.isEmpty else { return .success(image) }  // verified no-face result
 
         guard let blurred = blurFaces(in: image, faceRects: faceRects) else {
-            return failClosedFrame(like: image, reason: "compositeFailed")
+            return .failure(FilterFailure(reason: "compositeFailed"))
         }
         facesBlurredCount += faceRects.count
-        return blurred
+        return .success(blurred)
     }
 
     /// The single entry point for call sites: blur for `scope`, or hand the frame back untouched
@@ -206,6 +254,14 @@ class PrivacyFilterService: ObservableObject {
     func filtered(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage {
         guard scope.isFiltered else { return image }
         return processFrame(image)
+    }
+
+    /// `filtered(_:for:)` for still readers: `nil` means "this scope must be filtered and it could
+    /// not be", which a caller turns into `.unavailable` rather than into raw pixels. See
+    /// `FilteredStill` for why the still paths need the difference and the camera-rate ones do not.
+    func filteredOrUnavailable(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage? {
+        guard scope.isFiltered else { return image }
+        return processFrameOrUnavailable(image)
     }
 
     // MARK: - Face Detection
