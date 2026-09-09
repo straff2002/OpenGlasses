@@ -104,6 +104,23 @@ jobs:
       - name: Generate Xcode project
         run: ./Scripts/generate-xcodeproj.sh
 
+      # Xcode Cloud builds what ci_scripts/Package.resolved pins; this workflow used to let
+      # xcodebuild resolve the graph fresh, treating the same file as nothing but a cache key. Two
+      # pipelines resolving independently is two chances to compile a different dependency graph
+      # from the same commit — and the one that ships is the one nobody's tests ran against. Copy
+      # the tracked lockfile into the generated project, exactly as ci_post_clone.sh does, and pass
+      # -onlyUsePackageVersionsFromResolvedFile below so a pin that cannot be satisfied fails the
+      # run instead of quietly resolving to something else.
+      #
+      # Path-based local packages (Vendor/SherpaOnnx, MediaPipeTasks, LlamaCpp) are absent from the
+      # resolved file by design — they have no remote version to pin.
+      - name: Freeze package resolution to the tracked lockfile
+        run: |
+          dst=OpenGlasses.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          mkdir -p "$dst"
+          cp ci_scripts/Package.resolved "$dst/Package.resolved"
+          echo "Frozen to $(grep -c '\"identity\"' ci_scripts/Package.resolved) pins."
+
       - name: Pick a simulator
         id: sim
         run: |
@@ -128,6 +145,7 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation \
             -clonedSourcePackagesDirPath .spm-checkouts \
+            -onlyUsePackageVersionsFromResolvedFile \
             SWIFT_EMIT_LOC_STRINGS=NO \
             2>&1 | tee xcodebuild.log \
             | grep -E "Test Suite|Test Case.*(passed|failed)|a11y-audit|error:|\*\* TEST" \
