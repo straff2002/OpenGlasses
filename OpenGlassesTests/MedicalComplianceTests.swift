@@ -28,7 +28,7 @@ final class MedicalComplianceTests: XCTestCase {
         }
         hipaaService = HIPAAComplianceService()
         // The audit log persists across instances (and runs), so clear it for test isolation.
-        hipaaService.clearAuditLog()
+        hipaaService.clearAuditLog(authorization: .granted)
 
         // Create a temp directory for file-based tests
         tempDir = FileManager.default.temporaryDirectory
@@ -37,7 +37,7 @@ final class MedicalComplianceTests: XCTestCase {
     }
 
     override func tearDown() {
-        hipaaService?.clearAuditLog()
+        hipaaService?.clearAuditLog(authorization: .granted)
         for key in testKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
@@ -241,7 +241,7 @@ final class MedicalComplianceTests: XCTestCase {
         hipaaService.log(action: "BEFORE_CLEAR", detail: "should go away")
         XCTAssertFalse(hipaaService.auditLog.isEmpty)
 
-        hipaaService.clearAuditLog()
+        XCTAssertEqual(hipaaService.clearAuditLog(authorization: .granted), .cleared)
         XCTAssertEqual(hipaaService.auditLog.count, 1)
         XCTAssertEqual(hipaaService.auditLog.first?.action, "AUDIT_LOG_CLEARED",
                        "clearing history must retain the event which explains the deletion")

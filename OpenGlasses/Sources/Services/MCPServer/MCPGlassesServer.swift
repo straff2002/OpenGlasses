@@ -23,7 +23,19 @@ final class MCPGlassesServer: ObservableObject {
     static let shared = MCPGlassesServer()
 
     @Published private(set) var isRunning = false
+
+    /// Explicit availability, so a Release build reads as refusing rather than merely idle.
+    @Published private(set) var availability: LocalServiceAvailability = .stopped
+
+    /// Build marker of the transport actually opened, or nil when none ever was. Only a build that
+    /// can open the legacy LAN transport can set this.
+    private(set) var listenerBuildMarker: String?
+
     let port: UInt16 = 8765
+
+    private let policy: LocalServiceExposurePolicy
+    private let listenerFactory: LocalListenerFactory
+    private let defaults: UserDefaults
 
     private var listener: NWListener?
     private var connections: Set<ObjectIdentifier> = []
@@ -65,7 +77,16 @@ final class MCPGlassesServer: ObservableObject {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private init() {}
+    /// Defaults are the production wiring: the compile-time exposure policy and the real listener
+    /// factory. The seams exist so a test can compose this server under a Release-flavoured policy
+    /// and prove no listener is ever constructed.
+    init(policy: LocalServiceExposurePolicy = .current,
+         listenerFactory: @escaping LocalListenerFactory = LocalListenerProvider.production,
+         defaults: UserDefaults = .standard) {
+        self.policy = policy
+        self.listenerFactory = listenerFactory
+        self.defaults = defaults
+    }
 
     func configure(camera: CameraService, tts: TextToSpeechService) {
         self.camera = camera
@@ -81,18 +102,22 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     func start() {
-        guard LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses) else {
+        guard policy.permitsListener(for: .mcpGlasses) else {
             // Check the build boundary before reading/creating a bearer token or constructing a
             // listener. A persisted developer preference therefore cannot reactivate this edge in
-            // a Release build.
+            // a Release build, and refusing also retires the stale opt-in that would otherwise keep
+            // presenting this surface as available.
+            availability = .unavailableInProduction
+            isRunning = false
+            policy.clearPersistedOptIns(defaults: defaults)
             return
         }
         guard listener == nil else { return }
         _ = accessToken   // ensure a token exists before we accept connections
         do {
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
-            let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+            let handle = try listenerFactory(LocalListenerRequest(service: .mcpGlasses, port: port))
+            let listener = handle.listener
+            listenerBuildMarker = handle.buildMarker
             self.listener = listener
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
@@ -102,11 +127,14 @@ final class MCPGlassesServer: ObservableObject {
                     switch state {
                     case .ready:
                         self?.isRunning = true
+                        self?.availability = .running
                         PrivacyLog.mcpServer(.listening, port: Int(self?.port ?? 0))
                     case .failed(let error):
                         PrivacyLog.mcpServer(.startFailed, error: SafeErrorSummary(error))
                         self?.stop()
-                    case .cancelled: self?.isRunning = false
+                    case .cancelled:
+                        self?.isRunning = false
+                        self?.availability = .stopped
                     default: break
                     }
                 }
@@ -121,6 +149,7 @@ final class MCPGlassesServer: ObservableObject {
         listener?.cancel()
         listener = nil
         isRunning = false
+        availability = .stopped
         PrivacyLog.mcpServer(.stopped)
     }
 

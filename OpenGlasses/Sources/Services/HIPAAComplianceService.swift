@@ -14,6 +14,27 @@ import Foundation
 class HIPAAComplianceService: ObservableObject {
     @Published var auditLog: [AuditEntry] = []
 
+    /// Last durability problem seen by the audit log, or nil when the persisted log is current.
+    /// Surfaced rather than swallowed: an audit record that failed to persist must not look like
+    /// one that did.
+    @Published private(set) var lastPersistenceFailure: AuditPersistenceFailure?
+
+    enum AuditPersistenceFailure: Equatable {
+        /// The stored log could not be read or decoded; unreadable bytes were kept, not replaced.
+        case load
+        /// The store refused the write (e.g. protected data locked); the previous log stands.
+        case save
+    }
+
+    /// Result of an audit-clear request.
+    enum AuditClearOutcome: Equatable {
+        case cleared
+        /// No positive owner decision, so the log was kept and the attempt recorded.
+        case refused(OwnerAuthorization)
+        /// Authorized, but the resulting log could not be persisted.
+        case persistenceFailed
+    }
+
     struct AuditEntry: Codable, Identifiable {
         let id: UUID
         let timestamp: Date
@@ -28,7 +49,7 @@ class HIPAAComplianceService: ObservableObject {
         }
     }
 
-    private let auditLogURL: URL
+    private let store: AuditLogStore
     private let maxAuditEntries = 1000
 
     /// Invoked right after `hipaaMode` is toggled so live services (cloud diarization, ambient
@@ -36,9 +57,11 @@ class HIPAAComplianceService: ObservableObject {
     /// restart. Wired by AppState; nil in tests and headless contexts.
     var onModeChanged: (() -> Void)?
 
-    init() {
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        auditLogURL = docsDir.appendingPathComponent("hipaa_audit_log.json")
+    /// The default store is the production one: the same protected JSON file in the documents
+    /// directory this service has always used. The seam exists so restart, locked-storage and
+    /// partial-write behaviour can be exercised.
+    init(store: AuditLogStore = FileAuditLogStore()) {
+        self.store = store
         loadAuditLog()
     }
 
@@ -109,18 +132,22 @@ class HIPAAComplianceService: ObservableObject {
 
     // MARK: - Audit Logging
 
-    /// Log a HIPAA audit event.
-    func log(action: String, detail: String) {
-        guard Config.hipaaMode else { return }
+    /// Log a HIPAA audit event. Returns whether the event was recorded **and persisted** — false
+    /// when compliance mode is off (events are not collected) or the store refused the write.
+    @discardableResult
+    func log(action: String, detail: String) -> Bool {
+        guard Config.hipaaMode else { return false }
 
-        appendAuditEntry(action: action, detail: detail)
+        return appendAuditEntry(action: action, detail: detail)
     }
 
     /// Record an audit-control event without consulting the mode it is changing. Callers are
     /// limited to this service's own control transitions; ordinary feature events still go
     /// through `log` and remain suppressed while compliance mode is off.
-    private func appendAuditEntry(action: String, detail: String) {
+    @discardableResult
+    private func appendAuditEntry(action: String, detail: String) -> Bool {
 
+        let previous = auditLog
         let entry = AuditEntry(action: action, detail: detail)
         auditLog.append(entry)
 
@@ -129,8 +156,15 @@ class HIPAAComplianceService: ObservableObject {
             auditLog = Array(auditLog.suffix(maxAuditEntries))
         }
 
-        saveAuditLog()
+        guard saveAuditLog() else {
+            // The store commits all-or-nothing, so the persisted log is still `previous`. Roll the
+            // in-memory copy back so the two agree: an entry that never reached storage must not
+            // be displayed or exported as though it had.
+            auditLog = previous
+            return false
+        }
         PrivacyLog.medical(.audit, .auditRecorded, operation: PrivacyToken(action))
+        return true
     }
 
     /// Export the audit log as a formatted string for compliance review.
@@ -152,37 +186,60 @@ class HIPAAComplianceService: ObservableObject {
         return output
     }
 
-    /// Clear the audit log (itself an auditable event).
-    func clearAuditLog() {
+    /// Clear the audit log (itself an auditable event), subject to owner authorization.
+    ///
+    /// Fails **closed**: only an explicit `.granted` decision clears. Anything else — denied, or no
+    /// decision obtainable — keeps the log and records the attempt instead. There is no default
+    /// argument on purpose, so no caller can delete compliance evidence without having asked.
+    @discardableResult
+    func clearAuditLog(authorization: OwnerAuthorization) -> AuditClearOutcome {
+        guard authorization.isGranted else {
+            // Recorded regardless of the current mode: like the disable transition, a refused
+            // attempt to destroy the log is a control event about the log itself, and suppressing
+            // it would erase the only trace that someone tried.
+            appendAuditEntry(action: "AUDIT_CLEAR_REFUSED",
+                             detail: "Audit log clear refused: owner authorization \(authorization.auditToken)")
+            return .refused(authorization)
+        }
+
         let recordClear = Config.hipaaMode
         auditLog.removeAll()
         if recordClear {
             // The marker is written after the old entries are removed so it is not erased by the
             // operation it records. When the mode is off, this method remains a true reset helper
             // for test/setup and migration paths and does not start collecting events.
-            appendAuditEntry(action: "AUDIT_LOG_CLEARED", detail: "Audit log cleared by user")
-        } else {
-            saveAuditLog()
+            return appendAuditEntry(action: "AUDIT_LOG_CLEARED", detail: "Audit log cleared by user")
+                ? .cleared : .persistenceFailed
         }
+        return saveAuditLog() ? .cleared : .persistenceFailed
     }
 
     private func loadAuditLog() {
-        guard FileManager.default.fileExists(atPath: auditLogURL.path) else { return }
         do {
-            let data = try Data(contentsOf: auditLogURL)
+            guard let data = try store.load() else { return }
             auditLog = try JSONDecoder().decode([AuditEntry].self, from: data)
+            lastPersistenceFailure = nil
         } catch {
+            // Keep whatever is stored: unreadable evidence is still evidence, and the next append
+            // would otherwise overwrite it. Quarantining moves it aside under its own name.
+            try? store.quarantineUnreadable()
+            lastPersistenceFailure = .load
             PrivacyLog.medical(.audit, .auditLoadFailed, error: SafeErrorSummary(error))
         }
     }
 
-    private func saveAuditLog() {
+    @discardableResult
+    private func saveAuditLog() -> Bool {
         do {
             let data = try JSONEncoder().encode(auditLog)
-            try data.write(to: auditLogURL, options: .atomic)
-            protectFile(at: auditLogURL)
+            try store.save(data)
+            if let url = store.protectedFileURL { protectFile(at: url) }
+            lastPersistenceFailure = nil
+            return true
         } catch {
+            lastPersistenceFailure = .save
             PrivacyLog.medical(.audit, .auditSaveFailed, error: SafeErrorSummary(error))
+            return false
         }
     }
 
