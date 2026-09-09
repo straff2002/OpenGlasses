@@ -162,6 +162,12 @@ enum SkillPackHardwareGate {
 
 /// Plan BX P2 — pack zip → the `(manifestData, files)` shape `SkillPackStore.install` takes.
 /// Pure over bytes; the reader is the Plan BT `ZipArchiveReader` (no new dependency).
+///
+/// Extraction is deliberately two-phase. `extractManifest` decides everything the central
+/// directory can answer — count, path shape, entry type, declared and aggregate size, compression
+/// ratio, nesting — and inflates exactly one entry, `skillpack.json`. Only after the caller has
+/// decoded and validated that manifest does `materializeFiles` inflate payload bytes. A pack whose
+/// manifest is refused therefore never has attacker-chosen entries expanded on its behalf.
 enum SkillPackArchive {
 
     enum ArchiveError: Error, Equatable {
@@ -176,6 +182,7 @@ enum SkillPackArchive {
         case totalUncompressedSizeTooLarge
         case suspiciousCompressionRatio
         case corruptEntry
+        case missingDeclaredFile
     }
 
     static let maxArchiveBytes = 8 * 1024 * 1024
@@ -190,7 +197,29 @@ enum SkillPackArchive {
         "7z", "bz2", "epub", "gz", "rar", "tar", "tgz", "xz", "zip",
     ]
 
-    static func extract(zipData: Data) -> Result<(manifestData: Data, files: [String: Data]), ArchiveError> {
+    /// Counts entries actually inflated. Exists so "the manifest is validated before any payload
+    /// byte is expanded" is an assertion over observed behaviour, not over source order.
+    final class InflationCounter {
+        private(set) var value = 0
+        func record() { value += 1 }
+    }
+
+    /// A vetted archive: every entry has passed the metadata policy and the manifest bytes are
+    /// inflated. No payload entry has been touched.
+    struct StagedArchive {
+        let manifestData: Data
+        /// Normalized paths of the regular, non-manifest entries the policy admitted.
+        let payloadPaths: [String]
+        /// Entries inflated so far — one (the manifest) until `materializeFiles` runs.
+        var inflatedEntryCount: Int { counter.value }
+
+        fileprivate let reader: ZipArchiveReader
+        fileprivate let sourceNames: [String: String]
+        fileprivate let counter: InflationCounter
+    }
+
+    /// Phase 1: archive policy over central-directory metadata, then the manifest bytes alone.
+    static func extractManifest(zipData: Data) -> Result<StagedArchive, ArchiveError> {
         guard zipData.count <= maxArchiveBytes else { return .failure(.archiveTooLarge) }
         guard let archive = ZipArchiveReader(data: zipData) else { return .failure(.notAZip) }
         guard archive.entryMetadata.count <= maxEntryCount else { return .failure(.tooManyEntries) }
@@ -230,23 +259,61 @@ enum SkillPackArchive {
             }
         }
 
-        guard normalizedNames["skillpack.json"] != nil else {
+        guard let manifestSource = normalizedNames["skillpack.json"] else {
             return .failure(.missingManifest)
         }
-        guard let manifestData = archive.entryData(named: normalizedNames["skillpack.json"]!,
+        let counter = InflationCounter()
+        guard let manifestData = archive.entryData(named: manifestSource,
                                                    maximumUncompressedSize: maxEntryBytes) else {
             return .failure(.corruptEntry)
         }
+        counter.record()
+        let payloadPaths = normalizedNames.keys
+            .filter { $0 != "skillpack.json" && !$0.hasSuffix("/") }
+            .sorted()
+        return .success(StagedArchive(manifestData: manifestData,
+                                      payloadPaths: payloadPaths,
+                                      reader: archive,
+                                      sourceNames: normalizedNames,
+                                      counter: counter))
+    }
+
+    /// Phase 2: inflate payload files, for a manifest that has already been validated.
+    ///
+    /// A manifest that declares `files` gets exactly those — any other entry in the zip is ignored
+    /// and never inflated, so an archive cannot smuggle content past the review the wearer saw.
+    /// A manifest that declares nothing keeps the historical shape (every vetted payload entry),
+    /// because packs signed before the declaration existed sign over exactly that set.
+    static func materializeFiles(
+        for staged: StagedArchive,
+        declaredBy manifest: SkillPackManifest
+    ) -> Result<[String: Data], ArchiveError> {
+        let wanted: [String]
+        if let declared = manifest.files {
+            let normalized = declared.compactMap(normalizedPath)
+            guard normalized.count == declared.count,
+                  !normalized.contains(where: { $0.hasSuffix("/") }) else {
+                return .failure(.unsafeEntryPath)
+            }
+            guard Set(normalized).isSubset(of: Set(staged.payloadPaths)) else {
+                return .failure(.missingDeclaredFile)
+            }
+            wanted = Set(normalized).sorted()
+        } else {
+            wanted = staged.payloadPaths
+        }
+
         var files: [String: Data] = [:]
-        for (normalized, sourceName) in normalizedNames {
-            guard normalized != "skillpack.json", !normalized.hasSuffix("/") else { continue }
-            guard let data = archive.entryData(named: sourceName,
-                                               maximumUncompressedSize: maxEntryBytes) else {
+        for path in wanted {
+            guard let sourceName = staged.sourceNames[path],
+                  let data = staged.reader.entryData(named: sourceName,
+                                                     maximumUncompressedSize: maxEntryBytes) else {
                 return .failure(.corruptEntry)
             }
-            files[normalized] = data
+            staged.counter.record()
+            files[path] = data
         }
-        return .success((manifestData, files))
+        return .success(files)
     }
 
     private static func normalizedPath(_ name: String) -> String? {

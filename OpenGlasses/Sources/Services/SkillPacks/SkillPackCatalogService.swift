@@ -104,23 +104,51 @@ final class SkillPackCatalogService: ObservableObject {
         }
 
         installStates[entry.id] = .installing
-        switch SkillPackArchive.extract(zipData: zipData) {
+
+        // Manifest first: the archive's payload entries are only inflated once this pack's own
+        // manifest has decoded and passed admission.
+        let staged: SkillPackArchive.StagedArchive
+        switch SkillPackArchive.extractManifest(zipData: zipData) {
         case .failure(let error):
             installStates[entry.id] = .failed(
                 error == .missingManifest ? "pack has no skillpack.json" : "not a readable pack archive")
-        case .success(let (manifestData, files)):
-            switch store.install(
-                manifestData: manifestData,
-                files: files,
-                signatureBase64: entry.packSignature.isEmpty ? nil : entry.packSignature,
-                developerMode: Config.skillPackDevModeEnabled
-            ) {
-            case .installed(let warnings):
-                installStates[entry.id] = .installed(warnings: warnings)
-                onInstalled()
-            case .rejected(let reasons):
-                installStates[entry.id] = .failed(reasons.joined(separator: "; "))
-            }
+            return
+        case .success(let extracted):
+            staged = extracted
+        }
+
+        let manifest: SkillPackManifest
+        switch store.admitManifest(staged.manifestData) {
+        case .admitted(let admitted, _):
+            manifest = admitted
+        case .unreadable:
+            installStates[entry.id] = .failed("pack manifest unreadable")
+            return
+        case .rejected(let reasons):
+            installStates[entry.id] = .failed(reasons.joined(separator: "; "))
+            return
+        }
+
+        let files: [String: Data]
+        switch SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest) {
+        case .failure:
+            installStates[entry.id] = .failed("not a readable pack archive")
+            return
+        case .success(let materialized):
+            files = materialized
+        }
+
+        switch store.install(
+            manifestData: staged.manifestData,
+            files: files,
+            signatureBase64: entry.packSignature.isEmpty ? nil : entry.packSignature,
+            developerMode: Config.skillPackDevModeEnabled
+        ) {
+        case .installed(let warnings):
+            installStates[entry.id] = .installed(warnings: warnings)
+            onInstalled()
+        case .rejected(let reasons):
+            installStates[entry.id] = .failed(reasons.joined(separator: "; "))
         }
     }
 

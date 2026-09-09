@@ -406,15 +406,33 @@ final class SkillPackSideloadService: ObservableObject {
             prompt = .error("The downloaded pack is no longer available for inspection.")
             return
         }
-        guard case .success(let (manifestData, files)) = SkillPackArchive.extract(zipData: zipData) else {
+        // Manifest first: nothing else in the archive is inflated until this pack's own manifest
+        // has decoded and passed admission, so a refused pack never expands attacker-chosen bytes.
+        guard case .success(let vetted) = SkillPackArchive.extractManifest(zipData: zipData) else {
             cleanUpStagedArchive()
             prompt = .error("That link isn't a readable skill pack archive.")
             return
         }
-        let (decoded, report) = SkillPackManifest.lossyDecode(manifestData)
-        guard let manifest = decoded else {
+        let manifestData = vetted.manifestData
+        let manifest: SkillPackManifest
+        let report: SkillPackDecodeReport
+        switch store.admitManifest(manifestData) {
+        case .admitted(let admitted, let decodeReport):
+            manifest = admitted
+            report = decodeReport
+        case .unreadable:
             cleanUpStagedArchive()
             prompt = .error("The pack's manifest is unreadable.")
+            return
+        case .rejected(let reasons):
+            cleanUpStagedArchive()
+            prompt = .error("Install review refused: \(reasons.joined(separator: "; "))")
+            return
+        }
+        guard case .success(let files) =
+                SkillPackArchive.materializeFiles(for: vetted, declaredBy: manifest) else {
+            cleanUpStagedArchive()
+            prompt = .error("That link isn't a readable skill pack archive.")
             return
         }
         let reviewWarnings: [String]
@@ -463,13 +481,16 @@ final class SkillPackSideloadService: ObservableObject {
         do {
             let exactArchive = try stagingStore.load(pending.stagedArchive)
             guard SkillPackArchive.sha256Hex(exactArchive) == pending.archiveSHA256,
-                  case .success(let extracted) = SkillPackArchive.extract(zipData: exactArchive) else {
+                  case .success(let vetted) = SkillPackArchive.extractManifest(zipData: exactArchive),
+                  case .admitted(let manifest, _) = store.admitManifest(vetted.manifestData),
+                  case .success(let files) =
+                    SkillPackArchive.materializeFiles(for: vetted, declaredBy: manifest) else {
                 cleanUpStagedArchive()
                 prompt = .error("Install refused because the reviewed archive changed.")
                 return
             }
-            reviewedManifest = extracted.manifestData
-            reviewedFiles = extracted.files
+            reviewedManifest = vetted.manifestData
+            reviewedFiles = files
         } catch {
             cleanUpStagedArchive()
             prompt = .error("Install refused because the reviewed archive is unavailable.")

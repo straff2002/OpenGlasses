@@ -11,8 +11,9 @@
 //       Mints a keypair, writes the private half to <privateKeyFile> (0600, refuses to overwrite),
 //       and prints ONLY the public key and the path.
 //   sign-pack <packDir> <privateKey>
-//       Signs <packDir>/skillpack.json + every other file in the directory (sorted, recursive).
-//       Prints the pack signature to embed in the catalog entry's `packSignature`.
+//       Signs <packDir>/skillpack.json + every other file in the directory (sorted, recursive),
+//       or, when the manifest declares `files`, exactly the declared set — matching what the app
+//       inflates. Prints the pack signature to embed in the catalog entry's `packSignature`.
 //   sign-catalog <indexJSON> <privateKey>
 //       Wraps an index JSON file in the signed envelope the app fetches; prints the envelope.
 //
@@ -126,6 +127,15 @@ case "sign-pack":
         let relative = url.path.replacingOccurrences(of: packDir.path + "/", with: "")
         guard relative != "skillpack.json" else { continue }
         payloadPaths.append(relative)
+    }
+    // A manifest that declares `files` is signed over exactly that set, because that is the set
+    // the app inflates from the zip. Declaring nothing keeps the historical "every file" message.
+    if let root = (try? JSONSerialization.jsonObject(with: manifestData)) as? [String: Any],
+       let declared = root["files"] as? [Any] {
+        let allowed = Set(declared.compactMap { $0 as? String })
+        payloadPaths = payloadPaths.filter { allowed.contains($0) }
+        let missing = allowed.subtracting(payloadPaths)
+        if !missing.isEmpty { fail("manifest declares missing files: \(missing.sorted().joined(separator: ", "))") }
     }
     for path in payloadPaths.sorted() {
         let data = (try? Data(contentsOf: packDir.appendingPathComponent(path))) ?? Data()

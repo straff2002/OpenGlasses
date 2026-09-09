@@ -81,6 +81,35 @@ final class SkillPackStore: ObservableObject {
 
     // MARK: - Install / remove
 
+    /// The manifest-only half of admission, for callers that must decide whether to inflate an
+    /// archive's payload at all.
+    ///
+    /// Decode plus the same `SkillPackValidator` pass installation runs. The signature is
+    /// deliberately *not* checked here — it covers the payload files, which at this point have not
+    /// been expanded — so `review`/`install` stay the authoritative gate over the whole bundle.
+    func admitManifest(_ manifestData: Data) -> ManifestAdmission {
+        let (decoded, report) = SkillPackManifest.lossyDecode(manifestData)
+        guard let manifest = decoded else { return .unreadable }
+        switch SkillPackValidator.validate(
+            manifest: manifest,
+            report: report,
+            currentBuild: currentBuild,
+            nativeToolNames: nativeToolNames()
+        ) {
+        case .accepted:
+            return .admitted(manifest: manifest, report: report)
+        case .rejected(let reasons):
+            return .rejected(reasons: reasons)
+        }
+    }
+
+    enum ManifestAdmission {
+        case admitted(manifest: SkillPackManifest, report: SkillPackDecodeReport)
+        /// Not a manifest at all — id/version/name missing, or not JSON.
+        case unreadable
+        case rejected(reasons: [String])
+    }
+
     /// Runs the same signature, decode and definition/admission checks as installation without
     /// writing anything. Sideload UI calls this before asking the user to approve the pack.
     func review(
