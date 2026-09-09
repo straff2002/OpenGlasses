@@ -29,6 +29,9 @@ final class MedicationIdentifierTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.medicationIdentifier) else {
+            return AIFeatureGate.disabledMessage(.medicationIdentifier)
+        }
         guard VaultRegistry.shared.isUnlocked("health") else {
             return "Medication identification needs the Medical Compliance subscription (it reads your Health Vault)."
         }

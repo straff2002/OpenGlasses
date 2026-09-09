@@ -35,6 +35,9 @@ final class HealthSafetyTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.healthSafetyAdvisor) else {
+            return AIFeatureGate.disabledMessage(.healthSafetyAdvisor)
+        }
         let action = (args["action"] as? String)?.lowercased() ?? "can_i_take"
         let subject = (args["subject"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !subject.isEmpty else {

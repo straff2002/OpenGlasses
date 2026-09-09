@@ -22,6 +22,9 @@ struct SendMessageTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.messaging) else {
+            return AIFeatureGate.disabledMessage(.messaging)
+        }
         guard let to = args["to"] as? String, !to.isEmpty else {
             return "No recipient provided."
         }

@@ -48,6 +48,9 @@ final class FieldSessionTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.fieldAssist) else {
+            return AIFeatureGate.disabledMessage(.fieldAssist)
+        }
         guard let action = (args["action"] as? String)?.lowercased() else {
             return "No action specified. Use 'start', 'pause', 'resume', 'end', 'status', 'list', or 'escalate'."
         }

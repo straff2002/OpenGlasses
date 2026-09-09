@@ -31,6 +31,9 @@ struct FaceRecognitionTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.faceRecognition) else {
+            return AIFeatureGate.disabledMessage(.faceRecognition)
+        }
         guard let action = args["action"] as? String else {
             return "No action specified. Use 'remember', 'forget', 'list', or 'toggle'."
         }

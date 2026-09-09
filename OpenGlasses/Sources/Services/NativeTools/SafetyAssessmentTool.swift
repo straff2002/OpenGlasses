@@ -36,6 +36,9 @@ struct SafetyAssessmentTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard AIFeatureGate.isEnabled(.safetyAssessment) else {
+            return AIFeatureGate.disabledMessage(.safetyAssessment)
+        }
         let service = SafetyAssessmentService.shared
         switch (args["action"] as? String ?? "run").lowercased() {
         case "last":
