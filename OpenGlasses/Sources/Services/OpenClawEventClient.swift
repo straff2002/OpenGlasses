@@ -29,6 +29,12 @@ class OpenClawEventClient {
     /// The gateway's hello-ok for this socket (role, scopes, catalog).
     private(set) var gatewayHello: GatewayHello?
 
+    /// Has this socket completed the connect handshake? `isConnected` is set only by a `.paired`
+    /// hello-ok, so it is exactly "the peer proved it is our gateway" — the predicate names that
+    /// intent for the inbound gate below. In LAN mode the socket is cleartext `ws://`, so without
+    /// this an on-path attacker could inject a request frame instead of the gateway's hello-ok.
+    private var isAuthenticated: Bool { isConnected }
+
     init(socketFactory: @escaping GatewaySocketFactory = URLSessionGatewaySocket.make) {
         self.socketFactory = socketFactory
     }
@@ -80,6 +86,10 @@ class OpenClawEventClient {
             return
         }
         currentGateway = gateway
+        // A new socket starts unauthenticated: a reconnect must never inherit the previous
+        // socket's handshake, or the inbound gate would open on a peer that never proved itself.
+        isConnected = false
+        gatewayHello = nil
         onPairingStatusChange?(.connecting)
 
         let wsURL = Self.webSocketURL(for: gateway)
@@ -202,6 +212,13 @@ class OpenClawEventClient {
     /// (The 2.0 gateway delivers node commands as `node.invoke.request` events answered by the
     /// `node.invoke.result` RPC — that mapping lands with the node role in Plan EH P3.)
     private func handleRequestFrame(_ json: [String: Any]) {
+        // Deny-by-default before the handshake: drop the frame with no reply of any kind. Even an
+        // error reply would confirm a listening client to an on-path attacker on the LAN's
+        // cleartext socket, so nothing goes back on the wire and the handler is never reached.
+        guard isAuthenticated else {
+            PrivacyLog.gatewayConnection(.requestDroppedPreAuth)
+            return
+        }
         guard let handler = onRemoteRequest else {
             if let request = RemoteCommandParser.parse(json) {
                 sendFrame(RemoteInvokeReply.unsupported(id: request.id, action: "remote_invoke"))
@@ -289,19 +306,30 @@ class OpenClawEventClient {
 
         switch event {
         case "connect.challenge":
+            // Ungated: the challenge *is* the handshake — gating it would prevent connecting.
             challenge = GatewayChallenge.parse(event: json)
             sendConnectHandshake()
         case "device.paired":
+            // Deliberately ungated: pairing depends on this arriving before the handshake can
+            // succeed. Narrowing it to the bootstrap window is Plan AR's separate item.
             if let outcome = PairingResponseInterpreter.interpretPairedEvent(payload),
                let token = outcome.deviceToken, let gatewayId = currentGateway?.id {
                 Config.setDeviceCredentials(gatewayId: gatewayId, deviceToken: token)
                 PrivacyLog.gatewayConnection(.devicePaired, peer: PrivateIdentifier(gatewayId))
                 onPairingStatusChange?(.paired)
             }
-        case "heartbeat":
-            handleHeartbeatEvent(payload)
-        case "cron":
-            handleCronEvent(payload)
+        case "heartbeat", "cron":
+            // These are spoken to the wearer, so they are actuation too: an unauthenticated peer
+            // does not get to put words in the glasses' mouth.
+            guard isAuthenticated else {
+                PrivacyLog.gatewayConnection(.eventDroppedPreAuth, detail: PrivacyToken(event))
+                return
+            }
+            if event == "heartbeat" {
+                handleHeartbeatEvent(payload)
+            } else {
+                handleCronEvent(payload)
+            }
         default:
             break
         }

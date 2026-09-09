@@ -30,7 +30,12 @@ Concretely missing:
    connected? display present? recording available?), so server-side agents must guess.
 4. **No policy layer.** Remote actuation is the single highest-impact surface in the app — a
    prompt-injected or compromised gateway agent asking the glasses to record is a wiretap. This
-   must be deny-by-default and auditable, not bolted on.
+   must be deny-by-default and auditable, not bolted on. The threat is not only a bad agent at the
+   far end: in LAN mode the socket is cleartext `ws://`, so an on-path attacker on the same network
+   can inject frames. That pre-auth injection window is now closed by the handshake gate below —
+   inbound `req` frames and spoken `heartbeat`/`cron` events are dropped until the connect
+   handshake completes. Hardening the transport itself (so a *post*-auth on-path attacker cannot
+   read or tamper with the stream) is Plan DO's, not this plan's.
 
 ## What we build
 
@@ -88,13 +93,22 @@ enums should converge rather than duplicate.
   retrying.
 
 ### Risks flagged by the 2026-07-10 review (fold into the live-edge PR)
-- **Pre-auth frames are processed.** `handleRequestFrame` (`OpenClawEventClient.swift:188-198`)
-  handles any `type:"req"` frame with no check that the connect handshake completed. Combined
-  with cleartext `ws://` in LAN mode (`:144`), an on-path LAN attacker can inject frames — with
-  Agent Mode on and default toggles (`observe`/`output` ON), that's silent transcript reads and
-  arbitrary speech. Fix: drop `req` frames until authenticated; add an integration test that a
-  `req` arriving before the connect `res` is ignored. Note the ws:// LAN caveat in the threat
-  model (it currently assumes "compromised gateway agent" only, not LAN MITM).
+- **Pre-auth frames were processed — fixed 2026-09-09 ([#444](https://github.com/straff2002/OpenGlasses/pull/444)).** `handleRequestFrame` used to
+  handle any `type:"req"` frame with no check that the connect handshake completed. Combined with
+  cleartext `ws://` in LAN mode, an on-path LAN attacker could inject frames — with Agent Mode on
+  and default toggles (`observe`/`output` ON), that meant silent transcript reads and arbitrary
+  speech. `OpenClawEventClient` now gates inbound frames on the handshake: a `req` arriving before
+  the connect `res` is dropped with **no reply of any kind** (a reply would confirm a listening
+  client to the attacker) and the remote-invoke handler is never reached, and `heartbeat`/`cron`
+  events — which are spoken to the wearer — are dropped the same way. Both drops are recorded as
+  `requestDroppedPreAuth` / `eventDroppedPreAuth`, carrying nothing from the attacker-controlled
+  frame. `establishConnection` clears the authenticated flag before every new socket, so a
+  reconnect cannot inherit the previous socket's handshake. `connect.challenge` and `res` frames
+  stay ungated — they *are* the handshake — and `device.paired` stays ungated because pairing
+  depends on it arriving pre-auth (narrowing it to the bootstrap window is Plan AR's item).
+  Covered by `OpenClawEventClientScriptedSocketTests`
+  (`testRequestBeforeHelloOkIsDroppedWithoutReply`, `testHeartbeatBeforeHelloOkIsNotSpoken`). The
+  ws:// LAN caveat is now stated in the threat model above.
 - **`getTranscript` is misclassed.** It's *observe* (default ON) yet returns the last 20 ambient
   captions (`OpenGlassesApp.swift:3017-3022`) silently — recorded conversation content is
   capture-adjacent by this doc's own wiretap framing. Give it its own toggle or promote it to
