@@ -68,6 +68,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | clinicalAuditLog | `HIPAAComplianceService` | operationalAudit | wearer | complete | yes | cap 1000 | `HIPAAComplianceService.clearAuditLog` | none — an audit entry is evidence; it is content-free by design |
 | clinicalConfiguration | `FHIRConfigurationStore` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
 | clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | complete | yes | HIPAA retention days; disabled at zero | `HIPAAComplianceService.secureDelete` | none — transcripts are filed by session, not by patient |
+| consentRecords | `ConsentStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | none | none — a consent record is evidence of what was agreed; withdrawal is recorded, not erased | none — closed-vocabulary purpose/recipient/actor fields only; no subject identity is stored |
 | contextualNotes | `ContextualNoteStore` | personalMemory | wearer | platformDefault | no | none | none — the wearer's own notes, removed by query | `ContextualNoteStore.deleteMatching(_:)` |
 | conversationRecallIndex | `ConversationIndex` | derivedIndex | wearer | processMemoryOnly | yes | none | `ConversationIndex.clear()` | `ConversationIndex.delete(threadID:)` |
 | conversationThreads | `ConversationStore` | conversationContent | wearer | complete | no | none | `ConversationStore.deleteAllThreads()` | `ConversationStore.deleteThread(_:)` |
@@ -109,6 +110,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | stagedExports | `StagedExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | `StagedExportCoordinator.revokeAll()` | none — an export is a lease, released rather than searched |
 | studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |
+| toolDefinitionDigests | `ToolDefinitionDigestStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `ToolDefinitionDigestStore.forget(serverID:) per server` | n/a — no subject linkage |
 | usage | `UsageStore` | operationalAudit | none | platformDefault | no | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
 | vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |

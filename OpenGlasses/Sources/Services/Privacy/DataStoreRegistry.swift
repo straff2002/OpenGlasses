@@ -93,6 +93,10 @@ enum SensitiveStore: String, CaseIterable {
     case keychainConversationKey
     case keychainClinicalCredentials
 
+    // Trust and consent registers (tool-definition digests, versioned consent records)
+    case toolDefinitionDigests
+    case consentRecords
+
     // MARK: - Facets
 
     /// What kind of thing the store holds. Coarser than the inventory's data categories on
@@ -530,6 +534,24 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/Usage/UsageStore.swift"],
                           location: "Documents/usage.sqlite")
 
+        case .toolDefinitionDigests:
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .api("ToolDefinitionDigestStore.forget(serverID:) per server"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ToolDefinitionDigestStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Security/ToolDefinitionDigestStore.swift"],
+                          location: "Application Support/ToolTrust/tool-definition-digests.json")
+        case .consentRecords:
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .unavailable("a consent record is evidence of what was agreed; withdrawal is recorded, not erased"),
+                          deleteSubject: .unavailable("closed-vocabulary purpose/recipient/actor fields only; no subject identity is stored"),
+                          owner: "ConsentStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Security/ConsentRecord.swift"],
+                          location: "Application Support/Consent/consent-records.json")
         case .operationJournal:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
