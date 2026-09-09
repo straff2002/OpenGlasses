@@ -238,10 +238,13 @@ final class AgentSafetyTests: XCTestCase {
         defer { Config.setAgentModeEnabled(saved) }
 
         let registry = NativeToolRegistry(locationService: LocationService())
-        registry.register(FakeAgentTool(name: "send_message"))
+        registry.register(FakeAgentTool(name: "ping_tool"))
         let router = NativeToolRouter(registry: registry)
-        // No confirmation needed when agent mode is off — high-impact tool runs directly.
-        let result = await router.handleToolCall(name: "send_message", args: [:])
+        // The supervisor is an agentic feature and stays off with agent mode off, so a tool that
+        // isn't messaging, actuation or disclosure runs directly. (`send_message` used to stand in
+        // here; W04.4's effect-class floor now holds messaging whatever agent mode says, which
+        // `ToolApprovalBindingTests` covers — so this asserts the supervisor, not the floor.)
+        let result = await router.handleToolCall(name: "ping_tool", args: [:])
         guard case .success = result else { return XCTFail("agent-off should not gate") }
     }
 

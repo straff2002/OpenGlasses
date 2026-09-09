@@ -188,6 +188,27 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // approval is issued against need to know what will actually be dispatched — a native tool,
         // a named server's tool, a user-authored HTTP call, or the gateway.
         let profile = dispatchProfile(for: call)
+
+        // Outbound egress screen (Plan R), hoisted ahead of authorization. A call whose arguments
+        // carry secrets or PII is withheld whatever anyone would have said about it, so screening
+        // first means a person is never asked to approve something that was never going to leave
+        // the device — and an approval is never obtained for a call that then does not happen.
+        var screenedArgs: [String: Any]?
+        if case .mcpServer = profile.seam, let mcp = mcpClient,
+           let tool = mcp.offeredTool(matching: name),
+           let server = mcp.server(id: tool.serverId), server.enabled {
+            let verdict = EgressScreen.evaluate(args, policy: server.policy)
+            if !verdict.hits.isEmpty {
+                mcp.recordEgress(serverLabel: server.label, toolName: tool.name, verdict: verdict)
+            }
+            if let reason = verdict.blockReason {
+                // The screen's reason names the patterns it matched *in the arguments*.
+                PrivacyLog.toolGate(.egressWithheld, tool: name)
+                return .rejected(reason: "The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
+            }
+            screenedArgs = verdict.redactedArgs ?? args
+        }
+
         let decision = ToolAuthorizationPolicy.evaluate(.init(
             call: call,
             agentModeEnabled: Config.agentModeEnabled,
@@ -295,19 +316,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
         //    never matched here, so the model can't reach them.
         if let mcp = mcpClient, let tool = mcp.offeredTool(matching: name),
            let server = mcp.server(id: tool.serverId), server.enabled {
-            // Outbound egress screen (Plan R): secrets/PII never leave the device for a
-            // third-party server. A `.block` verdict is treated like a declined confirmation —
-            // no network call, and a failure the model is told not to retry.
-            let verdict = EgressScreen.evaluate(args, policy: server.policy)
-            if !verdict.hits.isEmpty {
-                mcp.recordEgress(serverLabel: server.label, toolName: tool.name, verdict: verdict)
-            }
-            if let reason = verdict.blockReason {
-                // The screen's reason names the patterns it matched *in the arguments*.
-                PrivacyLog.toolGate(.egressWithheld, tool: name)
-                return .rejected(reason: "The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
-            }
-            let outboundArgs = verdict.redactedArgs ?? args
+            // Already screened above, before anybody was asked to approve anything.
+            let outboundArgs = screenedArgs ?? args
             PrivacyLog.toolDispatch(.mcp, tool: name)
             // A third-party server's tool declares nothing about itself, so it gets the same
             // assumption an unclassified native tool gets: it reached outside, we can't stop it,
