@@ -112,6 +112,32 @@ struct AIProvenance: Codable, Equatable {
                      appVersion: appVersion)
     }
 
+    /// The digest for one structured-vision call's instruction set: the system prompt plus the
+    /// response schema.
+    ///
+    /// Use this rather than hashing `String(describing:)` of the schema. A JSON Schema is a
+    /// `[String: Any]`, and Swift seeds dictionary hashing randomly per process, so the reflected
+    /// description puts the keys in a different order in every launch. A digest built from it
+    /// identified the *run*, not the instruction version: two exports from the same build and the
+    /// same schema disagreed, and a real prompt change was indistinguishable from a relaunch —
+    /// which makes the field useless for the one job it has. Canonical JSON fixes the order.
+    static func promptDigest(systemPrompt: String, jsonSchema: [String: Any]) -> String {
+        digest(of: [systemPrompt, canonicalJSON(jsonSchema)])
+    }
+
+    /// Key-sorted JSON for anything `JSONSerialization` will take, and the reflected description
+    /// for anything it will not. The fallback is not order-stable across processes, so a schema
+    /// that reaches it cannot be version-tracked — which is why `PromptVersionRegistryTests`
+    /// asserts every registered schema serialises.
+    static func canonicalJSON(_ object: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return String(describing: object)
+        }
+        return text
+    }
+
     /// A short, stable digest of the instruction set. Truncated to 16 hex characters: enough to tell
     /// two prompt versions apart in an audit, short enough to print in a PDF footer.
     static func digest(of sources: [String]) -> String {
