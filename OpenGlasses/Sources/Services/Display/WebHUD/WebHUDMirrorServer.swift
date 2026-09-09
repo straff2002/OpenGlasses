@@ -19,12 +19,34 @@ final class WebHUDMirrorServer: ObservableObject {
 
     @Published private(set) var isRunning = false
 
+    /// Explicit availability, so a Release build reads as refusing rather than merely idle.
+    @Published private(set) var availability: LocalServiceAvailability = .stopped
+
+    /// Build marker of the transport actually opened, or nil when none ever was. Only a build that
+    /// can open the legacy LAN transport can set this.
+    private(set) var listenerBuildMarker: String?
+
     /// The current mirror frame, wired by AppState to `GlassesDisplayService.mirrorScreen`.
     var payloadProvider: () -> WebHUDPayload = { .empty }
+
+    private let policy: LocalServiceExposurePolicy
+    private let listenerFactory: LocalListenerFactory
+    private let defaults: UserDefaults
 
     private var listener: NWListener?
 
     private static let tokenKey = "hudMirrorBearerToken"
+
+    /// Defaults are the production wiring: the compile-time exposure policy and the real listener
+    /// factory. The seams exist so a test can compose this server under a Release-flavoured policy
+    /// and prove no listener is ever constructed.
+    init(policy: LocalServiceExposurePolicy = .current,
+         listenerFactory: @escaping LocalListenerFactory = LocalListenerProvider.production,
+         defaults: UserDefaults = .standard) {
+        self.policy = policy
+        self.listenerFactory = listenerFactory
+        self.defaults = defaults
+    }
 
     /// The current access token, generating and persisting one on first read.
     var accessToken: String {
@@ -55,7 +77,7 @@ final class WebHUDMirrorServer: ObservableObject {
 
     /// The URL to register in Developer Mode (token rides the hash — never sent over HTTP).
     var registrationURL: String? {
-        guard LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror) else {
+        guard policy.permitsListener(for: .webHUDMirror) else {
             return nil
         }
         guard let ip = MCPGlassesServer.lanIPAddress() else { return nil }
@@ -70,18 +92,22 @@ final class WebHUDMirrorServer: ObservableObject {
     }
 
     func start() {
-        guard LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror) else {
+        guard policy.permitsListener(for: .webHUDMirror) else {
             // Refuse before creating a token or a listener. Release preference state is not an
-            // authorization mechanism and cannot override the build boundary.
+            // authorization mechanism and cannot override the build boundary, and refusing also
+            // retires the stale opt-in behind this surface.
+            availability = .unavailableInProduction
+            isRunning = false
+            policy.clearPersistedOptIns(defaults: defaults)
             return
         }
         guard listener == nil else { return }
         guard !Config.hipaaMode else { return }
         _ = accessToken
         do {
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
-            let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: Self.port)!)
+            let handle = try listenerFactory(LocalListenerRequest(service: .webHUDMirror, port: Self.port))
+            let listener = handle.listener
+            listenerBuildMarker = handle.buildMarker
             self.listener = listener
             listener.newConnectionHandler = { [weak self] connection in
                 self?.handle(connection)
@@ -91,11 +117,14 @@ final class WebHUDMirrorServer: ObservableObject {
                     switch state {
                     case .ready:
                         self?.isRunning = true
+                        self?.availability = .running
                         PrivacyLog.stream(.hudMirror, .listening, count: Int(Self.port))
                     case .failed(let error):
                         PrivacyLog.stream(.hudMirror, .startFailed, error: SafeErrorSummary(error))
                         self?.stop()
-                    case .cancelled: self?.isRunning = false
+                    case .cancelled:
+                        self?.isRunning = false
+                        self?.availability = .stopped
                     default: break
                     }
                 }
@@ -110,6 +139,7 @@ final class WebHUDMirrorServer: ObservableObject {
         listener?.cancel()
         listener = nil
         isRunning = false
+        availability = .stopped
     }
 
     // MARK: - Connection handling

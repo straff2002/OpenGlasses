@@ -59,11 +59,19 @@ final class LocalServiceExposurePolicyTests: XCTestCase {
 
         for (relativePath, service, protectsRegistrationURL) in expectations {
             let source = try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
-            let policyCall = "LocalServiceExposurePolicy.current.permitsListener(for: \(service))"
+            // The servers now hold an injected policy so composition can be tested; the default
+            // is still the compile-time one, which is what ships.
+            XCTAssertTrue(source.contains("policy: LocalServiceExposurePolicy = .current"),
+                          "\(relativePath) must default to the compile-time build policy")
+            let policyCall = "policy.permitsListener(for: \(service))"
             let start = try XCTUnwrap(source.range(of: "func start()"), "missing start in \(relativePath)")
             let listener = try XCTUnwrap(
-                source.range(of: "NWListener(using:", range: start.lowerBound..<source.endIndex),
+                source.range(of: "listenerFactory(", range: start.lowerBound..<source.endIndex),
                 "missing listener construction in \(relativePath)"
+            )
+            XCTAssertFalse(
+                source.contains("NWListener(using:"),
+                "\(relativePath) must construct its listener through the injectable factory"
             )
             let startPrefix = source[start.lowerBound..<listener.lowerBound]
             XCTAssertTrue(
