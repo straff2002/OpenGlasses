@@ -14,7 +14,39 @@ struct BoundedHTTPClient {
         let acceptedMIMETypes: Set<String>
         let maximumRedirects: Int
         let allowsPrivateHTTP: Bool
+        /// Outer bound on the whole fetch, redirects included.
         let totalTimeout: TimeInterval
+        /// How long the peer may hold an accepted connection before sending its first byte.
+        let firstByteTimeout: TimeInterval
+        /// The largest gap allowed between two delivered chunks once bytes are flowing.
+        let idleTimeout: TimeInterval
+
+        /// Three deadlines rather than one, because a single total budget lets a hostile peer
+        /// accept the connection and then hold a socket, a task and a staging file open for the
+        /// entire window while sending nothing: `firstByteTimeout` bounds "connected and went
+        /// quiet", `idleTimeout` bounds "started, then stalled mid-body", and `totalTimeout`
+        /// stays the outer bound. The public profiles are tight because they talk to CDNs and
+        /// static hosting; the Debug-only internal profile is deliberately loose because its peer
+        /// is a hand-run script on the developer's own LAN that may be started after the fetch.
+        init(
+            name: String,
+            maximumBytes: Int,
+            acceptedMIMETypes: Set<String>,
+            maximumRedirects: Int,
+            allowsPrivateHTTP: Bool,
+            totalTimeout: TimeInterval,
+            firstByteTimeout: TimeInterval = 8,
+            idleTimeout: TimeInterval = 5
+        ) {
+            self.name = name
+            self.maximumBytes = maximumBytes
+            self.acceptedMIMETypes = acceptedMIMETypes
+            self.maximumRedirects = maximumRedirects
+            self.allowsPrivateHTTP = allowsPrivateHTTP
+            self.totalTimeout = totalTimeout
+            self.firstByteTimeout = firstByteTimeout
+            self.idleTimeout = idleTimeout
+        }
 
         static let qrContext = Profile(
             name: "qrContext",
@@ -22,7 +54,9 @@ struct BoundedHTTPClient {
             acceptedMIMETypes: ["application/json", "text/plain", "text/html"],
             maximumRedirects: 3,
             allowsPrivateHTTP: false,
-            totalTimeout: 20
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
         )
 
         static let signedCatalog = Profile(
@@ -31,7 +65,9 @@ struct BoundedHTTPClient {
             acceptedMIMETypes: ["application/json"],
             maximumRedirects: 3,
             allowsPrivateHTTP: false,
-            totalTimeout: 20
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
         )
 
         static let skillPack = Profile(
@@ -40,7 +76,11 @@ struct BoundedHTTPClient {
             acceptedMIMETypes: ["application/zip", "application/octet-stream", "application/x-zip-compressed"],
             maximumRedirects: 3,
             allowsPrivateHTTP: false,
-            totalTimeout: 30
+            // A pack is up to 8 MiB from static hosting: the same "answer promptly" expectation,
+            // with a little more room between chunks than a small JSON document needs.
+            totalTimeout: 30,
+            firstByteTimeout: 10,
+            idleTimeout: 8
         )
 
         #if DEBUG
@@ -50,7 +90,9 @@ struct BoundedHTTPClient {
             acceptedMIMETypes: ["application/zip", "application/octet-stream", "application/x-zip-compressed"],
             maximumRedirects: 0,
             allowsPrivateHTTP: true,
-            totalTimeout: 30
+            totalTimeout: 30,
+            firstByteTimeout: 20,
+            idleTimeout: 15
         )
         #endif
     }
@@ -61,6 +103,46 @@ struct BoundedHTTPClient {
         let host: String
         let port: UInt16
         let usesTLS: Bool
+    }
+
+    /// Where the socket goes versus which name the peer must prove it owns.
+    ///
+    /// The endpoint is the approved numeric peer that DNS classification pinned; the TLS server
+    /// name, the certificate-policy hostname and the `Host:` header all stay the request's own
+    /// hostname, so pinning the address never quietly becomes "trust whatever certificate this IP
+    /// literal presents". Split out of the transport as a value so that retention is asserted
+    /// without opening a socket.
+    struct PinnedConnectionPlan: Equatable {
+        /// The numeric address the connection is pinned to.
+        let endpointHost: String
+        let port: UInt16
+        let usesTLS: Bool
+        /// SNI name and `SecPolicyCreateSSL` hostname — one field because they must never differ.
+        /// Nil only for the Debug-only cleartext profile, which has no certificate to check.
+        let tlsServerName: String?
+        /// `Host:` header value: bracketed for IPv6 literals, carrying an explicit port only when
+        /// the URL did.
+        let hostHeader: String
+        /// Origin-form request target (path plus query), percent-encoding preserved.
+        let requestTarget: String
+
+        init?(request: PinnedRequest) {
+            guard let components = URLComponents(url: request.url, resolvingAgainstBaseURL: false) else {
+                return nil
+            }
+            endpointHost = request.address
+            port = request.port
+            usesTLS = request.usesTLS
+            tlsServerName = request.usesTLS ? request.host : nil
+            let bracketed = request.host.contains(":") ? "[\(request.host)]" : request.host
+            hostHeader = request.url.port == nil ? bracketed : "\(bracketed):\(request.port)"
+            let path = components.percentEncodedPath.isEmpty ? "/" : components.percentEncodedPath
+            requestTarget = path + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
+        }
+
+        /// The hostname the certificate must be valid for. Identical to `tlsServerName` by
+        /// construction: the pinned numeric peer is never a name to verify against.
+        var certificateHostname: String? { tlsServerName }
     }
 
     struct Response: Equatable {
@@ -89,6 +171,8 @@ struct BoundedHTTPClient {
         case responseTooLarge
         case truncatedResponse
         case timeout
+        case firstByteTimeout
+        case idleTimeout
         case transport
 
         var description: String {
@@ -110,6 +194,8 @@ struct BoundedHTTPClient {
             case .responseTooLarge: return "the response exceeded its byte limit"
             case .truncatedResponse: return "the response ended before its declared length"
             case .timeout: return "the request timed out"
+            case .firstByteTimeout: return "the server accepted the connection but sent nothing"
+            case .idleTimeout: return "the server stopped sending part-way through the response"
             case .transport: return "the secure connection failed"
             }
         }
@@ -287,20 +373,89 @@ struct BoundedHTTPClient {
         }
     }
 
+    /// One response's inter-byte deadlines, pure over an injected clock.
+    ///
+    /// Only bytes the peer actually delivered move the clock: a response cannot buy itself more
+    /// time with headers, a generous declared `Content-Length`, a redirect, or an empty read.
+    struct ResponseDeadline: Equatable {
+        let firstByteTimeout: TimeInterval
+        let idleTimeout: TimeInterval
+        private var lastProgress: TimeInterval
+        private var sawBytes = false
+
+        init(profile: Profile, startedAt: TimeInterval) {
+            firstByteTimeout = profile.firstByteTimeout
+            idleTimeout = profile.idleTimeout
+            lastProgress = startedAt
+        }
+
+        /// Which failure a lapse in the current state is.
+        var lapseError: ClientError { sawBytes ? .idleTimeout : .firstByteTimeout }
+
+        /// Seconds the next chunk still has. Zero or less means the deadline has lapsed.
+        func budget(now: TimeInterval) -> TimeInterval {
+            lastProgress + (sawBytes ? idleTimeout : firstByteTimeout) - now
+        }
+
+        mutating func recordProgress(bytes: Int, at now: TimeInterval) {
+            guard bytes > 0 else { return }
+            sawBytes = true
+            lastProgress = now
+        }
+    }
+
+    enum ReceivedChunk: Equatable {
+        case bytes(Data, complete: Bool)
+        /// The budget expired before the peer delivered anything.
+        case lapsed
+    }
+
+    /// Drives one response to completion under the profile's first-byte and idle deadlines.
+    ///
+    /// `receive` is handed the remaining budget and answers `.lapsed` when it runs out; `now` is a
+    /// monotonic clock. Both are parameters so the two deadlines are exercised headlessly, with no
+    /// socket and no real waiting.
+    static func readResponse(
+        into parser: HTTPResponseParser,
+        profile: Profile,
+        now: () -> TimeInterval,
+        receive: (TimeInterval) async throws -> ReceivedChunk
+    ) async throws -> Response {
+        var deadline = ResponseDeadline(profile: profile, startedAt: now())
+        while true {
+            let budget = deadline.budget(now: now())
+            guard budget > 0 else { throw deadline.lapseError }
+            switch try await receive(budget) {
+            case .lapsed:
+                throw deadline.lapseError
+            case .bytes(let data, let complete):
+                // Judged against when the chunk actually landed, so a peer that dribbles one byte
+                // after the deadline is still refused rather than granted a fresh window.
+                let arrival = now()
+                guard deadline.budget(now: arrival) > 0 else { throw deadline.lapseError }
+                deadline.recordProgress(bytes: data.count, at: arrival)
+                if !data.isEmpty, try parser.feed(data) { return try parser.response() }
+                if complete { return try parser.finish() }
+            }
+        }
+    }
+
     private static func performPinnedRequest(
         _ request: PinnedRequest,
         profile: Profile,
         sink: BodySink
     ) async throws -> Response {
+        guard let plan = PinnedConnectionPlan(request: request) else { throw ClientError.invalidURL }
+
         let parameters: NWParameters
-        if request.usesTLS {
+        if let serverName = plan.certificateHostname {
             let tls = NWProtocolTLS.Options()
             let queue = DispatchQueue(label: "nz.co.openglasses.bounded-http.verify")
-            sec_protocol_options_set_tls_server_name(tls.securityProtocolOptions, request.host)
+            sec_protocol_options_set_tls_server_name(tls.securityProtocolOptions, serverName)
             sec_protocol_options_add_tls_application_protocol(tls.securityProtocolOptions, "http/1.1")
             sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, trust, complete in
                 let secTrust = sec_trust_copy_ref(trust).takeRetainedValue()
-                SecTrustSetPolicies(secTrust, SecPolicyCreateSSL(true, request.host as CFString))
+                SecTrustSetPolicies(secTrust, SecPolicyCreateSSL(true, serverName as CFString))
                 complete(SecTrustEvaluateWithError(secTrust, nil))
             }, queue)
             let tcp = NWProtocolTCP.Options()
@@ -315,8 +470,8 @@ struct BoundedHTTPClient {
         }
 
         let connection = NWConnection(
-            host: NWEndpoint.Host(request.address),
-            port: NWEndpoint.Port(rawValue: request.port)!,
+            host: NWEndpoint.Host(plan.endpointHost),
+            port: NWEndpoint.Port(rawValue: plan.port)!,
             using: parameters
         )
         let queue = DispatchQueue(label: "nz.co.openglasses.bounded-http.connection")
@@ -326,21 +481,16 @@ struct BoundedHTTPClient {
         return try await withoutActuallyEscaping(sink) { escapingSink in
             try await withTaskCancellationHandler(operation: {
                 try await waitUntilReady(connection)
-                guard let components = URLComponents(url: request.url, resolvingAgainstBaseURL: false) else {
-                    throw ClientError.invalidURL
-                }
-                let path = components.percentEncodedPath.isEmpty ? "/" : components.percentEncodedPath
-                let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
-                let hostName = request.host.contains(":") ? "[\(request.host)]" : request.host
-                let hostHeader = request.url.port == nil ? hostName : "\(hostName):\(request.port)"
-                let wire = "GET \(path)\(query) HTTP/1.1\r\nHost: \(hostHeader)\r\nAccept: \(profile.acceptedMIMETypes.sorted().joined(separator: ", "))\r\nAccept-Encoding: identity\r\nConnection: close\r\nUser-Agent: OpenGlasses/BoundedFetch\r\n\r\n"
+                let wire = "GET \(plan.requestTarget) HTTP/1.1\r\nHost: \(plan.hostHeader)\r\nAccept: \(profile.acceptedMIMETypes.sorted().joined(separator: ", "))\r\nAccept-Encoding: identity\r\nConnection: close\r\nUser-Agent: OpenGlasses/BoundedFetch\r\n\r\n"
                 try await send(Data(wire.utf8), on: connection)
 
                 let parser = HTTPResponseParser(url: request.url, profile: profile, sink: escapingSink)
-                while true {
-                    let (bytes, complete) = try await receive(on: connection)
-                    if !bytes.isEmpty, try parser.feed(bytes) { return try parser.response() }
-                    if complete { return try parser.finish() }
+                return try await readResponse(
+                    into: parser,
+                    profile: profile,
+                    now: { ProcessInfo.processInfo.systemUptime }
+                ) { budget in
+                    try await receive(on: connection, within: budget)
                 }
             }, onCancel: {
                 connection.cancel()
@@ -379,6 +529,32 @@ struct BoundedHTTPClient {
                 if error == nil { continuation.resume() }
                 else { continuation.resume(throwing: ClientError.transport) }
             })
+        }
+    }
+
+    /// A single receive under a deadline. The read itself is not cooperatively cancellable, so a
+    /// lapse cancels the connection, which is what makes the pending read complete and the child
+    /// task finish rather than outliving the fetch.
+    private static func receive(
+        on connection: NWConnection,
+        within budget: TimeInterval
+    ) async throws -> ReceivedChunk {
+        try await withThrowingTaskGroup(of: ReceivedChunk.self) { group in
+            group.addTask {
+                try await withTaskCancellationHandler {
+                    let (bytes, complete) = try await receive(on: connection)
+                    return ReceivedChunk.bytes(bytes, complete: complete)
+                } onCancel: {
+                    connection.cancel()
+                }
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(max(0, budget) * 1_000_000_000))
+                return ReceivedChunk.lapsed
+            }
+            guard let first = try await group.next() else { throw ClientError.transport }
+            group.cancelAll()
+            return first
         }
     }
 

@@ -15,10 +15,15 @@ struct SkillPackManifest: Codable, Equatable {
     let hardware: [HardwareRequirement]
     let actions: [SkillPackAction]
     let settings: [SettingDeclaration]
+    /// The payload files this pack ships, as archive-relative paths. Optional: a pack that
+    /// declares them gets exactly those inflated from its zip and any other entry is ignored,
+    /// while a pack that declares none keeps the historical "every vetted entry" behaviour — the
+    /// packs signed before this existed sign over that set.
+    let files: [String]?
 
     init(id: String, version: String, name: String, summary: String, minAppBuild: Int? = nil,
          hardware: [HardwareRequirement] = [], actions: [SkillPackAction] = [],
-         settings: [SettingDeclaration] = []) {
+         settings: [SettingDeclaration] = [], files: [String]? = nil) {
         self.id = id
         self.version = version
         self.name = name
@@ -27,6 +32,7 @@ struct SkillPackManifest: Codable, Equatable {
         self.hardware = hardware
         self.actions = actions
         self.settings = settings
+        self.files = files
     }
 
     // Optional collections decode as empty rather than failing the whole manifest.
@@ -40,6 +46,7 @@ struct SkillPackManifest: Codable, Equatable {
         hardware = try c.decodeIfPresent([HardwareRequirement].self, forKey: .hardware) ?? []
         actions = try c.decodeIfPresent([SkillPackAction].self, forKey: .actions) ?? []
         settings = try c.decodeIfPresent([SettingDeclaration].self, forKey: .settings) ?? []
+        files = try c.decodeIfPresent([String].self, forKey: .files)
     }
 
     struct HardwareRequirement: Codable, Equatable {
@@ -252,7 +259,10 @@ extension SkillPackManifest {
             minAppBuild: root["minAppBuild"] as? Int,
             hardware: hardware,
             actions: actions,
-            settings: settings)
+            settings: settings,
+            // Absent means "declares nothing" (materialize every vetted entry, as before);
+            // present but malformed fails closed to an empty declaration rather than widening it.
+            files: root["files"] == nil ? nil : ((root["files"] as? [Any]) ?? []).compactMap { $0 as? String })
         return (manifest, report)
     }
 

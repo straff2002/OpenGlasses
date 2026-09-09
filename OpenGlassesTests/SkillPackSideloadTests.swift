@@ -311,9 +311,13 @@ final class SkillPackSideloadTests: XCTestCase {
 
     func testSignedSideloadVerifiesAndRecordsSigned() async throws {
         setDevMode(false)   // a signed pack must not need dev mode
-        guard case .success(let (manifestData, files)) = SkillPackArchive.extract(zipData: fixtureZip) else {
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: fixtureZip),
+              let manifest = SkillPackManifest.lossyDecode(staged.manifestData).manifest,
+              case .success(let files) =
+                SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest) else {
             return XCTFail()
         }
+        let manifestData = staged.manifestData
         let key = Curve25519.Signing.PrivateKey()
         let signature = try SkillPackSignature.sign(
             manifestData: manifestData, payloadFiles: files,

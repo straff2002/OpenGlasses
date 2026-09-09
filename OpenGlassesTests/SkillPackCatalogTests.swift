@@ -65,6 +65,30 @@ final class SkillPackCatalogTests: XCTestCase {
         """
 
 
+    /// A pack that declares exactly one of its two payload entries. Built with a real zip writer;
+    /// `extras/undeclared.md` exists in the archive and must never be inflated.
+    private static let declaredFilesZipBase64 = """
+        UEsDBBQAAAAIAPgCKl2IcK91iwAAAMcAAAAOAAAAc2tpbGxwYWNrLmpzb25NjjEPAiEMhff7FQ2zwXN1Ns7u5oYGakKkQOhpJMb/\
+        bjkc3Ppev9fX9wRggjdHMC6zpRdyiWQ9uYiVvNn1/ZOqhJw6dLCznYebkKlbpx8L5xBJ4ILuPgB5MGNtf4yAFrg1NsiJoGCLGT3c\
+        NDcSfRLlrypUlpq5rLIv2p8TWvZGF8uG6hl9aYOX6fMFUEsDBBQAAAAIAPgCKl0gG+CrFwAAABUAAAASAAAAcHJvbXB0cy9wZXJz\
+        b25hLm1kc3F19nEMcnVRCHCM9PF3dFFw8neJBABQSwMEFAAAAAgA+AIqXZNxLwYZAAAAFwAAABQAAABleHRyYXMvdW5kZWNsYXJl\
+        ZC5tZAv1c3F19nEMcnVRCHCM9PF3dFFw8neJBABQSwECFAMUAAAACAD4AipdiHCvdYsAAADHAAAADgAAAAAAAAAAAAAAgAEAAAAA\
+        c2tpbGxwYWNrLmpzb25QSwECFAMUAAAACAD4AipdIBvgqxcAAAAVAAAAEgAAAAAAAAAAAAAAgAG3AAAAcHJvbXB0cy9wZXJzb25h\
+        Lm1kUEsBAhQDFAAAAAgA+AIqXZNxLwYZAAAAFwAAABQAAAAAAAAAAAAAAIAB/gAAAGV4dHJhcy91bmRlY2xhcmVkLm1kUEsFBgAA\
+        AAADAAMAvgAAAEkBAAAAAA==
+        """
+
+    /// A pack whose manifest fails admission (`id` is not reverse-DNS), carrying one payload entry
+    /// the tests poison so that inflating it would fail loudly.
+    private static let poisonManifestZipBase64 = """
+        UEsDBBQAAAAAAAEDKl1Fdv5xhgAAAIYAAAAOAAAAc2tpbGxwYWNrLmpzb257CiAgImlkIjogIk5PVF9SRVZFUlNFX0ROUyIsCiAg\
+        InZlcnNpb24iOiAiMS4wLjAiLAogICJuYW1lIjogIlBvaXNvbiBQYWNrIiwKICAic3VtbWFyeSI6ICJNYW5pZmVzdCBmYWlscyBh\
+        ZG1pc3Npb24iLAogICJhY3Rpb25zIjogW10KfVBLAwQUAAAAAAABAypdxDdUbxMAAAATAAAAEgAAAHByb21wdHMvcGVyc29uYS5t\
+        ZFBPSVNPTiBQQVlMT0FEIEJPRFlQSwECFAMUAAAAAAABAypdRXb+cYYAAACGAAAADgAAAAAAAAAAAAAAgAEAAAAAc2tpbGxwYWNr\
+        Lmpzb25QSwECFAMUAAAAAAABAypdxDdUbxMAAAATAAAAEgAAAAAAAAAAAAAAgAGyAAAAcHJvbXB0cy9wZXJzb25hLm1kUEsFBgAA\
+        AAACAAIAfAAAAPUAAAAAAA==
+        """
+
     private func makeStore(
         publicKey: String = SkillPackSignature.productionPublicKeyBase64,
         nativeNames: Set<String> = []
@@ -78,9 +102,7 @@ final class SkillPackCatalogTests: XCTestCase {
     // MARK: - Archive extraction (real zip, real reader)
 
     func testFixtureZipExtracts() throws {
-        guard case .success(let (manifestData, files)) = SkillPackArchive.extract(zipData: fixtureZip) else {
-            return XCTFail("fixture must extract")
-        }
+        let (manifestData, files) = try extractAll(fixtureZip)
         let (manifest, report) = SkillPackManifest.lossyDecode(manifestData)
         XCTAssertEqual(manifest?.id, "com.example.barista")
         XCTAssertTrue(report.isClean)
@@ -90,16 +112,16 @@ final class SkillPackCatalogTests: XCTestCase {
     }
 
     func testGarbageAndManifestlessArchivesAreTypedFailures() {
-        XCTAssertEqual(SkillPackArchive.extract(zipData: Data("not a zip".utf8)).failureError, .notAZip)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: Data("not a zip".utf8)).failureError, .notAZip)
         // An empty-but-valid zip: EOCD only.
         var eocd = Data(count: 22)
         eocd.replaceSubrange(0..<4, with: [0x50, 0x4B, 0x05, 0x06])
-        XCTAssertEqual(SkillPackArchive.extract(zipData: eocd).failureError, .missingManifest)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: eocd).failureError, .missingManifest)
     }
 
     func testArchiveSizeLimitRunsBeforeZipParsing() {
         let oversized = Data(count: SkillPackArchive.maxArchiveBytes + 1)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: oversized).failureError, .archiveTooLarge)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: oversized).failureError, .archiveTooLarge)
     }
 
     func testDeclaredOversizeIsRefusedBeforeInflation() throws {
@@ -108,7 +130,7 @@ final class SkillPackCatalogTests: XCTestCase {
         writeUInt32(UInt32(SkillPackArchive.maxEntryBytes + 1), to: &archive, at: central + 24)
         let local = Int(readUInt32(from: archive, at: central + 42))
         writeUInt32(UInt32(SkillPackArchive.maxEntryBytes + 1), to: &archive, at: local + 22)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .entryTooLarge)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .entryTooLarge)
     }
 
     func testTraversalPathRefusesWholeArchive() throws {
@@ -119,7 +141,7 @@ final class SkillPackCatalogTests: XCTestCase {
         archive.replaceSubrange((central + 46)..<(central + 46 + replacement.count), with: replacement)
         let local = Int(readUInt32(from: archive, at: central + 42))
         archive.replaceSubrange((local + 30)..<(local + 30 + replacement.count), with: replacement)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .unsafeEntryPath)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .unsafeEntryPath)
     }
 
     func testCentralAndLocalNamesMustMatch() throws {
@@ -127,7 +149,7 @@ final class SkillPackCatalogTests: XCTestCase {
         let central = try firstCentralDirectoryOffset(in: archive)
         let local = Int(readUInt32(from: archive, at: central + 42))
         archive[local + 30] ^= 0x01
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .notAZip)
     }
 
     func testCentralDirectoryMustEndExactlyAtEOCD() throws {
@@ -135,7 +157,7 @@ final class SkillPackCatalogTests: XCTestCase {
         let eocd = try XCTUnwrap(archive.range(of: Data([0x50, 0x4B, 0x05, 0x06]), options: .backwards)?.lowerBound)
         let declaredSize = readUInt32(from: archive, at: eocd + 12)
         writeUInt32(declaredSize - 1, to: &archive, at: eocd + 12)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .notAZip)
     }
 
     func testOverlappingPhysicalEntryRangesAreRejected() throws {
@@ -145,7 +167,7 @@ final class SkillPackCatalogTests: XCTestCase {
         let compressedSize = readUInt32(from: archive, at: central + 20)
         writeUInt32(compressedSize + 4, to: &archive, at: central + 20)
         writeUInt32(compressedSize + 4, to: &archive, at: local + 18)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .notAZip)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .notAZip)
     }
 
     func testUnixSpecialFilesAndTypeMasqueradingAreRejected() throws {
@@ -153,13 +175,13 @@ final class SkillPackCatalogTests: XCTestCase {
             var archive = fixtureZip
             let central = try firstCentralDirectoryOffset(in: archive)
             writeUInt32(mode << 16, to: &archive, at: central + 38)
-            XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .unsupportedEntry)
+            XCTAssertEqual(SkillPackArchive.extractManifest(zipData: archive).failureError, .unsupportedEntry)
         }
 
         var directoryAsFile = fixtureZip
         let directory = try centralDirectoryOffset(named: "prompts/", in: directoryAsFile)
         writeUInt32(0x8000 << 16, to: &directoryAsFile, at: directory + 38)
-        XCTAssertEqual(SkillPackArchive.extract(zipData: directoryAsFile).failureError, .unsupportedEntry)
+        XCTAssertEqual(SkillPackArchive.extractManifest(zipData: directoryAsFile).failureError, .unsupportedEntry)
     }
 
     func testCRCMismatchRefusesWholeArchive() throws {
@@ -167,13 +189,107 @@ final class SkillPackCatalogTests: XCTestCase {
         let payload = Data("You are a barista coach.".utf8)
         let range = try XCTUnwrap(archive.range(of: payload))
         archive[range.lowerBound] ^= 0x01
-        XCTAssertEqual(SkillPackArchive.extract(zipData: archive).failureError, .corruptEntry)
+        // Staging still succeeds — the manifest entry is intact and payload bytes are untouched.
+        // The corruption surfaces exactly where the bytes are finally inflated.
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: archive) else {
+            return XCTFail("the manifest entry is intact, so staging must succeed")
+        }
+        let manifest = try XCTUnwrap(SkillPackManifest.lossyDecode(staged.manifestData).manifest)
+        XCTAssertEqual(SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest).failureError,
+                       .corruptEntry)
+    }
+
+    // MARK: - Manifest before materialization
+
+    func testValidatedManifestMaterializesOnlyDeclaredFiles() throws {
+        let zip = try XCTUnwrap(Data(base64Encoded: Self.declaredFilesZipBase64))
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: zip) else {
+            return XCTFail("the declared-files fixture must stage")
+        }
+        XCTAssertEqual(staged.inflatedEntryCount, 1, "phase one inflates skillpack.json and nothing else")
+        XCTAssertEqual(staged.payloadPaths, ["extras/undeclared.md", "prompts/persona.md"])
+
+        let store = makeStore()
+        guard case .admitted(let manifest, _) = store.admitManifest(staged.manifestData) else {
+            return XCTFail("the fixture manifest is valid")
+        }
+        XCTAssertEqual(manifest.files, ["prompts/persona.md"])
+
+        guard case .success(let files) =
+                SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest) else {
+            return XCTFail("declared files must materialize")
+        }
+        XCTAssertEqual(Set(files.keys), ["prompts/persona.md"])
+        XCTAssertEqual(String(decoding: files["prompts/persona.md"] ?? Data(), as: UTF8.self),
+                       "DECLARED PAYLOAD BODY")
+        XCTAssertEqual(staged.inflatedEntryCount, 2,
+                       "exactly the declared file was inflated; the undeclared entry was never touched")
+    }
+
+    func testRefusedManifestNeverInflatesAnotherEntry() throws {
+        var zip = try XCTUnwrap(Data(base64Encoded: Self.poisonManifestZipBase64))
+        let range = try XCTUnwrap(zip.range(of: Data("POISON PAYLOAD BODY".utf8)))
+        zip[range.lowerBound] ^= 0x01   // inflating this entry now fails its CRC
+
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: zip) else {
+            return XCTFail("entry metadata is well formed, so staging must succeed")
+        }
+        XCTAssertEqual(staged.inflatedEntryCount, 1)
+
+        let store = makeStore()
+        guard case .rejected(let reasons) = store.admitManifest(staged.manifestData) else {
+            return XCTFail("a non-reverse-DNS pack id must be refused")
+        }
+        XCTAssertTrue(reasons.contains { $0.contains("reverse-DNS") }, "\(reasons)")
+        XCTAssertEqual(staged.inflatedEntryCount, 1, "a refused manifest inflates nothing else")
+
+        // The entry really is poisoned: had the pipeline continued past admission it would have
+        // failed here, which is what makes the count above evidence rather than coincidence.
+        let manifest = try XCTUnwrap(SkillPackManifest.lossyDecode(staged.manifestData).manifest)
+        XCTAssertEqual(SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest).failureError,
+                       .corruptEntry)
+    }
+
+    func testDeclaredPathsAreCheckedBeforeAnythingIsInflated() throws {
+        let zip = try XCTUnwrap(Data(base64Encoded: Self.declaredFilesZipBase64))
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: zip) else {
+            return XCTFail("the declared-files fixture must stage")
+        }
+        func manifest(declaring files: [String]) -> SkillPackManifest {
+            SkillPackManifest(id: "com.example.declared", version: "1.0.0",
+                              name: "Declared", summary: "", files: files)
+        }
+        XCTAssertEqual(
+            SkillPackArchive.materializeFiles(for: staged,
+                                              declaredBy: manifest(declaring: ["prompts/absent.md"])).failureError,
+            .missingDeclaredFile)
+        XCTAssertEqual(
+            SkillPackArchive.materializeFiles(for: staged,
+                                              declaredBy: manifest(declaring: ["../evil.md"])).failureError,
+            .unsafeEntryPath)
+        XCTAssertEqual(staged.inflatedEntryCount, 1, "a rejected declaration inflates nothing")
     }
 
     func testSha256HexMatchesKnownVector() {
         XCTAssertEqual(SkillPackArchive.sha256Hex(Data("abc".utf8)),
                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }
+
+    /// Both phases, for tests that need the materialized bundle of a known-good fixture.
+    /// Production callers validate the manifest between the two — see the manifest-first tests.
+    private func extractAll(_ zip: Data) throws -> (manifestData: Data, files: [String: Data]) {
+        guard case .success(let staged) = SkillPackArchive.extractManifest(zipData: zip) else {
+            throw ArchiveHelperFailure.staging
+        }
+        let manifest = try XCTUnwrap(SkillPackManifest.lossyDecode(staged.manifestData).manifest)
+        guard case .success(let files) =
+                SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest) else {
+            throw ArchiveHelperFailure.materialization
+        }
+        return (staged.manifestData, files)
+    }
+
+    private enum ArchiveHelperFailure: Error { case staging, materialization }
 
     private func firstCentralDirectoryOffset(in data: Data) throws -> Int {
         try XCTUnwrap(data.range(of: Data([0x50, 0x4B, 0x01, 0x02]))?.lowerBound)
@@ -362,9 +478,7 @@ final class SkillPackCatalogTests: XCTestCase {
     func testPipelineInstallsFixtureEndToEnd() async throws {
         // Sign the fixture's manifest + payload with an ephemeral key, catalog carries the pack
         // signature and the zip hash — the full P2 path with zero network.
-        guard case .success(let (manifestData, files)) = SkillPackArchive.extract(zipData: fixtureZip) else {
-            return XCTFail()
-        }
+        let (manifestData, files) = try extractAll(fixtureZip)
         let key = Curve25519.Signing.PrivateKey()
         let packSignature = try SkillPackSignature.sign(
             manifestData: manifestData, payloadFiles: files,
