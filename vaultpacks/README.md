@@ -34,7 +34,7 @@ included where the author is licensed to redistribute it; record that in `redist
    ```
 3. Sign it — prints the pack signature for the index entry:
    ```
-   swift Scripts/vaultpack-sign.swift sign-pack <vaultDir> secrets/skillpack-signing-key.txt
+   swift Scripts/vaultpack-sign.swift sign-pack <vaultDir> --key-file secrets/skillpack-signing-key.txt
    ```
 4. Zip the folder (`cd <vaultDir> && zip -X -r ../<vaultId>-<version>.zip .`), host the zip under
    `vaultpacks/packs/`, and note its SHA256 (`shasum -a 256 <zip>`).
@@ -42,7 +42,7 @@ included where the author is licensed to redistribute it; record that in `redist
    `minAppBuild`, `downloadURL`, `sha256`, `packSignature`.
 6. Re-sign the index and overwrite `catalog.json`:
    ```
-   swift Scripts/vaultpack-sign.swift sign-catalog vaultpacks/index.json secrets/skillpack-signing-key.txt > vaultpacks/catalog.json
+   swift Scripts/vaultpack-sign.swift sign-catalog vaultpacks/index.json --key-file secrets/skillpack-signing-key.txt > vaultpacks/catalog.json
    ```
 7. Create the pack's App Store product with the same id as `pack.json`'s `id` (a non-consumable),
    so solo buyers can buy it. Team licences include a pack with `--pack <licensePack>`.

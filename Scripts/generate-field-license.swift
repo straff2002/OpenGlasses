@@ -5,6 +5,7 @@ import CryptoKit
 // Mints a signed Field Assist license code.
 //
 //   ./Scripts/generate-field-license.swift "<Licensee Name>" [expiresISO8601]
+//       [--key-file <path|->]   where to read the signing key from (see below)
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //
@@ -16,8 +17,13 @@ import CryptoKit
 // NEVER printed: it is written to a file at generation and read back from there. Never paste a
 // private key into a terminal, a chat, or a log — a key that has been printed must be rotated.
 // The script resolves it, in order, from:
-//   1. $FIELD_ASSIST_SIGNING_KEY (base64), else
-//   2. secrets/field-assist-signing-key.txt (gitignored — see secrets/*.example).
+//   1. --key-file <path>, or --key-file - to read it from stdin, else
+//   2. $FIELD_ASSIST_SIGNING_KEY (base64), else
+//   3. secrets/field-assist-signing-key.txt (gitignored — see secrets/*.example).
+// A key given as a command-line ARGUMENT is refused outright, whatever flag it is behind:
+// arguments are visible in `ps`, recorded in shell history, echoed by CI logs and captured in
+// crash reports. --key-file names a path; it never carries key material. The environment
+// variable is kept for the unattended case and is the weaker of the two — prefer a file.
 // The app embeds only the matching PUBLIC key (LicenseService.productionPublicKeyBase64).
 //
 // Format (must match LicenseService): base64(payloadJSON) + "." + base64(Ed25519 signature),
@@ -49,9 +55,74 @@ func keyFromFile(_ url: URL) -> String? {
         .first { !$0.isEmpty && !$0.hasPrefix("#") }
 }
 
-/// Resolve the private key from env, then the gitignored secrets file (looked up relative to the
-/// script's location and the current directory).
-func resolvePrivateKey() -> String {
+/// Refuse a private key handed in on the command line, whatever the flag or position.
+///
+/// A process's arguments are not private: `ps` shows them to anyone on the machine, the shell
+/// writes them to its history file, CI logs echo them, and a crash report captures them. A key
+/// that has taken any of those routes is compromised and must be rotated — so the tool refuses
+/// the shape rather than trusting whoever is at the keyboard to remember.
+///
+/// Precise, not a guess: an argument is rejected only if it is not an existing path AND decodes
+/// from base64 to exactly 32 bytes, which is a Curve25519 raw key and very little else. Nothing
+/// about the value is echoed — not a prefix, not a length.
+func refuseInlineKey(_ arguments: [String]) {
+    let base64Alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+    for argument in arguments.dropFirst() {
+        guard argument.count >= 40,
+              !FileManager.default.fileExists(atPath: argument),
+              argument.allSatisfy({ base64Alphabet.contains($0) }),
+              let decoded = Data(base64Encoded: argument),
+              decoded.count == 32 else { continue }
+        fail("""
+        error: a private key was passed on the command line. Refusing to use it.
+
+          Command-line arguments are visible in `ps`, recorded in shell history, printed by CI
+          logs and captured in crash reports. Treat that key as compromised: mint a new one, and
+          re-issue anything the old one signed.
+
+          Pass a file instead — the key never becomes an argument:
+
+            --key-file secrets/field-assist-signing-key.txt
+            --key-file -            # read the key from stdin
+        """)
+    }
+}
+
+/// Read a key file (or stdin when the path is `-`) and return its key line.
+///
+/// Never includes key material in an error, and warns if the file is readable beyond its owner —
+/// a key the rest of the machine can read has already leaked to anyone with an account on it.
+func keyFromKeyFile(_ path: String) -> String {
+    let contents: String
+    if path == "-" {
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8) else { fail("stdin was not UTF-8 text") }
+        contents = text
+    } else {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            fail("can't read key file \(path)")
+        }
+        if let mode = (try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions]) as? NSNumber,
+           mode.intValue & 0o077 != 0 {
+            let notice = "warning: \(path) is readable beyond its owner "
+                + "(mode \(String(mode.intValue, radix: 8))). Run: chmod 600 \(path)\n"
+            FileHandle.standardError.write(Data(notice.utf8))
+        }
+        contents = text
+    }
+    guard let line = contents
+        .split(separator: "\n")
+        .map({ $0.trimmingCharacters(in: .whitespaces) })
+        .first(where: { !$0.isEmpty && !$0.hasPrefix("#") }) else {
+        fail("no key line in \(path == "-" ? "stdin" : path)")
+    }
+    return line
+}
+
+/// Resolve the private key from --key-file, then env, then the gitignored secrets file (looked up
+/// relative to the script's location and the current directory).
+func resolvePrivateKey(keyFile: String?) -> String {
+    if let keyFile { return keyFromKeyFile(keyFile) }
     if let env = ProcessInfo.processInfo.environment["FIELD_ASSIST_SIGNING_KEY"], !env.isEmpty {
         return env
     }
@@ -64,8 +135,11 @@ func resolvePrivateKey() -> String {
         if let key = keyFromFile(url) { return key }
     }
     fail("""
-    No signing key found. Provide it via $FIELD_ASSIST_SIGNING_KEY or create
-    secrets/field-assist-signing-key.txt (copy secrets/field-assist-signing-key.txt.example).
+    No signing key found. In order of preference:
+      --key-file <path>                 a key file, or `-` to read it from stdin
+      $FIELD_ASSIST_SIGNING_KEY         base64, for the unattended case
+      secrets/field-assist-signing-key.txt   (copy secrets/field-assist-signing-key.txt.example)
+    Mint one with: ./Scripts/generate-field-license.swift keygen secrets/field-assist-signing-key.txt
     """)
 }
 
@@ -94,6 +168,8 @@ func writeKeygen(to path: String) -> Never {
     exit(0)
 }
 
+refuseInlineKey(CommandLine.arguments)
+
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "keygen" {
     guard CommandLine.arguments.count == 3 else { fail("usage: generate-field-license.swift keygen <privateKeyFile>") }
     writeKeygen(to: CommandLine.arguments[2])
@@ -101,10 +177,13 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "keygen" {
 
 let usage = """
 usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
+         [--key-file <path|->]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
          [--seats N] [--reference TEXT] [--days N] [--pack KEY ...]
        generate-field-license.swift keygen <privateKeyFile>
 
+  --key-file names a PATH (or `-` for stdin). A key passed as an argument is refused:
+  arguments reach `ps`, shell history, CI logs and crash reports.
   Positional expiry and --days are alternatives; --days counts from now.
   Prints the code on stdout and the decoded payload on stderr for a final look.
   keygen writes the private key to a 0600 file and prints only the public half.
@@ -117,6 +196,7 @@ var seats: Int?
 var reference: String?
 var days: Int?
 var packs: [String] = []
+var keyFile: String?
 var iterator = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = iterator.next() {
     func value(_ flag: String) -> String {
@@ -137,6 +217,8 @@ while let arg = iterator.next() {
         seats = n
     case "--reference":
         reference = value(arg)
+    case "--key-file":
+        keyFile = value(arg)
     case "--pack":
         packs.append(value(arg))
     case "--days":
@@ -165,7 +247,7 @@ if let days {
 if plan == "pilot" && expires == nil { fail("a pilot code must expire — pass --days or an expiry") }
 if plan == "enterprise" && tier == nil { tier = "enterprise" }
 
-guard let keyData = Data(base64Encoded: resolvePrivateKey()) else {
+guard let keyData = Data(base64Encoded: resolvePrivateKey(keyFile: keyFile)) else {
     fail("Signing key is not valid base64.")
 }
 
