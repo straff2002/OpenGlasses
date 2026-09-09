@@ -99,7 +99,48 @@ revision pinned in `Vendor/LlamaCpp/REVISION`, then recorded in `SHA256SUMS`). B
 idempotent — re-running them after the first time costs a second. The llama build needs `cmake`;
 it will tell you rather than installing anything itself.
 
-[Xcode Cloud](https://developer.apple.com/documentation/xcode/xcode-cloud) runs `./Scripts/generate-xcodeproj.sh` in `ci_scripts/ci_post_clone.sh` (full app + watch + tests).
+#### Continuous integration
+
+Two pipelines build this repository, and they are deliberately built to agree with each other.
+
+**XcodeGen is pinned and checksum-verified.** Both
+[Xcode Cloud](https://developer.apple.com/documentation/xcode/xcode-cloud) (via
+`ci_scripts/ci_post_clone.sh`) and GitHub Actions (`.github/workflows/`) install it with
+`Scripts/install-xcodegen.sh`, which downloads the release named in `Scripts/xcodegen-pin.env`
+and refuses to run it unless the sha256 matches. XcodeGen decides the contents of the project
+file every build compiles, so it is verified to the same standard as the vendored MediaPipe and
+llama.cpp binaries. Neither pipeline uses Homebrew — Xcode Cloud's network cannot resolve
+`ghcr.io`, Homebrew's bottle host, and an unpinned tap version is not a build input anyone
+reviewed.
+
+Bumping XcodeGen means editing one file. Change `XCODEGEN_VERSION` in
+`Scripts/xcodegen-pin.env` and recompute the digest:
+
+```bash
+curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/<version>/xcodegen.zip" | shasum -a 256
+```
+
+Local development still uses whatever `brew install xcodegen` gives you; the pin governs CI, where
+nobody is watching the version go by.
+
+**Package resolution is frozen to `ci_scripts/Package.resolved`.** Xcode Cloud cannot resolve
+packages at all (automatic resolution is disabled there and `xcodebuild
+-resolvePackageDependencies` fails with exit 74), so it copies that lockfile into the generated
+project. GitHub Actions now does the same and passes `-onlyUsePackageVersionsFromResolvedFile`, so
+a pin that cannot be satisfied fails the run rather than silently resolving to something else —
+the two pipelines compile the same dependency graph from the same commit, or one of them goes red.
+
+Run `./Scripts/update-package-resolved.sh` and commit the result whenever you add, remove or bump
+an SPM dependency, or CI will build the old graph.
+
+The unit workflow also writes a `provenance.txt` artifact (retained 90 days): commit, runner,
+macOS build, Xcode and SDK versions, the XcodeGen pin, the lockfile digest and the digest of each
+`Vendor/*/SHA256SUMS`. It is what lets a green run still mean something months later.
+
+**The published website is staged, not the checkout.** `Scripts/stage-pages-site.sh` copies an
+explicit allowlist into `_site/` and then independently refuses to publish a tree containing a
+denied path. Adding a page to the site means adding it to that allowlist.
+
 
 Default generate includes **watch** and **unit tests**. To build a slimmer project locally (iPhone + widget only):
 

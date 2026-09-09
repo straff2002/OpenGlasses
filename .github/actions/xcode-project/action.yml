@@ -1,0 +1,114 @@
+name: Generate the Xcode project
+description: >-
+  Install the pinned XcodeGen, obtain the vendored binaries, freeze package resolution to the
+  tracked lockfile, generate OpenGlasses.xcodeproj and boot a simulator to test against.
+
+# Every macOS job in tests.yml needs the same twelve steps before it can run a single test. Copying
+# them into each job means the copies drift — and a security gate that generates the project
+# slightly differently from the unit gate is testing a slightly different app. One definition, used
+# by both.
+#
+# The caller checks out first; this starts from a checkout and leaves a generated project plus a
+# booted simulator whose UDID it returns.
+
+outputs:
+  simulator-udid:
+    description: UDID of a booted iPhone simulator on this runner.
+    value: ${{ steps.sim.outputs.udid }}
+
+runs:
+  using: composite
+  steps:
+    # brew installs whatever version the tap holds that morning and verifies nothing this
+    # repository states. XcodeGen writes the project file every build compiles, so the pinned,
+    # sha256-verified install is the same standard the vendored binaries already meet. The
+    # script appends its bin directory to $GITHUB_PATH, so later steps just find it.
+    - name: Install XcodeGen (pinned, checksum-verified)
+      shell: bash
+      run: ./Scripts/install-xcodegen.sh
+
+    # The MediaPipe binaries (Plan CK) are fetched, not committed — the graph static
+    # libraries exceed GitHub's per-file size limit. Cached so the ~440 MB download
+    # doesn't repeat every run; the fetch script is idempotent on a cache hit.
+    - name: Cache MediaPipe frameworks
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Vendor/MediaPipeTasks/Frameworks
+        key: mediapipe-frameworks-${{ hashFiles('Scripts/fetch-mediapipe-frameworks.sh') }}
+
+    - name: Fetch MediaPipe frameworks
+      shell: bash
+      run: ./Scripts/fetch-mediapipe-frameworks.sh
+
+    # The engine is committed, so this verifies the bytes in the tree against the digests
+    # committed beside them rather than building anything. That a clone links exactly what was
+    # reviewed is worth one shasum pass per run; proving those bytes still come from the pinned
+    # sources is the engine-reproducibility workflow's job, not this one's.
+    - name: Fetch llama.cpp framework
+      shell: bash
+      run: ./Scripts/fetch-llamacpp-framework.sh
+
+    # Obtaining the engine must not edit what is committed about it. It used to: an explained
+    # digest difference rewrote SHA256SUMS in the workspace, so the test comparing the two was
+    # comparing the build to itself. This fails the run if that ever comes back.
+    - name: Vendor digests survive the build
+      shell: bash
+      run: git diff --exit-code Vendor/LlamaCpp
+
+    # Every run re-clones the full SPM graph — WebRTC, HaishinKit, mlx-swift-lm and the
+    # HuggingFace packages — before a line of app code compiles. The checkouts are identical
+    # between runs unless the pins move, so -clonedSourcePackagesDirPath (set on the xcodebuild
+    # invocations in the caller) puts them at a stable path this can cache.
+    #
+    # DerivedData is deliberately NOT cached. A restored build directory carries absolute paths
+    # and module timestamps from another machine, and this repo has already lost time to
+    # stale-artefact failures that look like source bugs. Caching the inputs is safe; caching
+    # the outputs is not.
+    - name: Cache SPM checkouts
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .spm-checkouts
+        key: spm-${{ runner.os }}-${{ hashFiles('project.base.yml', 'ci_scripts/Package.resolved') }}
+        restore-keys: |
+          spm-${{ runner.os }}-
+
+    # The watchOS platform isn't needed to run the iOS unit tests and slows the build.
+    - name: Skip Watch targets
+      shell: bash
+      run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
+
+    - name: Generate Xcode project
+      shell: bash
+      run: ./Scripts/generate-xcodeproj.sh
+
+    # Xcode Cloud builds what ci_scripts/Package.resolved pins; this workflow used to let
+    # xcodebuild resolve the graph fresh, treating the same file as nothing but a cache key. Two
+    # pipelines resolving independently is two chances to compile a different dependency graph
+    # from the same commit — and the one that ships is the one nobody's tests ran against. Copy
+    # the tracked lockfile into the generated project, exactly as ci_post_clone.sh does; the
+    # caller passes -onlyUsePackageVersionsFromResolvedFile so a pin that cannot be satisfied
+    # fails the run instead of quietly resolving to something else.
+    #
+    # Path-based local packages (Vendor/SherpaOnnx, MediaPipeTasks, LlamaCpp) are absent from the
+    # resolved file by design — they have no remote version to pin.
+    - name: Freeze package resolution to the tracked lockfile
+      shell: bash
+      run: |
+        dst=OpenGlasses.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+        mkdir -p "$dst"
+        cp ci_scripts/Package.resolved "$dst/Package.resolved"
+        echo "Frozen to $(grep -c '"identity"' ci_scripts/Package.resolved) pins."
+
+    - name: Pick a simulator
+      id: sim
+      shell: bash
+      run: |
+        UDID=$(xcrun simctl list devices available --json | python3 -c '
+        import json, sys
+        data = json.load(sys.stdin)["devices"]
+        phones = [d for devs in data.values() for d in devs if "iPhone" in d["name"]]
+        if not phones:
+            sys.exit("no available iPhone simulator on this image")
+        print(phones[-1]["udid"])')
+        echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+        xcrun simctl boot "$UDID" || true

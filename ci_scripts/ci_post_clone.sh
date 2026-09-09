@@ -11,40 +11,23 @@ cd "${CI_PRIMARY_REPOSITORY_PATH:-$(dirname "$0")/..}"
 defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
 defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
 
-# --- XcodeGen (no Homebrew) -------------------------------------------------
+# --- XcodeGen (pinned + checksum-verified, no Homebrew) ---------------------
 # Xcode Cloud's network can't resolve ghcr.io — Homebrew's bottle + portable-ruby host. So
 # `brew install xcodegen` dies inside Homebrew auto-update with
 #   curl: (6) Could not resolve host: ghcr.io
-# which (under `set -e`) aborts this whole script. Install XcodeGen from its GitHub *release*
-# instead: github.com is reachable (the repo was just cloned from it), and the release archive is
-# self-contained (`xcodegen/bin/xcodegen` + `share/`).
+# which (under `set -e`) aborts this whole script. Scripts/install-xcodegen.sh installs the
+# pinned release from github.com instead (reachable here — the repo was just cloned from it) and
+# verifies its sha256 before anything runs it. This used to download the archive with no digest
+# check, which made XcodeGen the one build input obtained less carefully than the vendored
+# binaries beside it, despite deciding the contents of the project file every build compiles.
 #
-# When bumping, keep this in step with the version developers use locally.
-XCODEGEN_VERSION="2.45.4"
+# The version and digest live in Scripts/xcodegen-pin.env — the same file the GitHub Actions
+# workflows read, so the two pipelines cannot install different tools.
+PATH="$(./Scripts/install-xcodegen.sh):$PATH"
+export PATH
 
 if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "ci_post_clone: installing XcodeGen ${XCODEGEN_VERSION} from the GitHub release…"
-  tools_dir="$PWD/.ci-tools/xcodegen-${XCODEGEN_VERSION}"
-  rm -rf "$tools_dir"
-  mkdir -p "$tools_dir"
-  # Retries: a single connect failure here (curl exit 7) killed a whole archive under `set -e` —
-  # release assets redirect to objects.githubusercontent.com, a different host from the one the
-  # clone proved reachable, and Xcode Cloud's network drops it occasionally. --retry-all-errors
-  # covers connect-level failures, which plain --retry does not consider transient.
-  curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 \
-    "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
-    -o "$tools_dir/xcodegen.zip"
-  unzip -oq "$tools_dir/xcodegen.zip" -d "$tools_dir"
-  xcodegen_bin="$(find "$tools_dir" -type f -name xcodegen -path '*/bin/*' | head -n 1)"
-  if [ -n "$xcodegen_bin" ]; then
-    chmod +x "$xcodegen_bin"
-    PATH="$(dirname "$xcodegen_bin"):$PATH"
-    export PATH
-  fi
-fi
-
-if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "ci_post_clone: xcodegen unavailable after GitHub-release install" >&2
+  echo "ci_post_clone: xcodegen unavailable after the pinned install" >&2
   exit 1
 fi
 echo "ci_post_clone: $(xcodegen --version 2>&1 | head -n 1)"
@@ -57,7 +40,7 @@ echo "ci_post_clone: $(xcodegen --version 2>&1 | head -n 1)"
 # The llama.cpp engine (Plan DZ) is likewise built, not committed. With no mirror published yet
 # this compiles it from the pinned revision, which adds several minutes to a cold run and needs
 # cmake — hence OG_ALLOW_TOOL_BOOTSTRAP, which lets the fetch script unpack a pinned,
-# checksum-verified cmake into .ci-tools/ the way this script already does for XcodeGen. Homebrew
+# checksum-verified cmake into .ci-tools/ the way Scripts/install-xcodegen.sh does. Homebrew
 # is not an option here (it cannot resolve ghcr.io). Setting LLAMACPP_FRAMEWORK_URL and
 # LLAMACPP_FRAMEWORK_SHA256 in the workflow environment switches this to a download once the
 # artefact is mirrored. Idempotent, and it verifies SHA256SUMS before anything links the engine.
