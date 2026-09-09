@@ -28,6 +28,11 @@ struct SessionExport: Codable, Equatable {
     /// What was recommended, what was decided, and what base is being asked for (Plan EM).
     /// Optional so an audit exported before the work record existed still decodes.
     let workRecord: WorkRecord?
+    /// Which model wrote the assistant turns in this record, and under which version of the app's
+    /// instructions (W08.3). A compliance record that a machine read half of should say so in a
+    /// field, not only in prose. Optional so records exported before provenance existed still
+    /// decode. Carries a digest of the prompt, never its body, and never a source document's body.
+    let provenance: AIProvenance?
 
     struct Location: Codable, Equatable {
         let latitude: Double
@@ -163,5 +168,6 @@ struct SessionExport: Codable, Equatable {
         case proceduresRun = "procedures_run"
         case captures, citations, escalations
         case workRecord = "work_record"
+        case provenance = "ai_provenance"
     }
 }

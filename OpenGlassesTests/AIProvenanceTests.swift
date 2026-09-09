@@ -1,0 +1,209 @@
+import XCTest
+@testable import OpenGlasses
+
+/// W08.3 — anything an AI produced says so, in a field a machine can read, and says it without
+/// carrying the prompt or the source document along.
+///
+/// The canary tests are the point of the file. A provenance block is easy to add and easy to make
+/// leaky: the natural way to record "which instructions produced this" is to record the
+/// instructions. So the exports below are built from a prompt and a source document containing
+/// tokens that exist for no other reason, and the assertion is that those tokens are nowhere in the
+/// bytes that leave the device.
+final class AIProvenanceTests: XCTestCase {
+
+    /// Strings placed in the prompt and the source material. Neither may appear in any export.
+    private static let promptCanary = "CANARY-PROMPT-BODY-8f31c2"
+    private static let sourceCanary = "CANARY-SOURCE-DOCUMENT-4ade90"
+
+    private func provenance(now: Date = Date(timeIntervalSince1970: 1_700_000_000)) -> AIProvenance {
+        AIProvenance.forAssessment(
+            modelIdentifier: "test-model-1",
+            providerClass: .cloud,
+            promptSources: ["You are a safety expert. \(Self.promptCanary)", "{schema:v3}"],
+            generatedAt: now,
+            appVersion: "2026.9 (400)")
+    }
+
+    // MARK: - The type itself
+
+    func testCarriesTheFieldsAndAlwaysMarksAIAuthorship() {
+        let p = provenance()
+        XCTAssertEqual(p.modelIdentifier, "test-model-1")
+        XCTAssertEqual(p.providerClass, .cloud)
+        XCTAssertTrue(p.isAIGenerated)
+        XCTAssertEqual(p.appVersion, "2026.9 (400)")
+        XCTAssertEqual(p.generatedAt, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(p.promptVersionDigest.count, 16)
+    }
+
+    /// The digest identifies the version and reveals nothing of the text.
+    func testDigestIsStableAndCarriesNoPromptBody() {
+        XCTAssertEqual(provenance().promptVersionDigest, provenance().promptVersionDigest)
+        XCTAssertNotEqual(
+            AIProvenance.digest(of: ["a"]),
+            AIProvenance.digest(of: ["b"]))
+        XCTAssertFalse(provenance().promptVersionDigest.contains("CANARY"))
+        XCTAssertFalse(provenance().footerLine.contains(Self.promptCanary))
+    }
+
+    func testEncodesToSnakeCaseWithNoPromptBody() throws {
+        let data = try JSONEncoder().encode(provenance())
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(text.contains("\"is_ai_generated\""))
+        XCTAssertTrue(text.contains("\"model_identifier\""))
+        XCTAssertTrue(text.contains("\"prompt_version_digest\""))
+        XCTAssertFalse(text.contains(Self.promptCanary))
+        // Round-trips.
+        XCTAssertEqual(try JSONDecoder().decode(AIProvenance.self, from: data), provenance())
+    }
+
+    /// Whether the frame left the device is the question a reader has, so that is what is recorded.
+    func testProviderClassSeparatesOnDeviceFromEverythingElse() {
+        XCTAssertEqual(AIProvenance.providerClass(for: .local), .local)
+        XCTAssertEqual(AIProvenance.providerClass(for: .appleOnDevice), .local)
+        for provider in [LLMProvider.anthropic, .openai, .gemini, .openrouter, .custom] {
+            XCTAssertEqual(AIProvenance.providerClass(for: provider), .cloud, "\(provider)")
+        }
+    }
+
+    // MARK: - Attachment point: assessment card
+
+    func testCardCarriesProvenanceThroughQualificationAndEncoding() throws {
+        let card = AssessmentCard(kind: "safety_assessment", title: "Safety", tier: .ok, summary: "Clear.")
+        let qualified = AssessmentQualifier.qualify(card, quality: .qualified([]), provenance: provenance())
+        XCTAssertEqual(qualified.provenance, provenance())
+
+        let text = try XCTUnwrap(String(data: JSONEncoder().encode(qualified), encoding: .utf8))
+        XCTAssertTrue(text.contains("test-model-1"))
+        XCTAssertTrue(text.contains("is_ai_generated"))
+        XCTAssertFalse(text.contains(Self.promptCanary))
+    }
+
+    // MARK: - Attachment point: HECA PDF
+
+    @MainActor
+    func testSafetyPDFCarriesProvenanceInTextAndMetadata() throws {
+        let report = try SafetyReport.from(
+            json: ["summary": "Trench with \(Self.sourceCanary) on the plan.",
+                   "assessments": [["category": "excavation", "is_present": true]]],
+            provenance: provenance())
+
+        let body = SafetyReportPDF.bodyTextForTesting(report)
+        XCTAssertTrue(body.contains("test-model-1"))
+        XCTAssertTrue(body.contains(report.provenance!.promptVersionDigest))
+        XCTAssertFalse(body.contains(Self.promptCanary))
+
+        XCTAssertEqual(report.provenance?.pdfDocumentInfo[kCGPDFContextCreator as String] as? String,
+                       "OpenGlasses 2026.9 (400) — AI-generated")
+        let subject = try XCTUnwrap(report.provenance?.pdfDocumentInfo[kCGPDFContextSubject as String] as? String)
+        XCTAssertTrue(subject.contains("AI-generated by test-model-1"))
+        XCTAssertFalse(subject.contains(Self.promptCanary))
+
+        // The prompt canary never reaches the rendered bytes either.
+        let data = SafetyReportPDF.data(for: report)
+        XCTAssertEqual(data.prefix(4), Data("%PDF".utf8))
+        XCTAssertFalse(Self.contains(data, Self.promptCanary))
+    }
+
+    // MARK: - Attachment point: agent archive manifest
+
+    func testAgentArchiveManifestMarksAIAuthorshipWithoutThePrompt() throws {
+        let manifest = AgentArchiveProvenance.manifest(provenance())
+        XCTAssertEqual(manifest["is_ai_generated"] as? Bool, true)
+        XCTAssertEqual(manifest["model_identifier"] as? String, "test-model-1")
+        XCTAssertEqual(manifest["provider_class"] as? String, "cloud")
+        XCTAssertEqual(manifest["prompt_version_digest"] as? String, provenance().promptVersionDigest)
+        XCTAssertTrue((manifest["applies_to"] as? [String] ?? []).contains("conversations/"))
+
+        let data = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(text.contains(Self.promptCanary))
+        XCTAssertFalse(text.contains(Self.sourceCanary))
+    }
+
+    /// An unconfigured model is recorded as unrecorded, not omitted: "we do not know" is the answer
+    /// a reader needs, and a missing block reads as "not AI".
+    func testAgentArchiveManifestSaysSoWhenTheModelIsUnknown() {
+        let manifest = AgentArchiveProvenance.manifest(nil)
+        XCTAssertEqual(manifest["is_ai_generated"] as? Bool, true)
+        XCTAssertEqual(manifest["model_identifier"] as? String, "unrecorded")
+    }
+
+    // MARK: - Attachment point: field session export
+
+    @MainActor
+    func testFieldSessionExportCarriesProvenanceAndNoSourceBody() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prov-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let previous = EntitlementTestScope.grant()
+        defer { EntitlementTestScope.restore(previous) }
+
+        let service = FieldSessionService(sessionsRoot: root)
+        let session = try service.startSession(vaultId: "refrigeration", assetId: "Unit 47B")
+        service.logUserMessage("What does E5 mean?")
+        // The answer names its source; the body of that source is deliberately never copied in.
+        service.logAssistantMessage("E5 is a compressor motor lock.", citations: ["error_codes.md"])
+        _ = try service.endSession(outcome: .resolved)
+        let sessionDir = root.appendingPathComponent(session.id, isDirectory: true)
+
+        let export = try XCTUnwrap(SessionExporter.buildExport(sessionDir: sessionDir,
+                                                              provenance: provenance()))
+        XCTAssertEqual(export.provenance, provenance())
+
+        let jsonURL = root.appendingPathComponent("audit.json")
+        try SessionExporter.writeJSON(export, to: jsonURL)
+        let text = try XCTUnwrap(String(data: Data(contentsOf: jsonURL), encoding: .utf8))
+        XCTAssertTrue(text.contains("\"ai_provenance\""))
+        XCTAssertTrue(text.contains("test-model-1"))
+        XCTAssertTrue(text.contains("\"is_ai_generated\" : true"))
+        // The citation names the manual; the manual's text is not in the export.
+        XCTAssertTrue(text.contains("error_codes.md"))
+        XCTAssertFalse(text.contains(Self.promptCanary))
+        XCTAssertFalse(text.contains(Self.sourceCanary))
+
+        let pdfURL = root.appendingPathComponent("work_order.pdf")
+        try SessionExporter.writePDF(export, to: pdfURL)
+        let pdf = try Data(contentsOf: pdfURL)
+        XCTAssertEqual(pdf.prefix(4), Data("%PDF".utf8))
+        XCTAssertFalse(Self.contains(pdf, Self.promptCanary))
+        XCTAssertFalse(Self.contains(pdf, Self.sourceCanary))
+    }
+
+    // MARK: - The once-per-session disclosure
+
+    func testDisclosureIsDeliveredOncePerSession() {
+        let ledger = AIDisclosureLedger()
+        XCTAssertFalse(ledger.hasDelivered(.assessment))
+        let first = ledger.consume(.assessment)
+        XCTAssertNotNil(first)
+        XCTAssertTrue(ledger.hasDelivered(.assessment))
+        XCTAssertNil(ledger.consume(.assessment))
+        XCTAssertNil(ledger.consume(.assessment))
+
+        // A new session discloses again.
+        ledger.reset()
+        XCTAssertEqual(ledger.consume(.assessment), first)
+    }
+
+    func testDisclosureNamesTheHumanItDoesNotReplace() {
+        let text = try! XCTUnwrap(AIDisclosureLedger().consume(.assessment))
+        XCTAssertTrue(text.contains("AI assessment"))
+        XCTAssertTrue(text.contains("trained inspector or first aider"))
+        // Localisable: the copy is one whole sentence per surface, resolved through the catalog.
+        XCTAssertEqual(text, String(localized: "This is an AI assessment from the glasses camera. It is not a substitute for a trained inspector or first aider."))
+        XCTAssertEqual(text, AIDisclosureLedger.text(for: .assessment))
+    }
+
+    func testEverySurfaceHasDisclosureCopy() {
+        for surface in AIDisclosureLedger.Surface.allCases {
+            XCTAssertFalse(AIDisclosureLedger.text(for: surface).isEmpty, "\(surface)")
+        }
+    }
+
+    // MARK: - Helper
+
+    private static func contains(_ data: Data, _ needle: String) -> Bool {
+        data.range(of: Data(needle.utf8)) != nil
+    }
+}

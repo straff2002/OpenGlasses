@@ -1503,6 +1503,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // Configure Structured Vision (vision_assess / read-the-instrument) similarly.
         StructuredVisionService.shared.configure(camera: cameraService, llm: llmService, tts: speechService)
         StructuredVisionService.shared.glassesDisplay = glassesDisplay
+        // Speak the AI-interaction disclosure the first time an assessment lands in a session.
+        StructuredVisionService.shared.announceDisclosure = { [weak speechService] disclosure in
+            Task { await speechService?.speak(disclosure, mirrorToHUD: false) }
+        }
 
         // Configure Safety Assessment (HECA) — runs through the structured-vision provider layer.
         SafetyAssessmentService.shared.configure(camera: cameraService, llm: llmService)

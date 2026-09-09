@@ -13,6 +13,7 @@ import UIKit
 /// ├── conversations/
 /// │   └── {thread-id}.json
 /// ├── quick_actions.json
+/// ├── provenance.json (which model wrote the machine-authored turns)
 /// └── config.json (non-sensitive settings)
 /// ```
 ///
@@ -101,6 +102,16 @@ class AgentDataExporter {
             let data = try JSONEncoder().encode(thread)
             try data.write(to: convoDir.appendingPathComponent("\(thread.id).json"))
         }
+
+        // Provenance: the archive contains machine-written conversation turns, so it says which
+        // machine wrote them (W08.3). The manifest carries the model, whether it ran on the device,
+        // a digest of the instruction version and the app build — never a prompt body and never a
+        // source document, both of which would otherwise leave the device inside a share sheet.
+        let provenance = AIProvenance.forActiveModel(promptSources: [AgentArchiveProvenance.promptIdentity])
+        let manifest = AgentArchiveProvenance.manifest(provenance)
+        let provenanceData = try JSONSerialization.data(withJSONObject: manifest,
+                                                       options: [.prettyPrinted, .sortedKeys])
+        try provenanceData.write(to: tempDir.appendingPathComponent("provenance.json"))
 
         // Quick actions
         let actions = Config.quickActions
