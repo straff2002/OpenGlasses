@@ -1,0 +1,122 @@
+name: Security scan
+
+# Secret scanning and dependency review (W06.2).
+#
+# Two gates that need no Xcode and so belong off the macOS runners: a credential committed to a
+# public repository is exposed the moment it is pushed, and neither finding should wait behind a
+# twenty-minute iOS build.
+#
+# Coverage is deliberately asymmetric. On a pull request the scan reads only that branch's own
+# commits — the question there is "does this change introduce a secret", answerable in seconds.
+# Once a week the same scanner walks the entire history, which is the question nobody asks
+# otherwise: a credential committed in March is still valid in September, and a PR-diff scan
+# will never see it again.
+#
+# Nothing here prints a matched value. `--redact` is passed on every invocation and the report is
+# not uploaded as an artifact: workflow logs on a public repository are public, so a scanner that
+# echoes its findings publishes the credential it was hired to catch. The log names rule, file,
+# line and commit, which is enough to look at the real thing locally.
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # 19:00 UTC Sunday — Monday morning in Pacific/Auckland, so a weekend finding is waiting at
+    # the start of the week rather than discovered on the following Friday.
+    - cron: '0 19 * * 0'
+
+# Nothing here writes to the repository. No SARIF upload, so no `security-events: write` either:
+# the findings are in the run log, and a token that can write security events is a token a
+# compromised action can write them with.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # fetch-depth: 0 unconditionally. The scheduled run needs the whole history by definition,
+      # and the pull_request run needs the merge base — a shallow clone has neither, and gitleaks
+      # would report a clean scan of nothing at all.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install the pinned scanner
+        run: ./Scripts/install-gitleaks.sh
+
+      - name: Scan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+            echo "Scanning this pull request's commits: ${base}..${HEAD_SHA}"
+            # --log-opts is handed to `git log`, so this is exactly the set of commits the PR
+            # adds — not the merge result, and not the base branch's history, which is the
+            # weekly job's business.
+            gitleaks git . \
+              --config .gitleaks.toml \
+              --redact \
+              --no-banner \
+              --log-opts "${base}..${HEAD_SHA}"
+          else
+            echo "Scanning the full history."
+            gitleaks git . \
+              --config .gitleaks.toml \
+              --redact \
+              --no-banner
+          fi
+
+      - name: What a failure means
+        if: failure()
+        run: |
+          cat <<'EOF'
+          A secret-scan failure is not a lint error. Before touching .gitleaks.toml:
+
+            1. Decide whether the match is a real credential. If it is, ROTATE IT FIRST — it is
+               public from the moment it was pushed, and removing the commit does not un-publish
+               it. Then triage the history and the artifacts it may have reached.
+            2. Only if it is genuinely not a credential, add the NARROWEST allowlist entry that
+               clears it, with a comment saying why. Never allowlist a directory; test fixtures
+               are exactly where real credentials end up.
+
+          Reproduce locally without printing anything:
+
+            PATH="$(./Scripts/install-gitleaks.sh):$PATH"
+            gitleaks git . --config .gitleaks.toml --redact --no-banner
+          EOF
+
+  # Advisories and licences for whatever of the dependency graph GitHub can see. This is a floor,
+  # not the whole dependency review: the graph it reads is the root Swift package's, and the
+  # graph the app actually links comes from project.base.yml via ci_scripts/Package.resolved —
+  # see "Reviewing dependency updates" in docs/BUILDING.md for the manual half.
+  #
+  # pull_request only: the action compares two commits, which is not a thing a push or a cron has.
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # High and critical block. Moderate and low are reported in the job summary and do not
+          # fail the run: a gate that fires on every transitive low is a gate people learn to
+          # merge past, and this repository has one reviewer.
+          fail-on-severity: high
+          # No comment-summary-in-pr — that needs `pull-requests: write`, and the summary is
+          # already on the run.
+          comment-summary-in-pr: never
