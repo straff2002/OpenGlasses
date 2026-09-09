@@ -72,6 +72,8 @@ Teams can add their own manuals and knowledge vaults for answers with source ref
 
 These features have separate access tiers. [Explore professional capabilities](docs/CAPABILITIES.md#field-and-clinical-work), [build a field knowledge vault](docs/field-assist-vault-guide.md), or [contact Skunkworks NZ](mailto:g@skunkworks.kiwi) about team access.
 
+Security and privacy engineering is documented against SOC 2, ISO 27001, ISO 27701 and ISO 42001 in [the compliance plans](docs/plans/EP-compliance-programme.md).
+
 ## Quick Start
 
 Start on an **iPhone running iOS 26+**. Pair compatible **Meta smart glasses** for hands-free camera and audio use; phone-based features and camera fallback also let you explore without glasses.
