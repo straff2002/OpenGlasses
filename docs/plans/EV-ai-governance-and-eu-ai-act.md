@@ -145,6 +145,16 @@ The EU route depends on the system and sector. Do not automatically commission a
 
 No implementation package is completed by creating this document. The initial roadmap aims for internal readiness evidence within 90 days; legal applicability and independent certification timelines are separate.
 
+### Implementation checkpoint — 10 September 2026
+
+Three of the packages above have code standing behind part of them. None is complete; each is named here so a reader of this plan can find the artifact rather than the intention.
+
+- **AI-02's inventory half** is [`AIFeatureRegistry`](../../OpenGlasses/Sources/Services/Privacy/AIFeatureRegistry.swift). It records every AI feature with the sensitive category it was screened into, the switch that disables it, the tools it reaches the model through, the stores it writes to and what stays on disk when it is off. It records the facts a classification needs; it does not make the classification, which is AI-01/AI-02's determination with a named owner. `AIFeatureGate` reads those switches at each feature's entry point, so a restriction decided here has a mechanism to land in.
+- **AI-04's uncertainty half** is `InputQualityPolicy` / `CertaintyPolicy` / `AssessmentQualifier` in [`AssessmentCertainty.swift`](../../OpenGlasses/Sources/Services/StructuredVision/AssessmentCertainty.swift). The constant confidence this plan asked to remove is gone; a certainty band is produced only where evidence supports one, and a frame that does not support an assessment abstains rather than reporting an absence of hazards. The corpora, thresholds and domain review the package also asks for are not started.
+- **AI-05's provenance half** is [`AIProvenance`](../../OpenGlasses/Sources/Services/Provenance/AIProvenance.swift), attached to the assessment card, the safety PDF, the field session record and the agent archive, with [`AIDisclosureLedger`](../../OpenGlasses/Sources/Services/Provenance/AIDisclosureLedger.swift) carrying the once-per-session interaction disclosure. The provenance block carries a digest of the instruction version and never the instructions; end-to-end canary tests assert that. Disclosure copy for chat and live sessions, and the human-review record, are still owed.
+
+Verification detail for each is in the [roadmap](EU-remediation-roadmap.md) rows W08.1, W08.2, W08.3 and W08.5.
+
 ## 7. Evaluation plan tailored to OpenGlasses
 
 Tests present in the repository include safety, health, face ambiguity/matching, model routing and prompt-injection checks. These are useful building blocks, not evidence that field accuracy, fairness or human reliance has been validated. Use consented/synthetic/licensed data; production user recordings are not automatically authorized as training or evaluation material.
