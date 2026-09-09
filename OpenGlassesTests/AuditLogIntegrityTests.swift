@@ -70,6 +70,9 @@ final class AuditLogIntegrityTests: XCTestCase {
     }
 
     private var originalMode: Bool = false
+    /// Isolated from the production keychain checkpoint so these tests neither read nor leave a
+    /// checkpoint that another suite's audit file would then disagree with.
+    private let checkpoints = InMemoryAuditCheckpointStore()
 
     override func setUp() {
         super.setUp()
@@ -90,7 +93,7 @@ final class AuditLogIntegrityTests: XCTestCase {
 
     func testGrantedClearRemovesHistoryAndRecordsTheClear() {
         let store = InMemoryAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         service.log(action: "BEFORE_CLEAR", detail: "should go away")
 
         XCTAssertEqual(service.clearAuditLog(authorization: .granted), .cleared)
@@ -101,30 +104,32 @@ final class AuditLogIntegrityTests: XCTestCase {
 
     func testDeniedClearKeepsHistoryAndRecordsTheRefusal() {
         let store = InMemoryAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         service.log(action: "BEFORE_CLEAR", detail: "must survive an unauthorized attempt")
 
         XCTAssertEqual(service.clearAuditLog(authorization: .denied), .refused(.denied))
 
         XCTAssertEqual(actions(service), ["BEFORE_CLEAR", "AUDIT_CLEAR_REFUSED"])
-        XCTAssertEqual(service.auditLog.last?.detail.contains("denied"), true)
+        XCTAssertEqual(service.auditLog.last?.decision, .denied)
+        XCTAssertEqual(service.auditLog.last?.result, .refused)
     }
 
     func testUnavailableAuthorizationRefusesRatherThanFallingOpen() {
         let store = InMemoryAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         service.log(action: "BEFORE_CLEAR", detail: "no decision is not a grant")
 
         XCTAssertEqual(service.clearAuditLog(authorization: .unavailable), .refused(.unavailable))
 
         XCTAssertEqual(actions(service), ["BEFORE_CLEAR", "AUDIT_CLEAR_REFUSED"])
-        XCTAssertEqual(service.auditLog.last?.detail.contains("unavailable"), true)
+        XCTAssertEqual(service.auditLog.last?.decision, .unavailable)
+        XCTAssertEqual(service.auditLog.last?.result, .refused)
     }
 
     func testRefusalIsRecordedEvenWhenComplianceModeIsOff() {
         Config.hipaaMode = false
         let store = InMemoryAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
 
         XCTAssertEqual(service.clearAuditLog(authorization: .denied), .refused(.denied))
 
@@ -134,12 +139,12 @@ final class AuditLogIntegrityTests: XCTestCase {
 
     func testRefusalRecordSurvivesARestart() {
         let store = InMemoryAuditLogStore()
-        var service: HIPAAComplianceService? = HIPAAComplianceService(store: store)
+        var service: HIPAAComplianceService? = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         service?.log(action: "BEFORE_CLEAR", detail: "kept")
         _ = service?.clearAuditLog(authorization: .unavailable)
         service = nil
 
-        let reloaded = HIPAAComplianceService(store: store)
+        let reloaded = HIPAAComplianceService(store: store, checkpoints: checkpoints)
 
         XCTAssertEqual(actions(reloaded), ["BEFORE_CLEAR", "AUDIT_CLEAR_REFUSED"])
     }
@@ -157,22 +162,22 @@ final class AuditLogIntegrityTests: XCTestCase {
 
     func testAuditLogContinuesAcrossARestartOverTheSameStore() {
         let store = InMemoryAuditLogStore()
-        var service: HIPAAComplianceService? = HIPAAComplianceService(store: store)
+        var service: HIPAAComplianceService? = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertTrue(service!.log(action: "FIRST", detail: "before restart"))
         service = nil
 
-        let restarted = HIPAAComplianceService(store: store)
+        let restarted = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertEqual(actions(restarted), ["FIRST"])
         XCTAssertTrue(restarted.log(action: "SECOND", detail: "after restart"))
 
-        let restartedAgain = HIPAAComplianceService(store: store)
+        let restartedAgain = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertEqual(actions(restartedAgain), ["FIRST", "SECOND"],
                        "a restart must append to the existing log, not begin a new one")
     }
 
     func testLockedStorageKeepsThePreviousLogAndReportsTheFailure() throws {
         let store = InMemoryAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertTrue(service.log(action: "PERSISTED", detail: "written while unlocked"))
         let persistedBefore = try XCTUnwrap(store.stored)
 
@@ -186,13 +191,13 @@ final class AuditLogIntegrityTests: XCTestCase {
         XCTAssertEqual(store.stored, persistedBefore)
 
         store.saveError = nil
-        let restarted = HIPAAComplianceService(store: store)
+        let restarted = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertEqual(actions(restarted), ["PERSISTED"])
     }
 
     func testATornWriteIsNeverPresentedAsACompleteLog() {
         let store = PartialWriteAuditLogStore()
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertTrue(service.log(action: "FIRST", detail: "committed"))
         XCTAssertTrue(service.log(action: "SECOND", detail: "committed"))
 
@@ -204,7 +209,7 @@ final class AuditLogIntegrityTests: XCTestCase {
         // Reloading the truncated bytes must not silently yield an empty or partial log: the
         // unreadable bytes are quarantined and the failure is reported.
         store.failsPartway = false
-        let restarted = HIPAAComplianceService(store: store)
+        let restarted = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertEqual(restarted.lastPersistenceFailure, .load)
         XCTAssertTrue(restarted.auditLog.isEmpty)
         XCTAssertEqual(store.quarantineCount, 1)
@@ -224,7 +229,7 @@ final class AuditLogIntegrityTests: XCTestCase {
         }
         let url = directory.appendingPathComponent("hipaa_audit_log.json")
         let store = FileAuditLogStore(url: url)
-        let service = HIPAAComplianceService(store: store)
+        let service = HIPAAComplianceService(store: store, checkpoints: checkpoints)
         XCTAssertTrue(service.log(action: "PERSISTED", detail: "written while writable"))
         let bytesBefore = try Data(contentsOf: url)
 
@@ -238,7 +243,7 @@ final class AuditLogIntegrityTests: XCTestCase {
                        "a failed write must leave the previous log byte-identical")
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
 
-        let restarted = HIPAAComplianceService(store: FileAuditLogStore(url: url))
+        let restarted = HIPAAComplianceService(store: FileAuditLogStore(url: url), checkpoints: checkpoints)
         XCTAssertEqual(actions(restarted), ["PERSISTED"])
         XCTAssertNil(restarted.lastPersistenceFailure)
     }

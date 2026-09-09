@@ -824,6 +824,7 @@ enum PrivacyLog {
     enum MedicalEvent: String {
         case fileProtected, fileProtectionFailed
         case auditRecorded, auditLoadFailed, auditSaveFailed
+        case auditCheckpointFailed, auditIntegrityFailed
         case retentionPurged, purgeFailed
         case exportFailed, exportUnsupported
         case credentialsMigrated, migrationDeferred, migrationFailed, migrationUnverified

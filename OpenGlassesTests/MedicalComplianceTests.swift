@@ -189,7 +189,10 @@ final class MedicalComplianceTests: XCTestCase {
 
         XCTAssertEqual(hipaaService.auditLog.count, 1)
         XCTAssertEqual(hipaaService.auditLog.first?.action, "TEST_ACTION")
-        XCTAssertEqual(hipaaService.auditLog.first?.detail, "Test detail")
+        // W05.2: the caller's detail string never reaches storage — only its fingerprint does.
+        XCTAssertEqual(hipaaService.auditLog.first?.kind, .legacy)
+        XCTAssertEqual(hipaaService.auditLog.first?.detailFingerprint,
+                       AuditFingerprint.of("Test detail"))
     }
 
     func testAuditLogIgnoredWhenHipaaOff() {
@@ -207,8 +210,10 @@ final class MedicalComplianceTests: XCTestCase {
         let after = Date()
 
         let entry = hipaaService.auditLog.first!
-        XCTAssertGreaterThanOrEqual(entry.timestamp, before)
-        XCTAssertLessThanOrEqual(entry.timestamp, after)
+        // Event times are truncated to milliseconds so the stored, exported and digested forms
+        // agree, so the window is widened by one tick at each end.
+        XCTAssertGreaterThanOrEqual(entry.at, before.addingTimeInterval(-0.001))
+        XCTAssertLessThanOrEqual(entry.at, after.addingTimeInterval(0.001))
     }
 
     func testAuditLogTrimsToMaxEntries() {
@@ -231,9 +236,11 @@ final class MedicalComplianceTests: XCTestCase {
         hipaaService.log(action: "EXPORT_TEST_2", detail: "second")
 
         let export = hipaaService.exportAuditLog()
-        XCTAssertTrue(export.contains("EXPORT_TEST_1"))
-        XCTAssertTrue(export.contains("EXPORT_TEST_2"))
-        XCTAssertTrue(export.contains("Entries: 2"))
+        let document = try! JSONDecoder().decode(AuditLogExportDocument.self,
+                                                 from: Data(export.utf8))
+        XCTAssertEqual(document.entryCount, 2)
+        XCTAssertEqual(document.events.map(\.event.action), ["EXPORT_TEST_1", "EXPORT_TEST_2"])
+        XCTAssertEqual(document.schema, AuditLogExportDocument.currentSchema)
     }
 
     func testClearAuditLogEmptiesLog() {
@@ -342,7 +349,9 @@ final class MedicalComplianceTests: XCTestCase {
 
         let deleteEntries = hipaaService.auditLog.filter { $0.action == "SECURE_DELETE" }
         XCTAssertFalse(deleteEntries.isEmpty, "Secure deletion should be logged in audit")
-        XCTAssertTrue(deleteEntries.first!.detail.contains("logged_delete.txt"))
+        // The filename is carried as a fingerprint, not as text.
+        XCTAssertEqual(deleteEntries.first!.subjectDigest,
+                       AuditFingerprint.of("logged_delete.txt"))
     }
 
     func testSecureDeleteHandlesMissingFileGracefully() {

@@ -553,6 +553,18 @@ struct SafeguardDetailView: View {
 struct AuditLogView: View {
     @ObservedObject var hipaaService: HIPAAComplianceService
     @State private var showExportSheet = false
+    @State private var export: HIPAAComplianceService.AuditLogExport?
+
+    private func prepareExport() {
+        export = try? hipaaService.exportProtectedAuditLog()
+        showExportSheet = true
+    }
+
+    private func releaseExport() {
+        guard let export else { return }
+        hipaaService.releaseAuditLogExport(export)
+        self.export = nil
+    }
 
     var body: some View {
         List {
@@ -567,11 +579,12 @@ struct AuditLogView: View {
                                 .font(.caption.monospaced())
                                 .foregroundStyle(AppAccent.aiCoral)
                             Spacer()
-                            Text(entry.timestamp, style: .relative)
+                            Text(entry.at, style: .relative)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        Text(entry.detail)
+                        // Typed classes and counts, never a detail sentence (W05.2).
+                        Text(entry.summary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -584,19 +597,27 @@ struct AuditLogView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showExportSheet = true
+                    prepareExport()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .disabled(hipaaService.auditLog.isEmpty)
             }
         }
-        .sheet(isPresented: $showExportSheet) {
-            let text = hipaaService.exportAuditLog()
-            ShareLink(item: text) {
-                Label("Export Audit Log", systemImage: "doc.text")
+        .sheet(isPresented: $showExportSheet, onDismiss: releaseExport) {
+            // The export is a protected, backup-excluded, TTL-bound file rather than a string
+            // handed straight to the share sheet (W05.4); releasing on dismiss is what ends it.
+            if let export {
+                ShareLink(item: export.fileURL) {
+                    Label("Export Audit Log", systemImage: "doc.text")
+                }
+                .presentationDetents([.medium])
+            } else {
+                Text("The audit log could not be prepared for export.")
+                    .font(.callout)
+                    .padding()
+                    .presentationDetents([.medium])
             }
-            .presentationDetents([.medium])
         }
     }
 }
