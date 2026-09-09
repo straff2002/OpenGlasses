@@ -286,11 +286,13 @@ struct OpenGlassesApp: App {
                     for: UIApplication.protectedDataWillBecomeUnavailableNotification
                 )) { _ in
                     appState.conversationStore.protectedDataWillBecomeUnavailable()
+                    appState.privacyFilter.noteProtectedDataAvailable(false)   // W04.1
                 }
                 .onReceive(NotificationCenter.default.publisher(
                     for: UIApplication.protectedDataDidBecomeAvailableNotification
                 )) { _ in
                     appState.conversationStore.protectedDataDidBecomeAvailable()
+                    appState.privacyFilter.noteProtectedDataAvailable(true)   // W04.1
                     // Retry a migration that deferred while locked, then sweep abandoned exports.
                     FHIRConfigurationStore.shared.migrateIfNeeded()
                     appState.medicalExportService.leases.scavenge()
@@ -417,6 +419,9 @@ struct OpenGlassesApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             // Plan W: feed foreground state into the presence throttle (background ⇒ away ⇒ paused).
             appState.notePresenceForeground(newPhase == .active)
+            // W04.1: the blur pass is unavailable while backgrounded and through the lock-screen
+            // transition, so the outbound relay drops those frames instead of publishing them raw.
+            appState.privacyFilter.noteScenePhase(.init(newPhase))
             switch newPhase {
             case .background:
                 appState.skillPackSideload.handleBackground()

@@ -72,6 +72,18 @@ struct FrameCoalescer<Frame> {
 /// expands each rectangle so a moving head stays covered between passes, and a grace period during
 /// which rectangles survive a detection that misses them, so a face does not flash unblurred on a
 /// single bad pass. This is a mitigation, not a fix, and the plan says so.
+///
+/// # What `maxDetectionAge` adds (W04.1)
+///
+/// The residual above was bounded only by the *intent* to re-detect every interval. Nothing
+/// enforced it: `blurRects` answered an over-age cache with an empty array, and an empty array is
+/// indistinguishable from "Vision verified there is nobody here", so the relay published the frame
+/// untouched. A stalled detector, a clock jump or a future caller that skipped `shouldDetect` would
+/// each have turned a stale mask into a raw outbound frame, silently.
+///
+/// `masking(now:frameSize:)` replaces that ambiguity with a three-way verdict, and
+/// `maxDetectionAge` is the hard ceiling on the age of a detection that may back a *published*
+/// frame. Past it the answer is `.stale` — not "no faces" — and the caller must drop or re-detect.
 struct FaceRectCache {
 
     /// How often Vision runs. Shorter closes the residual and costs more CPU.
@@ -79,6 +91,18 @@ struct FaceRectCache {
     /// How long rectangles stay usable after the detection that produced them. Longer than the
     /// interval on purpose: a single missed pass must not unblur a face that is still there.
     let grace: TimeInterval
+    /// Hard ceiling on the age of the detection backing a published frame. Beyond it the cache
+    /// describes a scene that may no longer exist, so it cannot authorise publication at all —
+    /// neither as a mask nor as a no-face verdict.
+    ///
+    /// Default **0.6 s = three `detectionInterval`s**, and the multiple is the justification.
+    /// One interval would drop every frame whose detection merely landed a little late, turning
+    /// ordinary jitter into a stalled stream. Three absorbs a slow Vision pass and a scheduling
+    /// hiccup while keeping the worst case a wearer can experience — a face entering frame just
+    /// after a detection — at the same ~0.6 s `grace` already accepts. So this ceiling tightens
+    /// nothing the design had not already agreed to; it makes the agreed bound *enforced* rather
+    /// than assumed, and makes overshooting it fail closed instead of fail open.
+    let maxDetectionAge: TimeInterval
     /// Fraction of each rectangle's size added on every side, covering motion between passes.
     let motionMargin: CGFloat
 
@@ -87,10 +111,39 @@ struct FaceRectCache {
 
     init(detectionInterval: TimeInterval = 0.2,
          grace: TimeInterval = 0.6,
+         maxDetectionAge: TimeInterval = 0.6,
          motionMargin: CGFloat = 0.25) {
         self.detectionInterval = detectionInterval
         self.grace = grace
+        self.maxDetectionAge = maxDetectionAge
         self.motionMargin = motionMargin
+    }
+
+    /// What the cache authorises for the frame at `now`.
+    enum Masking: Equatable {
+        /// Blur these rectangles, then publish.
+        case rects([CGRect])
+        /// A recent detection verified there were no faces. Safe to publish untouched.
+        case verifiedClear
+        /// Nothing known, or what is known is too old to describe this frame. Never publish on it.
+        case stale
+    }
+
+    /// The publication verdict for the frame at `now`.
+    ///
+    /// Deliberately *not* expressed as "empty rectangles means send it": that conflation is the
+    /// bug. An empty result is only safe when it came from a detection young enough to still be
+    /// describing this frame.
+    func masking(now: TimeInterval, frameSize: CGSize) -> Masking {
+        guard let last = lastDetection else { return .stale }
+        let age = now - last
+        // A negative age means the clock moved backwards under us. Unknown beats optimistic.
+        guard age >= 0, age <= maxDetectionAge else { return .stale }
+        guard !rects.isEmpty else { return .verifiedClear }
+        let masks = blurRects(now: now, frameSize: frameSize)
+        // Faces were detected but no usable rectangle survives — grace elapsed, or every rectangle
+        // fell outside the frame extent. Either way this frame has no mask, and it had faces.
+        return masks.isEmpty ? .stale : .rects(masks)
     }
 
     /// Whether Vision should run for the frame at `now`.

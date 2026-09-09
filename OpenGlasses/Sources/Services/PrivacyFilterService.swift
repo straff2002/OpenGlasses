@@ -50,6 +50,15 @@ enum PrivacyFilterScope: String, CaseIterable {
     case broadcast
     /// Expert streaming (peer-to-peer and meeting-link transports). Covered as of Plan CP.
     case expertStream
+    /// The live camera preview drawn on the phone's own screen. Never filtered: the pixels reach a
+    /// display the wearer is already holding and go nowhere else, and blurring the preview would
+    /// misrepresent what the glasses are actually sending to the consumers that *are* filtered.
+    case onDevicePreview
+    /// On-device Vision/CoreML taps that consume pixels and emit only text or geometry — sign
+    /// language decoding, reading-companion page detection, dwell saliency, navigation cues. Never
+    /// filtered, for both halves of constraint 1: no egress exists to filter, and an indiscriminate
+    /// blur over the frame destroys exactly the signal these models are reading.
+    case onDeviceVision
 
     /// Whether the bystander blur is applied to this consumer when the setting is on.
     var isFiltered: Bool {
@@ -57,7 +66,7 @@ enum PrivacyFilterScope: String, CaseIterable {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
              .recording, .broadcast, .expertStream:
             return true
-        case .faceRecognition, .sceneNarration:
+        case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision:
             return false
         }
     }
@@ -69,7 +78,7 @@ enum PrivacyFilterScope: String, CaseIterable {
         switch self {
         case .recording, .broadcast, .expertStream: return true
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
-             .sceneNarration: return false
+             .sceneNarration, .onDevicePreview, .onDeviceVision: return false
         }
     }
 }
@@ -103,25 +112,61 @@ class PrivacyFilterService: ObservableObject {
     /// pipeline instead of building a fresh CIContext per frame (a classic per-frame GPU cost).
     private nonisolated let ciContext = CIContext()
 
-    /// Whether processing is suspended (background optimization for streaming).
-    private var isSuspended = false
+    /// Whether processing is currently possible, and why not when it isn't. Suspension used to be
+    /// a lone Bool set by the background-resource path; W04.1 widened it to the full lifecycle
+    /// (scene phase and device lock) so the relay drops frames in every window where the blur
+    /// cannot be relied on, not only the one window someone remembered to call `suspend()` from.
+    private var availability = PrivacyFilterAvailability()
 
     /// Read-only view of the suspend state for `OutboundFrameRelay` (Plan CP), which has to make
-    /// the same passthrough decision per frame.
-    var isSuspendedForBackground: Bool { isSuspended }
+    /// the same passthrough decision per frame. Named for the original background-only cause; it
+    /// now answers "is protected filtering unavailable for *any* reason".
+    var isSuspendedForBackground: Bool { !availability.isAvailable }
+
+    /// Why filtering is unavailable, for drop-reason logging. `nil` while it is available.
+    var unavailableReason: PrivacyFilterAvailability.Unavailable? { availability.unavailableReason }
+
+    /// Increments each time availability returns. `OutboundFrameRelay` watches this to throw away
+    /// face rectangles detected before the app went away — see `PrivacyFilterAvailability`.
+    var resumeGeneration: Int { availability.resumeGeneration }
 
     // MARK: - Public API
 
     /// Suspend face blurring (background optimization — no UI visible, save CPU).
     func suspend() {
-        isSuspended = true
+        availability.suspend()
         PrivacyLog.camera(.privacyFilter, .suspended)
     }
 
     /// Resume face blurring after returning to foreground.
     func resume() {
-        isSuspended = false
+        availability.resume()
         PrivacyLog.camera(.privacyFilter, .resumed)
+    }
+
+    /// Feed the app's scene phase in. `.inactive` counts as unavailable on purpose: it is the
+    /// lock-screen/app-switcher transition window, and a frame in flight through it must not be
+    /// published on the assumption that the blur pass still completed.
+    func noteScenePhase(_ phase: PrivacyFilterAvailability.Phase) {
+        let before = availability.isAvailable
+        availability.note(phase: phase)
+        logAvailabilityChange(from: before)
+    }
+
+    /// Feed device-lock state in (`UIApplication.protectedData*` notifications).
+    func noteProtectedDataAvailable(_ available: Bool) {
+        let before = availability.isAvailable
+        availability.noteProtectedData(available: available)
+        logAvailabilityChange(from: before)
+    }
+
+    private func logAvailabilityChange(from wasAvailable: Bool) {
+        guard wasAvailable != availability.isAvailable else { return }
+        if availability.isAvailable {
+            PrivacyLog.camera(.privacyFilter, .resumed)
+        } else {
+            PrivacyLog.camera(.privacyFilter, .suspended)
+        }
     }
 
     /// Process a protected still-image path. With the filter off this is a true passthrough; with
@@ -129,7 +174,10 @@ class PrivacyFilterService: ObservableObject {
     /// Suspension or any conversion/detection/composite failure returns an opaque replacement.
     func processFrame(_ image: UIImage) -> UIImage {
         guard isEnabled else { return image }
-        guard !isSuspended else { return failClosedFrame(like: image, reason: "suspended") }
+        guard availability.isAvailable else {
+            return failClosedFrame(like: image,
+                                   reason: availability.unavailableReason?.rawValue ?? "suspended")
+        }
         guard let cgImage = image.cgImage else {
             return failClosedFrame(like: image, reason: "conversionFailed")
         }
