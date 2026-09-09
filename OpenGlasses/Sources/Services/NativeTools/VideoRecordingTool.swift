@@ -1,6 +1,18 @@
 import CoreGraphics
 import Foundation
 
+/// Why a tool-started recording could not be wired to the privacy-filtered frame source.
+enum VideoRecordingToolError: LocalizedError {
+    case outboundFramesUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .outboundFramesUnavailable:
+            return "the privacy-filtered camera pipeline is not available"
+        }
+    }
+}
+
 /// Allows the AI agent to start/stop video recording from the glasses camera.
 /// Records video + audio from the glasses microphone with optional live transcription.
 /// Recordings are saved locally with no time limit — ideal for clinical interviews,
@@ -80,8 +92,17 @@ struct VideoRecordingTool: NativeTool {
                     // Encode at the size frames actually arrive in, so the derived bitrate
                     // matches the picture (the 720x1280 fallback is the glasses' native tier).
                     let frameSize = camera.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                    // W04.1: the shared blur relay, never `camera.framePublisher`. The app-side
+                    // record button was moved onto the relay in Plan CP and this path was not, so
+                    // a recording started by voice wrote raw pixels to disk while the Settings
+                    // toggle said bystanders were blurred. Recording is refused outright rather
+                    // than falling back to the raw publisher if the relay cannot be reached: an
+                    // unfilterable recording is the failure this whole surface exists to prevent.
+                    guard let outbound = AppStateProvider.shared?.outboundFrames.publisher else {
+                        throw VideoRecordingToolError.outboundFramesUnavailable
+                    }
                     try recorder.startRecording(
-                        from: camera.framePublisher,
+                        from: outbound,
                         bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
                         outputSize: frameSize
                     )

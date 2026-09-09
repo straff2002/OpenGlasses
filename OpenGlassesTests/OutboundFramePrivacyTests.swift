@@ -176,15 +176,15 @@ final class OutboundFramePrivacyTests: XCTestCase {
         XCTAssertTrue(PrivacyFilterScope.expertStream.isFiltered)
     }
 
-    /// The exemptions are exactly two, and both are exempt for the same reason: the blur is
-    /// indiscriminate and would break the feature it was applied to. Face recognition would lose
-    /// the enrolled faces; on-device scene narration (Plan CV) would lose the people a blind
-    /// wearer is being told about — and it is not an egress in the first place, since those frames
-    /// never leave the device. Pinning the whole set means a third exemption has to be argued for
-    /// here rather than added quietly.
-    func testExemptionsAreExactlyTheTwoNonEgressConsumers() {
+    /// Every exemption is exempt for the same two reasons, and both must hold: the frames do not
+    /// leave the device, and an indiscriminate blur would destroy the signal the consumer reads.
+    /// Face recognition would lose the enrolled faces; on-device narration (Plan CV) would lose the
+    /// people a blind wearer is being told about; the on-screen preview and the on-device Vision
+    /// taps (W04.1) read pixels and emit only text or geometry. Pinning the whole set means a new
+    /// exemption has to be argued for here rather than added quietly.
+    func testExemptionsAreExactlyTheNonEgressConsumers() {
         let exempt = PrivacyFilterScope.allCases.filter { !$0.isFiltered }
-        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration])
+        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision])
     }
 
     /// Camera-rate consumers share one pass; the ~1 fps model paths filter at their own chokepoint.
@@ -426,7 +426,9 @@ final class OutboundFramePrivacyTests: XCTestCase {
         filter.suspend()
         let input = makeImage()
 
-        XCTAssertTrue(filter.filtered(input, for: .faceRecognition) === input)
-        XCTAssertTrue(filter.filtered(input, for: .sceneNarration) === input)
+        for scope in PrivacyFilterScope.allCases where !scope.isFiltered {
+            XCTAssertTrue(filter.filtered(input, for: scope) === input,
+                          "\(scope.rawValue) is exempt and must stay raw in every state")
+        }
     }
 }

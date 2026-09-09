@@ -34,8 +34,20 @@ final class OutboundFrameRelay: ObservableObject {
 
     private let filter: PrivacyFilterService
     private var coalescer = FrameCoalescer<UIImage>()
-    private var rectCache = FaceRectCache()
+    private var rectCache: FaceRectCache
     private var subscription: AnyCancellable?
+
+    /// The last availability generation this relay has reconciled with. When the filter becomes
+    /// available again after a background/lock window, the generation moves and every cached face
+    /// rectangle is thrown away: it describes the scene the wearer was looking at before the app
+    /// went away, which is exactly the scene they are least likely to still be in. Publication then
+    /// resumes only once a fresh detection has succeeded.
+    private var lastResumeGeneration: Int
+
+    /// Injectable clock. Frame ages are the whole basis of the staleness rule, so a test has to be
+    /// able to make time pass without sleeping — and a slow-detector simulation has to be able to
+    /// make it pass *during* a detection.
+    private let now: @Sendable () -> TimeInterval
 
     typealias FaceDetector = (CGImage) -> PrivacyFaceDetectionResult
     typealias FaceCompositor = (UIImage, [CGRect], CIContext) -> UIImage?
@@ -51,10 +63,15 @@ final class OutboundFrameRelay: ObservableObject {
 
     init(filter: PrivacyFilterService,
          detector: @escaping FaceDetector = PrivacyFilterService.detectFaces,
-         compositor: @escaping FaceCompositor = OutboundFrameRelay.composite) {
+         compositor: @escaping FaceCompositor = OutboundFrameRelay.composite,
+         rectCache: FaceRectCache = FaceRectCache(),
+         now: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSinceReferenceDate }) {
         self.filter = filter
         self.detector = detector
         self.compositor = compositor
+        self.rectCache = rectCache
+        self.now = now
+        self.lastResumeGeneration = filter.resumeGeneration
     }
 
     /// Begin relaying from `source`. Safe to call again; the previous subscription is replaced.
@@ -80,9 +97,10 @@ final class OutboundFrameRelay: ObservableObject {
             return
         }
         guard !filter.isSuspendedForBackground else {
-            dropForPrivacy(reason: "suspended")
+            dropForPrivacy(reason: filter.unavailableReason?.rawValue ?? "suspended")
             return
         }
+        reconcileAvailabilityGeneration()
 
         switch coalescer.submit(image) {
         case .process(let frame):
@@ -93,7 +111,7 @@ final class OutboundFrameRelay: ObservableObject {
     }
 
     private func blur(_ image: UIImage) {
-        let now = Date().timeIntervalSinceReferenceDate
+        let now = self.now()
         let needsDetection = rectCache.shouldDetect(now: now)
         let context = ciContext
 
@@ -121,13 +139,24 @@ final class OutboundFrameRelay: ObservableObject {
                 if case .success(let detected)? = detection {
                     self.rectCache.record(detected, at: now)
                 }
-                let rects = self.rectCache.blurRects(now: now, frameSize: pixelSize)
 
-                // No faces (or none still valid) — publish the original untouched. Compositing
-                // nothing would still cost a full render.
-                guard !rects.isEmpty else {
-                    self.finish(with: image)
+                let rects: [CGRect]
+                switch self.rectCache.masking(now: now, frameSize: pixelSize) {
+                case .stale:
+                    // The only detection available is older than `maxDetectionAge` — it describes
+                    // a scene that may have people in it who were not there when it ran. An empty
+                    // mask here is ignorance, not a clean bill of health. Forget it, so the next
+                    // frame is re-detected rather than dropped against the same dead cache.
+                    self.rectCache.reset()
+                    self.finishDropping(reason: "staleDetection")
                     return
+                case .verifiedClear:
+                    // Vision verified there was nobody, recently enough to still be about this
+                    // frame. Publish untouched — compositing nothing would still cost a render.
+                    self.finish(with: image, maskedFor: pixelSize)
+                    return
+                case .rects(let masks):
+                    rects = masks
                 }
 
                 // `[weak self]` here as well as on the inner `Task`: after the `guard let self`
@@ -142,19 +171,34 @@ final class OutboundFrameRelay: ObservableObject {
                             self.finishDropping(reason: "compositeFailed")
                             return
                         }
-                        self.finish(with: blurred)
+                        self.finish(with: blurred, maskedFor: pixelSize)
                     }
                 }
             }
         }
     }
 
-    private func finish(with image: UIImage) {
+    /// Publish `image`.
+    ///
+    /// `maskedFor` carries the pixel extent of the frame whose mask authorised this publication;
+    /// pass `nil` only on the filter-off passthrough, where no mask was involved. When it is
+    /// supplied, the detection's age is re-tested here rather than only where the mask was chosen,
+    /// because everything between those two points — the Vision pass, the queue hop, the Core Image
+    /// composite — takes wall-clock time under load. Under real CPU pressure that is precisely when
+    /// a mask goes from current to obsolete, and this is the last moment the frame can still be
+    /// stopped.
+    private func finish(with image: UIImage, maskedFor pixelSize: CGSize? = nil) {
         // Suspension can race a frame already on the detector/compositor queue. Recheck at the
         // publication boundary so a successful no-face result cannot release its source pixels
         // after the app has declared protected filtering unavailable in the background.
         guard !filter.isEnabled || !filter.isSuspendedForBackground else {
             finishDropping(reason: "suspendedBeforePublish")
+            return
+        }
+        if filter.isEnabled, let pixelSize,
+           rectCache.masking(now: now(), frameSize: pixelSize) == .stale {
+            rectCache.reset()
+            finishDropping(reason: "staleBeforePublish")
             return
         }
         publisher.send(image)
@@ -172,12 +216,21 @@ final class OutboundFrameRelay: ObservableObject {
         PrivacyLog.camera(.privacyFilter, .frameRejected, detail: PrivacyToken(reason))
     }
 
+    /// Throw away detections made before the app last lost and regained the ability to filter.
+    private func reconcileAvailabilityGeneration() {
+        let generation = filter.resumeGeneration
+        guard generation != lastResumeGeneration else { return }
+        lastResumeGeneration = generation
+        rectCache.reset()
+    }
+
     private func continueWithPendingFrame() {
         if let next = coalescer.finishedProcessing() {
             // This frame entered while another was running, so its policy state must be evaluated
             // now. `ingest` cannot be reused while the coalescer deliberately remains busy.
             if filter.isEnabled, filter.isSuspendedForBackground {
-                finishDropping(reason: "suspendedPending")
+                finishDropping(reason: filter.unavailableReason.map { "\($0.rawValue)Pending" }
+                                       ?? "suspendedPending")
             } else if filter.isEnabled {
                 blur(next)
             } else {
