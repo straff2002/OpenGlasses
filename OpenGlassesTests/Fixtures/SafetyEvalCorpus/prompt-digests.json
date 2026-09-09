@@ -1,0 +1,14 @@
+{
+  "corpus_version": "1.0.0",
+  "digests": {
+    "agent_conversation": "ae949be0c4700d1f",
+    "field_assist_answering": "6b6e033f45a60b67",
+    "first_aid_triage": "2cbd96128df2dd47",
+    "instrument_reading": "4ad8be03ca7bf175",
+    "safety_assessment": "89dc40b5f231aad7"
+  },
+  "history": [],
+  "note": "Digests of the instructions the corpus at this version was evaluated against. Regenerate only through PromptVersionRegistryTests, and only after bumping corpus_version.",
+  "recorded": "2026-09-10",
+  "schema_version": "1"
+}
