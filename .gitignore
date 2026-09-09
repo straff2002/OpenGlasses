@@ -102,5 +102,8 @@ Vendor/LlamaCpp/.build/
 examples/vaults/*/documents/*
 !examples/vaults/*/documents/README.md
 
+# CI provenance record — written by the test workflow, uploaded as an artifact
+/provenance.txt
+
 # Staged GitHub Pages site — built from the allowlist in Scripts/stage-pages-site.sh, never committed
 /_site/
