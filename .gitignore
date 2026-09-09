@@ -48,6 +48,8 @@ Carthage/Build/
 !.github/workflows/
 # …and the composite action the workflows share (same reasoning as above).
 !.github/actions/
+# …and the Dependabot config, which lives beside them rather than inside either directory.
+!.github/dependabot.yml
 .impeccable.md
 CLAUDE.md
 AGENTS.md
