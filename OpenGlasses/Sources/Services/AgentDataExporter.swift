@@ -31,8 +31,9 @@ class AgentDataExporter {
         agentDocs: AgentDocumentStore,
         memoryStore: SemanticMemoryStore,
         conversationStore: ConversationStore,
-        coordinator: StagedExportCoordinator = .agentArchive
+        coordinator: StagedExportCoordinator? = nil
     ) throws -> StagedExportLease {
+        let coordinator = coordinator ?? .agentArchive
         let timestamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "T", with: "_")

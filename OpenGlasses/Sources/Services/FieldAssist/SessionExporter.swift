@@ -43,7 +43,8 @@ enum SessionExporter {
     @discardableResult
     static func export(sessionDir: URL,
                        formats: Set<Format> = [.json, .pdf],
-                       coordinator: StagedExportCoordinator = .fieldSession) throws -> [StagedExportLease] {
+                       coordinator: StagedExportCoordinator? = nil) throws -> [StagedExportLease] {
+        let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device at any tier.
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
             throw ExportError.notEntitled

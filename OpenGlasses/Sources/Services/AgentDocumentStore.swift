@@ -224,6 +224,30 @@ class AgentDocumentStore: ObservableObject {
         loadAll()
     }
 
+    // MARK: - Deletion
+
+    /// Remove every line of every document that mentions `needle`, case-insensitively, and return
+    /// how many went.
+    ///
+    /// The agent's memory file is free prose the model wrote about the wearer and the people
+    /// around them; there is no per-person structure in it to key an erasure on. Matching the text
+    /// is therefore the only honest reach a subject erasure has here, and saying so is part of the
+    /// receipt rather than something to paper over with a delete that looks more precise than it is.
+    @discardableResult
+    func removeLines(containing needle: String) -> Int {
+        let trimmed = needle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+        var removed = 0
+        for type in DocumentType.allCases {
+            let lines = content(for: type).components(separatedBy: "\n")
+            let kept = lines.filter { $0.range(of: trimmed, options: .caseInsensitive) == nil }
+            guard kept.count != lines.count else { continue }
+            removed += lines.count - kept.count
+            save(type, content: kept.joined(separator: "\n"))
+        }
+        return removed
+    }
+
     // MARK: - File Paths
 
     private func path(for document: DocumentType) -> URL {

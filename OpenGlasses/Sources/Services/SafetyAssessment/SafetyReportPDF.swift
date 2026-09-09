@@ -56,8 +56,8 @@ enum SafetyReportPDF {
     /// this replaces.
     @MainActor
     static func makeLease(for report: SafetyReport,
-                          coordinator: StagedExportCoordinator = .safetyReport) throws -> StagedExportLease {
-        let lease = try coordinator.makeLease(data: data(for: report),
+                          coordinator: StagedExportCoordinator? = nil) throws -> StagedExportLease {
+        let lease = try (coordinator ?? .safetyReport).makeLease(data: data(for: report),
                                               fileExtension: "pdf",
                                               displayName: "HECA-\(report.id).pdf",
                                               fallbackName: "safety-report.pdf")

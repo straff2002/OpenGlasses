@@ -115,6 +115,45 @@ final class EvolvedSkillStore: ObservableObject {
         return rows
     }
 
+    // MARK: - Deletion
+
+    /// Remove every draft. A skill the agent proposed quotes what the wearer was doing when it
+    /// proposed it, so the store needs a real delete rather than only a status transition — a
+    /// dismissed row was still a row.
+    @discardableResult
+    func deleteAll() -> Bool {
+        let removed = exec("DELETE FROM evolved_skills")
+        objectWillChange.send()
+        return removed
+    }
+
+    /// Remove every draft whose name, trigger or instruction contains `needle`, case-insensitively.
+    /// Returns how many went. This is what a subject erasure reaches: the drafts are free text and
+    /// are not indexed by person, so matching the text is the only honest way to find them.
+    @discardableResult
+    func deleteMatching(_ needle: String) -> Int {
+        let trimmed = needle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+        let doomed = all().filter {
+            [$0.draft.name, $0.draft.trigger, $0.draft.instruction]
+                .contains { $0.range(of: trimmed, options: .caseInsensitive) != nil }
+        }
+        guard !doomed.isEmpty else { return 0 }
+        for skill in doomed { delete(id: skill.id) }
+        objectWillChange.send()
+        return doomed.count
+    }
+
+    /// Remove one draft by id.
+    func delete(id: String) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM evolved_skills WHERE id = ?", -1, &stmt, nil) == SQLITE_OK
+        else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, nil)
+        sqlite3_step(stmt)
+    }
+
     // MARK: - SQLite setup
 
     private func openDatabase() {
