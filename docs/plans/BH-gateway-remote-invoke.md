@@ -93,7 +93,7 @@ enums should converge rather than duplicate.
   retrying.
 
 ### Risks flagged by the 2026-07-10 review (fold into the live-edge PR)
-- **Pre-auth frames were processed — fixed 2026-09-09 (this PR).** `handleRequestFrame` used to
+- **Pre-auth frames were processed — fixed 2026-09-09 ([#444](https://github.com/straff2002/OpenGlasses/pull/444)).** `handleRequestFrame` used to
   handle any `type:"req"` frame with no check that the connect handshake completed. Combined with
   cleartext `ws://` in LAN mode, an on-path LAN attacker could inject frames — with Agent Mode on
   and default toggles (`observe`/`output` ON), that meant silent transcript reads and arbitrary
