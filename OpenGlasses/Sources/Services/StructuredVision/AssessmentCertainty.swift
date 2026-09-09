@@ -191,7 +191,10 @@ enum CertaintyPolicy {
     static func band(modelConfidence: Double?,
                      quality: InputQualityPolicy.Verdict,
                      summary: String) -> CertaintyBand? {
-        guard let confidence = modelConfidence else { return nil }
+        // A number outside 0...1 is not a confidence, and clamping it into one would invent the
+        // reading it failed to give. 1.7 is not "very confident" — it is a malformed field, and the
+        // honest band for a malformed field is the same as for a missing one: none (W08.4).
+        guard let confidence = modelConfidence, (0.0...1.0).contains(confidence) else { return nil }
 
         var band: CertaintyBand = confidence >= confidentFloor ? .confident
             : (confidence >= likelyFloor ? .likely : .uncertain)
