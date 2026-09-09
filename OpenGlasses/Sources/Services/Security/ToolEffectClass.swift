@@ -47,8 +47,9 @@ enum ToolDispatchSeam: Sendable, Equatable {
 /// something behind; this one has to tell them apart, because only one of them is worth stopping a
 /// turn to ask about.
 ///
-/// Ordered from least to most consequential so an unreviewed definition can be given the worst case
-/// without naming a specific harm.
+/// Ordered by how much a person would want to be asked, with `unknown` last: a definition that says
+/// nothing about itself could be any of the others, so it is given the worst case without naming a
+/// specific harm.
 enum ToolEffectClass: String, Sendable, Equatable, CaseIterable, Codable, Comparable {
     /// Reads only. Nothing is written, sent, actuated or disclosed.
     case readOnly
@@ -205,13 +206,16 @@ enum ToolEffectClassifier {
         // tool is destructive is telling the truth against its own interest. A *missing* or false
         // hint proves nothing, so it never lowers anything.
         let declaredDestructive = (annotations["destructiveHint"] as? Bool) == true
-        var result: ToolEffectClass = declaredDestructive ? .physicalActuation : .mostRestrictive
+        var recognised: ToolEffectClass? = declaredDestructive ? .physicalActuation : nil
 
         let haystack = (name + " " + description).lowercased()
         for (candidate, words) in raisingHints where words.contains(where: haystack.contains) {
-            result = max(result, candidate)
+            recognised = recognised.map { Swift.max($0, candidate) } ?? candidate
         }
-        return result
+        // Nothing recognisable is `unknown`, not `readOnly`. A recognised hint *names* what the
+        // unknown was standing in for; it never buys the definition a weaker rule, because every
+        // class above a read is bound on an external seam either way.
+        return recognised ?? .mostRestrictive
     }
 
     // MARK: Copy
