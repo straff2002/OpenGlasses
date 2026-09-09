@@ -10,6 +10,9 @@ import Foundation
 /// A normalized 3-level status every vertical maps onto. Semantic status colours (green/amber/red)
 /// are applied by the view layer — distinct from the coral AI-attribution accent used on the chrome.
 enum AssessmentTier: String, Codable, CaseIterable, Comparable {
+    /// The assessment could not be established from what was visible. Ranked *below* `ok` so
+    /// escalation never picks it over a real observation, and so a single real finding replaces it.
+    case unknown
     case ok
     case caution
     case critical
@@ -17,6 +20,7 @@ enum AssessmentTier: String, Codable, CaseIterable, Comparable {
     /// Escalation order — `backstop` may only raise a tier, never lower it.
     var rank: Int {
         switch self {
+        case .unknown: return -1
         case .ok: return 0
         case .caution: return 1
         case .critical: return 2
@@ -30,15 +34,17 @@ enum AssessmentTier: String, Codable, CaseIterable, Comparable {
 
     var displayLabel: String {
         switch self {
-        case .ok: return "OK"
-        case .caution: return "Caution"
-        case .critical: return "Critical"
+        case .unknown: return String(localized: "Not established")
+        case .ok: return String(localized: "OK")
+        case .caution: return String(localized: "Caution")
+        case .critical: return String(localized: "Critical")
         }
     }
 
     /// SF Symbol hint for the view layer (kept here as pure presentation metadata, like `HUDIcon`).
     var systemImage: String {
         switch self {
+        case .unknown: return "questionmark.circle.fill"
         case .ok: return "checkmark.circle.fill"
         case .caution: return "exclamationmark.triangle.fill"
         case .critical: return "exclamationmark.octagon.fill"
@@ -52,11 +58,13 @@ struct AssessmentFinding: Codable, Identifiable, Equatable {
     let label: String          // "Suspected arterial bleeding"
     let detail: String?        // short note
     let severity: AssessmentTier
-    let confidence: Double      // 0.0–1.0
+    /// 0.0–1.0 **as reported by the model**. `nil` means the model reported none, and nothing
+    /// downstream may invent one: an absent confidence is not a confident finding.
+    let confidence: Double?
     let region: [Double]?       // optional normalized [x, y, w, h] for an overlay
 
     init(id: UUID = UUID(), label: String, detail: String? = nil,
-         severity: AssessmentTier = .caution, confidence: Double = 1.0, region: [Double]? = nil) {
+         severity: AssessmentTier = .caution, confidence: Double? = nil, region: [Double]? = nil) {
         self.id = id
         self.label = label
         self.detail = detail
@@ -75,7 +83,7 @@ struct AssessmentFinding: Codable, Identifiable, Equatable {
         label = try c.decode(String.self, forKey: .label)
         detail = try c.decodeIfPresent(String.self, forKey: .detail)
         severity = try c.decodeIfPresent(AssessmentTier.self, forKey: .severity) ?? .caution
-        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
         region = try c.decodeIfPresent([Double].self, forKey: .region)
     }
 }
@@ -91,12 +99,15 @@ struct InstrumentReading: Codable, Identifiable, Equatable {
     let unit: String            // AS DISPLAYED: "°F", "psig", "°Bx", "lb", "V"
     let canonical: Double?
     let canonicalUnit: String?
-    let confidence: Double       // 0.0–1.0 — low confidence drives a re-capture, never a silent guess
+    /// 0.0–1.0 as reported by the model — low confidence drives a re-capture, never a silent
+    /// guess. `nil` means the model reported none, which the reading policy treats the same way it
+    /// treats a low one: unestablished, so re-capture rather than assume.
+    let confidence: Double?
     let region: [Double]?        // normalized [x, y, w, h] of the display, for an overlay highlight
 
     init(id: UUID = UUID(), quantity: String, instrument: String? = nil,
          value: Double, unit: String, canonical: Double? = nil, canonicalUnit: String? = nil,
-         confidence: Double = 1.0, region: [Double]? = nil) {
+         confidence: Double? = nil, region: [Double]? = nil) {
         self.id = id
         self.quantity = quantity
         self.instrument = instrument
@@ -123,7 +134,7 @@ struct InstrumentReading: Codable, Identifiable, Equatable {
         unit = try c.decode(String.self, forKey: .unit)
         canonical = try c.decodeIfPresent(Double.self, forKey: .canonical)
         canonicalUnit = try c.decodeIfPresent(String.self, forKey: .canonicalUnit)
-        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
         region = try c.decodeIfPresent([Double].self, forKey: .region)
     }
 
@@ -147,13 +158,25 @@ struct AssessmentCard: Codable, Equatable {
     let recommendedAction: String?
     let stillNeeded: [String]           // "what to check / capture next"
     let readings: [InstrumentReading]   // "read the instrument" — first-class
-    let confidence: Double
+    /// The model's own overall confidence, 0.0–1.0. `nil` when it reported none — which is the
+    /// common case, and is never silently promoted to certainty.
+    let confidence: Double?
+    /// The banded certainty the evidence actually supports, or `nil` for "not established".
+    /// Produced by `AssessmentQualifier`, never by a schema and never by the view.
+    let certainty: CertaintyBand?
+    /// What limited this assessment — a partial field of view, a blurry or dark frame, an
+    /// occlusion. Rendered on the card, spoken in the summary, printed in the PDF.
+    let limitations: [String]
+    /// Which model produced this, and when. Attached at the point the app knows the model.
+    let provenance: AIProvenance?
     let disclaimer: String?             // e.g. advisory / not a medical device
 
     init(kind: String, title: String, subtitle: String? = nil, tier: AssessmentTier,
          summary: String, findings: [AssessmentFinding] = [], recommendedAction: String? = nil,
          stillNeeded: [String] = [], readings: [InstrumentReading] = [],
-         confidence: Double = 1.0, disclaimer: String? = nil) {
+         confidence: Double? = nil, certainty: CertaintyBand? = nil,
+         limitations: [String] = [], provenance: AIProvenance? = nil,
+         disclaimer: String? = nil) {
         self.kind = kind
         self.title = title
         self.subtitle = subtitle
@@ -164,6 +187,9 @@ struct AssessmentCard: Codable, Equatable {
         self.stillNeeded = stillNeeded
         self.readings = readings
         self.confidence = confidence
+        self.certainty = certainty
+        self.limitations = limitations
+        self.provenance = provenance
         self.disclaimer = disclaimer
     }
 
@@ -171,7 +197,7 @@ struct AssessmentCard: Codable, Equatable {
         case kind, title, subtitle, tier, summary, findings
         case recommendedAction = "recommended_action"
         case stillNeeded = "still_needed"
-        case readings, confidence, disclaimer
+        case readings, confidence, certainty, limitations, provenance, disclaimer
     }
 
     init(from decoder: Decoder) throws {
@@ -185,25 +211,50 @@ struct AssessmentCard: Codable, Equatable {
         recommendedAction = try c.decodeIfPresent(String.self, forKey: .recommendedAction)
         stillNeeded = try c.decodeIfPresent([String].self, forKey: .stillNeeded) ?? []
         readings = try c.decodeIfPresent([InstrumentReading].self, forKey: .readings) ?? []
-        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        certainty = try c.decodeIfPresent(CertaintyBand.self, forKey: .certainty)
+        limitations = try c.decodeIfPresent([String].self, forKey: .limitations) ?? []
+        provenance = try c.decodeIfPresent(AIProvenance.self, forKey: .provenance)
         disclaimer = try c.decodeIfPresent(String.self, forKey: .disclaimer)
+    }
+
+    /// One copy constructor for every "same card, one field different" case, so a new field on the
+    /// card cannot be silently dropped by one of them.
+    func with(tier: AssessmentTier? = nil,
+              findings: [AssessmentFinding]? = nil,
+              recommendedAction: String?? = nil,
+              stillNeeded: [String]? = nil,
+              readings: [InstrumentReading]? = nil,
+              certainty: CertaintyBand?? = nil,
+              limitations: [String]? = nil,
+              provenance: AIProvenance?? = nil) -> AssessmentCard {
+        AssessmentCard(kind: kind, title: title, subtitle: subtitle,
+                       tier: tier ?? self.tier, summary: summary,
+                       findings: findings ?? self.findings,
+                       recommendedAction: recommendedAction ?? self.recommendedAction,
+                       stillNeeded: stillNeeded ?? self.stillNeeded,
+                       readings: readings ?? self.readings,
+                       confidence: confidence,
+                       certainty: certainty ?? self.certainty,
+                       limitations: limitations ?? self.limitations,
+                       provenance: provenance ?? self.provenance,
+                       disclaimer: disclaimer)
     }
 
     /// Returns a copy with every reading run through `UnitNormalizer`.
     func normalizingReadings() -> AssessmentCard {
-        AssessmentCard(kind: kind, title: title, subtitle: subtitle, tier: tier, summary: summary,
-                       findings: findings, recommendedAction: recommendedAction, stillNeeded: stillNeeded,
-                       readings: readings.map { $0.normalized() }, confidence: confidence, disclaimer: disclaimer)
+        with(readings: readings.map { $0.normalized() })
     }
 
     /// Returns a copy with the tier escalated to at least `tier` and, optionally, an overriding action.
     /// Used by `AssessmentSchema.backstop` — it may only raise severity, never lower it.
     func escalating(to floor: AssessmentTier, action: String? = nil,
                     appending need: String? = nil) -> AssessmentCard {
-        AssessmentCard(kind: kind, title: title, subtitle: subtitle,
-                       tier: AssessmentTier.escalated(tier, floor), summary: summary, findings: findings,
-                       recommendedAction: action ?? recommendedAction,
-                       stillNeeded: need.map { stillNeeded + [$0] } ?? stillNeeded,
-                       readings: readings, confidence: confidence, disclaimer: disclaimer)
+        // `.some(...)` is load-bearing: `with` takes a double optional so a caller can clear the
+        // action, and without the explicit wrap `??` resolves against the outer optional and
+        // silently drops the existing action.
+        with(tier: AssessmentTier.escalated(tier, floor),
+             recommendedAction: .some(action ?? recommendedAction),
+             stillNeeded: need.map { stillNeeded + [$0] } ?? stillNeeded)
     }
 }

@@ -84,8 +84,8 @@ struct SafetyAssessmentSchema: AssessmentSchema {
 
     // MARK: - Domain helpers
 
-    func report(from json: [String: Any]) throws -> SafetyReport {
-        try SafetyReport.from(json: json)
+    func report(from json: [String: Any], provenance: AIProvenance? = nil) throws -> SafetyReport {
+        try SafetyReport.from(json: json, provenance: provenance)
     }
 
     /// Map the rich report onto the generic card (findings = present hazards; tier from worst control;
@@ -96,7 +96,6 @@ struct SafetyAssessmentSchema: AssessmentSchema {
                 label: f.hazard.displayName,
                 detail: Self.controlDetail(f),
                 severity: Self.severity(for: f.controlStatus),
-                confidence: 1.0,
                 region: f.evidence.first.flatMap { SafetyBoxMapping.normalizedRegion(for: $0.box) })
         }
         let tier = report.present.isEmpty
@@ -108,10 +107,13 @@ struct SafetyAssessmentSchema: AssessmentSchema {
 
         let action = report.topUncontrolled.map { "Add a direct control for \($0.hazard.displayName)." }
 
+        // No `confidence` is passed: HECA's schema asks the model for control booleans, not for a
+        // self-rating, so there is no reported confidence to carry — and an unreported one stays
+        // unreported rather than becoming 100%.
         return AssessmentCard(
             kind: kind, title: title, tier: tier, summary: summary,
             findings: findings, recommendedAction: action,
-            confidence: 1.0, disclaimer: Self.disclaimer)
+            disclaimer: Self.disclaimer)
     }
 
     // MARK: - Mapping
@@ -138,6 +140,8 @@ struct SafetyAssessmentSchema: AssessmentSchema {
     private static func scoreLine(_ report: SafetyReport) -> String {
         guard let score = report.score else { return "No high-energy hazards detected in view." }
         let direct = report.present.filter { $0.controlStatus == .direct }.count
-        return "HECA score \(Int((score * 100).rounded()))% — \(direct)/\(report.present.count) present hazards directly controlled."
+        // The percentage is a ratio of the hazards *in this one frame*, not a confidence — so it is
+        // always said with the frame attached to it.
+        return "HECA score \(Int((score * 100).rounded()))% — \(direct)/\(report.present.count) hazards visible in this camera view are directly controlled."
     }
 }

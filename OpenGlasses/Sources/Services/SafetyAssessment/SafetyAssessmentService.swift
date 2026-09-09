@@ -64,14 +64,25 @@ final class SafetyAssessmentService: ObservableObject {
         defer { isAnalyzing = false }
         lastImageData = imageData
 
-        guard let json = await analyze(schema.systemPrompt, imageData, schema.jsonSchema, "safety_assessment") else {
+        let (systemPrompt, jsonSchema) = AssessmentPrompt.augmentingViewLimits(
+            systemPrompt: schema.systemPrompt, jsonSchema: schema.jsonSchema)
+        guard let json = await analyze(systemPrompt, imageData, jsonSchema, "safety_assessment") else {
             throw StructuredVisionError.analysisFailed
         }
-        let report = try schema.report(from: json)
+        let provenance = AIProvenance.forActiveModel(
+            promptSources: [systemPrompt, String(describing: jsonSchema)])
+        let report = try schema.report(from: json, provenance: provenance)
         latest = report
         store.save(report)
         sessionLog?(report)
-        structuredVision.present(schema.card(for: report))
+        // The HECA card goes through the same uncertainty gate every other vertical does: a blurry,
+        // dark or partly-blocked job-site frame does not produce a clean score with a green tick.
+        structuredVision.present(AssessmentQualifier.qualify(
+            schema.card(for: report),
+            quality: InputQualityPolicy.evaluate(
+                ImageQualityProbe.indicators(for: imageData)
+                    .merging(InputQualityIndicators.fromModelPayload(json))),
+            provenance: provenance))
         return report
     }
 
@@ -131,7 +142,7 @@ final class SafetyAssessmentService: ObservableObject {
         var lines = [report.summary.isEmpty ? "Site assessed." : report.summary]
         if let score = report.score {
             let direct = report.present.filter { $0.controlStatus == .direct }.count
-            lines.append("HECA score \(Int((score * 100).rounded()))% — \(direct)/\(report.present.count) present hazards directly controlled.")
+            lines.append("HECA score \(Int((score * 100).rounded()))% — \(direct)/\(report.present.count) hazards visible in this camera view are directly controlled.")
         } else {
             lines.append("No high-energy hazards detected in view.")
         }
@@ -139,6 +150,9 @@ final class SafetyAssessmentService: ObservableObject {
             let tag = f.controlStatus == .none ? "UNCONTROLLED" : "indirect-only"
             lines.append("\(tag): \(f.hazard.displayName)")
         }
+        // Spoken and relayed everywhere the summary goes, so the escalation is not something only a
+        // reader of the PDF ever sees.
+        lines.append(AssessmentEscalation.line(forKind: "safety_assessment"))
         return lines.joined(separator: "\n")
     }
 }

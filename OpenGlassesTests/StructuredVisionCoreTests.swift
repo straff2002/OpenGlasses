@@ -10,10 +10,14 @@ final class StructuredVisionCoreTests: XCTestCase {
     // MARK: - AssessmentTier
 
     func testTierIsOrdered() {
+        XCTAssertTrue(AssessmentTier.unknown < .ok)
         XCTAssertTrue(AssessmentTier.ok < .caution)
         XCTAssertTrue(AssessmentTier.caution < .critical)
         XCTAssertEqual(AssessmentTier.escalated(.ok, .critical), .critical)
         XCTAssertEqual(AssessmentTier.escalated(.caution, .ok), .caution)
+        // "Not established" never outranks a real observation, in either direction.
+        XCTAssertEqual(AssessmentTier.escalated(.unknown, .ok), .ok)
+        XCTAssertEqual(AssessmentTier.escalated(.critical, .unknown), .critical)
     }
 
     // MARK: - Card round-trip + decode
@@ -50,7 +54,10 @@ final class StructuredVisionCoreTests: XCTestCase {
         XCTAssertEqual(card.tier, .caution)        // default
         XCTAssertTrue(card.findings.isEmpty)
         XCTAssertTrue(card.readings.isEmpty)
-        XCTAssertEqual(card.confidence, 1.0, accuracy: 0.0001)
+        // The absent field stays absent. This assertion used to read `== 1.0`, which is exactly the
+        // fabricated certainty W08.2 removes: nothing reported a confidence, so nothing has one.
+        XCTAssertNil(card.confidence)
+        XCTAssertNil(card.certainty)
     }
 
     // MARK: - Escalation only raises

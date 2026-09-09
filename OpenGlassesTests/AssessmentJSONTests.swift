@@ -49,6 +49,6 @@ final class AssessmentJSONTests: XCTestCase {
         XCTAssertEqual(reading.value, 38.0, accuracy: 0.0001)
         XCTAssertEqual(reading.unit, "°F")
         XCTAssertEqual(reading.canonicalUnit, "°C")
-        XCTAssertEqual(reading.confidence, 0.8, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(reading.confidence), 0.8, accuracy: 0.0001)
     }
 }

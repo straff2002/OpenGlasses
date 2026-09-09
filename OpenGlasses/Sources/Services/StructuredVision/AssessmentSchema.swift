@@ -33,22 +33,62 @@ extension AssessmentSchema {
 
     /// Convenience: normalize readings, then push any reading below `confidenceFloor` into
     /// `stillNeeded` as a re-capture prompt. Schemas call this from `makeCard` before returning.
+    /// A reading whose confidence the model did not report is treated exactly like one it reported
+    /// as low: unestablished, so re-capture. The alternative — assuming a missing number meant a
+    /// good one — is the fabrication this whole path exists to stop.
     func applyingReadingPolicy(to card: AssessmentCard) -> AssessmentCard {
         let normalized = card.normalizingReadings()
-        let lowConfidence = normalized.readings.filter { $0.confidence < confidenceFloor }
-        guard !lowConfidence.isEmpty else { return normalized }
-        let recaptures = lowConfidence.map { "Re-capture the \($0.quantity) display (low confidence)." }
-        return AssessmentCard(
-            kind: normalized.kind, title: normalized.title, subtitle: normalized.subtitle,
-            tier: normalized.tier, summary: normalized.summary, findings: normalized.findings,
-            recommendedAction: normalized.recommendedAction,
-            stillNeeded: normalized.stillNeeded + recaptures, readings: normalized.readings,
-            confidence: normalized.confidence, disclaimer: normalized.disclaimer)
+        let unestablished = normalized.readings.filter { ($0.confidence ?? 0) < confidenceFloor }
+        guard !unestablished.isEmpty else { return normalized }
+        let recaptures = unestablished.map { reading -> String in
+            reading.confidence == nil
+                ? "Re-capture the \(reading.quantity) display (confidence not reported)."
+                : "Re-capture the \(reading.quantity) display (low confidence)."
+        }
+        return normalized.with(stillNeeded: normalized.stillNeeded + recaptures)
     }
 }
 
 /// Reusable system-prompt fragments shared across schemas.
 enum AssessmentPrompt {
+    /// The standing "say what you could not see" instruction (W08.2). A model that reports a partial
+    /// or blocked view lets the app qualify or withhold the result instead of presenting a guess as
+    /// an observation, so every vertical asks for it and `InputQualityIndicators` reads it back.
+    static let viewLimitationsFragment = """
+    VIEW LIMITS: report what you could NOT see. Set `partial_view` true when only part of the \
+    subject or scene is in frame, `view_obstructed` true when something blocks your view, and list \
+    any further limits in `view_limitations` (short phrases). Never fill a gap in the view with an \
+    assumption — an unobserved thing is unobserved, not absent.
+    """
+
+    /// JSON-Schema properties backing the fragment above. Optional in every schema: a model that
+    /// omits them reports no limitation, which is not the same as reporting a clear view.
+    static var viewLimitationsProperties: [String: Any] {
+        [
+            "partial_view": ["type": "boolean",
+                             "description": "True when only part of the subject or scene was visible."],
+            "view_obstructed": ["type": "boolean",
+                                "description": "True when something blocked the view."],
+            "view_limitations": ["type": "array", "items": ["type": "string"],
+                                 "description": "Short phrases naming anything else that limited the view."],
+        ]
+    }
+
+    /// Augmented copies of a schema's prompt + JSON schema carrying the view-limit capability.
+    /// Applied at the `StructuredVisionService.assess` chokepoint, the same way privacy reporting is,
+    /// so a new vertical gets it without knowing it exists. Non-destructive.
+    static func augmentingViewLimits(systemPrompt: String, jsonSchema: [String: Any])
+        -> (systemPrompt: String, jsonSchema: [String: Any]) {
+        var schema = jsonSchema
+        if var properties = schema["properties"] as? [String: Any] {
+            for (key, value) in viewLimitationsProperties where properties[key] == nil {
+                properties[key] = value
+            }
+            schema["properties"] = properties
+        }
+        return (systemPrompt + "\n\n" + viewLimitationsFragment, schema)
+    }
+
     /// The standing "read the instrument" instruction every schema should include, so instrument
     /// reading is picked up for free even by verticals not primarily about measurement.
     static let instrumentFragment = """

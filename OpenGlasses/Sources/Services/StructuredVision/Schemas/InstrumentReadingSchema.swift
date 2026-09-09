@@ -60,8 +60,11 @@ struct InstrumentReadingSchema: AssessmentSchema {
             : (readings.isEmpty ? "No instrument display detected — point the camera at the gauge."
                                 : "Read \(readings.count) value\(readings.count == 1 ? "" : "s").")
 
+        // The mean is taken over the confidences the model actually reported. If it reported none,
+        // the card carries none — an unreported confidence never becomes a number here.
+        let reported = readings.compactMap(\.confidence)
         let confidence = (json["confidence"] as? Double)
-            ?? (readings.isEmpty ? 0 : readings.map(\.confidence).reduce(0, +) / Double(readings.count))
+            ?? (reported.isEmpty ? nil : reported.reduce(0, +) / Double(reported.count))
 
         let base = AssessmentCard(
             kind: kind, title: title,
