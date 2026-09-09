@@ -93,7 +93,7 @@ class OpenClawEventClient {
         onPairingStatusChange?(.connecting)
 
         let wsURL = Self.webSocketURL(for: gateway)
-        guard let url = URL(string: wsURL) else {
+        guard let url = try? EndpointPolicy.requireOpenable(wsURL, for: .openClawEventStream) else {
             PrivacyLog.gatewayConnection(.endpointMalformed, peer: PrivateIdentifier(gateway.id))
             return
         }

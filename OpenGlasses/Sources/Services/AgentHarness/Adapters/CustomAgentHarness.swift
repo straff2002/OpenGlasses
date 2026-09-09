@@ -95,6 +95,13 @@ struct CustomAgentHarness: AgentHarness {
     // MARK: - HTTP
 
     private func sendJSON(_ request: URLRequest) async throws -> [String: Any] {
+        // The start/status URLs come from a user-supplied harness config, so they get the same
+        // scheme, credential and cleartext rules as any other endpoint.
+        try MedicalEgressGuard.check(.customAgentHarness)
+        guard let url = request.url,
+              (try? EndpointPolicy.require(url: url, for: .customAgentHarness)) != nil else {
+            throw AgentHarnessError.transport("The harness URL is not a permitted endpoint.")
+        }
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             let body = String(data: data, encoding: .utf8) ?? ""

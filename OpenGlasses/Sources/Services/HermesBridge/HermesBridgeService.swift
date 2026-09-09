@@ -56,12 +56,18 @@ final class HermesBridgeService: ObservableObject {
 
     func connect() {
         guard status == .disconnected else { return }
-        guard let url = HermesBridgeProtocol.endpointURL(
+        guard let candidate = HermesBridgeProtocol.endpointURL(
             host: Config.hermesBridgeHost,
             port: Config.hermesBridgePort,
             token: Config.hermesBridgeToken
         ) else {
             onDebugEvent?("Hermes bridge: no host configured")
+            return
+        }
+        // The bridge is a documented local-network route, so a private address and cleartext ws
+        // are allowed here — and only here.
+        guard let url = try? EndpointPolicy.requireOpenable(url: candidate, for: .hermesBridgeSession) else {
+            onDebugEvent?("Hermes bridge: endpoint refused by policy")
             return
         }
         status = .connecting

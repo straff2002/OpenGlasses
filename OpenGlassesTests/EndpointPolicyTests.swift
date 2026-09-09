@@ -6,8 +6,8 @@ final class EndpointPolicyTests: XCTestCase {
 
     // MARK: - Scheme
 
-    func testOnlyHTTPAndHTTPSAreAccepted() {
-        for scheme in ["ftp", "file", "ws", "javascript", "data"] {
+    func testOnlyWebSchemesAreAccepted() {
+        for scheme in ["ftp", "file", "javascript", "data", "gopher"] {
             let result = EndpointPolicy.validate("\(scheme)://example.com/x", for: .webSearch, build: .release)
             XCTAssertEqual(result.rejection, .disallowedScheme(scheme), scheme)
         }
@@ -71,6 +71,21 @@ final class EndpointPolicyTests: XCTestCase {
     }
 
     // MARK: - Cleartext
+
+    /// Socket routes are the same rules under a different spelling — the gateway and the Hermes
+    /// bridge speak ws/wss, and an unencrypted ws:// to the open internet is the same mistake as
+    /// an http:// one.
+    func testWebsocketSchemesFollowTheSameRules() {
+        XCTAssertNil(EndpointPolicy.validate("wss://gateway.example.com/ws",
+                                             for: .openClawGatewaySocket, build: .release).rejection)
+        guard case .cleartextHTTPNotPermitted? =
+                EndpointPolicy.validate("ws://gateway.example.com/ws",
+                                        for: .openClawGatewaySocket, build: .release).rejection else {
+            return XCTFail("cleartext ws to a public host was allowed")
+        }
+        XCTAssertNil(EndpointPolicy.validate("ws://192.168.1.9:8765/",
+                                             for: .hermesBridgeSession, build: .release).rejection)
+    }
 
     func testCleartextHTTPToAPublicHostIsRejectedInRelease() {
         for route: NetworkRoute in [.webSearch, .llmCompletion, .clawHubCatalog, .openClawGatewaySocket] {

@@ -269,7 +269,8 @@ class OpenClawBridge: ObservableObject {
     private func isReachable(baseURL: String, token: String? = nil, session: URLSession,
                              transport: PrivacyLog.GatewayTransport = .unknown) async -> Bool {
         let normalized = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
-        guard let url = URL(string: "\(normalized)/health") else { return false }
+        guard let url = try? EndpointPolicy.requireOpenable("\(normalized)/health",
+                                                            for: .openClawBridgeRequest) else { return false }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let authToken = token ?? activeToken
@@ -298,7 +299,11 @@ class OpenClawBridge: ObservableObject {
         let endpoint = await resolveEndpoint()
         let normalized = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
 
-        guard let url = URL(string: "\(normalized)/health") else {
+        guard MedicalEgressGuard.allows(.openClawBridgeRequest) else {
+            connectionState = .unreachable(MedicalEgressRefusal.userMessage)
+            return
+        }
+        guard let url = try? EndpointPolicy.require("\(normalized)/health", for: .openClawBridgeRequest) else {
             connectionState = .unreachable("Invalid URL")
             return
         }
@@ -362,8 +367,14 @@ class OpenClawBridge: ObservableObject {
 
         // Token is presented in the `connect` handshake below, not in the URL query string —
         // this keeps the credential out of device, proxy, and server access logs.
-        guard let url = URL(string: "\(wsURL)/ws") else {
-            throw NSError(domain: "OpenClaw", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid WebSocket URL"])
+        let url: URL
+        do {
+            url = try EndpointPolicy.requireOpenable("\(wsURL)/ws", for: .openClawGatewaySocket)
+        } catch let refusal as MedicalEgressRefusal {
+            throw refusal
+        } catch {
+            throw NSError(domain: "OpenClaw", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Invalid WebSocket URL: \(error)"])
         }
 
         PrivacyLog.gatewayConnection(.connecting, transport: currentTransport)

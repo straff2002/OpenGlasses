@@ -152,7 +152,8 @@ actor ClawHubService {
     /// The `/skills` endpoint may be empty, so we fall back to a curated search.
     func browse(sort: String = "trending", limit: Int = 30, offset: Int = 0) async throws -> [ClawHubSkill] {
         // Try the browse endpoint first
-        let url = URL(string: "\(baseURL)/skills?sort=\(sort)&limit=\(limit)&offset=\(offset)")!
+        let url = try EndpointPolicy.requireOpenable("\(baseURL)/skills?sort=\(sort)&limit=\(limit)&offset=\(offset)",
+                                                     for: .clawHubCatalog)
         let (data, response) = try await session.data(from: url)
         try checkResponse(response)
 
@@ -169,7 +170,8 @@ actor ClawHubService {
     /// Vector search for skills.
     func search(query: String, limit: Int = 20) async throws -> [ClawHubSkill] {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        let url = URL(string: "\(baseURL)/search?q=\(encoded)&limit=\(limit)")!
+        let url = try EndpointPolicy.requireOpenable("\(baseURL)/search?q=\(encoded)&limit=\(limit)",
+                                                     for: .clawHubCatalog)
         let (data, response) = try await session.data(from: url)
         try checkResponse(response)
         return decodeSkillList(from: data)

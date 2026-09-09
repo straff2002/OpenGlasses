@@ -100,7 +100,8 @@ struct LocalNotificationExpertNotifier: ExpertNotifier {
 struct WebhookExpertNotifier: ExpertNotifier {
     func notifyExpertPool(reason: String, assetId: String?, sessionId: String, roomURL: String?) async throws -> Bool {
         let urlString = Config.expertWebhookURL.trimmingCharacters(in: .whitespaces)
-        guard !urlString.isEmpty, let url = URL(string: urlString) else { return false }
+        guard !urlString.isEmpty,
+              let url = try? EndpointPolicy.requireOpenable(urlString, for: .expertBridgeWebhook) else { return false }
 
         var text = "🛠️ Field Assist escalation\nReason: \(reason)\nSession: \(sessionId)"
         if let assetId { text += "\nAsset: \(assetId)" }

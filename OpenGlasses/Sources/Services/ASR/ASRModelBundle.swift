@@ -32,7 +32,8 @@ struct ASRModelBundle: DownloadableModelBundle {
     static let liveInstaller: ASRModelDownloader.Installer = { bundle, destination, progress in
         let files = bundle.requiredFiles
         for (index, name) in files.enumerated() {
-            let url = bundle.huggingFaceResolveURL(for: name)
+            let url = try EndpointPolicy.requireOpenable(url: bundle.huggingFaceResolveURL(for: name),
+                                                        for: .asrModelDownload)
             let (tempURL, response) = try await URLSession.shared.download(from: url)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 throw ASRDownloadError.incompleteDownload(missing: "\(name) (HTTP \(http.statusCode))")

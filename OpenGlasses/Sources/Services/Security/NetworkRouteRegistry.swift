@@ -126,7 +126,7 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     // MARK: Catalogs
     case clawHubCatalog
     case vaultPackCatalog
-    case playbookCatalog
+    case playbookHTTPStep
     case localizationCatalogDownload
 
     // MARK: On-device model acquisition
@@ -191,7 +191,7 @@ extension NetworkRoute {
         case .twitchChatSocket: return "Read and post broadcast chat messages."
         case .clawHubCatalog: return "Fetch the published skill-pack catalog."
         case .vaultPackCatalog: return "Fetch the published vault-pack catalog."
-        case .playbookCatalog: return "Fetch published playbook definitions."
+        case .playbookHTTPStep: return "Call the URL an active playbook step names, with variables the run has filled in."
         case .localizationCatalogDownload: return "Download an updated localization catalog."
         case .localModelRepositoryMetadata: return "Read a model repository's file listing before downloading weights."
         case .localModelDownload: return "Download on-device model weights in the background."
@@ -234,8 +234,10 @@ extension NetworkRoute {
             return [.promptText]
         case .weatherLookup, .aircraftOverhead, .aedDirectory:
             return [.location]
-        case .currencyRates, .clawHubCatalog, .vaultPackCatalog, .playbookCatalog:
+        case .currencyRates, .clawHubCatalog, .vaultPackCatalog:
             return [.telemetryFree]
+        case .playbookHTTPStep:
+            return [.promptText]
         case .homeAssistantCommand, .homeAssistantEntityCache:
             return [.promptText, .credential]
         case .openClawSkillCatalog:
@@ -286,10 +288,10 @@ extension NetworkRoute {
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
              .asrModelDownload, .fingerspellingModelDownload, .localizationCatalogDownload,
-             .clawHubCatalog, .vaultPackCatalog, .playbookCatalog:
+             .clawHubCatalog, .vaultPackCatalog:
             return .firstPartyCloud
         case .webSearch, .weatherLookup, .newsHeadlines, .currencyRates,
-             .aircraftOverhead, .aedDirectory, .twitchChatSocket:
+             .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession,
              .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener:
@@ -374,7 +376,7 @@ extension NetworkRoute {
         case .twitchChatSocket: return ["URLSessionChatSocket"]
         case .clawHubCatalog: return ["ClawHubService"]
         case .vaultPackCatalog: return ["VaultPackCatalogService"]
-        case .playbookCatalog: return ["PlaybookStore"]
+        case .playbookHTTPStep: return ["PlaybookStore"]
         case .localizationCatalogDownload: return ["LocalizationManager"]
         case .localModelRepositoryMetadata: return ["LocalModelRepositoryClient"]
         case .localModelDownload: return ["LocalModelBackgroundTransfer"]

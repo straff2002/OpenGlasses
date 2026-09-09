@@ -25,7 +25,7 @@ enum EndpointPolicy {
             case .missingHost:
                 return "the URL has no host"
             case .disallowedScheme(let scheme):
-                return "scheme '\(scheme.isEmpty ? "(none)" : scheme)' is not allowed (only http/https)"
+                return "scheme '\(scheme.isEmpty ? "(none)" : scheme)' is not allowed (only http/https/ws/wss)"
             case .credentialInURL:
                 return "the URL carries a username or password; put the credential in a header instead"
             case .privateHostNotPermitted(let host, let route):
@@ -64,10 +64,13 @@ enum EndpointPolicy {
     static func validate(url: URL,
                          for route: NetworkRoute,
                          build: BuildFlavor = .current) -> Result<URL, Rejection> {
+        // Websocket routes carry the same rules under a different scheme, so both spellings are
+        // handled here rather than each socket client inventing its own check.
         let scheme = (url.scheme ?? "").lowercased()
-        guard scheme == "http" || scheme == "https" else {
+        guard ["http", "https", "ws", "wss"].contains(scheme) else {
             return .failure(.disallowedScheme(scheme))
         }
+        let isCleartext = scheme == "http" || scheme == "ws"
         // A credential in the URL is copied into logs, crash reports and Referer headers by
         // everything that touches it, so it is refused before anything else looks at the host.
         guard url.user == nil, url.password == nil else {
@@ -81,7 +84,7 @@ enum EndpointPolicy {
         if isPrivate, !route.endpointClass.permitsPrivateNetwork {
             return .failure(.privateHostNotPermitted(host: host, route: route))
         }
-        if scheme == "http", build == .release {
+        if isCleartext, build == .release {
             // Cleartext is tolerated only where the destination is provably the wearer's own
             // network. A `localNetwork` route pointed at a public host gets no exception.
             guard route.endpointClass.permitsCleartextHTTP, isPrivate else {

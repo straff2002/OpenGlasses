@@ -31,6 +31,7 @@ final class VaultPackCatalogService: ObservableObject {
 
     init(catalogURL: @escaping () -> URL? = { URL(string: Config.vaultPackCatalogURL) },
          fetch: @escaping (URL) async throws -> Data = { url in
+             let url = try EndpointPolicy.requireOpenable(url: url, for: .vaultPackCatalog)
              let (data, response) = try await URLSession.shared.data(from: url)
              if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                  throw URLError(.badServerResponse)

@@ -322,6 +322,10 @@ struct HIPAASettingsView: View {
                         .tint(AppAccent.aiCoral)
                         .onChange(of: localOnly) { _, val in
                             Config.hipaaLocalOnly = val
+                            // Compliance mode has its own teardown hook; this switch had none, so
+                            // turning it on mid-session used to leave live sockets streaming until
+                            // the next launch.
+                            MedicalEgressCoordinator.announceModeChange()
                         }
                 } header: {
                     Text("Data Routing")

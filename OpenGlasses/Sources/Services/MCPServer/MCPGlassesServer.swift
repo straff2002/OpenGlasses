@@ -102,6 +102,9 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     func start() {
+        // The listener serves the glasses' own tool surface — frames and prompts — to a client on
+        // the LAN. In local-only mode there is nothing it may hand out, so it does not listen.
+        guard MedicalEgressGuard.allows(.mcpGlassesListener) else { return }
         guard policy.permitsListener(for: .mcpGlasses) else {
             // Check the build boundary before reading/creating a bearer token or constructing a
             // listener. A persisted developer preference therefore cannot reactivate this edge in

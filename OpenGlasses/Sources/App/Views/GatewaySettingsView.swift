@@ -449,7 +449,11 @@ struct EditGatewaySheet: View {
         case .auto: host = !gateway.lanURL.isEmpty ? gateway.lanURL : gateway.tunnelURL
         }
         let normalized = host.hasSuffix("/") ? String(host.dropLast()) : host
-        guard let url = URL(string: "\(normalized)/health") else {
+        guard MedicalEgressGuard.allows(.gatewayConnectionTest) else {
+            testStatus = MedicalEgressRefusal.userMessage
+            return
+        }
+        guard let url = try? EndpointPolicy.require("\(normalized)/health", for: .gatewayConnectionTest) else {
             testStatus = "Invalid URL"
             return
         }

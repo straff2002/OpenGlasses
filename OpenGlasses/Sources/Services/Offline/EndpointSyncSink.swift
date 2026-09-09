@@ -34,8 +34,12 @@ final class EndpointSyncSink: SyncSink {
     }
 
     func deliver(_ op: QueuedOp) async -> SyncOutcome {
-        guard Self.handledKinds.contains(op.kind), let url = endpoint() else {
+        guard Self.handledKinds.contains(op.kind), let configured = endpoint() else {
             return await fallback.deliver(op)
+        }
+        // A queued work record can carry a clinical fact, so the flush asks before it drains.
+        guard let url = try? EndpointPolicy.requireOpenable(url: configured, for: .offlineEndpointSync) else {
+            return .transient(reason: "the sync endpoint is not permitted right now")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

@@ -317,7 +317,8 @@ struct MedicalExportSettingsView: View {
     private func testConnection() {
         isTesting = true
         Task {
-            guard let url = config.endpoint(for: "metadata") else {
+            guard let candidate = config.endpoint(for: "metadata"),
+                  let url = try? EndpointPolicy.requireOpenable(url: candidate, for: .fhirConnectionTest) else {
                 testResultMessage = "Invalid server URL."
                 showTestResult = true
                 isTesting = false

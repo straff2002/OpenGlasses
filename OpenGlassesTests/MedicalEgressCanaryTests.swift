@@ -293,7 +293,73 @@ final class MedicalEgressCanaryTests: XCTestCase {
         XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
     }
 
+    // MARK: - Gateways, bridges and sinks
+
+    /// The gateway socket is reached through an injectable factory, which makes the strongest
+    /// assertion available anywhere in this file: the factory is never called, so no socket
+    /// object is even constructed.
+    func testTheGatewayEventSocketIsNeverEvenConstructedInLocalOnly() {
+        var factoryCalls = 0
+        let client = OpenClawEventClient(socketFactory: { _ in
+            factoryCalls += 1
+            return NeverSpeakingSocket()
+        })
+
+        setMode(.localOnly)
+        client.connect()
+        XCTAssertEqual(factoryCalls, 0, "a gateway socket was created in local-only mode")
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    func testTheExpertWebhookIsNeverPOSTedInLocalOnly() async throws {
+        setMode(.localOnly)
+        let notified = try await WebhookExpertNotifier().notifyExpertPool(
+            reason: "needs a second opinion", assetId: nil, sessionId: "s-1", roomURL: nil)
+        XCTAssertFalse(notified)
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    /// A queued work record can carry a clinical fact, so the flush must not drain in local-only
+    /// mode — and it must report a *transient* outcome so the record stays queued for later.
+    func testQueuedRecordsAreNotFlushedInLocalOnly() async {
+        let sink = EndpointSyncSink(fallback: RefusingSink(),
+                                    endpoint: { URL(string: "https://ops.example.com/job-reports") },
+                                    token: { "tok" })
+        setMode(.localOnly)
+        let outcome = await sink.deliver(QueuedOp.make(partsRequest: Self.partsRequest(),
+                                                       sessionId: "s-1"))
+        guard case .transient = outcome else {
+            return XCTFail("a queued record was dropped or delivered instead of held: \(outcome)")
+        }
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    func testACustomAgentHarnessIsNotDispatchedInLocalOnly() async {
+        var config = CustomHarnessConfig()
+        config.startURL = "https://agent.example.com/start"
+        config.statusURLTemplate = "https://agent.example.com/runs/{id}"
+        let harness = CustomAgentHarness(config: config)
+
+        setMode(.localOnly)
+        do {
+            _ = try await harness.start(prompt: "summarise the visit", project: nil)
+            XCTFail("an agent run was dispatched in local-only mode")
+        } catch let refusal as MedicalEgressRefusal {
+            XCTAssertEqual(refusal.route, .customAgentHarness)
+        } catch {
+            XCTFail("expected a MedicalEgressRefusal, got \(error)")
+        }
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
     // MARK: - Helpers
+
+    private static func partsRequest() -> PartsRequest {
+        PartsRequest(id: "req-1",
+                     part: TaskPart(number: "14T65", partDescription: "Pressure switch",
+                                    verified: true, page: nil),
+                     quantity: 2)
+    }
 
     private static func cloudConfig() -> ModelConfig {
         ModelConfig(id: "canary", name: "canary", provider: LLMProvider.anthropic.rawValue,
@@ -306,5 +372,23 @@ final class MedicalEgressCanaryTests: XCTestCase {
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
         buffer.frameLength = frames
         return buffer
+    }
+}
+
+/// A socket that would fail loudly if it were ever used. The canary asserts it is never made.
+private final class NeverSpeakingSocket: GatewaySocket {
+    func send(_ text: String) async throws { XCTFail("a gateway frame was sent in local-only mode") }
+    func receive() async throws -> String {
+        XCTFail("a gateway socket was read in local-only mode")
+        return ""
+    }
+    func cancel() {}
+}
+
+/// A fallback sink that must never be reached: a refused flush is held, not handed on.
+private final class RefusingSink: SyncSink {
+    func deliver(_ op: QueuedOp) async -> SyncOutcome {
+        XCTFail("a refused delivery fell through to the fallback sink")
+        return .done
     }
 }

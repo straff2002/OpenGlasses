@@ -126,6 +126,10 @@ final class URLSessionChatSocket: ChatSocketConnecting, @unchecked Sendable {
                  onText: @escaping @Sendable (String) -> Void,
                  onClose: @escaping @Sendable () -> Void) {
         self.onClose = onClose
+        guard let url = try? EndpointPolicy.requireOpenable(url: url, for: .twitchChatSocket) else {
+            onClose()
+            return
+        }
         let task = URLSession.shared.webSocketTask(with: url)
         self.task = task
         task.resume()

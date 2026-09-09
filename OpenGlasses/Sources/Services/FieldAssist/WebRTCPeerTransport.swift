@@ -21,7 +21,7 @@ final class ExpertSignalingClient {
     var onMessage: ((SignalingMessage) -> Void)?
 
     init?(url: String) {
-        guard let u = URL(string: url) else { return nil }
+        guard let u = try? EndpointPolicy.requireOpenable(url, for: .expertSignaling) else { return nil }
         task = URLSession(configuration: .default).webSocketTask(with: u)
     }
 

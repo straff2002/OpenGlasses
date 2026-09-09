@@ -79,7 +79,10 @@ class MedicalExportService: ObservableObject {
             transcript: transcript, duration: duration, date: date, privateContext: context.privateContext
         )
 
-        guard let url = config.endpoint(for: "DocumentReference") else {
+        // The destination is the operator's own record system, so local-only does not block it —
+        // but the endpoint rules still apply, and a credential must be in a header, not the URL.
+        guard let candidate = config.endpoint(for: "DocumentReference"),
+              let url = try? EndpointPolicy.requireOpenable(url: candidate, for: .fhirExport) else {
             return ExportResult(success: false, platform: .fhir,
                                 message: "Invalid FHIR server URL", timestamp: Date())
         }

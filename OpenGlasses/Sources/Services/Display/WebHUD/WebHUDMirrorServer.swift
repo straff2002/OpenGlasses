@@ -102,7 +102,7 @@ final class WebHUDMirrorServer: ObservableObject {
             return
         }
         guard listener == nil else { return }
-        guard !Config.hipaaMode else { return }
+        guard !Config.hipaaMode, MedicalEgressGuard.allows(.webHUDMirrorListener) else { return }
         _ = accessToken
         do {
             let handle = try listenerFactory(LocalListenerRequest(service: .webHUDMirror, port: Self.port))

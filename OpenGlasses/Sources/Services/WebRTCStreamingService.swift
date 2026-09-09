@@ -116,7 +116,8 @@ class WebRTCStreamingService: ObservableObject {
     // MARK: - WebSocket Connection
 
     private func connectWebSocket() {
-        guard let url = URL(string: "\(signalingURL)?role=streamer&room=\(roomId)") else {
+        guard let url = try? EndpointPolicy.requireOpenable("\(signalingURL)?role=streamer&room=\(roomId)",
+                                                            for: .webRTCBrowserStreaming) else {
             errorMessage = "Invalid signaling URL"
             return
         }
