@@ -144,6 +144,10 @@ class GeminiLiveService: ObservableObject {
     }
 
     func connect() async -> Bool {
+        guard MedicalEgressGuard.allows(.geminiLiveSession) else {
+            connectionState = .error(MedicalEgressRefusal.userMessage)
+            return false
+        }
         await prepareLiveModel()
         lastCloseReason = nil
         guard let url = Config.geminiLiveWebSocketURL else {

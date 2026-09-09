@@ -151,6 +151,54 @@ final class MedicalEgressCanaryTests: XCTestCase {
         XCTAssertEqual(EgressCanaryURLProtocol.seen.count, 1)
     }
 
+    // MARK: - Realtime
+
+    /// The realtime sessions are websockets, so the probe asserts on the two things that are
+    /// observable without a socket: `connect()` reports failure, and its state carries the mode's
+    /// message rather than a network error. Nothing reaches the transport either way.
+    func testOpenAIRealtimeRefusesToConnectInLocalOnly() async {
+        let service = OpenAIRealtimeService()
+        service.configure(apiKey: "canary-key", model: "gpt-realtime", systemInstruction: "")
+
+        setMode(.localOnly)
+        let connected = await service.connect()
+        XCTAssertFalse(connected)
+        XCTAssertEqual(service.connectionState, .error(MedicalEgressRefusal.userMessage))
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    func testGeminiLiveRefusesToConnectInLocalOnly() async {
+        let service = GeminiLiveService()
+
+        setMode(.localOnly)
+        let connected = await service.connect()
+        XCTAssertFalse(connected)
+        XCTAssertEqual(service.connectionState, .error(MedicalEgressRefusal.userMessage))
+        // The model catalog is fetched inside connect(); refusing early must skip it too.
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    func testGeminiModelCatalogNeverReachesTheTransportInLocalOnly() async {
+        setMode(.localOnly)
+        let models = await GeminiLiveModelCatalog().liveModels(apiKey: "canary-key")
+        XCTAssertEqual(models, [])
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
+    // MARK: - Translation
+
+    func testCloudTranslationRefusesToStartInLocalOnly() {
+        let provider = GeminiTranslationProvider()
+        provider.isConfigured = { true }   // bypass the opt-in; the medical rule is the subject
+
+        setMode(.localOnly)
+        XCTAssertThrowsError(try provider.start(direction: .oneWay(target: "es"))) { error in
+            XCTAssertEqual((error as? MedicalEgressRefusal)?.route, .cloudTranslationCaptions)
+        }
+        provider.sendAudio(Self.silentBuffer())
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
     // MARK: - Helpers
 
     private static func silentBuffer(sampleRate: Double = 16_000, frames: AVAudioFrameCount = 160) -> AVAudioPCMBuffer {

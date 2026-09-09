@@ -52,6 +52,7 @@ actor GeminiLiveModelCatalog {
     }
 
     private func fetch(apiKey: String, version: String, timeout: TimeInterval) async -> [String] {
+        guard MedicalEgressGuard.allows(.geminiLiveModelCatalog) else { return [] }
         guard let url = URL(string:
             "https://generativelanguage.googleapis.com/\(version)/models?key=\(apiKey)") else { return [] }
         var request = URLRequest(url: url)
