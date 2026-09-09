@@ -110,7 +110,7 @@ enums should converge rather than duplicate.
   Covered by `OpenClawEventClientScriptedSocketTests`
   (`testRequestBeforeHelloOkIsDroppedWithoutReply`, `testHeartbeatBeforeHelloOkIsNotSpoken`). The
   ws:// LAN caveat is now stated in the threat model above.
-- **`getTranscript` was misclassed — fixed 2026-09-09 (this PR).** It was *observe* (default ON)
+- **`getTranscript` was misclassed — fixed 2026-09-09 ([#445](https://github.com/straff2002/OpenGlasses/pull/445)).** It was *observe* (default ON)
   yet returned the last 20 ambient captions silently — recorded conversation content, which is
   capture-adjacent by this doc's own wiretap framing. It is now in the **capture** class, which
   gives it the whole capture posture for free rather than a bespoke fourth toggle: off by
