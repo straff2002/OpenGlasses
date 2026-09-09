@@ -81,6 +81,73 @@ final class NativeToolRouter: ToolExecutionAuthority {
         self.openClawBridge = openClawBridge
     }
 
+    // MARK: - Dispatch profile (W04.4)
+
+    /// What a resolved call is about to be dispatched *on*, what that does to the world, and the
+    /// fingerprint of the definition it will run against.
+    struct DispatchProfile: Equatable {
+        let seam: ToolDispatchSeam
+        let effectClass: ToolEffectClass
+        /// Empty only when nothing will dispatch — there is no definition to bind to.
+        let definitionDigest: String
+
+        /// Nothing will dispatch: the call fails below with its own message, and holding a
+        /// confirmation in front of a tool that does not exist teaches a wearer nothing.
+        static let unrouted = DispatchProfile(seam: .native, effectClass: .readOnly,
+                                              definitionDigest: "")
+    }
+
+    /// Resolve the seam, effect class and definition digest for a call, using the same routing
+    /// order `execute(_:)` itself uses.
+    ///
+    /// Deliberately re-derivable rather than cached: it is called once before the policy runs and
+    /// again before an approval is spent, and the second call is what notices that the definition
+    /// or the routing moved while a person was being asked.
+    func dispatchProfile(for call: ResolvedToolCall) -> DispatchProfile {
+        let name = call.name
+        let args = call.arguments.rawValues
+
+        if let tool = registry.tool(named: name) {
+            let digest = ToolDefinitionDigest.digest(name: tool.name, description: tool.description,
+                                                     schema: tool.parametersSchema)
+            // A user-authored HTTP tool is native only in the sense that the registry holds it:
+            // what it does lives at the far end of a URL the app has never reviewed.
+            if tool is CustomToolWrapper {
+                return DispatchProfile(seam: .custom(id: tool.name), effectClass: .unknown,
+                                       definitionDigest: digest)
+            }
+            return DispatchProfile(
+                seam: .native,
+                effectClass: ToolEffectClassifier.nativeClass(name: name, args: args,
+                                                              semantics: tool.executionSemantics),
+                definitionDigest: digest)
+        }
+
+        // A composition binds a native tool by name and nothing else, so it never reaches the
+        // seams below and must not be classified as if it might.
+        guard !call.context.origin.isComposition else { return .unrouted }
+
+        if let mcp = mcpClient, let tool = mcp.offeredTool(matching: name),
+           let server = mcp.server(id: tool.serverId), server.enabled {
+            return DispatchProfile(
+                seam: .mcpServer(id: server.id),
+                effectClass: ToolEffectClassifier.externalClass(name: tool.name,
+                                                                description: tool.description,
+                                                                annotations: tool.annotations),
+                definitionDigest: ToolDefinitionDigest.digest(name: tool.name,
+                                                              description: tool.description,
+                                                              schema: tool.inputSchema))
+        }
+
+        if openClawBridge != nil, Config.isOpenClawAgentActive {
+            return DispatchProfile(seam: .gateway, effectClass: .unknown,
+                                   definitionDigest: ToolDefinitionDigest.digest(
+                                       name: name, description: "gateway delegation", schema: [:]))
+        }
+
+        return .unrouted
+    }
+
     /// Handle a root tool call from a model turn. A thin adapter over `execute(_:)` so the provider
     /// integrations keep one signature; everything below the adapter sees the same resolved call a
     /// composed child does.
@@ -117,11 +184,17 @@ final class NativeToolRouter: ToolExecutionAuthority {
         turnToolNames.append(name)
 
         let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
+        // Resolved before the policy runs, because both the effect-class floor and the binding an
+        // approval is issued against need to know what will actually be dispatched — a native tool,
+        // a named server's tool, a user-authored HTTP call, or the gateway.
+        let profile = dispatchProfile(for: call)
         let decision = ToolAuthorizationPolicy.evaluate(.init(
             call: call,
             agentModeEnabled: Config.agentModeEnabled,
             safetyContext: safetyContext,
-            composedTargets: composedTargetPolicy))
+            composedTargets: composedTargetPolicy,
+            seam: profile.seam,
+            effectClass: profile.effectClass))
 
         switch decision {
         case .allow:
@@ -152,10 +225,32 @@ final class NativeToolRouter: ToolExecutionAuthority {
             // The confirmation summary quotes the arguments back ("send \'meet at 8\' to …"),
             // which is the very thing the gate is holding — so the tool name is all that is kept.
             PrivacyLog.toolGate(.confirmationRequired, tool: name)
-            let approved = await coordinator.requestConfirmation(toolName: name, summary: summary)
-            guard approved else {
+            // What the wearer is being asked about, fixed at the moment of asking.
+            let asked = coordinator.approvalGrants.binding(
+                seam: profile.seam, toolName: name, definitionDigest: profile.definitionDigest,
+                args: args)
+            let decision = await coordinator.requestApproval(toolName: name, summary: summary,
+                                                             binding: asked)
+            switch decision {
+            case .consentWithdrawn:
+                return .rejected(reason: RemoteActionConsentGate.withdrawnMessage(tool: name))
+            case .denied:
                 PrivacyLog.toolGate(.declinedByUser, tool: name)
                 return .rejected(reason: ToolAuthorizationPolicy.declineMessage(name))
+            case .approved(let nonce):
+                // Spend the grant against the call as it stands *now*, re-derived rather than
+                // reused. A yes given for one recipient, one body, one server or one definition
+                // cannot pay for a different call that arrives behind it, and it cannot pay twice.
+                let atDispatch = dispatchProfile(for: call)
+                let spending = coordinator.approvalGrants.binding(
+                    seam: atDispatch.seam, toolName: name,
+                    definitionDigest: atDispatch.definitionDigest, args: args)
+                let verdict = coordinator.approvalGrants.redeem(nonce: nonce, against: spending)
+                if let refusal = verdict.refusal {
+                    authorizationEvents.record(call: call, verdict: refusal.rawValue)
+                    PrivacyLog.toolGate(.approvalNotBound, tool: name)
+                    return .rejected(reason: ApprovalGrantStore.refusalMessage(refusal, tool: name))
+                }
             }
         }
 

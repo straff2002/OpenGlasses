@@ -22,6 +22,11 @@ final class MCPClient: ObservableObject {
     /// factory-selected one, so discovery is testable without the network.
     var transportOverride: MCPTransport?
 
+    /// Digests of the tool definitions last accepted, per server (W04.4). Injected so a test writes
+    /// to its own directory; nil disables re-review entirely, which is the pre-W04.4 behaviour and
+    /// only ever wanted in a fixture.
+    lazy var definitionDigests: ToolDefinitionDigestStore? = ToolDefinitionDigestStore.shared
+
     // MARK: - Tool Discovery
 
     /// Re-discover tools for installed servers at launch (BM P6). Discovered tools live only in
@@ -75,11 +80,26 @@ final class MCPClient: ObservableObject {
                 description: description,
                 inputSchema: inputSchema,
                 serverId: server.id,
-                serverLabel: server.label
+                serverLabel: server.label,
+                annotations: toolDict["annotations"] as? [String: Any] ?? [:]
             )
             // Discovery-time tool-poisoning scan (Plan R): attacker-authored definitions are
             // screened before they can ever be offered to the model.
-            tool.trust = ToolDefinitionScanner.scan(tool, nativeNames: nativeNames)
+            let scanned = ToolDefinitionScanner.scan(tool, nativeNames: nativeNames)
+            // W04.4: a server that passed review and then changed its definitions is the shape a
+            // compromise takes. The digest of what was last accepted is remembered per server, so a
+            // moved contract is quarantined until somebody looks at it again.
+            let identity = ToolDispatchSeam.mcpServer(id: server.id).identity
+            let digest = ToolDefinitionDigest.digest(name: name, description: description,
+                                                     schema: inputSchema)
+            let outcome = ToolDefinitionReviewPolicy.evaluate(
+                scanned: scanned,
+                previous: definitionDigests?.review(server: identity, tool: name),
+                current: digest)
+            if outcome.shouldRecord {
+                definitionDigests?.recordReviewed(server: identity, tool: name, digest: digest)
+            }
+            tool.trust = outcome.trust
             // The scanner's reason quotes the attacker-authored definition it objected to, so the
             // verdict is logged and the reason stays in the trust UI.
             if case .blocked = tool.trust {
@@ -284,6 +304,9 @@ struct MCPTool: Identifiable {
     let inputSchema: [String: Any]
     let serverId: String         // Which server owns this
     let serverLabel: String      // "Notion"
+    /// The server's own `annotations` object, when it sent one. Server-authored, so it can only
+    /// ever *raise* the effect class this app assigns — see `ToolEffectClassifier.externalClass`.
+    var annotations: [String: Any] = [:]
     /// Discovery-time trust verdict (Plan R). Default `.trusted` for directly-constructed tools;
     /// `discoverTools` sets the real verdict via `ToolDefinitionScanner`.
     var trust: ToolTrust = .trusted
