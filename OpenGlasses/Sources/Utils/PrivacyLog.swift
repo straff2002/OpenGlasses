@@ -969,6 +969,12 @@ enum PrivacyLog {
         case sessionRotated, sessionCompacted
         case devicePaired, pairingPending
         case deviceEventSent
+        /// An inbound `type:"req"` frame arrived before the connect handshake completed and was
+        /// dropped unanswered. Carries nothing from the frame — it is attacker-controlled.
+        case requestDroppedPreAuth
+        /// An inbound event arrived before the handshake completed and was dropped: `detail` is
+        /// the event name only, never anything from its payload.
+        case eventDroppedPreAuth
         /// hello-ok parsed: `count` is the size of the advertised catalog, `detail` the granted role.
         case helloReceived
     }

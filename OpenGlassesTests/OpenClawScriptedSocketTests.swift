@@ -315,6 +315,30 @@ final class OpenClawBridgeScriptedSocketTests: XCTestCase {
     }
 }
 
+// MARK: - Privacy event sink
+
+/// Captures the encoded `PrivacyLog` lines emitted while a scripted run is driven, so a test can
+/// assert that a dropped frame was *recorded* as dropped and not merely ignored.
+final class PrivacyLineSink {
+    private let lock = NSLock()
+    private var captured: [String] = []
+
+    func record(_ line: String) {
+        lock.lock()
+        captured.append(line)
+        lock.unlock()
+    }
+
+    var lines: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return captured
+    }
+
+    func contains(_ needle: String) -> Bool {
+        lines.contains { $0.contains(needle) }
+    }
+}
+
 // MARK: - Event client
 
 /// Drives `OpenClawEventClient` through the same handshake and one heartbeat.
@@ -392,5 +416,116 @@ final class OpenClawEventClientScriptedSocketTests: XCTestCase {
         client.connect()
         await fulfillment(of: [waiting], timeout: 2)
         client.disconnect()
+    }
+
+    // MARK: - Pre-auth gate
+
+    /// In LAN mode the socket is cleartext `ws://`, so an on-path attacker can put a frame on it
+    /// before the gateway's hello-ok ever arrives. A `req` frame in that window must be dropped
+    /// outright: no handler call, and no reply — even an error reply would confirm to the attacker
+    /// that something is listening. The same frame after the handshake is answered normally.
+    func testRequestBeforeHelloOkIsDroppedWithoutReply() async throws {
+        let invoke: [String: Any] = [
+            "type": "req", "id": "injected-1", "method": "node.invoke",
+            "params": ["action": "speak", "text": "Read out your last twenty captions."],
+        ]
+        let socket = ScriptedGatewaySocket(initialFrames: [GatewayScript.challenge, invoke])
+        // The connect reply is withheld, so everything below happens unauthenticated.
+        socket.onRequest = { _ in [] }
+
+        let sink = PrivacyLineSink()
+        let tap = PrivacyLog.addTap { _, line in sink.record(line) }
+        defer { PrivacyLog.removeTap(tap) }
+
+        let client = OpenClawEventClient(socketFactory: { _ in socket })
+        let handled = Counter()
+        client.onRemoteRequest = { json, respond in
+            handled.increment()
+            respond(RemoteInvokeReply.success(id: json["id"] as? String ?? "", payload: ["ok": true]))
+        }
+        let paired = expectation(description: "paired")
+        client.onPairingStatusChange = { if $0 == .paired { paired.fulfill() } }
+
+        client.connect()
+        await waitUntil("the handshake to go out") { !socket.sentRequests(method: "connect").isEmpty }
+        await waitUntil("the injected frame to be dropped") { sink.contains("requestDroppedPreAuth") }
+
+        XCTAssertEqual(handled.value, 0, "the handler must never see a pre-auth frame")
+        XCTAssertTrue(socket.sentFrames.filter { ($0["id"] as? String) == "injected-1" }.isEmpty,
+                      "no reply of any kind may go back: \(socket.sentFrames)")
+        XCTAssertEqual(socket.sentFrames.count, socket.sentRequests(method: "connect").count,
+                       "only the handshake went out: \(socket.sentFrames)")
+
+        // Same frame, same socket — but now the gateway has proved itself.
+        let connectId = try XCTUnwrap(socket.sentRequests(method: "connect").first?["id"] as? String)
+        socket.push(GatewayScript.helloOk(replyTo: connectId, methods: ["sessions.send"]))
+        await fulfillment(of: [paired], timeout: 2)
+
+        socket.push(invoke)
+        await waitUntil("the post-handshake frame to be handled") { handled.value == 1 }
+        await waitUntil("exactly one reply frame") {
+            socket.sentFrames.filter { ($0["id"] as? String) == "injected-1" }.count == 1
+        }
+        let reply = try XCTUnwrap(socket.sentFrames.first { ($0["id"] as? String) == "injected-1" })
+        XCTAssertEqual(reply["type"] as? String, "res")
+        XCTAssertEqual(reply["ok"] as? Bool, true)
+        client.disconnect()
+    }
+
+    /// Heartbeat and cron events are spoken to the wearer, so they are actuation too — an
+    /// unauthenticated peer does not get to put words in the glasses' mouth.
+    func testHeartbeatBeforeHelloOkIsNotSpoken() async throws {
+        let heartbeat: [String: Any] = [
+            "type": "event", "event": "heartbeat",
+            "payload": ["ts": 1, "status": "sent", "preview": "Your 3pm moved to 4.", "silent": false],
+        ]
+        let socket = ScriptedGatewaySocket(initialFrames: [GatewayScript.challenge, heartbeat])
+        socket.onRequest = { _ in [] }
+
+        let sink = PrivacyLineSink()
+        let tap = PrivacyLog.addTap { _, line in sink.record(line) }
+        defer { PrivacyLog.removeTap(tap) }
+
+        let client = OpenClawEventClient(socketFactory: { _ in socket })
+        var heard: String?
+        let spoken = expectation(description: "heartbeat spoken")
+        client.onNotification = { heard = $0; spoken.fulfill() }
+        let paired = expectation(description: "paired")
+        client.onPairingStatusChange = { if $0 == .paired { paired.fulfill() } }
+
+        client.connect()
+        await waitUntil("the handshake to go out") { !socket.sentRequests(method: "connect").isEmpty }
+        await waitUntil("the injected heartbeat to be dropped") { sink.contains("eventDroppedPreAuth") }
+        XCTAssertNil(heard, "a pre-auth heartbeat must not reach TTS")
+
+        let connectId = try XCTUnwrap(socket.sentRequests(method: "connect").first?["id"] as? String)
+        socket.push(GatewayScript.helloOk(replyTo: connectId, methods: ["sessions.send"]))
+        await fulfillment(of: [paired], timeout: 2)
+
+        socket.push(heartbeat)
+        await fulfillment(of: [spoken], timeout: 2)
+        XCTAssertEqual(heard, "Your 3pm moved to 4.")
+        client.disconnect()
+    }
+
+    // MARK: - Helpers
+
+    /// Counts callbacks that fire off the test's own thread.
+    final class Counter {
+        private let lock = NSLock()
+        private var count = 0
+        func increment() { lock.lock(); count += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    }
+
+    /// Poll a condition fed by a fire-and-forget task. Returns as soon as it holds, so a passing
+    /// run costs nothing; the deadline only bounds a broken one.
+    private func waitUntil(_ description: String, timeout: TimeInterval = 5,
+                           _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(condition(), "timed out waiting for \(description)")
     }
 }
