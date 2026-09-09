@@ -52,9 +52,9 @@ final class MedicalEgressGuardTests: XCTestCase {
         // operator's own FHIR system. Pin them so widening the set is a deliberate edit.
         let open = NetworkRoute.allCases.filter { !$0.medicalPolicy.blocksLocalOnly }.map(\.rawValue).sorted()
         XCTAssertEqual(open, [
-            "asrModelDownload", "fhirConnectionTest", "fhirExport", "fingerspellingModelDownload",
-            "localModelDownload", "localModelRepositoryMetadata", "loopbackOAuthCallback",
-            "ttsVoiceModelDownload"
+            "asrModelDownload", "conversationRecallSummary", "fhirConnectionTest", "fhirExport",
+            "fingerspellingModelDownload", "localModelDownload", "localModelRepositoryMetadata",
+            "loopbackOAuthCallback", "ttsVoiceModelDownload"
         ])
     }
 

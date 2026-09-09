@@ -199,7 +199,47 @@ final class MedicalEgressCanaryTests: XCTestCase {
         XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
     }
 
+    // MARK: - Model reasoning
+
+    func testProviderModelCatalogNeverReachesTheTransportInLocalOnly() async {
+        setMode(.localOnly)
+        let models = await ModelFetcher.fetchModels(provider: .openai, apiKey: "canary-key",
+                                                    baseURL: "https://api.openai.com/v1")
+        XCTAssertEqual(models.count, 0)
+        let test = await ModelFetcher.testConnection(provider: .openai, apiKey: "canary-key",
+                                                     baseURL: "https://api.openai.com/v1")
+        XCTAssertEqual(test, .unreachable(MedicalEgressRefusal.userMessage))
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+
+        setMode(.off)
+        _ = await ModelFetcher.fetchModels(provider: .openai, apiKey: "canary-key",
+                                           baseURL: "https://api.openai.com/v1")
+        XCTAssertFalse(EgressCanaryURLProtocol.seen.isEmpty,
+                       "with the guard off the same drive must reach the transport")
+    }
+
+    /// Inference keeps its own message — the wearer is being told which *model* can serve them,
+    /// not that a feature is off — but the decision now comes from the shared guard.
+    func testRemoteInferenceStillRefusesThroughTheSharedGuard() async {
+        let service = LLMService()
+        setMode(.localOnly)
+        do {
+            _ = try await service.sendAnthropic("patient vitals are stable", systemPrompt: "",
+                                                config: Self.cloudConfig(), includeTools: false,
+                                                imageData: nil)
+            XCTFail("a cloud model served a request in local-only mode")
+        } catch {
+            XCTAssertTrue("\(error)".contains("on-device"), "unexpected error: \(error)")
+        }
+        XCTAssertEqual(EgressCanaryURLProtocol.seen, [])
+    }
+
     // MARK: - Helpers
+
+    private static func cloudConfig() -> ModelConfig {
+        ModelConfig(id: "canary", name: "canary", provider: LLMProvider.anthropic.rawValue,
+                    apiKey: "canary-key", model: "claude-test", baseURL: "")
+    }
 
     private static func silentBuffer(sampleRate: Double = 16_000, frames: AVAudioFrameCount = 160) -> AVAudioPCMBuffer {
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,

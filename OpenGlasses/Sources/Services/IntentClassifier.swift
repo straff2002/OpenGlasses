@@ -126,6 +126,10 @@ class IntentClassifier {
     // MARK: - API Call
 
     private func callClassifier(systemPrompt: String, userMessage: String, config: ModelConfig) async throws -> String {
+        // The classifier only ever picks a cloud provider (see `classifierConfig`), so there is no
+        // on-device path to fall back to: in local-only mode it refuses and the caller's existing
+        // `uncertain` default keeps the assistant responsive.
+        try MedicalEgressGuard.check(.intentClassification)
         let provider = config.llmProvider
 
         // Use the cheapest model variant if available

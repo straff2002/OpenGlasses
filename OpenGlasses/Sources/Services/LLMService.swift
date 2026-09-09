@@ -208,10 +208,12 @@ class LLMService: ObservableObject {
     /// Defense at the actual remote-provider boundary. Selection points normally replace a cloud
     /// model before reaching this method; this guard makes a future direct caller fail closed.
     private func enforceMedicalRemoteBoundary(_ config: ModelConfig) throws {
-        guard MedicalLLMRoutingPolicy.isEnforced(
-            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
-              config.llmProvider != .local,
-              config.llmProvider != .appleOnDevice else { return }
+        // Asked through the shared guard so inference is governed by the same rule as every other
+        // route. The message stays the model-routing one: this refusal is about which *model* may
+        // serve the request, and it already tells the wearer how to fix it.
+        guard config.llmProvider != .local,
+              config.llmProvider != .appleOnDevice,
+              MedicalEgressGuard.blocks(.llmCompletion) else { return }
         throw LLMError.invalidConfiguration(MedicalLLMRoutingPolicy.unavailableMessage)
     }
 

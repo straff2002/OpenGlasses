@@ -36,6 +36,9 @@ enum ModelFetcher {
     /// Probe the provider's `/models` endpoint: reachable? how fast? how many models? The result
     /// classification is the pure `classify(...)`; only the GET + error mapping live here.
     static func testConnection(provider: LLMProvider, apiKey: String, baseURL: String) async -> ConnectionTestResult {
+        guard MedicalEgressGuard.allows(.providerModelCatalog) else {
+            return .unreachable(MedicalEgressRefusal.userMessage)
+        }
         guard let url = URL(string: modelsEndpoint(from: baseURL)) else { return .unreachable("Invalid URL") }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -66,6 +69,7 @@ enum ModelFetcher {
 
     /// Fetch models for a provider. Returns an empty array on failure.
     static func fetchModels(provider: LLMProvider, apiKey: String, baseURL: String) async -> [RemoteModel] {
+        guard MedicalEgressGuard.allows(.providerModelCatalog) else { return [] }
         // Local OpenAI-compatible servers (Ollama, llama.cpp, LM Studio, vLLM…) usually
         // need no API key, so let the custom provider list models without one.
         guard !apiKey.isEmpty || provider == .custom || provider == .anthropic || provider == .chatgpt else { return [] }
@@ -114,6 +118,9 @@ enum ModelFetcher {
     }
 
     static func fetchChatGPTCatalog() async -> ChatGPTCatalogResult {
+        guard MedicalEgressGuard.allows(.providerModelCatalog) else {
+            return .networkError(MedicalEgressRefusal.userMessage)
+        }
         guard let token = await ChatGPTOAuthService.shared.validAccessToken() else {
             return .tokenUnavailable(signedIn: await ChatGPTOAuthService.shared.isConnected)
         }

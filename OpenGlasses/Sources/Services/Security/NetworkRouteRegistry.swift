@@ -311,6 +311,9 @@ extension NetworkRoute {
         case .loopbackOAuthCallback:
             return .allowedLocalOnly(
                 "An inbound listener bound to 127.0.0.1; the redirect never reaches a network interface.")
+        case .conversationRecallSummary:
+            return .notApplicable(
+                "It owns no transport: it delegates to llmCompletion, which the model-routing policy already redirects to an on-device model instead of refusing. Blocking it would disable a feature whose bytes never leave the phone.")
         case .fhirExport, .fhirConnectionTest:
             return .notApplicable(
                 "The destination is the operator's own record system, which is the point of the medical export; local-only governs third-party egress, not the covered entity's own write-back.")
