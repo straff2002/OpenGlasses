@@ -7,7 +7,8 @@ import Foundation
 /// Non-negotiables enforced here:
 /// - Every **capture** command first asks the user via the confirmation coordinator (the
 ///   `HighImpactToolPolicy` UX applied to remote actuation), then **announces itself** (TTS)
-///   before the sensor turns on. Nothing remote is ever silent.
+///   before the sensor turns on — or, for a transcript read, before recorded speech leaves the
+///   device. Nothing remote is ever silent.
 /// - `deviceCapabilities` reports what is *currently* true, not what the app theoretically has —
 ///   the closure reads live service state.
 @MainActor
@@ -132,6 +133,7 @@ final class RemoteCommandExecutor {
         case .startVideo: return "Remote agent wants to start a video recording"
         case .startTranslation: return "Remote agent wants to start live translation"
         case .startTranscription: return "Remote agent wants to start transcription"
+        case .getTranscript: return "Remote agent wants to read the recent transcript"
         default: return "Remote agent wants to use a sensor"
         }
     }
@@ -143,6 +145,7 @@ final class RemoteCommandExecutor {
         case .startVideo: return "Remote video recording started"
         case .startTranslation: return "Remote translation started"
         case .startTranscription: return "Remote transcription started"
+        case .getTranscript: return "Remote transcript read"
         default: return "Remote capture started"
         }
     }

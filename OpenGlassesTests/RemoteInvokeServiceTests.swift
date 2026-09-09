@@ -38,7 +38,7 @@ final class RemoteInvokeServiceTests: XCTestCase {
             deviceStatus: { ["glasses_connected": "true"] },
             deviceCapabilities: { ["display": "false"] },
             addNote: { text in log.value.append("addNote(\(text))"); return "Saved" },
-            getTranscript: { "hello world" },
+            getTranscript: { log.value.append("getTranscript"); return "hello world" },
             stopAll: { log.value.append("stopAll") }
         ))
     }
@@ -143,6 +143,31 @@ final class RemoteInvokeServiceTests: XCTestCase {
         let svc = service(log: log)
         _ = await svc.handleFrame(invoke("speak", extra: ["text": "hello"]))
         XCTAssertEqual(log.value, ["speak(hello)"])
+    }
+
+    // MARK: - Transcript reads are capture-class
+
+    func testTranscriptReadConfirmsAnnouncesThenReads() async {
+        let log = Box<[String]>([])
+        let svc = service(log: log)
+        let reply = await svc.handleFrame(invoke("get_transcript"))
+
+        XCTAssertEqual(log.value, [
+            "confirm(Remote agent wants to read the recent transcript)",
+            "announce(Remote transcript read)",
+            "getTranscript",
+        ], "reading back recorded speech must confirm, then announce, then read")
+        XCTAssertEqual((reply?["payload"] as? [String: String])?["transcript"], "hello world")
+    }
+
+    func testTranscriptReadIsDeniedByDefault() async {
+        let log = Box<[String]>([])
+        let svc = service(toggles: .defaults, log: log)   // defaults: capture off
+        let reply = await svc.handleFrame(invoke("get_transcript"))
+
+        XCTAssertEqual((reply?["error"] as? [String: String])?["code"], "denied.class_disabled.capture")
+        XCTAssertTrue(log.value.isEmpty,
+                      "with the shipping defaults a gateway agent must not read the room's speech")
     }
 
     // MARK: - Audit trail

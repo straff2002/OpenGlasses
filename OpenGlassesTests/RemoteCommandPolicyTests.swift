@@ -46,7 +46,7 @@ final class RemoteCommandPolicyTests: XCTestCase {
     func testEachClassToggleGatesItsOwnClassOnly() {
         var rate = RemoteInvokeRateState(now: t0)
         let observeOff = RemoteCommandPolicy.Toggles(observe: false, output: true, capture: true)
-        XCTAssertEqual(decide(.getTranscript, toggles: observeOff, rateState: &rate),
+        XCTAssertEqual(decide(.deviceStatus, toggles: observeOff, rateState: &rate),
                        .deny(.classDisabled(.observe)))
         XCTAssertEqual(decide(.displayClear, toggles: observeOff, rateState: &rate), .allow)
 
@@ -61,6 +61,60 @@ final class RemoteCommandPolicyTests: XCTestCase {
         XCTAssertEqual(decide(.stopAll, toggles: allOff, rateState: &rate), .allow,
                        "a remote agent may always STOP activity while Agent Mode is on")
         XCTAssertEqual(decide(.stopVideo, toggles: allOff, rateState: &rate), .allow)
+    }
+
+    // MARK: - The class map itself
+
+    /// The whole consent map in one table. Every command appears exactly once, and the table is
+    /// checked against `allCanonicalActions` so a newly added command cannot quietly skip it and
+    /// inherit whatever class its `switch` neighbour happens to have.
+    func testEveryCommandIsInTheExpectedConsentClass() {
+        let expected: [(RemoteGlassesCommand, RemoteCommandClass)] = [
+            (.deviceStatus, .observe),
+            (.deviceCapabilities, .observe),
+            (.speak(text: "hi"), .output),
+            (.displayShow(text: "hi", icon: nil), .output),
+            (.displayClear, .output),
+            (.addNote(text: "milk"), .output),
+            (.capturePhoto, .capture),
+            (.startAudioRecording, .capture),
+            (.startVideo, .capture),
+            (.startTranslation(source: nil, target: nil), .capture),
+            (.startTranscription, .capture),
+            (.getTranscript, .capture),
+            (.stopAudioRecording, .halt),
+            (.stopVideo, .halt),
+            (.stopTranslation, .halt),
+            (.stopTranscription, .halt),
+            (.stopAll, .halt),
+        ]
+        for (command, commandClass) in expected {
+            XCTAssertEqual(command.commandClass, commandClass, "\(command.canonicalAction) is misclassed")
+        }
+        XCTAssertEqual(Set(expected.map { $0.0.canonicalAction }),
+                       Set(RemoteGlassesCommand.allCanonicalActions),
+                       "every command must be pinned to a class by this table")
+    }
+
+    /// Reading back the ambient captions is recorded conversation content, so it is consent-gated
+    /// as `capture` — off by default — not as the default-on `observe` read class.
+    func testTranscriptIsCaptureClass() {
+        XCTAssertEqual(RemoteGlassesCommand.getTranscript.commandClass, .capture)
+
+        var rate = RemoteInvokeRateState(now: t0)
+        XCTAssertEqual(decide(.getTranscript, toggles: .defaults, rateState: &rate),
+                       .deny(.classDisabled(.capture)),
+                       "a transcript read must be denied under the shipping default toggles")
+
+        // With capture consented it flows — and spends the tight capture budget (capacity 2),
+        // not the generous observe one.
+        var consented = RemoteInvokeRateState(now: t0)
+        XCTAssertEqual(decide(.getTranscript, rateState: &consented), .allow)
+        XCTAssertEqual(decide(.getTranscript, rateState: &consented), .allow)
+        XCTAssertEqual(decide(.getTranscript, rateState: &consented),
+                       .deny(.rateLimited(.capture)))
+        XCTAssertEqual(decide(.deviceStatus, rateState: &consented), .allow,
+                       "the observe bucket must be untouched by transcript reads")
     }
 
     // MARK: - Rate limiting
