@@ -119,9 +119,57 @@ subject column distinguishes the wearer from a third party who never installed t
 | voiceSkills | `VoiceSkillStore` | skillDefinition | wearer | platformDefault | no | none | none — skills are removed individually by name | n/a — no subject linkage |
 <!-- END GENERATED: data-lifecycle-matrix -->
 
-Not yet signed. Open before sign-off: approved retention periods per data class (W03.3), the
-backup and erasure semantics decision (W03.5), and a peer that acknowledges a queued deletion
-request rather than merely accepting it.
+Not yet signed. Open before sign-off: the privacy owner's approval of the retention periods
+implemented for W03.3 (the periods exist and are attributable in
+`OpenGlasses/Sources/Services/Privacy/RetentionPolicy.swift`; nobody has signed them), the backup
+and recovery decisions that go with W03.5, an encrypted restore drill on a physical device, and a
+peer that acknowledges a queued deletion request rather than merely accepting it.
+
+### 2.2 Backup, recovery and erasure
+
+Three different things get called deletion, and the difference is the whole of W03.5.
+
+**Logical deletion** is what removing a file does. The directory entry goes and the app can no
+longer read it. The bytes on flash are not scrubbed: the controller had already been writing each
+change to a fresh physical page and leaving the old one for wear levelling to reclaim whenever it
+suits, so an application-level overwrite spends a write cycle and reaches nothing. This is why the
+former `secureDelete` — overwrite with random bytes, then remove — was renamed to `deleteFile` and
+now documents what it does rather than what it was called. What actually keeps deleted bytes from
+being read is iOS's own per-file encryption, whose key belongs to the device and which this app
+cannot destroy. Logical deletion therefore does not reach a filesystem snapshot, an existing
+backup, or a copy the wearer already shared out.
+
+**Cryptographic erasure** is what destroying a scoped key does. `ScopedKeyring` holds one key per
+erasable class, and `eraseClass(_:files:)` destroys the key before removing the files — in that
+order, so a crash between the two steps leaves unreadable bytes rather than readable ones. Every
+copy sealed under that key, including the ones this app never sees, becomes ciphertext nobody can
+open. Only two classes qualify today: conversation content, when the wearer has turned conversation
+encryption on, and the enrolled face templates. Clinical transcripts deliberately do not: they are
+written as plain text into a folder the wearer opens in Files and shares from, which is what the
+recording screen promises them, and a key sitting beside plaintext would be a control that looks
+like protection and provides none. Sealing transcripts, with an explicit export step to replace
+the Files-app copy, is owed rather than pretended.
+
+**Backup behaviour** is the third. A copy in a backup is a copy an erasure cannot reach, so as of
+W03.3 every store the subject-erasure walk can reach is excluded from backup — the conversation
+history and its recall index, semantic memory, the knowledge graph, the document corpus, the face
+database, the evolved skills and the offline queue, plus `usage.sqlite` for the smaller reason that
+there is nothing in it worth restoring. The stores left backed up are left there on purpose: the
+wearer's own notes, teleprompter scripts, study decks, saved places and agent documents would
+otherwise not survive a phone migration, and losing somebody's notebook to a privacy control is a
+worse outcome than keeping it. That trade is what `ErasureLedger` covers.
+
+**Restore replay, and its limit.** The ledger records every completed erasure under a monotonic id,
+protected and excluded from backup, and a launch replay re-applies an entry when a store it touched
+comes back — a container preserved across a reinstall, a file put back from a Files-app copy, a
+folder resurfacing from a sync, a partial restore. It cannot honour an erasure after a full-device
+restore from a backup taken *before* that erasure, because such a restore replaces the container
+wholesale and the ledger that comes back is the one from before. Nothing kept inside the container
+can survive its own replacement. What covers that case instead is the two mechanisms above: the
+stores an erasure can reach are not in the snapshot to be restored, and where a scoped key was
+destroyed the restored bytes are ciphertext. **This paragraph is a design claim, not evidence: an
+encrypted restore drill on a physical device is owed, and until it has been run nobody should read
+this section as demonstrating post-restore behaviour.**
 
 ## 3. Verified gaps and proposed engineering work
 
