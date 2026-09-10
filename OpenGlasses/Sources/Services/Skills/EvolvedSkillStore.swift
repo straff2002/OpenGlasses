@@ -31,6 +31,7 @@ final class EvolvedSkillStore: ObservableObject {
         dbURL = docs.appendingPathComponent("evolved_skills.sqlite")
         openDatabase()
         createTable()
+        StoreProtection.applyDatabase(at: dbURL)
     }
 
     deinit { sqlite3_close(db) }

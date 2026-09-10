@@ -87,6 +87,10 @@ class SemanticMemoryStore: ObservableObject {
         createTables()
         migrateFromLegacyJSONIfNeeded()
         refreshGlobalCache()
+        // W03.3: pin the at-rest class and keep the database out of backups. Applied after the
+        // schema and migration writes so SQLite's `-wal`/`-shm` siblings exist to be covered too,
+        // and idempotent, so a database already on a device is migrated by being opened.
+        StoreProtection.applyDatabase(at: dbURL)
         PrivacyLog.store(.semanticMemory, .opened, scope: .global, count: memories.count)
     }
 

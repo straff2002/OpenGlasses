@@ -61,6 +61,7 @@ final class DocumentStore: ObservableObject {
         openDatabase()
         createTables()
         refresh()
+        StoreProtection.applyDatabase(at: dbURL)
         PrivacyLog.store(.ragDocuments, .opened, count: documents.count)
     }
 

@@ -61,6 +61,20 @@ class FaceRecognitionService: ObservableObject {
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         storageURL = docs.appendingPathComponent("known_faces.json")
         loadFaces()
+        // W03.3: a face database that already exists on a device is excluded from backup by being
+        // opened, not only by being written to again.
+        Self.protect(storageURL)
+    }
+
+    /// Re-apply the at-rest posture after a write.
+    ///
+    /// `.atomic` replaces the file rather than rewriting it and backup exclusion is a property of
+    /// the file, so without this every enrolment would put the templates back into iCloud. These
+    /// are third-party biometric templates: the people they describe never installed the app and
+    /// cannot ask a backup to forget them, which is why this store is excluded rather than left
+    /// to survive a phone migration.
+    private static func protect(_ url: URL) {
+        StoreProtection.apply(.complete, backupExcluded: true, to: url)
     }
 
     // MARK: - Public API
@@ -349,6 +363,7 @@ class FaceRecognitionService: ObservableObject {
             let data = try JSONEncoder().encode(knownFaces)
             // Face embeddings are biometric data — encrypt at rest (accessible only while unlocked).
             try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+            Self.protect(storageURL)
         } catch {
             PrivacyLog.face(.saveFailed, error: SafeErrorSummary(error))
         }
