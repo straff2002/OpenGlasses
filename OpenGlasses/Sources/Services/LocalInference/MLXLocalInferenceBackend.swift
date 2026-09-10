@@ -170,14 +170,14 @@ final class MLXLocalInferenceBackend: LocalInferenceBackend, @unchecked Sendable
             runtime: .mlx,
             contextLength: configuration.contextLength,
             capabilities: capabilities)
-        lock.lock(); resident = loaded; lock.unlock()
+        lock.withLock { resident = loaded }
         return loaded
     }
 
     func unload() async {
         await cancelGeneration()
         await MainActor.run { service.unloadModel() }
-        lock.lock(); resident = nil; lock.unlock()
+        lock.withLock { resident = nil }
     }
 
     // MARK: Generation

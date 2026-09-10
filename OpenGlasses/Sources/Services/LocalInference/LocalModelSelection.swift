@@ -63,7 +63,8 @@ struct LocalModelSelectionStore: Sendable {
         case readBackFailed
     }
 
-    let defaults: UserDefaults
+    /// `UserDefaults` is documented thread-safe, but the SDK does not mark it `Sendable`.
+    nonisolated(unsafe) let defaults: UserDefaults
     /// The legacy string field — `ModelConfig.model` for the on-device provider, in production.
     let legacySelection: @Sendable () -> String
     let setLegacySelection: @Sendable (String) -> Void
@@ -77,7 +78,7 @@ struct LocalModelSelectionStore: Sendable {
          legacySelection: @escaping @Sendable () -> String,
          setLegacySelection: @escaping @Sendable (String) -> Void,
          runtimeForID: @escaping @Sendable (LocalModelID) -> LocalModelRuntime,
-         now: @escaping @Sendable () -> Date = Date.init) {
+         now: @escaping @Sendable () -> Date = { Date() }) {
         self.defaults = defaults
         self.legacySelection = legacySelection
         self.setLegacySelection = setLegacySelection

@@ -61,7 +61,7 @@ actor LocalModelDownloadManager {
     init(repository: LocalModelRepository,
          transfer: any LocalModelFileTransferring,
          fileManager: FileManager = .default,
-         now: @escaping @Sendable () -> Date = Date.init,
+         now: @escaping @Sendable () -> Date = { Date() },
          unloadIfResident: @escaping @Sendable (LocalModelID) async -> Void = { _ in }) {
         self.repository = repository
         self.transfer = transfer

@@ -134,7 +134,7 @@ final class FieldAssistEntitlement: @unchecked Sendable {
     #endif
 
     init(provider: FieldAssistEntitlementProvider = LiveFieldAssistEntitlementProvider(),
-         clock: @escaping @Sendable () -> Date = Date.init) {
+         clock: @escaping @Sendable () -> Date = { Date() }) {
         self.storedProvider = provider
         self.storedClock = clock
     }

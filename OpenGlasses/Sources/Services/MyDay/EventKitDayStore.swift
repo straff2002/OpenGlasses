@@ -40,9 +40,7 @@ final class EventKitDayStore {
     }
 
     var hasCalendarReadAccess: Bool {
-        let status = EKEventStore.authorizationStatus(for: .event)
-        if #available(iOS 17.0, *) { return status == .fullAccess }
-        return status == .authorized
+        EKEventStore.authorizationStatus(for: .event) == .fullAccess
     }
 
     /// Scheduled My Day must never trigger a first-use permission sheet. A denied/restricted
@@ -56,31 +54,17 @@ final class EventKitDayStore {
     }
 
     func requestCalendarAccess() async throws -> Bool {
-        if #available(iOS 17.0, *) {
-            switch EKEventStore.authorizationStatus(for: .event) {
-            case .fullAccess: return true
-            case .notDetermined: return try await eventStore.requestFullAccessToEvents()
-            default: return false
-            }
-        }
         switch EKEventStore.authorizationStatus(for: .event) {
-        case .authorized: return true
-        case .notDetermined: return try await eventStore.requestAccess(to: .event)
+        case .fullAccess: return true
+        case .notDetermined: return try await eventStore.requestFullAccessToEvents()
         default: return false
         }
     }
 
     func requestRemindersAccess() async throws -> Bool {
-        if #available(iOS 17.0, *) {
-            switch EKEventStore.authorizationStatus(for: .reminder) {
-            case .fullAccess: return true
-            case .notDetermined: return try await eventStore.requestFullAccessToReminders()
-            default: return false
-            }
-        }
         switch EKEventStore.authorizationStatus(for: .reminder) {
-        case .authorized: return true
-        case .notDetermined: return try await eventStore.requestAccess(to: .reminder)
+        case .fullAccess: return true
+        case .notDetermined: return try await eventStore.requestFullAccessToReminders()
         default: return false
         }
     }

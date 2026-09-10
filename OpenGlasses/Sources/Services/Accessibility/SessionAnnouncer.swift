@@ -17,7 +17,7 @@ import UIKit
 final class SessionAnnouncer {
 
     /// The sink for an approved line. Injected so tests observe decisions rather than side effects.
-    private let post: (SessionAnnouncement) -> Void
+    private let post: @MainActor (SessionAnnouncement) -> Void
     /// The audio situation at the moment of the transition, read lazily — the announcer is wired
     /// once at launch and the answer changes turn by turn.
     private let context: () -> AnnouncementContext
@@ -34,7 +34,7 @@ final class SessionAnnouncer {
 
     init(context: @escaping () -> AnnouncementContext,
          now: @escaping () -> Date = Date.init,
-         post: @escaping (SessionAnnouncement) -> Void = SessionAnnouncer.postToVoiceOver) {
+         post: @escaping @MainActor (SessionAnnouncement) -> Void = SessionAnnouncer.postToVoiceOver) {
         self.context = context
         self.now = now
         self.post = post
