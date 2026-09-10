@@ -172,6 +172,11 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// Capture a photo. Returns JPEG data.
     /// EVERY captured image is saved to the photo library ("Glasses" album) for later review —
     /// centralized here so no capture path can forget it.
+    ///
+    /// Deliberately NOT privacy-filtered (product decision, 2026-09-10): this is the wearer's own
+    /// framed photograph, their record to keep. The bystander blur applies to ambient and automatic
+    /// captures, which go through `filteredStill(for:source:)`; a reader that wants the shutter
+    /// image filtered asks for it with `source: .photoOnly` on that accessor instead of calling here.
     func capturePhoto() async throws -> Data {
         // When the glasses camera is offline / not connected / not registered, capture from the
         // iPhone back camera instead so the vision tools keep working without glasses. This is
