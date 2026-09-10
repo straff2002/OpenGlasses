@@ -124,6 +124,7 @@ final class BrainStore: ObservableObject {
         } else {
             exec("PRAGMA user_version = \(Self.schemaVersion)")
         }
+        StoreProtection.applyDatabase(at: dbURL)
     }
 
     deinit {

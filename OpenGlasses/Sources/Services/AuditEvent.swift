@@ -93,6 +93,9 @@ enum AuditActorClass: String, Codable, CaseIterable, Sendable {
 enum AuditTargetClass: String, Codable, CaseIterable, Sendable {
     case complianceMode, auditLog, transcript, export, enrolment
     case remoteAuthorization, consent, toolDefinition, model, policy
+    /// A store as a whole, rather than one record in it — what a retention sweep and a class
+    /// erasure act on.
+    case dataStore
 }
 
 /// How it ended.

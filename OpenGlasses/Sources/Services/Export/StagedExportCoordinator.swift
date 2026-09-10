@@ -142,12 +142,15 @@ final class StagedExportCoordinator {
 
     // MARK: - Cleanup
 
-    /// Launch sweep of sessions a crash abandoned.
-    func scavenge() {
+    /// Launch sweep of sessions a crash abandoned. Returns how many went, so the retention
+    /// receipt can count them rather than reporting a sweep it cannot quantify.
+    @discardableResult
+    func scavenge() -> Int {
         let removed = store.scavenge(now: clock(), ttl: ttl)
         if removed > 0 {
             PrivacyLog.transfer(channel, .scavenged, count: removed)
         }
+        return removed
     }
 
     /// On backgrounding, drop everything not held by an onscreen share.
@@ -170,12 +173,16 @@ final class StagedExportCoordinator {
         return removed
     }
 
+    /// The three families, in one place so a caller that needs all of them cannot miss one.
+    static var allFamilies: [StagedExportCoordinator] { [agentArchive, safetyReport, fieldSession] }
+
     /// Sweep every staged-export family. Called at launch and on backgrounding.
-    static func scavengeAll() {
-        for coordinator in [agentArchive, safetyReport, fieldSession] { coordinator.scavenge() }
+    @discardableResult
+    static func scavengeAll() -> Int {
+        allFamilies.reduce(0) { $0 + $1.scavenge() }
     }
 
     static func handleBackgroundAll() {
-        for coordinator in [agentArchive, safetyReport, fieldSession] { coordinator.handleBackground() }
+        for coordinator in allFamilies { coordinator.handleBackground() }
     }
 }

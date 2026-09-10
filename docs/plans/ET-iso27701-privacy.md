@@ -63,19 +63,20 @@ subject column distinguishes the wearer from a third party who never installed t
 | agentDocuments | `AgentDocumentStore` | personalMemory | wearer | platformDefault | no | none | `AgentDocumentStore.save(_:content:) to default content` | `AgentDocumentStore.removeLines(containing:)` |
 | agentNotificationQueue | `AgentNotificationQueue` | personalMemory | wearer | platformDefault | no | none | none — entries are consumed as the agent triages them | n/a — no subject linkage |
 | agentSchedule | `AgentScheduler` | personalMemory | wearer | platformDefault | no | none | none — tasks are cancelled individually | n/a — no subject linkage |
-| brainGraph | `BrainStore` | knowledgeGraph | thirdPartySubject | platformDefault | no | none | none — no whole-graph clear; erasure is per entity | `BrainStore.forget(entityName:)` |
+| brainGraph | `BrainStore` | knowledgeGraph | thirdPartySubject | completeUntilFirstUserAuthentication | yes | none | none — no whole-graph clear; erasure is per entity | `BrainStore.forget(entityName:)` |
 | capturedPhotos | `AppState` | media | thirdPartySubject | platformDefault | no | none | none — photos are the wearer's media, managed in Photos | none — a photo is not indexed by who appears in it |
 | clinicalAuditLog | `HIPAAComplianceService` | operationalAudit | wearer | complete | yes | cap 1000 | `HIPAAComplianceService.clearAuditLog` | none — an audit entry is evidence; it is content-free by design |
 | clinicalConfiguration | `FHIRConfigurationStore` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
-| clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | complete | yes | HIPAA retention days; disabled at zero | `HIPAAComplianceService.secureDelete` | none — transcripts are filed by session, not by patient |
+| clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | complete | yes | clinical retention days, whatever the mode; disabled at zero | `HIPAAComplianceService.deleteFile(at:)` | none — transcripts are filed by session, not by patient |
 | consentRecords | `ConsentStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | none | none — a consent record is evidence of what was agreed; withdrawal is recorded, not erased | none — closed-vocabulary purpose/recipient/actor fields only; no subject identity is stored |
 | contextualNotes | `ContextualNoteStore` | personalMemory | wearer | platformDefault | no | none | none — the wearer's own notes, removed by query | `ContextualNoteStore.deleteMatching(_:)` |
 | conversationRecallIndex | `ConversationIndex` | derivedIndex | wearer | processMemoryOnly | yes | none | `ConversationIndex.clear()` | `ConversationIndex.delete(threadID:)` |
-| conversationThreads | `ConversationStore` | conversationContent | wearer | complete | no | none | `ConversationStore.deleteAllThreads()` | `ConversationStore.deleteThread(_:)` |
+| conversationThreads | `ConversationStore` | conversationContent | wearer | complete | yes | wearer history retention days; off by default | `ConversationStore.deleteAllThreads()` | `ConversationStore.deleteThread(_:)` |
 | debugEventLog | `AppState` | operationalAudit | wearer | platformDefault | no | ring-capped on write | none — the ring overwrites itself | n/a — no subject linkage |
 | diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
-| evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | platformDefault | no | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
-| faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | no | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
+| erasureLedger | `ErasureLedger` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 200 | `ErasureLedger.clear()` | none — the entry is what makes the erasure survive; removing it would let a restore bring the subject back |
+| evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | completeUntilFirstUserAuthentication | yes | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
+| faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | yes | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
 | fieldDeliverySettings | `DeliverySettings` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
 | fieldSessionLogs | `SessionLogger` | operationalAudit | wearer | platformDefault | no | none | none — a session log is the engineer's compliance record | n/a — no subject linkage |
 | geofenceReminders | `GeofenceTool` | locationData | wearer | platformDefault | no | none | none — reminders are removed individually as they fire | n/a — no subject linkage |
@@ -85,16 +86,17 @@ subject column distinguishes the wearer from a third party who never installed t
 | keychainDeviceIdentity | `OpenClawDeviceIdentity` | credential | none | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — the identity is the device's, not a subject's | n/a — no subject linkage |
 | keychainOAuthTokens | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — tokens are removed per provider on sign-out | n/a — no subject linkage |
 | keychainProviderKeys | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — keys are removed per provider | n/a — no subject linkage |
+| keychainScopedDataKeys | `ScopedKeyring` | credential | thirdPartySubject | keychainAfterFirstUnlockThisDeviceOnly | yes | none | `ScopedKeyring.eraseClass(_:files:)` | none — a scoped key covers a class, not a person; forgetting one person cannot destroy the key everyone else is sealed under |
 | keychainServiceTokens | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — tokens are removed per service | n/a — no subject linkage |
 | licence | `LicenseService` | credential | wearer | platformDefault | no | none | none — the licence is the wearer's entitlement, cleared by unlicensing | n/a — no subject linkage |
 | medicalExports | `MedicalExportFileStore` | exportArtifact | thirdPartySubject | complete | yes | TTL sweep | `MedicalExportFileStore.revokeAll()` | none — an export is a lease, released rather than searched |
 | notificationDigest | `NotificationDigestService` | personalMemory | wearer | platformDefault | no | none | none — the digest is rebuilt from the current window | n/a — no subject linkage |
 | objectMemory | `ObjectMemoryStore` | personalMemory | wearer | platformDefault | no | none | none — entries are removed one object at a time | `ObjectMemoryStore.delete(_:)` |
-| offlineQueue | `OfflineQueue` | operationalAudit | wearer | platformDefault | no | purgeDone plus a photo-evidence byte budget | `OfflineQueue.deleteAll()` | `OfflineQueue.delete(id:)` |
+| offlineQueue | `OfflineQueue` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | purgeDone plus a photo-evidence byte budget | `OfflineQueue.deleteAll()` | `OfflineQueue.delete(id:)` |
 | operationJournal | `ProtectedOperationJournal` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | OperationJournalRetention (age and count) | none — the journal is the at-most-once evidence; retention prunes it | n/a — no subject linkage |
 | playbooks | `PlaybookStore` | skillDefinition | wearer | platformDefault | no | none | none — playbooks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
-| ragDocuments | `DocumentStore` | documentCorpus | wearer | platformDefault | no | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
+| ragDocuments | `DocumentStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
 | readingSessions | `ReadingSessionStore` | personalMemory | wearer | complete | yes | none | none — sessions are removed individually | n/a — no subject linkage |
 | recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | platformDefault | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |
 | recordings | `VideoRecordingService` | media | thirdPartySubject | platformDefault | no | none | none — recordings are the wearer's media, removed individually | none — a recording is not indexed by who appears in it |
@@ -102,7 +104,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | safetyAssessments | `SafetyAssessmentStore` | operationalAudit | none | platformDefault | no | none | none — assessment history is the site record | n/a — no subject linkage |
 | savedLocations | `SaveLocationTool` | locationData | wearer | platformDefault | no | none | none — the wearer's own places, removed individually | n/a — no subject linkage |
 | savedNotes | `NotesStorage` | personalMemory | wearer | platformDefault | no | cap 50 | none — the wearer's own notes; the cap is what expires them | none — free-text notes are not indexed by person |
-| semanticMemory | `SemanticMemoryStore` | personalMemory | wearer | platformDefault | no | expiry skipped on read; budget eviction | `SemanticMemoryStore.clearAll()` | `SemanticMemoryStore.forget(_:)` |
+| semanticMemory | `SemanticMemoryStore` | personalMemory | wearer | completeUntilFirstUserAuthentication | yes | expires_at purge, wearer history retention days, budget eviction | `SemanticMemoryStore.clearAll()` | `SemanticMemoryStore.forget(_:)` |
 | skillPacks | `SkillPackStore` | skillDefinition | none | platformDefault | no | none | none — packs are uninstalled individually | n/a — no subject linkage |
 | socialContext | `SocialContextStore` | socialProfile | thirdPartySubject | platformDefault | no | none | none — people are forgotten one at a time | `SocialContextStore.clearFacts(for:)` |
 | speakerNames | `SpeakerRegistry` | biometric | thirdPartySubject | platformDefault | no | none | none — names are cleared per speaker | `SpeakerRegistry.setName(nil, for:)` |
@@ -111,15 +113,63 @@ subject column distinguishes the wearer from a third party who never installed t
 | studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |
 | toolDefinitionDigests | `ToolDefinitionDigestStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `ToolDefinitionDigestStore.forget(serverID:) per server` | n/a — no subject linkage |
-| usage | `UsageStore` | operationalAudit | none | platformDefault | no | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
+| usage | `UsageStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
 | vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |
 | voiceSkills | `VoiceSkillStore` | skillDefinition | wearer | platformDefault | no | none | none — skills are removed individually by name | n/a — no subject linkage |
 <!-- END GENERATED: data-lifecycle-matrix -->
 
-Not yet signed. Open before sign-off: approved retention periods per data class (W03.3), the
-backup and erasure semantics decision (W03.5), and a peer that acknowledges a queued deletion
-request rather than merely accepting it.
+Not yet signed. Open before sign-off: the privacy owner's approval of the retention periods
+implemented for W03.3 (the periods exist and are attributable in
+`OpenGlasses/Sources/Services/Privacy/RetentionPolicy.swift`; nobody has signed them), the backup
+and recovery decisions that go with W03.5, an encrypted restore drill on a physical device, and a
+peer that acknowledges a queued deletion request rather than merely accepting it.
+
+### 2.2 Backup, recovery and erasure
+
+Three different things get called deletion, and the difference is the whole of W03.5.
+
+**Logical deletion** is what removing a file does. The directory entry goes and the app can no
+longer read it. The bytes on flash are not scrubbed: the controller had already been writing each
+change to a fresh physical page and leaving the old one for wear levelling to reclaim whenever it
+suits, so an application-level overwrite spends a write cycle and reaches nothing. This is why the
+former `secureDelete` — overwrite with random bytes, then remove — was renamed to `deleteFile` and
+now documents what it does rather than what it was called. What actually keeps deleted bytes from
+being read is iOS's own per-file encryption, whose key belongs to the device and which this app
+cannot destroy. Logical deletion therefore does not reach a filesystem snapshot, an existing
+backup, or a copy the wearer already shared out.
+
+**Cryptographic erasure** is what destroying a scoped key does. `ScopedKeyring` holds one key per
+erasable class, and `eraseClass(_:files:)` destroys the key before removing the files — in that
+order, so a crash between the two steps leaves unreadable bytes rather than readable ones. Every
+copy sealed under that key, including the ones this app never sees, becomes ciphertext nobody can
+open. Only two classes qualify today: conversation content, when the wearer has turned conversation
+encryption on, and the enrolled face templates. Clinical transcripts deliberately do not: they are
+written as plain text into a folder the wearer opens in Files and shares from, which is what the
+recording screen promises them, and a key sitting beside plaintext would be a control that looks
+like protection and provides none. Sealing transcripts, with an explicit export step to replace
+the Files-app copy, is owed rather than pretended.
+
+**Backup behaviour** is the third. A copy in a backup is a copy an erasure cannot reach, so as of
+W03.3 every store the subject-erasure walk can reach is excluded from backup — the conversation
+history and its recall index, semantic memory, the knowledge graph, the document corpus, the face
+database, the evolved skills and the offline queue, plus `usage.sqlite` for the smaller reason that
+there is nothing in it worth restoring. The stores left backed up are left there on purpose: the
+wearer's own notes, teleprompter scripts, study decks, saved places and agent documents would
+otherwise not survive a phone migration, and losing somebody's notebook to a privacy control is a
+worse outcome than keeping it. That trade is what `ErasureLedger` covers.
+
+**Restore replay, and its limit.** The ledger records every completed erasure under a monotonic id,
+protected and excluded from backup, and a launch replay re-applies an entry when a store it touched
+comes back — a container preserved across a reinstall, a file put back from a Files-app copy, a
+folder resurfacing from a sync, a partial restore. It cannot honour an erasure after a full-device
+restore from a backup taken *before* that erasure, because such a restore replaces the container
+wholesale and the ledger that comes back is the one from before. Nothing kept inside the container
+can survive its own replacement. What covers that case instead is the two mechanisms above: the
+stores an erasure can reach are not in the snapshot to be restored, and where a scoped key was
+destroyed the restored bytes are ciphertext. **This paragraph is a design claim, not evidence: an
+encrypted restore drill on a physical device is owed, and until it has been run nobody should read
+this section as demonstrating post-restore behaviour.**
 
 ## 3. Verified gaps and proposed engineering work
 

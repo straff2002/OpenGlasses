@@ -37,6 +37,9 @@ final class UsageStore {
         // enough here — it errors on an existing column, which we ignore.
         exec("ALTER TABLE usage ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0")
         exec("ALTER TABLE usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0")
+        // W03.3: first-unlock protection and backup exclusion, siblings included. Idempotent, so
+        // a database already on a device is migrated by being opened.
+        StoreProtection.applyDatabase(at: url)
     }
 
     deinit {

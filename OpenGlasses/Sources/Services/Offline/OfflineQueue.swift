@@ -41,6 +41,9 @@ final class OfflineQueue: ConflictBaselineStore {
         )
         """)
         recoverInFlight()
+        // W03.3: first-unlock protection and backup exclusion, siblings included. The queue is the
+        // sharpest of the seven: a restored copy would re-send work the wearer already saw done.
+        StoreProtection.applyDatabase(at: url)
     }
 
     // MARK: - Startup recovery

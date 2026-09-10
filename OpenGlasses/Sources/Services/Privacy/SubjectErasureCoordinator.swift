@@ -131,14 +131,22 @@ final class SubjectErasureCoordinator {
         .clinicalTranscripts,
         .keychainClinicalCredentials,
         .conversationThreads,
-        // Last: the queue that tells a peer to do the same.
+        // The queue that tells a peer to do the same.
         .offlineQueue,
+        // Walked so the receipt accounts for them, not because a subject erasure can reach them:
+        // a scoped key covers a whole class, and the ledger is the record of this very erasure.
+        .keychainScopedDataKeys,
+        .erasureLedger,
     ]
 
     private let stores: Stores
+    private let ledger: ErasureLedger?
 
-    init(stores: Stores) {
+    /// `ledger` is what makes a completed erasure survive a store coming back (W03.5). Optional
+    /// because a replay runs through this same walk and must not record itself as a new erasure.
+    init(stores: Stores, ledger: ErasureLedger? = nil) {
         self.stores = stores
+        self.ledger = ledger
     }
 
     // MARK: - Erasure
@@ -146,7 +154,8 @@ final class SubjectErasureCoordinator {
     /// Erase `subject` everywhere this device can reach, and queue a tombstone for everywhere it
     /// cannot. Returns one receipt per store in `order`.
     @discardableResult
-    func erase(_ subject: ErasureSubject, now: Date = Date()) async -> [ErasureReceipt] {
+    func erase(_ subject: ErasureSubject, now: Date = Date(),
+               recordInLedger: Bool = true) async -> [ErasureReceipt] {
         var receipts: [ErasureReceipt] = []
         var remotePending = false
 
@@ -204,6 +213,14 @@ final class SubjectErasureCoordinator {
                 receipt = eraseConversations(subject)
             case .offlineQueue:
                 receipt = eraseQueue(subject, remotePending: remotePending, now: now)
+            case .keychainScopedDataKeys:
+                receipt = .unsupported(store, "a scoped key seals a whole class; destroying it to "
+                                       + "forget one person would make everybody else's records "
+                                       + "unreadable too. Use a class erasure for that")
+            case .erasureLedger:
+                receipt = .unsupported(store, "the ledger is the record of this erasure, and it is "
+                                       + "what makes it survive a store coming back; removing the "
+                                       + "entry would undo the erasure it describes")
             default:
                 receipt = .unsupported(store, "not wired into the erasure walk")
             }
@@ -213,6 +230,17 @@ final class SubjectErasureCoordinator {
         PrivacyLog.store(.subjectErasure, .cleared,
                          count: receipts.filter(\.localComplete).count,
                          total: receipts.count)
+        if recordInLedger, let ledger {
+            // Logical coverage, and it says why: the walk unlinks files and deletes rows, and only
+            // the two classes with a scoped key of their own can claim more than that.
+            ledger.record(
+                .subject(kind: subject.kindLabel, token: subject.searchToken),
+                coverage: .logicalOnly("the walk removes rows and files; only a class with a key "
+                                       + "of its own can reach a copy that already left this phone"),
+                storesCompleted: receipts.filter(\.localComplete).count,
+                storesWalked: receipts.count,
+                now: now)
+        }
         return receipts
     }
 

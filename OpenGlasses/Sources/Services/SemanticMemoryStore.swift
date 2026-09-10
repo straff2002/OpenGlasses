@@ -87,6 +87,10 @@ class SemanticMemoryStore: ObservableObject {
         createTables()
         migrateFromLegacyJSONIfNeeded()
         refreshGlobalCache()
+        // W03.3: pin the at-rest class and keep the database out of backups. Applied after the
+        // schema and migration writes so SQLite's `-wal`/`-shm` siblings exist to be covered too,
+        // and idempotent, so a database already on a device is migrated by being opened.
+        StoreProtection.applyDatabase(at: dbURL)
         PrivacyLog.store(.semanticMemory, .opened, scope: .global, count: memories.count)
     }
 
@@ -166,6 +170,38 @@ class SemanticMemoryStore: ObservableObject {
         exec("DELETE FROM memories")
         exec("DELETE FROM diary")
         PrivacyLog.store(.semanticMemory, .cleared)
+    }
+
+    /// W03.3 — delete the rows whose own `expires_at` has passed. Returns how many went.
+    ///
+    /// The store has promised expiry since it was written, but it kept that promise by *skipping*
+    /// expired rows on read: the row stayed on the disk, in the WAL, and in every backup, and a
+    /// query that forgot the guard would have found it again. This is the promise kept properly.
+    @discardableResult
+    func purgeExpired(now: Date = Date()) -> Int {
+        run("DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?",
+            [.real(now.timeIntervalSince1970)])
+        let removed = Int(sqlite3_changes(db))
+        if removed > 0 {
+            refreshGlobalCache()
+            refreshPersonaCache()
+            PrivacyLog.store(.semanticMemory, .evicted, count: removed)
+        }
+        return removed
+    }
+
+    /// W03.3 — delete memories older than `cutoff`. Driven by the wearer's history retention
+    /// setting, which is off unless they turned it on.
+    @discardableResult
+    func purge(olderThan cutoff: Date) -> Int {
+        run("DELETE FROM memories WHERE created_at < ?", [.real(cutoff.timeIntervalSince1970)])
+        let removed = Int(sqlite3_changes(db))
+        if removed > 0 {
+            refreshGlobalCache()
+            refreshPersonaCache()
+            PrivacyLog.store(.semanticMemory, .evicted, count: removed)
+        }
+        return removed
     }
 
     func clearPersonaMemories() {

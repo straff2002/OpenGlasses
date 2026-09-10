@@ -102,12 +102,15 @@ final class DiagnosticExportCoordinator {
 
     // MARK: - Cleanup
 
-    /// Launch sweep of sessions a crash abandoned.
-    func scavenge() {
+    /// Launch sweep of sessions a crash abandoned. Returns how many went, so the retention
+    /// receipt can count them rather than reporting a sweep it cannot quantify.
+    @discardableResult
+    func scavenge() -> Int {
         let removed = store.scavenge(now: clock(), ttl: ttl)
         if removed > 0 {
             PrivacyLog.transfer(.diagnosticsExport, .scavenged, count: removed)
         }
+        return removed
     }
 
     /// On backgrounding, drop everything not held by an onscreen share.

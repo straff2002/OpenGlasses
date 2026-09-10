@@ -47,6 +47,9 @@ final class DataStoreRegistryTests: XCTestCase {
             "the Keychain wrapper itself; its item families are registered separately",
         "OpenGlasses/Sources/Services/Siri/SiriContentAdapters.swift":
             "builds the records SpotlightIndexService donates; holds nothing of its own",
+        "OpenGlasses/Sources/Services/Privacy/RetentionScheduler.swift":
+            "the retention run's own progress record: target ids from a closed vocabulary and "
+                + "counts, so an interrupted sweep resumes without recounting. Names nothing it removed",
 
         // Downloaded assets, not anybody's data.
         "OpenGlasses/Sources/Services/LocalizationManager.swift":
@@ -330,6 +333,91 @@ final class DataStoreRegistryTests: XCTestCase {
         _ = ProtectedOperationJournal(directory: workspace)
         try assertAttributes(of: workspace.appendingPathComponent("operations.json"),
                              match: .operationJournal)
+    }
+
+    @MainActor
+    func testDocumentCorpusDatabaseAttributesMatchTheRegistry() throws {
+        _ = DocumentStore(directory: workspace)
+        try assertAttributes(of: workspace.appendingPathComponent("documents.sqlite"),
+                             match: .ragDocuments)
+    }
+
+    /// A database's `-wal` carries the rows that have not been checkpointed yet, so a posture that
+    /// stops at the main file is not the posture the registry claims. W03.3 covers the siblings.
+    @MainActor
+    func testSQLiteSiblingsCarryTheSamePostureAsTheirDatabase() throws {
+        let store = SemanticMemoryStore(directory: workspace)
+        _ = store.remember("sibling_probe", value: "value")
+        // Re-open: the first open created the database, this one runs with the WAL already there.
+        _ = SemanticMemoryStore(directory: workspace)
+
+        let database = workspace.appendingPathComponent("semantic_memory.sqlite")
+        var inspected = 0
+        for suffix in StoreProtection.sqliteSiblingSuffixes {
+            let sibling = URL(fileURLWithPath: database.path + suffix)
+            guard FileManager.default.fileExists(atPath: sibling.path) else { continue }
+            inspected += 1
+            let excluded = (try sibling.resourceValues(forKeys: [.isExcludedFromBackupKey]))
+                .isExcludedFromBackup ?? false
+            XCTAssertTrue(excluded, "\(sibling.lastPathComponent) is still backed up")
+        }
+        XCTAssertGreaterThan(inspected, 0, "sanity: WAL mode should have left a sibling to inspect")
+    }
+
+    /// The migration case: a database that already exists on a device with no attributes set gets
+    /// the posture by being opened, not by being written to again.
+    @MainActor
+    func testOpeningAnExistingUnprotectedDatabaseAppliesThePosture() throws {
+        let url = workspace.appendingPathComponent("usage.sqlite")
+        // Stand in for the pre-W03.3 file: created by an older build, backed up, no attribute set.
+        XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data()))
+        var before = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = false
+        try before.setResourceValues(values)
+        XCTAssertFalse((try url.resourceValues(forKeys: [.isExcludedFromBackupKey]))
+            .isExcludedFromBackup ?? false)
+
+        _ = UsageStore(path: url)
+
+        try assertAttributes(of: url, match: .usage)
+    }
+
+    /// Applying twice must not be a different answer from applying once — this is what makes the
+    /// open-time call safe to run on every launch.
+    func testApplyingThePostureIsIdempotent() throws {
+        let url = workspace.appendingPathComponent("idempotent.sqlite")
+        XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8)))
+        let first = StoreProtection.applyDatabase(at: url)
+        let second = StoreProtection.applyDatabase(at: url)
+        XCTAssertEqual(first, second)
+        XCTAssertTrue(second.isClean)
+        XCTAssertTrue((try url.resourceValues(forKeys: [.isExcludedFromBackupKey]))
+            .isExcludedFromBackup ?? false)
+    }
+
+    func testApplyingThePostureToAnAbsentFileIsNotAFailure() {
+        let outcome = StoreProtection.applyDatabase(
+            at: workspace.appendingPathComponent("never-created.sqlite"))
+        XCTAssertTrue(outcome.absent)
+        XCTAssertEqual(outcome.applied, 0)
+        XCTAssertEqual(outcome.failed, 0)
+    }
+
+    /// The rule W03.3 applied: a store the subject-erasure walk can reach must not also exist in a
+    /// backup, because a backup is a copy the erasure cannot reach.
+    func testEveryFileBackedStoreTheErasureWalkReachesIsExcludedFromBackup() {
+        let exemptFromTheRule: Set<SensitiveStore> = [
+            // Not file-backed by the app: an OS service and preference-backed stores, whose
+            // exclusion is not the app's to set. Recorded here rather than quietly skipped.
+            .spotlightIndex, .socialContext, .speakerNames, .contextualNotes, .objectMemory,
+            // The wearer's own writing, deliberately left restorable; see the registry's note.
+            .agentDocuments, .recordings, .capturedPhotos, .recordedSessions, .vaultLedger,
+        ]
+        for store in SubjectErasureCoordinator.order where !exemptFromTheRule.contains(store) {
+            XCTAssertTrue(store.record.backupExcluded,
+                          "\(store.rawValue) is reachable by a subject erasure but is still backed up")
+        }
     }
 
     @MainActor

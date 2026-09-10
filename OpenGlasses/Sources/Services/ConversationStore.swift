@@ -104,6 +104,20 @@ class ConversationStore: ObservableObject {
         storageURL = docs.appendingPathComponent("conversations.json")
         loadThreads()
         restoreActiveSession()
+        // W03.3: a history that already exists on a device is excluded from backup by being
+        // opened, not only by being written to again.
+        Self.protect(storageURL)
+    }
+
+    /// Re-apply the at-rest posture after a write.
+    ///
+    /// `.atomic` replaces the file rather than rewriting it, and backup exclusion is a property of
+    /// the file and not of the path — so without this every save would quietly put the wearer's
+    /// conversation history back into iCloud. The protection class is `.complete` because this
+    /// file is only ever read and written from foreground turns, and its locked-read path is
+    /// already handled explicitly (`protectedDataWillBecomeUnavailable`).
+    private static func protect(_ url: URL) {
+        StoreProtection.apply(.complete, backupExcluded: true, to: url)
     }
 
     // MARK: - Session Persistence
@@ -301,6 +315,20 @@ class ConversationStore: ObservableObject {
                                 thread: PrivateIdentifier(threadId), count: 1)
     }
 
+    /// W03.3 — delete every thread last touched before `cutoff`. Returns how many went.
+    ///
+    /// Real deletion through the same `save()` the rest of the store uses, and the recall index is
+    /// told about each one, so a purge cannot leave the derived projection holding turns whose
+    /// thread is gone. Driven by the wearer's history retention setting, which is off unless they
+    /// turned it on — this method does not decide, it carries out a decision.
+    @discardableResult
+    func deleteThreads(olderThan cutoff: Date) -> Int {
+        let doomed = threads.filter { $0.updatedAt < cutoff && $0.id != activeThreadId }
+        guard !doomed.isEmpty else { return 0 }
+        for thread in doomed { deleteThread(thread.id) }
+        return doomed.count
+    }
+
     /// Delete every thread.
     ///
     /// Real deletion, like `deleteThread`: the threads leave memory, the file is rewritten from
@@ -451,6 +479,7 @@ class ConversationStore: ObservableObject {
                encryption.isFileEncrypted(at: storageURL) {
                 let plaintext = try await encryption.decryptFile(at: storageURL)
                 try plaintext.write(to: storageURL, options: [.atomic, .completeFileProtection])
+                Self.protect(storageURL)
             }
             await encryption.deleteKey()
             Config.setConversationEncryptionEnabled(false)
@@ -634,6 +663,7 @@ class ConversationStore: ObservableObject {
                         var output = Data("OGENC1".utf8)
                         output.append(encrypted)
                         try output.write(to: url, options: [.atomic, .completeFileProtection])
+                        Self.protect(url)
                         onPersisted?()
                     } catch {
                         // The existing ciphertext on disk is untouched — `encrypt` throws before
@@ -649,6 +679,7 @@ class ConversationStore: ObservableObject {
                 // Conversation history can hold sensitive content — encrypt at rest even when
                 // the optional biometric encryption layer is off.
                 try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
+                Self.protect(storageURL)
                 onPersisted?()
                 return true
             }

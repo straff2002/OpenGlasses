@@ -14,6 +14,24 @@ import Foundation
 /// that is the platform default and nothing more. `DataStoreRegistryTests` reads the attributes
 /// back off real stores in a temporary directory wherever that is possible, so a case claiming
 /// protection its owner does not set fails rather than reassuring anybody.
+///
+/// ## What is excluded from backup, and what is deliberately not
+///
+/// The rule applied in W03.3 is **a store the subject-erasure walk can reach is excluded from
+/// backup**, because a copy in a backup is a copy an erasure cannot reach, and restoring it is how
+/// a forgotten person comes back. That covers the conversation history and its recall index, the
+/// semantic memory, the knowledge graph, the document corpus, the face database, the evolved
+/// skills and the offline queue — the queue most sharply of all, since a restored copy would
+/// re-send work the wearer already watched complete. `usage.sqlite` is excluded for a different
+/// and smaller reason: it is local operational accounting with nothing to restore.
+///
+/// The stores left backed up are left backed up on purpose, and it is a product decision rather
+/// than an oversight: the wearer's own writing — notes, contextual notes, teleprompter scripts,
+/// study decks, playbooks, saved places, the agent's `soul`/`skills`/`memory` documents — would
+/// otherwise not survive a phone migration, and losing somebody's notebook to a privacy control
+/// is a worse outcome than keeping it. What makes that safe is `ErasureLedger` replay: a completed
+/// erasure is re-applied when one of those stores reappears. The limits of that mechanism are
+/// stated in `docs/plans/ET-iso27701-privacy.md` rather than implied away.
 enum SensitiveStore: String, CaseIterable {
 
     // Conversation and its derived index
@@ -92,10 +110,14 @@ enum SensitiveStore: String, CaseIterable {
     case keychainDeviceIdentity
     case keychainConversationKey
     case keychainClinicalCredentials
+    case keychainScopedDataKeys
 
     // Trust and consent registers (tool-definition digests, versioned consent records)
     case toolDefinitionDigests
     case consentRecords
+
+    // The record of what has already been erased, so a restore cannot undo it
+    case erasureLedger
 
     // MARK: - Facets
 
@@ -215,7 +237,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .conversationThreads:
             return Record(store: self, dataClass: .conversationContent, subjectLinkage: .wearer,
-                          protection: .complete, backupExcluded: false, retention: .none,
+                          protection: .complete, backupExcluded: true,
+                          retention: .policy("wearer history retention days; off by default"),
                           deleteAll: .api("ConversationStore.deleteAllThreads()"),
                           deleteSubject: .api("ConversationStore.deleteThread(_:)"),
                           owner: "ConversationStore",
@@ -233,8 +256,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .semanticMemory:
             return Record(store: self, dataClass: .personalMemory, subjectLinkage: .wearer,
-                          protection: .platformDefault, backupExcluded: false,
-                          retention: .policy("expiry skipped on read; budget eviction"),
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("expires_at purge, wearer history retention days, budget eviction"),
                           deleteAll: .api("SemanticMemoryStore.clearAll()"),
                           deleteSubject: .api("SemanticMemoryStore.forget(_:)"),
                           owner: "SemanticMemoryStore",
@@ -243,7 +266,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .brainGraph:
             return Record(store: self, dataClass: .knowledgeGraph, subjectLinkage: .thirdPartySubject,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
                           deleteAll: .unavailable("no whole-graph clear; erasure is per entity"),
                           deleteSubject: .api("BrainStore.forget(entityName:)"),
                           owner: "BrainStore",
@@ -252,7 +276,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .ragDocuments:
             return Record(store: self, dataClass: .documentCorpus, subjectLinkage: .wearer,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
                           deleteAll: .api("DocumentStore.clearAll()"),
                           deleteSubject: .api("DocumentStore.forget(documentId:)"),
                           owner: "DocumentStore",
@@ -270,7 +295,7 @@ enum SensitiveStore: String, CaseIterable {
 
         case .faces:
             return Record(store: self, dataClass: .biometric, subjectLinkage: .thirdPartySubject,
-                          protection: .complete, backupExcluded: false, retention: .none,
+                          protection: .complete, backupExcluded: true, retention: .none,
                           deleteAll: .api("FaceRecognitionService.forgetAllFaces()"),
                           deleteSubject: .api("FaceRecognitionService.forgetFace(name:)"),
                           owner: "FaceRecognitionService",
@@ -488,8 +513,8 @@ enum SensitiveStore: String, CaseIterable {
         case .clinicalTranscripts:
             return Record(store: self, dataClass: .clinical, subjectLinkage: .thirdPartySubject,
                           protection: .complete, backupExcluded: true,
-                          retention: .policy("HIPAA retention days; disabled at zero"),
-                          deleteAll: .api("HIPAAComplianceService.secureDelete"),
+                          retention: .policy("clinical retention days, whatever the mode; disabled at zero"),
+                          deleteAll: .api("HIPAAComplianceService.deleteFile(at:)"),
                           deleteSubject: .unavailable("transcripts are filed by session, not by patient"),
                           owner: "HIPAAComplianceService",
                           ownerPaths: ["OpenGlasses/Sources/Services/HIPAAComplianceService.swift"],
@@ -517,7 +542,7 @@ enum SensitiveStore: String, CaseIterable {
 
         case .offlineQueue:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
-                          protection: .platformDefault, backupExcluded: false,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
                           retention: .policy("purgeDone plus a photo-evidence byte budget"),
                           deleteAll: .api("OfflineQueue.deleteAll()"),
                           deleteSubject: .api("OfflineQueue.delete(id:)"),
@@ -527,7 +552,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .usage:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
                           deleteAll: .api("UsageStore.deleteAll()"),
                           deleteSubject: .notSubjectLinked,
                           owner: "UsageStore",
@@ -552,6 +578,18 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "ConsentStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Security/ConsentRecord.swift"],
                           location: "Application Support/Consent/consent-records.json")
+        case .erasureLedger:
+            return Record(store: self, dataClass: .operationalAudit,
+                          subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .cap(200),
+                          deleteAll: .api("ErasureLedger.clear()"),
+                          deleteSubject: .unavailable("the entry is what makes the erasure survive; "
+                              + "removing it would let a restore bring the subject back"),
+                          owner: "ErasureLedger",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Privacy/ErasureLedger.swift"],
+                          location: "Application Support/Erasure/erasure-ledger.json")
+
         case .operationJournal:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
@@ -594,7 +632,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .evolvedSkills:
             return Record(store: self, dataClass: .skillDefinition, subjectLinkage: .wearer,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
                           deleteAll: .api("EvolvedSkillStore.deleteAll()"),
                           deleteSubject: .api("EvolvedSkillStore.deleteMatching(_:)"),
                           owner: "EvolvedSkillStore",
@@ -713,6 +752,17 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "ConversationEncryptionService",
                           ownerPaths: ["OpenGlasses/Sources/Services/ConversationEncryptionService.swift"],
                           location: "Keychain: the conversation encryption key, behind user presence")
+
+        case .keychainScopedDataKeys:
+            return Record(store: self, dataClass: .credential, subjectLinkage: .thirdPartySubject,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .api("ScopedKeyring.eraseClass(_:files:)"),
+                          deleteSubject: .unavailable("a scoped key covers a class, not a person; "
+                              + "forgetting one person cannot destroy the key everyone else is sealed under"),
+                          owner: "ScopedKeyring",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Privacy/ScopedKeyring.swift"],
+                          location: "Keychain: one data key per erasable class")
 
         case .keychainClinicalCredentials:
             return Record(store: self, dataClass: .credential, subjectLinkage: .thirdPartySubject,

@@ -361,7 +361,7 @@ struct HIPAASettingsView: View {
                 } header: {
                     Text("Data Retention")
                 } footer: {
-                    Text("Transcripts and temporary recordings older than the retention period are automatically deleted on app launch. Secure deletion overwrites data before removal.")
+                    Text("Transcripts and temporary recordings older than the retention period are deleted when the app opens or returns to the foreground, whether or not compliance mode is on. Deletion removes the file from this phone. It cannot reach a copy that already left it — an existing backup, or a transcript you shared — so delete those where they are.")
                 }
 
                 // MARK: - Audit Log
