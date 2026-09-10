@@ -15,11 +15,11 @@ struct BadgeScanTool: NativeTool {
         "required": [] as [String]
     ]
 
-    let cameraService: CameraService
+    let cameraService: any FilteredStillProviding
     let locationService: LocationService
     weak var faceService: FaceRecognitionService?
 
-    init(cameraService: CameraService, locationService: LocationService,
+    init(cameraService: any FilteredStillProviding, locationService: LocationService,
          faceService: FaceRecognitionService? = nil) {
         self.cameraService = cameraService
         self.locationService = locationService
@@ -110,10 +110,10 @@ struct BadgeScanTool: NativeTool {
 
     // MARK: - Capture + OCR
 
+    /// On-device OCR and QR decoding of a badge; the frame never leaves the process (W04.1).
     private func currentFrame() async -> UIImage? {
-        if let latest = await MainActor.run(body: { cameraService.latestFrame }) { return latest }
-        if let data = try? await cameraService.capturePhoto() { return UIImage(data: data) }
-        return nil
+        await cameraService.filteredStill(for: .onDeviceVision,
+                                          source: .cachedFrameThenPhoto).image
     }
 
     /// Badge QR/matrix codes on the same frame. Failure is empty, not thrown — the OCR

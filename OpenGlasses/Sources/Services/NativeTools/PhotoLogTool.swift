@@ -15,7 +15,9 @@ final class PhotoLogTool: NativeTool {
     with a caption (e.g. 'suction gauge 118 PSIG', 'nameplate', 'leak site'). Returns the image for \
     analysis too. Use to document readings and evidence during a session. Requires an active session.
     """
-    let cameraService: CameraService
+    /// Typed as the privacy chokepoint (W04.1): the still is archived in the session log *and*
+    /// sent to the model, so both copies must be the filtered one.
+    let cameraService: any FilteredStillProviding
 
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -28,7 +30,7 @@ final class PhotoLogTool: NativeTool {
         "required": [] as [String]
     ]
 
-    init(cameraService: CameraService) {
+    init(cameraService: any FilteredStillProviding) {
         self.cameraService = cameraService
     }
 
@@ -42,15 +44,10 @@ final class PhotoLogTool: NativeTool {
         }
         let caption = (args["caption"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let imageData: Data
-        if let latest = cameraService.latestFrame, let data = latest.jpegData(compressionQuality: 0.8) {
-            imageData = data
-        } else {
-            do {
-                imageData = try await cameraService.capturePhoto()
-            } catch {
-                return "Could not capture photo: \(error.localizedDescription). Make sure the glasses are connected and the camera is active."
-            }
+        guard let imageData = await cameraService
+            .filteredStill(for: .toolPhotoCapture, source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.8) else {
+            return "Could not capture a photo. Make sure the glasses are connected and the camera is active."
         }
 
         guard service.attachPhoto(imageData, caption: caption) != nil else {

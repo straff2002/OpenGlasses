@@ -38,13 +38,16 @@ final class StructuredVisionService: ObservableObject {
     /// Set by `configure(...)` to call `LLMService.analyzeFrameStructured`; tests inject a fake.
     var analyze: ((String, String, Data, [String: Any], String) async -> [String: Any]?)?
 
-    private weak var camera: CameraService?
+    /// The still source. Typed as the privacy chokepoint rather than as `CameraService` because
+    /// stills are all this service ever wanted from the camera — and because typing it this way is
+    /// what makes the filtered path testable headless (W04.1).
+    weak var camera: (any FilteredStillProviding)?
     weak var glassesDisplay: GlassesDisplayService?
 
     init() {}
 
     /// Wire the live dependencies (called once at app launch).
-    func configure(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {
+    func configure(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         self.camera = camera
         self.analyze = { [weak llm] systemPrompt, userText, imageData, jsonSchema, toolName in
             await llm?.analyzeFrameStructured(systemPrompt: systemPrompt, userText: userText,
@@ -133,12 +136,12 @@ final class StructuredVisionService: ObservableObject {
     /// Grab the current camera frame and assess it.
     func assessCurrentFrame(kind: String, note: String?) async throws -> AssessmentCard {
         guard let camera else { throw StructuredVisionError.noFrame }
-        let data: Data
-        if let frame = camera.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.7) {
-            data = jpeg
-        } else if let captured = try? await camera.capturePhoto() {
-            data = captured
-        } else {
+        // The still leaves for a cloud model with a schema attached, so it goes through the
+        // chokepoint under `.visionAssessment`. An unavailable filter throws rather than assessing
+        // an unfiltered frame — a missing assessment is recoverable, a sent one is not.
+        guard let data = await camera.filteredStill(for: .visionAssessment,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.7) else {
             throw StructuredVisionError.noFrame
         }
         return try await assess(kind: kind, imageData: data, note: note)

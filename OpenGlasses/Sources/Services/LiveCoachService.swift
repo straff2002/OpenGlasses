@@ -66,7 +66,9 @@ final class LiveCoachService: ObservableObject {
     @Published private(set) var domain: LiveCoachDomain = .posture
     @Published private(set) var lastAdvice: String?
 
-    private weak var camera: CameraService?
+    /// The still source, typed as the privacy chokepoint (W04.1) — the coach only ever wanted a
+    /// still, and this way the filtered path is the only one available to it.
+    weak var camera: (any FilteredStillProviding)?
     private weak var llm: LLMService?
     private weak var tts: TextToSpeechService?
 
@@ -86,7 +88,7 @@ final class LiveCoachService: ObservableObject {
     private init() {}
 
     /// Wire the app's services once at launch.
-    func configure(camera: CameraService, llm: LLMService, tts: TextToSpeechService) {
+    func configure(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         self.camera = camera
         self.llm = llm
         self.tts = tts
@@ -157,7 +159,7 @@ final class LiveCoachService: ObservableObject {
         analyzing = true
         defer { analyzing = false }
 
-        guard let imageData = currentFrame(camera) else { return }
+        guard let imageData = await currentFrame(camera) else { return }
         let systemPrompt = domain.systemPrompt(maxWords: maxWords, customPrompt: customPrompt)
         guard let raw = await llm.analyzeFrame(systemPrompt: systemPrompt, userText: domain.userText, imageData: imageData, maxTokens: 80) else {
             return
@@ -173,8 +175,13 @@ final class LiveCoachService: ObservableObject {
         await tts.speak(advice, urgency: .medium)
     }
 
-    private func currentFrame(_ camera: CameraService) -> Data? {
-        camera.latestFrame?.jpegData(compressionQuality: 0.7)
+    /// A coaching frame goes to a cloud model every few seconds for as long as the session runs,
+    /// which makes this the highest-volume still egress in the app. Unavailable means this tick is
+    /// skipped; the next one tries again.
+    /// Internal, not private, so the privacy routing can be driven headless — the tick above
+    /// needs a live LLM and TTS, this needs neither.
+    func currentFrame(_ camera: any FilteredStillProviding) async -> Data? {
+        await camera.filteredStill(for: .assistiveGuidance).jpegData(compressionQuality: 0.7)
     }
 
     // MARK: - Dedup

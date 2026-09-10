@@ -40,6 +40,12 @@ final class OutboundFrameConsumerTests: XCTestCase {
         "MetaCameraBackend",
         // The roster itself: its documentation names the APIs being searched for.
         "OutboundFrameConsumer",
+        // Declares the still-reader seam and its default convenience. A protocol is not a consumer.
+        "FilteredStillProviding",
+        // Declares the blur-a-still-I-already-hold seam, for the same reason.
+        "StillImageFiltering",
+        // The blur itself. It is what the chokepoint calls, not something that taps a frame.
+        "PrivacyFilterService",
     ]
 
     /// One frame-tap reference found in the sources.
@@ -59,6 +65,12 @@ final class OutboundFrameConsumerTests: XCTestCase {
         "outboundFrames.publisher",
         ".filtered(",
         "onVideoFrame",
+        // W04.1: the still half. `latestFrame` is the raw accessor the gap was made of;
+        // `filteredStill(` is the chokepoint that replaced it. Both are taps, and a type doing
+        // either has to be on the roster.
+        "latestFrame",
+        "filteredStill(",
+        "filteredOrUnavailable(",
     ]
 
     /// Reads a Swift file and returns each tap reference with the top-level type that encloses it.
@@ -126,7 +138,8 @@ final class OutboundFrameConsumerTests: XCTestCase {
                              "Expected the frame-tap scrape to find the known call sites; found \(found.count)")
         let types = Set(found.map(\.type))
         for expected in ["AppState", "CameraService", "FaceRecognitionService",
-                         "WebRTCStreamingService"] {
+                         "WebRTCStreamingService", "StructuredVisionService", "CapturePhotoTool",
+                         "DwellCaptureService"] {
             XCTAssertTrue(types.contains(expected),
                           "Scrape missed \(expected) — the source walk or the patterns are broken")
         }
@@ -242,5 +255,106 @@ final class OutboundFrameConsumerTests: XCTestCase {
     func testRosterEntriesAreUnique() {
         XCTAssertEqual(Set(OutboundFrameConsumer.allCases.map(\.rawValue)).count,
                        OutboundFrameConsumer.allCases.count)
+    }
+
+    // MARK: - Still readers (W04.1)
+    //
+    // The frame-publisher rules above were the whole guard until W04.1, and they were blind to the
+    // way the app actually sends most of its pixels: one still at a time, pulled from
+    // `CameraService.latestFrame` and handed to a model, a log, a Photos entry or an HTTP client.
+    // Twenty-odd of those call sites existed and six `filtered(_:for:)` calls did — all six in
+    // `AppState`. These two tests are what stops that from being true again.
+
+    /// Reading the raw still is allowed only for a consumer the roster records as reading raw
+    /// pixels. Everything else asks `filteredStill(for:source:)`.
+    func testEveryRawStillReadBelongsToAConsumerWithARawTap() throws {
+        let allowed = OutboundFrameConsumer.typesAllowedOnARawStill.union(Self.exemptTypes)
+        let rawReads = try allHits().filter { $0.text.contains("latestFrame") }
+        XCTAssertFalse(rawReads.isEmpty, "The raw-still search matched nothing — the guard is vacuous")
+        let violations = rawReads.filter { !allowed.contains($0.type) }
+        XCTAssertTrue(violations.isEmpty, """
+            These types read the unfiltered still directly. Use \
+            CameraService.filteredStill(for:source:) with the scope this still is for, or add a \
+            roster case with a raw tap saying why raw pixels are required:
+            \(violations.map { "\($0.file):\($0.line) [\($0.type)] \($0.text)" }.joined(separator: "\n"))
+            """)
+    }
+
+    /// The sinks a still can leave through. Deliberately named as the *sink*, not as the reader:
+    /// the question this test asks is "did these pixels pass the chokepoint on their way out",
+    /// and a new sink is exactly the kind of thing that gets added without asking it.
+    private static let sinkPatterns = [
+        "analyzeFrame(",              // cloud model, free-text
+        "analyzeFrameStructured(",    // cloud model, schema
+        "GlassesPhotoAlbum.save",     // the Photos library
+        "IMAGE_CAPTURED",             // base64 image into a tool result → the model
+        "attachPhoto(",               // a Field Assist session log on disk
+        "image_b64",                  // served to another process
+    ]
+
+    /// How a file can get camera pixels in the first place.
+    private static let stillSourcePatterns = [
+        "latestFrame", "capturePhoto()", "filteredStill(", "framePublisher", "onVideoFrame",
+    ]
+
+    /// The chokepoint calls that satisfy the rule.
+    private static let chokepointPatterns = [
+        "filteredStill(", "filteredOrUnavailable(", ".filtered(",
+    ]
+
+    /// A file that both obtains camera pixels and calls one of those sinks must contain a
+    /// chokepoint call. One exemption, and it is the accessor's own home.
+    func testFilesThatSendAStillSomewhereGoThroughTheChokepoint() throws {
+        let exemptFiles: Set<String> = [
+            // Declares `filteredStill(for:source:)` and `capturePhoto()`. Its own photo-library
+            // write is the wearer's deliberate shutter press, which is a product decision of its
+            // own and is tracked in the W04.1 roadmap row rather than settled here.
+            "CameraService.swift",
+        ]
+        guard let enumerator = FileManager.default.enumerator(at: Self.sourcesRoot,
+                                                              includingPropertiesForKeys: nil) else {
+            return XCTFail("Could not enumerate sources")
+        }
+        var checked = 0
+        var violations: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let name = url.lastPathComponent
+            guard !exemptFiles.contains(name) else { continue }
+            let code = try String(contentsOf: url, encoding: .utf8)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.hasPrefix("//") && !$0.hasPrefix("*") && !$0.hasPrefix("/*") }
+                .joined(separator: "\n")
+            guard Self.sinkPatterns.contains(where: { code.contains($0) }),
+                  Self.stillSourcePatterns.contains(where: { code.contains($0) }) else { continue }
+            checked += 1
+            if !Self.chokepointPatterns.contains(where: { code.contains($0) }) {
+                violations.append(name)
+            }
+        }
+        XCTAssertGreaterThan(checked, 5, "The sink search matched almost nothing — it is vacuous")
+        XCTAssertTrue(violations.isEmpty, """
+            These files take camera pixels and send them to a model, a log, the Photos library or \
+            another process without passing the privacy chokepoint: \(violations.joined(separator: ", "))
+            """)
+    }
+
+    /// Each new W04.1 scope has to be reachable through the accessor, not merely declared. A scope
+    /// nobody requests is policy that does nothing — which is the exact failure CO Item 0 was.
+    func testTheStillScopesAreActuallyRequestedInTheSources() throws {
+        let root = Self.sourcesRoot
+        guard let enumerator = FileManager.default.enumerator(at: root,
+                                                              includingPropertiesForKeys: nil) else {
+            return XCTFail("Could not enumerate sources")
+        }
+        var corpus = ""
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            corpus += try String(contentsOf: url, encoding: .utf8)
+        }
+        for scope: PrivacyFilterScope in [.visionAssessment, .assistiveGuidance, .toolPhotoCapture,
+                                          .photoLibrary, .remoteFrameRequest] {
+            XCTAssertTrue(corpus.contains(".\(scope.rawValue)"),
+                          "No call site asks for \(scope.rawValue) — the scope is dead policy")
+        }
     }
 }

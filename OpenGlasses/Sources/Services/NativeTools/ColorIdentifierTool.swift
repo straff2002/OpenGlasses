@@ -14,16 +14,13 @@ final class ColorIdentifierTool: NativeTool {
         "type": "object", "properties": [:], "required": [] as [String]
     ]
 
-    private let cameraService: CameraService
-    init(cameraService: CameraService) { self.cameraService = cameraService }
+    private let cameraService: any FilteredStillProviding
+    init(cameraService: any FilteredStillProviding) { self.cameraService = cameraService }
 
     func execute(args: [String: Any]) async throws -> String {
-        let frame: UIImage?
-        if let latest = cameraService.latestFrame {
-            frame = latest
-        } else {
-            frame = (try? await cameraService.capturePhoto()).flatMap { UIImage(data: $0) }
-        }
+        // A one-pixel downscale on device; nothing leaves (W04.1).
+        let frame = await cameraService.filteredStill(for: .onDeviceVision,
+                                                     source: .cachedFrameThenPhoto).image
         guard let cg = frame?.cgImage, let color = Self.averageColor(cg) else {
             return "I couldn't read a color. Hold steady on the object and try again."
         }

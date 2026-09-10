@@ -837,7 +837,10 @@ struct HardwarePrivacyView: View {
                         set: { newValue in
                             Config.setDwellCaptureEnabled(newValue)
                             if !newValue { appState.dwellCapture.stop() }
-                            else { appState.dwellCapture.start(cameraService: appState.cameraService) }
+                            else {
+                                appState.dwellCapture.start(cameraService: appState.cameraService,
+                                                            privacyFilter: appState.privacyFilter)
+                            }
                         }
                     ),
                     info: "Hold your gaze on an object for about two seconds and it's captured to Photos automatically — hands-free, no wake word. Uses on-device object detection while the camera streams; off by default because the detection loop uses extra battery."

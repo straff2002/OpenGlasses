@@ -9,7 +9,9 @@ struct CapturePhotoTool: NativeTool {
     let name = "capture_photo"
     let description = "Capture a photo from the smart glasses camera for visual analysis. Use when you need to see what the user is looking at, or when the user says 'look at this', 'what do you see', 'take a photo'. Returns the image for your analysis."
 
-    let cameraService: CameraService
+    /// Typed as the privacy chokepoint (W04.1): this tool's whole job is to produce a still that
+    /// goes to the model, so the unfiltered accessor must not be within its reach.
+    let cameraService: any FilteredStillProviding
 
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -23,25 +25,25 @@ struct CapturePhotoTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
-        // First check if we have a recent frame already available
-        if let latestFrame = await MainActor.run(body: { cameraService.latestFrame }),
-           let raw = latestFrame.jpegData(compressionQuality: 0.8) {
-            let data = LLMImagePreparer.prepared(raw)   // keep under Anthropic's 5 MB inline cap
-            let base64 = data.base64EncodedString()
-            let sizeKB = data.count / 1024
-            PrivacyLog.camera(.glasses, .captureFallbackUsed, kilobytes: sizeKB)
-            return "[IMAGE_CAPTURED:\(base64)] Photo captured successfully (\(sizeKB) KB). Analyze the image to respond to the user."
+        // Two requests rather than one `.cachedFrameThenPhoto`, so the log still distinguishes a
+        // reused stream frame from a fresh shutter — the two have different battery and latency
+        // stories and the diagnostics pane reads them apart.
+        if let still = await cameraService.filteredStill(for: .toolPhotoCapture).still,
+           let raw = still.jpegData(compressionQuality: 0.8) {
+            return reply(LLMImagePreparer.prepared(raw), event: .captureFallbackUsed)
         }
 
-        // Fall back to explicit photo capture
-        do {
-            let photoData = LLMImagePreparer.prepared(try await cameraService.capturePhoto())
-            let base64 = photoData.base64EncodedString()
-            let sizeKB = photoData.count / 1024
-            PrivacyLog.camera(.glasses, .photoCaptured, kilobytes: sizeKB)
-            return "[IMAGE_CAPTURED:\(base64)] Photo captured successfully (\(sizeKB) KB). Analyze the image to respond to the user."
-        } catch {
-            return "Could not capture photo: \(error.localizedDescription). Make sure the glasses are connected and camera is active."
+        let captured = await cameraService.filteredStill(for: .toolPhotoCapture, source: .photoOnly)
+        guard let raw = captured.jpegData(compressionQuality: 0.8) else {
+            return "Could not capture photo. Make sure the glasses are connected and camera is active."
         }
+        return reply(LLMImagePreparer.prepared(raw), event: .photoCaptured)
+    }
+
+    /// `data` is already bounded by `LLMImagePreparer` — Anthropic's 5 MB inline cap.
+    private func reply(_ data: Data, event: PrivacyLog.CameraEvent) -> String {
+        let sizeKB = data.count / 1024
+        PrivacyLog.camera(.glasses, event, kilobytes: sizeKB)
+        return "[IMAGE_CAPTURED:\(data.base64EncodedString())] Photo captured successfully (\(sizeKB) KB). Analyze the image to respond to the user."
     }
 }

@@ -21,9 +21,9 @@ final class SmartCaptureTool: NativeTool {
         "required": ["mode"]
     ]
 
-    private let cameraService: CameraService
+    private let cameraService: any FilteredStillProviding
     private let ocr: OCRService
-    init(cameraService: CameraService, ocr: OCRService = OCRService()) {
+    init(cameraService: any FilteredStillProviding, ocr: OCRService = OCRService()) {
         self.cameraService = cameraService
         self.ocr = ocr
     }
@@ -32,12 +32,12 @@ final class SmartCaptureTool: NativeTool {
         guard let mode = (args["mode"] as? String)?.lowercased() else {
             return "Specify a mode: 'contact', 'receipt', or 'event'."
         }
-        let data: Data?
-        if let frame = cameraService.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.9) {
-            data = jpeg
-        } else {
-            data = try? await cameraService.capturePhoto()
-        }
+        // On-device OCR — nothing leaves the process, so the on-device scope passes the pixels
+        // through untouched. Requested through the chokepoint anyway: that is where the
+        // classification is recorded (W04.1).
+        let data = await cameraService.filteredStill(for: .onDeviceVision,
+                                                    source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.9)
         guard let data else { return "Couldn't capture the image. Hold it steady and try again." }
         let text = await ocr.recognizeText(in: data).text
         guard !text.isEmpty else { return "I couldn't read any text. Move closer or improve the lighting." }

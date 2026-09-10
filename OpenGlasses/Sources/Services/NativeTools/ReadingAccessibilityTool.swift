@@ -46,10 +46,10 @@ final class ReadingAccessibilityTool: NativeTool {
         "required": ["mode"]
     ]
 
-    private let cameraService: CameraService
+    private let cameraService: any FilteredStillProviding
     private let ocr: OCRService
 
-    init(cameraService: CameraService, ocr: OCRService = OCRService()) {
+    init(cameraService: any FilteredStillProviding, ocr: OCRService = OCRService()) {
         self.cameraService = cameraService
         self.ocr = ocr
     }
@@ -92,13 +92,19 @@ final class ReadingAccessibilityTool: NativeTool {
     /// Capture the current frame (or take a photo) and OCR it on-device. Also returns the raw
     /// image that was tried last, so the caller can tailor guidance when no text was found.
     private func captureAndRecognize() async -> (text: String?, imageData: Data?) {
+        // On-device OCR — nothing leaves the process, so the on-device scope passes the pixels
+        // through untouched. Requested through the chokepoint anyway: that is where the
+        // classification is recorded (W04.1). The cached frame is tried first and a fresh
+        // photo only if it read nothing, so the two requests stay separate.
         var lastImage: Data?
-        if let frame = cameraService.latestFrame, let data = frame.jpegData(compressionQuality: 0.9) {
+        if let data = await cameraService.filteredStill(for: .onDeviceVision)
+            .jpegData(compressionQuality: 0.9) {
             lastImage = data
             let result = await ocr.recognizeText(in: data)
             if !result.isEmpty { return (result.text, data) }
         }
-        guard let data = try? await cameraService.capturePhoto() else { return (nil, lastImage) }
+        guard let data = await cameraService.filteredStill(for: .onDeviceVision, source: .photoOnly)
+            .jpegData(compressionQuality: 0.9) else { return (nil, lastImage) }
         let result = await ocr.recognizeText(in: data)
         return (result.isEmpty ? nil : result.text, data)
     }

@@ -15,16 +15,14 @@ final class MoneyIdentifierTool: NativeTool {
         "type": "object", "properties": [:], "required": [] as [String]
     ]
 
-    private let cameraService: CameraService
-    init(cameraService: CameraService) { self.cameraService = cameraService }
+    /// Typed as the privacy chokepoint (W04.1) — the note itself goes to the model.
+    private let cameraService: any FilteredStillProviding
+    init(cameraService: any FilteredStillProviding) { self.cameraService = cameraService }
 
     func execute(args: [String: Any]) async throws -> String {
-        let data: Data?
-        if let frame = cameraService.latestFrame, let jpeg = frame.jpegData(compressionQuality: 0.85) {
-            data = jpeg
-        } else {
-            data = try? await cameraService.capturePhoto()
-        }
+        let data = await cameraService.filteredStill(for: .toolPhotoCapture,
+                                                     source: .cachedFrameThenPhoto)
+            .jpegData(compressionQuality: 0.85)
         guard let data else {
             return "I couldn't capture the note. Hold it flat in view and try again."
         }

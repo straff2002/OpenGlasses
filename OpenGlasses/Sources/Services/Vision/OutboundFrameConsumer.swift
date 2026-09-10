@@ -10,10 +10,11 @@ import Foundation
 ///
 /// So this is the roster. Each case names one consumer, the type that owns its subscription, where
 /// it taps the pixels, and which mechanism protects it. `OutboundFrameConsumerTests` scrapes
-/// `OpenGlasses/Sources` for every frame subscription and every `filtered(_:for:)` call and fails
-/// if it finds an owning type that is not listed here — so the roster cannot silently fall behind
-/// the code, and a new consumer that subscribes to `CameraService.framePublisher` directly has to
-/// be argued for in this file rather than added quietly.
+/// `OpenGlasses/Sources` for every frame subscription, every `filtered(_:for:)` call, every
+/// `filteredStill(for:)` request and every raw `latestFrame` read, and fails if it finds an owning
+/// type that is not listed here — so the roster cannot silently fall behind the code, and a new
+/// consumer that subscribes to `CameraService.framePublisher`, or reads a raw still, has to be
+/// argued for in this file rather than added quietly.
 enum OutboundFrameConsumer: String, CaseIterable {
 
     // MARK: - The blur pass itself
@@ -60,6 +61,72 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// A still attached to a delegated remote-agent task.
     case agentAttachment
 
+    // MARK: - Chokepoint-filtered still readers (W04.1)
+    //
+    // Every one of these used to read `CameraService.latestFrame` and hand the bytes straight to a
+    // model, a session log, a Photos entry or another process. They now ask
+    // `CameraService.filteredStill(for:source:)` for a still *for a purpose*, and the purpose
+    // decides whether the blur runs. See `FilteredStill`.
+
+    /// Structured-vision assessment of a still, schema attached, to a cloud model.
+    case structuredVisionAssessment
+    /// The HECA safety assessment, same shape, on a job site full of other people.
+    case safetyAssessment
+    /// Assistive mode's continuous guidance loop.
+    case assistiveGuidanceLoop
+    /// Navigation assist's hazard/landmark loop.
+    case navigationAssist
+    /// The live coach's periodic form/technique frame.
+    case liveCoach
+    /// `capture_photo` — the still the wearer asks for, base64'd into the model turn.
+    case capturePhotoTool
+    /// `photo_log` — attached to a Field Assist session log *and* sent to the model.
+    case photoLogTool
+    /// The money identifier, which sends the note itself to the model rather than OCR text.
+    case moneyIdentifierTool
+    /// The local MCP server's `see_glasses`, which serves a still to another process.
+    case mcpFrameRequest
+    /// The crop dwell capture writes to the Photos library. Separate from `dwellCapture` below on
+    /// purpose: the saliency subscription needs raw pixels and stays exempt, while the crop it
+    /// produces leaves the app and does not.
+    case dwellCaptureSave
+
+    // MARK: - On-device still readers (exempt, and asked to say so)
+    //
+    // These consume a still and emit only text or geometry — Vision OCR, barcode and QR decoding,
+    // colour sampling, body-pose analysis. Nothing leaves the process, so there is nothing to
+    // filter; they still request their still through the same accessor, under an on-device scope,
+    // so that the classification is written down at the call site rather than inferred from the
+    // absence of a filter call.
+
+    /// Study's page scan → on-device OCR → flashcard text.
+    case studyScan
+    /// Teleprompter's page scan → on-device OCR → script text.
+    case teleprompterScan
+    /// `read_this` — on-device OCR for the wearer.
+    case readingAccessibilityTool
+    /// `smart_capture` — business cards, receipts, flyers, parsed on device.
+    case smartCaptureTool
+    /// The medication identifier's label OCR (the cross-check reads a local vault).
+    case medicationIdentifierTool
+    /// Manual lookup reading a fault code off a label.
+    case manualLookupTool
+    /// Equipment lookup reading a nameplate.
+    case equipmentLookupTool
+    /// Barcode/QR scanning through Vision.
+    case barcodeScannerTool
+    /// QR context scanning through Vision.
+    case qrContextTool
+    /// Dominant-colour naming, a one-pixel downscale on device.
+    case colorIdentifierTool
+    /// Conference badge OCR + QR reconciliation.
+    case badgeScanTool
+    /// `identify_person` — face matching, exempt for the same reason the service is.
+    case faceRecognitionTool
+    /// The fitness coach's form check: `NativeToolRegistry` hands the tool a frame provider that
+    /// feeds an on-device Vision pose pass. Still a raw read, because the provider is synchronous.
+    case fitnessPoseFrame
+
     // MARK: - Exempt (no egress, or the blur would break the feature)
 
     /// Face enrolment and matching. Needs raw pixels by definition.
@@ -74,8 +141,9 @@ enum OutboundFrameConsumer: String, CaseIterable {
     case fingerspelling
     /// Dwell capture's saliency loop — on-device Vision, emits candidate boxes.
     ///
-    /// The crop it then writes to the Photos library is a separate question from this subscription
-    /// and is *not* settled by this entry; see the W04.1 row in `docs/plans/EU-remediation-roadmap.md`.
+    /// The crop it then writes to the Photos library is a separate question from this subscription,
+    /// and `dwellCaptureSave` is where that one is answered: the loop reads raw pixels, the crop is
+    /// filtered before it is saved.
     case dwellCapture
 
     /// Where the consumer taps the pixels.
@@ -87,8 +155,12 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case rawCameraCallback
         /// `OutboundFrameRelay.publisher` — blurred, camera rate.
         case outboundRelay
-        /// `CameraService.latestFrame` — a still, pulled on demand.
+        /// `CameraService.latestFrame` — a raw still, pulled on demand. Legal only for a consumer
+        /// that filters it at its own chokepoint, or whose scope says it must not be filtered.
         case latestFrameStill
+        /// `CameraService.filteredStill(for:source:)` — a still that has already been through the
+        /// chokepoint, or an explicit `.unavailable`. The tap a still reader should be using.
+        case filteredStill
     }
 
     /// What protects the consumer.
@@ -124,7 +196,29 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .livePreview: return "LivePreviewView"
         case .readingCompanion: return "ReadingCompanionService"
         case .fingerspelling: return "FingerspellingSessionService"
-        case .dwellCapture: return "DwellCaptureService"
+        case .dwellCapture, .dwellCaptureSave: return "DwellCaptureService"
+        case .structuredVisionAssessment: return "StructuredVisionService"
+        case .safetyAssessment: return "SafetyAssessmentService"
+        case .assistiveGuidanceLoop: return "AssistiveModeService"
+        case .navigationAssist: return "NavigationAssistService"
+        case .liveCoach: return "LiveCoachService"
+        case .capturePhotoTool: return "CapturePhotoTool"
+        case .photoLogTool: return "PhotoLogTool"
+        case .moneyIdentifierTool: return "MoneyIdentifierTool"
+        case .mcpFrameRequest: return "MCPGlassesServer"
+        case .studyScan: return "StudyService"
+        case .teleprompterScan: return "TeleprompterService"
+        case .readingAccessibilityTool: return "ReadingAccessibilityTool"
+        case .smartCaptureTool: return "SmartCaptureTool"
+        case .medicationIdentifierTool: return "MedicationIdentifierTool"
+        case .manualLookupTool: return "ManualLookupTool"
+        case .equipmentLookupTool: return "EquipmentLookupTool"
+        case .barcodeScannerTool: return "BarcodeScannerTool"
+        case .qrContextTool: return "QRContextTool"
+        case .colorIdentifierTool: return "ColorIdentifierTool"
+        case .badgeScanTool: return "BadgeScanTool"
+        case .faceRecognitionTool: return "FaceRecognitionTool"
+        case .fitnessPoseFrame: return "NativeToolRegistry"
         }
     }
 
@@ -146,6 +240,16 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .sceneNarration: return .sceneNarration
         case .livePreview: return .onDevicePreview
         case .readingCompanion, .fingerspelling, .dwellCapture: return .onDeviceVision
+        case .structuredVisionAssessment, .safetyAssessment: return .visionAssessment
+        case .assistiveGuidanceLoop, .navigationAssist, .liveCoach: return .assistiveGuidance
+        case .capturePhotoTool, .photoLogTool, .moneyIdentifierTool: return .toolPhotoCapture
+        case .dwellCaptureSave: return .photoLibrary
+        case .mcpFrameRequest: return .remoteFrameRequest
+        case .faceRecognitionTool: return .faceRecognition
+        case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
+             .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
+             .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
+             .fitnessPoseFrame: return .onDeviceVision
         }
     }
 
@@ -158,7 +262,14 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
              .expertPeerTransport, .expertTransportProtocol: return .outboundRelay
         case .liveSessionPollFallback, .directModelTurn, .pinnedFrame, .agentAttachment,
-             .sceneNarration: return .latestFrameStill
+             .sceneNarration, .fitnessPoseFrame: return .latestFrameStill
+        case .dwellCaptureSave: return .rawCameraPublisher
+        case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
+             .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
+             .mcpFrameRequest, .studyScan, .teleprompterScan, .readingAccessibilityTool,
+             .smartCaptureTool, .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
+             .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
+             .faceRecognitionTool: return .filteredStill
         }
     }
 
@@ -172,6 +283,13 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .agentAttachment: return .chokepoint
         case .faceRecognition, .sceneNarration, .livePreview, .readingCompanion,
              .fingerspelling, .dwellCapture: return .exemptByScope
+        case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
+             .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
+             .mcpFrameRequest, .dwellCaptureSave: return .chokepoint
+        case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
+             .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
+             .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
+             .faceRecognitionTool, .fitnessPoseFrame: return .exemptByScope
         }
     }
 
@@ -179,6 +297,14 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// blur pass itself or a consumer whose scope says the blur must not be applied.
     static var typesAllowedOnTheRawCameraTap: Set<String> {
         Set(allCases.filter { $0.tap == .rawCameraPublisher || $0.tap == .rawCameraCallback }
+                    .map(\.owningType))
+    }
+
+    /// Types allowed to read a raw still — `CameraService.latestFrame` — rather than going through
+    /// `filteredStill(for:source:)`. Everything whose tap is a raw one: the on-device consumers, the
+    /// preview, face recognition, and the chokepoint readers that filter the still themselves.
+    static var typesAllowedOnARawStill: Set<String> {
+        Set(allCases.filter { $0.tap != .filteredStill && $0.tap != .outboundRelay }
                     .map(\.owningType))
     }
 

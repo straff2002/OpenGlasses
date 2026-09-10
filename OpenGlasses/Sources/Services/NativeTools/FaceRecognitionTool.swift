@@ -23,6 +23,9 @@ struct FaceRecognitionTool: NativeTool {
     ]
 
     weak var faceService: FaceRecognitionService?
+    /// Stays a `CameraService`: the "toggle" action starts `FaceRecognitionService`, which needs
+    /// the raw frame publisher. The still this tool takes for enrolment still goes through
+    /// `filteredStill(for:)` — under `.faceRecognition`, the scope that says do not filter.
     weak var cameraService: CameraService?
 
     init(faceService: FaceRecognitionService, cameraService: CameraService) {
@@ -47,8 +50,10 @@ struct FaceRecognitionTool: NativeTool {
             guard let name = args["name"] as? String, !name.isEmpty else {
                 return "Please provide a name for the person."
             }
-            // Get the latest camera frame
-            let frame = await MainActor.run { cameraService?.latestFrame }
+            // `.faceRecognition` is the one model-facing scope that is never filtered, and it
+            // says so here rather than by omitting the call: the blur is indiscriminate, so
+            // filtering ahead of enrolment would blur the very face being enrolled.
+            let frame = await cameraService?.filteredStill(for: .faceRecognition).image
             guard let image = frame else {
                 return "No camera frame available. Make sure the glasses camera is active."
             }

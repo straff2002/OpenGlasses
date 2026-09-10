@@ -975,7 +975,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan CG: dwell capture speaks its confirmation through the shared TTS, and its
         // frame tap rides the existing camera publisher.
         dwellCapture.announce = { [weak self] text in await self?.speechService.speak(text) }
-        dwellCapture.start(cameraService: cameraService)
+        dwellCapture.start(cameraService: cameraService, privacyFilter: privacyFilter)
 
         nativeToolRouter.onLongRunningUpdate = { [weak self] elapsed in
             guard let self else { return }
@@ -1727,6 +1727,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // wiring it here rather than per-stream means a consumer cannot accidentally subscribe to
         // the raw publisher and bypass the blur.
         outboundFrames.attach(to: cameraService.framePublisher)
+        // W04.1: the same filter, for the still readers. Wired once here for the same reason the
+        // relay is — a reader must not be able to obtain a still the blur never saw.
+        cameraService.privacyFilter = privacyFilter
     }
 
     /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
@@ -3410,7 +3413,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if !cameraService.isStreaming {
                     try await cameraService.startStreaming()
                 }
-                let frameSize = cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                let frameSize = cameraService.latestStillSize ?? CGSize(width: 720, height: 1280)
                 try videoRecorder.startRecording(
                     from: outboundFrames.publisher,   // CP: blurred before it reaches disk
                     bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
@@ -4180,10 +4183,18 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // If camera is already streaming, just grab the frame — but never a degenerate
         // placeholder (don't restart a running stream over a bad frame; just send no image).
-        if cameraService.isStreaming, let frame = cameraService.latestFrame {
-            guard let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
-                  !LLMImagePreparer.isDegenerate(data) else { return nil }
-            return data
+        //
+        // W04.1: this grab used to read `latestFrame` and JPEG it straight into the turn, which
+        // made "smart camera" the one Direct-mode vision path the bystander blur never saw —
+        // `currentVisionFrameDataIfAvailable` three functions up had been filtered since CO Item 0.
+        // Same scope, same chokepoint, now genuinely the same treatment.
+        if cameraService.isStreaming {
+            let still = await cameraService.filteredStill(for: .directModelTurn)
+            if let data = still.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality) {
+                guard !LLMImagePreparer.isDegenerate(data) else { return nil }
+                return data
+            }
+            if still.unavailableReason != .noStill { return nil }   // filtered path failed closed
         }
 
         // Plan CU P1: the grab sits between commit and first token, so a vision turn's raw TTFT
@@ -4198,14 +4209,22 @@ class AppState: ObservableObject, AppStateProtocol {
             try await cameraService.startStreaming()
             // Brief wait for first frame
             try await Task.sleep(nanoseconds: 500_000_000)
-            if let frame = cameraService.latestFrame,
-               let data = frame.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
+            if let data = await cameraService.filteredStill(for: .directModelTurn)
+                .jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
                !LLMImagePreparer.isDegenerate(data) {
                 PrivacyLog.camera(.glasses, .frameReceived)
                 return data
             }
-            // Try photo capture as fallback
-            let photoData = try await cameraService.capturePhoto()
+            // Try photo capture as fallback — through the same chokepoint, because it is the same
+            // model turn. An unfilterable photo is no photo.
+            let captured = await cameraService.filteredStill(for: .directModelTurn,
+                                                             source: .photoOnly)
+            guard let photoData = captured
+                .jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality) else {
+                PrivacyLog.camera(.glasses, .captureRejected,
+                                  detail: PrivacyToken(captured.unavailableReason?.rawValue ?? "noStill"))
+                return nil
+            }
             cameraService.restoreAudioForWakeWord()
             PrivacyLog.camera(.glasses, .photoCaptured)
             return photoData
@@ -4886,7 +4905,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if !self.cameraService.isStreaming {
                     try await self.cameraService.startStreaming()
                 }
-                let frameSize = self.cameraService.latestFrame?.size ?? CGSize(width: 720, height: 1280)
+                let frameSize = self.cameraService.latestStillSize ?? CGSize(width: 720, height: 1280)
                 try self.videoRecorder.startRecording(
                     from: self.outboundFrames.publisher,   // CP
                     bitrate: Config.recordingBitrateOverride,   // nil → derived from frameSize
