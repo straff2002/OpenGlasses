@@ -173,13 +173,16 @@ final class StagedExportCoordinator {
         return removed
     }
 
+    /// The three families, in one place so a caller that needs all of them cannot miss one.
+    static var allFamilies: [StagedExportCoordinator] { [agentArchive, safetyReport, fieldSession] }
+
     /// Sweep every staged-export family. Called at launch and on backgrounding.
     @discardableResult
     static func scavengeAll() -> Int {
-        [agentArchive, safetyReport, fieldSession].reduce(0) { $0 + $1.scavenge() }
+        allFamilies.reduce(0) { $0 + $1.scavenge() }
     }
 
     static func handleBackgroundAll() {
-        for coordinator in [agentArchive, safetyReport, fieldSession] { coordinator.handleBackground() }
+        for coordinator in allFamilies { coordinator.handleBackground() }
     }
 }

@@ -110,10 +110,14 @@ enum SensitiveStore: String, CaseIterable {
     case keychainDeviceIdentity
     case keychainConversationKey
     case keychainClinicalCredentials
+    case keychainScopedDataKeys
 
     // Trust and consent registers (tool-definition digests, versioned consent records)
     case toolDefinitionDigests
     case consentRecords
+
+    // The record of what has already been erased, so a restore cannot undo it
+    case erasureLedger
 
     // MARK: - Facets
 
@@ -510,7 +514,7 @@ enum SensitiveStore: String, CaseIterable {
             return Record(store: self, dataClass: .clinical, subjectLinkage: .thirdPartySubject,
                           protection: .complete, backupExcluded: true,
                           retention: .policy("clinical retention days, whatever the mode; disabled at zero"),
-                          deleteAll: .api("HIPAAComplianceService.secureDelete"),
+                          deleteAll: .api("HIPAAComplianceService.deleteFile(at:)"),
                           deleteSubject: .unavailable("transcripts are filed by session, not by patient"),
                           owner: "HIPAAComplianceService",
                           ownerPaths: ["OpenGlasses/Sources/Services/HIPAAComplianceService.swift"],
@@ -574,6 +578,18 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "ConsentStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Security/ConsentRecord.swift"],
                           location: "Application Support/Consent/consent-records.json")
+        case .erasureLedger:
+            return Record(store: self, dataClass: .operationalAudit,
+                          subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .cap(200),
+                          deleteAll: .api("ErasureLedger.clear()"),
+                          deleteSubject: .unavailable("the entry is what makes the erasure survive; "
+                              + "removing it would let a restore bring the subject back"),
+                          owner: "ErasureLedger",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Privacy/ErasureLedger.swift"],
+                          location: "Application Support/Erasure/erasure-ledger.json")
+
         case .operationJournal:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
@@ -736,6 +752,17 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "ConversationEncryptionService",
                           ownerPaths: ["OpenGlasses/Sources/Services/ConversationEncryptionService.swift"],
                           location: "Keychain: the conversation encryption key, behind user presence")
+
+        case .keychainScopedDataKeys:
+            return Record(store: self, dataClass: .credential, subjectLinkage: .thirdPartySubject,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .api("ScopedKeyring.eraseClass(_:files:)"),
+                          deleteSubject: .unavailable("a scoped key covers a class, not a person; "
+                              + "forgetting one person cannot destroy the key everyone else is sealed under"),
+                          owner: "ScopedKeyring",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Privacy/ScopedKeyring.swift"],
+                          location: "Keychain: one data key per erasable class")
 
         case .keychainClinicalCredentials:
             return Record(store: self, dataClass: .credential, subjectLinkage: .thirdPartySubject,

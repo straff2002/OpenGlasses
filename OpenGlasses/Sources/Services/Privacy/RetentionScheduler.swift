@@ -67,6 +67,9 @@ struct RetentionTarget {
     let dataClass: SensitiveStore.DataClass
     /// Remove everything that expired at `cutoff`; return how many went.
     let purge: (Date) throws -> Int
+    /// True when this target removes rows in a store rather than files on disk. Only the receipt
+    /// cares, and only so that "3 rows" is not reported as "3 files".
+    var removesRows = false
     /// Set where the target does not answer to its class's policy — a record that was written with
     /// its own expiry was given a lifetime by whoever wrote it, and a class-wide "keep everything"
     /// setting is not a licence to break that promise.
@@ -106,7 +109,8 @@ struct RetentionTarget {
                      dataClass: SensitiveStore.DataClass,
                      policyOverride: RetentionPolicy? = nil,
                      purge: @escaping (Date) throws -> Int) -> RetentionTarget {
-        RetentionTarget(id: id, dataClass: dataClass, purge: purge, policyOverride: policyOverride)
+        RetentionTarget(id: id, dataClass: dataClass, purge: purge, removesRows: true,
+                        policyOverride: policyOverride)
     }
 }
 
@@ -278,11 +282,10 @@ final class RetentionScheduler {
 
             do {
                 let removed = try target.purge(cutoff)
-                switch target.dataClass {
-                case .conversationContent, .personalMemory:
+                if target.removesRows {
                     outcome.rowsRemoved += removed
                     record.rowsRemoved += removed
-                default:
+                } else {
                     outcome.filesRemoved += removed
                     record.filesRemoved += removed
                 }
@@ -354,6 +357,9 @@ extension RetentionScheduler {
         var temporaryDirectory: () -> URL = { FileManager.default.temporaryDirectory }
         /// Sweeps the export leases and returns how many sessions went.
         var sweepExportLeases: (() -> Int)?
+        /// The record of completed erasures. It has its own retention rule because it is the one
+        /// place, besides a queued tombstone, where a forgotten name is still written down.
+        var erasureLedger: ErasureLedger?
 
         init() {}
     }
@@ -382,7 +388,9 @@ extension RetentionScheduler {
                        fileSystem: fileSystem),
         ]
         if let sweep = sources.sweepExportLeases {
-            made.append(.rows(.exportLeases, dataClass: .exportArtifact) { _ in sweep() })
+            // Counted as files: a lease is a directory of them, not a row.
+            made.append(RetentionTarget(id: .exportLeases, dataClass: .exportArtifact,
+                                        purge: { _ in sweep() }))
         }
         // A memory carrying its own `expires_at` was given a lifetime when it was written, so it
         // is purged on that promise and not on the class policy. Until now that promise was kept
@@ -398,6 +406,15 @@ extension RetentionScheduler {
             guard let memory = sources.semanticMemory else { throw RetentionFault.sourceUnavailable }
             return memory.purge(olderThan: cutoff)
         })
+        if let ledger = sources.erasureLedger {
+            made.append(.rows(.erasureLedger, dataClass: .derivedIndex,
+                              policyOverride: RetentionPolicy(
+                                dataClass: .derivedIndex,
+                                trigger: .maxAge(ErasureReplay.window),
+                                source: "the replay window: past it the entry can do nothing")) { cutoff in
+                ledger.purge(olderThan: cutoff)
+            })
+        }
         made.append(.rows(.conversationThreads, dataClass: .conversationContent) { cutoff in
             guard let conversations = sources.conversations else {
                 throw RetentionFault.sourceUnavailable

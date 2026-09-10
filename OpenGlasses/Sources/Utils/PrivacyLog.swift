@@ -1573,6 +1573,12 @@ enum PrivacyLog {
         /// Reviewed tool-definition digests per server, and the versioned consent register. Both
         /// hold one-way digests and closed-vocabulary fields only.
         case toolDefinitionDigests, consentRecords
+        /// Per-class scoped keys and the erasures that destroy them. The class name is one of two
+        /// fixed values and the counts are how many files went; no key material and no filename.
+        case scopedKey
+        /// The durable record of completed erasures, replayed when a store reappears. Entry ids
+        /// and counts only — the subject an entry names never reaches a log line.
+        case erasureLedger
         /// The retention sweep. Target ids come from a closed vocabulary (`RetentionTargetID`) and
         /// the counts are how many records went; the records themselves never appear, which is the
         /// whole reason retention exists.

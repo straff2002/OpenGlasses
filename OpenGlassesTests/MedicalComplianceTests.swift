@@ -327,39 +327,39 @@ final class MedicalComplianceTests: XCTestCase {
         }
     }
 
-    // MARK: - Secure Deletion
+    // MARK: - Deletion
 
-    func testSecureDeleteRemovesFile() {
+    func testDeleteFileRemovesFile() {
         Config.hipaaMode = true
         let fileURL = tempDir.appendingPathComponent("to_delete.txt")
         try! "secret data".write(to: fileURL, atomically: true, encoding: .utf8)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-        hipaaService.secureDelete(at: fileURL)
+        hipaaService.deleteFile(at: fileURL)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path),
-                        "File should be removed after secure deletion")
+                        "File should be removed after deletion")
     }
 
-    func testSecureDeleteLogsAction() {
+    func testDeleteFileLogsAction() {
         Config.hipaaMode = true
         let fileURL = tempDir.appendingPathComponent("logged_delete.txt")
         try! "data".write(to: fileURL, atomically: true, encoding: .utf8)
 
-        hipaaService.secureDelete(at: fileURL)
+        hipaaService.deleteFile(at: fileURL)
 
         let deleteEntries = hipaaService.auditLog.filter { $0.action == "SECURE_DELETE" }
-        XCTAssertFalse(deleteEntries.isEmpty, "Secure deletion should be logged in audit")
+        XCTAssertFalse(deleteEntries.isEmpty, "Deletion should be logged in audit")
         // The filename is carried as a fingerprint, not as text.
         XCTAssertEqual(deleteEntries.first!.subjectDigest,
                        AuditFingerprint.of("logged_delete.txt"))
     }
 
-    func testSecureDeleteHandlesMissingFileGracefully() {
+    func testDeleteFileHandlesMissingFileGracefully() {
         Config.hipaaMode = true
         let missing = tempDir.appendingPathComponent("nonexistent.txt")
 
         // Should not crash
-        hipaaService.secureDelete(at: missing)
+        XCTAssertTrue(hipaaService.deleteFile(at: missing))
     }
 
     // MARK: - Data Retention / Auto-Purge

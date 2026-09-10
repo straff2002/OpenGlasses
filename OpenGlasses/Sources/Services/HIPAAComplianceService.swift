@@ -538,25 +538,42 @@ class HIPAAComplianceService: ObservableObject {
         return count
     }
 
-    // MARK: - Secure Deletion
+    // MARK: - Deletion
 
-    /// Securely delete a file (overwrite then remove).
-    func secureDelete(at url: URL) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-
-        // Overwrite with random data before deletion
-        if let fileHandle = try? FileHandle(forWritingTo: url) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-            if size > 0 {
-                let randomData = Data((0..<size).map { _ in UInt8.random(in: 0...255) })
-                fileHandle.write(randomData)
-                fileHandle.closeFile()
-            }
+    /// Delete a file, claiming only what the platform actually delivers (roadmap W03.5).
+    ///
+    /// This used to overwrite the file with random bytes first and call itself a secure delete. On
+    /// flash storage that is not what happens: the controller writes the replacement bytes to a
+    /// different physical page and leaves the original for wear levelling to reclaim whenever it
+    /// likes, so the overwrite spends a write cycle and buys nothing. Worse, it said nothing about
+    /// the copies that actually matter — a filesystem snapshot, an existing backup, a file the
+    /// wearer already shared out.
+    ///
+    /// What deletion here really is, stated plainly: **logical**. The directory entry goes, iOS's
+    /// own per-file encryption is what keeps the bytes from being read afterwards, and the key for
+    /// that belongs to the device rather than to this app, so this app cannot destroy it.
+    ///
+    /// Where the data *is* sealed under a key this app owns, `ScopedKeyring.eraseClass(_:files:)`
+    /// is the stronger operation, and it reports `.cryptographic` only when it really was. Clinical
+    /// transcripts are not in that set: they are written as plain text into a folder the wearer
+    /// opens in Files and shares from, which is what the recording screen promises them.
+    ///
+    /// - Returns: whether the file is gone (including when it was never there).
+    @discardableResult
+    func deleteFile(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            PrivacyLog.medical(.compliance, .purgeFailed, error: SafeErrorSummary(error))
+            return false
         }
-
-        try? FileManager.default.removeItem(at: url)
+        // The audit token behind this kind is `SECURE_DELETE` and is left alone deliberately: it
+        // is a stored vocabulary value in chained logs that already exist, and renaming it would
+        // invalidate them. What it means is what this method's documentation says.
         record(.fileSecurelyDeleted, target: .transcript, purpose: .wearerRequest,
                subject: url.lastPathComponent)
+        return true
     }
 }
 

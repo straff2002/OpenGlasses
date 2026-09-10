@@ -746,6 +746,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// W03.3 — the retention sweep. Built after the stores it purges exist (see `init`), and run
     /// at launch and on foreground behind a cheap due check.
     private(set) var retention: RetentionScheduler?
+
+    /// W03.5 — the record of completed erasures, replayed at launch so one that was carried out is
+    /// honoured again if a store it touched comes back.
+    let erasureLedger = ErasureLedger()
     let medicalExportService = MedicalExportService()
 
     /// Offline field queue + store-and-forward sync (Plan T): work done without signal is saved
@@ -1182,11 +1186,39 @@ class AppState: ObservableObject, AppStateProtocol {
         retentionSources.sweepExportLeases = {
             StagedExportCoordinator.scavengeAll() + DiagnosticExportCoordinator.shared.scavenge()
         }
+        retentionSources.erasureLedger = erasureLedger
         let scheduler = RetentionScheduler(
             targets: RetentionScheduler.targets(sources: retentionSources),
             audit: hipaaService)
         retention = scheduler
         scheduler.runIfDue()
+
+        // W03.5: replay completed erasures. Free when nothing has ever been erased, which is the
+        // ordinary case — the guard is an empty-array check on a file that is usually absent.
+        if !erasureLedger.entries.isEmpty {
+            let ledger = erasureLedger
+            var replaySources = ErasureReplay.Sources()
+            var erasureStores = SubjectErasureCoordinator.Stores()
+            erasureStores.conversations = conversationStore
+            erasureStores.semanticMemory = userMemory
+            erasureStores.documents = documentStore
+            erasureStores.faces = faceRecognition
+            erasureStores.agentDocuments = agentDocs
+            erasureStores.recordedSessions = recordedSessionStore
+            erasureStores.offlineQueue = offlineQueue
+            erasureStores.stagedExports = StagedExportCoordinator.allFamilies
+            replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
+            replaySources.keyring = .shared
+            replaySources.classFiles = { erasable in
+                let docs = FileManager.default.urls(for: .documentDirectory,
+                                                    in: .userDomainMask).first!
+                switch erasable {
+                case .conversationContent: return [docs.appendingPathComponent("conversations.json")]
+                case .faces: return [docs.appendingPathComponent("known_faces.json")]
+                }
+            }
+            Task { @MainActor in await ErasureReplay.replay(ledger: ledger, sources: replaySources) }
+        }
         if Config.hipaaMode {
             hipaaService.log(action: "APP_LAUNCHED", detail: "HIPAA mode active, retention: \(Config.hipaaRetentionDays) days")
         }

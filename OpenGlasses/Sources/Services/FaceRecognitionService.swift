@@ -56,9 +56,15 @@ class FaceRecognitionService: ObservableObject {
 
     /// `directory` is injectable so a test can enrol and erase faceprints in a temporary folder
     /// rather than in the wearer's own database.
-    init(directory: URL? = nil) {
+    /// The keyring that seals the templates at rest (roadmap W03.5). Scoped to `.faces` alone, so
+    /// destroying it makes every copy of the database — including one in a snapshot this app
+    /// cannot reach — unreadable. Injectable so a test does not need the Keychain.
+    private let keyring: ScopedKeyring
+
+    init(directory: URL? = nil, keyring: ScopedKeyring = .shared) {
         let docs = directory
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.keyring = keyring
         storageURL = docs.appendingPathComponent("known_faces.json")
         loadFaces()
         // W03.3: a face database that already exists on a device is excluded from backup by being
@@ -360,8 +366,14 @@ class FaceRecognitionService: ObservableObject {
 
     private func saveFaces() {
         do {
-            let data = try JSONEncoder().encode(knownFaces)
-            // Face embeddings are biometric data — encrypt at rest (accessible only while unlocked).
+            let plaintext = try JSONEncoder().encode(knownFaces)
+            // Face embeddings are biometric data. Two layers: iOS file protection, whose key is the
+            // device's, and a key scoped to this class alone, which is the one an erasure can
+            // destroy. When the keyring cannot mint a key — Keychain unavailable — the write falls
+            // back to the behaviour that came before it rather than failing and losing enrolments;
+            // a later class erasure reports that honestly as logical coverage rather than
+            // cryptographic.
+            let data = keyring.seal(plaintext, for: .faces) ?? plaintext
             try data.write(to: storageURL, options: [.atomic, .completeFileProtection])
             Self.protect(storageURL)
         } catch {
@@ -372,7 +384,11 @@ class FaceRecognitionService: ObservableObject {
     private func loadFaces() {
         guard FileManager.default.fileExists(atPath: storageURL.path) else { return }
         do {
-            let data = try Data(contentsOf: storageURL)
+            let raw = try Data(contentsOf: storageURL)
+            // Unsealed bytes are returned unchanged, so a database written before sealing existed
+            // still opens and is sealed on its next save. A sealed database whose key is gone
+            // throws — which, after a class erasure, is the correct answer and not a fault.
+            let data = try keyring.open(raw, for: .faces)
             knownFaces = try JSONDecoder().decode([KnownFace].self, from: data)
             PrivacyLog.face(.databaseLoaded, enrolled: knownFaces.count)
         } catch {
