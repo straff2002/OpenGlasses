@@ -447,6 +447,9 @@ struct OpenGlassesApp: App {
             case .active:
                 PrivacyLog.app(.becameActive)
                 appState.restoreFromBackground()
+                // W03.3: two date comparisons when nothing is due, so this is free on every
+                // activation and the sweep still happens on a phone that is never relaunched.
+                appState.retention?.runIfDue()
                 SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
                 // while we were away.
@@ -739,6 +742,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let teleprompterStore = TeleprompterScriptStore()
     lazy var teleprompterService = TeleprompterService(store: teleprompterStore)
     let hipaaService = HIPAAComplianceService()
+
+    /// W03.3 — the retention sweep. Built after the stores it purges exist (see `init`), and run
+    /// at launch and on foreground behind a cheap due check.
+    private(set) var retention: RetentionScheduler?
     let medicalExportService = MedicalExportService()
 
     /// Offline field queue + store-and-forward sync (Plan T): work done without signal is saved
@@ -1166,9 +1173,21 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
-        // HIPAA: enforce retention policy on launch
+        // W03.3: retention now runs whatever the mode, because a clinic that turned compliance
+        // mode off did not thereby ask for its transcripts to be kept forever. Each class's policy
+        // decides whether anything is swept; most of them are off, and say why.
+        var retentionSources = RetentionScheduler.Sources()
+        retentionSources.conversations = conversationStore
+        retentionSources.semanticMemory = userMemory
+        retentionSources.sweepExportLeases = {
+            StagedExportCoordinator.scavengeAll() + DiagnosticExportCoordinator.shared.scavenge()
+        }
+        let scheduler = RetentionScheduler(
+            targets: RetentionScheduler.targets(sources: retentionSources),
+            audit: hipaaService)
+        retention = scheduler
+        scheduler.runIfDue()
         if Config.hipaaMode {
-            hipaaService.enforceRetentionPolicy()
             hipaaService.log(action: "APP_LAUNCHED", detail: "HIPAA mode active, retention: \(Config.hipaaRetentionDays) days")
         }
 

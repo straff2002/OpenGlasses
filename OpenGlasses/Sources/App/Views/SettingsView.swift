@@ -690,6 +690,9 @@ struct HardwarePrivacyView: View {
     @Binding var micRoute: MicRoute
     @Binding var privacyFilterEnabled: Bool
     @Binding var conversationEncryptionEnabled: Bool
+    /// W03.3 — how long the wearer's own conversations and memories are kept. Zero means forever
+    /// and is the default; see `Config.historyRetentionDays`.
+    @State private var historyRetentionDays = Config.historyRetentionDays
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
     @State private var glassesUpdateError: String?
@@ -1016,6 +1019,26 @@ struct HardwarePrivacyView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("Encrypts all saved conversation transcripts using ChaCha20-Poly1305 authenticated encryption. The encryption key is stored in the Secure Enclave via Keychain and requires Face ID, Touch ID, or your device passcode to unlock. Conversations are automatically locked when the app moves to the background.")
+            }
+
+            Section {
+                Picker("Keep History For", selection: Binding(
+                    get: { historyRetentionDays },
+                    set: { newValue in
+                        historyRetentionDays = newValue
+                        Config.historyRetentionDays = newValue
+                    }
+                )) {
+                    Text("Forever").tag(0)
+                    Text("30 Days").tag(30)
+                    Text("90 Days").tag(90)
+                    Text("6 Months").tag(180)
+                    Text("1 Year").tag(365)
+                }
+            } header: {
+                Text("History")
+            } footer: {
+                Text("Applies to saved conversations and the things you asked to be remembered. Kept forever unless you choose otherwise — this is your own record, and the app will not decide to delete it for you. Anything older than the period you pick is deleted for real, not hidden, next time the app opens or comes back to the foreground. Memories you gave an expiry to are removed when that expiry passes, whatever this is set to.")
             }
         }
         .navigationTitle("Hardware & Privacy")

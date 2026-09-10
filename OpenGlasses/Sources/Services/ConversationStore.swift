@@ -315,6 +315,20 @@ class ConversationStore: ObservableObject {
                                 thread: PrivateIdentifier(threadId), count: 1)
     }
 
+    /// W03.3 — delete every thread last touched before `cutoff`. Returns how many went.
+    ///
+    /// Real deletion through the same `save()` the rest of the store uses, and the recall index is
+    /// told about each one, so a purge cannot leave the derived projection holding turns whose
+    /// thread is gone. Driven by the wearer's history retention setting, which is off unless they
+    /// turned it on — this method does not decide, it carries out a decision.
+    @discardableResult
+    func deleteThreads(olderThan cutoff: Date) -> Int {
+        let doomed = threads.filter { $0.updatedAt < cutoff && $0.id != activeThreadId }
+        guard !doomed.isEmpty else { return 0 }
+        for thread in doomed { deleteThread(thread.id) }
+        return doomed.count
+    }
+
     /// Delete every thread.
     ///
     /// Real deletion, like `deleteThread`: the threads leave memory, the file is rewritten from

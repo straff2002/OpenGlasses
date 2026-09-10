@@ -509,7 +509,7 @@ enum SensitiveStore: String, CaseIterable {
         case .clinicalTranscripts:
             return Record(store: self, dataClass: .clinical, subjectLinkage: .thirdPartySubject,
                           protection: .complete, backupExcluded: true,
-                          retention: .policy("HIPAA retention days; disabled at zero"),
+                          retention: .policy("clinical retention days, whatever the mode; disabled at zero"),
                           deleteAll: .api("HIPAAComplianceService.secureDelete"),
                           deleteSubject: .unavailable("transcripts are filed by session, not by patient"),
                           owner: "HIPAAComplianceService",

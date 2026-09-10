@@ -47,6 +47,9 @@ final class DataStoreRegistryTests: XCTestCase {
             "the Keychain wrapper itself; its item families are registered separately",
         "OpenGlasses/Sources/Services/Siri/SiriContentAdapters.swift":
             "builds the records SpotlightIndexService donates; holds nothing of its own",
+        "OpenGlasses/Sources/Services/Privacy/RetentionScheduler.swift":
+            "the retention run's own progress record: target ids from a closed vocabulary and "
+                + "counts, so an interrupted sweep resumes without recounting. Names nothing it removed",
 
         // Downloaded assets, not anybody's data.
         "OpenGlasses/Sources/Services/LocalizationManager.swift":

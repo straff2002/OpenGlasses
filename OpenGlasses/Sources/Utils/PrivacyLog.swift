@@ -1573,6 +1573,10 @@ enum PrivacyLog {
         /// Reviewed tool-definition digests per server, and the versioned consent register. Both
         /// hold one-way digests and closed-vocabulary fields only.
         case toolDefinitionDigests, consentRecords
+        /// The retention sweep. Target ids come from a closed vocabulary (`RetentionTargetID`) and
+        /// the counts are how many records went; the records themselves never appear, which is the
+        /// whole reason retention exists.
+        case retention
         /// A coordinated erasure walk. What is recorded is how many stores completed of how many
         /// were walked — never the subject, whose whole point is that they are being forgotten.
         case subjectErasure

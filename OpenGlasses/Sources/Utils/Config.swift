@@ -2175,6 +2175,17 @@ struct Config {
         set { UserDefaults.standard.set(newValue, forKey: "hipaaRetentionDays") }
     }
 
+    /// How long the wearer's own history is kept, in days; 0 (the default) keeps everything.
+    ///
+    /// Off by default on purpose. Conversations and personal memories are the wearer's own record
+    /// of their life, and quietly deleting it because they never opened a settings screen is a
+    /// worse failure than keeping it. The control exists so somebody who wants a shorter memory
+    /// can have one, not so the app can decide for them.
+    static var historyRetentionDays: Int {
+        get { max(0, UserDefaults.standard.integer(forKey: "historyRetentionDays")) }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: "historyRetentionDays") }
+    }
+
     /// Force all LLM queries through local on-device model when HIPAA mode is active.
     /// If false, cloud LLMs can still be used but a BAA warning is shown.
     static var hipaaLocalOnly: Bool {
