@@ -19,7 +19,7 @@ struct ToolDefinitionReview: Codable, Equatable {
 final class ToolDefinitionDigestStore {
     static let shared = ToolDefinitionDigestStore()
 
-    static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
+    nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
 
     private let directory: URL
     private let fileURL: URL

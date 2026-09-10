@@ -145,7 +145,13 @@ final class NetworkInterceptor: URLProtocol {
         let mutableRequest = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
         URLProtocol.setProperty(true, forKey: Self.monitoredKey, in: mutableRequest)
 
-        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        // The delegate is a separate object, not `self`: `URLSessionDelegate` now requires
+        // `Sendable`, and `URLProtocol`'s `Sendable` conformance is unavailable on iOS, so a
+        // `URLProtocol` subclass can no longer be its own session delegate. The forwarder holds
+        // the interceptor weakly — the URL loading system owns it for the life of the load.
+        let session = URLSession(configuration: .default,
+                                 delegate: Delegate(interceptor: self),
+                                 delegateQueue: nil)
         let task = session.dataTask(with: mutableRequest as URLRequest)
         task.resume()
     }
@@ -153,22 +159,21 @@ final class NetworkInterceptor: URLProtocol {
     override func stopLoading() {
         // Cleanup handled by delegate
     }
-}
 
-extension NetworkInterceptor: URLSessionDataDelegate {
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+    // MARK: Delegate callbacks, forwarded from `Delegate`
+
+    private func received(_ data: Data) {
         responseData.append(data)
         client?.urlProtocol(self, didLoad: data)
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+    private func received(_ response: URLResponse) {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        completionHandler(.allow)
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    private func completed(response: URLResponse?, error: Error?) {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
-        let statusCode = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if let id = entryId {
             Task { @MainActor in
@@ -185,6 +190,33 @@ extension NetworkInterceptor: URLSessionDataDelegate {
             client?.urlProtocol(self, didFailWithError: error)
         } else {
             client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    /// The session delegate for the forwarded request.
+    ///
+    /// It exists only because `URLSessionDelegate` requires `Sendable` and `URLProtocol`'s
+    /// conformance to `Sendable` is unavailable on iOS, so the interceptor cannot be its own
+    /// delegate. Every callback is a straight forward back to the interceptor, which the URL
+    /// loading system keeps alive across the load, so the reference is weak.
+    private final class Delegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+        private weak var interceptor: NetworkInterceptor?
+
+        init(interceptor: NetworkInterceptor) {
+            self.interceptor = interceptor
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            interceptor?.received(data)
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+            interceptor?.received(response)
+            completionHandler(.allow)
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            interceptor?.completed(response: task.response, error: error)
         }
     }
 }

@@ -203,7 +203,7 @@ struct SubjectConsentEvidence: Sendable, Equatable {
 final class ConsentStore {
     static let shared = ConsentStore()
 
-    static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
+    nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
     /// A ceiling, so a misbehaving caller cannot turn the register into a data store. Oldest
     /// *settled* rows go first; a live agreement is never evicted to make room.
     static let capacity = 500

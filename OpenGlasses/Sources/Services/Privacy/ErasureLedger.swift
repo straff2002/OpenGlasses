@@ -74,7 +74,7 @@ final class ErasureLedger {
         protectStorage()
     }
 
-    static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
+    nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
 
     var lastID: Int { entries.map(\.id).max() ?? 0 }
 

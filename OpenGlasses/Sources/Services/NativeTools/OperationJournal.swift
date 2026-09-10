@@ -237,7 +237,7 @@ final class OperationResourceSerializer {
 final class ProtectedOperationJournal: OperationJournal {
     static let shared = ProtectedOperationJournal()
 
-    static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
+    nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
 
     private let storage: OperationJournalStorage
     private let retention: OperationJournalRetention

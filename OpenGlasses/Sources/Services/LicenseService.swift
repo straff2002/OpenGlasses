@@ -194,16 +194,16 @@ final class LicenseService: ObservableObject {
 
     // MARK: - Codable config (shared by sign + verify so the format stays in lockstep)
 
-    /// `nonisolated(unsafe)` because `decode(code:publicKeyBase64:)` runs off the main actor; both
-    /// are configured once here and only read afterwards.
-    nonisolated(unsafe) static let encoder: JSONEncoder = {
+    /// `nonisolated` because `decode(code:publicKeyBase64:)` runs off the main actor; both are
+    /// configured once here and only read afterwards.
+    nonisolated static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = [.sortedKeys]
         return e
     }()
 
-    nonisolated(unsafe) static let decoder: JSONDecoder = {
+    nonisolated static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
