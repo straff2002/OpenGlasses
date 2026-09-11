@@ -11,7 +11,7 @@ import PackageDescription
 //
 // The graph runtime also needs a per-SDK archive and selective registration anchors.
 // Scripts/fetch-mediapipe-frameworks.sh validates holistic-link-anchors.json and generates
-// Frameworks/holistic-linker-flags.rsp. The app applies it plus -ObjC in project.base.yml
+// Frameworks/holistic-linker-flags.xcconfig. The app applies its flags in project.base.yml
 // because SPM cannot express these per-SDK archive paths. Do not force-load the full archive:
 // its OpenFst static initialisers hang before main (issues #304 and #309).
 let package = Package(

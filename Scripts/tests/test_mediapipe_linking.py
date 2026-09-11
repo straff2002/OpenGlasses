@@ -34,8 +34,10 @@ class MediaPipeLinkingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             linking.validate_symbols(self.anchors, self.valid + [self.valid[0].replace("graph.o", "other.o")])
 
-    def test_response_contains_linker_roots_only(self):
-        self.assertEqual(linking.response_text(self.anchors), "-u\n__ZGraph\n-u\n__ZCalculator\n")
+    def test_configuration_contains_explicit_linker_roots(self):
+        config = linking.config_text(self.anchors)
+        self.assertIn("MEDIAPIPE_HOLISTIC_LDFLAGS = -ObjC -Wl,-u,__ZGraph -Wl,-u,__ZCalculator\n", config)
+        self.assertNotIn("@", config)  # ld response-file content is not an Xcode build input.
 
 
 if __name__ == "__main__":

@@ -32,7 +32,10 @@ Some registration variables have local linkage (`b` in `nm`) and cannot satisfy
 The fetch script runs `Scripts/prepare-mediapipe-linking.py` on cache hits as well
 as downloads. It verifies the version and unique symbol-to-object mapping in all
 three architectures (device arm64, simulator arm64 and x86_64), then writes
-`Frameworks/holistic-linker-flags.rsp`. Both Debug and Release consume that file.
+`Frameworks/holistic-linker-flags.xcconfig`. Both Debug and Release consume its
+`MEDIAPIPE_HOLISTIC_LDFLAGS` setting. Xcode tracks configuration changes and relinks
+when the flags change. An ld `@response` file alone is insufficient: incremental
+builds do not notice changes to its contents.
 `-ObjC` retains Tasks API categories, including `NSString`'s `cppString`; otherwise
 the API throws an unrecognised-selector exception before constructing the graph.
 
@@ -50,7 +53,7 @@ python3 Scripts/smoke-mediapipe.py \
 ```
 
 The smoke uses optimisation and dead stripping, consumes the production linker
-response file, rejects a link map containing `fst_types.o` or `FstRegisterer`, and
+configuration, rejects a link map containing `fst_types.o` or `FstRegisterer`, and
 requires three video-mode inferences with 33 finite pose landmarks. It records
 the face and hand counts too. The CI test job downloads checksum-pinned public
 MediaPipe fixtures and runs this test before the app's unit suite.

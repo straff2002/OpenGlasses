@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile and run the holistic graph with Release-style linking on a booted iOS simulator.
 
-Uses the same generated linker response file as OpenGlasses. Supply a real model
+Uses the same generated linker configuration as OpenGlasses. Supply a real model
 and a photograph with a visible person: accepting blank frames is not a pass.
 The model and photograph are test inputs, never copied into the shipping app.
 """
@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 import platform
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -28,9 +29,14 @@ def main():
         if not path.is_file():
             parser.error(f"Test input does not exist: {path}")
     frameworks = ROOT / "Vendor/MediaPipeTasks/Frameworks"
-    response = frameworks / "holistic-linker-flags.rsp"
-    if not response.is_file():
+    config = frameworks / "holistic-linker-flags.xcconfig"
+    if not config.is_file():
         parser.error("Run Scripts/fetch-mediapipe-frameworks.sh first")
+    settings = [line.partition("=")[2].strip() for line in config.read_text().splitlines()
+                if line.startswith("MEDIAPIPE_HOLISTIC_LDFLAGS =")]
+    if len(settings) != 1:
+        parser.error("Invalid generated MediaPipe linker configuration")
+    linker_flags = shlex.split(settings[0])
     output = (args.output or Path(tempfile.mkdtemp(prefix="mediapipe-smoke-"))).resolve()
     output.mkdir(parents=True, exist_ok=True)
     arch = platform.machine()
@@ -38,7 +44,7 @@ def main():
     command = ["xcrun", "clang", "-target", f"{arch}-apple-ios26.0-simulator", "-isysroot", sdk,
                "-fobjc-arc", "-fmodules", f"-fmodules-cache-path={output / 'modules'}", "-O2",
                str(ROOT / "Scripts/mediapipe-smoke/main.m"), "-o", str(output / "smoke"),
-               "-Wl,-dead_strip", f"-Wl,-map,{output / 'link.map'}", "-ObjC", f"-Wl,@{response}"]
+               "-Wl,-dead_strip", f"-Wl,-map,{output / 'link.map'}"] + linker_flags
     for name in ["MediaPipeTasksVision", "MediaPipeTasksCommon"]:
         command += ["-F", str(frameworks / f"{name}.xcframework/ios-arm64_x86_64-simulator"), "-framework", name]
     for name in ["Foundation", "UIKit", "Accelerate", "AudioToolbox", "AVFoundation", "CoreMedia",
