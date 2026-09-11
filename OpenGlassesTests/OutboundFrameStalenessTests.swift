@@ -125,6 +125,27 @@ final class OutboundFrameStalenessTests: XCTestCase {
         return (filter, source, relay)
     }
 
+    /// Wait until every frame sent so far has been published or dropped. The detector and
+    /// compositor run on the relay's background queue, so a fixed sleep races them — on a loaded
+    /// CI runner the last pending frame can still be in flight when the sleep ends. A requeueing
+    /// bug never goes idle, so it fails here on the deadline rather than passing by accident.
+    @MainActor
+    private func waitUntilIdle(_ relay: OutboundFrameRelay,
+                               timeout: TimeInterval = 5,
+                               file: StaticString = #filePath,
+                               line: UInt = #line) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !relay.isIdle {
+            guard Date() < deadline else {
+                XCTFail("relay still busy after \(timeout)s — a frame never finished", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    /// Give anything that might still be scheduled a chance to run. Only meaningful *after*
+    /// `waitUntilIdle`, as a check that the pipeline stays quiet — never as the wait itself.
     private func settle() async {
         for _ in 0..<6 { await Task.yield() }
         try? await Task.sleep(nanoseconds: 30_000_000)
@@ -146,10 +167,10 @@ final class OutboundFrameStalenessTests: XCTestCase {
         let token = relay.publisher.sink { received.append($0) }
 
         source.send(makeImage())
-        await settle()
+        await waitUntilIdle(relay)
         clock.set(0.4)
         source.send(makeImage())
-        await settle()
+        await waitUntilIdle(relay)
 
         XCTAssertEqual(received.count, 2)
         XCTAssertTrue(received.allSatisfy { $0 === masked }, "both frames left masked")
@@ -173,16 +194,16 @@ final class OutboundFrameStalenessTests: XCTestCase {
         let token = relay.publisher.sink { received.append($0) }
 
         source.send(makeImage())
-        await settle()
+        await waitUntilIdle(relay)
         clock.set(0.6)                       // past the ceiling, and no detection is due
         source.send(makeImage())
-        await settle()
+        await waitUntilIdle(relay)
 
         XCTAssertEqual(received.count, 1, "the stale frame is dropped, not published")
         XCTAssertEqual(relay.privacyDroppedFrameCount, 1)
 
         source.send(makeImage())             // the cache was cleared, so this one re-detects
-        await settle()
+        await waitUntilIdle(relay)
         XCTAssertEqual(detections.count, 2)
         XCTAssertEqual(received.count, 2)
         XCTAssertTrue(received.allSatisfy { $0 === masked })
@@ -203,12 +224,12 @@ final class OutboundFrameStalenessTests: XCTestCase {
         let token = relay.publisher.sink { received.append($0) }
 
         source.send(makeImage())
-        await settle()
+        await waitUntilIdle(relay)
         clock.set(5)                          // the cached detection is now hopelessly old
 
         for _ in 0..<10 {
             source.send(makeImage())
-            await settle()
+            await waitUntilIdle(relay)
         }
 
         XCTAssertTrue(received.allSatisfy { $0 === masked }, """
@@ -237,21 +258,23 @@ final class OutboundFrameStalenessTests: XCTestCase {
         let token = relay.publisher.sink { received.append($0) }
 
         for _ in 0..<12 { source.send(makeImage()) }
-        await settle()
-        await settle()
+        // The coalescer holds one in flight and one pending, so a backlog cannot form — a relay
+        // that requeued would never go idle and fails here on the deadline.
+        await waitUntilIdle(relay)
 
         XCTAssertTrue(received.isEmpty, """
             Every mask was obsolete by the time it was ready, so nothing was publishable. \
             Publishing here would mean sending pixels masked against a scene that had moved on.
             """)
         XCTAssertGreaterThan(relay.privacyDroppedFrameCount, 0)
-        // The coalescer holds one in flight and one pending; a backlog would show up as a drop
-        // count that keeps climbing after the source stops sending.
-        let settled = relay.droppedFrameCount
+        // Idle means every frame has been dropped; none may be counted twice (requeueing) or
+        // left uncounted (still in the pipeline).
+        XCTAssertEqual(relay.droppedFrameCount, 12,
+                       "every frame is accounted for exactly once — more would mean requeueing")
+        // And once idle it stays idle: the drop count must not climb after the source stops.
         await settle()
-        XCTAssertEqual(relay.droppedFrameCount, settled, "the pipeline must go quiet, not chew a backlog")
-        XCTAssertLessThanOrEqual(relay.droppedFrameCount, 12,
-                                 "no frame may be counted more than once — that would mean requeueing")
+        XCTAssertTrue(relay.isIdle)
+        XCTAssertEqual(relay.droppedFrameCount, 12, "the pipeline must go quiet, not chew a backlog")
         withExtendedLifetime(token) {}
     }
 
