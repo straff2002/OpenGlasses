@@ -40,12 +40,42 @@ enum OfflineModelOffer {
     enum Verdict: Equatable {
         /// Offer it. The size is stated before anything starts downloading.
         case offer(modelId: String, sizeBytes: Int64)
+        /// This phone is under the primary model's floor, but the catalog has something that does
+        /// fit. Offer that instead, and say plainly that it is the smaller one — a 6 GB iPhone is
+        /// not a device with no on-device option, and telling it so was simply untrue.
+        case offerSmaller(modelId: String, sizeBytes: Int64, primaryRequiredRAMGB: Double)
         /// Already on disk from a previous run — there is nothing to download.
         case alreadyDownloaded(modelId: String)
         /// The device could run it, but there is not room for it right now.
         case notEnoughStorage(neededBytes: Int64, freeBytes: Int64)
-        /// This phone is below the bar. Say so plainly and point at the cloud providers.
+        /// Nothing in the catalog runs on this phone — not the primary, not the smallest entry.
+        /// Say so plainly and point at the cloud providers.
         case deviceTooSmall(requiredRAMGB: Double)
+    }
+
+    /// A catalog entry reduced to the three facts this decision needs. Keeps the fallback search
+    /// a value computation, so "what would a 6 GB iPhone be offered?" is a headless question.
+    struct Candidate: Equatable {
+        var modelId: String
+        /// Minimum device RAM (GB) to run it. 0 = no floor.
+        var minimumRAMGB: Double
+        var sizeBytes: Int64
+
+        init(modelId: String, minimumRAMGB: Double, sizeBytes: Int64) {
+            self.modelId = modelId
+            self.minimumRAMGB = minimumRAMGB
+            self.sizeBytes = sizeBytes
+        }
+    }
+
+    /// The catalog in picker order, as candidates. The order is the contract: the fallback is the
+    /// first entry that fits, so the list stays the one place the preference is expressed.
+    static var catalogCandidates: [Candidate] {
+        LocalModelCatalog.entries.map {
+            Candidate(modelId: $0.id.rawValue,
+                      minimumRAMGB: $0.minimumRAMGB,
+                      sizeBytes: LocalLLMService.expectedDownloadBytes(for: $0.id.rawValue) ?? 0)
+        }
     }
 
     /// Everything the decision depends on, as values.
@@ -57,35 +87,81 @@ enum OfflineModelOffer {
         /// Free disk usable for the download, or nil when it can't be read (then storage is not
         /// used as a reason to refuse — an unreadable volume is not a small one).
         var freeDiskBytes: Int64?
-        /// Stated download size, or nil for an id the catalog doesn't know.
+        /// Stated download size of the primary model, or nil for an id the catalog doesn't know.
         var expectedSizeBytes: Int64?
+        /// What the fallback may be drawn from, in preference order. Defaults to the shipping
+        /// catalog; a test supplies its own to construct devices the real catalog cannot.
+        var catalog: [Candidate]
 
         init(marketingRAMGB: Double,
              downloadedModelIds: [String],
              freeDiskBytes: Int64?,
-             expectedSizeBytes: Int64?) {
+             expectedSizeBytes: Int64?,
+             catalog: [Candidate] = OfflineModelOffer.catalogCandidates) {
             self.marketingRAMGB = marketingRAMGB
             self.downloadedModelIds = downloadedModelIds
             self.freeDiskBytes = freeDiskBytes
             self.expectedSizeBytes = expectedSizeBytes
+            self.catalog = catalog
         }
     }
 
     /// Decide, in the order the reasons matter: a model already here beats every other answer,
     /// then the capability gate, then room to put it.
+    ///
+    /// The gate no longer ends the conversation. Only the *primary* model carries an 8 GB floor;
+    /// most of the catalog carries none at all, and a phone under the floor was being told it
+    /// could not run a model on-device when several would have run there fine. So a device below
+    /// the primary's bar falls through to the first catalog entry it can actually run, with its
+    /// own size and its own storage check — and `deviceTooSmall` is kept for the only case that
+    /// deserves it, a device nothing in the catalog fits.
     static func verdict(_ inputs: Inputs, modelId: String) -> Verdict {
         if inputs.downloadedModelIds.contains(modelId) {
             return .alreadyDownloaded(modelId: modelId)
         }
         let required = minimumRAMGB
         guard inputs.marketingRAMGB >= required else {
-            return .deviceTooSmall(requiredRAMGB: required)
+            return smallerDeviceVerdict(inputs, excluding: modelId, primaryRequiredRAMGB: required)
         }
         let size = inputs.expectedSizeBytes ?? 0
-        if let free = inputs.freeDiskBytes, free < size + storageMarginBytes {
-            return .notEnoughStorage(neededBytes: size + storageMarginBytes, freeBytes: free)
-        }
+        if let shortfall = storageShortfall(inputs, sizeBytes: size) { return shortfall }
         return .offer(modelId: modelId, sizeBytes: size)
+    }
+
+    /// What to offer a phone under the primary's floor. Everything the primary path checks is
+    /// checked again here against the fallback's own numbers — a smaller model is still a download
+    /// that needs room, and one already on disk is still nothing to download.
+    private static func smallerDeviceVerdict(_ inputs: Inputs,
+                                             excluding primaryId: String,
+                                             primaryRequiredRAMGB: Double) -> Verdict {
+        let fitting = inputs.catalog.filter {
+            $0.modelId != primaryId && fits($0.minimumRAMGB, marketingRAMGB: inputs.marketingRAMGB)
+        }
+        // A fitting model already on disk wins, wherever it sits in the order — there is nothing
+        // to download, and offering a different one would be asking for a second copy.
+        if let here = fitting.first(where: { inputs.downloadedModelIds.contains($0.modelId) }) {
+            return .alreadyDownloaded(modelId: here.modelId)
+        }
+        guard let fallback = fitting.first else {
+            return .deviceTooSmall(requiredRAMGB: primaryRequiredRAMGB)
+        }
+        if let shortfall = storageShortfall(inputs, sizeBytes: fallback.sizeBytes) { return shortfall }
+        return .offerSmaller(modelId: fallback.modelId,
+                             sizeBytes: fallback.sizeBytes,
+                             primaryRequiredRAMGB: primaryRequiredRAMGB)
+    }
+
+    /// One RAM rule for the whole app, expressed against the nominal figure rather than the
+    /// reported one. See `LocalLLMService.deviceMeetsRAMFloor(_:marketingRAMGB:)`.
+    private static func fits(_ minimumRAMGB: Double, marketingRAMGB: Double) -> Bool {
+        LocalLLMService.deviceMeetsRAMFloor(minimumRAMGB, marketingRAMGB: marketingRAMGB)
+    }
+
+    /// Room for the download plus the margin, or the refusal that says both numbers.
+    private static func storageShortfall(_ inputs: Inputs, sizeBytes: Int64) -> Verdict? {
+        let needed = sizeBytes + storageMarginBytes
+        guard let free = inputs.freeDiskBytes, free < needed else { return nil }
+        return .notEnoughStorage(neededBytes: needed, freeBytes: free)
     }
 
     /// Free disk usable for the download. `importantUsage` rather than raw free space, so iOS's
@@ -137,12 +213,24 @@ enum OfflineModelOffer {
     static let alreadyDownloadedDetail =
         "An offline model is already on this iPhone, so the assistant works with no network."
 
+    /// The smaller model's title. Distinct from the primary's, because the one thing this row
+    /// must not do is let a user believe they are getting the full-size model.
+    static let smallerTitle = "Download a smaller offline model"
+
+    /// The honest version of what used to be a flat refusal: name the memory the full-size model
+    /// wants, say this iPhone gets a smaller one instead, and state what that one costs to fetch.
+    static func offerSmallerDetail(primaryRequiredRAMGB: Double, sizeBytes: Int64) -> String {
+        "The full-size model needs \(Int(primaryRequiredRAMGB)) GB of memory, which is more than "
+        + "this iPhone has. A smaller model runs here instead — a \(formattedSize(sizeBytes)) "
+        + "download, and the assistant still answers on-device with no network and no account."
+    }
+
     /// The refusal. It names the device's limit and where to go instead, because a dead end with
     /// no route out is how a first run gets abandoned.
     static func deviceTooSmallDetail(requiredRAMGB: Double) -> String {
-        "This iPhone has less than \(Int(requiredRAMGB)) GB of memory, which isn't enough to run a "
-        + "model on-device. Choose one of the providers instead — those run in the cloud and work "
-        + "on any iPhone."
+        "This iPhone doesn't have enough memory for any of the on-device models — the smallest "
+        + "one still needs more than it has, and the full-size model needs \(Int(requiredRAMGB)) GB. "
+        + "Choose one of the providers instead — those run in the cloud and work on any iPhone."
     }
 
     static func notEnoughStorageDetail(neededBytes: Int64, freeBytes: Int64) -> String {

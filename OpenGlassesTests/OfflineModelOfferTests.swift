@@ -9,19 +9,32 @@ import XCTest
 /// told before a multi-gigabyte download starts is a promise, and on a device with no Apple
 /// Intelligence it is a different promise from the one on a device that has it.
 ///
+/// The third is the fallback: only the primary model carries an 8 GB floor, and a phone under it
+/// was being told no model runs on-device at all — untrue on any iPhone that can hold SmolVLM2.
+/// The tests below pin which model such a phone is offered, and that the fallback is subject to
+/// every check the primary is.
+///
 /// Nothing here touches the network, the filesystem or a real download: every input is a value.
 final class OfflineModelOfferTests: XCTestCase {
 
     private let modelId = "mlx-community/gemma-4-e2b-it-4bit"
     private let sizeBytes: Int64 = 3_865_470_566   // ~3.6 GB
 
+    /// What a phone under the primary's floor should be offered: the first catalog entry after
+    /// the primary whose RAM floor it clears.
+    private let fallbackId = "mlx-community/SmolVLM2-2.2B-Instruct-mlx"
+    private let fallbackSize: Int64 = 1_610_612_736   // 1.5 GB
+
     private func inputs(ramGB: Double,
                         downloaded: [String] = [],
-                        freeDisk: Int64? = 64 * 1_073_741_824) -> OfflineModelOffer.Inputs {
+                        freeDisk: Int64? = 64 * 1_073_741_824,
+                        catalog: [OfflineModelOffer.Candidate] = OfflineModelOffer.catalogCandidates)
+        -> OfflineModelOffer.Inputs {
         OfflineModelOffer.Inputs(marketingRAMGB: ramGB,
                                  downloadedModelIds: downloaded,
                                  freeDiskBytes: freeDisk,
-                                 expectedSizeBytes: sizeBytes)
+                                 expectedSizeBytes: sizeBytes,
+                                 catalog: catalog)
     }
 
     private func verdict(_ inputs: OfflineModelOffer.Inputs) -> OfflineModelOffer.Verdict {
@@ -40,13 +53,88 @@ final class OfflineModelOfferTests: XCTestCase {
         XCTAssertEqual(catalogued?.minimumRAMGB, OfflineModelOffer.minimumRAMGB)
     }
 
-    /// A device below the bar is not offered the download at all — the plan's whole point. It is
-    /// told why, and pointed at what does work there.
-    func testASmallDeviceIsNotOfferedTheDownload() {
+    /// A device below the bar is not offered the *primary* model — but it is not left with
+    /// nothing either. It gets the first catalog entry that actually runs there, and is told the
+    /// full-size one needs more memory than it has.
+    func testASmallDeviceIsOfferedTheSmallerModelInstead() {
         XCTAssertEqual(verdict(inputs(ramGB: 6)),
-                       .deviceTooSmall(requiredRAMGB: OfflineModelOffer.minimumRAMGB))
+                       .offerSmaller(modelId: fallbackId,
+                                     sizeBytes: fallbackSize,
+                                     primaryRequiredRAMGB: OfflineModelOffer.minimumRAMGB))
         XCTAssertEqual(verdict(inputs(ramGB: 4)),
+                       .offerSmaller(modelId: fallbackId,
+                                     sizeBytes: fallbackSize,
+                                     primaryRequiredRAMGB: OfflineModelOffer.minimumRAMGB))
+    }
+
+    /// The fallback is the first catalog entry, in picker order, that fits — not the smallest, not
+    /// an arbitrary one. Excluding the primary and the entry with the even higher floor, that is
+    /// SmolVLM2 2.2B on a 6 GB iPhone.
+    @MainActor
+    func testTheFallbackIsTheFirstCatalogEntryThatFits() {
+        let expected = LocalModelCatalog.entries.first {
+            $0.id.rawValue != modelId && $0.minimumRAMGB <= 6
+        }
+        XCTAssertEqual(expected?.id.rawValue, fallbackId)
+        XCTAssertEqual(fallbackId, "mlx-community/SmolVLM2-2.2B-Instruct-mlx")
+        XCTAssertEqual(LocalLLMService.expectedDownloadBytes(for: fallbackId), fallbackSize)
+    }
+
+    /// `deviceTooSmall` survives, for the one device that deserves it: nothing in the catalog
+    /// fits. Constructed by handing the pure decision a catalog whose every entry has a floor
+    /// above the device, which the shipping catalog (full of floorless entries) cannot express.
+    func testADeviceBelowEveryFloorIsStillToldPlainly() {
+        let unreachable = [
+            OfflineModelOffer.Candidate(modelId: "big/one", minimumRAMGB: 12, sizeBytes: 1),
+            OfflineModelOffer.Candidate(modelId: "big/two", minimumRAMGB: 16, sizeBytes: 1),
+        ]
+        XCTAssertEqual(verdict(inputs(ramGB: 6, catalog: unreachable)),
                        .deviceTooSmall(requiredRAMGB: OfflineModelOffer.minimumRAMGB))
+    }
+
+    /// The primary is never offered as its own fallback, however the catalog is ordered.
+    func testThePrimaryIsNeverOfferedAsTheFallback() {
+        let onlyPrimary = [
+            OfflineModelOffer.Candidate(modelId: modelId, minimumRAMGB: 0, sizeBytes: sizeBytes)
+        ]
+        XCTAssertEqual(verdict(inputs(ramGB: 6, catalog: onlyPrimary)),
+                       .deviceTooSmall(requiredRAMGB: OfflineModelOffer.minimumRAMGB))
+    }
+
+    // MARK: - The fallback is subject to every check the primary is
+
+    /// A fallback already on disk is not downloaded again — and the size checked against disk is
+    /// the fallback's own, not the 3.6 GB primary's, which would refuse a 1.5 GB download on a
+    /// phone with room for it.
+    func testAFallbackAlreadyOnDiskIsNotOfferedAgain() {
+        XCTAssertEqual(verdict(inputs(ramGB: 6, downloaded: [fallbackId])),
+                       .alreadyDownloaded(modelId: fallbackId))
+    }
+
+    /// Any fitting model on disk counts, wherever it sits in the order — offering a different one
+    /// would be asking a 6 GB phone for a second copy it does not need.
+    func testAFittingModelFurtherDownTheListCountsAsAlreadyDownloaded() {
+        let qwen = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+        XCTAssertEqual(verdict(inputs(ramGB: 6, downloaded: [qwen])),
+                       .alreadyDownloaded(modelId: qwen))
+    }
+
+    /// Storage is measured against what is actually being fetched. Free space between the
+    /// fallback's requirement and the primary's is enough here and would not have been if the
+    /// primary's size leaked into this branch.
+    func testTheFallbackStorageCheckUsesTheFallbacksOwnSize() {
+        let tooLittle = fallbackSize + OfflineModelOffer.storageMarginBytes - 1
+        XCTAssertEqual(verdict(inputs(ramGB: 6, freeDisk: tooLittle)),
+                       .notEnoughStorage(neededBytes: fallbackSize + OfflineModelOffer.storageMarginBytes,
+                                         freeBytes: tooLittle))
+
+        // Exactly enough for the fallback — far short of the primary's 3.6 GB — is still a yes.
+        let justEnough = fallbackSize + OfflineModelOffer.storageMarginBytes
+        XCTAssertLessThan(justEnough, sizeBytes + OfflineModelOffer.storageMarginBytes)
+        XCTAssertEqual(verdict(inputs(ramGB: 6, freeDisk: justEnough)),
+                       .offerSmaller(modelId: fallbackId,
+                                     sizeBytes: fallbackSize,
+                                     primaryRequiredRAMGB: OfflineModelOffer.minimumRAMGB))
     }
 
     /// Exactly at the bar counts as in. The marketing figure is a ceiling of the reported one, so
@@ -92,10 +180,13 @@ final class OfflineModelOfferTests: XCTestCase {
         }
     }
 
-    /// The capability gate is checked before storage: a phone that cannot run the model is told
+    /// The capability gate is checked before storage: a phone that cannot run *any* model is told
     /// that, not sent to free up space for something that would never work.
     func testTheDeviceReasonWinsOverTheStorageReason() {
-        XCTAssertEqual(verdict(inputs(ramGB: 4, freeDisk: 0)),
+        let unreachable = [
+            OfflineModelOffer.Candidate(modelId: "big/one", minimumRAMGB: 12, sizeBytes: 1)
+        ]
+        XCTAssertEqual(verdict(inputs(ramGB: 4, freeDisk: 0, catalog: unreachable)),
                        .deviceTooSmall(requiredRAMGB: OfflineModelOffer.minimumRAMGB))
     }
 
@@ -150,6 +241,54 @@ final class OfflineModelOfferTests: XCTestCase {
         XCTAssertTrue(detail.contains("8 GB"), detail)
         XCTAssertTrue(detail.lowercased().contains("cloud"),
                       "The refusal has to say what does work on this phone: \(detail)")
+        // It is now reached only when the *smallest* model is out of reach too, and must say so
+        // rather than implying the 8 GB number alone is what excluded this phone.
+        XCTAssertTrue(detail.lowercased().contains("smallest"),
+                      "The refusal must say nothing in the catalog fits: \(detail)")
+    }
+
+    /// The smaller offer's copy is honest in all three directions: the memory the full-size model
+    /// wanted, that this one is smaller, and what it costs to download.
+    func testTheSmallerOfferStatesTheReasonAndTheSize() {
+        let detail = OfflineModelOffer.offerSmallerDetail(primaryRequiredRAMGB: 8,
+                                                          sizeBytes: fallbackSize)
+        XCTAssertTrue(detail.contains("8 GB"),
+                      "The full-size model's requirement is not named: \(detail)")
+        XCTAssertTrue(detail.contains("1.5 GB"),
+                      "The smaller download's size is not stated: \(detail)")
+        XCTAssertTrue(detail.lowercased().contains("smaller"),
+                      "The user must not think this is the full-size model: \(detail)")
+        XCTAssertFalse(detail.lowercased().contains("isn't enough to run a model on-device"),
+                       "The old dead-end claim must not survive: \(detail)")
+    }
+
+    /// The smaller row's title cannot read as the full-size one's, or the whole point is lost.
+    func testTheSmallerTitleIsDistinct() {
+        XCTAssertTrue(OfflineModelOffer.smallerTitle.lowercased().contains("smaller"),
+                      OfflineModelOffer.smallerTitle)
+        for available in [true, false] {
+            XCTAssertNotEqual(OfflineModelOffer.smallerTitle,
+                              OfflineModelOffer.title(appleIntelligenceAvailable: available))
+        }
+    }
+
+    // MARK: - The shared RAM rule
+
+    /// The rounding is the whole reason this helper exists. An 8 GB iPhone reports about 7.5 GB,
+    /// and the raw byte comparison the model manager used to do hid the Download button on
+    /// precisely the hardware an 8 GB floor was written to include.
+    func testTheRAMFloorIsMeasuredAgainstTheNominalSize() {
+        let eightGB = (7.5 as Double).rounded(.up)
+        XCTAssertTrue(LocalLLMService.deviceMeetsRAMFloor(8, marketingRAMGB: eightGB),
+                      "An 8 GB iPhone (reports ~7.5 GB) was excluded by its own tier's floor")
+
+        let sixGB = (5.9 as Double).rounded(.up)
+        XCTAssertFalse(LocalLLMService.deviceMeetsRAMFloor(8, marketingRAMGB: sixGB),
+                       "A 6 GB iPhone was let past an 8 GB floor")
+
+        // A floor of zero is no restriction at all, on any device.
+        XCTAssertTrue(LocalLLMService.deviceMeetsRAMFloor(0, marketingRAMGB: sixGB))
+        XCTAssertTrue(LocalLLMService.deviceMeetsRAMFloor(0, marketingRAMGB: 1))
     }
 
     /// The honest bit about leaving mid-download: it keeps going, and it resumes.

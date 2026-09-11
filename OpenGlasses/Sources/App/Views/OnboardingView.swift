@@ -354,7 +354,7 @@ struct OnboardingView: View {
                         providerRow(
                             .local,
                             name: "Start without an API key",
-                            model: LLMProvider.local.defaultModel,
+                            model: offeredLocalModelId,
                             detail: "Downloads a model to this iPhone. No account, works offline.",
                             icon: "iphone"
                         )
@@ -692,8 +692,20 @@ struct OnboardingView: View {
     private var offlineModelIsOfferable: Bool {
         guard let offlineOffer else { return false }
         switch offlineOffer {
-        case .offer, .alreadyDownloaded: return true
+        case .offer, .offerSmaller, .alreadyDownloaded: return true
         case .notEnoughStorage, .deviceTooSmall: return false
+        }
+    }
+
+    /// The model the keyless card would actually configure on this device: the primary where it
+    /// runs, the smaller fallback where it doesn't. The card must never name one model and
+    /// activate another.
+    private var offeredLocalModelId: String {
+        switch offlineOffer {
+        case .offer(let id, _), .offerSmaller(let id, _, _), .alreadyDownloaded(let id):
+            return id
+        case .notEnoughStorage, .deviceTooSmall, .none:
+            return LLMProvider.local.defaultModel
         }
     }
 
@@ -759,18 +771,25 @@ struct OnboardingView: View {
             .frame(minHeight: rowMinHeight)
 
         case .offer(let modelId, let sizeBytes):
-            offlineDownloadRow(modelId: modelId, sizeBytes: sizeBytes)
+            offlineDownloadRow(modelId: modelId, sizeBytes: sizeBytes, isSmaller: false)
+
+        case .offerSmaller(let modelId, let sizeBytes, _):
+            offlineDownloadRow(modelId: modelId, sizeBytes: sizeBytes, isSmaller: true)
         }
     }
 
     @ViewBuilder
-    private func offlineDownloadRow(modelId: String, sizeBytes: Int64) -> some View {
+    private func offlineDownloadRow(modelId: String,
+                                    sizeBytes: Int64,
+                                    isSmaller: Bool) -> some View {
         HStack(spacing: OGMetrics.rowSpacing) {
             OGIconTile(systemName: "arrow.down.circle")
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(OfflineModelOffer.title(
-                    appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable))
+                Text(isSmaller
+                     ? OfflineModelOffer.smallerTitle
+                     : OfflineModelOffer.title(
+                        appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable))
                     .font(.body)
                 // The size is stated here, beside the button, before anything is downloaded —
                 // not discovered halfway through a multi-gigabyte pull on cellular.
@@ -791,7 +810,9 @@ struct OnboardingView: View {
             } else {
                 Button("Download") { downloadOfflineModel(modelId) }
                     .buttonStyle(.ogProminentCompact)
-                    .accessibilityLabel("Download the offline model, \(OfflineModelOffer.formattedSize(sizeBytes))")
+                    .accessibilityLabel(isSmaller
+                        ? "Download a smaller offline model, \(OfflineModelOffer.formattedSize(sizeBytes))"
+                        : "Download the offline model, \(OfflineModelOffer.formattedSize(sizeBytes))")
             }
         }
         .frame(minHeight: rowMinHeight)
@@ -809,6 +830,12 @@ struct OnboardingView: View {
                  : OfflineModelOffer.detail(
                     appleIntelligenceAvailable: FirstRunDefaults.appleIntelligenceAvailable,
                     sizeBytes: sizeBytes))
+        case .offerSmaller(_, let sizeBytes, let primaryRequiredRAMGB):
+            Text(isDownloadingOfflineModel
+                 ? OfflineModelOffer.inProgressDetail
+                 : OfflineModelOffer.offerSmallerDetail(
+                    primaryRequiredRAMGB: primaryRequiredRAMGB,
+                    sizeBytes: sizeBytes))
         case .alreadyDownloaded, .notEnoughStorage, .deviceTooSmall:
             EmptyView()
         }
@@ -818,10 +845,12 @@ struct OnboardingView: View {
         let verdict = OfflineModelOffer.verdict(OfflineModelOffer.currentInputs(),
                                                 modelId: OfflineModelOffer.modelId)
         offlineOffer = verdict
-        // A model already on disk is the one this path should configure, so the id is settled
-        // before the user ever reaches Continue.
-        if case .alreadyDownloaded(let modelId) = verdict, selectedProvider == .local {
-            selectedModelId = modelId
+        // The id this path should configure is settled before the user ever reaches Continue —
+        // a model already on disk, or the one the offer would fetch. On a phone under the
+        // primary's RAM floor that is the smaller fallback, and defaulting to the primary there
+        // would activate a model the device cannot load.
+        if selectedProvider == .local {
+            selectedModelId = offeredLocalModelId
         }
     }
 
@@ -1502,7 +1531,10 @@ struct OnboardingView: View {
     private func saveModel() {
         guard let provider = selectedProvider else { return }
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
-        let chosenModel = selectedModelId ?? provider.defaultModel
+        // For the local provider the default is whatever this device was actually offered — on a
+        // phone below the primary's RAM floor the provider default is a model it cannot run.
+        let chosenModel = selectedModelId
+            ?? (provider == .local ? offeredLocalModelId : provider.defaultModel)
 
         let model = ModelConfig(
             id: UUID().uuidString,

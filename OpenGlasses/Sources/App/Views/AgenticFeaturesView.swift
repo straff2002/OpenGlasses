@@ -132,7 +132,7 @@ struct AgenticFeaturesView: View {
                             HStack {
                                 Label(model.name, systemImage: "memorychip")
                                 Spacer()
-                                Text("Needs 8 GB RAM")
+                                Text("Needs \(Int(model.minimumRAMGB)) GB RAM")
                                     .font(.caption)
                                     .foregroundStyle(OGTheme.warnLabel)
                             }
