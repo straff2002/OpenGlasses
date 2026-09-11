@@ -151,7 +151,20 @@ struct FieldAssistSettingsView: View {
                 } header: {
                     Text("Expert Stream Transport")
                 } footer: {
-                    Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
+                    Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer through a relay you run. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
+                }
+
+                if Config.expertStreamTransport == .mjpeg {
+                    Section {
+                        webrtcField("Relay URL", "wss://relay.example/ws",
+                                    { Config.webRTCSignalingURL }, { Config.setWebRTCSignalingURL($0) })
+                        webrtcField("Viewer link base", "https://relay.example/view",
+                                    { Config.webRTCViewerBaseURL }, { Config.setWebRTCViewerBaseURL($0) })
+                    } header: {
+                        Text("MJPEG Relay")
+                    } footer: {
+                        Text("Required for MJPEG. The app ships with no relay, so run your own and enter it here — video goes only to that server. The relay URL is the WebSocket the phone pushes JPEG frames to; the viewer link base is the page the expert opens, with the room code added to it.")
+                    }
                 }
 
                 if Config.expertStreamTransport == .meetingLink {
