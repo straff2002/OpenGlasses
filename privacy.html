@@ -282,7 +282,7 @@
   <li>API keys and sign-in tokens are stored in the iOS Keychain, on this device only. They are not synced to iCloud or included in backups. Each key is sent only to the service it belongs to.</li>
   <li>App data is protected by iOS Data Protection. The most sensitive stores (conversations, the face database, clinical data) use the strongest protection class, which makes them unreadable while the phone is locked.</li>
   <li>"Encrypt Conversations" adds ChaCha20-Poly1305 encryption to saved conversations. The key is held by the Keychain, needs Face ID, Touch ID or your passcode to unlock, and the conversations lock again when the app goes to the background.</li>
-  <li>Connections to cloud services use HTTPS. Unencrypted connections are only allowed to addresses on your own network.</li>
+  <li>Connections to cloud services use HTTPS. Plain, unencrypted HTTP is only allowed to addresses on your own local network and to your own Tailscale network (ts.net addresses), where Tailscale encrypts the traffic between your devices.</li>
   <li>You can lock the app's Settings behind Face ID or your passcode.</li>
 </ul>
 <p>No system is perfectly secure. If you find a security problem, please report it privately to the contact address below rather than in public.</p>
