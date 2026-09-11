@@ -1063,13 +1063,10 @@ struct RecommendedModel: Identifiable {
         self.minimumRAMGB = minimumRAMGB
     }
 
-    /// Whether the current device has enough RAM to run this model. Compared against the
-    /// *marketing* RAM size, not raw `physicalMemory`: a 12 GB device reports ~11.5 GB
-    /// (carve-outs), so a raw `>= 12` check blocked exactly the hardware it was meant to
-    /// allow.
+    /// Whether the current device has enough RAM to run this model. One rule, one place —
+    /// see `LocalLLMService.deviceMeetsRAMFloor(_:)`.
     var isCompatibleWithDevice: Bool {
-        guard minimumRAMGB > 0 else { return true }
-        return LocalLLMService.marketingRAMGB >= minimumRAMGB
+        LocalLLMService.deviceMeetsRAMFloor(minimumRAMGB)
     }
 }
 
@@ -1086,6 +1083,26 @@ extension LocalLLMService {
     /// device into a larger tier.
     nonisolated static var marketingRAMGB: Double {
         deviceRAMGB.rounded(.up)
+    }
+
+    /// Whether a device holding `marketingRAMGB` nominal gigabytes clears a model's RAM floor.
+    ///
+    /// The rounding is the entire point, and it is why every RAM gate in the app has to come
+    /// through here rather than comparing `ProcessInfo.physicalMemory` to `floor * 1_073_741_824`
+    /// on its own. Reported physical memory always sits a little under the number on the box —
+    /// an 8 GB iPhone reports about 7.5 GB — so a raw byte comparison excludes precisely the
+    /// hardware an 8 GB floor was written to include. A floor of 0 means no restriction.
+    ///
+    /// Takes the RAM as a parameter so the rule is testable without the tester's own phone;
+    /// `deviceMeetsRAMFloor(_:)` is the production entry point.
+    nonisolated static func deviceMeetsRAMFloor(_ minimumRAMGB: Double,
+                                                marketingRAMGB: Double) -> Bool {
+        minimumRAMGB <= 0 || marketingRAMGB >= minimumRAMGB
+    }
+
+    /// This device against a model's RAM floor.
+    nonisolated static func deviceMeetsRAMFloor(_ minimumRAMGB: Double) -> Bool {
+        deviceMeetsRAMFloor(minimumRAMGB, marketingRAMGB: marketingRAMGB)
     }
 }
 

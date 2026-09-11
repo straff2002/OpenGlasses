@@ -376,8 +376,10 @@ struct LocalModelManagerView: View {
 
     @ViewBuilder
     private func catalogRow(entry: LocalModelCatalog.Entry) -> some View {
-        let compatible = ProcessInfo.processInfo.physicalMemory
-            >= UInt64(entry.minimumRAMGB * 1_073_741_824)
+        // Against the *nominal* RAM size, not raw `physicalMemory`: an 8 GB iPhone reports about
+        // 7.5 GB, so the raw byte comparison this used to do hid the Download button on exactly
+        // the phones an 8 GB floor is written for.
+        let compatible = LocalLLMService.deviceMeetsRAMFloor(entry.minimumRAMGB)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
