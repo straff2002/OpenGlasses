@@ -1325,7 +1325,7 @@ enum PrivacyLog {
 
     enum AudioSubsystem: String {
         case wakeWord, realtime, coordinator, captureTap, captureRouter
-        case recording, translation, backgroundVoice, session
+        case recording, translation, session
     }
 
     enum AudioEvent: String {
@@ -1344,7 +1344,6 @@ enum PrivacyLog {
         case captureStarted, clientVoiceInterrupt, modeSelected
         case leaseHeld, leaseAssumed, leaseAcquired, leaseReleased
         case leaseStale, leaseSuppressed, leaseDeactivateFailed
-        case callReported, callFailed, callAnswered, callEnded, providerReset
     }
 
     @discardableResult
