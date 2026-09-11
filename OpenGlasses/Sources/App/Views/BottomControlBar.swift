@@ -101,10 +101,17 @@ struct BottomControlBar: View {
                                      showsActions: showsActions)
     }
 
-    /// Four tiles at their floor width need ~268 pt, which every supported width provides. At
-    /// accessibility sizes a tile lays its glyph beside its label and needs the width of a phrase,
-    /// so the same four columns would shred every caption — two is the honest count there.
-    private var columnCount: Int { typeSize.isAccessibilitySize ? 2 : 4 }
+    /// Four tiles at their floor width need ~268 pt, which every supported width provides — at the
+    /// default text size. Above it the captions grow and the column does not, so a caption that
+    /// fits at Large ("Push-Talk") is cut to "Push-T…" by xxxLarge; three across gives each one
+    /// the room back. At accessibility sizes a tile lays its glyph beside its label and needs the
+    /// width of a phrase, and even two across cut every caption to a letter and an ellipsis by
+    /// AX4, so it is one column there — the grid already scrolls vertically inside its bounded
+    /// height. The accessibility audit reports each of those cuts as clipped text.
+    private var columnCount: Int {
+        if typeSize.isAccessibilitySize { return 1 }
+        return typeSize > .large ? 3 : 4
+    }
 
     /// The two scaled parts a tile is made of, so the panel snaps to the height the tile actually
     /// draws rather than to a constant that happens to match at one text size. `BarButton` composes
@@ -868,7 +875,11 @@ private struct BarButton: View {
                     Text(label)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(foreground)   // .secondary was illegible over the ambience tint
-                        .lineLimit(1)
+                        // One line under the glyph, where the grid is three or four across. Beside the
+                        // glyph at accessibility sizes the caption has a whole row, so a phrase
+                        // wraps at its spaces there instead of losing its end to an ellipsis.
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
             }
