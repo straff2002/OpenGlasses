@@ -9,9 +9,21 @@ import XCTest
 /// halves were individually correct.
 final class ConversationPageTests: AccessibilityAuditCase {
 
-    /// A line from the older seeded conversation (see `UITestSupport.longExchange`).
-    private let seededReply = "It's galvanised steel"
-    private let seededQuestion = "What's the flashing on the roof made of?"
+    /// The newest exchange of the older seeded conversation (see `UITestSupport.longExchange`).
+    ///
+    /// The newest, deliberately. The page lands a picked thread on its latest message — that is
+    /// the product rule (`ConversationThreadTranscript` scrolls to the bottom on appear and on a
+    /// thread switch), and the long seed is long precisely so the page has to scroll. Its bubbles
+    /// sit in a lazy stack, so the thread's *first* exchange is above the fold and never reaches
+    /// the accessibility tree at all: asserting on it failed with the conversation fully rendered
+    /// on screen. The question is also not the thread's first user message, so it cannot be
+    /// satisfied by the header, which names the thread after that message.
+    ///
+    /// None of this loosens what the file is for. Before the fix the page rendered no stored
+    /// message whatsoever — only the live turn's cards over "Nothing said yet." — so any line from
+    /// the picked thread, from either side, is proof it is being drawn.
+    private let seededReply = "the black rubbery kind"
+    private let seededQuestion = "Remind me what tape you said."
 
     func testPickingAConversationShowsWhatWasSaidInIt() {
         let app = launch([.configured, .seedConversations])
