@@ -174,7 +174,7 @@
 	<key>NSRemindersUsageDescription</key>
 	<string>OpenGlasses creates and manages reminders so you can set them hands-free through your glasses.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OpenGlasses uses speech recognition to detect the wake word and transcribe your questions for Claude.</string>
+	<string>OpenGlasses uses speech recognition to detect the wake word and transcribe your voice questions for the AI assistant.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -209,9 +209,7 @@
 	<array>
 		<string>audio</string>
 		<string>bluetooth-central</string>
-		<string>bluetooth-peripheral</string>
 		<string>external-accessory</string>
-		<string>voip</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
