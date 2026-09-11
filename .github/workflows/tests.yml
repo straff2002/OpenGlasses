@@ -79,6 +79,31 @@ jobs:
         id: project
         uses: ./.github/actions/xcode-project
 
+      - name: MediaPipe registration guards and real graph smoke
+        timeout-minutes: 5
+        run: |
+          python3 -B -m unittest discover -s Scripts/tests -p test_mediapipe_linking.py -v
+          xcrun simctl bootstatus "${{ steps.project.outputs.simulator-udid }}" -b
+          fixtures="$(mktemp -d)"
+          curl --fail --location --retry 3 --max-time 90 \
+            https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/1/holistic_landmarker.task \
+            -o "$fixtures/holistic_landmarker.task"
+          curl --fail --location --retry 3 --max-time 90 \
+            https://storage.googleapis.com/mediapipe-assets/pose.jpg -o "$fixtures/pose.jpg"
+          echo "e2dab61191e2dcd0a15f943d8e3ed1dce13c82dfa597b9dd39f562975a50c3f8  $fixtures/holistic_landmarker.task" | shasum -a 256 -c -
+          echo "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b  $fixtures/pose.jpg" | shasum -a 256 -c -
+          python3 Scripts/smoke-mediapipe.py \
+            --model "$fixtures/holistic_landmarker.task" --image "$fixtures/pose.jpg" \
+            --simulator "${{ steps.project.outputs.simulator-udid }}" --output MediaPipeSmokeResults
+
+      - name: Upload MediaPipe smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: MediaPipeSmokeResults
+          path: MediaPipeSmokeResults/*.log
+          retention-days: 7
+
       # What this run actually used, written down. A green test run only means something if you
       # can say later which toolchain, SDK, dependency graph and vendored binaries produced it —
       # and "the runner image at the time" is not an answer once the image has rolled.

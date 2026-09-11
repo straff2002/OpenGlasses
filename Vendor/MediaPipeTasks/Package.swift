@@ -9,10 +9,11 @@ import PackageDescription
 // `Scripts/fetch-mediapipe-frameworks.sh` once after cloning to populate `Frameworks/`
 // (CI does this in `ci_scripts/ci_post_clone.sh`).
 //
-// The graph runtime additionally needs a per-SDK `-force_load` of
-// `Frameworks/graph_libraries/libMediaPipeTasksCommon_{device,simulator}_graph.a` — SPM cannot
-// express sim-vs-device linker flags, so the app target carries those in `project.base.yml`
-// (`OTHER_LDFLAGS[sdk=...]`).
+// The graph runtime also needs a per-SDK archive and selective registration anchors.
+// Scripts/fetch-mediapipe-frameworks.sh validates holistic-link-anchors.json and generates
+// Frameworks/holistic-linker-flags.rsp. The app applies it plus -ObjC in project.base.yml
+// because SPM cannot express these per-SDK archive paths. Do not force-load the full archive:
+// its OpenFst static initialisers hang before main (issues #304 and #309).
 let package = Package(
     name: "MediaPipeTasks",
     platforms: [.iOS(.v15)],
