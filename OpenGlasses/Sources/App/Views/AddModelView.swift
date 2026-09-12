@@ -3,6 +3,10 @@ import SwiftUI
 struct AddModelView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @ObservedObject private var claudeOAuth = ClaudeOAuthService.shared
+    @ObservedObject private var chatgptOAuth = ChatGPTOAuthService.shared
+    @ObservedObject private var googleOAuth = GoogleOAuthService.shared
+
     @State private var name: String = ""
     @State private var selectedProvider: LLMProvider = .anthropic
     @State private var apiKey: String = ""
@@ -64,10 +68,19 @@ struct AddModelView: View {
                         onAdd(config)
                         dismiss()
                     }
-                    .disabled(selectedProvider == .local ? model.isEmpty : apiKey.isEmpty)
+                    .disabled(!canAdd)
                 }
             }
         }
+    }
+
+    private var canAdd: Bool {
+        ModelFormValidation.canAdd(
+            provider: selectedProvider, model: model, baseURL: baseURL, apiKey: apiKey,
+            claudeConnected: claudeOAuth.isConnected,
+            chatgptConnected: chatgptOAuth.isConnected,
+            googleConnected: googleOAuth.isConnected
+        )
     }
 
     // MARK: - Pre-fill from existing saved model
