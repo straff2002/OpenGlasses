@@ -32,6 +32,7 @@ struct ModelFormView: View {
     // Account sign-in state (Anthropic + ChatGPT — rendered via the shared OAuthSignInRows)
     @ObservedObject private var claudeOAuth = ClaudeOAuthService.shared
     @ObservedObject private var chatgptOAuth = ChatGPTOAuthService.shared
+    @ObservedObject private var googleOAuth = GoogleOAuthService.shared
 
     @Environment(\.appAccent) private var accent
     /// Row heights that have to grow with the type beside them, so every
@@ -260,7 +261,7 @@ struct ModelFormView: View {
             }
             .frame(minHeight: rowMinHeight)
         }
-        .disabled((apiKey.isEmpty && selectedProvider != .custom && !accountOAuthReady) || isFetchingModels)
+        .disabled(!credentialsReady || isFetchingModels)
         .accessibilityLabel(
             keyValidated
                 ? "\(availableModels.count) models available. Check again"
@@ -504,11 +505,13 @@ struct ModelFormView: View {
 
     // MARK: - Account sign-in (OAuth)
 
-    /// True when the selected provider can authenticate without a pasted key.
-    private var accountOAuthReady: Bool {
-        (selectedProvider == .anthropic && claudeOAuth.isConnected)
-            || (selectedProvider == .chatgpt && chatgptOAuth.isConnected)
-            || (selectedProvider == .geminiVertex && GoogleOAuthService.shared.isConnected)
+    private var credentialsReady: Bool {
+        ModelFormValidation.credentialsReady(
+            provider: selectedProvider, apiKey: apiKey,
+            claudeConnected: claudeOAuth.isConnected,
+            chatgptConnected: chatgptOAuth.isConnected,
+            googleConnected: googleOAuth.isConnected
+        )
     }
 
     private var anthropicKeyPlaceholder: String {
