@@ -136,6 +136,32 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
                       "The unfolded category never appeared as a row — there is nothing for "
                       + "VoiceOver focus to be handed to")
 
+        // Hold the hub still before measuring it.
+        //
+        // Unfolding is an animated replacement: the card animates out of Discover while the row
+        // animates into the list above it. Two things follow from that, and both were measured
+        // rather than guessed — this case failed on CI in 3 runs out of 5 on an unchanged tree.
+        //
+        // The card sits under the finger when it is replaced, so the same tap can land a second
+        // time on the row that took its place, pushing the category screen. The audit then
+        // measures that screen instead of the hub: the findings came back as 'AI Models',
+        // 'Personality', 'How It Behaves' — the category's own copy, none of it this case's
+        // subject. So assert the hub is still what is on screen.
+        //
+        // And the audit must not run while the list is still moving. The card's pitch belongs to
+        // the card alone, so its disappearance is the replacement finishing — a settled list
+        // rather than a timer.
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10),
+                      "Unfolding left the settings hub, so the audit would measure the pushed "
+                      + "category screen rather than the list the card moved into")
+
+        let pitch = app.staticTexts["Choose the model and give it a character."]
+        if pitch.exists {
+            let gone = expectation(for: NSPredicate(format: "exists == false"),
+                                   evaluatedWith: pitch)
+            wait(for: [gone], timeout: 10)
+        }
+
         audit(app, screen: "Settings hub — after unfolding a category",
               deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
