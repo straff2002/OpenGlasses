@@ -683,7 +683,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func speakWithiOS(text: String) async {
         let utterance = AVSpeechUtterance(string: text)
 
-        // Pick the best available voice for the wearer's languages: premium > enhanced > default
+        // Respect the saved voice and device language order before voice quality.
         let voice = Self.bestAvailableVoice()
         utterance.voice = voice
         // A voice identifier is treated as an identifier, not a catalog name: a wearer who has
@@ -711,63 +711,35 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             return voice
         }
 
-        // Auto-select: the best-quality voice in the wearer's preferred languages
-        // (mirrors `SpeechLocaleResolver`), then best-quality English as fallback.
-        if let best = availableVoices().first, best.quality.rawValue >= 2 {
-            return best
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+        if let selected = TTSVoiceResolver.resolve(
+            savedIdentifier: preferred,
+            preferredLanguages: Locale.preferredLanguages,
+            voices: allVoices.map(voiceDescriptor)
+        ) {
+            return allVoices.first { $0.identifier == selected.identifier }
         }
-
-        // Fallback to standard en-US
         return AVSpeechSynthesisVoice(language: "en-US")
     }
 
-    /// Voices available on this device, filtered to the wearer's language setup and sorted by
-    /// quality (premium > enhanced > default) then display name.
-    ///
-    /// Selection mirrors `SpeechLocaleResolver`: the device's preferred languages plus any
-    /// explicitly chosen voice (which always stays visible whatever its language), matched by
-    /// canonical identifier and then language code — so a Chinese interface is offered Chinese
-    /// voices and a manual pick survives a language change. Falls back to English voices only
-    /// when the preferred languages match nothing installed.
+    /// Installed voices in the user's languages, plus English and their saved voice.
     static func availableVoices() -> [AVSpeechSynthesisVoice] {
-        let allVoices = AVSpeechSynthesisVoice.speechVoices()
-        let preferred = languagePreferences()
-        let matched = allVoices.filter { voice in
-            preferred.contains(canonical(voice.language))
-                || preferred.contains(languageCode(of: voice.language))
+        var allVoices = AVSpeechSynthesisVoice.speechVoices()
+        let saved = Config.iosTTSVoiceId
+        if !saved.isEmpty, !allVoices.contains(where: { $0.identifier == saved }),
+           let voice = AVSpeechSynthesisVoice(identifier: saved) {
+            allVoices.append(voice)
         }
-        let base = matched.isEmpty
-            ? allVoices.filter { languageCode(of: $0.language) == "en" }
-            : matched
-        return base.sorted { lhs, rhs in
-            if lhs.quality != rhs.quality { return lhs.quality.rawValue > rhs.quality.rawValue }
-            return lhs.name < rhs.name
-        }
+        return TTSVoiceResolver.available(
+            savedIdentifier: saved,
+            preferredLanguages: Locale.preferredLanguages,
+            voices: allVoices.map(voiceDescriptor)
+        ).compactMap { descriptor in allVoices.first { $0.identifier == descriptor.identifier } }
     }
 
-    /// Locales a voice should match: the device's preferred languages (in canonical and
-    /// language-code forms) plus the language of the explicitly selected voice, so a manual
-    /// choice is never filtered out of the picker.
-    private static func languagePreferences() -> Set<String> {
-        var keys: Set<String> = []
-        for language in Locale.preferredLanguages {
-            keys.insert(canonical(language))
-            keys.insert(languageCode(of: language))
-        }
-        if !Config.iosTTSVoiceId.isEmpty,
-           let chosen = AVSpeechSynthesisVoice(identifier: Config.iosTTSVoiceId) {
-            keys.insert(canonical(chosen.language))
-            keys.insert(languageCode(of: chosen.language))
-        }
-        return keys
-    }
-
-    private static func canonical(_ identifier: String) -> String {
-        identifier.replacingOccurrences(of: "_", with: "-").lowercased()
-    }
-
-    private static func languageCode(of identifier: String) -> String {
-        canonical(identifier).components(separatedBy: "-").first ?? identifier
+    private static func voiceDescriptor(_ voice: AVSpeechSynthesisVoice) -> TTSVoiceResolver.Voice {
+        .init(identifier: voice.identifier, language: voice.language,
+              quality: voice.quality.rawValue, name: voice.name)
     }
 
     // MARK: - AVSpeechSynthesizerDelegate (iOS fallback)
