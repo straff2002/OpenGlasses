@@ -492,6 +492,7 @@ struct ModelFormView: View {
         case .gemini: return "Get your API key at aistudio.google.com"
         case .geminiVertex: return "Sign in with your Google account — Gemini on your own GCP project via Vertex AI, no API key. Needs a GCP iOS OAuth client ID and project ID (console.cloud.google.com). Gemini Live mode still uses the AI Studio key provider."
         case .groq: return "Get your API key at console.groq.com"
+        case .deepseek: return "Get your API key at platform.deepseek.com — default model deepseek-flash (V4.1 Flash, multimodal vision)"
         case .zai: return "Z.ai subscription — OpenAI-compatible API"
         case .qwen: return "Coding Plan subscription — coding-intl.dashscope.aliyuncs.com"
         case .minimax: return "MiniMax subscription — platform.minimaxi.com"

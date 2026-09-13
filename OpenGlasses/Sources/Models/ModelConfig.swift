@@ -42,6 +42,12 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             return false
         case .groq, .local, .appleOnDevice:
             return false
+        case .deepseek:
+            // V4.1-Flash (`deepseek-flash`) is natively multimodal; legacy flash/vision IDs
+            // and `deepseek-v4-pro` (routed to V4.1-Flash) accept images too.
+            let lowerModel = model.lowercased()
+            return lowerModel.contains("flash") || lowerModel.contains("vision")
+                || lowerModel.contains("v4-pro") || lowerModel.contains("v4.1")
         case .qwen:
             // Qwen3.5-plus and qwen-vl models support vision
             let lowerModel = model.lowercased()

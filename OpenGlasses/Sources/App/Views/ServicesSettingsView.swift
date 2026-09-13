@@ -20,6 +20,7 @@ struct ServicesSettingsView: View {
     @State private var perplexityKeyInput: String = Config.perplexityAPIKey
     @State private var tavilyKeyInput: String = Config.tavilyAPIKey
     @State private var braveKeyInput: String = Config.braveAPIKey
+    @State private var searxngBaseURLInput: String = Config.searxngBaseURL
 
     // Live Streaming
     @State private var broadcastPlatform: String = Config.broadcastPlatform
@@ -412,16 +413,30 @@ struct ServicesSettingsView: View {
                         }
                     }
                 }
+
+                TextField("SearXNG instance URL", text: $searxngBaseURLInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .onChange(of: searxngBaseURLInput) { _, newValue in
+                        Config.setSearXNGBaseURL(newValue)
+                    }
+
+                if searxngBaseURLInput.isEmpty {
+                    Link(destination: URL(string: "https://searx.space")!) {
+                        HStack {
+                            Label("Find a public instance", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            Text("searx.space")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             } header: {
                 Text("Web Search")
             } footer: {
-                if perplexityKeyInput.isEmpty && tavilyKeyInput.isEmpty {
-                    Text("Add a Perplexity or Tavily API key for AI-powered search with cited sources, or a Brave Search key for an independent web index. With several configured the order is Perplexity → Tavily → Brave. Without any, DuckDuckGo is used.")
-                } else if !perplexityKeyInput.isEmpty {
-                    Text("Web searches use Perplexity AI with cited sources\(tavilyKeyInput.isEmpty ? "" : ", then Tavily").")
-                } else {
-                    Text("Web searches use Tavily with cited sources.")
-                }
+                Text("Order: Perplexity → Tavily → Brave → SearXNG → Tavily free → DuckDuckGo. With no keys configured, Tavily free runs automatically (rate-limited, no signup). Add a Tavily key for 1,000 searches/month.")
             }
 
             // MARK: Camera Quality

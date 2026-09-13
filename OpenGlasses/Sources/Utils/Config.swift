@@ -2637,6 +2637,24 @@ struct Config {
         !braveAPIKey.isEmpty
     }
 
+    // MARK: - SearXNG Search
+
+    /// Base URL of a SearXNG instance (e.g. `https://search.example.com`). Stored in UserDefaults.
+    static var searxngBaseURL: String {
+        UserDefaults.standard.string(forKey: "searxngBaseURL") ?? ""
+    }
+
+    static func setSearXNGBaseURL(_ url: String) {
+        UserDefaults.standard.set(url.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "searxngBaseURL")
+    }
+
+    static var isSearXNGConfigured: Bool {
+        guard let url = URL(string: searxngBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = url.host, !host.isEmpty else { return false }
+        return true
+    }
+
     // MARK: - Hermes Agent Bridge (Plan CL P5)
 
     /// Route conversation turns through a Hermes agent bridge on the LAN.

@@ -37,7 +37,7 @@ final class ModelFormValidationTests: XCTestCase {
     }
 
     func testAPIProvidersStillRequireAKeyEvenWithAccountsConnected() {
-        for provider: LLMProvider in [.openai, .gemini, .groq, .zai, .qwen, .minimax, .xai, .openrouter] {
+        for provider: LLMProvider in [.openai, .gemini, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter] {
             XCTAssertFalse(canAdd(provider, key: " \n", claude: true, chatgpt: true, google: true), provider.rawValue)
             XCTAssertTrue(canAdd(provider, key: "key"), provider.rawValue)
         }
