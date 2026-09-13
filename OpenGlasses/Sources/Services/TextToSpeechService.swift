@@ -683,7 +683,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func speakWithiOS(text: String) async {
         let utterance = AVSpeechUtterance(string: text)
 
-        // Pick the best available English voice: premium > enhanced > default
+        // Respect the saved voice and device language order before voice quality.
         let voice = Self.bestAvailableVoice()
         utterance.voice = voice
         // A voice identifier is treated as an identifier, not a catalog name: a wearer who has
@@ -711,29 +711,35 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             return voice
         }
 
-        // Auto-select: best quality English voice available
         let allVoices = AVSpeechSynthesisVoice.speechVoices()
-        let englishVoices = allVoices.filter { $0.language.hasPrefix("en") }
-
-        // Sort by quality descending (premium=3, enhanced=2, default=1)
-        let sorted = englishVoices.sorted { $0.quality.rawValue > $1.quality.rawValue }
-
-        if let best = sorted.first, best.quality.rawValue >= 2 {
-            return best
+        if let selected = TTSVoiceResolver.resolve(
+            savedIdentifier: preferred,
+            preferredLanguages: Locale.preferredLanguages,
+            voices: allVoices.map(voiceDescriptor)
+        ) {
+            return allVoices.first { $0.identifier == selected.identifier }
         }
-
-        // Fallback to standard en-US
         return AVSpeechSynthesisVoice(language: "en-US")
     }
 
-    /// All English voices available on this device, grouped by quality.
+    /// Installed voices in the user's languages, plus English and their saved voice.
     static func availableVoices() -> [AVSpeechSynthesisVoice] {
-        AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.language.hasPrefix("en") }
-            .sorted { lhs, rhs in
-                if lhs.quality != rhs.quality { return lhs.quality.rawValue > rhs.quality.rawValue }
-                return lhs.name < rhs.name
-            }
+        var allVoices = AVSpeechSynthesisVoice.speechVoices()
+        let saved = Config.iosTTSVoiceId
+        if !saved.isEmpty, !allVoices.contains(where: { $0.identifier == saved }),
+           let voice = AVSpeechSynthesisVoice(identifier: saved) {
+            allVoices.append(voice)
+        }
+        return TTSVoiceResolver.available(
+            savedIdentifier: saved,
+            preferredLanguages: Locale.preferredLanguages,
+            voices: allVoices.map(voiceDescriptor)
+        ).compactMap { descriptor in allVoices.first { $0.identifier == descriptor.identifier } }
+    }
+
+    private static func voiceDescriptor(_ voice: AVSpeechSynthesisVoice) -> TTSVoiceResolver.Voice {
+        .init(identifier: voice.identifier, language: voice.language,
+              quality: voice.quality.rawValue, name: voice.name)
     }
 
     // MARK: - AVSpeechSynthesizerDelegate (iOS fallback)

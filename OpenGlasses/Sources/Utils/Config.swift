@@ -2933,24 +2933,24 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "teleprompterLead")
     }
 
-    // MARK: - WebRTC Streaming
+    // MARK: - Browser Streaming Relay
 
+    /// The MJPEG relay is **per-deployment**: whoever runs one pays for it, sees every room id that
+    /// passes through it and can read every frame. So the app ships no relay address at all — this
+    /// stays empty until an operator enters their own in Settings > Field Assist, and browser
+    /// streaming refuses to start until they do. Do not reintroduce a fallback host here.
     static var webRTCSignalingURL: String {
-        if let url = UserDefaults.standard.string(forKey: "webRTCSignalingURL"), !url.isEmpty {
-            return url
-        }
-        return "wss://openglasses-signal.fly.dev/ws"
+        UserDefaults.standard.string(forKey: "webRTCSignalingURL") ?? ""
     }
 
     static func setWebRTCSignalingURL(_ url: String) {
         UserDefaults.standard.set(url, forKey: "webRTCSignalingURL")
     }
 
+    /// Base URL of the viewer page served by that same operator-run relay; the room code is
+    /// appended to it. Empty by default for the same reason.
     static var webRTCViewerBaseURL: String {
-        if let url = UserDefaults.standard.string(forKey: "webRTCViewerBaseURL"), !url.isEmpty {
-            return url
-        }
-        return "https://openglasses-signal.fly.dev/view"
+        UserDefaults.standard.string(forKey: "webRTCViewerBaseURL") ?? ""
     }
 
     static func setWebRTCViewerBaseURL(_ url: String) {

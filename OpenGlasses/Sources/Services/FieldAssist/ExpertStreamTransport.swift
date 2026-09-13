@@ -55,7 +55,14 @@ final class MJPEGExpertTransport: ExpertStreamTransport {
     var isStreaming: Bool { streamer.isStreaming }
 
     func start(framePublisher: PassthroughSubject<UIImage, Never>) async throws -> String? {
-        streamer.startStreaming(framePublisher: framePublisher)
+        let viewerURL = streamer.startStreaming(framePublisher: framePublisher)
+        guard !viewerURL.isEmpty else {
+            // No relay configured (the app ships none): fail the escalation here rather than
+            // paging an expert a join link that resolves nowhere.
+            throw ExpertStreamError.transportUnavailable(
+                streamer.errorMessage ?? WebRTCStreamingService.relayNotConfiguredMessage)
+        }
+        return viewerURL
     }
     func stop() async { streamer.stopStreaming() }
 }

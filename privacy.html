@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OpenGlasses Privacy Policy</title>
+<!-- Self-contained on purpose, like index.html: no external CSS, script, font or image, and no
+     analytics or third-party embed. The only outbound references are plain links to the privacy
+     policies of the services named below and to the Office of the Privacy Commissioner. -->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1d1c1a;
+    --muted: #5d5a55;
+    --rule: #e3dfd8;
+    --link: #a4441a;
+    --panel: #f2efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514;
+      --fg: #ebe8e3;
+      --muted: #a9a49c;
+      --rule: #34312d;
+      --link: #f08a4b;
+      --panel: #201f1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; }
+  h2 { font-size: 1.3rem; line-height: 1.3; margin: 2.5rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 .25rem; }
+  p, ul { margin: 0 0 1rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--link); text-underline-offset: 2px; }
+  .meta { color: var(--muted); margin-bottom: 2rem; }
+  .summary { background: var(--panel); border-radius: 10px; padding: 1rem 1.25rem; }
+  .summary ul { margin: 0; }
+  nav ol { columns: 2; column-gap: 2rem; padding-left: 1.25rem; margin: 0 0 1rem; }
+  nav li { break-inside: avoid; }
+  .table-wrap { overflow-x: auto; margin: 0 0 1rem; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; font-size: .92rem; line-height: 1.45; }
+  th, td { text-align: left; vertical-align: top; padding: .55rem .6rem; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; background: var(--panel); }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .note { color: var(--muted); font-size: .92rem; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
+  @media (max-width: 34rem) { nav ol { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>OpenGlasses Privacy Policy</h1>
+<p class="meta">Effective 12 September 2026</p>
+
+<div class="summary">
+<p><strong>The short version</strong></p>
+<ul>
+  <li>There is no OpenGlasses account. You don't sign up with us.</li>
+  <li>The app has no analytics, advertising or tracking, and no crash-reporting service of its own.</li>
+  <li>Most of what the app keeps (conversation history, memories, notes, recordings, the faces you teach it) is stored on your iPhone.</li>
+  <li>Data leaves your phone when you use a feature that needs an outside service, such as the AI provider you picked, a voice service, or a live stream you start. It goes to that service.</li>
+  <li>Many of these services only run after you add your own API key or turn the feature on.</li>
+</ul>
+</div>
+
+<nav aria-label="Contents">
+<ol>
+  <li><a href="#who">Who we are</a></li>
+  <li><a href="#device">What stays on your device</a></li>
+  <li><a href="#services">What is sent to services you choose</a></li>
+  <li><a href="#camera">Camera, microphone and people around you</a></li>
+  <li><a href="#health">Health data</a></li>
+  <li><a href="#medical">Medical Compliance mode</a></li>
+  <li><a href="#permissions">Permissions</a></li>
+  <li><a href="#children">Children</a></li>
+  <li><a href="#retention">Retention and deletion</a></li>
+  <li><a href="#security">Security</a></li>
+  <li><a href="#transfers">International transfers</a></li>
+  <li><a href="#rights">Your rights</a></li>
+  <li><a href="#changes">Changes to this policy</a></li>
+  <li><a href="#contact">Contact</a></li>
+</ol>
+</nav>
+
+<h2 id="who">1. Who we are</h2>
+<p>OpenGlasses is an iPhone app for smart glasses. It is made by Skunkworks NZ Ltd, a company in New Zealand ("we", "us"). OpenGlasses is proprietary software. This policy explains what the app does with personal information, and it applies to the iPhone app together with its Apple Watch app, widgets and share extension.</p>
+<p>We don't run an account system and we don't have a server that collects your conversations or usage data. Section 3 describes the services the app can talk to.</p>
+
+<h2 id="device">2. What stays on your device</h2>
+<p>The following is stored in the app's own storage on your iPhone. None of it is sent to us.</p>
+<ul>
+  <li><strong>Conversation history</strong> with the assistant. You can lock it behind Face ID or your passcode (Settings, "Encrypt Conversations").</li>
+  <li><strong>Memories and knowledge</strong>: things you ask the assistant to remember, the people and topics it links together, and documents you add for it to search.</li>
+  <li><strong>Notes, saved places, location reminders, voice skills, playbooks, teleprompter scripts and study decks</strong>, plus any meeting summaries you ask it to save.</li>
+  <li><strong>Faces you teach it.</strong> Face recognition keeps a numerical description of each face you enrol, with the name you gave it. It never stores a photo. Matching happens on your phone using Apple's Vision framework.</li>
+  <li><strong>Memory rewind audio.</strong> When you turn memory rewind on, the app keeps a rolling buffer of up to the last 10 minutes of audio. The buffer is held in memory and is never saved to storage. If you ask for a recap, the requested minutes are transcribed. The temporary audio file used for that is deleted straight afterwards.</li>
+  <li><strong>Captions.</strong> Captions only run once you start them. Recent captions are held in memory while the session runs.</li>
+  <li><strong>Recordings and meeting records</strong> that you choose to make, and their transcripts.</li>
+  <li><strong>Knowledge vaults, and Field Assist session logs</strong> if you use Field Assist.</li>
+  <li><strong>Usage and cost estimates</strong> worked out from each provider's reported token counts, and a log of the app's own network activity that you can view. Both stay on the phone.</li>
+  <li><strong>Settings, and the API keys and sign-in tokens you enter.</strong> See <a href="#security">Security</a>.</li>
+</ul>
+<p>The app's diagnostic logging records only event names, counts, timings and one-way fingerprints. It is built so that it has nowhere to put what you said, what the camera saw, or your keys.</p>
+<p>A few stores are excluded from iCloud and device backups so that deleting them really deletes them: conversation history, memories, the knowledge graph, documents and the face database. Your own writing (notes, places, scripts and similar) is included in your normal device backup so it survives moving to a new phone.</p>
+<p>You can also pick on-device AI models and on-device speech recognition or voices. When you do, those steps run on your phone and don't use a cloud service.</p>
+
+<h2 id="services">3. What is sent to services you choose</h2>
+<p>OpenGlasses connects your glasses and phone to outside services. Each one receives only what its feature needs, and only when you use that feature. You deal with these services under their own terms and privacy policies. Most need you to enter your own API key or sign in to your own account with them. We don't receive a copy of what you send.</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Service</th><th>What is sent</th><th>When</th></tr></thead>
+<tbody>
+<tr>
+  <td>AI model provider</td>
+  <td>Your request (typed, or transcribed from speech), recent conversation, camera images when you ask about what you're looking at, and the results of any tools the assistant used to answer. Depending on the request, tool results can include your location, contact details you asked about, calendar or reminder entries, notes, or health data (see <a href="#health">Health data</a>). Also your API key or sign-in token.</td>
+  <td>Each time you ask the assistant something, if you've chosen a cloud model. Providers: Anthropic (API key or Claude sign-in), OpenAI (API key, or ChatGPT sign-in), Google Gemini (API key, or Google sign-in for Vertex AI), Groq, xAI, OpenRouter, Alibaba Cloud (Qwen), Z.ai (GLM), MiniMax, or a custom endpoint you enter.</td>
+</tr>
+<tr>
+  <td>Live voice sessions</td>
+  <td>A continuous stream of microphone audio and, if you turn it on, camera frames. This includes live caption translation.</td>
+  <td>Only while a Gemini Live or OpenAI Realtime session you started is running.</td>
+</tr>
+<tr>
+  <td>Self-hosted AI server</td>
+  <td>The same as an AI model provider, sent to a server you run (for example Ollama or LM Studio). The app can search your local network to find one.</td>
+  <td>If you set one up.</td>
+</tr>
+<tr>
+  <td>ElevenLabs</td>
+  <td>The text of the assistant's reply, so it can be spoken aloud, and your API key.</td>
+  <td>Only if you add an ElevenLabs key. Otherwise the app uses a voice on your phone.</td>
+</tr>
+<tr>
+  <td>Deepgram</td>
+  <td>Captured audio, so it can tell who said what.</td>
+  <td>Off by default. Needs your key and your opt-in, and is always off in Medical Compliance mode.</td>
+</tr>
+<tr>
+  <td>Web search</td>
+  <td>The search query. It goes to Perplexity, Tavily or Brave Search if you add a key for one, and to DuckDuckGo otherwise.</td>
+  <td>When the assistant searches the web for you.</td>
+</tr>
+<tr>
+  <td>Weather, aircraft and defibrillator look-ups</td>
+  <td>Your coordinates, or a place you named. These go to Open-Meteo (weather), adsb.fi (aircraft overhead) and the Overpass API, which uses OpenStreetMap data (nearby defibrillators).</td>
+  <td>When you ask for one of these.</td>
+</tr>
+<tr>
+  <td>News and exchange rates</td>
+  <td>The news topic (Google News) or the currency codes (Frankfurter).</td>
+  <td>When you ask.</td>
+</tr>
+<tr>
+  <td>Live broadcast (RTMP)</td>
+  <td>Your glasses' camera stream, sent to the streaming server you enter (for example YouTube or Twitch). If you connect Twitch chat, chat messages and your Twitch token go to Twitch.</td>
+  <td>Only while you are broadcasting.</td>
+</tr>
+<tr>
+  <td>Browser streaming</td>
+  <td>Camera frames as JPEG images, sent through the relay server you configure, to anyone who opens your stream link. The app ships with no relay address and browser streaming does not start until you enter one in Settings, so frames go only to the relay you or your organisation runs.</td>
+  <td>Only while you are streaming to a browser.</td>
+</tr>
+<tr>
+  <td>Field Assist expert calls and reports</td>
+  <td>Camera video and audio to the remote expert, through the signalling server your organisation configures. A help request can also send a transcript and your location to the notification address your organisation sets. Reports go where you choose to send them.</td>
+  <td>When you start a call, ask for help, or send a report.</td>
+</tr>
+<tr>
+  <td>Agent gateways, custom agents and MCP servers</td>
+  <td>Requests, conversation text and, where the feature needs them, camera images. Before a request leaves the phone, the app scans what it sends to an MCP server for secrets and personal data and, by default, removes them.</td>
+  <td>Only if you turn on agent features, or add a gateway, agent endpoint or MCP server.</td>
+</tr>
+<tr>
+  <td>Home Assistant and HomeKit</td>
+  <td>Commands and device states. Home Assistant requests go to your own Home Assistant server. HomeKit is handled by Apple on your devices.</td>
+  <td>When you control your home by voice.</td>
+</tr>
+<tr>
+  <td>Medical record export</td>
+  <td>Clinical notes you choose to export, sent to your organisation's own FHIR record system.</td>
+  <td>Only when you set this up and export.</td>
+</tr>
+<tr>
+  <td>Downloads</td>
+  <td>A request for the file, which reveals your IP address to the host but carries none of your content. On-device AI models and voices come from Hugging Face and GitHub. Extra language packs and the skill and vault catalogues come from GitHub. The public skill catalogue comes from clawhub.ai.</td>
+  <td>When you download a model, language pack or skill, or browse a catalogue.</td>
+</tr>
+<tr>
+  <td>Meta (glasses connection)</td>
+  <td>What the Meta Wearables SDK needs to pair with your glasses and check that the app is allowed to talk to them. The SDK's own analytics and crash reporting are switched off in the app, and the app also blocks those uploads if the SDK tries to send them anyway.</td>
+  <td>When you pair and connect your glasses.</td>
+</tr>
+<tr>
+  <td>Apple</td>
+  <td>In-app purchases go through the App Store. Apple's speech recognition may process your voice on the device or on Apple's servers, depending on your language and device. The wake-word listener asks for on-device recognition where it's available.</td>
+  <td>When you buy something, or use voice input with Apple's speech recognition.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Diagnostics reports</strong> are only created when you ask for one in Settings, "Diagnostics &amp; Support". You see the whole report before anything leaves the phone, and it's only sent if you share it yourself, either through the share sheet or as a pre-filled public GitHub issue that you choose to submit.</p>
+<p><strong>TestFlight.</strong> If you test a pre-release build through Apple's TestFlight, Apple may share crash reports and any feedback you submit with us, under Apple's TestFlight terms. The app itself sends no crash reports.</p>
+<p class="note">You can see and switch off individual tools, check what context is sent to the assistant, and review recorded network requests in the app's settings.</p>
+
+<h2 id="camera">4. Camera, microphone and people around you</h2>
+<p>The camera and microphone are used for the features you use. The app listens for its wake word. If you use Apple's speech recognition for this, the app asks for it to run on the device where your language supports it.</p>
+<p><strong>Bystander face blur.</strong> When you turn on "Blur Bystander Faces" in Settings (it's off by default), the app finds faces on your phone using Apple's Vision framework and blurs them before a camera image leaves the device. That covers images sent to an AI provider, video recordings, live broadcasts, browser streams and expert calls. Two exceptions are deliberate:</p>
+<ul>
+  <li><strong>Face recognition</strong> works on the unblurred image, because the blur would hide the very face being matched. That image stays on the phone.</li>
+  <li><strong>Photos you take yourself</strong> are saved without the blur.</li>
+</ul>
+<p>In video, faces are detected several times a second and the blur follows them in between. Someone stepping into view can therefore be visible briefly before the next detection catches them.</p>
+<p>If you record, broadcast or use face recognition around other people, you are responsible for doing so lawfully and with their consent where it is required. You can remove any face you enrolled at any time. See <a href="#retention">Retention and deletion</a>.</p>
+
+<h2 id="health">5. Health data</h2>
+<p>With your permission, the fitness coach reads steps and workouts from Apple Health and can save workouts you log to Apple Health. Step count and walking distance may also come from your phone's motion sensors.</p>
+<p><strong>"Share Health Data with AI" is off by default.</strong> While it's off, your Apple Health workout history stays on your phone. If you turn it on, the fitness coach can include that history in what it sends to your chosen AI provider so it can discuss your progress. On-device workout tracking, form checking and saving workouts to Apple Health work either way.</p>
+<p>If you use the Personal Health Vault (part of the Medical Compliance subscription), the assistant can read the notes you keep there when you ask about them, and send them to your AI provider. You can turn off the assistant's access to the vault in Settings.</p>
+<p>We never use health data for advertising, and none of it is sent to us.</p>
+
+<h2 id="medical">6. Medical Compliance mode</h2>
+<p>Medical Compliance mode (called HIPAA mode in some places in the app) is a setting for people who handle clinical information. When it's on, the app:</p>
+<ul>
+  <li>requires Face ID, Touch ID or your passcode to open the app</li>
+  <li>stores clinical recordings and transcripts with iOS's strongest file protection and keeps them out of backups</li>
+  <li>turns off web search, external messaging, cloud memory sync, cloud caption translation and cloud speaker diarization</li>
+  <li>keeps an audit log of access to clinical data on the device</li>
+  <li>deletes clinical data older than the retention period you choose</li>
+</ul>
+<p>A further option, "Local LLM Only", sends requests to an on-device model instead of a cloud provider. If no on-device model is available, the request is refused.</p>
+<p>This mode is a set of technical safeguards. It is not a certification, and using it does not by itself make an organisation compliant with any law. Organisational duties, such as agreements with any cloud provider you use, remain your responsibility.</p>
+
+<h2 id="permissions">7. Permissions</h2>
+<p>iOS asks for your permission before the app can use each of these. You can change your answer at any time in the iPhone Settings app.</p>
+<ul>
+  <li><strong>Bluetooth</strong>: to connect to your glasses.</li>
+  <li><strong>Camera and microphone</strong>: to capture photos and video and to hear the wake word and your requests.</li>
+  <li><strong>Speech recognition</strong>: to detect the wake word and transcribe what you say.</li>
+  <li><strong>Location</strong>: to give answers based on where you are. "Always" access is only used to alert you when you arrive at or leave a place you set a location reminder for.</li>
+  <li><strong>Contacts</strong>: to call, message or email people by name.</li>
+  <li><strong>Calendar and Reminders</strong>: to tell you about events and create events and reminders.</li>
+  <li><strong>Photos</strong>: to save glasses photos and keep them in their own album.</li>
+  <li><strong>Health and Motion</strong>: see <a href="#health">Health data</a>.</li>
+  <li><strong>HomeKit</strong>: to control your smart home.</li>
+  <li><strong>Apple Music</strong>: to play and control music.</li>
+  <li><strong>Local network</strong>: to find AI servers on your own network and stream to a server on it.</li>
+</ul>
+<p>Information from these sources is only sent to an AI provider when it is part of answering your request.</p>
+
+<h2 id="children">8. Children</h2>
+<p>OpenGlasses is not directed at children under 13, and we don't knowingly collect personal information from children. We don't collect personal information through the app from anyone. If you believe a child's information has reached us some other way, for example by email, contact us and we will delete it.</p>
+
+<h2 id="retention">9. Retention and deletion</h2>
+<p>Because your data is on your phone, you control how long it's kept.</p>
+<ul>
+  <li><strong>Conversation history and memories</strong> are kept until you delete them, unless you choose a period in Settings, "History" (30 days, 90 days, 6 months or 1 year). Anything older is deleted, not hidden, the next time the app opens or returns to the foreground. You can delete conversations one at a time or all at once from the conversation list.</li>
+  <li><strong>Faces</strong>: say "forget [name]" to remove someone. Face recognition can also be switched off.</li>
+  <li><strong>Recordings, notes, places, documents and vaults</strong> can be deleted individually in the app. Notes are capped at the 50 most recent.</li>
+  <li><strong>Memory rewind</strong> audio is never saved, and it's cleared when you turn the feature off.</li>
+  <li><strong>Export files</strong> the app prepares for sharing are temporary, and it deletes them automatically.</li>
+  <li><strong>Deleting the app</strong> removes the data in the app's storage. iOS may keep Keychain items after an app is deleted, so remove your API keys and sign out in the app first if you want to be sure those are gone too.</li>
+</ul>
+<p>Data you sent to a third-party service is kept under that service's policy. Contact the service to have it deleted.</p>
+
+<h2 id="security">10. Security</h2>
+<ul>
+  <li>API keys and sign-in tokens are stored in the iOS Keychain, on this device only. They are not synced to iCloud or included in backups. Each key is sent only to the service it belongs to.</li>
+  <li>App data is protected by iOS Data Protection. The most sensitive stores (conversations, the face database, clinical data) use the strongest protection class, which makes them unreadable while the phone is locked.</li>
+  <li>"Encrypt Conversations" adds ChaCha20-Poly1305 encryption to saved conversations. The key is held by the Keychain, needs Face ID, Touch ID or your passcode to unlock, and the conversations lock again when the app goes to the background.</li>
+  <li>Connections to cloud services use HTTPS. Plain, unencrypted HTTP is only allowed to addresses on your own local network and to your own Tailscale network (ts.net addresses), where Tailscale encrypts the traffic between your devices.</li>
+  <li>You can lock the app's Settings behind Face ID or your passcode.</li>
+</ul>
+<p>No system is perfectly secure. If you find a security problem, please report it privately to the contact address below rather than in public.</p>
+
+<h2 id="transfers">11. International transfers</h2>
+<p>The services in section 3 may process your data outside New Zealand, under their own privacy policies. Before you use a service, check where it processes data and read its policy:</p>
+<ul>
+  <li><a href="https://www.anthropic.com/legal/privacy">Anthropic</a></li>
+  <li><a href="https://openai.com/policies/privacy-policy/">OpenAI</a></li>
+  <li><a href="https://policies.google.com/privacy">Google</a> (Gemini, Vertex AI, Google News)</li>
+  <li><a href="https://groq.com/privacy-policy/">Groq</a></li>
+  <li><a href="https://x.ai/legal/privacy-policy">xAI</a></li>
+  <li><a href="https://openrouter.ai/privacy">OpenRouter</a></li>
+  <li><a href="https://www.alibabacloud.com/help/en/legal/latest/alibaba-cloud-international-website-privacy-policy">Alibaba Cloud</a> (Qwen)</li>
+  <li><a href="https://docs.z.ai/legal-agreement/privacy-policy">Z.ai</a> (GLM)</li>
+  <li><a href="https://www.minimax.io/platform/protocol/privacy-policy">MiniMax</a></li>
+  <li><a href="https://elevenlabs.io/privacy-policy">ElevenLabs</a></li>
+  <li><a href="https://deepgram.com/privacy">Deepgram</a></li>
+  <li><a href="https://www.perplexity.ai/hub/legal/privacy-policy">Perplexity</a></li>
+  <li><a href="https://tavily.com/privacy">Tavily</a></li>
+  <li><a href="https://search.brave.com/help/privacy-policy">Brave Search</a></li>
+  <li><a href="https://duckduckgo.com/privacy">DuckDuckGo</a></li>
+  <li><a href="https://open-meteo.com/en/terms">Open-Meteo</a></li>
+  <li><a href="https://www.twitch.tv/p/legal/privacy-notice/">Twitch</a></li>
+  <li><a href="https://huggingface.co/privacy">Hugging Face</a></li>
+  <li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a></li>
+  <li><a href="https://www.meta.com/legal/privacy-policy/">Meta</a></li>
+  <li><a href="https://www.apple.com/legal/privacy/">Apple</a></li>
+</ul>
+<p>The aircraft, defibrillator and exchange-rate look-ups (adsb.fi, the Overpass API and Frankfurter) are public data services that receive only the look-up described in section 3. Servers you configure yourself (a self-hosted AI, an agent gateway, an MCP server, Home Assistant, a streaming server, a browser-streaming relay or your organisation's systems) are governed by whoever runs them.</p>
+
+<h2 id="rights">12. Your rights</h2>
+<p>Under the New Zealand Privacy Act 2020 you have the right to ask for access to personal information we hold about you and to ask us to correct it. We hold very little: usually just what's in any email you send us. Contact us at the address below. For information on your phone, you can view, change and delete it in the app. For information held by a service you chose, contact that service.</p>
+<p>If you are not satisfied with how we handle a privacy concern, you can complain to the Office of the Privacy Commissioner at <a href="https://www.privacy.org.nz/">privacy.org.nz</a>.</p>
+
+<h2 id="changes">13. Changes to this policy</h2>
+<p>If the app's handling of data changes, we will update this page and its effective date.</p>
+
+<h2 id="contact">14. Contact</h2>
+<p>Skunkworks NZ Ltd, New Zealand<br>
+Privacy enquiries: <a href="mailto:g@skunkworks.kiwi">g@skunkworks.kiwi</a></p>
+
+<footer>
+<p>© 2026 Skunkworks NZ Ltd. OpenGlasses is independent of Meta, Apple and the AI providers named above.</p>
+</footer>
+
+</main>
+</body>
+</html>
