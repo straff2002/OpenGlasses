@@ -12,6 +12,7 @@ enum LLMProvider: String, CaseIterable {
     case geminiVertex = "geminiVertex"   // Gemini via Vertex AI — Google OAuth, no API key (Plan AI)
     case groq = "groq"
     case deepseek = "deepseek"
+    case mistral = "mistral"
     case zai = "zai"
     case qwen = "qwen"
     case minimax = "minimax"
@@ -30,6 +31,7 @@ enum LLMProvider: String, CaseIterable {
         case .geminiVertex: return "Gemini (Vertex AI)"
         case .groq: return "Groq"
         case .deepseek: return "DeepSeek"
+        case .mistral: return "Mistral AI"
         case .zai: return "Z.ai (Subscription)"
         case .qwen: return "Qwen (Subscription)"
         case .minimax: return "MiniMax (Subscription)"
@@ -50,6 +52,7 @@ enum LLMProvider: String, CaseIterable {
         case .geminiVertex: return URL(string: "https://console.cloud.google.com/apis/credentials")
         case .groq: return URL(string: "https://console.groq.com/keys")
         case .deepseek: return URL(string: "https://platform.deepseek.com/api_keys")
+        case .mistral: return URL(string: "https://admin.mistral.ai/plateforme/api-keys")
         case .minimax: return URL(string: "https://platform.minimaxi.com")
         case .xai: return URL(string: "https://console.x.ai")
         case .openrouter: return URL(string: "https://openrouter.ai/keys")
@@ -63,7 +66,7 @@ enum LLMProvider: String, CaseIterable {
         switch self {
         // .chatgpt speaks the Responses API, not chat completions — its own send path.
         case .anthropic, .gemini, .geminiVertex, .chatgpt, .local, .appleOnDevice: return false
-        case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom: return true
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom: return true
         }
     }
 
@@ -77,6 +80,7 @@ enum LLMProvider: String, CaseIterable {
         case .geminiVertex: return ""   // built per-request from project/region (VertexAI.endpointURL)
         case .groq: return "https://api.groq.com/openai/v1/chat/completions"
         case .deepseek: return "https://api.deepseek.com/chat/completions"
+        case .mistral: return "https://api.mistral.ai/v1/chat/completions"
         case .zai: return "https://api.z.ai/api/coding/paas/v4/chat/completions"
         case .qwen: return "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
         case .minimax: return "https://api.minimax.io/v1/chat/completions"
@@ -98,6 +102,7 @@ enum LLMProvider: String, CaseIterable {
         case .geminiVertex: return "gemini-2.0-flash"
         case .groq: return "llama-3.3-70b-versatile"
         case .deepseek: return "deepseek-flash"
+        case .mistral: return "mistral-medium-latest"
         case .zai: return "glm-4.5"
         case .qwen: return "qwen3.5-plus"
         case .minimax: return "MiniMax-M2.7"
@@ -738,7 +743,7 @@ class LLMService: ObservableObject {
             rawResponse = try await sendLocal(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: includeTools, imageData: turnImage, onToken: onToken)
         case .appleOnDevice:
             rawResponse = try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
-        case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
             rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         }
 
@@ -892,7 +897,7 @@ class LLMService: ObservableObject {
             return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
         case .appleOnDevice:
             return try await sendAppleOnDevice(text, systemPrompt: system)
-        case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
             return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
         }
     }
@@ -1117,7 +1122,7 @@ class LLMService: ObservableObject {
                       let text = content.first?["text"] as? String else { return nil }
                 return text
 
-            case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !baseURL.hasSuffix("/chat/completions") {
                     baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
@@ -1216,7 +1221,7 @@ class LLMService: ObservableObject {
                       let text = content.first?["text"] as? String else { return nil }
                 return text
 
-            case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !baseURL.hasSuffix("/chat/completions") {
                     baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
@@ -1329,7 +1334,7 @@ class LLMService: ObservableObject {
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.anthropic(data, toolName: toolName)
 
-            case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !baseURL.hasSuffix("/chat/completions") {
                     baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
@@ -1432,7 +1437,7 @@ class LLMService: ObservableObject {
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.anthropic(data, toolName: toolName)
 
-            case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !baseURL.hasSuffix("/chat/completions") {
                     baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
@@ -1536,7 +1541,7 @@ class LLMService: ObservableObject {
                 throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
             }
             return try await sendAppleOnDevice(text, systemPrompt: systemPrompt)
-        case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
             return try await sendOpenAICompatible(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
         }
     }
@@ -1810,7 +1815,7 @@ class LLMService: ObservableObject {
     nonisolated static func providerSupportsTools(_ provider: LLMProvider,
                                                   customEndpointRejectsTools: Bool) -> Bool {
         switch provider {
-        case .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter:
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter:
             return true
         // Custom endpoints get tools too (Gemini/vLLM/newer Ollama all speak OpenAI function
         // calling); the ones that 400 on a `tools` payload are retried once without tools and
@@ -1936,6 +1941,7 @@ class LLMService: ObservableObject {
                     // Servers that don't support it ignore the field; we then simply record nothing.
                     body["stream_options"] = ["include_usage": true]
                 }
+                Self.applyMistralRequestShape(to: &body, provider: provider)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 request.timeoutInterval = 60 // 60s timeout to prevent app freezing
 
@@ -3422,6 +3428,104 @@ extension LLMService {
         if disableThinking {
             body["reasoning_effort"] = "none"
         }
+    }
+
+    /// Bend a shared OpenAI-compatible body to what Mistral accepts. Applied to the outgoing body
+    /// only, never to `conversationHistory`, so another provider still sees the original history.
+    ///
+    /// - `stream_options` is dropped. Mistral's request schema is closed
+    ///   (`additionalProperties: false`) and has no such field, so the OpenAI-style usage opt-in is
+    ///   a validation error there rather than an ignored extra. Nothing is lost: Mistral's stream
+    ///   chunks carry `usage` on their own, which `StreamingUsageAccumulator` already reads.
+    /// - Tool-call ids are rewritten to Mistral's shape (`mistralNormalisedToolCallIDs`).
+    nonisolated static func applyMistralRequestShape(to body: inout [String: Any], provider: LLMProvider) {
+        guard provider == .mistral else { return }
+        body.removeValue(forKey: "stream_options")
+        if let messages = body["messages"] as? [[String: Any]] {
+            body["messages"] = mistralNormalisedToolCallIDs(messages)
+        }
+    }
+
+    /// Mistral's request validator requires tool-call ids of exactly nine ASCII letters or digits
+    /// on tokenizer v11 and older (`mistral-small-2506`); v13 and later only need a non-empty id,
+    /// which a nine-character one also is. Our history doesn't always hold that shape: the parser
+    /// falls back to `call_<n>`, and the model cascade can carry OpenAI's `call_…` ids into a
+    /// Mistral turn. Every other id is rewritten, and each assistant `tool_calls[].id` and the tool
+    /// message answering it go through one mapping, so the pair still lines up.
+    ///
+    /// Derived, never random: an id already in the right shape is kept, and any other id maps to
+    /// a base-62 digest of itself, so the same messages always produce the same body. Kept ids are
+    /// reserved first; a derived id that would clash with one already in the request is
+    /// re-derived with a salt.
+    nonisolated static func mistralNormalisedToolCallIDs(_ messages: [[String: Any]]) -> [[String: Any]] {
+        // Every id in the request, in first-appearance order.
+        var ids: [String] = []
+        var seen = Set<String>()
+        for message in messages {
+            var found: [String] = []
+            if let calls = message["tool_calls"] as? [[String: Any]] {
+                found += calls.compactMap { $0["id"] as? String }
+            }
+            if message["role"] as? String == "tool", let id = message["tool_call_id"] as? String {
+                found.append(id)
+            }
+            for id in found where seen.insert(id).inserted { ids.append(id) }
+        }
+
+        var used = Set(ids.filter(isMistralToolCallID))
+        var mapping: [String: String] = [:]
+        for id in ids where !isMistralToolCallID(id) {
+            var salt = 0
+            var candidate = mistralToolCallID(deriving: id, salt: salt)
+            while used.contains(candidate) {
+                salt += 1
+                candidate = mistralToolCallID(deriving: id, salt: salt)
+            }
+            used.insert(candidate)
+            mapping[id] = candidate
+        }
+        guard !mapping.isEmpty else { return messages }
+
+        return messages.map { message in
+            var message = message
+            if let calls = message["tool_calls"] as? [[String: Any]] {
+                message["tool_calls"] = calls.map { call in
+                    guard let id = call["id"] as? String, let mapped = mapping[id] else { return call }
+                    var call = call
+                    call["id"] = mapped
+                    return call
+                }
+            }
+            if message["role"] as? String == "tool",
+               let id = message["tool_call_id"] as? String, let mapped = mapping[id] {
+                message["tool_call_id"] = mapped
+            }
+            return message
+        }
+    }
+
+    nonisolated static func isMistralToolCallID(_ id: String) -> Bool {
+        id.utf8.count == 9 && id.utf8.allSatisfy { byte in
+            (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte)
+        }
+    }
+
+    /// Nine base-62 characters from a 64-bit FNV-1a digest of the id (plus the salt, when one is
+    /// needed). FNV rather than `Hasher`, whose seed changes every launch.
+    nonisolated static func mistralToolCallID(deriving id: String, salt: Int) -> String {
+        let source = salt == 0 ? id : "\(id)#\(salt)"
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in source.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        let alphabet = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        var out = ""
+        for _ in 0..<9 {
+            out.append(alphabet[Int(hash % 62)])
+            hash /= 62
+        }
+        return out
     }
 }
 

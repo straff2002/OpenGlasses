@@ -151,7 +151,7 @@ struct AIProvenance: Codable, Equatable {
     static func providerClass(for provider: LLMProvider) -> ProviderClass {
         switch provider {
         case .local, .appleOnDevice: return .local
-        case .anthropic, .openai, .chatgpt, .gemini, .geminiVertex, .groq, .deepseek, .zai, .qwen,
+        case .anthropic, .openai, .chatgpt, .gemini, .geminiVertex, .groq, .deepseek, .mistral, .zai, .qwen,
              .minimax, .xai, .openrouter, .custom: return .cloud
         }
     }

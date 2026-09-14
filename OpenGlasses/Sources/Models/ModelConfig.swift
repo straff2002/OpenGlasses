@@ -48,6 +48,8 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             // text-only model, so it must not match.
             let lowerModel = model.lowercased()
             return lowerModel.contains("flash") || lowerModel.contains("vision")
+        case .mistral:
+            return mistralVisionModels.contains(model.lowercased().trimmingCharacters(in: .whitespaces))
         case .qwen:
             // Qwen3.5-plus and qwen-vl models support vision
             let lowerModel = model.lowercased()
@@ -82,6 +84,24 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             return false
         }
     }
+
+    /// Mistral model IDs its docs mark as taking image input: the vision guide's list (Large 3,
+    /// Medium 3.1, Small 3.2, Ministral 3 3B/8B/14B), plus Medium 3.5 and Small 4, which their
+    /// model cards and announcements describe as multimodal. Each ID is spelled exactly as a model
+    /// card lists it, `-latest` aliases included. The dated names in the docs' page addresses
+    /// (`mistral-medium-3-5-26-04`) are not API model IDs, so they are left out. An exact-match
+    /// list, not a family substring: the same family names cover older text-only snapshots
+    /// (`ministral-8b-2410`, `mistral-large-2411`), and Codestral, Devstral, OCR, Voxtral,
+    /// moderation and embedding models don't take chat images at all. A model missing here can
+    /// still be switched on per config.
+    static let mistralVisionModels: Set<String> = [
+        "mistral-large-2512", "mistral-large-latest",
+        "mistral-medium-3-5", "mistral-medium-3", "mistral-medium-latest", "mistral-medium-2508",
+        "mistral-small-2603", "mistral-small-latest", "mistral-small-2506",
+        "ministral-3b-2512", "ministral-3b-latest",
+        "ministral-8b-2512", "ministral-8b-latest",
+        "ministral-14b-2512", "ministral-14b-latest",
+    ]
 
     /// Create a new config with defaults for a provider
     static func defaultConfig(for provider: LLMProvider) -> ModelConfig {
