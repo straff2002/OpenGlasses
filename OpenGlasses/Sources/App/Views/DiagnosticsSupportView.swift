@@ -85,7 +85,7 @@ struct DiagnosticsSupportView: View {
                 } label: {
                     OGRow(
                         "Report a Problem", icon: "ladybug",
-                        subtitle: "Review what's included, then open an issue"
+                        subtitle: "Review what's included, then email it or open an issue"
                     )
                 }
                 .buttonStyle(.plain)
@@ -221,6 +221,18 @@ private struct DiagnosticsReportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccent) private var accent
     @State private var copied = false
+    @State private var showingMail = false
+    @State private var shareItem: ShareItem?
+    @State private var emailStatus: EmailStatus?
+
+    /// What the sheet says after Email Report was tapped. Nil until then.
+    private enum EmailStatus: Equatable {
+        /// No Mail account: the report went to the share sheet instead.
+        case sharedInstead
+        case finished(DiagnosticsEmailOutcome)
+    }
+
+    private var draft: DiagnosticsEmailDraft { DiagnosticsEmailDraft(report: report) }
 
     var body: some View {
         NavigationStack {
@@ -236,23 +248,50 @@ private struct DiagnosticsReportSheet: View {
                         .padding(14)
                 }
 
-                Button {
-                    UIApplication.shared.open(report.issueURL)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Open a Bug Report")
-                            .font(.body.weight(.semibold))
+                VStack(spacing: 8) {
+                    Button {
+                        emailReport()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "envelope")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Email Report")
+                                .font(.body.weight(.semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(accent, in: Capsule())
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(accent, in: Capsule())
+                    .buttonStyle(.plain)
+
+                    Text("Goes to \(DiagnosticsReportBuilder.supportEmail). No account needed, and you can add to it before you send.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+
+                    if let emailStatus {
+                        statusLabel(for: emailStatus)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                .buttonStyle(.plain)
 
                 OGSection(footer: linkFooter) {
+                    Button {
+                        UIApplication.shared.open(report.issueURL)
+                    } label: {
+                        OGRow(
+                            "Open a GitHub Issue", icon: "arrow.up.right.square", mutedIcon: true,
+                            subtitle: "Needs a GitHub account", showsChevron: false
+                        ) {
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    OGDivider()
                     Button {
                         UIPasteboard.general.string = report.body
                         copied = true
@@ -278,8 +317,50 @@ private struct DiagnosticsReportSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showingMail) {
+                DiagnosticsReportMailComposer(draft: draft) { outcome in
+                    showingMail = false
+                    emailStatus = .finished(outcome)
+                }
+                .ignoresSafeArea()
+            }
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: item.items, onComplete: item.onComplete)
+            }
         }
         .tint(accent)
+    }
+
+    // MARK: - Email
+
+    private func emailReport() {
+        switch DiagnosticsReportMailComposer.route {
+        case .mailComposer:
+            emailStatus = nil
+            showingMail = true
+        case .shareSheet:
+            emailStatus = .sharedInstead
+            shareItem = ShareItem(items: [DiagnosticsEmailActivityItem(draft: draft)])
+        }
+    }
+
+    @ViewBuilder
+    private func statusLabel(for status: EmailStatus) -> some View {
+        switch status {
+        case .sharedInstead:
+            OGStatusLabel(
+                "This device has no Mail account set up, so the report opened in the share sheet. Send it to \(DiagnosticsReportBuilder.supportEmail).",
+                kind: .warn, systemImage: "envelope.badge"
+            )
+        case .finished(.sent):
+            OGStatusLabel("Report sent. Thank you.", kind: .ok)
+        case .finished(.saved):
+            OGStatusLabel("Saved to your Mail drafts. It hasn't been sent yet.", kind: .warn)
+        case .finished(.cancelled):
+            OGStatusLabel("Not sent.", kind: .warn, systemImage: "xmark.circle")
+        case .finished(.failed):
+            OGStatusLabel("Mail couldn't send the report. Copy or share it instead.", kind: .error)
+        }
     }
 
     // `LocalizedStringKey` rather than `String`, so these sentences reach the
@@ -292,7 +373,7 @@ private struct DiagnosticsReportSheet: View {
 
     private var linkFooter: LocalizedStringKey {
         if report.omittedLogLines > 0 {
-            return "A link can't hold the whole log, so \(report.omittedLogLines) older \(report.omittedLogLines == 1 ? "line is" : "lines are") left out of the bug-report link. Copy or share to send the complete report."
+            return "A link can't hold the whole log, so \(report.omittedLogLines) older \(report.omittedLogLines == 1 ? "line is" : "lines are") left out of the GitHub issue link. Email, copy or share to send the complete report."
         }
         return "Copy or share the report if you'd rather send it another way."
     }
