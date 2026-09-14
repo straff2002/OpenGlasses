@@ -16,7 +16,7 @@ enum ModelFormValidation {
             return googleConnected
         case .anthropic:
             return hasKey || claudeConnected
-        case .openai, .gemini, .groq, .zai, .qwen, .minimax, .xai, .openrouter:
+        case .openai, .gemini, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter:
             return hasKey
         }
     }

@@ -16,7 +16,7 @@ final class OpenAICompatibleAuthTests: XCTestCase {
     }
 
     func testKeylessNonCustomProvidersStillThrowMissingAPIKey() {
-        let providers: [LLMProvider] = [.openai, .groq, .xai, .openrouter, .zai, .qwen, .minimax]
+        let providers: [LLMProvider] = [.openai, .groq, .deepseek, .xai, .openrouter, .zai, .qwen, .minimax]
         for provider in providers {
             XCTAssertThrowsError(
                 try LLMService.openAICompatibleAuthorization(provider: provider, apiKey: ""),

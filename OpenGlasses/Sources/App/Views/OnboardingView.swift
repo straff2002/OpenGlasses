@@ -49,6 +49,7 @@ struct OnboardingView: View {
     // Optional service keys
     @State private var elevenLabsKey = ""
     @State private var perplexityKey = ""
+    @State private var searxngBaseURL = Config.searxngBaseURL
 
     // Permissions state
     @State private var micGranted = false
@@ -393,6 +394,13 @@ struct OnboardingView: View {
                         model: "Llama / Mixtral",
                         detail: "Ultra-fast inference, free tier",
                         icon: "bolt"
+                    )
+                    providerRow(
+                        .deepseek,
+                        name: "DeepSeek",
+                        model: "V4.1 Flash",
+                        detail: "Multimodal vision, strong coding, low cost",
+                        icon: "fish"
                     )
                     providerRow(
                         .qwen,
@@ -949,10 +957,25 @@ struct OnboardingView: View {
                                 .frame(minHeight: rowMinHeight)
                         }
                     }
+
+                    TextField("SearXNG instance URL (optional)", text: $searxngBaseURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .frame(minHeight: rowMinHeight)
+
+                    if searxngBaseURL.isEmpty {
+                        Link(destination: URL(string: "https://searx.space")!) {
+                            Label("Find a public instance at searx.space", systemImage: "arrow.up.right.square")
+                                .font(.subheadline)
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                                .frame(minHeight: rowMinHeight)
+                        }
+                    }
                 } header: {
-                    Label("Perplexity Search", systemImage: "magnifyingglass")
+                    Label("Web Search", systemImage: "magnifyingglass")
                 } footer: {
-                    Text("AI-powered web search with cited sources. Without this, DuckDuckGo is used.")
+                    Text("Optional. With nothing added, web search uses Tavily's free tier (no signup, rate-limited), then DuckDuckGo. Perplexity gives cited AI answers; SearXNG is open-source if you have an instance URL.")
                 }
 
                 Section {
@@ -984,6 +1007,7 @@ struct OnboardingView: View {
                     if !perplexityKey.isEmpty {
                         Config.setPerplexityAPIKey(perplexityKey)
                     }
+                    Config.setSearXNGBaseURL(searxngBaseURL)
                     go(to: 4)
                 }
                 skipButton()
@@ -1588,6 +1612,7 @@ struct OnboardingView: View {
         case .openai: urlString = "https://platform.openai.com/api-keys"
         case .gemini: urlString = "https://aistudio.google.com/apikey"
         case .groq: urlString = "https://console.groq.com/keys"
+        case .deepseek: urlString = "https://platform.deepseek.com/api_keys"
         case .openrouter: urlString = "https://openrouter.ai/keys"
         case .qwen: urlString = "https://dashscope.console.aliyun.com/apiKey"
         case .zai: urlString = "https://open.bigmodel.cn/usercenter/apikeys"
@@ -1605,6 +1630,7 @@ struct OnboardingView: View {
         case .openai: return "Get a key at platform.openai.com"
         case .gemini: return "Get a key at aistudio.google.com"
         case .groq: return "Get a key at console.groq.com"
+        case .deepseek: return "Get a key at platform.deepseek.com"
         case .openrouter: return "Get a key at openrouter.ai"
         case .qwen: return "Get a key at dashscope.console.aliyun.com"
         case .zai: return "Get a key at open.bigmodel.cn"

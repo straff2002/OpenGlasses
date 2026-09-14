@@ -154,7 +154,7 @@ class AgentDocumentStore: ObservableObject {
     - Quick actions on the speed dial for one-tap home control
 
     ## Knowledge
-    - Web search with cited sources (Perplexity/DuckDuckGo)
+    - Web search (Perplexity/Tavily/Brave/SearXNG, DuckDuckGo fallback)
     - Weather, news, currency conversion, dictionary
     - Remember where things are (object memory with GPS)
     - Face recognition with social context recall

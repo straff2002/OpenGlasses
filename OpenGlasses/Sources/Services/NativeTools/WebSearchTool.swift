@@ -2,10 +2,12 @@ import Foundation
 
 /// Searches the web. Prefers Perplexity AI, then Tavily, then Brave Search, when an
 /// API key is configured (grounded/cited answers first, then an independent web
-/// index). Falls back to DuckDuckGo Instant Answer API (no API key needed) otherwise.
+/// index). Then SearXNG when an instance URL is configured (open-source meta-search).
+/// With nothing configured, Tavily's keyless tier runs next (free, rate-limited, no signup),
+/// then DuckDuckGo Instant Answer as a last resort.
 struct WebSearchTool: NativeTool {
     let name = "web_search"
-    let description = "Search the web for information. Uses Perplexity AI, Tavily, or Brave Search (with citations) when configured, otherwise DuckDuckGo. Returns a brief summary."
+    let description = "Search the web for information. Uses configured providers when set; otherwise Tavily (free) or DuckDuckGo. Returns a brief summary."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -52,7 +54,22 @@ struct WebSearchTool: NativeTool {
             if let result = await searchBrave(query: query) {
                 return result
             }
-            // Fall through to DuckDuckGo on failure
+            // Fall through on failure
+        }
+
+        // Then SearXNG if configured (open-source meta-search, no API key)
+        if Config.isSearXNGConfigured {
+            if let result = await searchSearXNG(query: query) {
+                return result
+            }
+            // Fall through on failure
+        }
+
+        // Zero-setup fallback: Tavily's keyless tier needs no account or API key.
+        if !Config.isTavilyConfigured {
+            if let result = await searchTavily(query: query, keyless: true) {
+                return result
+            }
         }
 
         return await searchDuckDuckGo(query: query)
@@ -117,12 +134,16 @@ struct WebSearchTool: NativeTool {
 
     // MARK: - Tavily Search
 
-    private func searchTavily(query: String) async -> String? {
+    private func searchTavily(query: String, keyless: Bool = false) async -> String? {
         guard let url = URL(string: "https://api.tavily.com/search") else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(Config.tavilyAPIKey)", forHTTPHeaderField: "Authorization")
+        if keyless {
+            request.setValue("keyless", forHTTPHeaderField: "X-Tavily-Access-Mode")
+        } else {
+            request.setValue("Bearer \(Config.tavilyAPIKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 15
 
@@ -169,7 +190,8 @@ struct WebSearchTool: NativeTool {
                 result += "\n\nSources: \(sourceList.joined(separator: ", "))"
             }
 
-            return "Search result for \"\(query)\" (via Tavily): \(result)"
+            let label = keyless ? "Tavily free" : "Tavily"
+            return "Search result for \"\(query)\" (via \(label)): \(result)"
 
         } catch {
             PrivacyLog.webSearch(.tavily, succeeded: false, error: SafeErrorSummary(error))
@@ -236,6 +258,93 @@ struct WebSearchTool: NativeTool {
             PrivacyLog.webSearch(.brave, succeeded: false, error: SafeErrorSummary(error))
             return nil
         }
+    }
+
+    // MARK: - SearXNG Search
+
+    /// SearXNG JSON API: open-source meta-search aggregating multiple engines.
+    /// The wearer points at their own instance or a trusted public one — no API key.
+    private func searchSearXNG(query: String) async -> String? {
+        guard let url = Self.searxngSearchURL(baseURL: Config.searxngBaseURL, query: query) else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        let session = URLSession(configuration: config)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                PrivacyLog.webSearch(.searxng, succeeded: false,
+                                     status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+                return nil
+            }
+
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]], !results.isEmpty else {
+                PrivacyLog.webSearch(.searxng, succeeded: false, results: 0)
+                return nil
+            }
+
+            func clean(_ text: String) -> String {
+                text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            }
+
+            let snippets = results.prefix(5).compactMap { item -> String? in
+                let content = (item["content"] as? String).map(clean) ?? ""
+                let title = (item["title"] as? String).map(clean) ?? ""
+                if !content.isEmpty {
+                    return title.isEmpty ? content : "\(title): \(content)"
+                }
+                return title.isEmpty ? nil : title
+            }
+            guard !snippets.isEmpty else {
+                PrivacyLog.webSearch(.searxng, succeeded: false, results: results.count)
+                return nil
+            }
+
+            var result = snippets.joined(separator: " · ")
+            let urls = results.prefix(3).compactMap { $0["url"] as? String }
+            if !urls.isEmpty {
+                let sourceList = urls.enumerated().map { "[\($0.offset + 1)] \($0.element)" }
+                result += "\n\nSources: \(sourceList.joined(separator: ", "))"
+            }
+
+            PrivacyLog.webSearch(.searxng, succeeded: true, results: results.count)
+            return "Search result for \"\(query)\" (via SearXNG): \(result)"
+
+        } catch {
+            PrivacyLog.webSearch(.searxng, succeeded: false, error: SafeErrorSummary(error))
+            return nil
+        }
+    }
+
+    /// Build `{base}/search?q=…&format=json`, keeping any path on the instance URL
+    /// (`https://host/searx/` → `https://host/searx/search?…`). Query items encode `&`, `=` and
+    /// `#`; `+` is escaped by hand because URLComponents leaves it literal and servers read it as a space.
+    nonisolated static func searxngSearchURL(baseURL: String, query: String) -> URL? {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty,
+              var components = URLComponents(string: base),
+              components.scheme != nil, components.host?.isEmpty == false else {
+            return nil
+        }
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        components.path = path + "/search"
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "format", value: "json"),
+        ]
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return components.url
     }
 
     // MARK: - DuckDuckGo Fallback

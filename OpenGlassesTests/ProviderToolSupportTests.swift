@@ -13,7 +13,7 @@ final class ProviderToolSupportTests: XCTestCase {
     /// Every provider whose `completeStateless` / `sendMessage` route is `sendOpenAICompatible`.
     /// Keep this list in step with those two switch statements in `LLMService`.
     private static let openAICompatibleRoute: [LLMProvider] = [
-        .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom,
+        .openai, .groq, .deepseek, .zai, .qwen, .minimax, .xai, .openrouter, .custom,
     ]
 
     /// Providers with their own request builder — they never reach this predicate.

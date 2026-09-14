@@ -274,6 +274,7 @@ All settings are in-app — no source code editing needed.
 | OpenAI | GPT + Realtime | [platform.openai.com](https://platform.openai.com/) |
 | Google Gemini | Gemini Live | [aistudio.google.com](https://aistudio.google.com/) |
 | Groq | Fast inference | [console.groq.com](https://console.groq.com/) |
+| DeepSeek | DeepSeek LLM | [platform.deepseek.com](https://platform.deepseek.com/) |
 | ElevenLabs | Natural TTS | [elevenlabs.io](https://elevenlabs.io/) |
 | Perplexity | Web search | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) |
 
@@ -298,7 +299,7 @@ billing, and is still required for OpenAI Realtime voice.
 | Service | Settings |
 |---------|----------|
 | **ElevenLabs** | API key + voice selection (24 voices) |
-| **Perplexity** | API key (DuckDuckGo fallback if not set) |
+| **Web Search** | Optional Perplexity / Tavily / Brave keys + SearXNG instance URL. Order: Perplexity → Tavily → Brave → SearXNG → Tavily free tier (keyless) → DuckDuckGo |
 | **Live Streaming** | Platform + RTMP URL + stream key + chat read-aloud (Twitch channel, rate, mentions-only) |
 | **OpenClaw** | Enable + connection mode + host/port + token |
 | **Home Assistant** | URL + Long-Lived Access Token |

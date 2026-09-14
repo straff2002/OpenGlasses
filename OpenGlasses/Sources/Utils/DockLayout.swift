@@ -97,6 +97,7 @@ enum DockLayout {
         case .openai, .chatgpt: return "text.bubble"
         case .gemini, .geminiVertex: return "rhombus"
         case .groq: return "bolt"
+        case .deepseek: return "fish"
         case .zai: return "circle.hexagongrid"
         case .qwen: return "cloud"
         case .minimax: return "triangle"

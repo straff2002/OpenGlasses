@@ -1735,7 +1735,8 @@ struct Config {
 
     /// Local backends (MLX, Apple Foundation) can't tool-call `web_search`; when on, a hedged or
     /// freshness-sensitive local answer gets one transparent web-grounded re-ask. Default on —
-    /// `WebSearchTool` always has the keyless DuckDuckGo fallback, so no configuration is needed.
+    /// `WebSearchTool` always has keyless fallbacks (Tavily's free tier, then DuckDuckGo), so no
+    /// configuration is needed.
     @UserDefaultsBacked("localWebSearchFallbackEnabled", default: true) static var localWebSearchFallbackEnabled: Bool
 
     // MARK: - Local runtime and durable agent loops (Plan DZ)
@@ -2635,6 +2636,26 @@ struct Config {
 
     static var isBraveConfigured: Bool {
         !braveAPIKey.isEmpty
+    }
+
+    // MARK: - SearXNG Search
+
+    /// Base URL of a SearXNG instance (e.g. `https://search.example.com`). Stored in UserDefaults.
+    static var searxngBaseURL: String {
+        UserDefaults.standard.string(forKey: "searxngBaseURL") ?? ""
+    }
+
+    static func setSearXNGBaseURL(_ url: String) {
+        UserDefaults.standard.set(url.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "searxngBaseURL")
+    }
+
+    /// http is accepted, but ATS only lets it through for LAN / `.local` / Tailscale hosts; a public
+    /// http instance fails at the ATS layer and search falls through to the next provider.
+    static var isSearXNGConfigured: Bool {
+        guard let url = URL(string: searxngBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = url.host, !host.isEmpty else { return false }
+        return true
     }
 
     // MARK: - Hermes Agent Bridge (Plan CL P5)

@@ -97,6 +97,32 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertEqual(ChatGPTOAuth.defaultModel, "gpt-5.6-sol")
     }
 
+    // MARK: - DeepSeek provider defaults
+
+    func testDeepSeekProviderDefaults() {
+        let config = ModelConfig.defaultConfig(for: .deepseek)
+        XCTAssertEqual(config.baseURL, "https://api.deepseek.com/chat/completions")
+        XCTAssertEqual(config.model, "deepseek-flash")
+        XCTAssertTrue(LLMProvider.deepseek.isOpenAICompatible)
+        XCTAssertTrue(LLMProvider.deepseek.requiresAPIKey)
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: LLMProvider.deepseek.defaultBaseURL),
+            "https://api.deepseek.com/models"
+        )
+    }
+
+    func testModelsEndpointStripsChatCompletionsWithoutV1() {
+        // Z.ai's default has no /v1 segment; the listing lives beside chat/completions.
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: LLMProvider.zai.defaultBaseURL),
+            "https://api.z.ai/api/coding/paas/v4/models"
+        )
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: "https://host.example.com/chat/completions/"),
+            "https://host.example.com/models"
+        )
+    }
+
     // MARK: - xAI provider defaults
 
     func testXAIProviderDefaults() {
@@ -141,6 +167,16 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertFalse(inferredVision(.groq, "llama-3.1-70b"))
         XCTAssertFalse(inferredVision(.local, "gemma-2b"))
         XCTAssertFalse(inferredVision(.appleOnDevice, "apple"))
+    }
+
+    func testInferredVisionDeepSeekHeuristic() {
+        // V4.1-Flash accepts images and the legacy flash IDs route to it; V4-Pro is text-only.
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-flash"))
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-v4-flash"))
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-v4-flash-vision-exp"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-v4-pro"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-chat"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-reasoner"))
     }
 
     func testInferredVisionQwenHeuristic() {
