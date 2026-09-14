@@ -76,7 +76,7 @@ enum LLMProvider: String, CaseIterable {
         case .gemini: return "https://generativelanguage.googleapis.com/v1beta"
         case .geminiVertex: return ""   // built per-request from project/region (VertexAI.endpointURL)
         case .groq: return "https://api.groq.com/openai/v1/chat/completions"
-        case .deepseek: return "https://api.deepseek.com/v1/chat/completions"
+        case .deepseek: return "https://api.deepseek.com/chat/completions"
         case .zai: return "https://api.z.ai/api/coding/paas/v4/chat/completions"
         case .qwen: return "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
         case .minimax: return "https://api.minimax.io/v1/chat/completions"

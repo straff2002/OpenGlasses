@@ -436,7 +436,7 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Web Search")
             } footer: {
-                Text("Order: Perplexity → Tavily → Brave → SearXNG → Tavily free → DuckDuckGo. With no keys configured, Tavily free runs automatically (rate-limited, no signup). Add a Tavily key for 1,000 searches/month.")
+                Text("Order: Perplexity → Tavily → Brave → SearXNG → Tavily free → DuckDuckGo. With no keys configured, Tavily free runs automatically (rate-limited, no signup). Add a Tavily key to lift the free rate limit.")
             }
 
             // MARK: Camera Quality

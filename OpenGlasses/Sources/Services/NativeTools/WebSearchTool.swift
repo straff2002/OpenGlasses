@@ -325,15 +325,26 @@ struct WebSearchTool: NativeTool {
         }
     }
 
-    /// Build `{base}/search?q=…&format=json`, trimming trailing slashes on the instance URL.
-    static func searxngSearchURL(baseURL: String, query: String) -> URL? {
-        var base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        while base.hasSuffix("/") { base.removeLast() }
+    /// Build `{base}/search?q=…&format=json`, keeping any path on the instance URL
+    /// (`https://host/searx/` → `https://host/searx/search?…`). Query items encode `&`, `=` and
+    /// `#`; `+` is escaped by hand because URLComponents leaves it literal and servers read it as a space.
+    nonisolated static func searxngSearchURL(baseURL: String, query: String) -> URL? {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !base.isEmpty,
-              let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+              var components = URLComponents(string: base),
+              components.scheme != nil, components.host?.isEmpty == false else {
             return nil
         }
-        return URL(string: "\(base)/search?q=\(encoded)&format=json")
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        components.path = path + "/search"
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "format", value: "json"),
+        ]
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return components.url
     }
 
     // MARK: - DuckDuckGo Fallback

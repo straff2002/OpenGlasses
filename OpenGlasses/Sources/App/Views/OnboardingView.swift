@@ -400,7 +400,7 @@ struct OnboardingView: View {
                         name: "DeepSeek",
                         model: "V4.1 Flash",
                         detail: "Multimodal vision, strong coding, low cost",
-                        icon: "waveform.path.ecg"
+                        icon: "fish"
                     )
                     providerRow(
                         .qwen,
@@ -975,7 +975,7 @@ struct OnboardingView: View {
                 } header: {
                     Label("Web Search", systemImage: "magnifyingglass")
                 } footer: {
-                    Text("Optional. With nothing added, web search uses Tavily free (no signup). Perplexity gives cited AI answers; SearXNG is open-source if you have an instance URL.")
+                    Text("Optional. With nothing added, web search uses Tavily's free tier (no signup, rate-limited), then DuckDuckGo. Perplexity gives cited AI answers; SearXNG is open-source if you have an instance URL.")
                 }
 
                 Section {

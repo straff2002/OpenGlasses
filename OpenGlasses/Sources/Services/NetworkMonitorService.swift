@@ -31,6 +31,7 @@ enum NetworkCategory: String, CaseIterable {
         }
         // App services
         if h.contains("weather") || h.contains("openweather") || h.contains("duckduckgo")
+            || h.contains("tavily.com") || h.contains("search.brave.com")
             || h.contains("elevenlabs") || h.contains("newsapi") || h.contains("exchangerate")
             || h.contains("shazam") || h.contains("apple.com") {
             return .appService
