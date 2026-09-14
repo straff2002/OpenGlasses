@@ -4,8 +4,8 @@
   Privacy manifest for OpenGlasses.
 
   Required by Apple for App Store submission alongside the MFi / ExternalAccessory
-  integration (the Wearables DAT SDK). Public App Store distribution is not yet
-  supported by Meta, so this manifest is forward-looking groundwork.
+  integration (the Wearables DAT SDK). The App Store is the app's distribution
+  channel, so this manifest ships with every release and must match the build.
 
   NSPrivacyAccessedAPITypes below cover the required-reason APIs actually used in
   this target's source:

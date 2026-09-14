@@ -3,8 +3,10 @@ import Foundation
 /// Manages HIPAA-compliant data handling for clinical use cases.
 ///
 /// When HIPAA mode is enabled:
-/// - All transcript/recording files use NSFileProtectionComplete (encrypted at rest, only accessible when unlocked)
-/// - Files are excluded from iCloud backup
+/// - Files passed to `protectFile` get NSFileProtectionComplete (unreadable while locked) and are
+///   excluded from iCloud backup. Today that is the filed video recording, the Documents/Transcripts
+///   copy, a chosen-folder video copy, and the audit log — not audio-only recordings, the video's
+///   transcript sidecar, or files that existed before the mode was turned on (no sweep).
 /// - Audit log tracks all data access events (recordings, shares, deletions)
 /// - Auto-purge removes files older than the configured retention period
 /// - Cloud memory sync is disabled (no PHI leaves the device via gateway)
