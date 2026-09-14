@@ -100,3 +100,11 @@ cannot rely on speech recognition must not lose the feature to a voice-only entr
   wants vision every time; a note-taking one never does.
 - Should a voice session be able to *upgrade* to vision mid-session without a restart? The Camera
   button implies yes, and the SDK's capability model may not.
+
+## Power-policy coordination — 2026-09-12
+
+Before P2 wiring, resolve the stricter conserve/reserve entry refusal here against
+[BV](BV-power-policy.md)'s reserve confirmation contract in one shared admission table. Existing
+refusals and thermal stops must not be bypassed by a generic confirmation. BV owns pressure-driven
+idle/max-duration and active-video downgrade behavior; [EW](EW-session-resource-cleanup.md) owns
+proof that each resulting exit releases only its resources. Headless wiring remains buildable now.
