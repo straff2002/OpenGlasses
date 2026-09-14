@@ -85,6 +85,11 @@ enum DiagnosticsReportBuilder {
     /// remote: the shipped app has no repository to ask.
     static let issueBaseURL = "https://github.com/straff2002/OpenGlasses/issues/new"
 
+    /// Where an emailed report goes — the published support and privacy address. Defined once so
+    /// the composer, the share-sheet note and the tests cannot drift apart. Email needs no GitHub
+    /// account, which is why it is the primary way to send a report.
+    static let supportEmail = "g@skunkworks.kiwi"
+
     /// Log lines carried at most. The in-memory ring holds ~80; the newest 60 are
     /// what a report has ever needed.
     static let maxLogLines = 60
