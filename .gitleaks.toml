@@ -72,6 +72,19 @@ regexes = [
 
 [[allowlists]]
 description = """
+Redaction-test input in DiagnosticsEmailDraftTests: a fabricated OpenAI-shaped key planted in a
+report's log tail, with the test asserting the emailed draft never carries it and shows the
+redaction placeholder instead. The same literal already sits in DiagnosticsReportBuilderTests'
+planted-secret table, where the tuple form does not trip the detector; this test's
+`let secret = …` assignment does. Scoped to the literal AND the file that owns it, so a real key
+pasted anywhere else still fires.
+"""
+condition = "AND"
+paths = ['''OpenGlassesTests/DiagnosticsEmailDraftTests\.swift''']
+regexes = ['''sk-proj-AbCdEfGhIjKlMnOp0123456789''']
+
+[[allowlists]]
+description = """
 Lennox furnace model numbers in EquipmentIdentityTests (SLP99UH…), which are equipment
 nameplate codes the Field Assist equipment matcher parses. They read as high-entropy tokens and
 are printed on the side of the appliance. Scoped to the model-number shape and that test file.
