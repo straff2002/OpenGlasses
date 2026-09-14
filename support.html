@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OpenGlasses Support</title>
+<!-- Self-contained on purpose, like index.html and privacy.html: no external CSS, script,
+     font or image. Outbound links: mailto to the support address, and the GitHub issues
+     page. The rest are relative links to privacy.html and about.html. -->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1d1c1a;
+    --muted: #5d5a55;
+    --rule: #e3dfd8;
+    --link: #a4441a;
+    --panel: #f2efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514;
+      --fg: #ebe8e3;
+      --muted: #a9a49c;
+      --rule: #34312d;
+      --link: #f08a4b;
+      --panel: #201f1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; }
+  h2 { font-size: 1.3rem; line-height: 1.3; margin: 2.5rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 .25rem; }
+  p, ul { margin: 0 0 1rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--link); text-underline-offset: 2px; }
+  .meta { color: var(--muted); margin-bottom: 2rem; }
+  .summary { background: var(--panel); border-radius: 10px; padding: 1rem 1.25rem; }
+  .summary ul { margin: 0; }
+  .note { color: var(--muted); font-size: .92rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  footer p { margin: 0 0 .5rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Support</h1>
+<p class="meta">OpenGlasses, by Skunkworks NZ Ltd</p>
+
+<h2 id="contact">Contact</h2>
+<p>Email <a href="mailto:g@skunkworks.kiwi">g@skunkworks.kiwi</a> for support questions.</p>
+
+<h2 id="beta">Beta testers</h2>
+<p>If you're testing a pre-release build through Apple's TestFlight, send feedback from there: in the TestFlight app, choose <strong>Send Beta Feedback</strong>, or take a screenshot while using the app to send feedback. Crash reports also reach us through TestFlight.</p>
+
+<h2 id="report">Reporting a problem from the app</h2>
+<p>In the app, go to <strong>Settings &rarr; Diagnostics &amp; Support &rarr; Report a Problem</strong>. You'll review exactly what's included before doing anything with it, then copy or share the report&mdash;for example into an email to the address above.</p>
+<p>The same screen has <strong>Export Diagnostics</strong>, which lets you preview every line of a diagnostics file before sharing it.</p>
+<p class="note">Keys and personal identifiers in a report are masked automatically before you see it. Your conversations, contacts, location, and saved memories are never included.</p>
+
+<h2 id="github">GitHub issues</h2>
+<p>If you have a GitHub account, you can file an issue directly: <a href="https://github.com/straff2002/OpenGlasses/issues">github.com/straff2002/OpenGlasses/issues</a>.</p>
+
+<h2 id="faq">Frequently asked questions</h2>
+
+<h3>Do I need an account?</h3>
+<p>No. There is no OpenGlasses account or sign-up.</p>
+
+<h3>Do I need glasses?</h3>
+<p>No. Phone-based features and camera fallback let you use OpenGlasses without compatible smart glasses.</p>
+
+<h3>Which AI does it use?</h3>
+<p>You choose. Use a cloud AI provider, connect your own server, or run a compatible model on your iPhone.</p>
+
+<h3>How do I delete my data?</h3>
+<p>Most of what the app keeps lives on your iPhone, so you control it. Conversations, memories, faces, recordings, notes, places, documents and vaults can each be deleted from within the app, and you can set an automatic retention period for conversation history. Deleting the app removes its stored data; see the <a href="privacy.html#retention">retention and deletion</a> section of the privacy policy for the details, including Keychain items that can outlive an uninstall.</p>
+
+<h3>Does browser streaming send my video to Skunkworks NZ?</h3>
+<p>Yes. Browser streaming for Field Assist uses a relay server that you or your organisation run&mdash;the app ships with no relay address, and streaming doesn't start until you enter one in Settings. Frames go only to that relay, and from there to the people who open your stream link.</p>
+
+<footer>
+<p><a href="about.html">About</a> &middot; <a href="privacy.html">Privacy policy</a></p>
+<p>OpenGlasses is source-available under BSL 1.1, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence.</p>
+<p>&copy; 2026 Skunkworks NZ Ltd.</p>
+</footer>
+
+</main>
+</body>
+</html>
