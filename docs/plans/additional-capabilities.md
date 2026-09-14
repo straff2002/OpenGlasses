@@ -94,14 +94,14 @@ redistribution terms before bundling/hosting.
   Kokoro ahead of the network engine (don't wait on the network for a hazard alert) but never
   downgrades to the robotic voice for speed. No SDK/audio types — fully unit-tested.
 - [KokoroModelBundle.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelBundle.swift) +
-  [KokoroModelStore.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelStore.swift) — a **bundle
+  `KokoroModelStore` (since folded into the generic [ModelStore.swift](../../OpenGlasses/Sources/Services/ModelDownload/ModelStore.swift)) — a **bundle
   descriptor** (the shipped choice is `kokoro-int8-multi-lang-v1_1`, ~185 MB int8, en+zh, hosted as
   unpacked files on the `csukuangfj/kokoro-int8-multi-lang-v1_1` HuggingFace repo) and a
   descriptor-driven **presence/selection** check in Application Support. "Installed" means every
   declared file (`model.int8.onnx`, `voices.bin`, `tokens.txt`, `lexicon-*.txt`, `*-zh.fst`) **and**
   directory (`espeak-ng-data/`, `dict/`) is present and non-empty — directories included, since
   sherpa-onnx needs them. File/dir set verified against the live HF repo tree. Tested headlessly.
-- [KokoroModelDownloader.swift](../../OpenGlasses/Sources/Services/TTS/KokoroModelDownloader.swift) +
+- `KokoroModelDownloader` (since folded into the generic [ModelDownloader.swift](../../OpenGlasses/Sources/Services/ModelDownload/ModelDownloader.swift)) +
   [HuggingFaceModelInstaller.swift](../../OpenGlasses/Sources/Services/TTS/HuggingFaceModelInstaller.swift)
   — the **download** layer: an orchestration state machine (`notDownloaded → downloading → verifying →
   ready/failed`) that stages the download, verifies it against the descriptor, then **atomically**
@@ -357,8 +357,9 @@ streaming/VAD are deferred (device-validated), exactly as Kokoro's audio output 
   Apple Speech is the terminal fallback; `.auto` promotes the fully-local recognizer **when offline**;
   `.onDevice` never silently falls back to the cloud-capable engine. Fully unit-tested.
 - [ASRModelBundle.swift](../../OpenGlasses/Sources/Services/ASR/ASRModelBundle.swift) +
-  [ASRModelStore.swift](../../OpenGlasses/Sources/Services/ASR/ASRModelStore.swift) +
-  [ASRModelDownloader.swift](../../OpenGlasses/Sources/Services/ASR/ASRModelDownloader.swift) — the
+  `ASRModelStore` + `ASRModelDownloader` (both since folded into the generic
+  [ModelStore.swift](../../OpenGlasses/Sources/Services/ModelDownload/ModelStore.swift) /
+  [ModelDownloader.swift](../../OpenGlasses/Sources/Services/ModelDownload/ModelDownloader.swift)) — the
   SenseVoice descriptor (`csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`, ~240 MB int8,
   just `model.int8.onnx` + `tokens.txt`), the presence store, and the stage→verify→atomic-install
   downloader (injected installer; the live one fetches the two unpacked files from HF — no tree

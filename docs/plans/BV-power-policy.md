@@ -78,3 +78,42 @@ applying it in its own terms — the service never reaches into features:
 Headless: fusion/table/hysteresis tests + full suite + Release green. Device: a scripted
 drain session comparing posture transitions against logged battery/thermal curves, and a
 hot-day live-session run confirming `conserve` engages before iOS thermal throttling does.
+
+## Coverage review — 2026-09-12
+
+P2 remains partial;
+semantic flags alone do not establish camera or model enforcement. Existing additional posture
+readers (walking routes, digest and look-closely) do not close the following checklist.
+
+- [ ] Apply snapshot-first escalation to eligible visual requests; leave the camera off for
+  non-visual work. Do not end a stream held by recording, broadcast, HUD or assistive consumers.
+- [ ] Apply shorter inactivity and bounded maximum live-vision durations under power pressure.
+  Correct the earlier “longer idle teardowns” wording: idle retention must shorten to save power.
+- [ ] Enforce reserve-mode admission at every voice/UI/tool live-video entry. Reconcile CX's
+  stricter conserve/reserve refusal with BV's confirmation contract in one decision table before
+  wiring: a generic confirmation must not override an existing refusal or device thermal stop.
+- [ ] Define transitions for an already-running conversation: stop/downgrade its video with an
+  audible reason and retain voice when supported. User-started recordings/broadcasts retain their
+  separate ownership and device limits; never silently kill them through this policy.
+- [ ] Wire smaller local-model selection for eligible opportunistic work and widened reading
+  checkpoints; do not replace a model underneath active inference.
+- [ ] Wire optional glasses thermal observations with missing/stale signal handling, then validate
+  on firmware that supplies them. Build fake-stream tests now; only real signal validation needs hardware.
+- [ ] Record drain/hot-day evidence before claiming energy savings or tuning shipped defaults.
+
+Acceptance uses fake clocks, posture changes and resource claims across Direct/offline/Gemini/OpenAI
+routes. Test low-battery entry/recovery, charging with high thermal pressure, unavailable glasses
+signals, reserve transitions during active video and every stream entry's denial/confirmation path.
+Consumer tests must observe actual camera/task actions, not only `PowerPosture` properties.
+
+### Ownership of adjacent gaps
+
+| Gap | Canonical owner |
+|---|---|
+| Automatic enforcement and signal integration | BV P2, composed with [CX](CX-live-session-vision-choice.md) |
+| Every-exit resource release and warm-up cancellation | [EW](EW-session-resource-cleanup.md) |
+| User profiles, threshold UI, battery diagnostics | [EY](EY-power-controls-and-diagnostics.md); replaces the former unowned “can follow” |
+| Dedup default-on motion validation | [AT](frame-dedup-change-gate.md) |
+| Adaptive source capture FPS/resolution | [EZ](EZ-adaptive-camera-capture.md), after [EO](EO-hevc-glasses-stream.md) measurements |
+| Resetting current context across backends | [EX](EX-conversation-reset-across-backends.md) |
+| OpenClaw LAN/auth compatibility validation | [EH](EH-openclaw-2-0-wire-alignment.md) / [AR](gateway-device-pairing.md) |
