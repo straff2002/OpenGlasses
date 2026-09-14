@@ -43,22 +43,27 @@ the API throws an unrecognised-selector exception before constructing the graph.
 
 ## Reproducing the smoke test
 
-After fetching the frameworks, supply the holistic model and a photograph with a
-visible person, then run against an already booted simulator:
+After fetching the frameworks, supply the holistic model and a photograph of a
+full-height person whose face and both hands are visible, then run against an
+already booted simulator:
 
 ```sh
 python3 -B -m unittest discover -s Scripts/tests -p test_mediapipe_linking.py -v
 python3 Scripts/smoke-mediapipe.py \
   --model /absolute/path/holistic_landmarker.task \
-  --image /absolute/path/pose.jpg \
+  --image /absolute/path/male_full_height_hands.jpg \
   --simulator <simulator-udid> --output /tmp/mediapipe-smoke
 ```
 
 The smoke uses optimisation and dead stripping, consumes the production linker
 configuration, rejects a link map containing `fst_types.o` or `FstRegisterer`, and
-requires three video-mode inferences with 33 finite pose landmarks. It records
-the face and hand counts too. The CI test job downloads checksum-pinned public
-MediaPipe fixtures and runs this test before the app's unit suite.
+requires three video-mode inferences carrying 33 pose, 21 left-hand, 21 right-hand
+and at least 468 face landmarks, all finite. `HolisticWindower` feeds face
+landmarks 0–467 to the fingerspelling model, so a graph that lands pose but loses
+face or hands has to fail here rather than decode into silence; a photograph
+showing only a body would pass such a graph. The CI test job downloads
+checksum-pinned public MediaPipe fixtures and runs this test before the app's
+unit suite.
 
 This checks the graph itself. Before closing #309, also cold-launch the full
 Release app on hardware without a debugger, verify the UI remains responsive

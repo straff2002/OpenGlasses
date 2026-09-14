@@ -88,12 +88,16 @@ jobs:
           curl --fail --location --retry 3 --max-time 90 \
             https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/1/holistic_landmarker.task \
             -o "$fixtures/holistic_landmarker.task"
+          # A full-height figure with a visible face and both hands: the smoke asserts the face
+          # and hand landmarks too, and a fixture showing only a body silently passes a graph
+          # whose face registration has been stripped.
           curl --fail --location --retry 3 --max-time 90 \
-            https://storage.googleapis.com/mediapipe-assets/pose.jpg -o "$fixtures/pose.jpg"
+            https://storage.googleapis.com/mediapipe-assets/male_full_height_hands.jpg \
+            -o "$fixtures/male_full_height_hands.jpg"
           echo "e2dab61191e2dcd0a15f943d8e3ed1dce13c82dfa597b9dd39f562975a50c3f8  $fixtures/holistic_landmarker.task" | shasum -a 256 -c -
-          echo "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b  $fixtures/pose.jpg" | shasum -a 256 -c -
+          echo "8a7fe5be8b90d6078b09913ca28f7e5d342f8d3cde856ab4e3327d2970b887f8  $fixtures/male_full_height_hands.jpg" | shasum -a 256 -c -
           python3 Scripts/smoke-mediapipe.py \
-            --model "$fixtures/holistic_landmarker.task" --image "$fixtures/pose.jpg" \
+            --model "$fixtures/holistic_landmarker.task" --image "$fixtures/male_full_height_hands.jpg" \
             --simulator "${{ steps.project.outputs.simulator-udid }}" --output MediaPipeSmokeResults
 
       - name: Upload MediaPipe smoke diagnostics

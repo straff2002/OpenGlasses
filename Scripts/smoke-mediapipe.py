@@ -2,8 +2,10 @@
 """Compile and run the holistic graph with Release-style linking on a booted iOS simulator.
 
 Uses the same generated linker configuration as OpenGlasses. Supply a real model
-and a photograph with a visible person: accepting blank frames is not a pass.
-The model and photograph are test inputs, never copied into the shipping app.
+and a photograph of a full-height person whose face and both hands are visible:
+the smoke requires pose, face and both-hand landmarks, so a narrower photograph
+fails it, and accepting blank frames is not a pass. The model and photograph are
+test inputs, never copied into the shipping app.
 """
 
 import argparse
