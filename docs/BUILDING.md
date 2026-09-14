@@ -275,6 +275,7 @@ All settings are in-app — no source code editing needed.
 | Google Gemini | Gemini Live | [aistudio.google.com](https://aistudio.google.com/) |
 | Groq | Fast inference | [console.groq.com](https://console.groq.com/) |
 | DeepSeek | DeepSeek LLM | [platform.deepseek.com](https://platform.deepseek.com/) |
+| Mistral AI | Mistral LLM | [admin.mistral.ai](https://admin.mistral.ai/plateforme/api-keys) |
 | ElevenLabs | Natural TTS | [elevenlabs.io](https://elevenlabs.io/) |
 | Perplexity | Web search | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) |
 

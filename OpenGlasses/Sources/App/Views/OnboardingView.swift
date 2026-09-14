@@ -403,6 +403,13 @@ struct OnboardingView: View {
                         icon: "fish"
                     )
                     providerRow(
+                        .mistral,
+                        name: "Mistral AI",
+                        model: "Medium",
+                        detail: "European AI lab, strong multilingual, vision",
+                        icon: "wind"
+                    )
+                    providerRow(
                         .qwen,
                         name: "Qwen",
                         model: "Qwen3.5 Plus",
@@ -1613,6 +1620,7 @@ struct OnboardingView: View {
         case .gemini: urlString = "https://aistudio.google.com/apikey"
         case .groq: urlString = "https://console.groq.com/keys"
         case .deepseek: urlString = "https://platform.deepseek.com/api_keys"
+        case .mistral: urlString = "https://admin.mistral.ai/plateforme/api-keys"
         case .openrouter: urlString = "https://openrouter.ai/keys"
         case .qwen: urlString = "https://dashscope.console.aliyun.com/apiKey"
         case .zai: urlString = "https://open.bigmodel.cn/usercenter/apikeys"
@@ -1631,6 +1639,7 @@ struct OnboardingView: View {
         case .gemini: return "Get a key at aistudio.google.com"
         case .groq: return "Get a key at console.groq.com"
         case .deepseek: return "Get a key at platform.deepseek.com"
+        case .mistral: return "Get a key at admin.mistral.ai"
         case .openrouter: return "Get a key at openrouter.ai"
         case .qwen: return "Get a key at dashscope.console.aliyun.com"
         case .zai: return "Get a key at open.bigmodel.cn"
