@@ -10,8 +10,10 @@ Scripts/fetch-mediapipe-frameworks.sh
 
 This downloads the pinned, SHA-256-verified official CocoaPods artifacts into
 `Frameworks/` (gitignored). Xcode Cloud runs it in `ci_scripts/ci_post_clone.sh`;
-GitHub Actions uses the same fetch script. `Package.swift`, the shim, and the
-upstream `LICENSE`/`NOTICE` remain committed.
+GitHub Actions uses the same fetch script. `Scripts/generate-xcodeproj.sh` runs it
+as well when the generated linker configuration below is absent, so a fresh clone
+needs no separate step. `Package.swift`, the shim, and the upstream
+`LICENSE`/`NOTICE` remain committed.
 
 ## Holistic graph linking
 
