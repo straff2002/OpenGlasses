@@ -222,7 +222,9 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        let tempDir = FileManager.default.temporaryDirectory
+        // In compliance mode the writer's file is created in a folder that already carries
+        // `completeUnlessOpen`, so it is protected while it is being written, not only once filed.
+        let tempDir = ComplianceFileProtection.inProgressDirectory(complianceMode: Config.hipaaMode)
         let fileName = "OpenGlasses_\(Int(Date().timeIntervalSince1970)).mp4"
         let url = tempDir.appendingPathComponent(fileName)
 
@@ -465,6 +467,8 @@ class VideoRecordingService: ObservableObject {
 
             let transcriptURL = videoURL.deletingPathExtension().appendingPathExtension("txt")
             try? fullTranscript.write(to: transcriptURL, atomically: true, encoding: .utf8)
+            // The sidecar holds the meeting itself, so it gets the recording's protection.
+            hipaaService?.protectRecordingArtefact(at: transcriptURL)
             // A transcript sidecar's name is the video's, and its contents are the meeting.
             PrivacyLog.recording(.transcriptSaved, characters: fullTranscript.count)
 
@@ -472,9 +476,10 @@ class VideoRecordingService: ObservableObject {
             saveTranscriptToDocuments(fullTranscript, date: recordingStartDate ?? Date())
         }
 
-        // HIPAA: protect files and log the recording event
+        // HIPAA: protect files and log the recording event. `completeUnlessOpen`, not `complete`:
+        // this stop can run with the phone locked, when `complete` cannot be applied.
         if let videoURL = url {
-            hipaaService?.protectFile(at: videoURL)
+            hipaaService?.protectRecordingArtefact(at: videoURL)
             hipaaService?.log(action: "RECORDING_STOPPED",
                               detail: "Duration: \(formattedDuration), frames: \(frameCount)")
         }
@@ -555,7 +560,7 @@ class VideoRecordingService: ObservableObject {
         }
 
         if let copyURL = outcome.folderCopyURL {
-            hipaaService?.protectFile(at: copyURL)
+            hipaaService?.protectRecordingArtefact(at: copyURL)
         }
         lastSaveNote = outcome.message
         lastSaveSummary = outcome.summary
@@ -597,7 +602,7 @@ class VideoRecordingService: ObservableObject {
 
         do {
             try transcript.write(to: fileURL, atomically: true, encoding: .utf8)
-            hipaaService?.protectFile(at: fileURL)
+            hipaaService?.protectRecordingArtefact(at: fileURL)
             hipaaService?.log(action: "TRANSCRIPT_SAVED", detail: fileName)
             PrivacyLog.recording(.transcriptSaved, characters: transcript.count)
         } catch {

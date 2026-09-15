@@ -3,10 +3,14 @@ import Foundation
 /// Manages HIPAA-compliant data handling for clinical use cases.
 ///
 /// When HIPAA mode is enabled:
-/// - Files passed to `protectFile` get NSFileProtectionComplete (unreadable while locked) and are
-///   excluded from iCloud backup. Today that is the filed video recording, the Documents/Transcripts
-///   copy, a chosen-folder video copy, and the audit log — not audio-only recordings, the video's
-///   transcript sidecar, or files that existed before the mode was turned on (no sweep).
+/// - Files are unreadable while the phone is locked and excluded from iCloud backup, in one of two
+///   classes (see `ComplianceFileProtection`). The audit log and clinical exports, written only in
+///   the foreground, get NSFileProtectionComplete through `protectFile`. Recording artefacts —
+///   audio and video recordings, each video's transcript sidecar, the Documents/Transcripts copy,
+///   a chosen-folder video copy and `recorded_sessions.json` — get
+///   NSFileProtectionCompleteUnlessOpen through `protectRecordingArtefact`, because a recording can
+///   be stopped and filed while the phone is locked. Turning the mode on also sweeps the recording
+///   artefacts already in the app's own folders.
 /// - Audit log tracks all data access events (recordings, shares, deletions)
 /// - Auto-purge removes files older than the configured retention period
 /// - Cloud memory sync is disabled (no PHI leaves the device via gateway)
@@ -80,6 +84,26 @@ class HIPAAComplianceService: ObservableObject {
     /// restart. Wired by AppState; nil in tests and headless contexts.
     var onModeChanged: (() -> Void)?
 
+    /// Where the recording artefacts the enable-time sweep reaches live. AppState points this at
+    /// the live services' own locations; the default is the app-container paths those services use
+    /// when nothing overrides them. A seam so the sweep can be exercised over a temporary directory.
+    var recordingArtefactLocations: @MainActor () -> ComplianceFileProtection.Locations = {
+        HIPAAComplianceService.defaultRecordingArtefactLocations
+    }
+
+    static var defaultRecordingArtefactLocations: ComplianceFileProtection.Locations {
+        ComplianceFileProtection.Locations(
+            recordingsDirectories: [RecordingFiler.defaultRecordingsDirectory],
+            transcriptsDirectory: defaultTranscriptsDirectory,
+            recordedSessionsFile: RecordedSessionStore.defaultStorageURL)
+    }
+
+    /// The app's own transcripts folder, `Documents/Transcripts`.
+    static var defaultTranscriptsDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Transcripts")
+    }
+
     /// The default store is the production one: the same protected JSON file in the documents
     /// directory this service has always used. The seam exists so restart, locked-storage and
     /// partial-write behaviour can be exercised. The checkpoint seam exists for the same reason
@@ -114,14 +138,19 @@ class HIPAAComplianceService: ObservableObject {
             // Plan BQ P2: compliance mode hard-disables Spotlight donation — purge
             // everything previously donated. (Refreshes while enabled donate nothing.)
             Task { @MainActor in await SpotlightIndexService.shared.purgeAll() }
+            // Files saved before the mode was on get the same protection as files saved after it.
+            // This runs from Settings, on an unlocked phone, so the class can be applied.
+            sweepRecordingArtefacts()
         }
         onModeChanged?()
     }
 
     // MARK: - File Protection
 
-    /// Apply HIPAA-compliant file protection to a file or directory.
-    /// Sets NSFileProtectionComplete and excludes from iCloud backup.
+    /// Apply HIPAA-compliant file protection to a file or directory that is only ever written in
+    /// the foreground (the audit log, clinical exports).
+    /// Sets NSFileProtectionComplete and excludes from iCloud backup. Recording artefacts use
+    /// `protectRecordingArtefact(at:)` instead.
     func protectFile(at url: URL) {
         guard Config.hipaaMode else { return }
 
@@ -143,6 +172,27 @@ class HIPAAComplianceService: ObservableObject {
             PrivacyLog.medical(.compliance, .fileProtectionFailed,
                                error: SafeErrorSummary(error))
         }
+    }
+
+    /// Protect a recording, a transcript or the recorded-sessions list while compliance mode is on:
+    /// NSFileProtectionCompleteUnlessOpen and backup exclusion.
+    ///
+    /// A recording can be stopped while the phone is locked, and `.complete` cannot be set on a
+    /// file then; `.completeUnlessOpen` can, and is sealed once the file is closed. Never throws and
+    /// never fails the caller: a missing file is a no-op, a refused attribute is logged.
+    func protectRecordingArtefact(at url: URL) {
+        ComplianceFileProtection.protect(url, as: .recordingArtefact,
+                                         complianceMode: Config.hipaaMode)
+    }
+
+    /// Apply the recording-artefact class to every recording, transcript and the sessions list
+    /// already in the app's own folders. Idempotent; nil when the mode is off.
+    @discardableResult
+    func sweepRecordingArtefacts() -> StoreProtection.Outcome? {
+        guard Config.hipaaMode else { return nil }
+        let outcome = ComplianceFileProtection.sweep(recordingArtefactLocations())
+        ComplianceFileProtection.report(outcome)
+        return outcome
     }
 
     /// Protect all files in a directory.
@@ -498,6 +548,10 @@ class HIPAAComplianceService: ObservableObject {
         // Purge temp recordings
         let tempDir = FileManager.default.temporaryDirectory
         purgedCount += purgeOldFiles(in: tempDir, olderThan: cutoffDate, matching: "OpenGlasses_")
+        // In-progress recordings are written into a protected subfolder while the mode is on.
+        purgedCount += purgeOldFiles(
+            in: tempDir.appendingPathComponent(ComplianceFileProtection.inProgressDirectoryName),
+            olderThan: cutoffDate, matching: "OpenGlasses_")
 
         if purgedCount > 0 {
             record(.retentionPurgeCompleted, target: .transcript, purpose: .retentionPolicy,

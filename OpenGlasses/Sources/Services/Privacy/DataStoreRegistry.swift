@@ -158,6 +158,13 @@ enum SensitiveStore: String, CaseIterable {
         case complete
         /// `FileProtectionType.completeUntilFirstUserAuthentication`, set explicitly.
         case completeUntilFirstUserAuthentication
+        /// `FileProtectionType.completeUnlessOpen` with backup exclusion, set by the owner only
+        /// while Medical Compliance mode is on (`ComplianceFileProtection`), and applied to the
+        /// files already there when the mode is turned on. Used for recording artefacts, which
+        /// can be finished while the phone is locked. Outside the mode the app sets no attribute,
+        /// and the backup-excluded column describes that state; a file created in a folder that
+        /// was protected while the mode was on still inherits the folder's class.
+        case completeUnlessOpenInComplianceMode
         /// No attribute set by the app: whatever the container's default is.
         case platformDefault
         case keychainAfterFirstUnlockThisDeviceOnly
@@ -439,7 +446,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .recordings:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUnlessOpenInComplianceMode, backupExcluded: false,
+                          retention: .none,
                           deleteAll: .unavailable("recordings are the wearer's media, removed individually"),
                           deleteSubject: .unavailable("a recording is not indexed by who appears in it"),
                           owner: "VideoRecordingService",
@@ -448,7 +456,8 @@ enum SensitiveStore: String, CaseIterable {
 
         case .recordedSessions:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUnlessOpenInComplianceMode, backupExcluded: false,
+                          retention: .none,
                           deleteAll: .api("RecordedSessionStore.deleteAll()"),
                           deleteSubject: .api("RecordedSessionStore.delete(_:)"),
                           owner: "RecordedSessionStore",
@@ -511,8 +520,9 @@ enum SensitiveStore: String, CaseIterable {
                           location: "Application Support/SafetyAssessments/history.json")
 
         case .clinicalTranscripts:
+            // Written at a recording's stop, which can happen while the phone is locked.
             return Record(store: self, dataClass: .clinical, subjectLinkage: .thirdPartySubject,
-                          protection: .complete, backupExcluded: true,
+                          protection: .completeUnlessOpenInComplianceMode, backupExcluded: true,
                           retention: .policy("clinical retention days, whatever the mode; disabled at zero"),
                           deleteAll: .api("HIPAAComplianceService.deleteFile(at:)"),
                           deleteSubject: .unavailable("transcripts are filed by session, not by patient"),

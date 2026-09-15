@@ -261,7 +261,8 @@ final class DataStoreRegistryTests: XCTestCase {
         switch record.protection {
         case .complete: expected = .complete
         case .completeUntilFirstUserAuthentication: expected = .completeUntilFirstUserAuthentication
-        default: expected = nil                      // the registry claims no explicit attribute
+        case .completeUnlessOpenInComplianceMode: expected = Config.hipaaMode ? .completeUnlessOpen : nil
+        default: expected = nil                     // the registry claims no explicit attribute
         }
         if let expected {
             XCTAssertEqual(actual, expected, "\(store.rawValue): protection disagrees with the registry",
