@@ -66,6 +66,13 @@ that it was *asked for*, which is what honest reporting needs; the service perfo
   everything else — the transcript sidecar, HIPAA file protection, the URL it returns — against the
   filed location instead of the temporary one. Previously the sidecar `.txt` was written next to a
   file in `tmp/`, so it was orphaned by design.
+  *Update 2026-09-15 ([#486](https://github.com/straff2002/OpenGlasses/pull/486)):* in Medical
+  Compliance mode that protection is now `.completeUnlessOpen` plus backup exclusion rather than
+  `.complete`, because a stop can run with the phone locked, when `.complete` cannot be applied. It
+  covers the filed video, the sidecar (previously unprotected), the chosen-folder copy, the
+  Transcripts copy, audio-only recordings and `recorded_sessions.json`. In-progress recordings are
+  written into a `tmp/` subfolder that already carries the class, and turning the mode on sweeps what
+  was saved before. Device verification of a locked-phone stop is pending.
 - `autoSaveToPhotos` is gone. There is no opt-in left to forget.
 - `toggleRecording` still offers the share sheet and surfaces `lastSaveNote` on the existing error
   surface when something didn't land. The stream-death auto-stop appends the same note to what it
