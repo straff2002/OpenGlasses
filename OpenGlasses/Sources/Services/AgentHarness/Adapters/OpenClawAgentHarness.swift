@@ -78,9 +78,11 @@ struct OpenClawAgentHarness: AgentHarness {
         if let error = Self.errorMessage(in: response) { throw AgentHarnessError.transport(error) }
     }
 
-    func respondToInput(_ run: AgentRun, approved: Bool) async throws {
-        // Approvals are a first-class gateway surface (`exec.approval.*`) wired in Plan EH P2.
-        throw AgentHarnessError.transport("This gateway answers approvals through its own approval surface, which is not wired yet.")
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws {
+        // Approvals are a first-class gateway surface (`exec.approval.*`), wired in its own plan.
+        // Until then this is honestly unsupported rather than quietly accepted: the wearer hears
+        // that the answer did not go anywhere, and the run's status stays whatever the gateway says.
+        throw AgentHarnessError.replyUnsupported(reply.body)
     }
 
     /// Poll the tracked run until terminal: `.started`, then `.completed` (with the final text),
@@ -132,7 +134,11 @@ struct OpenClawAgentHarness: AgentHarness {
 
     /// Map one gateway event payload to the shared `AgentEvent`, or `nil` for an unknown/ignored
     /// shape. The gateway tags each event with a `kind`; field names mirror the gateway schema.
-    static func normalize(_ json: [String: Any]) -> AgentEvent? {
+    /// - Parameters:
+    ///   - runID: the run the event belongs to, so a question carries its run.
+    ///   - sequence: arrival order, used only to derive an id for a question the gateway did not
+    ///     name (Plan FE P1).
+    static func normalize(_ json: [String: Any], runID: String = "", sequence: Int = 0) -> AgentEvent? {
         guard let kind = (json["kind"] ?? json["type"]) as? String else { return nil }
         switch kind {
         case "file_created":
@@ -151,7 +157,20 @@ struct OpenClawAgentHarness: AgentHarness {
         case "assistant":
             return (json["text"] as? String).map(AgentEvent.assistantText)
         case "awaiting_input":
-            return .awaitingInput(prompt: json["prompt"] as? String ?? "The agent needs your confirmation.")
+            let prompt = AgentResultMapping.sanitized(json["prompt"] as? String,
+                                                      limit: AgentResultMapping.maxPromptLength)
+                ?? "The agent needs your confirmation."
+            let explicit = AgentResultMapping.sanitized(
+                (json["questionId"] ?? json["question_id"] ?? json["id"]) as? String,
+                limit: AgentResultMapping.maxItemLength)
+            let revision = (json["revision"] ?? json["questionRevision"]) as? Int ?? 0
+            return .awaitingInput(AgentQuestion(
+                id: explicit ?? AgentQuestion.derivedID(runID: runID, prompt: prompt, sequence: sequence),
+                revision: revision,
+                kind: AgentQuestion.kind(fromLabel: json["kind"] as? String ?? json["questionKind"] as? String,
+                                         prompt: prompt),
+                prompt: prompt,
+                runID: runID))
         case "error":
             return .error(json["message"] as? String ?? "Unknown error.")
         case "completed":

@@ -187,6 +187,9 @@ final class MCPTransportTests: XCTestCase {
 final class MockURLProtocol: URLProtocol {
     nonisolated(unsafe) static var lastRequest: URLRequest?
     nonisolated(unsafe) static var lastBody: Data?
+    /// Every request in order, with its body — so a test can assert *which* endpoint a reply went
+    /// to, not just that the last one looked right (Plan FE P1).
+    nonisolated(unsafe) static var requests: [(request: URLRequest, body: Data?)] = []
     nonisolated(unsafe) static var responseBody = Data("{}".utf8)
     nonisolated(unsafe) static var statusCode = 200
     nonisolated(unsafe) static var responseHeaders: [String: String] = [:]
@@ -206,6 +209,11 @@ final class MockURLProtocol: URLProtocol {
         static var networkFailure: Scripted {
             Scripted(failure: URLError(.notConnectedToInternet))
         }
+        /// A request that left the device and never came back — the uncertain-delivery case, which
+        /// no status code can express (Plan FE P1).
+        static var timeout: Scripted {
+            Scripted(failure: URLError(.timedOut))
+        }
     }
 
     /// Answers consumed in request order; the last entry repeats for every further request. Empty
@@ -219,6 +227,7 @@ final class MockURLProtocol: URLProtocol {
         statusCode = 200
         responseHeaders = [:]
         requestCount = 0
+        requests = []
         script = []
         HTTPTransport.resetSessions()   // the session cache is static — isolate tests
     }
@@ -235,6 +244,7 @@ final class MockURLProtocol: URLProtocol {
     override func startLoading() {
         MockURLProtocol.lastRequest = request
         MockURLProtocol.lastBody = Self.readBody(from: request)
+        MockURLProtocol.requests.append((request, MockURLProtocol.lastBody))
         MockURLProtocol.requestCount += 1
 
         let scripted = MockURLProtocol.script.isEmpty

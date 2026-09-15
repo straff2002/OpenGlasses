@@ -71,6 +71,8 @@ struct CustomAgentHarness: AgentHarness {
         /// The raw label, sanitised and bounded, for an honest "it said X" report.
         let rawStatus: String
         let result: AgentRunResult
+        /// What the same response said about a pending question (Plan FE P1).
+        let question: AgentResultMapping.QuestionPayload
     }
 
     func poll(_ run: AgentRun) async throws -> Poll {
@@ -81,7 +83,8 @@ struct CustomAgentHarness: AgentHarness {
         let raw = JSONPath.string(at: config.statusPath, in: json)
         return Poll(status: AgentRunStatus.parse(raw),
                     rawStatus: AgentResultMapping.statusLabel(raw),
-                    result: AgentResultMapping.result(from: json, config: config))
+                    result: AgentResultMapping.result(from: json, config: config),
+                    question: AgentResultMapping.question(from: json, config: config))
     }
 
     /// Current status for an explicit query. An unrecognised value throws rather than defaulting to
@@ -100,6 +103,29 @@ struct CustomAgentHarness: AgentHarness {
             throw AgentHarnessError.unsupported("Cancel")
         }
         _ = try await sendJSON(request)
+    }
+
+    /// Relay one answer (Plan FE P1).
+    ///
+    /// Three outcomes, kept distinct because collapsing them is what let the session announce
+    /// "Okay, proceeding" over a reply that never arrived: **unsupported** (no input endpoint —
+    /// nothing is sent and the wearer is told), **uncertain** (the POST timed out after leaving,
+    /// so the endpoint may well have applied it), and an ordinary transport/HTTP failure.
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws {
+        guard let request = config.inputRequest(runID: run.id, reply: reply) else {
+            throw AgentHarnessError.replyUnsupported(reply.body)
+        }
+        do {
+            _ = try await sendJSON(request)
+        } catch let error as URLError where error.code == .timedOut {
+            // The request left the device and the answer never came back. Whether it was applied
+            // is unknown, and a blind resend could apply an effect twice.
+            throw AgentHarnessError.uncertainDelivery
+        } catch let error as AgentHarnessError {
+            throw error
+        } catch {
+            throw AgentHarnessError.transport(error.localizedDescription)
+        }
     }
 
     /// Status-poll event stream (no assumed push channel for an arbitrary endpoint). Emits
@@ -123,6 +149,12 @@ struct CustomAgentHarness: AgentHarness {
                 var failures = 0
                 var unknownTicks = 0
                 var delay = policy.interval
+                // Plan FE P1 question identity. `sequence` only advances when the run enters the
+                // waiting state or the wording changes, so a derived id is stable while the same
+                // question is polled, and a *new* question with the same words still gets its own.
+                var sequence = 0
+                var derivedFrom: String?
+                var announced: AgentQuestion.Identity?
 
                 poll: while !Task.isCancelled {
                     await sleeper(delay)
@@ -151,7 +183,33 @@ struct CustomAgentHarness: AgentHarness {
                         case .completed: continuation.yield(.completed(outcome.result))
                         case .failed:    continuation.yield(.failed(outcome.result))
                         case .cancelled: continuation.yield(.cancelled(outcome.result))
-                        case .queued, .running, .awaitingInput: continue
+                        case .awaitingInput:
+                            let payload = outcome.question
+                            let prompt = payload.prompt ?? Self.genericQuestionPrompt
+                            if !payload.hasExplicitID, derivedFrom != prompt {
+                                sequence += 1
+                                derivedFrom = prompt
+                            }
+                            let question = AgentQuestion(
+                                id: payload.id ?? AgentQuestion.derivedID(runID: run.id, prompt: prompt,
+                                                                          sequence: sequence),
+                                revision: payload.revision ?? 0,
+                                kind: AgentQuestion.kind(fromLabel: payload.kind, prompt: prompt),
+                                prompt: prompt,
+                                runID: run.id)
+                            // One yield per identity: polling the same question every four seconds
+                            // is not the agent asking again.
+                            if announced != question.identity {
+                                announced = question.identity
+                                continuation.yield(.awaitingInput(question))
+                            }
+                            continue
+                        case .queued, .running:
+                            // Out of the waiting state: the next question is a new one, even if it
+                            // arrives worded exactly like the last.
+                            derivedFrom = nil
+                            announced = nil
+                            continue
                         }
                         break poll
                     } catch {
@@ -177,6 +235,9 @@ struct CustomAgentHarness: AgentHarness {
         }
     }
 
+    /// What a waiting run is announced as when the endpoint maps no prompt path.
+    static let genericQuestionPrompt = "The agent is waiting for your answer."
+
     /// Whether a poll error ends the watch outright. Everything else — a dropped connection, a
     /// timeout, a 503 — is transient until the bounded retries run out.
     static func fatalLoss(for error: Error) -> AgentContactLoss? {
@@ -187,7 +248,8 @@ struct CustomAgentHarness: AgentHarness {
             return AgentPollingPolicy.isRetryable(httpStatus: code) ? nil : .endpoint(status: code)
         case .unsupported:
             return .noStatusEndpoint       // no status URL template — polling can never work
-        case .notConfigured, .transport, .unknownStatus, .agentModeOff:
+        case .notConfigured, .transport, .unknownStatus, .agentModeOff,
+             .replyUnsupported, .uncertainDelivery:
             return nil                      // transient until the bounded retries run out
         }
     }

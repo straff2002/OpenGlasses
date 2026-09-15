@@ -70,21 +70,42 @@ final class AgentSessionTests: XCTestCase {
         var spoken: [String] = []
         service.speak = { spoken.append($0) }
         service.handle(.started(AgentRun(id: "r", harness: .custom, prompt: "p", project: nil, status: .running, startedAt: Date())))
-        service.handle(.awaitingInput(prompt: "I'm about to push to main — confirm?"))
+        service.handle(.awaitingInput(Self.question("I'm about to push to main — confirm?")))
         XCTAssertEqual(service.activeRun?.status, .awaitingInput)
         XCTAssertEqual(service.awaitingInputPrompt, "I'm about to push to main — confirm?")
+        XCTAssertEqual(service.pendingQuestion?.id, "q1")
         XCTAssertTrue(spoken.contains("I'm about to push to main — confirm?"))
     }
 
-    func testDeclineConfirmationCancels() async {
+    /// Shorthand for the question the older confirmation tests used to express as a bare prompt.
+    static func question(_ prompt: String, id: String = "q1", revision: Int = 0,
+                         kind: AgentQuestion.Kind? = nil,
+                         runID: String = "run1") -> AgentQuestion {
+        AgentQuestion(id: id, revision: revision,
+                      kind: kind ?? .approval(actionSummary: prompt), prompt: prompt, runID: runID)
+    }
+
+    /// Plan FE P1 changed this assertion, and it is worth saying why: it used to assert
+    /// `.cancelled`, i.e. that declining locally *stopped the remote run*. Nothing had confirmed
+    /// that. A delivered decline now says only what is true — the agent has been told — and the
+    /// run keeps whatever status the endpoint reports.
+    func testDeclineIsRelayedWithoutClaimingTheRunStopped() async {
         let service = AgentSessionService()
         let mock = MockAgentHarness()
         service.setHarness(mock)
+        var spoken: [String] = []
+        service.speak = { spoken.append($0) }
         _ = await service.dispatch(prompt: "p", project: nil)
-        service.handle(.awaitingInput(prompt: "Push?"))
+        service.handle(.awaitingInput(Self.question("Push?")))
         await service.respondToConfirmation(approved: false)
-        XCTAssertEqual(service.activeRun?.status, .cancelled)
-        XCTAssertEqual(mock.respondedApproved, false)
+
+        XCTAssertEqual(mock.respondedBody, .deny)
+        XCTAssertEqual(spoken.last, "I've told the agent not to proceed.")
+        XCTAssertNotEqual(service.activeRun?.status, .cancelled,
+                          "a local decline is not evidence the remote run stopped")
+        XCTAssertTrue(service.declineAwaitingEndpoint)
+        XCTAssertEqual(service.currentStatusLine(),
+                       "I've told the agent not to proceed; it hasn't reported stopping yet.")
     }
 
     func testApproveConfirmationResumes() async {
@@ -92,10 +113,11 @@ final class AgentSessionTests: XCTestCase {
         let mock = MockAgentHarness()
         service.setHarness(mock)
         _ = await service.dispatch(prompt: "p", project: nil)
-        service.handle(.awaitingInput(prompt: "Push?"))
+        service.handle(.awaitingInput(Self.question("Push?")))
         await service.respondToConfirmation(approved: true)
         XCTAssertEqual(service.activeRun?.status, .running)
-        XCTAssertEqual(mock.respondedApproved, true)
+        XCTAssertEqual(mock.respondedBody, .approve)
+        XCTAssertEqual(service.lastReplyOutcome, .delivered)
     }
 
     func testCancelSpeaksSummary() async {
@@ -128,7 +150,13 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(OpenClawAgentHarness.normalize(["kind": "pr_opened", "url": "u"]), .prOpened(url: "u"))
         XCTAssertEqual(OpenClawAgentHarness.normalize(["kind": "pushed"]), .pushed)
         XCTAssertEqual(OpenClawAgentHarness.normalize(["kind": "progress", "text": "hi"]), .progress("hi"))
-        XCTAssertEqual(OpenClawAgentHarness.normalize(["kind": "awaiting_input", "prompt": "ok?"]), .awaitingInput(prompt: "ok?"))
+        guard case .awaitingInput(let question)? = OpenClawAgentHarness.normalize(
+            ["kind": "awaiting_input", "prompt": "ok?"], runID: "r9") else {
+            return XCTFail("awaiting_input should normalize to a question")
+        }
+        XCTAssertEqual(question.prompt, "ok?")
+        XCTAssertEqual(question.runID, "r9")
+        XCTAssertTrue(question.kind.isApproval, "an unlabelled gateway question is a confirmation")
         XCTAssertEqual(OpenClawAgentHarness.normalize(["kind": "error", "message": "x"]), .error("x"))
     }
 
@@ -309,7 +337,10 @@ private final class MockAgentHarness: AgentHarness {
     var isConfigured: Bool { configuredFlag }
     var scriptedEvents: [AgentEvent] = []
     private(set) var cancelled = false
-    private(set) var respondedApproved: Bool?
+    private(set) var respondedBody: AgentReply.Body?
+    private(set) var replies: [AgentReply] = []
+    var replyError: AgentHarnessError?
+    var scriptedStatus: AgentRunStatus?
 
     func start(prompt: String, project: String?) async throws -> AgentRun {
         AgentRun(id: "run1", harness: kind, prompt: prompt, project: project, status: .running, startedAt: Date())
@@ -320,7 +351,11 @@ private final class MockAgentHarness: AgentHarness {
             cont.finish()
         }
     }
-    func status(_ run: AgentRun) async throws -> AgentRunStatus { run.status }
+    func status(_ run: AgentRun) async throws -> AgentRunStatus { scriptedStatus ?? run.status }
     func cancel(_ run: AgentRun) async throws { cancelled = true }
-    func respondToInput(_ run: AgentRun, approved: Bool) async throws { respondedApproved = approved }
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws {
+        replies.append(reply)
+        if let error = replyError { throw error }
+        respondedBody = reply.body
+    }
 }

@@ -89,7 +89,10 @@ enum AgentEvent: Equatable {
     case commandRun(command: String, ok: Bool)
     case prOpened(url: String)
     case pushed
-    case awaitingInput(prompt: String)   // agent needs the user to confirm before continuing
+    /// The run is waiting on the wearer. Carries a **question with a stable identity**, not a
+    /// bare prompt (Plan FE P1): text equality can neither suppress a repeat nor recognise a
+    /// genuinely new question worded the same way.
+    case awaitingInput(AgentQuestion)
     case assistantText(String)
     /// Terminal: the run finished normally. Three separate terminal cases rather than one
     /// `completed` plus a flag, because collapsing them is exactly how a remote **cancellation**

@@ -151,7 +151,11 @@ final class AgentSummarizerTests: XCTestCase {
         XCTAssertEqual(AgentSummarizer.narration(for: .progress("Running tests")), "Running tests")
         XCTAssertEqual(AgentSummarizer.narration(for: .commandRun(command: "rm -rf x", ok: false)),
                        "A command failed: rm -rf x.")
-        XCTAssertEqual(AgentSummarizer.narration(for: .awaitingInput(prompt: "Push to main?")), "Push to main?")
+        // Plan FE P1: a question is narrated by the session, once per question identity — not by
+        // the generic narrator, which would re-announce every polled repeat.
+        XCTAssertNil(AgentSummarizer.narration(for: .awaitingInput(
+            AgentQuestion(id: "q1", revision: 0, kind: .approval(actionSummary: "Push to main?"),
+                          prompt: "Push to main?", runID: "r1"))))
         XCTAssertEqual(AgentSummarizer.narration(for: .error("boom")), "The agent hit an error: boom.")
     }
 

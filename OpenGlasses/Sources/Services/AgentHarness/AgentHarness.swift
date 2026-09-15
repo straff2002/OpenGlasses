@@ -28,13 +28,32 @@ protocol AgentHarness {
     /// Request cancellation of a run.
     func cancel(_ run: AgentRun) async throws
 
-    /// Answer an `awaitingInput` confirmation (e.g. approve a push). Default no-op for harnesses
-    /// that don't support interactive confirmation.
-    func respondToInput(_ run: AgentRun, approved: Bool) async throws
+    /// Answer the question a run is waiting on (Plan FE P1).
+    ///
+    /// The reply is typed — approve, deny, or the wearer's own words — and it carries the identity
+    /// of the question it answers, so an adapter can refuse an answer to a question that has since
+    /// been replaced. A harness that cannot carry a given body must throw
+    /// `AgentHarnessError.replyUnsupported`; the default below does exactly that, because the
+    /// previous default — a silent no-op — meant "declined" and "delivered" looked identical from
+    /// the outside.
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws
 }
 
 extension AgentHarness {
-    func respondToInput(_ run: AgentRun, approved: Bool) async throws {}
+    /// Nothing is relayed unless an adapter says how. Reporting that is the whole point: a harness
+    /// with no reply channel used to swallow the answer and let the session announce success.
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws {
+        throw AgentHarnessError.replyUnsupported(reply.body)
+    }
+
+    /// Back-compatible boolean wrapper (Plan N's original contract). Approve/deny only — there is
+    /// no question identity to attach here, so it is for callers that hold no question, and a
+    /// harness that checks identity will refuse it.
+    func respondToInput(_ run: AgentRun, approved: Bool) async throws {
+        try await respondToInput(run, reply: AgentReply(questionID: "", revision: 0,
+                                                        body: approved ? .approve : .deny,
+                                                        runID: run.id))
+    }
 
     /// Plan CN default: an adapter with no image channel simply ignores the attachment rather than
     /// failing the dispatch. Losing the picture degrades the task; refusing it loses the task.
@@ -54,6 +73,12 @@ enum AgentHarnessError: LocalizedError, Equatable {
     /// The endpoint answered with a status value we do not recognise (raw label, bounded).
     case unknownStatus(String)
     case unsupported(String)
+    /// The harness has no way to relay a reply of this shape (Plan FE P1). Named separately from
+    /// `unsupported` so the wearer hears which half is missing — a typed answer, or a decline.
+    case replyUnsupported(AgentReply.Body)
+    /// The reply left the device but we never learned whether it was applied (a timeout after the
+    /// send). Not a failure and not a success: the caller must reconcile rather than resend blindly.
+    case uncertainDelivery
     case agentModeOff   // BK P0: dispatch is an autonomous action — gated at the service layer
 
     var errorDescription: String? {
@@ -70,6 +95,14 @@ enum AgentHarnessError: LocalizedError, Equatable {
                 : "The agent endpoint reported a status I don't recognise: \(raw)."
         case .unsupported(let what):
             return "\(what) isn't supported by this harness yet."
+        case .replyUnsupported(let body):
+            switch body {
+            case .text:    return "This agent can't take a typed answer."
+            case .approve: return "This agent has no way to relay an approval."
+            case .deny:    return "This agent has no way to relay a decline."
+            }
+        case .uncertainDelivery:
+            return "I couldn't tell whether the agent received your answer."
         case .agentModeOff:
             return "Agent Mode is off; remote agent dispatch is disabled."
         }

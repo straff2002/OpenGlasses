@@ -47,7 +47,9 @@ private struct ToolConfirmationModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             if let pending = coordinator.pending {
-                RemoteActionConsentView(pending: pending) { coordinator.resolve($0) }
+                RemoteActionConsentView(pending: pending,
+                                        respond: { coordinator.resolve($0) },
+                                        sendText: { coordinator.resolveText($0) })
                     // The card still arrives; Reduce Motion drops the slide, not
                     // the confirmation.
                     .transition(reduceMotion

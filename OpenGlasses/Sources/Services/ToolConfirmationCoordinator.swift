@@ -1,6 +1,28 @@
 import Foundation
 import Combine
 
+/// What shape of answer the card should collect (Plan FE P1).
+///
+/// A coding agent can ask for two different things — permission, or words — and a card that only
+/// offers Approve/Deny cannot carry the second. Keeping them apart in the type keeps them apart on
+/// screen: approve/deny never becomes a text box, and a typed answer never becomes an approval.
+enum ConfirmationReplyKind: Equatable {
+    case approval
+    case text(prefill: String)
+
+    var isText: Bool {
+        if case .text = self { return true }
+        return false
+    }
+}
+
+/// What the wearer answered.
+enum ConfirmationAnswer: Equatable {
+    case approved
+    case denied
+    case text(String)
+}
+
 /// A high-impact tool action waiting for the user to approve or deny it.
 struct PendingToolConfirmation: Identifiable {
     let id = UUID()
@@ -9,7 +31,19 @@ struct PendingToolConfirmation: Identifiable {
     let summary: String
     /// Who is asking (BN P1) — drives the source line on the consent card + spoken prompt.
     let source: RemoteActionSource
-    fileprivate let continuation: CheckedContinuation<Bool, Never>
+    /// Approve/deny, or a text field (Plan FE P1). Defaults to approve/deny.
+    let reply: ConfirmationReplyKind
+    fileprivate let continuation: CheckedContinuation<ConfirmationAnswer, Never>
+
+    fileprivate init(toolName: String, summary: String, source: RemoteActionSource,
+                     reply: ConfirmationReplyKind = .approval,
+                     continuation: CheckedContinuation<ConfirmationAnswer, Never>) {
+        self.toolName = toolName
+        self.summary = summary
+        self.source = source
+        self.reply = reply
+        self.continuation = continuation
+    }
 }
 
 /// What a request for a *bound* approval came back with.
@@ -63,14 +97,34 @@ final class ToolConfirmationCoordinator: ObservableObject {
     /// prompts (the model can retry after the user has dealt with the first one). `source`
     /// attributes the ask on the card and in the spoken prompt (BN P1).
     func requestConfirmation(toolName: String, summary: String, source: RemoteActionSource = .assistant) async -> Bool {
-        if pending != nil { return false }
+        await ask(toolName: toolName, summary: summary, source: source, reply: .approval) == .approved
+    }
+
+    /// Ask the wearer to confirm — and, if they like, edit — an answer before it is sent (Plan FE
+    /// P1). Returns what they confirmed, or `nil` if they chose not to send anything.
+    ///
+    /// This is the free-text half of the same user-originated boundary: the model can propose the
+    /// words, but only what comes back from this prompt leaves the device.
+    func requestTextAnswer(toolName: String, summary: String,
+                           source: RemoteActionSource = .assistant,
+                           prefill: String) async -> String? {
+        guard case .text(let confirmed) = await ask(toolName: toolName, summary: summary,
+                                                    source: source,
+                                                    reply: .text(prefill: prefill)) else { return nil }
+        return confirmed
+    }
+
+    private func ask(toolName: String, summary: String, source: RemoteActionSource,
+                     reply: ConfirmationReplyKind) async -> ConfirmationAnswer {
+        if pending != nil { return .denied }
         // Plan DE: being asked before the assistant acts is the moment a user learns it
         // *acts* — the tool surface is where they decide what it may act on. Suggestion
         // only, raised at most once ever, and never affecting this confirmation.
         SettingsJourneyStore.note(.highImpactActionConfirmed)
         onSpeakPrompt?(RemoteActionConsentRequest(source: source, summary: summary).spokenPrompt)
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            pending = PendingToolConfirmation(toolName: toolName, summary: summary, source: source, continuation: continuation)
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ConfirmationAnswer, Never>) in
+            pending = PendingToolConfirmation(toolName: toolName, summary: summary, source: source,
+                                              reply: reply, continuation: continuation)
         }
     }
 
@@ -117,7 +171,15 @@ final class ToolConfirmationCoordinator: ObservableObject {
     func resolve(_ approved: Bool) {
         guard let p = pending else { return }
         pending = nil
-        p.continuation.resume(returning: approved)
+        p.continuation.resume(returning: approved ? .approved : .denied)
+    }
+
+    /// Resolve a text prompt with what the wearer typed. Ignored for an approve/deny prompt: a
+    /// typed string must never be able to stand in for a yes.
+    func resolveText(_ text: String) {
+        guard let p = pending, p.reply.isText else { return }
+        pending = nil
+        p.continuation.resume(returning: .text(text))
     }
 
     /// Voice half of the shared consent surface (BN P1): interpret a wearer utterance as an
@@ -126,7 +188,9 @@ final class ToolConfirmationCoordinator: ObservableObject {
     /// pipeline. Never resolves on an ambiguous phrase.
     @discardableResult
     func resolveByVoice(_ text: String) -> Bool {
-        guard pending != nil, let approved = RemoteActionVoiceConsent.interpret(text) else { return false }
+        // Only an approve/deny prompt: "yes" is not an answer to "which files should I change?".
+        guard let pending, !pending.reply.isText,
+              let approved = RemoteActionVoiceConsent.interpret(text) else { return false }
         resolve(approved)
         return true
     }
