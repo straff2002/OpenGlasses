@@ -1,6 +1,8 @@
 # Plan EC — Automatic UI Localization
 
-**Status:** 📋 Planned (2026-09-02)
+**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-09-15). One P1 prerequisite fix
+and two catalog syncs have landed; P1 items 1 and 2, plural variants, all of P2 and all of P3
+remain. No translations have been added.
 **Origin:** The design-kit `LocalizedStringKey` conversion ([#394](https://github.com/straff2002/OpenGlasses/pull/394))
 made the string catalog able to see the app's authored copy, and the owner decision followed the same
 day: the UI should render in the phone's language. iOS does the "automatic" part natively — the
@@ -11,6 +13,32 @@ drifted in English-only. A German phone currently gets a ~9% German mix; a Dutch
 English.
 **Priority:** P1 close the verbatim gaps, P2 guardrails + honest declarations, P3 translated
 catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language catalog commits).
+
+---
+
+## Progress (2026-09-15)
+
+**Landed.**
+- **Literal copy in the design kit reaches the catalog again** ([#483](https://github.com/straff2002/OpenGlasses/pull/483)).
+  Commit 5b35f09f added generic `init<S: StringProtocol>` verbatim overloads beside the
+  `LocalizedStringKey` ones, and none of them was disfavoured. A string literal's default type,
+  `String`, therefore won, so literal copy at call sites took the verbatim path. It rendered the
+  same in English but was never extracted. `@_disfavoredOverload` now sits on the verbatim
+  initializers of `OGRow` (trailing and value forms), `OGBadge`, `OGNotice` and `OGStatusLabel` in
+  `OGDesign.swift`, as it does on `Text`'s own. A compiler-verified audit found that 51 of 74 call
+  sites now resolve to the localized form, with no call-site edits. `OGDesignVerbatimOverloadGuardTests`
+  scans the source so a new unattributed generic overload fails the suite.
+- **Catalog syncs** [#481](https://github.com/straff2002/OpenGlasses/pull/481) (+19 keys) and
+  [#483](https://github.com/straff2002/OpenGlasses/pull/483) (+41 keys), with no translations
+  added. The catalog now holds 2,145 keys, and the same 178 carry any translation.
+
+**Still open.**
+- P1 item 1: `CapabilityCatalog` titles and subtitles are still `String`, not
+  `LocalizedStringResource`, so the Settings hub categories are not extracted.
+- P1 item 2: `OGChip`, `OGStatusPill`, `OGHeroDeviceCard` and `OGDiscoverCard` still accept only
+  `String`.
+- P1 items 3 and 4: runtime-composed sentences, and plural variants (the catalog has none).
+- All of P2 (guardrail tests, `knownRegions` prune) and all of P3 (translated catalogs).
 
 ---
 

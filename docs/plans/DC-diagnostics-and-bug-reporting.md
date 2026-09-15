@@ -3,6 +3,24 @@
 **Status: ✅ Shipped** — `DiagnosticsReportBuilder` + `DiagnosticsRedactor` (pure, 20 tests),
 `SubsystemProbes` extracted so the six-probe self-test is shared rather than owned by the Developer
 panel, and a top-level **Diagnostics & Support** settings category that survives Simple Mode.
+**Email Report added 2026-09-14** ([#479](https://github.com/straff2002/OpenGlasses/pull/479),
+[#480](https://github.com/straff2002/OpenGlasses/pull/480)); see the dated note below.
+
+## Email Report (2026-09-14)
+
+This reverses the "Email compose" item under Out of scope, so sending a report no longer needs a
+GitHub account. [#479](https://github.com/straff2002/OpenGlasses/pull/479)
+made **Email Report** the primary action on the review sheet. It opens the Mail composer addressed
+to the support address (`DiagnosticsReportBuilder.supportEmail`, defined in one place), with the
+report title as the subject and the full masked report as the body. The issue link can only carry
+a trimmed report. When the device has no Mail account, the same subject and body open in the share
+sheet with a note saying where to send them. After Mail closes, the sheet says whether the report
+was sent, saved as a draft, cancelled or failed. **Open a GitHub Issue** stays as a secondary row
+with the subtitle "Needs a GitHub account", next to Copy and Share. The decisions are pure values
+(`DiagnosticsEmailDraft`, `DiagnosticsEmailRoute`, `DiagnosticsEmailOutcome`) covered by
+`DiagnosticsEmailDraftTests`. Nothing is sent without the wearer pressing Send.
+[#480](https://github.com/straff2002/OpenGlasses/pull/480) pointed the public support page at the
+button.
 
 ## The problem, as observed
 
@@ -76,8 +94,8 @@ shape tests pin the section list and the device-table rows so a future field can
 - **Crash reporting and analytics.** The app deliberately opts out of the glasses SDK's telemetry
   and blocks it at the network layer as a backstop. Adding a reporting SDK here would contradict
   that in the same release, so this plan ships none — a report exists only when a wearer makes one.
-- **Email compose.** A mail path needs an address to maintain and a mailbox to answer; the issue
-  tracker already is both.
+- ~~**Email compose.** A mail path needs an address to maintain and a mailbox to answer; the issue
+  tracker already is both.~~ **Reversed 2026-09-14** — see Email Report above.
 - **A backend endpoint.** Nothing to deploy, nothing to keep up, nothing that receives a report
   without the wearer pressing something.
 - **Restructuring the Developer panel.** It keeps its Turn Timeline and debug-event tail; only the

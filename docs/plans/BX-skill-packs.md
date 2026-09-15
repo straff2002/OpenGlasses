@@ -30,9 +30,20 @@ settings sheet rendered from schema; catalog browse/install; developer-mode togg
 Field Assist rule). **Hosting decision resolved:** repo-served static JSON on the existing GitHub
 Pages deployment (`Config.skillPackCatalogURL`, overridable). **Catalog signing is never loosened**
 — developer mode admits unsigned *packs* only; a poisoned index is a fleet-level attack. **Production keypair minted 2026-08-01** — public key embedded, private half off-repo with the
-Field Assist key; first signed (empty) `skillpacks/catalog.json` committed, with a test pinning the
+Field Assist key; a signed `skillpacks/catalog.json` committed, with a test pinning the
 committed envelope against the embedded key so the two can't drift, and `skillpacks/README.md`
-documenting the publish flow.
+documenting the publish flow. The catalog is not empty: it lists the two first-party packs,
+`com.openglasses.barista` (Barista Coach) and `com.openglasses.focus` (Focus Sessions), each with
+its zip's sha256, and it verifies against `SkillPackSignature.productionPublicKeyBase64` (the key
+rotated 2026-09-04 and the catalog was re-signed with it).
+
+**Catalog hosting fixed 2026-09-15** ([#485](https://github.com/straff2002/OpenGlasses/pull/485)).
+From the staged-allowlist Pages publish (2026-09-09) until this fix, the default
+`Config.skillPackCatalogURL` returned 404: `Scripts/stage-pages-site.sh` left `skillpacks/` out of
+the allowlist and denylisted it wholesale. The script now allowlists exactly the signed catalog and
+the two pack zips it lists; pack source (`src/`), `index.json` and the READMEs stay denied.
+Checked live on 2026-09-15: the catalog and both zips return HTTP 200 with bytes identical to the
+repo, the envelope signature verifies, and each zip's sha256 matches its catalog entry.
 
 **P3 shipped (2026-08-01)** — sideload/dev loop: `openglasses://skillpack?url=…&sig=…` handled
 outside the `DeepLinkTrust` token gate *by design* (a QR link can't carry the app-group token); the

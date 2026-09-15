@@ -486,6 +486,24 @@ credibility. What was actually observed over six full runs, and the state it shi
 Neither is an accessibility failure, and neither is silenced with a skip. If either starts
 recurring, hardening the launch path is the work, not loosening the assertions.
 
+### Gate maintenance (2026-09-15)
+
+The nightly Accessibility Audit failed on `main` every night from 2026-09-01. Three PRs brought it
+back, and none of them added or widened an `AuditDeferral`:
+
+- [#470](https://github.com/straff2002/OpenGlasses/pull/470) (2026-09-11) fixed large-text clipping
+  on the Voice home and corrected the picked-conversation test, which asserted on lines the page
+  never puts in the accessibility tree.
+- [#475](https://github.com/straff2002/OpenGlasses/pull/475) (2026-09-13) made the Settings unfold
+  test assert that the hub is still on screen and wait for the replacement row before auditing.
+- [#484](https://github.com/straff2002/OpenGlasses/pull/484) (2026-09-15) added `awaitStableFrame`,
+  which samples an element's frame until it stops moving, for the unfold test. It also added a
+  bounded retry with backoff when the audit service times out (code -56). The logic is pure
+  (`FrameSettleTracker`, `AuditRetryPolicy` in `OpenGlassesUITests/AuditTimingPolicy.swift`) and
+  has unit tests.
+
+The audit was green on `main` on 2026-09-15, in the first run after #484 merged.
+
 ### MockDeviceKit, and why it is not here
 
 `MockDeviceKit` is the SDK's mock-device kit and this target is the first place in the repo that

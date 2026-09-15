@@ -14,6 +14,13 @@
 > path is not unit-tested (needs two peers + servers); compile-correct and wired.
 > **Precondition if a deploy ever happens: room-token auth on the signaling protocol first** — see
 > Plan M's risk note.
+>
+> **No built-in relay (2026-09-11, [#471](https://github.com/straff2002/OpenGlasses/pull/471)).**
+> The MJPEG transport (`MJPEGExpertTransport`, which wraps `WebRTCStreamingService`) used to
+> default to a hosted relay. The app now ships no relay address: `Config.webRTCSignalingURL` and
+> `Config.webRTCViewerBaseURL` default to empty, and the MJPEG transport refuses to start, failing
+> the escalation instead of paging a join link that goes nowhere, until a relay is entered in
+> Settings → Field Assist → MJPEG Relay.
 
 **Builds on:** the transport seam shipped in Plan K. `ExpertStreamTransport` already abstracts the stream, `WebRTCPeerTransport` is a conformer with `isAvailable = false`, `ExpertStreamBridge` selects by `Config.expertStreamTransport`, and the Settings picker exists. This plan fills in `WebRTCPeerTransport` for a true peer-to-peer connection — **two-way A/V, low latency** — replacing the one-way MJPEG-to-browser path for the "Human+AI" Field Assist Pro tier.
 
