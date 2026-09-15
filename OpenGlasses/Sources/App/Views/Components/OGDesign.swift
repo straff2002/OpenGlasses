@@ -267,8 +267,11 @@ private struct OGRowAccessibility: ViewModifier {
 // Row copy follows SwiftUI's own `Text` split: a literal at the call site is a
 // `LocalizedStringKey` (so `SWIFT_EMIT_LOC_STRINGS` extraction sees it), and a
 // runtime `String` lands on the generic `StringProtocol` overload, shown
-// verbatim. Concrete beats generic in overload resolution, so literals always
-// take the localized path without call sites having to choose.
+// verbatim. A literal's default type is `String`, which Swift ranks above
+// `LocalizedStringKey`, so every generic form here is `@_disfavoredOverload`
+// (as `Text`'s own is) — that, not concrete-beats-generic, is what sends
+// literals down the localized path without call sites having to choose.
+// `OGDesignVerbatimOverloadGuardTests` fails if the attribute goes missing.
 extension OGRow {
     /// Unlabeled-title form with custom trailing content, so call sites read
     /// the same whether the trailing view is a value label or a control.
@@ -290,6 +293,8 @@ extension OGRow {
 
     /// Verbatim form for titles that only exist at runtime (model names,
     /// self-test entries). Localize the copy where the string is composed.
+    /// Disfavored so a string literal still picks the `LocalizedStringKey` form.
+    @_disfavoredOverload
     init<S: StringProtocol>(
         _ title: S,
         icon: String? = nil,
@@ -346,7 +351,9 @@ extension OGRow where Trailing == OGRowValue {
     }
 
     /// Fully runtime form — the hub's category rows, whose copy comes from a
-    /// model rather than the call site.
+    /// model rather than the call site. Disfavored so a string literal still
+    /// picks the `LocalizedStringKey` form.
+    @_disfavoredOverload
     init<S: StringProtocol>(
         _ title: S,
         icon: String? = nil,
@@ -478,7 +485,9 @@ struct OGBadge: View {
         self.prominent = prominent
     }
 
-    /// Verbatim form for badge copy that comes from a model.
+    /// Verbatim form for badge copy that comes from a model. Disfavored so a
+    /// string literal still picks the `LocalizedStringKey` form.
+    @_disfavoredOverload
     init<S: StringProtocol>(text: S, prominent: Bool = false) {
         self.text = Text(text)
         self.prominent = prominent
@@ -564,7 +573,9 @@ struct OGNotice: View {
     }
 
     /// Verbatim form for a sentence composed at runtime; localize it where
-    /// it is built.
+    /// it is built. Disfavored so a string literal still picks the
+    /// `LocalizedStringKey` form.
+    @_disfavoredOverload
     init<S: StringProtocol>(text: S, systemImage: String = "lock") {
         self.text = Text(text)
         self.systemImage = systemImage
@@ -1038,6 +1049,8 @@ struct OGStatusLabel: View {
 
     /// Verbatim form for outcomes composed at runtime (error descriptions,
     /// measured latencies); localize the sentence where it is built.
+    /// Disfavored so a string literal still picks the `LocalizedStringKey` form.
+    @_disfavoredOverload
     init<S: StringProtocol>(_ text: S, kind: Kind, systemImage: String? = nil) {
         self.text = Text(text)
         self.kind = kind
