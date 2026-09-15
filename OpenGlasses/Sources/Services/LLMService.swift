@@ -2882,20 +2882,14 @@ class LLMService: ObservableObject {
         return "\(formatter.string(from: now)) (\(timeZone.identifier))"
     }
 
-    /// Parse the local model's `<tool_call>` markup. Extracted (pure) from `sendLocal` so
-    /// the announce-without-action retry can re-parse the corrective generation.
+    /// Parse the local model's `<tool_call>` markup.
+    ///
+    /// FC P1: now a thin reading of `LocalOutputPolicy`, so there is exactly one parser. The
+    /// regex this used to carry accepted only a complete frame and said nothing about the rest of
+    /// the output, which is how broken protocol reached the speaker while this returned nil.
     nonisolated static func parseLocalToolCall(_ response: String) -> (name: String, args: [String: Any])? {
-        let pattern = #"<tool_call>\s*(\{.*?\})\s*</tool_call>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
-              let match = regex.firstMatch(in: response, range: NSRange(response.startIndex..., in: response)),
-              let jsonRange = Range(match.range(at: 1), in: response),
-              let data = String(response[jsonRange]).data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let name = object["name"] as? String,
-              let args = object["arguments"] as? [String: Any] else {
-            return nil
-        }
-        return (name, args)
+        guard let invocation = LocalOutputPolicy.classify(response).invocation else { return nil }
+        return (invocation.name, invocation.arguments)
     }
 
     /// True when the reply narrates an intention to fetch/check something without any
