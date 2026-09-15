@@ -108,17 +108,17 @@ final class LocalModelBudgetTests: XCTestCase {
     // MARK: - Download size parsing (drives the byte-based progress bar)
 
     @MainActor
-    func testExpectedDownloadBytesParsesCatalogSizes() {
-        // Every catalog entry must parse — a nil here silently reverts that model's download
+    func testExpectedDownloadBytesCoverEveryCatalogEntry() {
+        // Every catalog entry must have one — a nil here silently reverts that model's download
         // bar to the useless per-file hub fraction.
         for model in LocalLLMService.recommendedModels {
             let bytes = LocalLLMService.expectedDownloadBytes(for: model.id)
-            XCTAssertNotNil(bytes, "catalog size failed to parse: \(model.id) (\(model.estimatedSize))")
+            XCTAssertNotNil(bytes, "no measured size for \(model.id) (\(model.estimatedSize))")
             XCTAssertGreaterThan(bytes ?? 0, 100_000_000, "implausibly small for \(model.id)")
         }
-        // Spot-check the arithmetic: "5.1 GB" → 5.1 × 2^30.
+        // Spot-check one measured total (Hugging Face model API, 2026-09-15).
         XCTAssertEqual(LocalLLMService.expectedDownloadBytes(for: "mlx-community/gemma-4-e4b-it-4bit"),
-                       Int64(5.1 * 1_073_741_824))
+                       5_179_241_512)
     }
 
     @MainActor

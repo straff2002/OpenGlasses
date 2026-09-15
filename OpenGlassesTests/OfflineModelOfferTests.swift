@@ -18,12 +18,16 @@ import XCTest
 final class OfflineModelOfferTests: XCTestCase {
 
     private let modelId = "mlx-community/gemma-4-e2b-it-4bit"
-    private let sizeBytes: Int64 = 3_865_470_566   // ~3.6 GB
+    /// The primary's measured download (Hugging Face model API, 2026-09-15). Passed in as a value,
+    /// so these decisions stay independent of the catalog — but the same value, so a fixture and
+    /// the shipping catalog cannot quietly describe different phones.
+    private let sizeBytes: Int64 = 3_583_088_661   // 3.6 GB
 
     /// What a phone under the primary's floor should be offered: the first catalog entry after
-    /// the primary whose RAM floor it clears.
+    /// the primary whose RAM floor it clears. Its measured download is *larger* than the
+    /// primary's — "smaller model" here means smaller memory floor, not a smaller file.
     private let fallbackId = "mlx-community/SmolVLM2-2.2B-Instruct-mlx"
-    private let fallbackSize: Int64 = 1_610_612_736   // 1.5 GB
+    private let fallbackSize: Int64 = 4_498_568_233   // 4.5 GB
 
     private func inputs(ramGB: Double,
                         downloaded: [String] = [],
@@ -104,8 +108,7 @@ final class OfflineModelOfferTests: XCTestCase {
     // MARK: - The fallback is subject to every check the primary is
 
     /// A fallback already on disk is not downloaded again — and the size checked against disk is
-    /// the fallback's own, not the 3.6 GB primary's, which would refuse a 1.5 GB download on a
-    /// phone with room for it.
+    /// the fallback's own, not the primary's, which would judge one download by another's size.
     func testAFallbackAlreadyOnDiskIsNotOfferedAgain() {
         XCTAssertEqual(verdict(inputs(ramGB: 6, downloaded: [fallbackId])),
                        .alreadyDownloaded(modelId: fallbackId))
@@ -119,18 +122,25 @@ final class OfflineModelOfferTests: XCTestCase {
                        .alreadyDownloaded(modelId: qwen))
     }
 
-    /// Storage is measured against what is actually being fetched. Free space between the
-    /// fallback's requirement and the primary's is enough here and would not have been if the
-    /// primary's size leaked into this branch.
+    /// Storage is measured against what is actually being fetched. With the corrected sizes the
+    /// fallback is the bigger download of the two, so room enough for the primary is *not* room
+    /// enough for it — which is exactly the mistake a leaked primary size would make here.
     func testTheFallbackStorageCheckUsesTheFallbacksOwnSize() {
         let tooLittle = fallbackSize + OfflineModelOffer.storageMarginBytes - 1
         XCTAssertEqual(verdict(inputs(ramGB: 6, freeDisk: tooLittle)),
                        .notEnoughStorage(neededBytes: fallbackSize + OfflineModelOffer.storageMarginBytes,
                                          freeBytes: tooLittle))
 
-        // Exactly enough for the fallback — far short of the primary's 3.6 GB — is still a yes.
+        // Enough for the primary, short of the fallback: still a refusal, and the numbers quoted
+        // are the fallback's.
+        let enoughForPrimaryOnly = sizeBytes + OfflineModelOffer.storageMarginBytes
+        XCTAssertLessThan(enoughForPrimaryOnly, fallbackSize + OfflineModelOffer.storageMarginBytes)
+        XCTAssertEqual(verdict(inputs(ramGB: 6, freeDisk: enoughForPrimaryOnly)),
+                       .notEnoughStorage(neededBytes: fallbackSize + OfflineModelOffer.storageMarginBytes,
+                                         freeBytes: enoughForPrimaryOnly))
+
+        // Exactly enough for the fallback is a yes.
         let justEnough = fallbackSize + OfflineModelOffer.storageMarginBytes
-        XCTAssertLessThan(justEnough, sizeBytes + OfflineModelOffer.storageMarginBytes)
         XCTAssertEqual(verdict(inputs(ramGB: 6, freeDisk: justEnough)),
                        .offerSmaller(modelId: fallbackId,
                                      sizeBytes: fallbackSize,
@@ -254,7 +264,7 @@ final class OfflineModelOfferTests: XCTestCase {
                                                           sizeBytes: fallbackSize)
         XCTAssertTrue(detail.contains("8 GB"),
                       "The full-size model's requirement is not named: \(detail)")
-        XCTAssertTrue(detail.contains("1.5 GB"),
+        XCTAssertTrue(detail.contains("4.5 GB"),
                       "The smaller download's size is not stated: \(detail)")
         XCTAssertTrue(detail.lowercased().contains("smaller"),
                       "The user must not think this is the full-size model: \(detail)")
@@ -300,15 +310,23 @@ final class OfflineModelOfferTests: XCTestCase {
 
     func testTheStorageShortfallStatesBothNumbers() {
         let detail = OfflineModelOffer.notEnoughStorageDetail(
-            neededBytes: 4 * 1_073_741_824, freeBytes: 1_073_741_824)
+            neededBytes: 4_000_000_000, freeBytes: 1_000_000_000)
         XCTAssertTrue(detail.contains("4.0 GB"), detail)
         XCTAssertTrue(detail.contains("1.0 GB"), detail)
     }
 
+    /// The offer and the model picker quote one number for one download. They used to disagree:
+    /// this formatter divided by 2^30 while the picker's string had been authored by hand.
     func testSizesReadTheSameEverywhere() {
-        XCTAssertEqual(OfflineModelOffer.formattedSize(3_865_470_566), "3.6 GB")
-        XCTAssertEqual(OfflineModelOffer.formattedSize(1_073_741_824), "1.0 GB")
-        XCTAssertEqual(OfflineModelOffer.formattedSize(367_001_600), "350 MB")
+        XCTAssertEqual(OfflineModelOffer.formattedSize(sizeBytes), "3.6 GB")
+        XCTAssertEqual(OfflineModelOffer.formattedSize(fallbackSize), "4.5 GB")
+        XCTAssertEqual(OfflineModelOffer.formattedSize(1_000_000_000), "1.0 GB")
+        XCTAssertEqual(OfflineModelOffer.formattedSize(367_001_600), "0.37 GB")
+        for entry in LocalModelCatalog.entries {
+            XCTAssertEqual(OfflineModelOffer.formattedSize(entry.snapshot.totalBytes),
+                           entry.estimatedSize,
+                           "the offer and the picker disagree about \(entry.id.rawValue)")
+        }
     }
 
     /// The offer configures the provider it belongs to. If these two ever disagree the flow would
