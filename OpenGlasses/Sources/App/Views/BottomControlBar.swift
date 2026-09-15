@@ -931,7 +931,11 @@ private struct LocalModelTile: View {
         let isLoaded = service.isModelLoaded && service.loadedModelId == modelConfig.model
         BarButton(
             icon: isLoaded ? "checkmark.circle.fill" : "cpu",
-            label: service.isLoadingModel ? "Loading…" : (isLoaded ? "Unload" : "Load \(modelConfig.name)"),
+            // The preparation phase's own word while one is running, so a stop that is still
+            // finishing reads as "Stopping" rather than as a load that will not end (Plan FC P2).
+            label: service.isLoadingModel
+                ? service.preparation.displayLabel
+                : (isLoaded ? "Unload" : "Load \(modelConfig.name)"),
             isActive: !service.isLoadingModel,   // tinted whenever idle: accent invites Load, green marks Loaded
             isBusy: service.isLoadingModel,
             tint: isLoaded ? OGTheme.ok : accent,
