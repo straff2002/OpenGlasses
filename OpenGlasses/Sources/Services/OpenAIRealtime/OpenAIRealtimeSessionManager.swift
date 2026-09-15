@@ -321,6 +321,8 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
     func stopSession() {
         PrivacyLog.realtimeSession(.openai, .sessionStopped, count: submittedFrameCount)
+        // Plan FC P3 — see the Gemini manager's twin: the connect snapshot dies with the session.
+        MemoryContextRecorder.forgetLive(.liveOpenAI)
         let hadCameraClaim = isCameraStreaming
         frameTimer?.cancel()
         frameTimer = nil
@@ -373,6 +375,11 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         if let location = locationContext?() {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
+
+        // Plan FC P3 — see the twin of this record in `GeminiLiveSessionManager`: this instruction
+        // carries no wearer-memory block, and it is assembled once at connect rather than per turn.
+        MemoryContextRecorder.recordLive(
+            .notInjected(at: Date(), freshness: .connectSnapshot(age: 0)), route: .liveOpenAI)
 
         return prompt
     }

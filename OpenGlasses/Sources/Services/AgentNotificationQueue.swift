@@ -226,7 +226,7 @@ class AgentNotificationQueue: ObservableObject {
                 try await appState.llmService.sendMessage(
                     prompt,
                     locationContext: appState.locationService.locationContext,
-                    memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
+                    memoryContext: appState.memoryContextForPrompt(),
                     agentContext: appState.currentAgentContext
                 )
             }

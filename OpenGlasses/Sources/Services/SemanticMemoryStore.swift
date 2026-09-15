@@ -66,6 +66,15 @@ class SemanticMemoryStore: ObservableObject {
 
     // MARK: - Private
 
+    /// False when the database did not open, so nothing the wearer saved can be read this launch
+    /// (Plan FC P3).
+    ///
+    /// Without this, an unreadable store and an empty one are the same observation — both leave
+    /// every cache empty — and the wearer whose facts have vanished is told there is nothing saved.
+    /// Read by `renderedContext(query:enabled:now:)` only when a render came back empty, so it
+    /// costs nothing on the path that works.
+    private(set) var isStorageAvailable = true
+
     private var db: OpaquePointer?
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let docsDir: URL
@@ -234,12 +243,81 @@ class SemanticMemoryStore: ObservableObject {
     /// When `query` is provided, global memories are filtered to the most relevant
     /// via semantic search, keeping token usage lean.
     func systemPromptContext(query: String? = nil) -> String? {
+        render(query: query).text
+    }
+
+    /// The rendered block plus the measurement of it (Plan FC P3).
+    ///
+    /// Counted here rather than re-derived by a caller from the returned string: the caps and the
+    /// clamp are applied in `render`, and a second parse of the finished text could only guess at
+    /// what was dropped before it was written.
+    struct Rendered {
+        /// Exactly what `systemPromptContext(query:)` returns, byte for byte.
+        let text: String?
+        /// Entries held across every section, whether or not this render used them.
+        let stored: Int
+        /// Entries retrieval offered to rendering, before the per-section cap.
+        let retrieved: Int
+        /// Entries that reached `text`.
+        let included: Int
+        /// Values written in `text` that were cut to `maxValueChars`.
+        let clampedValues: Int
+    }
+
+    /// The memory block for a prompt, with the diagnostic counts that describe it.
+    ///
+    /// `enabled` is the wearer's memory switch, passed in rather than read here so the store stays
+    /// free of `Config` and so "off" is reported as `disabled` instead of arriving at the backend
+    /// as the same `nil` that "nothing saved" produces. Retrieval is untouched: `query` is what the
+    /// caller already passed, ranking and caps are unchanged, and nothing here reads the store a
+    /// second time.
+    func renderedContext(query: String? = nil,
+                         enabled: Bool = true,
+                         now: Date = Date()) -> (text: String?, snapshot: MemoryContextSnapshot) {
+        guard enabled else { return (nil, .disabled(at: now)) }
+
+        let rendered = render(query: query)
+        guard let text = rendered.text else {
+            // Order matters: a store that failed to open still renders gateway memory, which lives
+            // in memory rather than in the database. Only an empty *result* can be attributed to
+            // unreadable storage, and only then when storage is in fact unreadable.
+            if !isStorageAvailable { return (nil, .unavailable(.storageUnreadable, at: now)) }
+            return (nil, .empty(at: now, stored: rendered.stored))
+        }
+
+        return (text, MemoryContextSnapshot(
+            availability: .available,
+            stored: rendered.stored,
+            retrieved: rendered.retrieved,
+            included: rendered.included,
+            renderedCharacters: text.count,
+            truncation: .init(droppedEntries: rendered.retrieved - rendered.included,
+                              clampedValues: rendered.clampedValues),
+            assembledAt: now,
+            freshness: .perTurn))
+    }
+
+    private func render(query: String? = nil) -> Rendered {
         let hasGlobal = !memories.isEmpty
         let hasPersona = !personaMemories.isEmpty
         let hasGateway = !gatewayMemories.isEmpty
-        guard hasGlobal || hasPersona || hasGateway else { return nil }
+        let stored = memories.count + personaMemories.count + gatewayMemories.count
+        guard hasGlobal || hasPersona || hasGateway else {
+            return Rendered(text: nil, stored: stored, retrieved: 0, included: 0, clampedValues: 0)
+        }
 
         var sections: [String] = []
+        var retrieved = 0
+        var included = 0
+        var clamped = 0
+
+        /// Clamp and count in one place, so a clamped value can never be written without being
+        /// counted.
+        func clampValue(_ value: String) -> String {
+            let result = Self.clampValue(value)
+            if result != value { clamped += 1 }
+            return result
+        }
 
         if hasGlobal {
             let pairs: [(String, String)]
@@ -253,23 +331,35 @@ class SemanticMemoryStore: ObservableObject {
                 // store. Clamp to the same cap so a large global store can't overflow the budget.
                 pairs = memories.sorted { $0.key < $1.key }
             }
-            let lines = pairs.prefix(Self.maxMemoryLines).map { "- \($0.0): \(Self.clampValue($0.1))" }
+            let kept = pairs.prefix(Self.maxMemoryLines)
+            retrieved += pairs.count
+            included += kept.count
+            let lines = kept.map { "- \($0.0): \(clampValue($0.1))" }
             sections.append("SHARED MEMORY (facts about the user — reference naturally):\n\(lines.joined(separator: "\n"))")
         }
 
         if hasPersona, let pid = activePersonaId {
-            let lines = personaMemories.sorted { $0.key < $1.key }
-                .prefix(Self.maxMemoryLines)
-                .map { "- \($0.key): \(Self.clampValue($0.value))" }
+            let sorted = personaMemories.sorted { $0.key < $1.key }
+            let kept = sorted.prefix(Self.maxMemoryLines)
+            retrieved += sorted.count
+            included += kept.count
+            let lines = kept.map { "- \($0.key): \(clampValue($0.value))" }
             sections.append("PERSONA MEMORY (\(pid)):\n\(lines.joined(separator: "\n"))")
         }
 
         if hasGateway {
-            let lines = gatewayMemories.prefix(Self.maxMemoryLines).map { "- \(Self.clampValue($0))" }
+            let kept = gatewayMemories.prefix(Self.maxMemoryLines)
+            retrieved += gatewayMemories.count
+            included += kept.count
+            let lines = kept.map { "- \(clampValue($0))" }
             sections.append("GATEWAY MEMORY (other devices):\n\(lines.joined(separator: "\n"))")
         }
 
-        return sections.joined(separator: "\n\n")
+        return Rendered(text: sections.joined(separator: "\n\n"),
+                        stored: stored,
+                        retrieved: retrieved,
+                        included: included,
+                        clampedValues: clamped)
     }
 
     // MARK: - Semantic Search (new)
@@ -502,6 +592,7 @@ class SemanticMemoryStore: ObservableObject {
 
     private func openDatabase() {
         if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
+            isStorageAvailable = false
             PrivacyLog.store(.semanticMemory, .openFailed,
                              error: .sqlite(code: sqlite3_errcode(db),
                                             extended: sqlite3_extended_errcode(db)))

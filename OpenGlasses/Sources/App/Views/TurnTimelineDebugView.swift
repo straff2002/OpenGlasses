@@ -357,7 +357,9 @@ struct TurnTimelineDebugView: View {
     // MARK: - Export
 
     private var exportSection: some View {
-        let text = ledger.debugExport()
+        // Plan FC P3: the live backends have no turn boundaries to record against, so their
+        // connect-time memory snapshots ride along here, aged at the moment of export.
+        let text = ledger.debugExport(liveMemory: MemoryContextRecorder.liveSnapshots())
         return OGSection(
             header: "Export",
             footer: "Plain text — turn history plus per-cohort latency stats. Copying it is the only way these numbers leave the device."
