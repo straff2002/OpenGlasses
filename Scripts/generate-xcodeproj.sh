@@ -7,6 +7,15 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   exit 1
 fi
 
+# The target's MediaPipe linker configuration is generated, not committed: the fetch script
+# writes it into the gitignored Frameworks directory. XcodeGen validates every configFiles
+# path, so generating before that file exists fails outright on a fresh clone. Fetching is
+# idempotent, but it re-reads the graph archives even on a cache hit (~20 seconds), and CI and
+# Xcode Cloud already fetch before calling this — so only fetch when the file is missing.
+if [[ ! -f Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig ]]; then
+  ./Scripts/fetch-mediapipe-frameworks.sh
+fi
+
 if [[ -f .openglasses-generate.env ]]; then
   set -a
   # shellcheck disable=SC1091

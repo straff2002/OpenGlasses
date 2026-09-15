@@ -46,6 +46,7 @@ if [ -f "$stamp" ] \
    && [ -f "$dest/graph_libraries/libMediaPipeTasksCommon_device_graph.a" ] \
    && [ -f "$dest/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a" ]; then
   patch_bundle_versions
+  python3 "$repo_root/Scripts/prepare-mediapipe-linking.py" --version "$VERSION"
   echo "MediaPipeTasks ${VERSION} already fetched (bundle versions verified)."
   exit 0
 fi
@@ -91,6 +92,7 @@ mv "$work/common/frameworks/MediaPipeTasksCommon.xcframework" "$dest/"
 mv "$work/common/frameworks/graph_libraries/"*.a "$dest/graph_libraries/"
 
 patch_bundle_versions
+python3 "$repo_root/Scripts/prepare-mediapipe-linking.py" --version "$VERSION"
 
 touch "$stamp"
 echo "MediaPipeTasks ${VERSION} installed under Vendor/MediaPipeTasks/Frameworks."
