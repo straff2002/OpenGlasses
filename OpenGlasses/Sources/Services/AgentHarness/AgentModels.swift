@@ -91,8 +91,39 @@ enum AgentEvent: Equatable {
     case pushed
     case awaitingInput(prompt: String)   // agent needs the user to confirm before continuing
     case assistantText(String)
+    /// Terminal: the run finished normally. Three separate terminal cases rather than one
+    /// `completed` plus a flag, because collapsing them is exactly how a remote **cancellation**
+    /// came to be spoken as success (Plan FE P0).
     case completed(AgentRunResult)
+    /// Terminal: the harness says the run failed, with whatever it reported about it.
+    case failed(AgentRunResult)
+    /// Terminal: the run was cancelled at the far end (or by us). Never narrated as "done".
+    case cancelled(AgentRunResult)
+    /// Mid-run error the harness reported while it was still talking to us.
     case error(String)
+    /// Our ability to *observe* the run changed — not a claim about the run itself. A lost
+    /// connection says we stopped knowing; it never says the agent failed or was cancelled.
+    case connection(AgentConnectionState)
+}
+
+/// Which outcome fields the harness actually **reported**, as distinct from which came back empty.
+///
+/// The distinction is the whole point of Plan FE P0: an endpoint that says nothing about files is
+/// unknown, and narrating that as "no files changed" is a claim we have no evidence for.
+struct AgentResultFields: OptionSet, Equatable {
+    let rawValue: Int
+    init(rawValue: Int) { self.rawValue = rawValue }
+
+    static let filesCreated  = AgentResultFields(rawValue: 1 << 0)
+    static let filesModified = AgentResultFields(rawValue: 1 << 1)
+    static let commandsRun   = AgentResultFields(rawValue: 1 << 2)
+    static let pushed        = AgentResultFields(rawValue: 1 << 3)
+    static let prURL         = AgentResultFields(rawValue: 1 << 4)
+    static let finalText     = AgentResultFields(rawValue: 1 << 5)
+    static let error         = AgentResultFields(rawValue: 1 << 6)
+
+    /// The fields that describe what the run changed.
+    static let changes: AgentResultFields = [.filesCreated, .filesModified, .commandsRun, .pushed, .prURL]
 }
 
 /// Aggregated outcome of a run — what the summarizer turns into a spoken line.
@@ -104,6 +135,23 @@ struct AgentRunResult: Equatable {
     var pushed = false
     var finalText: String?
     var error: String?
+    /// Which of the above the harness actually told us about (Plan FE P0). Empty means we were
+    /// told nothing — *unknown*, not "nothing happened".
+    var reported: AgentResultFields = []
+
+    /// Anything at all in this record? A completely blank record is a non-report, and a terminal
+    /// non-report must not be allowed to erase a tally we built from events we actually saw.
+    var isBlank: Bool {
+        reported.isEmpty && filesCreated.isEmpty && filesModified.isEmpty && commandsRun.isEmpty
+            && prURL == nil && !pushed && finalText == nil && error == nil
+    }
+
+    /// True only when the harness reported **both** file lists and both were empty — the one case
+    /// where "no file changes" is a fact rather than a guess.
+    var reportedNoFileChanges: Bool {
+        reported.contains(.filesCreated) && reported.contains(.filesModified)
+            && filesCreated.isEmpty && filesModified.isEmpty
+    }
 
     /// Fold one event into the running result. Pure and deterministic, so event→result aggregation
     /// is unit-testable without a live harness. `started`/`progress`/`awaitingInput`/`completed`
@@ -112,22 +160,30 @@ struct AgentRunResult: Equatable {
         switch event {
         case .fileCreated(let path):
             if !filesCreated.contains(path) { filesCreated.append(path) }
+            reported.insert(.filesCreated)
         case .fileModified(let path):
             if !filesModified.contains(path) { filesModified.append(path) }
+            reported.insert(.filesModified)
         case .commandRun(let command, _):
             commandsRun.append(command)
+            reported.insert(.commandsRun)
         case .prOpened(let url):
             prURL = url
+            reported.insert(.prURL)
         case .pushed:
             pushed = true
+            reported.insert(.pushed)
         case .assistantText(let text):
             finalText = text
+            reported.insert(.finalText)
         case .error(let message):
             error = message
-        case .completed(let result):
-            // A terminal result from the harness supersedes our running tally.
-            self = result
-        case .started, .progress, .awaitingInput:
+            reported.insert(.error)
+        case .completed(let result), .failed(let result), .cancelled(let result):
+            // A terminal result from the harness supersedes our running tally — unless it reports
+            // nothing at all, in which case the events we actually saw are the better record.
+            if !result.isBlank { self = result }
+        case .started, .progress, .awaitingInput, .connection:
             break
         }
     }

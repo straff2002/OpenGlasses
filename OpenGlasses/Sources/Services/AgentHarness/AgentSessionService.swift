@@ -19,6 +19,16 @@ final class AgentSessionService: ObservableObject {
     /// Everything spoken this session, in order — for the debug panel and tests.
     @Published private(set) var spokenLog: [String] = []
 
+    /// Whether we can still *observe* the run (Plan FE P0). Separate from `activeRun.status` on
+    /// purpose: losing the endpoint tells us nothing about the run, so it changes this and leaves
+    /// the run's last known status exactly where it was.
+    @Published private(set) var connectionState: AgentConnectionState = .idle
+    /// When contact was lost, for the "agent status" answer.
+    @Published private(set) var contactLostAt: Date?
+
+    /// Injected clock so the contact-lost timestamp is deterministic in tests.
+    var now: () -> Date = Date.init
+
     /// A directly-set harness (tests/back-compat). When a `registry` is present it takes precedence,
     /// so a default-harness change in Settings applies without re-dispatching.
     private(set) var harness: AgentHarness?
@@ -110,6 +120,8 @@ final class AgentSessionService: ObservableObject {
             result = AgentRunResult()
             awaitingInputPrompt = nil
             lastSummary = nil
+            connectionState = .connected
+            contactLostAt = nil
             subscribe(to: run, on: harness)
             return .success(run)
         } catch let error as AgentHarnessError {
@@ -149,16 +161,38 @@ final class AgentSessionService: ObservableObject {
             activeRun?.status = .awaitingInput
         case .completed:
             finish(status: .completed)
+        case .failed:
+            finish(status: .failed)
+        case .cancelled:
+            // A cancellation at the far end. It is not success, and it is not ours to claim.
+            finish(status: .cancelled, cancellation: .remote)
         case .error:
             finish(status: .failed)
+        case .connection(let state):
+            handleConnection(state)
         case .progress, .fileCreated, .fileModified, .commandRun, .prOpened, .pushed, .assistantText:
             break
         }
     }
 
-    private func finish(status: AgentRunStatus) {
+    /// Connection changes never touch `activeRun.status`: whether the agent is working is the
+    /// endpoint's fact to report, and once it stops answering we simply stop knowing.
+    private func handleConnection(_ state: AgentConnectionState) {
+        connectionState = state
+        guard case .lost(let loss) = state else { return }
+        contactLostAt = now()
+        PrivacyLog.agent(.session, .contactLost, reason: PrivacyToken(loss.tokenName))
+        emit(AgentSummarizer.line(for: loss))
+        eventTask?.cancel()
+        eventTask = nil
+    }
+
+    private func finish(status: AgentRunStatus,
+                        cancellation: AgentSummarizer.CancellationOrigin = .remote) {
         activeRun?.status = status
-        let summary = AgentSummarizer.summarize(result, status: status)
+        awaitingInputPrompt = nil
+        connectionState = .connected
+        let summary = AgentSummarizer.summarize(result, status: status, cancellation: cancellation)
         lastSummary = summary
         emit(summary)
         eventTask?.cancel()
@@ -170,12 +204,7 @@ final class AgentSessionService: ObservableObject {
     func cancel() async {
         guard let harness = activeHarness, let run = activeRun else { return }
         try? await harness.cancel(run)
-        activeRun?.status = .cancelled
-        let summary = AgentSummarizer.summarize(result, status: .cancelled)
-        lastSummary = summary
-        emit(summary)
-        eventTask?.cancel()
-        eventTask = nil
+        finish(status: .cancelled, cancellation: .local)
     }
 
     /// Entry for the `code_agent confirm` tool call (BN P1). The model's call is only a REQUEST
@@ -209,7 +238,7 @@ final class AgentSessionService: ObservableObject {
             emit("Okay, proceeding.")
         } else {
             activeRun?.status = .cancelled
-            lastSummary = AgentSummarizer.summarize(result, status: .cancelled)
+            lastSummary = AgentSummarizer.summarize(result, status: .cancelled, cancellation: .local)
             emit("Okay, I won't proceed.")
             eventTask?.cancel()
             eventTask = nil
@@ -217,8 +246,16 @@ final class AgentSessionService: ObservableObject {
     }
 
     /// One spoken line describing the current state (for "agent status").
+    ///
+    /// Contact comes first: once we have stopped following a run, every other answer here would be
+    /// a stale guess dressed as the present.
     func currentStatusLine() -> String {
         guard let run = activeRun else { return "No agent run is active." }
+        if case .lost(let loss) = connectionState, !run.status.isTerminal {
+            return AgentSummarizer.statusLine(afterContactLost: loss,
+                                              at: Self.timeFormatter.string(from: contactLostAt ?? now()),
+                                              lastKnown: run.status)
+        }
         switch run.status {
         case .queued:        return "The agent run is queued."
         case .running:       return "The agent is working on \(run.project ?? "your task")."
@@ -228,6 +265,14 @@ final class AgentSessionService: ObservableObject {
         case .cancelled:     return "The agent run was cancelled."
         }
     }
+
+    /// Short local time ("3:42 PM" / "15:42"), for the contact-lost answer.
+    static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 
     private func emit(_ line: String) {
         spokenLog.append(line)

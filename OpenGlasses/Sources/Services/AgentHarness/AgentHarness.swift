@@ -47,6 +47,12 @@ extension AgentHarness {
 enum AgentHarnessError: LocalizedError, Equatable {
     case notConfigured(AgentHarnessKind)
     case transport(String)
+    /// An HTTP error answer from the endpoint. The **code only** — the response body is endpoint
+    /// content and never reaches a spoken line (Plan FE P0 payload hygiene); it is counted in the
+    /// privacy log instead.
+    case http(Int)
+    /// The endpoint answered with a status value we do not recognise (raw label, bounded).
+    case unknownStatus(String)
     case unsupported(String)
     case agentModeOff   // BK P0: dispatch is an autonomous action — gated at the service layer
 
@@ -56,6 +62,12 @@ enum AgentHarnessError: LocalizedError, Equatable {
             return "\(kind.displayName) isn't configured yet."
         case .transport(let message):
             return message
+        case .http(let code):
+            return "The agent endpoint returned HTTP \(code)."
+        case .unknownStatus(let raw):
+            return raw.isEmpty
+                ? "The agent endpoint didn't report a status I recognise."
+                : "The agent endpoint reported a status I don't recognise: \(raw)."
         case .unsupported(let what):
             return "\(what) isn't supported by this harness yet."
         case .agentModeOff:

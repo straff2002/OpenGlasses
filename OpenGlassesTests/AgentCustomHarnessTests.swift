@@ -134,12 +134,26 @@ final class AgentCustomHarnessTests: XCTestCase {
     func testStartThrowsOnHTTPError() async {
         MockURLProtocol.reset()
         MockURLProtocol.statusCode = 401
-        MockURLProtocol.responseBody = Data("unauthorized".utf8)
+        MockURLProtocol.responseBody = Data("unauthorized: token sk-123".utf8)
         let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
         do { _ = try await harness.start(prompt: "p", project: nil); XCTFail("expected throw") }
         catch let e as AgentHarnessError {
-            guard case .transport(let msg) = e else { return XCTFail("wrong case") }
-            XCTAssertTrue(msg.contains("401"))
+            // Plan FE P0: the code is user-facing, the body is not. The previous assertion accepted
+            // 160 characters of the endpoint's own response into a line we then spoke aloud.
+            XCTAssertEqual(e, .http(401))
+            XCTAssertFalse(e.errorDescription?.contains("sk-123") ?? true)
+        } catch { XCTFail("wrong error: \(error)") }
+    }
+
+    func testStatusRefusesToGuessAtAnUnrecognisedValue() async {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Data(#"{"status":"frobnicating"}"#.utf8)
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let run = AgentRun(id: "r", harness: .custom, prompt: "p", project: nil, status: .running, startedAt: Date())
+        do { _ = try await harness.status(run); XCTFail("expected throw") }
+        catch let e as AgentHarnessError {
+            // It used to answer `.running` — a confident claim built on a value we can't read.
+            XCTAssertEqual(e, .unknownStatus("frobnicating"))
         } catch { XCTFail("wrong error: \(error)") }
     }
 

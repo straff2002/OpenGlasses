@@ -82,6 +82,24 @@ struct AgentHarnessSettingsView: View {
             }
 
             Section {
+                fieldRow("Summary / final text path", text: $config.finalTextPath)
+                fieldRow("Files created path", text: $config.filesCreatedPath)
+                fieldRow("Files modified path", text: $config.filesModifiedPath)
+                fieldRow("Commands run path", text: $config.commandsRunPath)
+                fieldRow("Pushed path", text: $config.pushedPath)
+                fieldRow("Pull-request URL path", text: $config.prURLPath)
+                fieldRow("Error message path", text: $config.errorPath)
+            } header: {
+                Text("Result mapping")
+            } footer: {
+                if config.mapsAnyResultField {
+                    Text("Read from the same status response, so following a run costs no extra requests.")
+                } else {
+                    Text("Optional dot-paths read from the same status response. Leave one blank if your endpoint doesn't report it — anything unmapped is reported as unknown rather than as “nothing changed”.")
+                }
+            }
+
+            Section {
                 Button {
                     save()
                 } label: {

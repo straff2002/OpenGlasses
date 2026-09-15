@@ -214,7 +214,64 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(seen.first, .started(run))
         var expected = AgentRunResult()
         expected.finalText = "The answer."
+        expected.reported = [.finalText]     // Plan FE P0: what was reported is part of the record
         XCTAssertEqual(seen.last, .completed(expected))
+    }
+
+    /// Plan FE P0: the gateway's `aborted` phase already mapped to `.cancelled` in `status(for:)`,
+    /// while the event stream reported the same run as a plain completion — so a cancelled run was
+    /// narrated as success.
+    func testAbortedRunEmitsCancelledNotCompleted() async throws {
+        var harness = OpenClawAgentHarness(
+            send: { _, _ in ["ok": true, "payload": ["runId": "run-4"]] },
+            configured: { true },
+            runState: { _ in ChatRunTracker.RunState(phase: .aborted) })
+        harness.pollInterval = 0.01
+        let run = try await harness.start(prompt: "p", project: nil)
+        var seen: [AgentEvent] = []
+        for await event in harness.events(for: run) { seen.append(event) }
+        XCTAssertEqual(seen.last, .cancelled(AgentRunResult()))
+    }
+
+    /// The session's own half of the same contract: a remote cancellation sets `.cancelled` and is
+    /// never spoken with "Done."
+    func testRemoteCancellationIsNotNarratedAsCompletion() {
+        let service = AgentSessionService()
+        var spoken: [String] = []
+        service.speak = { spoken.append($0) }
+        service.handle(.started(AgentRun(id: "r", harness: .custom, prompt: "p", project: nil,
+                                         status: .running, startedAt: Date())))
+        service.handle(.cancelled(AgentRunResult()))
+        XCTAssertEqual(service.activeRun?.status, .cancelled)
+        XCTAssertEqual(spoken.last, "The agent run was cancelled before it finished.")
+        XCTAssertFalse(spoken.contains { $0.contains("Done.") })
+    }
+
+    func testFailedEventCarriesTheReportedError() {
+        let service = AgentSessionService()
+        service.handle(.started(AgentRun(id: "r", harness: .custom, prompt: "p", project: nil,
+                                         status: .running, startedAt: Date())))
+        service.handle(.failed(AgentRunResult(error: "the build broke")))
+        XCTAssertEqual(service.activeRun?.status, .failed)
+        XCTAssertEqual(service.lastSummary, "The agent run failed: the build broke.")
+    }
+
+    /// Losing the endpoint is a fact about us, not about the run: the status must not move.
+    func testLostContactLeavesTheRunsLastKnownStatusAlone() {
+        let service = AgentSessionService()
+        var spoken: [String] = []
+        service.speak = { spoken.append($0) }
+        service.handle(.started(AgentRun(id: "r", harness: .custom, prompt: "p", project: "repo",
+                                         status: .running, startedAt: Date())))
+        service.handle(.connection(.reconnecting(attempt: 1, nextRetryIn: 2)))
+        XCTAssertEqual(service.connectionState, .reconnecting(attempt: 1, nextRetryIn: 2))
+        XCTAssertTrue(spoken.isEmpty, "a retry in progress is not worth interrupting the wearer for")
+
+        service.handle(.connection(.lost(.network(attempts: 5))))
+        XCTAssertEqual(service.activeRun?.status, .running)
+        XCTAssertNil(service.lastSummary)
+        XCTAssertEqual(spoken.count, 1)
+        XCTAssertNotNil(service.contactLostAt)
     }
 
     // MARK: - code_agent tool gate
