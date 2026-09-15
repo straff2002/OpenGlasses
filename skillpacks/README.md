@@ -16,6 +16,10 @@ https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json
 
 ## Publishing a pack
 
+
+> **The site only publishes what is allowlisted.** Add each new pack zip's path to `ALLOW` in
+> `Scripts/stage-pages-site.sh`, otherwise its `downloadURL` 404s. The signed `catalog.json` is already listed.
+
 1. Build the pack folder: `skillpack.json` + payload files (manifest reference in
    `docs/plans/BX-skill-packs.md`).
 2. Sign it — prints the pack signature for the index entry:

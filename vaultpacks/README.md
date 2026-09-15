@@ -17,6 +17,10 @@ included where the author is licensed to redistribute it; record that in `redist
 
 ## Publishing a pack
 
+
+> **The site only publishes what is allowlisted.** Add each new pack zip's path to `ALLOW` in
+> `Scripts/stage-pages-site.sh`, otherwise its `downloadURL` 404s. The signed `catalog.json` is already listed.
+
 1. Build the vault folder as the vault guide describes, with no `documents`, and set the inner
    manifest's `gating.iap` to the pack id (`com.openglasses.vault.<vaultId>`).
 2. Add `pack.json`:

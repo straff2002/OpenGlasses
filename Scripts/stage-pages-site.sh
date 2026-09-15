@@ -45,8 +45,12 @@ out="${1:-$repo_root/_site}"
 #   LICENSE, README*.md, docs/*         the public documentation the READMEs link to
 #
 # Deliberately absent: docs/plans/ and plans/ (internal planning and compliance evidence),
-# skillpacks/ and vaultpacks/ (README links there will 404 — they are development material, not
-# website), docs/webrtc/signaling-server.js (server source, not a page asset).
+# docs/webrtc/signaling-server.js (server source, not a page asset), and everything under
+# skillpacks/ and vaultpacks/ EXCEPT what the app downloads: each signed catalog.json and the pack
+# zips it lists. The app's default catalog URLs (Config.skillPackCatalogURL / vaultPackCatalogURL)
+# point here, so leaving them out made both catalogs 404 in every build. Pack source (src/), the
+# unsigned index.json copies and the READMEs stay unpublished. Publishing a new pack zip means
+# adding its path below; the signed catalog is what makes it installable, not its presence here.
 ALLOW=(
   index.html
   privacy.html
@@ -66,6 +70,10 @@ ALLOW=(
   docs/opportunity-assessment.md
   docs/skillpack-authoring.md
   docs/webrtc/expert-client.html
+  skillpacks/catalog.json
+  skillpacks/packs/com.openglasses.barista-1.0.0.zip
+  skillpacks/packs/com.openglasses.focus-1.0.0.zip
+  vaultpacks/catalog.json
 )
 
 # --- denylist -------------------------------------------------------------------------------------
@@ -84,7 +92,10 @@ DENY=(
   'OpenGlasses/*' 'OpenGlassesTests/*' 'OpenGlassesUITests/*'
   'OpenGlassesWatch/*' 'OpenGlassesWatchWidget/*' 'OpenGlassesShareExtension/*'
   'GlassesActivityWidget/*' 'Vendor/*' 'Scripts/*' 'ci_scripts/*'
-  'examples/*' 'skillpacks/*' 'vaultpacks/*'
+  'examples/*'
+  # Pack development material. Only catalog.json and packs/*.zip under these are public (see ALLOW).
+  'skillpacks/src/*' 'vaultpacks/src/*' 'skillpacks/*README*' 'vaultpacks/*README*'
+  'skillpacks/index.json' 'vaultpacks/index.json' 'skillpacks/*.md' 'vaultpacks/*.md'
   '.github/*' '.claude/*' '.git/*'
   'project.yml' 'project.*.yml' 'Package.swift' 'Package.resolved' 'ExportOptions.plist'
   '*.swift' '*.pbxproj' '*.xcworkspacedata'
