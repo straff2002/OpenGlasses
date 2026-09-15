@@ -268,9 +268,14 @@ class AccessibilityAuditCase: XCTestCase {
         XCTContext.runActivity(named: "Accessibility audit — \(screen)") { activity in
             var failures: [String] = []
             var deferred: [String] = []
+            let policy = AuditRetryPolicy.standard
             var attempt = 1
 
             while true {
+                // Each attempt reports into empty accumulators, so a service that emitted part of
+                // a result before timing out cannot leave duplicates or stale findings behind.
+                failures.removeAll(keepingCapacity: true)
+                deferred.removeAll(keepingCapacity: true)
                 do {
                     try app.performAccessibilityAudit(for: types) { issue in
                         if let deferral = deferrals.first(where: {
@@ -283,22 +288,33 @@ class AccessibilityAuditCase: XCTestCase {
                         return true
                     }
                     break
-                } catch where attempt == 1 && Self.isAuditTimeout(error) {
-                    // Xcode's audit service occasionally times out before returning any findings
-                    // on a cold, loaded CI simulator. Retry that infrastructure error once; an
-                    // actual finding is delivered through the handler above and is never retried
-                    // or filtered here. Clear partial output in case the service emitted anything
-                    // before timing out, then ask it for one clean result.
-                    print("[a11y-audit] \(screen): audit service timed out; retrying once")
-                    failures.removeAll(keepingCapacity: true)
-                    deferred.removeAll(keepingCapacity: true)
-                    attempt += 1
-                    app.activate()
                 } catch {
-                    XCTFail("\(screen): the audit itself failed to run — \(error)",
+                    // Xcode's audit service sometimes times out before returning any findings on
+                    // a cold, loaded CI simulator. That infrastructure error, and only that one,
+                    // is retried a bounded number of times with a short backoff
+                    // (`AuditRetryPolicy`). A real finding comes through the handler above and is
+                    // never retried or filtered here.
+                    let timedOut = AuditRetryPolicy.isAuditTimeout(error)
+                    if timedOut, let delay = policy.delay(afterTimedOutAttempt: attempt) {
+                        print("[a11y-audit] \(screen): audit service timed out on attempt "
+                              + "\(attempt) of \(policy.maxAttempts); retrying in "
+                              + "\(Int(delay))s")
+                        Self.pause(for: delay)
+                        attempt += 1
+                        app.activate()
+                        continue
+                    }
+                    let exhausted = timedOut
+                        ? " (timed out on all \(policy.maxAttempts) attempts)" : ""
+                    XCTFail("\(screen): the audit itself failed to run\(exhausted) — \(error)",
                             file: file, line: line)
                     return
                 }
+            }
+
+            if attempt > 1 {
+                print("[a11y-audit] \(screen): audit completed on attempt \(attempt) of "
+                      + "\(policy.maxAttempts) after retrying")
             }
 
             if !deferred.isEmpty {
@@ -321,12 +337,11 @@ class AccessibilityAuditCase: XCTestCase {
         }
     }
 
-    /// The audit service has no public error constants, but its timeout is stable as Cocoa-style
-    /// domain/code metadata. Keep the match exact so invalid targets, crashes, and every other
-    /// infrastructure problem still fail on the first attempt.
-    private static func isAuditTimeout(_ error: Error) -> Bool {
-        let error = error as NSError
-        return error.domain == "com.apple.xcode.xctest.accessibilityAudit" && error.code == -56
+    /// Wait by spinning the run loop, not by blocking the thread, so XCTest's own run-loop
+    /// work (activity bookkeeping, query timeouts) continues. The app under test is another
+    /// process and carries on regardless.
+    fileprivate static func pause(for interval: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(interval))
     }
 
     private static func describe(_ issue: XCUIAccessibilityAuditIssue, note: String? = nil) -> String {
@@ -389,5 +404,41 @@ class AccessibilityAuditCase: XCTestCase {
                      file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: timeout),
                       "\(name) never appeared", file: file, line: line)
+    }
+
+    /// Wait until `element` exists and has stopped moving, then return.
+    ///
+    /// Existence says an element is in the tree, not that it is where it will stay. An animated
+    /// insertion puts a row in the tree on its first frame and then slides it into place, and an
+    /// audit run during that slide measures text in mid-transition. That is how the unfold case
+    /// produced Dynamic Type findings on copy that passes when still. So sample the element's
+    /// `frame` every `sampleInterval` seconds and return once `requiredIdenticalSamples`
+    /// consecutive samples are present and exactly equal (`FrameSettleTracker`). A sample where
+    /// the element is missing restarts the count.
+    ///
+    /// The result depends on observed state, not on a guess at how long an animation takes. On a
+    /// fast host it returns after about two sample intervals. On a slow one it waits as long as
+    /// the movement lasts, up to `timeout`, and then fails and says the element never settled.
+    func awaitStableFrame(of element: XCUIElement, named name: String,
+                          timeout: TimeInterval = 10, sampleInterval: TimeInterval = 0.3,
+                          requiredIdenticalSamples: Int = 3,
+                          file: StaticString = #filePath, line: UInt = #line) {
+        var tracker = FrameSettleTracker(requiredIdenticalSamples: requiredIdenticalSamples)
+        let deadline = Date().addingTimeInterval(timeout)
+        var samples = 0
+
+        while true {
+            // `frame` on an element with no match raises, so check existence first.
+            let frame: CGRect? = element.exists ? element.frame : nil
+            samples += 1
+            if tracker.record(frame) { return }
+            guard Date() < deadline else { break }
+            Self.pause(for: sampleInterval)
+        }
+
+        let lastSeen = tracker.lastFrame.map { "last frame \($0)" } ?? "element not found"
+        XCTFail("\(name) never held a stable frame within \(timeout)s — \(samples) samples, "
+                + "\(lastSeen). The audit would have measured it mid-animation.",
+                file: file, line: line)
     }
 }
