@@ -498,6 +498,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     transitionIsOurs: self.isWarmingUp || self.isRecoveringFromStall) {
                 case .streaming:
                     self.events.send(.status(.streaming))
+                    // A healthy stream clears the verdict the retry gate reads. Without this the
+                    // last error of an episode the stream recovered from — a fold that was undone,
+                    // a permission that was granted on the second ask — would still be sitting
+                    // there hours later, ready to stop the ladder for an unrelated drop.
+                    self.lastStreamError = nil
                     // A stream that reached `.streaming` has no reason left to be waiting. The
                     // first *picture* is what makes it `ready` — until one arrives the coordinator
                     // reports "awaiting first frame", which is the honest gap this used to hide.

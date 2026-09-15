@@ -27,6 +27,11 @@ import Foundation
 /// **A stop never takes the lock.** Stopping is not a transition that can be made to wait: it has
 /// to land the moment it is issued, which is what `StreamStartGeneration` then makes stick by
 /// invalidating whatever the locked region was in the middle of.
+///
+/// The worst-case wait is one session build — the SDK's own ~20 s start window — so a teardown
+/// issued on a mode switch can queue behind a capture that is still acquiring its session. That is
+/// the trade this makes on purpose: waiting for a transition to finish is slower than interrupting
+/// it, and interrupting it is how two owners end up holding one capability between them.
 @MainActor
 final class CameraTransitionLock {
 
