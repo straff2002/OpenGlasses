@@ -1225,6 +1225,22 @@ enum PrivacyLog {
         /// Without this line the turn simply ends and the log goes quiet, which reads in the
         /// field as "after TTS nothing happened".
         case listenerSkippedDisabled
+        /// A start found a working listener already up and was satisfied by it.
+        case listenerHealthy
+        /// A start arrived while another was still climbing and awaited that one's result
+        /// instead of opening a second microphone.
+        case listenerStartCoalesced
+        /// The listener was found broken and rebuilt through the existing cleanup. `reason` names
+        /// which shape of broken it was — the flag claiming a listener the graph did not have, or
+        /// a running engine beside a recognizer that had ended.
+        case listenerRebuilt
+        /// A start was superseded by a stop or a pause while it was suspended, and released what
+        /// it had built rather than claiming a listener nobody asked for any more.
+        case listenerStartAbandoned
+        /// A start declined to disturb capture another consumer is deliberately holding.
+        case listenerPausedDeliberately
+        /// A start was refused: no intent, or no authorization.
+        case listenerRefused
         case onDeviceUnavailable, contextConfigured
         case detected, fuzzyDetected, bargeIn, stopCommand
         case recognitionFailed, sustainedSilence, audioResumed
@@ -1236,10 +1252,12 @@ enum PrivacyLog {
 
     @discardableResult
     static func wakeWord(_ event: WakeEvent, trigger: BargeInTrigger? = nil,
+                         reason: PrivacyToken? = nil,
                          attempt: Int? = nil, count: Int? = nil, distance: Int? = nil,
                          error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
         if let trigger { fields.append(.init(.kind, .token(PrivacyToken(trigger.rawValue)))) }
+        if let reason { fields.append(.init(.reason, .token(reason))) }
         if let attempt { fields.append(.init(.attempt, .count(attempt))) }
         if let count { fields.append(.init(.count, .count(count))) }
         if let distance { fields.append(.init(.distance, .count(distance))) }
