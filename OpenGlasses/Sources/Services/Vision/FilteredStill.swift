@@ -62,12 +62,28 @@ enum FilteredStillResult {
     enum Reason: String {
         /// No cached frame, and either no capture was requested or the capture failed.
         case noStill
+        /// Plan FD P0. There *is* a cached picture, and it is no longer a current view — the stream
+        /// is paused, stalled, stopped, or simply has not produced anything for longer than
+        /// `CameraReadiness.evidenceMaxAge`. A reader asking for a still is about to answer a
+        /// question about what is in front of the wearer now, and the previous room is a wrong
+        /// answer rather than a partial one, so it is withheld like any other failure to prepare a
+        /// picture. Distinct from `noStill` because the two say different things to the wearer:
+        /// "the camera isn't giving me a picture" versus "the only picture I have is old".
+        case noFreshView
         /// The scope requires filtering and the filter reports it cannot run right now —
         /// backgrounded, device locked, or Vision/Core Image failed on this frame.
         case filterUnavailable
         /// The scope requires filtering and no filter is wired to the provider at all. Fails
         /// closed on purpose: a wiring omission must not read as "nothing to filter".
         case filterNotWired
+
+        /// Whether a reader may respond by taking a photo instead.
+        ///
+        /// Only the two "there is no usable picture to hand" reasons qualify. The filter reasons
+        /// must not: a scope that could not be filtered will not become filterable because the
+        /// pixels arrived by a different route, and retrying past a closed privacy gate is exactly
+        /// what the gate exists to stop.
+        var mayFallBackToCapture: Bool { self == .noStill || self == .noFreshView }
     }
 
     var still: FilteredStill? {

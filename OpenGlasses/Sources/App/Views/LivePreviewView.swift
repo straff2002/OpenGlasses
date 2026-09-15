@@ -26,7 +26,11 @@ struct LivePreviewView: View {
                 Image(uiImage: frame)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .accessibilityLabel("Live camera feed from glasses")
+                    // FD P0: the label is the readiness phase's, so a held picture is announced as
+                    // a held picture. A frozen frame read out as "live camera feed from glasses"
+                    // is the same untruth the marker below fixes for sighted users, delivered to
+                    // the one person who cannot see that nothing is moving.
+                    .accessibilityLabel(appState.cameraService.readiness.previewAccessibilityLabel)
                     // Frame pinning (Plan CE): long-press freezes what the model sees.
                     .onLongPressGesture(minimumDuration: 0.4) {
                         if Config.framePinEnabled, !appState.framePin.isPinned {
@@ -66,6 +70,30 @@ struct LivePreviewView: View {
                     guard !Task.isCancelled else { return }
                     showColdStartHint = true
                 }
+            } else if let waiting = waitingWithoutAPicture {
+                // FD P0: the preview used to have exactly two placeholders — a spinner labelled
+                // "Connecting to camera…" and an error — so a stream that was up and paused, or up
+                // and delivering nothing decodable, drew a black rectangle and said nothing at all.
+                // These phases are not a cold start and must not borrow its copy.
+                VStack(spacing: 12) {
+                    Image(systemName: "video.slash")
+                        .font(.largeTitle)
+                        .foregroundStyle(OGTheme.mediaWarnLabel)
+                        .accessibilityHidden(true)
+                    Text(waiting.headline)
+                        .foregroundStyle(OGTheme.onMedia)
+                        .multilineTextAlignment(.center)
+                    if let hint = waiting.hint {
+                        Text(hint)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(
+                                OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary)
+                            )
+                            .padding(.horizontal, 32)
+                    }
+                }
+                .accessibilityElement(children: .combine)
             } else if let error = streamError {
                 VStack(spacing: 12) {
                     Image(systemName: "camera.badge.ellipsis")
@@ -189,6 +217,42 @@ struct LivePreviewView: View {
                 .padding(.bottom, 40)
             }
 
+            // FD P0 — a held picture, marked as one, for as long as it is held.
+            //
+            // The preview deliberately keeps showing the last picture it received when the stream
+            // pauses or stalls: a screen that goes black tells the wearer less than a frozen one
+            // does. What it must never do is let that picture pass for a live view — so the marker
+            // is persistent rather than a flash, it says what the picture *is* rather than only
+            // that something is wrong, and it sits over the image instead of beside it. The same
+            // sentence is the image's accessibility label above.
+            if currentFrame != nil,
+               let marker = appState.cameraService.readiness.heldPictureMarker {
+                VStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.mediaWarnLabel)
+                            .accessibilityHidden(true)
+                        Text(marker)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(OGTheme.onMedia)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    // Opaque, not a wash: the ground is arbitrary video, so only a solid fill
+                    // keeps the pair measurable — the same reasoning as the recording badge.
+                    .background(Capsule().fill(OGTheme.media))
+                    .padding(.top, 110)
+                    .padding(.horizontal, 16)
+                    // Hidden from VoiceOver because the image's own label already says it: two
+                    // elements reading the same sentence is a swipe spent learning nothing.
+                    .accessibilityHidden(true)
+                    Spacer()
+                }
+            }
+
             // Pinned-frame card (Plan CE): what the model sees, floating over the still-live
             // preview — the disagreement between the two IS the feature. Tap to release.
             PinnedFrameCard(pin: appState.framePin) {
@@ -266,7 +330,22 @@ struct LivePreviewView: View {
     /// Waiting on a first frame — either our own start, or the backend's reconnect after a
     /// stream we still wanted dropped out.
     private var isConnecting: Bool {
-        isStartingStream || appState.cameraService.streamingStatus == .waiting
+        isStartingStream || appState.cameraService.readiness.phase == .connecting
+            || appState.cameraService.readiness.phase == .awaitingFirstFrame
+    }
+
+    /// The camera is on and there is nothing to show — paused, sending nothing, or sending
+    /// nothing decodable. `nil` for every phase the two branches either side already cover.
+    private var waitingWithoutAPicture: (headline: String, hint: String?)? {
+        let readiness = appState.cameraService.readiness
+        switch readiness.phase {
+        case .paused:
+            return (readiness.statusPhrase, CameraStreamStatePolicy.pausedNotice)
+        case .framesUnavailable, .decodingStalled:
+            return (readiness.statusPhrase, readiness.controlHint)
+        case .stopped, .stopping, .connecting, .awaitingFirstFrame, .ready:
+            return nil
+        }
     }
 
     private func startStreamIfNeeded() {

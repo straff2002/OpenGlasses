@@ -62,6 +62,11 @@ struct BottomControlBar: View {
     @State private var lastProgrammaticPage: DockPage = .home
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
+
+    /// FD P0 — the one camera state this bar shows, rather than three booleans read in three
+    /// places. Published, so the bar re-renders when the phase changes; the phase is all this
+    /// view needs, and none of its copy depends on the freshness clock.
+    private var cameraReadiness: CameraReadiness { appState.cameraService.readiness }
     private var isGemini: Bool { appState.currentMode == .geminiLive }
     private var isOpenAI: Bool { appState.currentMode == .openaiRealtime }
 
@@ -631,15 +636,24 @@ struct BottomControlBar: View {
                 Task { await appState.glassesService.connect() }
             }
         } else if isRealtime {
+            // FD P0: the label is the readiness phase, not the stream flag. `isStreaming` stayed
+            // true across a doff-induced pause and across a decoder that had stopped producing
+            // pictures, so this button said **Streaming** over a frozen preview — the one state
+            // the wearer could act on, shown as the state where everything is fine.
+            //
+            // `isActive` still covers every not-stopped phase: the button is a toggle, and a
+            // camera that is paused or stalled is a camera that is on.
             BarButton(
                 icon: "video.fill",
-                label: appState.cameraService.isStreaming ? "Streaming"
-                     : (appState.cameraService.isStartingStream ? "Starting…" : "Camera"),
-                isActive: appState.cameraService.isStreaming || appState.cameraService.isStartingStream,
+                label: cameraReadiness.controlLabel,
+                isActive: cameraReadiness.phase != .stopped,
                 // Disabled while starting: the cold start takes seconds, and a second tap during it
                 // did nothing visible, which read as the first tap having failed.
                 isDisabled: !realtimeSessionActive || appState.cameraService.isStartingStream
             ) {
+                // Start is an intent decision and reads intent only — never frames. A camera that
+                // is up but delivering nothing must not be started a second time, and a camera
+                // that is stopped must be startable with no pictures anywhere in sight.
                 if realtimeSessionActive && !appState.cameraService.isStreaming
                     && !appState.cameraService.isStartingStream {
                     Task {
@@ -656,12 +670,13 @@ struct BottomControlBar: View {
             }
             // Dimmed-and-unexplained is the sighted version of this problem too, but a VoiceOver
             // user gets only "dimmed" — the reason has to be said. The cold start is seconds long,
-            // so "starting" is its own answer rather than a silent dead button.
+            // so "starting" is its own answer rather than a silent dead button. "The camera is
+            // already streaming" was the same untruth as the label, said over a paused stream, so
+            // the phase supplies this line too.
             .accessibilityHint(
-                appState.cameraService.isStartingStream ? "Starting the camera. This takes a moment."
-                : !realtimeSessionActive ? "Start the live session first."
-                : appState.cameraService.isStreaming ? "The camera is already streaming."
-                : "Double-tap to stream the glasses camera to the model.")
+                !realtimeSessionActive && !appState.cameraService.isStartingStream
+                    ? "Start the live session first."
+                    : (cameraReadiness.controlHint ?? ""))
         } else {
             BarButton(
                 icon: "camera.fill",

@@ -30,6 +30,76 @@ class CameraService: ObservableObject, FilteredStillProviding {
     @Published var isStartingStream: Bool = false
     @Published var streamingStatus: CameraStreamingStatus = .stopped
 
+    // MARK: - Readiness (Plan FD P0)
+
+    /// The single answer to "is the camera ready?", for consumers that used to each have their own.
+    ///
+    /// `isStreaming`, a non-nil cached still, `isStartingStream` and user intent are four different
+    /// facts, and reading any one of them as "ready" is what let a control bar say **Streaming**
+    /// over a frozen preview and let a vision turn answer from a picture taken in the previous
+    /// room. `CameraReadiness` keeps them apart: a phase to show, an age for evidence, a session
+    /// identity, and the intent flag that Start/Connect decisions read instead of frames.
+    /// Its `frameAge` is as at the moment the snapshot was taken, which is what a view wants: a
+    /// view re-renders when the snapshot changes, and the phase is what it shows.
+    @Published private(set) var readiness: CameraReadiness = .cleared(session: 0)
+
+    /// The same snapshot with the freshness clock read **now**.
+    ///
+    /// The two exist separately for one reason: `@Published` fires on an event, and time passing is
+    /// not an event. A gate that asked the published snapshot whether its picture was fresh would
+    /// really be asking how old that picture was *when the last event happened* — which, for a
+    /// stream that simply stopped delivering, is always "brand new". Actions that need to see
+    /// something read this; displays read the published one.
+    var readinessNow: CameraReadiness { makeReadiness() }
+
+    /// A monotonic clock, injectable so a test can age a frame without waiting.
+    ///
+    /// `systemUptime` rather than `Date()` deliberately: this measures how long ago something
+    /// happened, and a wall clock that a time-zone change or an NTP correction can move backwards
+    /// would make a frame look newer than it is.
+    var monotonicClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+
+    /// When the newest *fresh* picture of this session was published, on `monotonicClock`. A held
+    /// picture — the decoder handing the previous one over again — does not move it.
+    private var lastFreshPictureAt: TimeInterval?
+
+    /// The backend's last reported reason for not delivering pictures. Never inferred here.
+    private var waitReason: CameraWaitReason?
+
+    /// Whether continuous streaming is still wanted, as this coordinator was asked. Not a second
+    /// owner of the session: the backend keeps its own intent for its recovery ladder, and this is
+    /// simply the record of what the app asked *this* object for, which is what a UI gate needs.
+    private var userWantsStream = false
+
+    /// Which camera session the service is on. Bumped by every stop, so a snapshot from before a
+    /// replacement is recognisably about a camera that no longer exists.
+    var streamSessionIdentity: Int { startGeneration.sessionIdentity }
+
+    /// Whether `snapshot` still describes the camera that is running now.
+    func isCurrent(_ snapshot: CameraReadiness) -> Bool {
+        snapshot.describes(session: streamSessionIdentity)
+    }
+
+    private func makeReadiness() -> CameraReadiness {
+        CameraReadiness.derive(
+            waitReason: waitReason,
+            streamIsUp: isStreaming,
+            startIsPending: isStartingStream,
+            userWantsStream: userWantsStream,
+            frameAge: lastFreshPictureAt.map { monotonicClock() - $0 },
+            session: streamSessionIdentity)
+    }
+
+    private func refreshReadiness() { readiness = makeReadiness() }
+
+    /// Forget everything known about this session's pictures. Called where the camera the pictures
+    /// came from has gone away — a cleared cache, a stop, a teardown — so that "no picture yet"
+    /// and "a picture from the session before last" can never be the same answer.
+    private func clearFrameEvidence() {
+        lastFreshPictureAt = nil
+        latestFrame = nil
+    }
+
     /// Kept as a nested name for the call sites that grew up with it.
     typealias StreamingStatus = CameraStreamingStatus
 
@@ -130,19 +200,35 @@ class CameraService: ObservableObject, FilteredStillProviding {
 
     private func handle(_ event: CameraBackendEvent) {
         switch event {
-        case .frame(let image):
+        case .frame(let image, let fresh):
+            guard let image else {
+                // The backend invalidated the cache: the session that produced those pixels is
+                // gone, so the age of its last picture is not a fact about any camera any more.
+                clearFrameEvidence()
+                refreshReadiness()
+                return
+            }
             latestFrame = image
-            guard let image else { return }
+            // Only a freshly produced picture moves the clock. The app keeps seeing a held one —
+            // that is why one is held — but it is not a new view of the world, and the whole point
+            // of the age is that it answers "how long since the camera last saw something".
+            if fresh { lastFreshPictureAt = monotonicClock() }
+            refreshReadiness()
             onVideoFrame?(image)
             framePublisher.send(image)
         case .status(let status):
             streamingStatus = status
+            refreshReadiness()
+        case .waitReason(let reason):
+            waitReason = reason
+            refreshReadiness()
         case .streamingChanged(let streaming):
             isStreaming = streaming
             if streaming {
                 streamingNotice = nil
                 NoticeCenter.shared.clear(source: .camera)   // the condition has cleared
             }
+            refreshReadiness()
         case .debug(let message):
             onDebugEvent?(message)
         case .compatibilityNotice(let notice):
@@ -234,7 +320,15 @@ class CameraService: ObservableObject, FilteredStillProviding {
         }
         let token = startGeneration.beginStart()
         isStartingStream = true
-        defer { isStartingStream = false }
+        // Intent is recorded *before* the await, and it is what keeps the cold-start window honest:
+        // for up to twenty seconds there is no stream and no frame, and the only true statement
+        // about the camera in that window is that somebody wants it on.
+        userWantsStream = true
+        refreshReadiness()
+        defer {
+            isStartingStream = false
+            refreshReadiness()
+        }
         try await backend.startStreaming()
         // Plan EW. Everything above this line took seconds, and a stop may have landed inside it.
         // If one did, this start has been superseded: release the stream the cold start just
@@ -252,15 +346,24 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// Always forwarded, and always safe to repeat: the backend, not this method, decides whether
     /// there is anything left to stop.
     func stopStreaming() async {
-        startGeneration.recordStop()
+        startGeneration.recordStop()   // also ends this camera session, for readiness identity
+        userWantsStream = false
+        // Readiness does not survive the camera it described: the next start is a different
+        // session, and a snapshot taken before this line must not be mistaken for one taken after.
+        clearFrameEvidence()
+        waitReason = nil
+        refreshReadiness()
         await backend.stopStreaming()
     }
 
     /// Tear down everything — called on mode switch or app termination.
     func tearDown() async {
         startGeneration.recordStop()   // nothing may survive a teardown, a cold start included
+        userWantsStream = false
         await backend.tearDown()
-        latestFrame = nil
+        clearFrameEvidence()
+        waitReason = nil
+        refreshReadiness()   // no readiness describes a camera that no longer exists, either
         streamClaims.reset()   // no claim describes a camera that no longer exists
     }
 
@@ -351,11 +454,19 @@ class CameraService: ObservableObject, FilteredStillProviding {
         /// instead of paying a decode and a re-encode for pixels nothing changed.
         var capturedData: Data?
 
+        // Plan FD P0. The cached picture is only evidence while it is current. A reader asking this
+        // accessor is about to answer a question about what is in front of the wearer *now* —
+        // "what does this label say", "is there a barcode", "describe the scene" — and a held or
+        // aged picture answers it with the previous room. `CameraReadiness.evidenceMaxAge` sits
+        // just above the backend's stall threshold on purpose, so the existing stall detector is
+        // still the first thing to notice a stopped picture flow and this is the backstop.
+        let cached = readinessNow.hasFreshVisualEvidence ? latestFrame : nil
+
         switch source {
         case .cachedFrameOnly:
-            image = latestFrame
+            image = cached
         case .cachedFrameThenPhoto:
-            if let cached = latestFrame {
+            if let cached {
                 image = cached
             } else if let captured = try? await capturePhoto() {
                 capturedData = captured
@@ -368,7 +479,12 @@ class CameraService: ObservableObject, FilteredStillProviding {
             }
         }
 
-        guard let image else { return .unavailable(.noStill) }
+        guard let image else {
+            // Say which of the two it is. A reader that held a picture and was refused it because
+            // it had gone stale is in a different situation from one the camera never fed at all,
+            // and the second answer is the one a wearer can act on.
+            return .unavailable(hasLatestStill && source != .photoOnly ? .noFreshView : .noStill)
+        }
         guard scope.isFiltered else {
             return .still(FilteredStill(image: image, scope: scope, sourceData: capturedData))
         }

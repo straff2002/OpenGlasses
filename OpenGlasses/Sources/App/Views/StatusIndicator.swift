@@ -73,16 +73,22 @@ struct StatusIndicator: View {
                             // model name nobody chose for its length.
                             .fixedSize(horizontal: false, vertical: true)
 
-                        if isRealtime && appState.cameraService.isStreaming {
+                        // FD P0: a green dot and the word CAM used to appear on `isStreaming`
+                        // alone, which a paused or stalled stream also satisfies — so the one
+                        // indicator on this card said the camera was fine in precisely the states
+                        // it was not. The chip now carries the phase, and the dot is green only
+                        // when pictures are actually flowing.
+                        if isRealtime, let chip = appState.cameraService.readiness.statusChip {
                             HStack(spacing: 3) {
-                                Circle().fill(OGTheme.ok)
+                                Circle().fill(chip.isHealthy ? OGTheme.ok : OGTheme.warn)
                                     .frame(width: statusDot, height: statusDot)
                                     .accessibilityHidden(true)
-                                Text("CAM")
+                                Text(chip.label)
                                     .font(.system(.caption, design: .monospaced).weight(.bold))
-                                    .foregroundStyle(OGTheme.okLabel)
+                                    .foregroundStyle(chip.isHealthy ? OGTheme.okLabel
+                                                                    : OGTheme.warnLabel)
                             }
-                            .accessibilityLabel("Camera streaming")
+                            .accessibilityLabel(chip.spoken)
                         }
                     }
                 }
@@ -429,8 +435,11 @@ struct StatusIndicator: View {
             .replacingOccurrences(of: "...", with: "")
             .replacingOccurrences(of: "\u{2026}", with: "")
         var parts = [state, spokenModeLabel]
-        if isRealtime && appState.cameraService.isStreaming {
-            parts.append("camera streaming")
+        // The spoken line carries the same phase the chip shows. "camera streaming" over a paused
+        // camera is the untruth the chip was fixed for, delivered to the user least able to check
+        // it against the preview.
+        if isRealtime, let chip = appState.cameraService.readiness.statusChip {
+            parts.append(chip.spoken)
         }
         return parts.joined(separator: ", ")
     }

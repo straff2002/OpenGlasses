@@ -60,6 +60,23 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// BR P2: consecutive FAILED recoveries — drives the rebuild-stream-vs-reset-session
     /// tiering in `StreamRecoveryPolicy`. Reset on any successful recovery.
     private var consecutiveRecoveryFailures = 0
+
+    /// Plan FD P0 — why pictures are not flowing, as last reported to the coordinator.
+    ///
+    /// Held so `report(waitReason:)` can emit on *change*: the sources below fire at frame rate and
+    /// at the stall detector's half-second tick, and a readiness snapshot rebuilt thirty times a
+    /// second would make `@Published` churn out of an answer that did not move.
+    private var currentWaitReason: CameraWaitReason?
+
+    /// Tell the coordinator why pictures are not flowing — or that there is no longer a reason.
+    ///
+    /// Every caller passes something the backend *watched happen*: a state the SDK reported, or a
+    /// verdict from the decoder's liveness clocks. Nothing infers a cause from a quiet moment.
+    private func report(waitReason: CameraWaitReason?) {
+        guard currentWaitReason != waitReason else { return }
+        currentWaitReason = waitReason
+        events.send(.waitReason(waitReason))
+    }
     /// True while `warmUpStream()` owns the stream. A cold start churns through `.stopped` for
     /// 15-18 s on its way up (`StreamRecoveryPolicy.observedColdStart`), and warmup already has
     /// its own nudge-and-rebuild ladder — a reconnect ladder layered on top would fight it for
@@ -417,11 +434,23 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     transitionIsOurs: self.isWarmingUp || self.isRecoveringFromStall) {
                 case .streaming:
                     self.events.send(.status(.streaming))
+                    // A stream that reached `.streaming` has no reason left to be waiting. The
+                    // first *picture* is what makes it `ready` — until one arrives the coordinator
+                    // reports "awaiting first frame", which is the honest gap this used to hide.
+                    self.report(waitReason: nil)
                     if self.isReconnecting { self.finishReconnect() }
                 case .waiting:
                     self.events.send(.status(.waiting))
+                    // FD P0: `.waiting` is four situations wearing one word. Say which one, from
+                    // the state the SDK actually reported.
+                    switch mapped {
+                    case .stopping: self.report(waitReason: .stopping)
+                    case .paused: self.report(waitReason: .paused)
+                    default: self.report(waitReason: .connecting)
+                    }
                 case .stopped:
                     self.events.send(.status(.stopped))
+                    self.report(waitReason: nil)
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
                 case .stoppedWhileWanted(let notice):
@@ -432,6 +461,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
                     self.events.send(.status(.waiting))
+                    // A reconnect is being scheduled below, so "connecting" is what is true —
+                    // and it is what the reconnect ladder is about to do, not a guess at why the
+                    // stream went away.
+                    self.report(waitReason: .connecting)
                     if !self.isReconnecting {
                         self.isReconnecting = true
                         self.events.send(.transientNotice(notice))
@@ -445,6 +478,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
                     self.events.send(.status(.waiting))
+                    self.report(waitReason: .paused)
                     self.events.send(.transientNotice(notice))
                     self.streamSession?.start()
                 }
@@ -469,7 +503,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 // image — that is the point of holding one — but `lastFrameTime` also gates the
                 // photo-capture fallback, and stamping it here would let that fallback hand over
                 // a picture as old as the encoder's keyframe interval while looking seconds new.
-                if picture.isFresh { self.lastFrameTime = Date() }
+                if picture.isFresh {
+                    self.lastFrameTime = Date()
+                    // A picture just came out of the pipeline, so whatever the stall detector or
+                    // the state listener last reported as a reason for not delivering has ended.
+                    // Only a *fresh* one clears it: a held frame is the decoder still waiting.
+                    self.report(waitReason: nil)
+                }
                 self.latestFrame = image
                 if frameCount <= 3 || frameCount % 30 == 0 || image.size != lastLoggedFrameSize {
                     lastLoggedFrameSize = image.size
@@ -477,7 +517,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                                       width: Int(image.size.width),
                                       height: Int(image.size.height), count: frameCount)
                 }
-                self.events.send(.frame(image))
+                self.events.send(.frame(image, fresh: picture.isFresh))
             }
         }.store(in: streamListenerBag)
 
@@ -837,6 +877,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // explicitly, or the preview sits on "Connecting…" forever instead of showing the
             // error this throw is about to produce.
             events.send(.status(.stopped))
+            report(waitReason: nil)   // the ladder has stopped climbing; nothing is pending
             throw error
         }
 
@@ -864,8 +905,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
         stopStallDetection()
         streamSession?.stop()
         latestFrame = nil
-        events.send(.frame(nil))
+        events.send(.frameCleared)
         events.send(.status(.stopped))
+        report(waitReason: nil)
         PrivacyLog.camera(.glasses, .stopped)
     }
 
@@ -924,7 +966,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         isStreaming = false
         events.send(.streamingChanged(false))
         latestFrame = nil
-        events.send(.frame(nil))
+        events.send(.frameCleared)
+        report(waitReason: nil)
         PrivacyLog.camera(.glasses, .stopped)
     }
 
@@ -947,6 +990,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             isReconnecting = false
             reconnectAttempt = 0
             events.send(.status(.stopped))
+            report(waitReason: nil)   // the ladder is finished, so nothing is connecting any more
             events.send(.transientNotice(StreamRecoveryPolicy.reconnectGaveUpNotice))
             return
         }
@@ -1037,10 +1081,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 case .decodeStalled:
                     PrivacyLog.camera(.decoder, .stalled,
                                       seconds: self.framePipeline.secondsSinceLastPicture())
+                    // FD P0: this detector is the only thing in the app that can tell the two
+                    // stalls apart, so it is the only thing entitled to report either. The next
+                    // fresh picture clears it.
+                    self.report(waitReason: .decodingStalled)
                     self.framePipeline.rebuildDecoder()
                 case .linkStalled:
                     let elapsed = Date().timeIntervalSince(self.lastFrameTime)
                     PrivacyLog.camera(.glasses, .stallDetected, seconds: elapsed)
+                    self.report(waitReason: .framesUnavailable)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
                     await self.recoverFromStall()
@@ -1148,7 +1197,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // A torn-down session's frames must not survive to serve as "photos" for the next
         // capture — the staleness gate is belt, this is braces.
         latestFrame = nil
-        events.send(.frame(nil))
+        events.send(.frameCleared)
+        report(waitReason: nil)
         lastFrameTime = .distantPast
         framePipeline.reset()
         PrivacyLog.camera(.glasses, .sessionReset)

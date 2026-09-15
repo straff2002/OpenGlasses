@@ -45,6 +45,15 @@ struct StreamStartGeneration: Equatable {
     /// is the whole test — no flags to keep in sync, and any number of starts can be outstanding.
     private var generation = 0
 
+    /// Which camera session the owner is on, for anything that needs to recognise a *replacement*
+    /// rather than merely a stop.
+    ///
+    /// Plan FD P0: a readiness snapshot carries this, so a snapshot taken before a stop-and-restart
+    /// can be told apart from one describing the camera that is running now. The same counter
+    /// serves both questions because they are the same event — a stop is what ends a session, and
+    /// anything started afterwards is a different one.
+    var sessionIdentity: Int { generation }
+
     /// Whether a start is currently in flight. Reported by `recordStop()` so an owner can tell a
     /// stop that cancelled a cold start from one that stopped a running stream or did nothing.
     private(set) var isStartPending = false
