@@ -65,6 +65,65 @@ class WakeWordService: NSObject, ObservableObject {
     }
     private(set) var recognitionTask: SFSpeechRecognitionTask?
     private var audioSessionConfigured: Bool = false
+
+    // MARK: - Listener health (Plan FE P2)
+
+    /// Which start the listener is obeying, and whether anybody still wants one.
+    ///
+    /// Intent is granted only by `startListening()` and withdrawn only by `stopListening()` /
+    /// `deactivateAudioSession()`. Everything the service does to itself — a route flap, an
+    /// interruption, a handoff to another consumer, a wake word firing — is a *pause*: it
+    /// invalidates the starts in flight without deciding on the wearer's behalf that the
+    /// microphone should stay shut.
+    private var startGeneration = ListenerStartGeneration()
+
+    /// The start currently climbing, if any. A second caller awaits this one's result instead of
+    /// opening a rival microphone: two concurrent callers both cleared the old
+    /// `guard !isListening` before either of them had set the flag.
+    private var inFlightStart: Task<Void, Error>?
+
+    /// How many start requests have been satisfied by a start already in flight. Diagnostics — and
+    /// the signal a test waits on rather than guessing how long a second caller needs.
+    private(set) var coalescedStartCount = 0
+
+    /// Whether the input tap is installed. Part of the graph the health decision reads — an engine
+    /// running with no tap feeds neither the recognizer nor the shared consumers.
+    private var tapIsInstalled = false
+
+    /// Bumped whenever a recognition task is created or torn down. The recognizer's completion
+    /// handler captures the value it was created under, and a callback arriving from an older
+    /// generation is dropped — so a cancelled task can no longer restart, pause or barge in on the
+    /// listener that replaced it.
+    private var recognitionGeneration = 0
+
+    /// Whether the last recognition callback carried an error. Carried into the health snapshot
+    /// for logging; an ended recognizer is broken listening whether or not it ended badly.
+    private var lastRecognitionFailed = false
+
+    /// A pause somebody took on purpose, which the health decision must not mistake for a fault.
+    private(set) var deliberatePause: ListenerPauseReason?
+
+    // MARK: - Injected seams (Plan FE P2)
+    //
+    // The start sequence's decisions are the thing worth testing, and none of the states that
+    // provoke them can exist in a test process: a simulator has no microphone route and
+    // `SFSpeechRecognizer` never reports itself available there. `nil` means the real path —
+    // these are non-nil only where the live audio graph cannot be.
+
+    /// Replaces the microphone + speech-recognition authorization await.
+    var permissionOverride: (@MainActor () async -> Bool)?
+    /// Replaces the `SFSpeechRecognizer.isAvailable` check.
+    var recognizerAvailabilityOverride: (@MainActor () -> Bool)?
+    /// Replaces `configureAudioSession()` — the audio-session activation and lease bookkeeping.
+    var audioSessionConfigureOverride: (@MainActor () async -> Void)?
+    /// Replaces `startRecognition()`. Throwing from it is how a test drives the retry path.
+    var startRecognitionOverride: (@MainActor () throws -> Void)?
+    /// Replaces `cleanupAudioEngine()` for the start sequence's own rebuilds.
+    var cleanupAudioEngineOverride: (@MainActor () -> Void)?
+    /// Replaces the observed audio-graph snapshot.
+    var graphSnapshotOverride: (@MainActor () -> ListenerGraphSnapshot)?
+    /// Replaces "is the audio-session lease held".
+    var leaseHeldOverride: (@MainActor () -> Bool)?
     /// Our claim on the shared session with the coordinator. Wake word is the always-on baseline
     /// owner: it self-activates with its tuned config and registers ownership so a live session
     /// (Gemini/OpenAI) supersedes it cleanly, and its release deactivates only if still current.
@@ -318,7 +377,9 @@ class WakeWordService: NSObject, ObservableObject {
         switch type {
         case .began:
             PrivacyLog.audio(.wakeWord, .interruptionBegan)
-            stopListening()
+            // A pause, not a stop: the OS took the microphone, the wearer did not ask for it to
+            // stay shut. Intent survives so `.ended` below is allowed to bring the listener back.
+            pauseForAudioDisruption()
         case .ended:
             // Don't fight a live session (Plan BE). If a Gemini/OpenAI realtime session now owns the
             // shared audio session, it handles its own interruption recovery — reactivating here
@@ -345,7 +406,7 @@ class WakeWordService: NSObject, ObservableObject {
                 // then restart — one Task so the reactivate precedes the listener start.
                 Task {
                     await AudioSessionCoordinator.shared.ensureActiveOffMain()
-                    try? await startListening()
+                    try? await autoStartListening()
                 }
             } else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
@@ -372,8 +433,7 @@ class WakeWordService: NSObject, ObservableObject {
             let lostBluetooth = !route.inputs.contains { $0.portType == .bluetoothHFP }
             PrivacyLog.audio(.wakeWord, .deviceDisconnected,
                              detail: PrivacyToken(lostBluetooth ? "bluetoothLost" : "bluetoothRetained"))
-            cleanupAudioEngine()
-            isListening = false
+            pauseForAudioDisruption()
             if lostBluetooth {
                 onBluetoothDisconnected?()
             }
@@ -383,8 +443,7 @@ class WakeWordService: NSObject, ObservableObject {
             let isBluetooth = newRoute.inputs.contains { $0.portType == .bluetoothHFP }
             if isBluetooth {
                 PrivacyLog.audio(.wakeWord, .deviceReconnected)
-                cleanupAudioEngine()
-                isListening = false
+                pauseForAudioDisruption()
                 onBluetoothReconnected?()
                 // The glasses coming back is not permission to listen: the master toggle decides.
                 guard shouldAutoRestart() else {
@@ -395,7 +454,7 @@ class WakeWordService: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     audioSessionConfigured = false
                     await configureAudioSession()
-                    try? await startListening()
+                    try? await autoStartListening()
                 }
             } else {
                 PrivacyLog.audio(.wakeWord, .deviceIgnored)
@@ -407,8 +466,7 @@ class WakeWordService: NSObject, ObservableObject {
                 if format.sampleRate == 0 || format.channelCount == 0 {
                     PrivacyLog.audio(.wakeWord, .formatInvalid,
                                      detail: PrivacyToken("routeChange"))
-                    cleanupAudioEngine()
-                    isListening = false
+                    pauseForAudioDisruption()
                 }
             }
         default:
@@ -416,50 +474,120 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
+    /// Ask for the wake-word listener.
+    ///
+    /// This is the *explicit* request: it records the wearer's intent, which an automatic restart
+    /// never does and only an explicit stop withdraws. Push-to-talk (silent mode) is still the
+    /// single chokepoint — every auto-start path (launch, foreground, glasses connect,
+    /// returnToWakeWord, autoStart) funnels through here, so the mic is never held for constant
+    /// listening. On-demand triggers (Action Button → `startDirectTranscription`) bypass this and
+    /// still work.
     func startListening() async throws {
-        guard !isListening else { return }
-        // Push-to-Talk (Silent Mode): never run the always-on wake-word listener.
-        // This is the single chokepoint — every auto-start path (launch, foreground,
-        // glasses connect, returnToWakeWord, autoStart) funnels through here, so the
-        // mic is never held for constant listening. On-demand triggers (Action Button →
-        // startDirectTranscription) bypass this and still work.
-        if Config.silentMode {
+        startGeneration.recordIntent()
+        try await start(origin: .explicit)
+    }
+
+    /// The service asking itself: a route change, an ended interruption, a recognition restart,
+    /// `resumeListening()`. Never grants intent — if an explicit stop withdrew it, this is refused,
+    /// which is what stops a glasses reconnect from re-opening a microphone the wearer closed.
+    ///
+    /// Internal rather than private so the recovery path can be awaited directly in tests: the
+    /// callers that reach it in production are fire-and-forget `Task`s inside notification
+    /// handlers, and asserting on those means racing them.
+    func autoStartListening() async throws {
+        try await start(origin: .automatic)
+    }
+
+    /// Coalesce. Starting is not instant — two authorization awaits, a session activation and up
+    /// to three retries with sleeps — and every one of those suspensions used to be a window in
+    /// which a second caller cleared `guard !isListening` and began a rival start.
+    private func start(origin: ListenerStartOrigin) async throws {
+        if let inFlight = inFlightStart {
+            coalescedStartCount += 1
+            PrivacyLog.wakeWord(.listenerStartCoalesced, reason: PrivacyToken(origin.rawValue))
+            return try await inFlight.value
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.inFlightStart = nil }
+            try await self.performStart(origin: origin)
+        }
+        inFlightStart = task
+        try await task.value
+    }
+
+    private func performStart(origin: ListenerStartOrigin) async throws {
+        let token = startGeneration.beginStart()
+
+        // Pre-flight, before anything is awaited: the cheap answers. A listener that is already
+        // working satisfies the request; a refusal or a deliberate pause ends it here.
+        switch ListenerHealthPolicy.decide(healthState(origin: origin, permission: .unknown)) {
+        case .healthy:
+            PrivacyLog.wakeWord(.listenerHealthy, reason: PrivacyToken(origin.rawValue))
+            return
+        case .pausedDeliberately(let reason):
+            PrivacyLog.wakeWord(.listenerPausedDeliberately, reason: PrivacyToken(reason.rawValue))
+            return
+        case .refuse(.silentMode):
             PrivacyLog.wakeWord(.listenerSkippedPushToTalk)
             return
+        case .refuse(let refusal):
+            PrivacyLog.wakeWord(.listenerRefused, reason: PrivacyToken(refusal.rawValue))
+            return
+        case .rebuild, .startFresh:
+            break
         }
+
         stopFired = false
         wakeWordFired = false
         silenceTracker.reset()
         silenceReported = false
         pausedForSilence = false
+        if deliberatePause == .silence { deliberatePause = nil }
 
-        let hasPermission = await requestPermissions()
+        let hasPermission = await listenerPermissionsGranted()
+        // A `stopListening()` that landed during the authorization prompt wins. The late start
+        // built nothing yet, so abandoning is simply declining to build one.
+        guard startGeneration.checkpoint(token) == .proceed else { return abandonStart() }
         guard hasPermission else {
             errorMessage = "Speech recognition permission denied"
             throw WakeWordError.microphonePermissionDenied
         }
 
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+        guard recognizerIsAvailable() else {
             errorMessage = "Speech recognition not available"
             throw WakeWordError.configurationError("Speech recognizer not available")
         }
 
         // Ensure audio session is configured
-        await configureAudioSession()
+        await configureSessionThroughSeam()
+        guard startGeneration.checkpoint(token) == .proceed else { return abandonStart() }
 
         // Retry up to 3 times with increasing delay if audio engine fails
         var lastError: Error?
         for attempt in 1...3 {
+            // Re-decide every attempt: the graph left behind by a failed attempt is not the graph
+            // the pre-flight saw. A rebuild goes through the existing `cleanupAudioEngine()` and
+            // then `startRecognition()`, keeping whatever session lease is held — the lease is
+            // never released and re-acquired around a rebuild, because other consumers coexist on
+            // it and wake word is the baseline owner.
+            if case .rebuild(let reason) =
+                ListenerHealthPolicy.decide(healthState(origin: origin, permission: .granted)) {
+                PrivacyLog.wakeWord(.listenerRebuilt, reason: PrivacyToken(reason.rawValue),
+                                    attempt: attempt)
+                cleanupAudioGraph()
+            }
             do {
-                try startRecognition()
-                isListening = true
+                try startRecognitionThroughSeam()
+                deliberatePause = nil
+                setListening(true)
                 PrivacyLog.wakeWord(.listenerStarted, attempt: attempt)
                 return
             } catch {
                 lastError = error
                 PrivacyLog.wakeWord(.listenAttemptFailed, attempt: attempt,
                                     error: SafeErrorSummary(error))
-                cleanupAudioEngine()
+                cleanupAudioGraph()
                 // CoreAudio '!pla' (2003329396): the AVAudioSession lost activation — usually a
                 // Bluetooth route flap mid-start (device-traced: Action-button intent in the
                 // background burned all 3 attempts inside the same broken window, then went
@@ -467,25 +595,150 @@ class WakeWordService: NSObject, ObservableObject {
                 // recovers; the half-second sleeps alone never did.
                 if (error as NSError).code == 2003329396 || attempt > 1 {
                     audioSessionConfigured = false
-                    await configureAudioSession()
+                    await configureSessionThroughSeam()
+                    guard startGeneration.checkpoint(token) == .proceed else { return abandonStart() }
                 }
                 let delay = UInt64(attempt) * 700_000_000
                 try? await Task.sleep(nanoseconds: delay)
+                guard startGeneration.checkpoint(token) == .proceed else { return abandonStart() }
             }
         }
         throw lastError ?? WakeWordError.configurationError("Failed to start after 3 attempts")
     }
 
+    /// A stop or a pause landed while this start was suspended.
+    ///
+    /// Deliberately does **nothing** but record it. Every abandon point is before the start has
+    /// built anything, so the graph standing at that moment belongs to whoever put it there — the
+    /// stop that overtook us (which already cleaned up), or another consumer whose engine a late
+    /// start has no business tearing down. The session lease is likewise left alone: wake word is
+    /// the baseline owner and `stopListening()` idles the mic without surrendering ownership, so
+    /// there is nothing here for a late start to release.
+    private func abandonStart() {
+        PrivacyLog.wakeWord(.listenerStartAbandoned)
+    }
+
+    /// Stop listening at somebody's explicit request.
+    ///
+    /// The one thing that withdraws intent. Nothing the service does on its own — a route flap, an
+    /// interruption, a handoff — puts it back, so the microphone stays off until a caller asks
+    /// again. Any start still climbing is invalidated and will decline to claim a listener.
     func stopListening() {
+        startGeneration.recordStop()
+        deliberatePause = nil
         cleanupAudioEngine()
-        isListening = false
+        setListening(false)
+    }
+
+    /// The listener went down for a reason that was not the wearer's decision: an interruption, a
+    /// route flap, an invalid input format. Tear the graph down but keep intent, so the matching
+    /// recovery path is allowed to bring it back.
+    ///
+    /// Internal for the same reason as `autoStartListening()`: in production it is only ever
+    /// reached from inside a `NotificationCenter` handler, and asserting on those means posting
+    /// audio-session notifications at observers that only exist once a real session has been
+    /// configured.
+    func pauseForAudioDisruption() {
+        startGeneration.recordPause()
+        // A deliberate pause is a claim on a *running* graph — the shared-engine handoff means
+        // "another consumer is using this engine, leave it alone". The engine is about to be gone,
+        // so the claim is void, and an automatic restart standing off for it would leave nothing
+        // listening and nothing feeding the consumers either.
+        deliberatePause = nil
+        cleanupAudioEngine()
+        setListening(false)
+    }
+
+    // MARK: - Health inputs and seams
+
+    /// The single writer of `isListening`.
+    ///
+    /// The flag is no longer a health check — `ListenerHealthPolicy` reads the engine, the tap and
+    /// the recognition task, because a flag left `true` by an audio disruption is precisely the
+    /// defect this phase exists to fix. It remains what the UI shows and what the rest of the app
+    /// reads, so every path that changes it comes through here, and the only place that sets it
+    /// `true` is the one that has just created a recognition task.
+    private func setListening(_ value: Bool) {
+        guard isListening != value else { return }
+        isListening = value
+    }
+
+    /// What the recognizer is actually doing.
+    private var liveRecognitionState: ListenerRecognitionState {
+        guard let task = recognitionTask else { return .none }
+        switch task.state {
+        case .starting, .running: return .running
+        case .finishing, .canceling, .completed: return .ended(failed: lastRecognitionFailed)
+        @unknown default: return .ended(failed: lastRecognitionFailed)
+        }
+    }
+
+    private func graphSnapshot() -> ListenerGraphSnapshot {
+        if let graphSnapshotOverride { return graphSnapshotOverride() }
+        return ListenerGraphSnapshot(engineRunning: audioEngine?.isRunning == true,
+                                     tapInstalled: tapIsInstalled,
+                                     recognition: liveRecognitionState)
+    }
+
+    /// Everything the health decision is allowed to look at, read off the live service.
+    func healthState(origin: ListenerStartOrigin,
+                     permission: ListenerHealthState.Permission) -> ListenerHealthState {
+        ListenerHealthState(
+            flagSaysListening: isListening,
+            graph: graphSnapshot(),
+            captureShared: !audioBufferForwarders.isEmpty,
+            deliberatelyPaused: deliberatePause,
+            leaseHeld: leaseHeldOverride?() ?? (sessionLease != nil),
+            intent: startGeneration.wantsListening,
+            silentMode: Config.silentMode,
+            permission: permission,
+            origin: origin)
+    }
+
+    private func listenerPermissionsGranted() async -> Bool {
+        if let permissionOverride { return await permissionOverride() }
+        return await requestPermissions()
+    }
+
+    private func recognizerIsAvailable() -> Bool {
+        if let recognizerAvailabilityOverride { return recognizerAvailabilityOverride() }
+        return speechRecognizer?.isAvailable == true
+    }
+
+    private func configureSessionThroughSeam() async {
+        if let audioSessionConfigureOverride {
+            await audioSessionConfigureOverride()
+            return
+        }
+        await configureAudioSession()
+    }
+
+    private func cleanupAudioGraph() {
+        recognitionGeneration &+= 1
+        if let cleanupAudioEngineOverride {
+            cleanupAudioEngineOverride()
+            return
+        }
+        cleanupAudioEngine()
+    }
+
+    private func startRecognitionThroughSeam() throws {
+        recognitionGeneration &+= 1
+        if let startRecognitionOverride {
+            try startRecognitionOverride()
+            return
+        }
+        try startRecognition()
     }
 
     /// Fully deactivate the audio session — use when CarPlay voice control is dismissed
     /// so car audio (FM radio, other apps) can resume.
     func deactivateAudioSession() async {
+        // Surrendering the session is an explicit teardown, so intent goes with it.
+        startGeneration.recordStop()
+        deliberatePause = nil
         cleanupAudioEngine()
-        isListening = false
+        setListening(false)
         audioSessionConfigured = false
         if let lease = sessionLease {
             // Release through the coordinator: it deactivates only if wake word is still the
@@ -501,13 +754,17 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
+    /// Bring the listener back after a pause the service took itself.
+    ///
+    /// No `guard !isListening` any more — that guard is the defect. The health decision answers
+    /// the same question from the graph, so a stale flag can neither suppress a needed restart nor
+    /// hide a listener that is genuinely already up.
     func resumeListening() {
-        guard !isListening else { return }
         guard shouldAutoRestart() else {
             PrivacyLog.wakeWord(.listenerSkippedDisabled)
             return
         }
-        Task { try? await startListening() }
+        Task { try? await autoStartListening() }
     }
 
     // MARK: - Shared Audio Engine (for TranscriptionService)
@@ -537,12 +794,17 @@ class WakeWordService: NSObject, ObservableObject {
     /// while nothing was recognising, and the wake word worked exactly once per launch (issue 427).
     /// `pauseRecognition()` already drops the flag for the same reason.
     func pauseRecognitionForSharedEngine() {
+        // A deliberate pause: the engine and its tap stay up for the consumer that now owns the
+        // capture, intent survives, and an *automatic* restart is declined until the owner asks.
+        startGeneration.recordPause()
+        deliberatePause = .sharedEngine
+        recognitionGeneration &+= 1
         suppressAutoRestart = true
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
-        isListening = false
+        setListening(false)
     }
 
     /// Start the shared engine for an explicit audio-buffer consumer even when always-on wake-word
@@ -560,6 +822,7 @@ class WakeWordService: NSObject, ObservableObject {
         if let oldEngine = audioEngine {
             oldEngine.stop()
             oldEngine.inputNode.removeTap(onBus: 0)
+            tapIsInstalled = false
             audioEngine = nil
         }
         try createAndStartAudioEngine()
@@ -597,6 +860,8 @@ class WakeWordService: NSObject, ObservableObject {
     }
 
     private func cleanupAudioEngine() {
+        // Obsolete recognition callbacks die with the task they belonged to.
+        recognitionGeneration &+= 1
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
@@ -605,10 +870,14 @@ class WakeWordService: NSObject, ObservableObject {
             engine.stop()
             engine.inputNode.removeTap(onBus: 0)
         }
+        tapIsInstalled = false
         audioEngine = nil
     }
 
     private func startRecognition() throws {
+        // A fresh recognizer consumes no older cancel: `suppressAutoRestart` belongs to the task
+        // being replaced, and the generation tag below is what actually silences its callbacks.
+        suppressAutoRestart = false
         // Cancel any existing recognition task
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -651,6 +920,7 @@ class WakeWordService: NSObject, ObservableObject {
                                  hertz: Int(format.sampleRate), channels: Int(format.channelCount))
                 engine.stop()
                 engine.inputNode.removeTap(onBus: 0)
+                tapIsInstalled = false
                 audioEngine = nil
                 // Fall through to create a new engine below
                 try createAndStartAudioEngine()
@@ -659,19 +929,28 @@ class WakeWordService: NSObject, ObservableObject {
             // Clean up old engine if it exists but isn't running
             if let oldEngine = audioEngine {
                 oldEngine.inputNode.removeTap(onBus: 0)
+                tapIsInstalled = false
                 audioEngine = nil
             }
             try createAndStartAudioEngine()
         }
 
+        // Tag the handler with the generation it was created under. A task that has been
+        // cancelled or replaced still delivers a final callback, and that callback used to be
+        // indistinguishable from the live one — it could restart, pause or barge in on its own
+        // successor. An older generation is now simply dropped.
+        lastRecognitionFailed = false
+        let generation = recognitionGeneration
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             Task { @MainActor in
-                self?.handleRecognitionResult(result: result, error: error)
+                guard let self, self.recognitionGeneration == generation else { return }
+                self.handleRecognitionResult(result: result, error: error)
             }
         }
     }
 
     private func createAndStartAudioEngine() throws {
+        tapIsInstalled = false
         let engine = AVAudioEngine()
         audioEngine = engine
 
@@ -698,6 +977,8 @@ class WakeWordService: NSObject, ObservableObject {
             // Silence detection is nonisolated and does its own (batched) main-actor hop.
             self?.checkAudioLevel(buffer: buffer)
         }
+
+        tapIsInstalled = true
 
         engine.prepare()
         try engine.start()
@@ -755,6 +1036,7 @@ class WakeWordService: NSObject, ObservableObject {
             suppressAutoRestart = false
             return
         }
+        lastRecognitionFailed = error != nil
         if let error = error {
             let nsError = error as NSError
             // Code 1110 = "No speech detected" — just restart
@@ -907,11 +1189,13 @@ class WakeWordService: NSObject, ObservableObject {
 
     /// Stop the recognition task without killing the audio engine
     private func pauseRecognition() {
+        startGeneration.recordPause()
+        recognitionGeneration &+= 1
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
-        isListening = false
+        setListening(false)
     }
 
     /// Public version of pauseRecognition — stops recognition but keeps engine alive
@@ -950,7 +1234,7 @@ class WakeWordService: NSObject, ObservableObject {
             // Pause recognition (keep engine alive) and restart just the task
             pauseRecognition()
             try? await Task.sleep(nanoseconds: 300_000_000)
-            try? await startListening()
+            try? await autoStartListening()
         }
     }
 

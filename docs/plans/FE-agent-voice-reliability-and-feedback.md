@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0–P1 implemented 2026-09-16 — P2–P6 unbuilt.**
+**Status: 🚧 P0–P2 implemented 2026-09-16 (P2 same day) — P3–P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -11,8 +11,9 @@ Keep OpenGlasses branding, bundle IDs, signing, app groups and entitlements unch
 - [N](N-remote-agent-harness.md): `CustomAgentHarness`, `CustomHarnessConfig`, `AgentSessionService`,
   `AgentSummarizer` and existing event/result types. Custom polling currently discards result fields;
   confirmation errors are swallowed before announcing “proceeding”; default input handling can no-op.
-- `WakeWordService.startListening` returns on `isListening` alone. A stale `isListening` flag after
-  audio disruption is suspected; reproduction remains pending.
+- `WakeWordService.startListening` returned on `isListening` alone. A stale `isListening` flag after
+  audio disruption was suspected; **P2 removed the guard** — the decision now reads the audio graph.
+  Field reproduction of the original report remains pending.
 - `SpeechContinuationPolicy`, existing endpointing/barge-in policy and settings own timing.
 - `TextToSpeechService`, audio lease coordination and `VoiceAmbience` own delivery and feedback.
 - [FD](FD-camera-readiness-and-durable-actions.md) supplies broader action/restart acceptance scenarios;
@@ -188,6 +189,73 @@ healthy repeated start, interruption recovery, shared capture, simultaneous star
 permission/activation. Hardware checks reproduce first Start after glasses sleep/route change,
 then demonstrate one working listener and no orphaned mic after stop.
 
+**Implemented 2026-09-16.**
+
+- **The decision.** `ListenerHealthPolicy` (`Sources/Services/Audio/`) is a pure function from a
+  `ListenerHealthState` — `flagSaysListening`, a `ListenerGraphSnapshot` (`engineRunning`,
+  `tapInstalled`, `recognition` ∈ none / running / ended(failed:)), `captureShared`,
+  `deliberatelyPaused`, `leaseHeld`, `intent`, `silentMode`, `permission` ∈ granted/denied/unknown,
+  and `origin` ∈ explicit/automatic — to one of `healthy`, `pausedDeliberately(reason)`,
+  `rebuild(reason)`, `startFresh`, `refuse(reason)`. Rules, in order: silent mode refuses
+  (outranking everything, so push-to-talk is never reported as something else); no intent refuses;
+  denied permission refuses while `unknown` proceeds (that is the pre-flight pass, before anything
+  has been asked); an *automatic* start during a shared-engine pause stands off; flag + engine +
+  tap + running recognizer is healthy; then the broken shapes — **engine running beside an ended
+  recognizer** (the rule that motivates the whole decision: a running engine does not prove
+  recognition works), a task outliving its engine, the flag claiming a listener with no engine, the
+  flag claiming one with no task, an engine with no tap; anything else starts fresh. A silence pause
+  is recorded but deliberately never blocks: the only signal that ends one is audio arriving, and
+  audio only arrives while the listener runs.
+- **Coalescing and post-await re-checks.** `startListening()` is the explicit request and the only
+  thing that grants intent; the service's own recovery paths (route change, interruption ended,
+  recognition restart, `resumeListening`) go through an automatic variant that never does.
+  `ListenerStartGeneration` — the camera's `StreamStartGeneration` pattern with intent added —
+  issues a token per start, re-presented after the authorization await, after the session
+  activation, after each `!pla` re-activation and after each retry sleep. A stop invalidates every
+  token *and* withdraws intent; a pause invalidates them and keeps it, which is what makes "an
+  explicit stop is not undone by a glasses reconnect" expressible while an interruption still
+  recovers. One `inFlightStart` task holds the sequence: a second caller awaits its result instead
+  of opening a rival microphone.
+- **Recovery through existing APIs.** A rebuild is `cleanupAudioEngine()` then `startRecognition()`
+  and nothing else — no session release/re-acquire around it (other consumers coexist on that lease
+  and wake word is the baseline owner), no second `AVAudioEngine`, and a superseded start releases
+  nothing because it built nothing. Recognizer completion handlers are tagged with the generation
+  they were created under, so a cancelled task's final callback can no longer restart, pause or
+  barge in on its successor. Silent/PTT mode, explicit stop and the shared-capture consumers are
+  preserved; the buffer forwarders survive a rebuild because they are re-published into the new tap.
+- **Flag audit.** `isListening` has a single writer and is no longer load-bearing: nothing decides
+  anything from it. The seven former writers are now `startListening` (only after a recognizer
+  exists), `stopListening`, `deactivateAudioSession`, `pauseRecognition`,
+  `pauseRecognitionForSharedEngine` and one `pauseForAudioDisruption` that replaced the three
+  hand-rolled `cleanupAudioEngine()` + `isListening = false` pairs in the interruption and
+  route-change handlers.
+
+**Evidence.** 55 headless tests: `ListenerHealthPolicyTests` (28, new — the decision table plus the
+generation/intent rules) and `WakeWordListenerRecoveryTests` (19, new — the service driven through
+injected engine/recognizer/permission/session seams, asserting the call sequence and the state left
+behind), with `WakeWordHardeningTests` (8) unchanged and green. The service tests prove: a stale
+flag beside a stopped engine rebuilds exactly once and leaves one listener; an ended recognizer
+beside a running engine rebuilds with the old tap removed before the new one is installed; a
+repeated start on a healthy listener does nothing at all; the errored-recognizer state recovers; a
+shared-engine pause is neither rebuilt by an automatic restart nor torn down by the explicit resume;
+two simultaneous starts run one sequence and both callers get its result; a stop landing in the
+authorization await or in the session activation leaves no listener, no tap and the lease untouched;
+an explicit stop blocks automatic restarts until somebody asks again; silent mode refuses without
+asking for anything; a rebuild does not re-run the session configuration; an audio disruption voids
+a shared-engine pause (the claim was on a running engine) while keeping intent, so the matching
+recovery runs; and no teardown path leaves the flag claiming a listener. Neighbouring suites green: `AudioSessionCoordinatorTests`,
+`AudioSessionLedgerTests`, `AudioGraphRecoveryTests`, `StreamStartGenerationTests`,
+`CameraServiceExitTests`, `PrivacyLogTests` (97). Full `OpenGlassesTests` 5728 green; Release build
+green.
+
+**Owed — hardware.** Everything above is fixture-level. Two device checks remain, and neither can be
+made in a simulator (no microphone route, no real recognizer): **first Start after the glasses sleep
+or the route changes** must now find and rebuild the listener rather than return at a stale flag;
+and after a stop there must be **one working listener and no orphaned mic** — no second tap on the
+input node, no engine left running with nothing consuming it. The `!pla` retry numbers and the
+`SFSpeechRecognitionTask.state` → `ended` mapping are likewise proposals until a device run
+confirms them.
+
 ## P3 / PR4 — User-adjustable pause and interruption controls
 
 Expose validated speech-silence duration and an option to disable general speech-triggered barge-in
@@ -294,7 +362,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 |---|---|
 | Results/status/error narration | 🚧 Fixture-green 2026-09-16 (P0); live endpoint owed |
 | Questions/replies, agent selection and legacy configuration migration | 🚧 Fixture-green 2026-09-16 (P1); live endpoint owed |
-| Listener recovery and audio ownership | Pending |
+| Listener recovery and audio ownership | 🚧 Fixture-green 2026-09-16 (P2); device checks owed (first Start after sleep/route change; one listener, no orphaned mic after stop) |
 | Live timing controls and interruption usability | Pending |
 | Playback-aware acknowledgement and reconnect semantics | Pending |
 | Visual feedback, stale callbacks and accessibility | Pending |
