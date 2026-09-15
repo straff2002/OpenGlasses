@@ -1445,6 +1445,11 @@ enum PrivacyLog {
         case downloaded, downloadCancelled, deleted, tempsSwept
         case loaded, loadFailed, unloaded, visionDemoted, imageRefused
         case generationStarted, generationCompleted, generationFailed, stalled
+        /// A completion carried tool-call protocol that could not be acted on — a frame the model
+        /// never closed, unparseable JSON inside one, or a bare call object with no tags. The
+        /// `detail` token names the classification and the boundary it was caught at; the text
+        /// itself never appears (Plan FC P1).
+        case malformedOutput
         /// The prompt finished its batched prefill. Separate from `generationStarted` because
         /// prefill time and first-token latency are different diagnostics with different causes.
         case promptDecoded

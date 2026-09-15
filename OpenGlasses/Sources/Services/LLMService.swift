@@ -237,7 +237,22 @@ class LLMService: ObservableObject {
     /// runtime without such an internal guard supplies the probe when it lands.
     private var localCoordinator: LocalInferenceCoordinator?
 
+    /// Test-only overrides for the on-device turn (Plan FC P1's containment harness).
+    ///
+    /// `sendLocal` resolves its model selection from `UserDefaults` and builds its coordinator over
+    /// the real MLX backend, neither of which a headless test can supply: there is no Metal on the
+    /// simulator, so a real generation cannot run there at all. These three fields are the seam that
+    /// lets a test drive the *actual* turn — parsing, tool dispatch, regeneration, history — over a
+    /// fake backend. Nil in production, and nothing in the app ever sets it.
+    struct LocalTurnOverrides {
+        var selectedID: LocalModelID?
+        var installation: InstalledLocalModel?
+        var coordinator: LocalInferenceCoordinator?
+    }
+    var localTurnOverridesForTesting: LocalTurnOverrides?
+
     private func coordinator(for service: LocalLLMService) -> LocalInferenceCoordinator {
+        if let injected = localTurnOverridesForTesting?.coordinator { return injected }
         if let localCoordinator { return localCoordinator }
         // Both runtimes are registered; neither is *enabled* by registration. The GGUF backend
         // refuses every load with `.runtimeDisabled` while `Config.ggufModelsEnabled` is off, and
@@ -2867,20 +2882,14 @@ class LLMService: ObservableObject {
         return "\(formatter.string(from: now)) (\(timeZone.identifier))"
     }
 
-    /// Parse the local model's `<tool_call>` markup. Extracted (pure) from `sendLocal` so
-    /// the announce-without-action retry can re-parse the corrective generation.
+    /// Parse the local model's `<tool_call>` markup.
+    ///
+    /// FC P1: now a thin reading of `LocalOutputPolicy`, so there is exactly one parser. The
+    /// regex this used to carry accepted only a complete frame and said nothing about the rest of
+    /// the output, which is how broken protocol reached the speaker while this returned nil.
     nonisolated static func parseLocalToolCall(_ response: String) -> (name: String, args: [String: Any])? {
-        let pattern = #"<tool_call>\s*(\{.*?\})\s*</tool_call>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
-              let match = regex.firstMatch(in: response, range: NSRange(response.startIndex..., in: response)),
-              let jsonRange = Range(match.range(at: 1), in: response),
-              let data = String(response[jsonRange]).data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let name = object["name"] as? String,
-              let args = object["arguments"] as? [String: Any] else {
-            return nil
-        }
-        return (name, args)
+        guard let invocation = LocalOutputPolicy.classify(response).invocation else { return nil }
+        return (invocation.name, invocation.arguments)
     }
 
     /// True when the reply narrates an intention to fetch/check something without any
@@ -2892,9 +2901,22 @@ class LLMService: ObservableObject {
         conversationHistory.suffix(n).compactMap { turn in
             guard let role = turn["role"] as? String, var content = turn["content"] as? String else { return nil }
             if stripToolMarkup {
-                content = content
-                    .replacingOccurrences(of: #"<tool_call>.*?</tool_call>"#, with: "", options: .regularExpression)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if role == "assistant" {
+                    // FC P1: bounded sanitation of what the local path feeds back. An older
+                    // assistant turn that ended in a half-written frame or a bare call object is
+                    // removed from the model's context entirely, so the model is never shown its
+                    // own broken protocol as an example to copy. This is the in-memory tuple view
+                    // only — the saved conversation is untouched — and a turn that cleans to
+                    // nothing is dropped by the `isEmpty` check below.
+                    content = LocalOutputPolicy.speakableText(content)
+                } else {
+                    // A user turn keeps the narrower complete-frame strip it has always had: a
+                    // person may legitimately quote the protocol, and rewriting what they said is
+                    // not this cleanup's business.
+                    content = content
+                        .replacingOccurrences(of: #"<tool_call>.*?</tool_call>"#, with: "", options: .regularExpression)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
             return content.isEmpty ? nil : (role: role, content: content)
         }
@@ -2992,8 +3014,9 @@ class LLMService: ObservableObject {
         // not run. For every MLX model the two are the same string by construction, so this path is
         // unchanged for everyone who has one selected.
         let selection = LocalModelSelection.store()
-        let selectedID = selection.selectedID() ?? LocalModelID(config.model)
-        let installation = LocalModelSelection.installation(for: selectedID)
+        let overrides = localTurnOverridesForTesting
+        let selectedID = overrides?.selectedID ?? selection.selectedID() ?? LocalModelID(config.model)
+        let installation = overrides?.installation ?? LocalModelSelection.installation(for: selectedID)
         let isGGUF = installation.runtime == .llamaCpp
 
         // A GGUF model has no direct route: `LocalLLMService` is the MLX runtime. The coordinator
@@ -3027,48 +3050,86 @@ class LLMService: ObservableObject {
         conversationHistory.append(["role": "user", "content": text])
         trimHistory()
 
-        // Generate response. Stream tokens to the UI as they're produced. In the (rare, the local
-        // tool prompt says "use sparingly") case where the model emits a <tool_call>, the preview
-        // briefly shows the markup before the cleaned final reply replaces it — acceptable for the
-        // common no-tool path, which streams cleanly.
+        // One generation function for the whole turn, chosen once (Plan FC P1). Every later pass —
+        // the corrective re-generation, the tool-result re-generation, the web re-ask's rewrite and
+        // regeneration — goes through it, so a turn that loaded its model through the coordinator
+        // (or a GGUF model, which has no other route) can no longer regenerate against the MLX
+        // service where nothing is resident. That is what those passes used to do: one wrapped in
+        // `try?`, so the correction silently never happened, the other falling back to speaking the
+        // raw tool result.
+        let inferenceCoordinator = useCoordinator ? coordinator(for: localService) : nil
+        let maxOutputTokens = LocalModelBudget.generationReserve(for: selectedID.rawValue)
+        let prompt = fullPrompt
+        //
+        // `systemOverride` exists for one caller: the re-ask's query rewrite, which has always run
+        // under its own one-line system prompt rather than the turn's. Routing it through the same
+        // function is what keeps it on the turn's runtime.
+        let generate: (_ message: String,
+                       _ turnHistory: [(role: String, content: String)],
+                       _ image: Data?,
+                       _ preview: ((String) -> Void)?,
+                       _ systemOverride: String?) async throws -> String
+        if let inferenceCoordinator {
+            generate = { message, turnHistory, image, preview, systemOverride in
+                // Identical arguments by construction: `MLXPromptAdapter.decompose` is the exact
+                // inverse of the `compose` here (pinned by round-trip tests), so what reaches
+                // `LocalLLMService.generate` through the seam is byte-for-byte what the direct
+                // call would have passed. The stream's concatenation is the authoritative text.
+                let request = LocalGenerationRequest(
+                    messages: MLXPromptAdapter.compose(systemPrompt: systemOverride ?? prompt,
+                                                       history: turnHistory,
+                                                       userMessage: message),
+                    images: image.map { [LocalImageInput(data: $0)] } ?? [],
+                    maxOutputTokens: maxOutputTokens,
+                    previewSink: preview)
+                let stream = try await inferenceCoordinator.generate(request, expecting: selectedID)
+                var assembled = ""
+                for try await chunk in stream { assembled += chunk }
+                return assembled
+            }
+        } else {
+            generate = { message, turnHistory, image, preview, systemOverride in
+                try await localService.generate(userMessage: message,
+                                                systemPrompt: systemOverride ?? prompt,
+                                                history: turnHistory,
+                                                imageData: image,
+                                                onToken: preview)
+            }
+        }
+
+        // Preview containment (Plan FC P1). The live bubble used to receive every chunk verbatim,
+        // partial `<tool_c…` markup included — the detokenizer splits tags across chunks, so even a
+        // per-chunk regex could not have helped. The filter holds back only what is genuinely
+        // ambiguous (a few characters that could still become a tag, or a line-initial `{` that
+        // could be a bare call object) and releases ordinary prose as it arrives.
+        let previewFilter = LocalProtocolStreamFilter()
+        let containedPreview: ((String) -> Void)? = onToken.map { sink in
+            { chunk in
+                let visible = previewFilter.ingest(chunk)
+                if !visible.isEmpty { sink(visible) }
+            }
+        }
+
+        // Generate the response, streaming the contained preview to the UI as it is produced.
         var response: String
         do {
             // The image rides only the FIRST generation of the turn — tool-result follow-up
             // regenerations below re-answer over text, which is correct and far cheaper.
-            if useCoordinator {
-                // Identical arguments by construction: `MLXPromptAdapter.decompose` is the exact
-                // inverse of the `compose` below (pinned by round-trip tests), so what reaches
-                // `LocalLLMService.generate` through the seam is byte-for-byte what the direct
-                // call would have passed. The stream's concatenation is the authoritative text.
-                let request = LocalGenerationRequest(
-                    messages: MLXPromptAdapter.compose(systemPrompt: fullPrompt,
-                                                       history: history,
-                                                       userMessage: text),
-                    images: imageData.map { [LocalImageInput(data: $0)] } ?? [],
-                    maxOutputTokens: LocalModelBudget.generationReserve(for: selectedID.rawValue),
-                    previewSink: onToken)
-                do {
-                    let stream = try await coordinator(for: localService)
-                        .generate(request, expecting: selectedID)
-                    var assembled = ""
-                    for try await chunk in stream { assembled += chunk }
-                    response = assembled
-                } catch LocalInferenceError.visionNotAvailable {
-                    // The seam refuses an image to a model that loaded text-only; the direct path
-                    // refuses it inside `generate`. Same outcome, and deliberately the same words —
-                    // answering blind about a photo the model never saw is the failure both nets
-                    // exist to prevent.
-                    PrivacyLog.localModel(.imageRefused, model: PrivacyToken(selectedID.rawValue))
-                    response = LocalLLMService.visionWeightsUnavailableMessage
-                }
-            } else {
-                response = try await localService.generate(
-                    userMessage: text,
-                    systemPrompt: fullPrompt,
-                    history: history,
-                    imageData: imageData,
-                    onToken: onToken
-                )
+            do {
+                response = try await generate(text, history, imageData, containedPreview, nil)
+            } catch LocalInferenceError.visionNotAvailable {
+                // The seam refuses an image to a model that loaded text-only; the direct path
+                // refuses it inside `generate`. Same outcome, and deliberately the same words —
+                // answering blind about a photo the model never saw is the failure both nets
+                // exist to prevent.
+                PrivacyLog.localModel(.imageRefused, model: PrivacyToken(selectedID.rawValue))
+                response = LocalLLMService.visionWeightsUnavailableMessage
+            }
+            if let onToken {
+                // Release whatever the filter was still holding and that never became protocol,
+                // so ordinary text is not left out of the preview at end of stream.
+                let tail = previewFilter.flush()
+                if !tail.isEmpty { onToken(tail) }
             }
         } catch is CancellationError {
             // BK P4: a barge-in cancels the local generation. Propagate CancellationError UNWRAPPED
@@ -3086,34 +3147,47 @@ class LLMService: ObservableObject {
             throw LLMError.invalidResponse("Local model error: \(error.localizedDescription)")
         }
 
-        // Try to parse tool calls — but don't crash if the model doesn't support them well.
-        var parsedCall = Self.parseLocalToolCall(response)
+        // One classification for the whole completion: a usable call, broken protocol, or prose —
+        // and, either way, the text that is safe to speak and store.
+        var classification = LocalOutputPolicy.classify(response)
 
         // Announce-without-action (live-traced failure): the model says "I'm looking that
         // up" without emitting the tool_call markup, and the single-shot path would accept
         // the announcement as the answer. One corrective re-generation demanding the call
         // (or a direct answer) — bounded, never loops.
-        if parsedCall == nil, includeTools, nativeToolRouter != nil,
-           Self.announcesToolIntent(response) || Self.asksUserForLocation(response) {
+        //
+        // Gated on `.prose`: an output that already contains protocol did not stall, it failed, and
+        // the containment below is the right answer for it. (That gate is also what the old
+        // `!lowered.contains("<tool_call>")` check inside `announcesToolIntent` amounted to.)
+        if classification.kind == .prose, includeTools, nativeToolRouter != nil,
+           Self.announcesToolIntent(classification.text) || Self.asksUserForLocation(classification.text) {
             PrivacyLog.localModel(.stalled)
-            let correction = Self.asksUserForLocation(response)
+            let correction = Self.asksUserForLocation(classification.text)
                 ? "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
                 : "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
             var correctiveHistory = history
-            correctiveHistory.append((role: "assistant", content: response))
+            correctiveHistory.append((role: "assistant", content: classification.text))
             correctiveHistory.append((role: "user", content: correction))
-            if let second = try? await localService.generate(
-                userMessage: correction,
-                systemPrompt: fullPrompt,
-                history: correctiveHistory
-            ) {
+            do {
+                let second = try await generate(correction, correctiveHistory, nil, nil, nil)
                 response = second
-                parsedCall = Self.parseLocalToolCall(response)
+                classification = LocalOutputPolicy.classify(second)
+            } catch is CancellationError {
+                // BK P4: a barge-in during the correction cancels the turn. The old `try?` here
+                // swallowed cancellation along with everything else.
+                throw CancellationError()
+            } catch {
+                // A correction that could not run leaves the original answer standing, exactly as
+                // the `try?` did — but the failure is now recorded rather than invisible.
+                PrivacyLog.localModel(.generationFailed, detail: PrivacyToken("correction"),
+                                      error: SafeErrorSummary(error))
             }
         }
 
-        if let (toolName, toolArgs) = parsedCall,
+        if let invocation = classification.invocation,
            let router = nativeToolRouter {
+            let toolName = invocation.name
+            let toolArgs = invocation.arguments
 
             // Execute the tool
             PrivacyLog.localModel(.toolCall, tool: PrivacyToken(toolName))
@@ -3136,10 +3210,8 @@ class LLMService: ObservableObject {
                 resultText = "Error: \(reason)"
             }
 
-            // Get the text before the tool call as context
-            let textBefore = response
-                .replacingOccurrences(of: #"<tool_call>.*?</tool_call>"#, with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // The text the model produced alongside the call, already free of protocol.
+            let textBefore = classification.text
 
             // Try to re-generate with tool result for a natural response
             var updatedHistory = history
@@ -3148,11 +3220,8 @@ class LLMService: ObservableObject {
 
             let finalResponse: String
             do {
-                finalResponse = try await localService.generate(
-                    userMessage: "Respond to the user based on the tool result above.",
-                    systemPrompt: fullPrompt,
-                    history: updatedHistory
-                )
+                finalResponse = try await generate("Respond to the user based on the tool result above.",
+                                                   updatedHistory, nil, nil, nil)
             } catch is CancellationError {
                 throw CancellationError()   // BK P4: a barge-in during the tool-result regen cancels too
             } catch {
@@ -3160,18 +3229,53 @@ class LLMService: ObservableObject {
                 finalResponse = textBefore.isEmpty ? resultText : "\(textBefore) \(resultText)"
             }
 
-            // BK P3: an all-markup / empty final (e.g. the model answers the tool result with
-            // another <tool_call>) must surface as an error, not silent dead air at the speaker.
-            let cleanFinal = try Self.cleanedNonEmptyLocalAnswer(finalResponse)
+            // BK P3 + FC P1: an all-markup / empty final must not reach the speaker. A model that
+            // answers a tool result with a *second* `<tool_call>` is the case this closes: that
+            // call is never executed (one tool round trip per turn stands), its markup is never
+            // spoken, and what is left — prose if the model wrote any, an honest miss if it did
+            // not — is what the wearer hears.
+            let finalClassification = LocalOutputPolicy.classify(finalResponse)
+            if finalClassification.carriesProtocol {
+                PrivacyLog.localModel(.malformedOutput,
+                                      detail: PrivacyToken("toolResult-\(finalClassification.kind.rawValue)"))
+            }
+            let cleanFinal: String
+            if !finalClassification.text.isEmpty {
+                cleanFinal = finalClassification.text
+            } else if finalClassification.carriesProtocol {
+                // Protocol-only: there is no answer to speak, and the tool result itself is a
+                // machine-shaped string that this regeneration exists to translate. Say so rather
+                // than reading it out or going silent.
+                cleanFinal = Self.localMissMessage
+            } else {
+                // Genuinely empty completion — unchanged BK P3 contract, an error rather than
+                // dead air at the speaker.
+                throw LLMError.invalidResponse("Local")
+            }
             conversationHistory.append(["role": "assistant", "content": cleanFinal])
             trimHistory()
             return cleanFinal
         }
 
-        // No tool call — clean up any partial tool markup and return
-        let cleanResponse = response
-            .replacingOccurrences(of: #"<tool_call>.*?</tool_call>"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // No usable call. Everything below works on the cleaned text — protocol fragments,
+        // complete or not, are already gone.
+        let cleanResponse = classification.text
+
+        // Broken protocol (FC P1): an unterminated frame, an orphan close tag, unparseable JSON
+        // inside the tags, or a bare call object with no tags at all. None of those is an action —
+        // nothing is executed and nothing is repaired by guessing — and none of them may be spoken
+        // or stored as the assistant's answer. Prose the model wrote alongside the broken frame
+        // survives; when there is none (or when it is only a promise to act), the wearer gets one
+        // honest line instead.
+        if classification.carriesProtocol {
+            PrivacyLog.localModel(.malformedOutput,
+                                  detail: PrivacyToken(classification.kind.rawValue))
+            if cleanResponse.isEmpty || Self.announcesToolIntent(cleanResponse) {
+                conversationHistory.append(["role": "assistant", "content": Self.localMissMessage])
+                trimHistory()
+                return Self.localMissMessage
+            }
+        }
 
         // Uncertainty gate (Plan BI): the local path can't reach `web_search` through a tool
         // loop, so a hedged or freshness-sensitive answer gets one transparent web-grounded
@@ -3200,25 +3304,29 @@ class LLMService: ObservableObject {
                 rewriteQuery: { q in
                     // A follow-up leaning on the conversation ("the other semi final?") is a
                     // junk literal query — one tiny generation makes it self-contained.
-                    try await localService.generate(
-                        userMessage: "Conversation:\n\(UncertaintyReask.conversationBlock(history: history))\n\nRewrite this follow-up as ONE self-contained web search query. If it already stands alone, output it unchanged. Output only the query, nothing else: \(q)",
-                        systemPrompt: "You rewrite follow-up questions into standalone web search queries. Output only the query."
-                    )
+                    try await generate(
+                        "Conversation:\n\(UncertaintyReask.conversationBlock(history: history))\n\nRewrite this follow-up as ONE self-contained web search query. If it already stands alone, output it unchanged. Output only the query, nothing else: \(q)",
+                        [], nil, nil,
+                        "You rewrite follow-up questions into standalone web search queries. Output only the query.")
                 },
-                regenerate: { grounding in
-                    try await localService.generate(
-                        userMessage: grounding,
-                        systemPrompt: fullPrompt,
-                        history: history
-                    )
-                }
+                regenerate: { grounding in try await generate(grounding, history, nil, nil, nil) }
             )
+            // The re-ask swallows every throw to fall back on the original answer, cancellation
+            // included; a barge-in during it must still cancel the turn (BK P4).
+            try Task.checkCancellation()
+            // A re-ask answers through the same model, so it can emit protocol too. Its markup is
+            // no more speakable here than anywhere else.
+            let reasked = LocalOutputPolicy.classify(finalAnswer)
+            if reasked.carriesProtocol {
+                PrivacyLog.localModel(.malformedOutput, detail: PrivacyToken("reask-\(reasked.kind.rawValue)"))
+                finalAnswer = reasked.text.isEmpty ? cleanResponse : reasked.text
+            }
         }
 
         // The never-speak-a-promise net: if the answer still announces an action (re-ask failed
         // or the fallback flag is off), replace it with an honest miss.
         if announcedIntent && finalAnswer == cleanResponse {
-            finalAnswer = "I couldn't get that information just now — please ask me again."
+            finalAnswer = Self.localMissMessage
         }
 
         // BK P3: reject an empty local completion (immediate EOS / all-markup) instead of
@@ -3228,6 +3336,11 @@ class LLMService: ObservableObject {
         trimHistory()
         return validated
     }
+
+    /// The one honest-miss line the local path speaks when a turn produced no answer it may say —
+    /// a promise it never kept, or output that was nothing but broken tool protocol. It claims
+    /// nothing happened and invites a retry, which is the only truthful thing left to say.
+    static let localMissMessage = "I couldn't get that information just now — please ask me again."
 
     // MARK: - Local Agent Model
 
@@ -3376,6 +3489,44 @@ class LLMService: ObservableObject {
         return joined.isEmpty ? nil : joined
     }
 
+    // MARK: - Test seams
+
+    /// Drive one on-device turn directly (Plan FC P1's containment harness).
+    ///
+    /// `sendLocal` is private because nothing in the app may bypass `sendMessage`'s routing to
+    /// reach it; the containment regressions, though, have to exercise the real turn — parsing,
+    /// tool dispatch, both regenerations, history insertion — rather than a helper in isolation.
+    /// This wrapper is that entry point and has no production caller.
+    func sendLocalForTesting(_ text: String,
+                             systemPrompt: String = "You are a test.",
+                             config: ModelConfig,
+                             includeTools: Bool = true,
+                             imageData: Data? = nil,
+                             onToken: ((String) -> Void)? = nil) async throws -> String {
+        try await sendLocal(text, systemPrompt: systemPrompt, config: config,
+                            includeTools: includeTools, imageData: imageData, onToken: onToken)
+    }
+
+    /// The durable turn history as plain (role, text) pairs — what a regression asserts was, and
+    /// was not, persisted. Test-only; production reads `conversationHistory` directly.
+    func conversationHistorySnapshotForTesting() -> [(role: String, content: String)] {
+        conversationHistory.compactMap { turn -> (role: String, content: String)? in
+            guard let role = turn["role"] as? String else { return nil }
+            return (role: role, content: Self.plainText(from: turn) ?? "")
+        }
+    }
+
+    /// Start a test from a known history. Test-only.
+    func resetConversationHistoryForTesting(_ turns: [(role: String, content: String)] = []) {
+        conversationHistory = turns.map { ["role": $0.role, "content": $0.content] }
+    }
+
+    /// The (role, content) view the local path feeds back to the model, after FC P1's bounded
+    /// sanitation. Test-only.
+    func localHistoryViewForTesting(_ count: Int = 6) -> [(role: String, content: String)] {
+        recentTupleHistory(count, stripToolMarkup: true)
+    }
+
     /// Inject a hidden system message into conversation history.
     /// Used by the memory nudge to prompt periodic review without the user seeing it.
     func injectSystemMessage(_ message: String) {
@@ -3403,14 +3554,12 @@ extension LLMService {
     /// no TTS, no tone, no HUD, no error. Anthropic and Gemini already reject an empty completion;
     /// the local path must too. Throws `invalidResponse("Local")` on empty so the turn surfaces as
     /// an error (which the P2b cascade can later act on) instead of silence. Pure + headless.
+    ///
+    /// FC P1: the cleanup itself now lives in `LocalOutputPolicy`, so this validator and the turn
+    /// path cannot disagree about what counts as protocol — the regex here only ever removed a
+    /// *complete* frame, which let an unterminated one through to the speaker.
     nonisolated static func cleanedNonEmptyLocalAnswer(_ raw: String) throws -> String {
-        let cleaned = raw
-            .replacingOccurrences(of: #"<tool_call>.*?</tool_call>"#, with: "", options: .regularExpression)
-            // A small model fed a merged (no-system-role) prompt can answer in transcript
-            // style — "OpenGlasses: ..." / "Assistant: ..." — and TTS would speak the label.
-            .replacingOccurrences(of: #"^\s*(OpenGlasses|Assistant|AI|Model)\s*:\s*"#,
-                                  with: "", options: [.regularExpression, .caseInsensitive])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = LocalOutputPolicy.speakableText(raw)
         guard !cleaned.isEmpty else { throw LLMError.invalidResponse("Local") }
         return cleaned
     }
