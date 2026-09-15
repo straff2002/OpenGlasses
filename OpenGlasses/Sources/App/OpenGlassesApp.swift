@@ -1419,24 +1419,39 @@ class AppState: ObservableObject, AppStateProtocol {
             return self?.locationService.locationContext
         }
 
-        // Camera start request — shared between both session managers
+        // Camera start request — shared between both session managers.
+        //
+        // Plan EW: a claim, not a bare `startStreaming()`. A live session is a long-lived owner of
+        // the camera, and the two things it has to get right on the way out are the two things a
+        // claim already answers — stop the stream if this session started it, and leave it alone
+        // if the wearer had it open first. It also makes the failed-start path honest: the session
+        // gives the claim straight back instead of leaving the glasses streaming to nobody.
         let cameraStartHandler: () async -> Bool = { [weak self] in
             guard let self else { return false }
-            if self.cameraService.isStreaming {
-                PrivacyLog.camera(.glasses, .started, detail: PrivacyToken("alreadyStreaming"))
-                return true
-            }
+            let alreadyRunning = self.cameraService.isStreaming
             do {
-                try await self.cameraService.startStreaming()
-                PrivacyLog.camera(.glasses, .started, detail: PrivacyToken("sessionRequest"))
+                try await self.cameraService.claimStream(for: .liveSession)
+                // A stop that overtook the cold start leaves nothing claimed and nothing running.
+                guard self.cameraService.holdsStreamClaim(.liveSession) else {
+                    PrivacyLog.camera(.glasses, .sessionAttemptFailed,
+                                      detail: PrivacyToken("supersededByStop"))
+                    return false
+                }
+                PrivacyLog.camera(.glasses, .started,
+                                  detail: PrivacyToken(alreadyRunning ? "alreadyStreaming" : "sessionRequest"))
                 return true
             } catch {
                 PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                 return false
             }
         }
+        let cameraStopHandler: () async -> Void = { [weak self] in
+            await self?.cameraService.releaseStream(for: .liveSession)
+        }
         geminiLiveSession.onRequestStartCamera = cameraStartHandler
         openAIRealtimeSession.onRequestStartCamera = cameraStartHandler
+        geminiLiveSession.onRequestStopCamera = cameraStopHandler
+        openAIRealtimeSession.onRequestStopCamera = cameraStopHandler
 
         // Wire Watch app connectivity
         WatchConnectivityManager.shared.appState = self

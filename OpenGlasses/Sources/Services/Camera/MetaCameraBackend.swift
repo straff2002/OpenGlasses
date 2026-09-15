@@ -65,6 +65,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// its own nudge-and-rebuild ladder — a reconnect ladder layered on top would fight it for
     /// the camera capability and report a failure warmup is about to report itself.
     private var isWarmingUp = false
+
+    /// Plan EW — which start the stream is currently obeying. A stop landing inside the cold
+    /// start used to be lost to `stopStreaming()`'s `isStreaming` guard, and the start still
+    /// climbing then claimed the stream anyway. See `StreamStartGeneration`.
+    private var startGeneration = StreamStartGeneration()
     /// The pending reconnect after a wanted stream dropped to `.stopped`, and how many rungs of
     /// `StreamRecoveryPolicy.reconnectDelay` we have climbed. Both reset the moment frames flow.
     private var reconnectTask: Task<Void, Never>?
@@ -810,6 +815,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // churn it produces is mistaken for the stream dropping out from under us.
         isWarmingUp = true
         defer { isWarmingUp = false }
+        let startToken = startGeneration.beginStart()
 
         // A stream left behind by the discrete photo path may sit at the user's "low"
         // tier; continuous streaming with glasses-mic voice needs the contention floor
@@ -834,10 +840,33 @@ final class MetaCameraBackend: GlassesCameraBackend {
             throw error
         }
 
+        // Plan EW. The warmup above took seconds; a stop may have landed inside it. If one did,
+        // this start has been superseded — release the stream it just brought up rather than
+        // publish it as running. A late start that claims the camera anyway holds the
+        // process-wide capability with nothing consuming its frames.
+        guard startGeneration.finish(startToken) == .commit else {
+            releaseSupersededStart()
+            return
+        }
+
         isStreaming = true
         events.send(.streamingChanged(true))
         startStallDetection()
         PrivacyLog.camera(.glasses, .started)
+    }
+
+    /// Take back a stream whose start a stop overtook. It came up, so there is something real to
+    /// release, but it was never published as running — hence no `streamingChanged(false)` for a
+    /// `true` nobody ever saw.
+    private func releaseSupersededStart() {
+        continuousStreamingIntent = false
+        cancelReconnect()
+        stopStallDetection()
+        streamSession?.stop()
+        latestFrame = nil
+        events.send(.frame(nil))
+        events.send(.status(.stopped))
+        PrivacyLog.camera(.glasses, .stopped)
     }
 
     /// Bring the session up and wait for frames, retrying once through the recovery ladder.
@@ -884,6 +913,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // apart. Every other deliberate teardown path relies on the same ordering.
         continuousStreamingIntent = false
         cancelReconnect()
+        // Plan EW: recorded before the `isStreaming` guard, because during a cold start that guard
+        // is exactly what swallowed the stop. The warmup now finds its token stale and releases.
+        startGeneration.recordStop()
         guard isStreaming else { return }
         stopStallDetection()
         if let session = streamSession {
@@ -1124,6 +1156,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
     /// Tear down everything — called on mode switch or app termination.
     func tearDown() async {
+        // Nothing may outlive a teardown, a scheduled one included: a pending idle teardown would
+        // re-enter `resetSession()` on a backend that has already given everything back.
+        idleTeardownTask?.cancel()
+        idleTeardownTask = nil
         await stopStreaming()
         await resetSession()
         permissionGranted = false
