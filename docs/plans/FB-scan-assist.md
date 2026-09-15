@@ -1,6 +1,11 @@
 # Plan FB — Scan Assist
 
-**Status: 📝 Drafted 2026-09-13 — implementation and device/user validation pending.**
+**Status: 🚧 PR1 (P1 deterministic core + configuration/preview UI) implemented 2026-09-16.**
+P2's audio arbitration and voice phrases, P3 and P4 are unbuilt; device and user validation pending.
+Shipped: `ScanAssistSettings`/`ScanAssistSettingsStore`, `ScanAssistPolicy`, `ScanAssistService`,
+`ScanAssistCopy` and the `ScanAssistSpeaking` seam over `TextToSpeechService`, plus
+`ScanAssistSettingsView` reached from Settings › Accessibility. Off by default, no side until the
+wearer answers the question, no camera, no auto-start, no entitlement.
 
 Bring user-configurable directional reminders into OpenGlasses for people who want help checking
 one side during reading or seated everyday tasks, including people living with hemispatial neglect.
@@ -157,7 +162,7 @@ out of product copy. Localisation must preserve wearer-relative left/right and c
 
 | Evidence | Status |
 |---|---|
-| Session policy/service tests | Pending |
+| Session policy/service tests | Done 2026-09-16 — `ScanAssistPolicyTests` (27), `ScanAssistServiceTests` (21), `ScanAssistSettingsStoreTests` (6), `ScanAssistCopyTests` (6) on a fake clock, a releasable sleeper and a recording speech sink: start refused with no side and nothing spoken, left/right copy, repeat start/stop harmless, side change during a queued cue, timing changes from the change time, pause/resume with no backlog, finite expiry cancelling the pending cue and queued speech, late generation callbacks silent, preview once, and no running state surviving a fresh service. Full suite green (5742) |
 | UI accessibility and left/right comprehension | Pending |
 | Device audio, interruption, stop and lock checks | Pending |
 | User/OT usability feedback | Pending |
