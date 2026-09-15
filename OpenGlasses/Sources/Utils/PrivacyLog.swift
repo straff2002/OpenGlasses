@@ -1772,6 +1772,10 @@ enum PrivacyLog {
         case queued, pruned, deliveryStarted, deliverySkipped, deliveredViaSession
         case awaitingOperator, summaryFailed, injectionDeferred
         case dispatchedWithoutFrame, replanned, yieldedToHuman
+        // Plan FE P0 — remote-agent contact. `endpointRefused` counts an HTTP error answer (its
+        // body is endpoint content and is never quoted); `contactLost` records that we stopped
+        // polling a run, with the reason as a fixed token — never a verdict on the run itself.
+        case endpointRefused, contactLost
     }
 
     /// `priority` and `reason` are fixed app enums (`AgentNotification.Priority`, the dispatcher's

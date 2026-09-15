@@ -30,6 +30,27 @@ struct CustomHarnessConfig: Codable, Equatable {
     var idPath: String = "id"
     var statusPath: String = "status"
 
+    // MARK: - Result mapping (Plan FE P0)
+    //
+    // Dot-paths read from the **same** status response, so richer reporting costs no extra
+    // requests. Every one defaults to empty, and an empty path means the endpoint does not report
+    // that field — which is *unknown*, never "none". Nothing is guessed: we only claim what a
+    // path the user named actually returned. See `docs/agent-harness-wire-contract.md`.
+
+    /// The agent's closing words (string).
+    var finalTextPath: String = ""
+    /// Arrays of paths the run created / modified (arrays of strings).
+    var filesCreatedPath: String = ""
+    var filesModifiedPath: String = ""
+    /// Commands the run executed (array of strings).
+    var commandsRunPath: String = ""
+    /// Whether the run pushed (bool, or 0/1, or "true"/"false").
+    var pushedPath: String = ""
+    /// URL of a pull request the run opened (string; must parse as http(s)).
+    var prURLPath: String = ""
+    /// The endpoint's own error message for a failed run (string).
+    var errorPath: String = ""
+
     /// Minimum viable config: a parseable, transport-secure start URL. The auth token rides every
     /// request, so `http://` is refused except to loopback (a local bridge in development) — BM P5.
     var isConfigured: Bool {
@@ -56,6 +77,46 @@ struct CustomHarnessConfig: Codable, Equatable {
         default:
             return false
         }
+    }
+}
+
+extension CustomHarnessConfig {
+    /// Backward-compatible decoding (Plan FE P0). The result-mapping paths were added after
+    /// endpoints were already saved in the Keychain, so **every** key is optional with a default:
+    /// a config written by an older build must keep decoding, because a decode failure here
+    /// silently erases the user's endpoint (and its token) rather than degrading it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func string(_ key: CodingKeys, _ fallback: String) -> String {
+            ((try? c.decodeIfPresent(String.self, forKey: key)) ?? nil) ?? fallback
+        }
+        self.init()
+        name = string(.name, name)
+        startURL = string(.startURL, startURL)
+        statusURLTemplate = string(.statusURLTemplate, statusURLTemplate)
+        cancelURLTemplate = string(.cancelURLTemplate, cancelURLTemplate)
+        authHeader = string(.authHeader, authHeader)
+        authValue = string(.authValue, authValue)
+        promptField = string(.promptField, promptField)
+        projectField = string(.projectField, projectField)
+        imageField = string(.imageField, imageField)
+        idPath = string(.idPath, idPath)
+        statusPath = string(.statusPath, statusPath)
+        finalTextPath = string(.finalTextPath, finalTextPath)
+        filesCreatedPath = string(.filesCreatedPath, filesCreatedPath)
+        filesModifiedPath = string(.filesModifiedPath, filesModifiedPath)
+        commandsRunPath = string(.commandsRunPath, commandsRunPath)
+        pushedPath = string(.pushedPath, pushedPath)
+        prURLPath = string(.prURLPath, prURLPath)
+        errorPath = string(.errorPath, errorPath)
+    }
+
+    /// Whether any result field is mapped at all — the settings UI uses it to explain that an
+    /// unmapped endpoint can only report *that* a run finished, not what it did.
+    var mapsAnyResultField: Bool {
+        ![finalTextPath, filesCreatedPath, filesModifiedPath, commandsRunPath,
+          pushedPath, prURLPath, errorPath]
+            .allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 }
 
@@ -142,6 +203,43 @@ enum JSONPath {
             current = next
         }
         return current
+    }
+
+    /// The string array at `path` — `nil` when the path is unset/missing (**not reported**), an
+    /// empty array when the endpoint genuinely reported none. Non-string elements are coerced when
+    /// they are numbers and dropped otherwise, so one odd element cannot poison the list.
+    static func strings(at path: String, in json: [String: Any]) -> [String]? {
+        guard !path.isEmpty, let raw = value(at: path, in: json) else { return nil }
+        if let array = raw as? [Any] {
+            return array.compactMap { element in
+                switch element {
+                case let s as String: return s
+                case let n as Int:    return String(n)
+                case let d as Double: return String(d)
+                default:              return nil
+                }
+            }
+        }
+        // A single string where a list was expected is a list of one — endpoints do this.
+        if let single = raw as? String { return [single] }
+        return nil
+    }
+
+    /// The boolean at `path` — `nil` when unset/missing. Accepts a bool, 0/1, or "true"/"false"/
+    /// "yes"/"no", because endpoints spell flags every way there is.
+    static func bool(at path: String, in json: [String: Any]) -> Bool? {
+        guard !path.isEmpty, let raw = value(at: path, in: json) else { return nil }
+        switch raw {
+        case let b as Bool:   return b
+        case let n as Int:    return n != 0
+        case let s as String:
+            switch s.lowercased() {
+            case "true", "yes", "1":  return true
+            case "false", "no", "0":  return false
+            default:                  return nil
+            }
+        default: return nil
+        }
     }
 
     /// The string value at `path`, coercing a number/bool to its text form when reasonable.

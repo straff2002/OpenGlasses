@@ -83,8 +83,9 @@ struct OpenClawAgentHarness: AgentHarness {
         throw AgentHarnessError.transport("This gateway answers approvals through its own approval surface, which is not wired yet.")
     }
 
-    /// Poll the tracked run until terminal: `.started`, then `.completed` (with the final text)
-    /// or `.error`. Cancelled runs complete with an empty result.
+    /// Poll the tracked run until terminal: `.started`, then `.completed` (with the final text),
+    /// `.error`, or `.cancelled` for an aborted run — which `status(for:)` already called
+    /// `.cancelled`, while the stream quietly reported it as a successful completion (Plan FE P0).
     func events(for run: AgentRun) -> AsyncStream<AgentEvent> {
         let interval = pollInterval
         return AsyncStream { continuation in
@@ -97,12 +98,16 @@ struct OpenClawAgentHarness: AgentHarness {
                     switch state.phase {
                     case .answered(let text):
                         var result = AgentRunResult()
-                        result.finalText = text.isEmpty ? nil : text
+                        if let final = AgentResultMapping.sanitized(
+                            text, limit: AgentResultMapping.maxFinalTextLength) {
+                            result.finalText = final
+                            result.reported.insert(.finalText)
+                        }
                         continuation.yield(.completed(result))
                     case .failed(let message):
                         continuation.yield(.error(message ?? "The agent run failed."))
                     case .aborted:
-                        continuation.yield(.completed(AgentRunResult()))
+                        continuation.yield(.cancelled(AgentRunResult()))
                     case .running:
                         continue
                     }
@@ -159,13 +164,38 @@ struct OpenClawAgentHarness: AgentHarness {
     /// Parse a gateway result payload into an `AgentRunResult`.
     static func result(from json: [String: Any]) -> AgentRunResult {
         var result = AgentRunResult()
-        result.filesCreated = json["filesCreated"] as? [String] ?? []
-        result.filesModified = json["filesModified"] as? [String] ?? []
-        result.commandsRun = json["commandsRun"] as? [String] ?? []
-        result.prURL = json["prURL"] as? String
-        result.pushed = json["pushed"] as? Bool ?? false
-        result.finalText = json["finalText"] as? String
-        result.error = json["error"] as? String
+        // Present-or-absent matters as much as the value: a key the gateway omitted is unknown,
+        // and only a key it actually sent joins `reported` (Plan FE P0).
+        if let created = json["filesCreated"] as? [String] {
+            result.filesCreated = created
+            result.reported.insert(.filesCreated)
+        }
+        if let modified = json["filesModified"] as? [String] {
+            result.filesModified = modified
+            result.reported.insert(.filesModified)
+        }
+        if let commands = json["commandsRun"] as? [String] {
+            result.commandsRun = commands
+            result.reported.insert(.commandsRun)
+        }
+        if let url = json["prURL"] as? String {
+            result.prURL = AgentResultMapping.webURL(url)
+            result.reported.insert(.prURL)
+        }
+        if let pushed = json["pushed"] as? Bool {
+            result.pushed = pushed
+            result.reported.insert(.pushed)
+        }
+        if let text = AgentResultMapping.sanitized(json["finalText"] as? String,
+                                                   limit: AgentResultMapping.maxFinalTextLength) {
+            result.finalText = text
+            result.reported.insert(.finalText)
+        }
+        if let message = AgentResultMapping.sanitized(json["error"] as? String,
+                                                      limit: AgentResultMapping.maxItemLength) {
+            result.error = message
+            result.reported.insert(.error)
+        }
         return result
     }
 

@@ -35,6 +35,10 @@ enum PromptInjectionPolicy {
         "find_nearby", "aircraft_overhead", "identify_song",
         // User document knowledge bases (files may contain injected text)
         "document_knowledge", "notes_vault", "health_vault",
+        // Remote coding agents: a run's summary, status line and closing words are written by an
+        // endpoint we only point at. They are a *report* of what something else did — data, with
+        // no more authority than a web page (Plan FE P0).
+        "code_agent",
     ]
 
     /// Whether a tool's output must be treated as untrusted data. Native tools not in the

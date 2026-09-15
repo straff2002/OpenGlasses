@@ -23,6 +23,13 @@
 
 **Phase 3 shipped** (`feat/codex-claude-harness-adapters`) — the **Codex-cloud + Claude Code (remote) adapters**: `CustomAgentHarness` is generalized to carry its `kind` (so dispatched runs are tagged correctly), and pure `AgentHarnessPreset.codexCloud`/`.claudeRemote` pre-fill a `CustomHarnessConfig` with each backend's auth scheme (`Authorization: Bearer` / `x-api-key`), field names, and response paths. Keychain-backed `Config.codexAgentToken`/`claudeRemoteToken` (+ optional base-URL overrides); both wired into `makeAgentRegistry` and exposed in `AgentHarnessSettingsView` (the default-backend picker now enumerates all kinds). 8 tests (`AgentHarnessPresetTests`); the generalization keeps `AgentCustomHarnessTests`/`AgentSessionTests` green (43 total in this run).
 
+**Plan FE P0 (2026-09-16)** rebuilt the Custom adapter's poll loop on top of this core: status and
+result now arrive in one GET and are mapped through configurable result paths, `.completed` /
+`.failed` / `.cancelled` are three distinct terminal events, and a bounded retry policy with an
+observable `AgentConnectionState` replaces the old "any failure means still running" fallback. The
+request/response shapes, recognised status aliases, result paths and retry numbers are written up in
+[docs/agent-harness-wire-contract.md](../agent-harness-wire-contract.md).
+
 **Still deferred (per the build order):** the gateway-side `agent.*` methods + the rich live event stream (Phase 1's live half — needs a running gateway that exposes them; the adapter is ready and `normalize` maps the schema); live **endpoint verification** of the Codex/Claude REST contracts — **re-scoped 2026-07-10:** the preset URLs are guesses (`https://api.anthropic.com/v1/code`, `AgentHarnessPreset.swift:35`, is not a real public API); treat `claudeRemote` as *contract unknown — the realistic path is a self-hosted Agent SDK bridge via the Custom harness*, and verify Codex-cloud before advertising that preset; and live token-streaming + the HUD confirm view (Phase 4 — the confirm view is now spec'd as the **shared consent affordance** for N's `awaitingInput`, BH's capture confirm, and Plan BL P4's capture-inside-agent-turn, not an N-only view).
 
 **Riders found in the 2026-07-10 review — closed:**

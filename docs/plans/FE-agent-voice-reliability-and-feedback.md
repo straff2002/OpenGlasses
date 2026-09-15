@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 📝 Drafted 2026-09-13 — implementation and validation pending.**
+**Status: 🚧 P0 implemented 2026-09-16 — P1–P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -40,6 +40,45 @@ failure or cancellation. Unknown status values must not create an endless false 
 **Acceptance:** fixture endpoint tests cover full/partial/status-only results, legacy aliases,
 malformed payloads, each terminal status, auth failure, repeated network failure and reconnect.
 Drive adapter → session → summarizer and assert the final narration/status and polling count.
+
+**Implemented 2026-09-16.** Wire contract: [agent-harness-wire-contract.md](../agent-harness-wire-contract.md).
+
+- **Results.** Status and result now come from one status GET. `CustomHarnessConfig` gained seven
+  optional result dot-paths (summary/final text, files created, files modified, commands, pushed,
+  PR URL, error), all defaulting to empty and decoded with per-key defaults so a config saved by an
+  older build still decodes — with its token — instead of being erased. `AgentRunResult` carries an
+  `AgentResultFields` set recording what was actually reported, and `AgentSummarizer` distinguishes
+  "reported no file changes" from "didn't report what changed".
+- **Terminal state.** `AgentEvent` gained `.failed(result)` and `.cancelled(result)` beside
+  `.completed(result)`; the session maps each to its own status and spoken line, and a remote
+  cancellation is never narrated with "Done." The OpenClaw adapter's `aborted` phase, which emitted
+  a plain completion while its own `status(for:)` called it cancelled, now emits `.cancelled`.
+- **Contact.** `AgentConnectionState` (+ `AgentContactLoss`) and a pure `AgentPollingPolicy`
+  (4 s cadence, 4 retries, 2 s backoff doubling to 32 s, 5 unknown-status ticks, injected sleeper)
+  replace `(try? status) ?? .running`. Network loss is reported as lost contact with the endpoint —
+  the run keeps its last known status — 401/403 stops without retrying, other 4xx stops, an
+  unrecognised status is tolerated briefly then reported with the raw label, and "agent status"
+  answers with when contact was lost and what was last known.
+- **Hygiene.** Every mapped field is control-character-stripped, whitespace-collapsed and capped
+  (200 chars an item, 600 for the summary, 100 items a list, 40 for an echoed status label); a PR
+  URL must parse as http(s). HTTP errors surface the code only — the body is counted in the privacy
+  log, never spoken. `code_agent` joined `PromptInjectionPolicy.untrustedOutputTools`, so endpoint
+  narrative reaching the model is framed as data with no authority.
+
+**Evidence.** 97 headless tests across `AgentResultTruthTests` (32, new), `AgentSessionTests` (24),
+`AgentCustomHarnessTests` (23) and `AgentSummarizerTests` (18), each driving adapter → session →
+summarizer over the shared `URLProtocol` stub and asserting narration, run status, connection state
+and the **number of status GETs**: full / partial / status-only results, explicit empty lists,
+legacy status aliases, malformed and non-JSON bodies, completed / failed / cancelled, 401, 403, 404,
+503, repeated network failure with recorded backoff, reconnect after a transient failure, unknown
+status, oversized and control-character payloads, an unusable PR URL, and a literal legacy config
+JSON. Three prior assertions changed because they encoded the defect: empty-result narration, the
+default cancellation wording, and an HTTP error quoting 160 characters of the endpoint's body.
+
+**Owed:** everything above is fixture-level. A real endpoint has not been run against it, so the
+recognised-alias list, the result payload shapes and the retry numbers are still proposals rather
+than field-confirmed. `respondToConfirmation` swallowing a transport error before announcing
+"Okay, proceeding" is left as-is for P1, which owns reply routing.
 
 ## P1 / PR2 — Questions, answers and explicit backend selection
 
@@ -191,7 +230,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 
 | Gate | Status |
 |---|---|
-| Results/status/error narration | Pending |
+| Results/status/error narration | 🚧 Fixture-green 2026-09-16 (P0); live endpoint owed |
 | Questions/replies, agent selection and legacy configuration migration | Pending |
 | Listener recovery and audio ownership | Pending |
 | Live timing controls and interruption usability | Pending |

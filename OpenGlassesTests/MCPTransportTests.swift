@@ -192,6 +192,26 @@ final class MockURLProtocol: URLProtocol {
     nonisolated(unsafe) static var responseHeaders: [String: String] = [:]
     nonisolated(unsafe) static var requestCount = 0
 
+    /// One scripted answer. `failure` makes the request fail at the transport layer, the way a
+    /// dropped connection does — which no status code can express.
+    struct Scripted {
+        var statusCode = 200
+        var body = Data("{}".utf8)
+        var failure: Error?
+
+        static func json(_ text: String) -> Scripted { Scripted(body: Data(text.utf8)) }
+        static func http(_ code: Int, _ body: String = "") -> Scripted {
+            Scripted(statusCode: code, body: Data(body.utf8))
+        }
+        static var networkFailure: Scripted {
+            Scripted(failure: URLError(.notConnectedToInternet))
+        }
+    }
+
+    /// Answers consumed in request order; the last entry repeats for every further request. Empty
+    /// falls back to the single `statusCode`/`responseBody` pair.
+    nonisolated(unsafe) static var script: [Scripted] = []
+
     static func reset() {
         lastRequest = nil
         lastBody = nil
@@ -199,6 +219,7 @@ final class MockURLProtocol: URLProtocol {
         statusCode = 200
         responseHeaders = [:]
         requestCount = 0
+        script = []
         HTTPTransport.resetSessions()   // the session cache is static — isolate tests
     }
 
@@ -216,13 +237,21 @@ final class MockURLProtocol: URLProtocol {
         MockURLProtocol.lastBody = Self.readBody(from: request)
         MockURLProtocol.requestCount += 1
 
+        let scripted = MockURLProtocol.script.isEmpty
+            ? nil
+            : MockURLProtocol.script[min(MockURLProtocol.requestCount - 1, MockURLProtocol.script.count - 1)]
+        if let failure = scripted?.failure {
+            client?.urlProtocol(self, didFailWithError: failure)
+            return
+        }
+
         var headers = ["Content-Type": "application/json"]
         headers.merge(MockURLProtocol.responseHeaders) { _, new in new }
         let response = HTTPURLResponse(
-            url: request.url!, statusCode: MockURLProtocol.statusCode,
+            url: request.url!, statusCode: scripted?.statusCode ?? MockURLProtocol.statusCode,
             httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: MockURLProtocol.responseBody)
+        client?.urlProtocol(self, didLoad: scripted?.body ?? MockURLProtocol.responseBody)
         client?.urlProtocolDidFinishLoading(self)
     }
 

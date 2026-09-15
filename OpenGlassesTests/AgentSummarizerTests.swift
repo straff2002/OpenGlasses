@@ -55,15 +55,66 @@ final class AgentSummarizerTests: XCTestCase {
         XCTAssertEqual(line, "Nothing needed changing. Done.")
     }
 
-    func testEmptyResultNoTextDefault() {
+    /// Plan FE P0 — the old assertion here WAS the bug: a result the harness never filled in was
+    /// narrated as "no file changes", which is a claim about the run rather than the absence of
+    /// information. Nothing reported now says exactly that.
+    func testEmptyUnreportedResultSaysItDoesNotKnow() {
         XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(), status: .completed),
+                       "The agent finished; it didn't report what changed.")
+    }
+
+    /// …and "no file changes" survives for the case it was always true of: the harness reported
+    /// both file lists and both were empty.
+    func testExplicitlyReportedEmptyListsStillSayNoFileChanges() {
+        var result = AgentRunResult()
+        result.reported = [.filesCreated, .filesModified]
+        XCTAssertEqual(AgentSummarizer.summarize(result, status: .completed),
                        "The agent finished with no file changes. Done.")
+        XCTAssertTrue(result.reportedNoFileChanges)
+    }
+
+    func testRemoteCancellationIsNotSpokenAsCompletion() {
+        XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(), status: .cancelled),
+                       "The agent run was cancelled before it finished.")
+        XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(filesModified: ["a"]), status: .cancelled),
+                       "The agent run was cancelled. Before it stopped it modified one file.")
+        // Our own cancellation still speaks in the first person.
+        XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(), status: .cancelled, cancellation: .local),
+                       "Cancelled the agent run.")
+    }
+
+    func testContactLinesBlameTheEndpointNeverTheRun() {
+        let network = AgentSummarizer.line(for: .network(attempts: 5))
+        XCTAssertTrue(network.contains("lost contact"))
+        XCTAssertTrue(network.contains("may still be running"))
+        XCTAssertFalse(network.lowercased().contains("failed"))
+        XCTAssertFalse(network.lowercased().contains("cancel"))
+
+        XCTAssertTrue(AgentSummarizer.line(for: .auth(status: 401)).contains("rejected my credentials"))
+        XCTAssertTrue(AgentSummarizer.line(for: .unknownStatus("frobnicating")).contains("frobnicating"))
+        XCTAssertFalse(AgentSummarizer.line(for: .unknownStatus("")).contains(":"))
+        XCTAssertTrue(AgentSummarizer.line(for: .noStatusEndpoint).contains("no status address"))
+
+        // A hostile status label cannot smuggle a novel into a spoken line.
+        let long = AgentSummarizer.line(for: .unknownStatus(String(repeating: "x", count: 4000)))
+        XCTAssertLessThanOrEqual(long.count, AgentSummarizer.maxLength)
+    }
+
+    func testStatusLineAfterContactLostReportsTimeAndLastKnownState() {
+        XCTAssertEqual(
+            AgentSummarizer.statusLine(afterContactLost: .network(attempts: 3), at: "3:42 PM", lastKnown: .running),
+            "I lost contact with the agent endpoint at 3:42 PM, so I stopped checking. The last I knew, the agent was working.")
+        XCTAssertTrue(
+            AgentSummarizer.statusLine(afterContactLost: .auth(status: 401), at: "3:42 PM", lastKnown: .awaitingInput)
+                .contains("waiting for your confirmation"))
     }
 
     func testFailedAndCancelled() {
         XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(error: "build broke"), status: .failed),
                        "The agent run failed: build broke.")
-        XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(), status: .cancelled),
+        // Plan FE P0: the *default* origin is now remote, because that is what a terminal
+        // `cancelled` from a harness means. Our own cancel passes `.local` and keeps its wording.
+        XCTAssertEqual(AgentSummarizer.summarize(AgentRunResult(), status: .cancelled, cancellation: .local),
                        "Cancelled the agent run.")
     }
 
@@ -102,6 +153,15 @@ final class AgentSummarizerTests: XCTestCase {
                        "A command failed: rm -rf x.")
         XCTAssertEqual(AgentSummarizer.narration(for: .awaitingInput(prompt: "Push to main?")), "Push to main?")
         XCTAssertEqual(AgentSummarizer.narration(for: .error("boom")), "The agent hit an error: boom.")
+    }
+
+    func testNarrationSuppressesTerminalAndConnectionEvents() {
+        // The session speaks one final line and one contact line; narrating them here as well
+        // would say everything twice.
+        XCTAssertNil(AgentSummarizer.narration(for: .failed(AgentRunResult())))
+        XCTAssertNil(AgentSummarizer.narration(for: .cancelled(AgentRunResult())))
+        XCTAssertNil(AgentSummarizer.narration(for: .connection(.reconnecting(attempt: 1, nextRetryIn: 2))))
+        XCTAssertNil(AgentSummarizer.narration(for: .connection(.lost(.network(attempts: 3)))))
     }
 
     func testNarrationSuppressesNoisyEvents() {
