@@ -305,7 +305,28 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// camera cold-starts in up to 20 s, and a stop issued inside that window used to be lost.
     private var startGeneration = StreamStartGeneration()
 
-    /// Start continuous video streaming from the glasses camera.
+    /// The start currently in flight, if any. Plan FD P1 — see `startStreaming()`.
+    private var inFlightStart: Task<Bool, Error>?
+
+    /// Plan FD P1 — automatic camera work currently armed, across the coordinator and its backend.
+    ///
+    /// The assertion behind "stop leaves nothing running": after a stop this is zero, and a late
+    /// callback has nothing left to land on. Counts the coordinator's in-flight start plus
+    /// whatever the backend reports (retry rungs, stall and idle timers, transitions in flight).
+    var scheduledCameraWorkCount: Int {
+        backend.scheduledWorkCount + (inFlightStart == nil ? 0 : 1)
+    }
+
+    /// Start continuous video streaming, coalescing onto a start already in flight.
+    ///
+    /// Plan FD P1. Two features can reach for the camera at the same moment — the wearer's own
+    /// control and a live session's claim, a claim and a narration session — and the glasses
+    /// camera cold-starts for up to twenty seconds, which is a very wide window to be second in.
+    /// Both callers used to get their own trip through the backend: two device sessions, two
+    /// `addCamera` calls racing for one process-wide capability, and whichever lost threw
+    /// `capabilityAlreadyActive` at a caller that had done nothing wrong. Now the second caller
+    /// awaits the first start's outcome and gets the same answer, including `false` for a start a
+    /// stop superseded.
     ///
     /// - Returns: whether the stream actually came up. `false` means a stop landed while the
     ///   camera was still cold-starting: the start released what it had acquired and is a no-op,
@@ -314,10 +335,22 @@ class CameraService: ObservableObject, FilteredStillProviding {
     @discardableResult
     func startStreaming() async throws -> Bool {
         // Plan CQ P1: refuse with a readable reason on hardware that has no live feed at all,
-        // rather than letting the backend fail in a way the caller has to interpret.
+        // rather than letting the backend fail in a way the caller has to interpret. Checked
+        // before coalescing: it is a fact about the hardware, not about this attempt.
         if case .unavailable(let reason) = availability(of: .livePreview) {
             throw CameraError.unsupported(reason)
         }
+        if let existing = inFlightStart { return try await existing.value }
+        let start = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            defer { self.inFlightStart = nil }
+            return try await self.performStart()
+        }
+        inFlightStart = start
+        return try await start.value
+    }
+
+    private func performStart() async throws -> Bool {
         let token = startGeneration.beginStart()
         isStartingStream = true
         // Intent is recorded *before* the await, and it is what keeps the cold-start window honest:
@@ -348,6 +381,10 @@ class CameraService: ObservableObject, FilteredStillProviding {
     func stopStreaming() async {
         startGeneration.recordStop()   // also ends this camera session, for readiness identity
         userWantsStream = false
+        // Plan FD P1: the in-flight start is *not* cancelled here, and that is deliberate. It is
+        // inside the backend's cold start, which has device work to unwind; the generation above
+        // is what makes it release rather than publish, and it clears its own record on the way
+        // out. Cancelling it would abandon that unwinding mid-flight.
         // Readiness does not survive the camera it described: the next start is a different
         // session, and a snapshot taken before this line must not be mistaken for one taken after.
         clearFrameEvidence()

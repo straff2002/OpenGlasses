@@ -1,6 +1,7 @@
 # Plan FD — Camera Readiness and Durable Action Acceptance
 
-**Status: 🚧 P0 implemented 2026-09-16 (P1–P5 unbuilt). On-glasses validation of the wait states is owed.**
+**Status: 🚧 P0–P1 implemented (P1 on 2026-09-16; P2–P5 unbuilt). On-glasses validation of the wait
+states and of the session lifecycle is owed.**
 
 Harden camera readiness and session lifecycle, and prove durable action semantics end to end.
 Extend OpenGlasses' existing services and acceptance tests. Translation and proactive visual cues
@@ -107,6 +108,140 @@ removal, phone lock, disconnect, repeated start and stop during warm-up. Record 
 observed states and recovery result separately from headless evidence. No automatic loop remains
 after stop, and pause does not create a second session.
 
+### The pause decision (2026-09-16): wait, never restart
+
+Two rules lived in the repository at once and contradicted each other.
+
+* `StreamRecoveryPolicy.shouldRecoverFromStall` states, in code and in prose, that `.paused` is a
+  system hold: frames stopping is the expected behaviour, **there is no app-callable resume**, and
+  tearing the stream down collapses the media channel the hold would otherwise resume from.
+  [EW](EW-session-resource-cleanup.md)'s acceptance says the same — a paused session is retained and
+  never triggers a competing restart.
+* `MetaCameraBackend`'s state listener answered a wanted pause by calling `Stream.start()`
+  immediately, and `waitForStreaming` treated `.paused` exactly like `.stopped`, nudging `start()`
+  up to three times before throwing.
+
+**What the SDK documents.** Ground truth is the pinned DAT 0.9.0 `.swiftinterface`.
+`MWDATCamera.Stream` (lines 207–229) declares `streamConfiguration`, `state`, `statePublisher`,
+`videoFramePublisher`, `photoDataPublisher`, `errorPublisher`, `start()`, `stop()` and
+`capturePhoto(format:)` — and nothing else. `StreamState` (258–270) carries `.paused` with no
+transition out of it the app can call. `MWDATCore.DeviceSession` (261–276) is the same shape:
+`start()`, `stop()`, a `.paused` state, no resume. **There is no documented same-session resume
+API**, so `start()` on a paused stream is not a sanctioned resume; it is a second start issued
+against a session the system is already holding.
+
+**What our device traces recorded.** Every observed cause of a pause is physical and is cleared
+physically. [CM](CM-dat-0-9-0-unlocks.md) records that since DAT 0.9 a **doff** pauses the stream
+(the SDK's `hingesClosed` now covers folded hinges and a doff alike), device-traced 2026-08-23 —
+the same trace that produced `CameraStreamStatePolicy`. `StreamRecoveryPolicy` records the
+**temple-tap hold**, and [DT](DT-dat-session-lifecycle.md) reads the same transitions as wearer
+intent: `running → paused` is the wearer's hold and `paused → running` **their** resume. No trace
+anywhere records a `start()` lifting a pause.
+
+**The rule.** A pause is **reported and waited out**: the paused session, its
+listeners and the camera capability are kept exactly as they are, nothing is scheduled, and the
+SDK's own resume is what brings the stream back. `StreamPausePolicy` holds the rule and holds it by
+shape — its `PauseResponse` has no case that issues a start, so a caller applying the policy cannot
+express the old behaviour. The one place a `start()` may still be issued is a warm-up looking at
+`.stopped`, which is the cold-start churn a start really does recover from; a warm-up that runs
+into a pause waits `pauseHoldGrace` (5 s) and then fails honestly rather than spending the whole
+20 s timeout on a hold it cannot lift.
+
+**The half that was missing.** With the nudge gone, the SDK's resume is the *only* way back — and
+nothing acted on it. A `.streaming` arriving after a pause never put `isStreaming` back, so a doff
+and a re-don left the flag false for the rest of the session: the stall detector, which guards on
+exactly that flag, stayed disarmed, and the UI reported a waiting camera while frames flowed.
+`StreamPausePolicy.restoresStreamingClaim` is that row, and the state listener now acts on it.
+
+### What was built (2026-09-16)
+
+Pure policy, each with a test per branch:
+
+- `Services/Camera/StreamPausePolicy.swift` — the pause decision above, the warm-up action table
+  (`ready` / `wait` / `nudgeStart` / `giveUp(.pauseHeld|.nudgesSpent)`), and the resume rule.
+- `Services/Camera/StreamReconnectPolicy.swift` — the gate in front of `StreamRecoveryPolicy`'s
+  delays. It answers four questions the backend used to answer with one `guard`: does anybody still
+  want the stream (`standDown`), is a rebuild of ours already in flight (`deferToOwner`, which does
+  **not** spend a rung), can a retry succeed at all (`giveUp`), and is the budget spent (`giveUp`).
+  `mayAct` re-checks the intent *and the start generation* when a rung wakes, so a rung scheduled
+  before a stop or a replacement is a rung of a ladder climbing a camera that no longer exists.
+- `CameraErrorPolicy.retryDisposition(for:)`, for `StreamError` and `DeviceSessionError` — the
+  classification the ladder never had:
+
+  | Failure | Disposition | Why |
+  |---|---|---|
+  | `permissionDenied` | stop retrying | Consent, revoked outside the app |
+  | `datAppOnTheGlassesUpdateRequired` | stop retrying | The companion app must be updated |
+  | `hingesClosed` (folded **or** doffed since 0.9.0) | stop retrying | A person put the camera away |
+  | `thermalCritical` / `thermalEmergency` / `peakPowerShutdown` / `batteryCritical` | stop retrying | Retrying neither cools nor charges the glasses |
+  | `timeout`, `videoStreamingError`, `internalError` | retry with backoff | Transient startup failure |
+  | `deviceNotConnected`, `deviceNotFound` | retry with backoff | The link flapping is what the ladder is for |
+  | `photoCaptureFailed` | retry with backoff | Says nothing about the stream |
+  | `noEligibleDevice`, `sessionAlreadyExists`, `capabilityAlreadyActive`, `sessionIdle` | retry with backoff | Windows that close |
+
+- `Services/Camera/CameraTransitionLock.swift` — a FIFO main-actor lock over the three transitions
+  that create or destroy the **process-wide** camera capability (`ensureSession`,
+  `teardownStreamOnly`, `resetSession`). Booleans could only refuse, so a second caller either
+  raced for the capability or dropped its work. Non-reentrant by rule: those three are leaves, and
+  a stop never takes the lock.
+- `Services/Camera/StreamListenerGeneration.swift` — `ListenerTokenBag.cancelAll()` is async, so a
+  frame, state change, photo or error from a replaced stream can still land. Every attach rotates
+  the generation and all four listeners drop callbacks that do not carry it.
+
+Wiring (`MetaCameraBackend`, `CameraService`, `GlassesCameraBackend`):
+
+- The pause row issues no start; the `.streaming` row restores the streaming claim after an SDK
+  resume; the warm-up wait runs `StreamPausePolicy`'s table instead of treating `.paused` as
+  `.stopped`. (The comment that justified the old behaviour was wrong on its own terms:
+  `pauseStreamAfterCapture()` calls `Stream.stop()`, so a parked stream sits at `.stopped`.)
+- The reconnect ladder runs through `StreamReconnectPolicy`, and a ladder that gives up **ends the
+  intent that drives it** — left set, the next stray `.stopped` re-entered the ladder at rung zero,
+  an automatic loop outliving the give-up meant to end it. The coordinator's record of what the
+  *user* asked for is deliberately kept, so Start stays reachable and truthful.
+- Concurrent `startStreaming()` calls coalesce onto one in-flight start in `CameraService`; the
+  second caller awaits the same outcome, including `false` for a start a stop superseded.
+- `ensureSession` awaits a `.stopping` session's stop boundary before replacing it. It used to
+  reuse a session caught mid-teardown, which is what the SDK answers with `sessionAlreadyExists`.
+- `scheduledWorkCount` on the backend seam (default 0) and `scheduledCameraWorkCount` on the
+  coordinator, so "no automatic loop remains after a stop" is asserted rather than hoped for.
+
+**Proven by tests** — `CameraSessionLifecycleTests.swift`, 43 tests in seven classes:
+`StreamPausePolicyTests` (11), `StreamReconnectPolicyTests` (8), `CameraRetryDispositionTests` (5),
+`CameraTransitionLockTests` (4), `StreamListenerGenerationTests` (3), `CameraSessionLifecycleTests`
+(10, through the real `CameraService` over a backend parked at each boundary) and
+`MetaCameraBackendSchedulingTests` (2). They cover: no pause branch can issue a start, for any
+pause age or nudge count; a pause the wearer then stops is never started again and leaves nothing
+armed; the SDK's resume restores the claim and a resume after a stop does not; the ladder is
+bounded (21 rungs, &lt;120 s) and retracts its promise; a failure no retry can clear stops it at
+once; a rung stands down on a cleared intent, a stream already back, or a bumped session identity;
+simultaneous starts issue **one** backend start and both callers get the same answer (including the
+superseded and failing ones); a stop at the permission, warm-up, backoff, replacement and teardown
+boundaries releases what was acquired, leaves no claim behind and leaves nothing scheduled; a
+restart after such a stop still starts; and a rebuild preserves another owner's claim and the
+recording's camera, while a claim that found the stream already running never stops it.
+
+**Reasoned, not executed.** `MetaCameraBackend` reaches `Wearables`, which traps in a unit-test
+process, so only its scheduling accounting is exercised directly (a fresh backend, a stop and a
+teardown each leave nothing armed). The *wiring* of the policies into the state listener, the
+warm-up wait, the reconnect ladder, the transition lock and the session stop boundary is reasoned
+from the code and owed a device pass. So is the claim that the SDK resumes a paused stream at all
+after a re-don: the decision not to nudge rests on the absence of a resume API and on traces of
+what causes a pause, not on an observed resume.
+
+**Owed on glasses** (record SDK/firmware build, the observed `StreamState`/`CameraState`
+transitions and the recovery result for each, separately from the headless evidence above):
+
+| Scenario | What to record |
+|---|---|
+| Cold start from a dark app | Time to first frame, the `.stopped`/`.waitingForDevice` churn, nudges issued |
+| Folding the hinges mid-stream | Whether `.paused` or `hingesClosed` arrives, and what unfolding produces |
+| Doffing and re-donning mid-stream | **The key one**: does the SDK resume the stream itself, and how long after |
+| Phone lock / background during a stream | States observed, whether the stream survives, what resumes it |
+| Glasses disconnect and reconnect | Which rungs the ladder climbs, and whether it ends on a resume or the give-up notice |
+| Repeated Start presses | That one start reaches the device and the others coalesce |
+| Stop during warm-up | That nothing comes up afterwards and the LED goes out |
+| Any of the above with a recording or HUD consumer attached | That the other consumer keeps its camera |
+
 ## P2 / PR3 — Durable action and approval acceptance scenarios
 
 Extend the existing tool router, approval/evidence contracts and durable runtime under
@@ -205,8 +340,8 @@ model catalog and malformed local tool output; this plan does not duplicate it.
 | Gate | Status |
 |---|---|
 | Camera consumers and readiness audit | Done 2026-09-16 — inventory in `FD-readiness-inventory.md`; `CameraReadiness` published from `CameraService`; `CameraReadinessTests` (32) plus the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Device evidence owed |
-| SDK pause/retry contract resolved and service tests | Pending |
-| Real-glasses lifecycle evidence | Pending |
+| SDK pause/retry contract resolved and service tests | Done 2026-09-16 — a pause is waited out and never restarted, recorded above with the interface lines and the traces it rests on; `StreamPausePolicy`/`StreamReconnectPolicy`/`CameraTransitionLock`/`StreamListenerGeneration` plus the retry classification; `CameraSessionLifecycleTests` (43) and the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Backend wiring reasoned, device evidence owed |
+| Real-glasses lifecycle evidence | Pending — the P1 table above lists the runs and what each must record |
 | Durable-action failure-window tests | Pending |
 | UI/voice approval/recovery journey | Pending |
 | Visual prompting and gateway audit disposition | Pending |

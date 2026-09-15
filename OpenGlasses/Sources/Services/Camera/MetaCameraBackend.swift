@@ -87,6 +87,23 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// start used to be lost to `stopStreaming()`'s `isStreaming` guard, and the start still
     /// climbing then claimed the stream anyway. See `StreamStartGeneration`.
     private var startGeneration = StreamStartGeneration()
+
+    /// Plan FD P1 — which set of stream listeners is current. `ListenerTokenBag.cancelAll()` is
+    /// async, so a callback from the stream we just tore down can still land on the one that
+    /// replaced it. See `StreamListenerGeneration`.
+    private var listenerGeneration = StreamListenerGeneration()
+
+    /// Plan FD P1 — serialises the transitions that create or destroy the process-wide camera
+    /// capability. Taken by `ensureSession()`, `teardownStreamOnly()` and `resetSession()` and by
+    /// nothing else; never by a stop. See `CameraTransitionLock`.
+    private let transitionLock = CameraTransitionLock()
+
+    /// When the SDK most recently put the stream into `.paused`, or nil when it is not paused.
+    ///
+    /// Plan FD P1: a pause is waited out rather than started out of, so a *start* that runs into
+    /// one needs to know how long it has stood — see `StreamPausePolicy.pauseHoldGrace`.
+    private var pausedSince: Date?
+
     /// The pending reconnect after a wanted stream dropped to `.stopped`, and how many rungs of
     /// `StreamRecoveryPolicy.reconnectDelay` we have climbed. Both reset the moment frames flow.
     private var reconnectTask: Task<Void, Never>?
@@ -133,6 +150,25 @@ final class MetaCameraBackend: GlassesCameraBackend {
     }
 
     private func debug(_ message: String) { events.send(.debug(message)) }
+
+    /// Plan FD P1 — how much automatic work this backend currently has armed.
+    ///
+    /// "No automatic loop remains after a stop" is an assertion, and this is what makes it one
+    /// rather than a hope. Counts the reconnect rung, the stall detector, the idle-teardown timer,
+    /// a start still climbing, and a device transition in flight.
+    ///
+    /// Deliberately **not** counted: the device session's error watcher. It is a subscription to a
+    /// session the app keeps warm on purpose after a capture or a stop, not work that will fire on
+    /// its own; `tearDown()` is what ends it, and the audit row that covers it says so.
+    var scheduledWorkCount: Int {
+        var count = 0
+        if reconnectTask != nil { count += 1 }
+        if stallDetectionTask != nil { count += 1 }
+        if idleTeardownTask != nil { count += 1 }
+        if startGeneration.isStartPending { count += 1 }
+        if transitionLock.isBusy { count += 1 }
+        return count
+    }
 
     // MARK: - Permission
 
@@ -243,7 +279,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private var activeStreamResolution: String?
 
     /// Ensure the persistent stream session exists. Creates it on first call.
+    ///
+    /// Plan FD P1: serialised. Four callers create or destroy the process-wide camera capability —
+    /// a start's warm-up, a capture's session acquisition, the stall ladder and the reconnect
+    /// ladder — and they used to be kept apart by booleans, which can only refuse, never wait. A
+    /// second caller therefore either raced for the capability (`capabilityAlreadyActive`) or gave
+    /// its work away. Now it queues, and finds the session already built when its turn comes.
     private func ensureSession() async throws {
+        try await transitionLock.withLock { try await self.ensureSessionLocked() }
+    }
+
+    private func ensureSessionLocked() async throws {
         guard streamSession == nil else { return }
 
         // Fresh attempt, fresh verdict: an error from a previous attempt must not abort this one.
@@ -259,7 +305,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
         }
 
         // DAT 0.7: DeviceSession owns the connection; Streams hang off it.
-        if deviceSession?.state == .stopped {
+        //
+        // Plan FD P1: a session that is still `.stopping` is awaited before it is dropped. This
+        // used to look only for `.stopped`, so a session caught mid-teardown was *reused* — and a
+        // new session created against a device whose previous one has not finished is exactly what
+        // `sessionAlreadyExists` reports, the phantom the capture path already spends four
+        // attempts waiting out.
+        if let existing = deviceSession, existing.state == .stopped || existing.state == .stopping {
+            await awaitSessionStopped(existing)
             deviceSession = nil
         }
 
@@ -394,9 +447,27 @@ final class MetaCameraBackend: GlassesCameraBackend {
         }
     }
 
+    /// The SDK's stream states, mapped onto the pure policy's table. One mapping, used by both the
+    /// state listener and the start-side wait, so the two can never read the same state differently.
+    private static func mapped(_ state: MWDATCamera.StreamState) -> CameraStreamStatePolicy.StreamState? {
+        switch state {
+        case .streaming:        return .streaming
+        case .paused:           return .paused
+        case .stopped:          return .stopped
+        case .starting:         return .starting
+        case .stopping:         return .stopping
+        case .waitingForDevice: return .waitingForDevice
+        @unknown default:       return nil
+        }
+    }
+
     /// Attach all publishers to the session (state, video frames, photo data, errors).
     private func attachListeners(to session: MWDATCamera.Stream) {
         var frameCount = 0
+        // Plan FD P1: everything installed before this line is stale from here on. The bag's
+        // cancellation is async, so the generation — not the cancel — is what actually stops a
+        // callback from the previous stream acting on this one.
+        let generation = listenerGeneration.rotate()
         // EO P1: the size the app actually receives, logged on the first frame and whenever it
         // changes. The SDK's ladder can step the source down mid-stream, and until now the only
         // size in any log was the tier *label* we asked for.
@@ -404,20 +475,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         session.statePublisher.listen { [weak self] state in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.listenerGeneration.accepts(generation) else { return }
                 PrivacyLog.camera(.glasses, .streamState,
                                   state: PrivacyToken(String(describing: state)))
-                let mapped: CameraStreamStatePolicy.StreamState?
-                switch state {
-                case .streaming:        mapped = .streaming
-                case .paused:           mapped = .paused
-                case .stopped:          mapped = .stopped
-                case .starting:         mapped = .starting
-                case .stopping:         mapped = .stopping
-                case .waitingForDevice: mapped = .waitingForDevice
-                @unknown default:       mapped = nil
-                }
-                guard let mapped else { return }
+                guard let mapped = Self.mapped(state) else { return }
+                // How long a pause has stood, for the start-side wait. Recorded before the
+                // decision below because it is a fact about the stream, not about what we want.
+                self.pausedSince = mapped == .paused ? (self.pausedSince ?? Date()) : nil
 
                 // Warmup and stall recovery both stop the stream on purpose with these listeners
                 // still attached, so their `.stopped`s are ours and map to `.waiting`. That also
@@ -434,11 +498,30 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     transitionIsOurs: self.isWarmingUp || self.isRecoveringFromStall) {
                 case .streaming:
                     self.events.send(.status(.streaming))
+                    // A healthy stream clears the verdict the retry gate reads. Without this the
+                    // last error of an episode the stream recovered from — a fold that was undone,
+                    // a permission that was granted on the second ask — would still be sitting
+                    // there hours later, ready to stop the ladder for an unrelated drop.
+                    self.lastStreamError = nil
                     // A stream that reached `.streaming` has no reason left to be waiting. The
                     // first *picture* is what makes it `ready` — until one arrives the coordinator
                     // reports "awaiting first frame", which is the honest gap this used to hide.
                     self.report(waitReason: nil)
-                    if self.isReconnecting { self.finishReconnect() }
+                    if self.isReconnecting {
+                        self.finishReconnect()
+                    } else if StreamPausePolicy.restoresStreamingClaim(
+                        streamingIntended: self.continuousStreamingIntent,
+                        alreadyStreaming: self.isStreaming,
+                        transitionIsOurs: self.isWarmingUp || self.isRecoveringFromStall) {
+                        // Plan FD P1. The SDK resumed the stream itself — a temple tap, the
+                        // glasses going back on. With the old `start()` nudge gone this is the
+                        // only way back, and nothing used to act on it: `isStreaming` stayed
+                        // false for the rest of the session while frames flowed, which also left
+                        // the stall detector disarmed (it guards on exactly that flag) and the UI
+                        // saying the camera was waiting.
+                        PrivacyLog.camera(.glasses, .streamResumedBySDK)
+                        self.restoreStreamingClaim()
+                    }
                 case .waiting:
                     self.events.send(.status(.waiting))
                     // FD P0: `.waiting` is four situations wearing one word. Say which one, from
@@ -470,17 +553,31 @@ final class MetaCameraBackend: GlassesCameraBackend {
                         self.events.send(.transientNotice(notice))
                     }
                     self.scheduleReconnect()
-                case .pausedWhileWanted(let notice):
+                case .pausedWhileWanted(let decisionNotice):
                     // A paused stream is not streaming, whatever the button says. Since DAT 0.9 a
-                    // doff lands here, so this is the state a wearer can actually fix — say so,
-                    // stop claiming to stream, and nudge it back up.
+                    // doff lands here, so this is the state a wearer can actually fix — say so and
+                    // stop claiming to stream.
+                    //
+                    // Plan FD P1: and then **wait**. This used to call `streamSession?.start()`
+                    // immediately. There is no documented same-session resume in the pinned SDK —
+                    // `Stream` offers start/stop and nothing else — and every recorded cause of a
+                    // pause (temple-tap hold, doff, folded hinges) is cleared by the wearer, not
+                    // by an API call. The paused session, its listeners and the camera capability
+                    // are all kept exactly as they are; the SDK's own resume is what brings it
+                    // back, and the `.streaming` row above is what acts on it.
                     PrivacyLog.camera(.glasses, .streamPausedWhileWanted)
                     self.isStreaming = false
                     self.events.send(.streamingChanged(false))
                     self.events.send(.status(.waiting))
                     self.report(waitReason: .paused)
-                    self.events.send(.transientNotice(notice))
-                    self.streamSession?.start()
+                    switch StreamPausePolicy.response(streamingIntended: true) {
+                    case .awaitSDKResume(let notice):
+                        self.events.send(.transientNotice(notice))
+                    case .staySilent:
+                        // Unreachable under `.pausedWhileWanted`, which is by definition a wanted
+                        // stream; spelled out rather than defaulted so the table stays readable.
+                        self.events.send(.transientNotice(decisionNotice))
+                    }
                 }
             }
         }.store(in: streamListenerBag)
@@ -497,7 +594,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // or the last good one handed over again while the decoder waits for a keyframe.
             let picture = pipeline.picture(for: frame)
             Task { @MainActor in
-                guard let self, let image = picture.image else { return }
+                // A picture from a stream that has since been replaced is not a view of anything
+                // that exists: it would refresh the freshness clock and the cached still for a
+                // camera that is gone.
+                guard let self, self.listenerGeneration.accepts(generation),
+                      let image = picture.image else { return }
                 frameCount += 1
                 // Only a fresh picture makes the frame clock fresh. The app still sees the held
                 // image — that is the point of holding one — but `lastFrameTime` also gates the
@@ -523,13 +624,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         session.photoDataPublisher.listen { [weak self] photoData in
             Task { @MainActor in
-                self?.handlePhotoData(photoData)
+                guard let self, self.listenerGeneration.accepts(generation) else { return }
+                self.handlePhotoData(photoData)
             }
         }.store(in: streamListenerBag)
 
         session.errorPublisher.listen { [weak self] error in
             Task { @MainActor in
-                guard let self else { return }
+                // An error raced out of a stream we already replaced describes that stream, not
+                // this one — and it would otherwise abort this stream's warm-up and stop this
+                // stream's reconnect ladder.
+                guard let self, self.listenerGeneration.accepts(generation) else { return }
                 let message = CameraErrorPolicy.message(for: error)
                 PrivacyLog.camera(.glasses, .streamError, error: SafeErrorSummary(error))
                 self.debug("Camera error: \(message)")
@@ -565,19 +670,29 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // Only errors from THIS attempt may abort it.
         lastStreamError = nil
 
-        // Start the session if it is not already running. `.paused` counts: a stream paused after
-        // a one-off capture (see `pauseStreamAfterCapture`) is idle, not broken.
-        if session.state == .stopped || session.state == .paused {
-            session.start()  // DAT 0.8.0+: Stream.start() is synchronous
-        }
-
-        // Wait for streaming state. During a cold start the stream bounces through .stopped
-        // (device-traced: ~15-18s of .stopped/.waitingForDevice churn before .streaming), so a
-        // transient .stopped is NOT terminal — nudge start() again a few times before giving up.
-        var restartNudges = 0
+        // Wait for streaming state. During a cold start the stream bounces through `.stopped`
+        // (device-traced: ~15-18 s of `.stopped`/`.waitingForDevice` churn before `.streaming`),
+        // so a transient `.stopped` is NOT terminal — nudge `start()` again a few times before
+        // giving up.
+        //
+        // Plan FD P1: `.paused` no longer travels with `.stopped`. A paused stream is a hold the
+        // system imposed — temple tap, doff, folded hinges — and the pinned SDK offers nothing to
+        // lift it, so a nudge into one is a competing restart that cannot work. The comment this
+        // replaces claimed `.paused` was where a one-off capture parks the stream; it is not.
+        // `pauseStreamAfterCapture()` calls `Stream.stop()`, so a parked stream sits at `.stopped`
+        // and still gets its start. `StreamPausePolicy` owns the whole table.
+        var nudges = 0
+        var pausedAt: Date?
         let deadline = ContinuousClock.now + .seconds(timeout)
-        while ContinuousClock.now < deadline {
-            if session.state == .streaming { break }
+        warmup: while ContinuousClock.now < deadline {
+            // An unrecognised state is churn, not a verdict: wait it out under the timeout.
+            let state = Self.mapped(session.state) ?? .starting
+            pausedAt = state == .paused ? (pausedAt ?? pausedSince ?? Date()) : nil
+            let action = StreamPausePolicy.warmupAction(
+                state: state,
+                pausedFor: pausedAt.map { Date().timeIntervalSince($0) },
+                nudgesUsed: nudges)
+            if action == .ready { break warmup }
             // A start that already failed will not be rescued by more nudges or more waiting —
             // the stream needs rebuilding, and only the caller can do that. Without this, a dead
             // start spends the whole timeout going through the motions.
@@ -585,16 +700,24 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 PrivacyLog.camera(.glasses, .warmupAborted, error: SafeErrorSummary(error))
                 throw CameraError.streamNotReady
             }
-            if session.state == .stopped || session.state == .paused {
-                if restartNudges < 3 {
-                    restartNudges += 1
-                    PrivacyLog.camera(.glasses, .warmupNudged,
-                                      attempt: restartNudges, ofAttempts: 3)
-                    session.start()
-                } else {
-                    PrivacyLog.camera(.glasses, .warmupSessionStopped)
-                    throw CameraError.streamNotReady
-                }
+            switch action {
+            case .ready, .wait:
+                break
+            case .nudgeStart(let attempt):
+                nudges = attempt
+                PrivacyLog.camera(.glasses, .warmupNudged, attempt: attempt,
+                                  ofAttempts: StreamPausePolicy.maxColdStartNudges)
+                session.start()  // DAT 0.8.0+: Stream.start() is synchronous
+            case .giveUp(.pauseHeld):
+                // Nothing this start can do lifts a hold, and sitting out the rest of the
+                // twenty-second timeout only delays the honest answer. The wearer already has the
+                // notice that names the move that does lift it.
+                PrivacyLog.camera(.glasses, .pauseHeldDuringStart,
+                                  seconds: pausedAt.map { Date().timeIntervalSince($0) })
+                throw CameraError.streamNotReady
+            case .giveUp(.nudgesSpent):
+                PrivacyLog.camera(.glasses, .warmupSessionStopped)
+                throw CameraError.streamNotReady
             }
             try await Task.sleep(nanoseconds: 500_000_000)
         }
@@ -628,7 +751,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
     func capturePhoto() async throws -> Data {
         isCaptureInProgress = true
         defer { isCaptureInProgress = false }
+        // Cleared as well as cancelled: a cancelled task that is still referenced would keep
+        // counting towards `scheduledWorkCount`, which is meant to be the truth about what is armed.
         idleTeardownTask?.cancel()   // a capture during the idle grace keeps the session
+        idleTeardownTask = nil
 
         try await ensurePermission()
 
@@ -804,6 +930,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         idleTeardownTask = Task { [weak self] in
             try? await Task.sleep(for: Self.sessionIdleGrace)
             guard let self, !Task.isCancelled else { return }
+            self.idleTeardownTask = nil
             guard !self.isStreaming, !self.isCaptureInProgress else { return }
             PrivacyLog.camera(.glasses, .idleTeardown)
             await self.resetSession()
@@ -847,6 +974,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         guard WearablesBootstrap.ensureConfigured() else { throw CameraError.sdkNotRegistered }
         guard !isStreaming else { return }
         idleTeardownTask?.cancel()   // explicit streaming owns the session now
+        idleTeardownTask = nil
         continuousStreamingIntent = true
         // A hand-started stream supersedes any reconnect still climbing from an earlier drop.
         cancelReconnect()
@@ -980,34 +1108,63 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// failure. Two rebuilders racing for one process-wide camera capability is how you turn a
     /// dropped stream into `capabilityAlreadyActive`.
     private func scheduleReconnect() {
-        guard continuousStreamingIntent, !isWarmingUp, !isRecoveringFromStall,
-              reconnectTask == nil else { return }
-        guard let delay = StreamRecoveryPolicy.reconnectDelay(attempt: reconnectAttempt) else {
-            // The promise in the first notice has run out; say so rather than leave the wearer
-            // watching a spinner that stopped meaning anything.
-            PrivacyLog.camera(.glasses, .reconnectGaveUp, count: reconnectAttempt,
-                              seconds: StreamRecoveryPolicy.reconnectBudget)
+        guard reconnectTask == nil else { return }
+        // Plan FD P1: the gate is a table now (`StreamReconnectPolicy`), because it answers four
+        // separate questions and one of them — "can a retry succeed at all, given what the SDK
+        // last said went wrong" — was never asked. A revoked permission, a companion app that
+        // needs updating, glasses too hot or folded: the ladder used to spend its full ~88 s
+        // budget on all of them and then say nothing the wearer could have acted on sooner.
+        switch StreamReconnectPolicy.next(
+            attempt: reconnectAttempt,
+            streamingIntended: continuousStreamingIntent,
+            transitionIsOurs: isWarmingUp || isRecoveringFromStall || isCaptureInProgress,
+            lastFailure: lastStreamError.map(CameraErrorPolicy.retryDisposition(for:))) {
+
+        case .standDown:
             isReconnecting = false
             reconnectAttempt = 0
-            events.send(.status(.stopped))
-            report(waitReason: nil)   // the ladder is finished, so nothing is connecting any more
-            events.send(.transientNotice(StreamRecoveryPolicy.reconnectGaveUpNotice))
-            return
+
+        case .deferToOwner(let delay):
+            // A warm-up, a stall recovery or a capture already owns the stream, and two rebuilders
+            // racing for one process-wide camera capability is how a dropped stream becomes
+            // `capabilityAlreadyActive`. Look again shortly — and do not spend a rung on it: the
+            // budget is for the glasses being unreachable, not for waiting out our own work.
+            PrivacyLog.camera(.glasses, .reconnectDeferred, seconds: delay)
+            scheduleRung(after: delay, attempt: nil)
+
+        case .giveUp(let notice):
+            giveUpReconnecting(notice: notice)
+
+        case .retry(let delay, let attempt):
+            PrivacyLog.camera(.glasses, .reconnectScheduled, attempt: attempt + 1, seconds: delay)
+            reconnectAttempt += 1
+            scheduleRung(after: delay, attempt: attempt)
         }
-        let attempt = reconnectAttempt
-        reconnectAttempt += 1
-        PrivacyLog.camera(.glasses, .reconnectScheduled, attempt: attempt + 1, seconds: delay)
+    }
+
+    /// Arm one rung. `attempt` is `nil` for a deferral, which only looks again rather than acting.
+    private func scheduleRung(after delay: TimeInterval, attempt: Int?) {
+        // Which camera session this rung belongs to. A rung sleeps for up to five seconds, and a
+        // stop — or a replacement — inside that window makes it a rung of a ladder that was
+        // climbing a camera which no longer exists.
+        let scheduledUnder = startGeneration.sessionIdentity
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
             self.reconnectTask = nil
-            // The wearer stopped the camera, or it came back on its own, while we slept.
-            guard self.continuousStreamingIntent, !self.isStreaming else {
+            guard StreamReconnectPolicy.mayAct(
+                streamingIntended: self.continuousStreamingIntent,
+                alreadyStreaming: self.isStreaming,
+                scheduledUnderSession: scheduledUnder,
+                currentSession: self.startGeneration.sessionIdentity) else {
+                // The wearer stopped the camera, the session was replaced, or the stream came
+                // back on its own while we slept.
+                PrivacyLog.camera(.glasses, .reconnectStoodDown)
                 self.isReconnecting = false
                 return
             }
-            // Someone else took the stream in the meantime — wait our turn rather than race.
-            guard !self.isWarmingUp, !self.isRecoveringFromStall, !self.isCaptureInProgress else {
+            guard let attempt else {
+                // A deferral: re-ask the table now that time has passed.
                 self.scheduleReconnect()
                 return
             }
@@ -1023,15 +1180,46 @@ final class MetaCameraBackend: GlassesCameraBackend {
         }
     }
 
+    /// The ladder has stopped climbing — either the budget is spent or the failure is one no retry
+    /// can clear. Retract the promise the first notice made, and end the intent that drives it.
+    private func giveUpReconnecting(notice: String) {
+        PrivacyLog.camera(.glasses, .reconnectGaveUp, count: reconnectAttempt,
+                          seconds: StreamRecoveryPolicy.reconnectBudget)
+        isReconnecting = false
+        reconnectAttempt = 0
+        // Plan FD P1. The intent goes with the ladder. Left set, it meant the next stray `.stopped`
+        // from the SDK re-entered the ladder at rung zero — an automatic loop outliving the
+        // give-up that was supposed to end it, and a second ~88 s of "reconnecting" for a camera
+        // that has already been declared gone. The wearer's next Start is a deliberate, fresh
+        // session, which is the only honest thing left to offer.
+        continuousStreamingIntent = false
+        stopStallDetection()
+        if isStreaming {
+            isStreaming = false
+            events.send(.streamingChanged(false))
+        }
+        events.send(.status(.stopped))
+        report(waitReason: nil)   // the ladder is finished, so nothing is connecting any more
+        events.send(.transientNotice(notice))
+    }
+
     /// Frames are flowing again. Restores the streaming claim the drop cleared — `recoverFromStall`
     /// only ever ran underneath a session that still believed it was streaming, so nothing else
     /// puts `isStreaming` back.
     private func finishReconnect() {
-        reconnectTask?.cancel()
-        reconnectTask = nil
-        reconnectAttempt = 0
-        isReconnecting = false
+        cancelReconnect()
         PrivacyLog.camera(.glasses, .reconnected)
+        restoreStreamingClaim()
+    }
+
+    /// Put the streaming claim back after the stream came back **without a start of ours**: the
+    /// SDK lifted a pause it had imposed, or a reconnect rung succeeded.
+    ///
+    /// Plan FD P1. With the pause nudge gone, the SDK's own resume is the only way back from a
+    /// pause, so it has to be acted on — and nothing acted on it before. `isStreaming` stayed
+    /// false for the rest of the session while frames flowed: the UI said the camera was waiting,
+    /// and the stall detector, which guards on exactly that flag, was disarmed for good.
+    private func restoreStreamingClaim() {
         guard continuousStreamingIntent, !isStreaming else { return }
         isStreaming = true
         events.send(.streamingChanged(true))
@@ -1147,6 +1335,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// a failed stream must not strand a half-open session (`ensureSession` re-adds the camera
     /// on the retained session).
     private func teardownStreamOnly() async {
+        await transitionLock.withLock { await self.teardownStreamOnlyLocked() }
+    }
+
+    private func teardownStreamOnlyLocked() async {
         if let camera = cameraCapability {
             camera.stop()  // cascades to the stream
             await awaitCameraStopped(camera)
@@ -1174,8 +1366,29 @@ final class MetaCameraBackend: GlassesCameraBackend {
                           seconds: Double(timeout.components.seconds))
     }
 
+    /// Bounded wait for a stopped `DeviceSession` to actually reach `.stopped`.
+    ///
+    /// The camera capability has had `awaitCameraStopped` since Plan BR; the session had nothing.
+    /// `DeviceSession.stop()` is synchronous but the transition is not, and creating a session
+    /// against a device whose previous session has not finished is what the SDK answers with
+    /// `sessionAlreadyExists` — the "phantom" the capture path already spends four attempts and
+    /// ~12 s waiting out.
+    private func awaitSessionStopped(_ session: DeviceSession, timeout: Duration = .seconds(2)) async {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if session.state == .stopped { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        PrivacyLog.camera(.glasses, .sessionStopTimedOut,
+                          seconds: Double(timeout.components.seconds))
+    }
+
     /// Reset the session completely (for error recovery).
     private func resetSession() async {
+        await transitionLock.withLock { await self.resetSessionLocked() }
+    }
+
+    private func resetSessionLocked() async {
         // A reset with the intent already cleared is a deliberate teardown (stop, idle grace,
         // mode switch) — nothing should be trying to bring the stream back afterwards. A reset
         // *with* the intent still set is recovery, and the ladder is what called it.
@@ -1188,7 +1401,12 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // retry loop's next `ensureSession` doesn't collide with the dying camera.
             await awaitCameraStopped(camera)
         }
-        deviceSession?.stop()
+        if let session = deviceSession {
+            session.stop()
+            // The replacement boundary, at the session level: a new session may not be created
+            // until this one is observably finished.
+            await awaitSessionStopped(session)
+        }
         await streamListenerBag.cancelAll()
         cameraCapability = nil
         streamSession = nil
