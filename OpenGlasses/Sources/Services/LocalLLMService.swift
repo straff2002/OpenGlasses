@@ -926,13 +926,17 @@ final class LocalLLMService: ObservableObject {
     static let visionWeightsUnavailableMessage =
         "This model's vision weights couldn't load on this device, so it's running text-only. For photos, switch to SmolVLM2 or a cloud model."
 
-    /// Expected full-snapshot size for a catalog model (parsed from its `estimatedSize`), or nil
-    /// for custom/unknown ids. Drives the byte-based download progress estimate.
-    /// `nonisolated` now that it reads only the (pure) catalog — callers outside the main actor
+    /// Exact full-snapshot size for a catalog model, or nil for custom/unknown ids. Drives the
+    /// byte-based download progress estimate.
+    ///
+    /// The bytes come from the catalog's verified snapshot (measured against the model host's
+    /// API), not from parsing display copy, which is what previously made this number wrong —
+    /// mildly for most entries and threefold for SmolVLM2 2.2B. `nil` still means "no expected
+    /// size": the caller falls back to the hub's own per-file fraction rather than inventing one.
+    /// `nonisolated` because it reads only the (pure) catalog — callers outside the main actor
     /// can ask a model's expected size without hopping.
     nonisolated static func expectedDownloadBytes(for modelId: String) -> Int64? {
-        guard let entry = LocalModelCatalog.entry(for: LocalModelID(modelId)) else { return nil }
-        return LocalModelCatalog.bytes(fromEstimatedSize: entry.estimatedSize)
+        LocalModelCatalog.downloadBytes(for: LocalModelID(modelId))
     }
 
     /// Bytes on disk attributable to an in-progress download: the partial snapshot plus

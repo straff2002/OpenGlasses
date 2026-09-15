@@ -1,17 +1,22 @@
 import Foundation
 
-/// The versioned bundled catalog of local models (Plan DZ, P0 item 4).
+/// The versioned bundled catalog of local models (Plan DZ, P0 item 4; sizes corrected under FC P0).
 ///
 /// Before this existed, the model list was a hard-coded array of `RecommendedModel` inside
 /// `LocalLLMService`, mixing display copy with the facts the runtime needs. The catalog owns both
 /// halves now and `LocalLLMService.recommendedModels` / `visionModelIds` / `expectedDownloadBytes`
 /// are **compatibility projections** of it — same values, same order, no call site changed.
 ///
+/// Sizes used to be authored as display strings ("1.5 GB") and parsed back into bytes with a
+/// gibibyte multiplier. That made every number wrong twice over: the unit was misnamed, and one
+/// entry (SmolVLM2 2.2B) was understated threefold. Each entry now carries a
+/// ``VerifiedSnapshot`` of exact byte counts read from the model host's API, and the display
+/// string is derived from those bytes — there is no authored size left to drift.
+///
 /// It stays Swift rather than the JSON resource the plan sketches, because a JSON entry's whole
-/// point is the per-file size/digest/revision triple, and no MLX entry has one: these are hub
-/// *snapshots*, fetched whole by repository id with no revision pinning and no recorded digests.
-/// Writing them into JSON would be writing empty fields in a more expensive format. The JSON
-/// catalog arrives with the acquisition pipeline that can actually populate it.
+/// point is the per-file size/digest/revision triple, and no MLX entry has digests: these are hub
+/// *snapshots*, fetched whole by repository id. The JSON catalog arrives with the acquisition
+/// pipeline that can populate the per-file half.
 ///
 /// No MLX import: pure, headless-testable, and safe to consult before any runtime exists.
 enum LocalModelCatalog {
@@ -19,17 +24,52 @@ enum LocalModelCatalog {
     /// Bumped when the catalog's *shape* changes, so a stored record can say what it was built from.
     static let version = 1
 
-    /// A catalog entry: the runtime-facing descriptor plus the copy the picker renders.
+    // MARK: - Verified snapshots
+
+    /// Exact, measured facts about one hub repository at one revision.
+    ///
+    /// **Provenance.** Every value below was read from the Hugging Face model API
+    /// (`GET https://huggingface.co/api/models/<repository>?blobs=true`) on **2026-09-15**, summing
+    /// the `size` of every file the repository lists at the recorded `sha`. The MLX download path
+    /// fetches the whole snapshot by repository id (`LocalLLMService.downloadModel` →
+    /// `downloadSnapshot(of:)`, no file filter), so the repository total *is* the download.
+    ///
+    /// `revision` is recorded as provenance — the sha these numbers were measured at — and is
+    /// deliberately **not** used as the descriptor's revision. Pinning it would flip
+    /// `LocalModelDescriptor.installationFaults()` and `LocalModelFitReport`'s
+    /// `.unresolvedRevision` blocker, which are exactly what stop the acquisition pipeline
+    /// accepting an unpinned MLX entry today, while the legacy download path would still fetch
+    /// `main`. Claiming a pin the downloader does not honour belongs to the acquisition work, not
+    /// to a metadata correction.
+    struct VerifiedSnapshot: Equatable, Sendable {
+        /// The commit these byte counts were measured at. Provenance only — see the note above.
+        let revision: String
+        /// Every file in the repository at `revision`, summed. This is what a fresh install pulls.
+        let totalBytes: Int64
+        /// `model.safetensors` alone — the weights that become resident when the model loads.
+        let weightsBytes: Int64
+        /// How many files the repository listed, so a silently truncated re-verification shows up.
+        let fileCount: Int
+        /// ISO day the measurement was taken.
+        let verifiedOn: String
+    }
+
+    /// A catalog entry: the runtime-facing descriptor, the verified artifact facts, and the copy
+    /// the picker renders.
     struct Entry: Equatable, Sendable {
         let descriptor: LocalModelDescriptor
-        /// Human-authored size string, e.g. `"3.6 GB"`. Kept verbatim because it is what the UI
-        /// has always shown and what the download-progress estimate parses.
-        let estimatedSize: String
+        /// Measured artifact facts. The single source for every byte count this entry reports.
+        let snapshot: VerifiedSnapshot
         let notes: String
         /// Minimum device RAM (GB) to offer this model. 0 = no restriction.
         let minimumRAMGB: Double
 
         var id: LocalModelID { descriptor.id }
+
+        /// The download size as the picker shows it. Derived from ``VerifiedSnapshot/totalBytes``,
+        /// never authored — the accessor keeps its old name so `RecommendedModel` and the two
+        /// picker screens are unchanged, but the value can no longer disagree with the bytes.
+        var estimatedSize: String { formattedDownloadSize(snapshot.totalBytes) }
     }
 
     // MARK: - Authoritative capability claims
@@ -62,65 +102,103 @@ enum LocalModelCatalog {
     ///
     /// Order is part of the contract: `LocalModelManagerView` and `AgenticFeaturesView` render this
     /// array directly, and the first entry is the one first-run offers.
+    ///
+    /// The copy carries no qualification claim. Nothing in this repository records a device test
+    /// for any of these checkpoints, so the notes describe what a model *is* and what it costs,
+    /// and leave "works well on your phone" to the device-qualification pass that can measure it.
     static let entries: [Entry] = [
-        // Gemma 4 — best on-device agent model
+        // Gemma 4 — the on-device agent pair
         entry(id: "mlx-community/gemma-4-e2b-it-4bit",
               displayName: "Gemma 4 E2B (Agent)",
-              estimatedSize: "3.6 GB",
+              snapshot: VerifiedSnapshot(revision: "238767527555cb75a05732a84dff5d6ba0dd6809",
+                                         totalBytes: 3_583_088_661,
+                                         weightsBytes: 3_550_670_554,
+                                         fileCount: 10,
+                                         verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Best on-device agent — tool calling, 140+ languages, vision. Uses ~4 GB while running.",
+              notes: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running.",
               minimumRAMGB: 8),
         entry(id: "mlx-community/gemma-4-e4b-it-4bit",
               displayName: "Gemma 4 E4B (Agent+)",
-              estimatedSize: "5.1 GB",
+              snapshot: VerifiedSnapshot(revision: "475b9088d29754a3379866cf5aeb6b41acd313c2",
+                                         totalBytes: 5_179_241_512,
+                                         weightsBytes: 5_146_800_534,
+                                         fileCount: 10,
+                                         verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Bigger Gemma 4 — highest-quality on-device agent, with vision. Needs a high-memory device (12 GB).",
+              notes: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB).",
               minimumRAMGB: 12),
         // Vision models (can see photos from glasses)
         entry(id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
               displayName: "SmolVLM2 2.2B (Vision)",
-              estimatedSize: "1.5 GB",
+              snapshot: VerifiedSnapshot(revision: "844516024a1c4400d34489b89ee067d794e432ed",
+                                         totalBytes: 4_498_568_233,
+                                         weightsBytes: 4_493_651_795,
+                                         fileCount: 14,
+                                         verifiedOn: "2026-09-15"),
               quantization: nil,
-              notes: "Best small vision model — sees photos + video"),
+              notes: "Vision model — sees photos and video frames. Its weights are unquantized, so "
+                  + "both the download and the memory it needs are large for its parameter count."),
         entry(id: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
               displayName: "SmolVLM2 500M (Vision)",
-              estimatedSize: "0.35 GB",
+              snapshot: VerifiedSnapshot(revision: "fa57db46815177fbdfd65cc85a2b3416a8332268",
+                                         totalBytes: 1_019_926_804,
+                                         weightsBytes: 1_015_023_993,
+                                         fileCount: 14,
+                                         verifiedOn: "2026-09-15"),
               quantization: nil,
-              notes: "Tiny vision model — basic photo understanding"),
+              notes: "Small vision model — basic photo understanding."),
         // Text-only MLX models
         entry(id: "LiquidAI/LFM2.5-2.6B-MLX-4bit",
               displayName: "LFM2.5 2.6B (Reasoning)",
-              estimatedSize: "1.6 GB",
+              snapshot: VerifiedSnapshot(revision: "04efa23776ce61ec34ec95ec34c859854c89542b",
+                                         totalBytes: 1_601_123_632,
+                                         weightsBytes: 1_583_152_892,
+                                         fileCount: 10,
+                                         verifiedOn: "2026-09-15"),
               quantization: "4bit",
               notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
-                  + "pause before speech starts), then answers with strong tool use and "
-                  + "instruction following. Best quality per GB of the text-only models."),
+                  + "pause before speech starts), then answers with tool use and instruction "
+                  + "following."),
         entry(id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
               displayName: "Qwen 2.5 3B",
-              estimatedSize: "1.8 GB",
+              snapshot: VerifiedSnapshot(revision: "4f83f8f146fdf28b512a06562b671d7af4fab457",
+                                         totalBytes: 1_747_851_324,
+                                         weightsBytes: 1_736_293_090,
+                                         fileCount: 11,
+                                         verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Strong reasoning and tool use"),
+              notes: "General reasoning and tool use."),
         // (Gemma 2 2B was retired from this list in favour of the Gemma 4 pair above —
         // vision + tools at comparable footprints. Already-downloaded copies keep working:
         // loading is by id, its `LocalModelBudget` entry remains, and the legacy migration
         // gives it a compatibility descriptor.)
         entry(id: "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
               displayName: "Qwen 2.5 0.5B",
-              estimatedSize: "0.4 GB",
+              snapshot: VerifiedSnapshot(revision: "a5339a4131f135d0fdc6a5c8b5bbed2753bbe0f3",
+                                         totalBytes: 289_601_064,
+                                         weightsBytes: 278_064_920,
+                                         fileCount: 11,
+                                         verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Ultra-light, basic capability"),
+              notes: "Ultra-light, basic capability."),
     ]
 
     /// Build an entry, deriving every runtime fact from the one place that already owns it —
     /// context window from `LocalModelBudget`, working set from `MemoryHeadroom`, capabilities from
-    /// the asserted sets above. Nothing is inferred from the id string.
+    /// the asserted sets above, and every byte count from the verified snapshot. Nothing is
+    /// inferred from the id string, and nothing is parsed back out of display copy.
+    ///
+    /// Weights and download are deliberately different numbers: `estimatedWeightsBytes` is what
+    /// becomes resident (`model.safetensors`), while the download is the whole snapshot. The two
+    /// differ by only the tokenizer and configs here, but they are not the same fact.
     private static func entry(id rawID: String,
                               displayName: String,
-                              estimatedSize: String,
+                              snapshot: VerifiedSnapshot,
                               quantization: String?,
                               notes: String,
                               minimumRAMGB: Double = 0) -> Entry {
-        let weights = bytes(fromEstimatedSize: estimatedSize) ?? 0
+        let weights = snapshot.weightsBytes
         let working = MemoryHeadroom.workingOverheadBytes
         var capabilities: Set<LocalModelCapability> = [.text]
         if visionCapableModelIDs.contains(rawID) { capabilities.insert(.vision) }
@@ -131,9 +209,10 @@ enum LocalModelCatalog {
             displayName: displayName,
             runtime: .mlx,
             repositoryID: rawID,
-            // Honest: the MLX path has always fetched whatever `main` held. Pinning these is part
-            // of the acquisition work, and `installationFaults()` refuses to *download* an
-            // unpinned descriptor precisely so this cannot quietly become the new normal.
+            // Honest: the MLX path fetches whatever `main` holds. The snapshot records the sha its
+            // byte counts were measured at, but the descriptor stays unpinned, because
+            // `installationFaults()` refuses to *download* an unpinned descriptor precisely so a
+            // revision nothing actually requests cannot quietly become the new normal.
             revision: LocalModelDescriptor.floatingRevision,
             files: [],
             quantization: quantization,
@@ -144,7 +223,7 @@ enum LocalModelCatalog {
             minimumHeadroomBytes: weights + working,
             license: .unverified)
         return Entry(descriptor: descriptor,
-                     estimatedSize: estimatedSize,
+                     snapshot: snapshot,
                      notes: notes,
                      minimumRAMGB: minimumRAMGB)
     }
@@ -157,6 +236,13 @@ enum LocalModelCatalog {
 
     static func descriptor(for id: LocalModelID) -> LocalModelDescriptor? {
         entry(for: id)?.descriptor
+    }
+
+    /// Exact bytes a fresh install of this model pulls, or `nil` for an id the catalog does not
+    /// know. Never a guess: an uncatalogued id has no size, and callers must treat `nil` as
+    /// "unknown" rather than substituting a number.
+    static func downloadBytes(for id: LocalModelID) -> Int64? {
+        entry(for: id)?.snapshot.totalBytes
     }
 
     /// Every catalogued id, as raw strings.
@@ -195,15 +281,23 @@ enum LocalModelCatalog {
         descriptor(for: LocalModelID(rawID)) ?? compatibilityDescriptor(forLegacyMLXModelID: rawID)
     }
 
-    // MARK: - Size parsing
+    // MARK: - Size formatting
 
-    /// Parse an authored `"3.6 GB"` into bytes. Same rule the download-progress estimate has always
-    /// used, moved here so the catalog is the only place that reads its own copy.
-    static func bytes(fromEstimatedSize estimatedSize: String) -> Int64? {
-        let cleaned = estimatedSize.uppercased()
-            .replacingOccurrences(of: "GB", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        guard let gb = Double(cleaned), gb > 0 else { return nil }
-        return Int64(gb * 1_073_741_824)
+    /// The one way a *download or storage* size is written for a person, in decimal gigabytes —
+    /// the same units the model host quotes and iOS reports free space in, so the number in the
+    /// picker is the number the user sees their disk lose.
+    ///
+    /// (Memory is a different fact and stays in binary units: `LocalModelPresentation.formatBytes`
+    /// draws working-set and headroom figures, which are counted the way the allocator counts.)
+    ///
+    /// The rule, in full: one decimal place from 1 GB up ("4.5 GB"), two below it so a small model
+    /// is not rounded into "0.3 GB" ("0.29 GB"), and whole decimal megabytes under 100 MB. Zero or
+    /// negative bytes are not silently drawn as "0.0 GB" — an absent measurement says so.
+    static func formattedDownloadSize(_ bytes: Int64) -> String {
+        guard bytes > 0 else { return "Unknown size" }
+        let gb = Double(bytes) / 1_000_000_000
+        if gb >= 0.995 { return String(format: "%.1f GB", gb) }
+        if gb >= 0.0995 { return String(format: "%.2f GB", gb) }
+        return String(format: "%.0f MB", Double(bytes) / 1_000_000)
     }
 }

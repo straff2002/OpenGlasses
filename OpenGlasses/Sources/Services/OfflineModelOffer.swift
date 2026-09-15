@@ -27,7 +27,8 @@ enum OfflineModelOffer {
     /// a tier that doesn't work.
     static let minimumRAMGB: Double = 8
 
-    /// The download's stated size, from the catalog. Nil only for an id that is not in it.
+    /// The download's exact size, from the catalog's verified snapshot. Nil only for an id that is
+    /// not in it — and a nil never becomes a stated size, only an unstated one.
     @MainActor
     static var expectedSizeBytes: Int64? { LocalLLMService.expectedDownloadBytes(for: modelId) }
 
@@ -239,10 +240,13 @@ enum OfflineModelOffer {
         + "from Settings."
     }
 
-    /// One size format for every string above, so "3.6 GB" reads the same everywhere.
+    /// One size format for every string above — and the same one the model picker uses, so the
+    /// offer and the picker cannot quote different numbers for the same download.
+    ///
+    /// It formats decimal gigabytes (`LocalModelCatalog.formattedDownloadSize`). The binary
+    /// version this used to compute disagreed with the catalog's own figure for every model, and
+    /// with the free-space number iOS shows the user for their own disk.
     static func formattedSize(_ bytes: Int64) -> String {
-        let gb = Double(bytes) / 1_073_741_824
-        if gb >= 1 { return String(format: "%.1f GB", gb) }
-        return String(format: "%.0f MB", Double(bytes) / 1_048_576)
+        LocalModelCatalog.formattedDownloadSize(bytes)
     }
 }

@@ -9,6 +9,12 @@ import XCTest
 /// whole point: a projection is only a compatibility projection if it produces the same values in
 /// the same order, and a test that derived its expectations from the catalog would agree with any
 /// mistake the catalog made.
+///
+/// Two fields of that fixture moved under Plan FC P0, and only those two: `estimatedSize`, which is
+/// now derived from measured bytes rather than authored (the pre-seam strings were wrong — see
+/// `LocalModelVerifiedSizeTests`), and `notes`, where qualification claims nothing in this
+/// repository can support were removed. Ids, order, names, capabilities and RAM floors are
+/// untouched and still pinned verbatim, because those are what a saved selection depends on.
 final class LocalModelCatalogTests: XCTestCase {
 
     /// The list exactly as it was hard-coded in `LocalLLMService` before Plan DZ.
@@ -30,31 +36,32 @@ final class LocalModelCatalogTests: XCTestCase {
             estimatedSize: "3.6 GB",
             hasVision: true,
             hasToolCalling: true,
-            notes: "Best on-device agent — tool calling, 140+ languages, vision. Uses ~4 GB while running.",
+            notes: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running.",
             minimumRAMGB: 8),
         PreSeamModel(
             id: "mlx-community/gemma-4-e4b-it-4bit",
             name: "Gemma 4 E4B (Agent+)",
-            estimatedSize: "5.1 GB",
+            estimatedSize: "5.2 GB",
             hasVision: true,
             hasToolCalling: true,
-            notes: "Bigger Gemma 4 — highest-quality on-device agent, with vision. Needs a high-memory device (12 GB).",
+            notes: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB).",
             minimumRAMGB: 12),
         PreSeamModel(
             id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
             name: "SmolVLM2 2.2B (Vision)",
-            estimatedSize: "1.5 GB",
+            estimatedSize: "4.5 GB",
             hasVision: true,
             hasToolCalling: false,
-            notes: "Best small vision model — sees photos + video",
+            notes: "Vision model — sees photos and video frames. Its weights are unquantized, so "
+                + "both the download and the memory it needs are large for its parameter count.",
             minimumRAMGB: 0),
         PreSeamModel(
             id: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
             name: "SmolVLM2 500M (Vision)",
-            estimatedSize: "0.35 GB",
+            estimatedSize: "1.0 GB",
             hasVision: true,
             hasToolCalling: false,
-            notes: "Tiny vision model — basic photo understanding",
+            notes: "Small vision model — basic photo understanding.",
             minimumRAMGB: 0),
         PreSeamModel(
             id: "LiquidAI/LFM2.5-2.6B-MLX-4bit",
@@ -63,24 +70,24 @@ final class LocalModelCatalogTests: XCTestCase {
             hasVision: false,
             hasToolCalling: true,
             notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
-                + "pause before speech starts), then answers with strong tool use and "
-                + "instruction following. Best quality per GB of the text-only models.",
+                + "pause before speech starts), then answers with tool use and instruction "
+                + "following.",
             minimumRAMGB: 0),
         PreSeamModel(
             id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
             name: "Qwen 2.5 3B",
-            estimatedSize: "1.8 GB",
+            estimatedSize: "1.7 GB",
             hasVision: false,
             hasToolCalling: true,
-            notes: "Strong reasoning and tool use",
+            notes: "General reasoning and tool use.",
             minimumRAMGB: 0),
         PreSeamModel(
             id: "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
             name: "Qwen 2.5 0.5B",
-            estimatedSize: "0.4 GB",
+            estimatedSize: "0.29 GB",
             hasVision: false,
             hasToolCalling: true,
-            notes: "Ultra-light, basic capability",
+            notes: "Ultra-light, basic capability.",
             minimumRAMGB: 0),
     ]
 
@@ -109,17 +116,19 @@ final class LocalModelCatalogTests: XCTestCase {
         ])
     }
 
-    func testExpectedDownloadBytesUnchanged() {
-        // The concrete numbers, not a re-derivation: this drives the download progress bar.
+    func testExpectedDownloadBytesAreTheMeasuredSnapshotTotals() {
+        // The concrete numbers, not a re-derivation: this drives the download progress bar. They
+        // are now the measured repository totals (see `LocalModelVerifiedSizeTests` for the
+        // provenance), not an authored string times 2^30.
         XCTAssertEqual(LocalLLMService.expectedDownloadBytes(for: "mlx-community/gemma-4-e4b-it-4bit"),
-                       Int64(5.1 * 1_073_741_824))
+                       5_179_241_512)
         XCTAssertEqual(LocalLLMService.expectedDownloadBytes(for: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx"),
-                       Int64(0.35 * 1_073_741_824))
+                       1_019_926_804)
         XCTAssertNil(LocalLLMService.expectedDownloadBytes(for: "someone/custom-model-4bit"),
                      "an uncatalogued id has no expected size")
         for model in LocalLLMService.recommendedModels {
             XCTAssertNotNil(LocalLLMService.expectedDownloadBytes(for: model.id),
-                            "\(model.id) must parse")
+                            "\(model.id) must have a measured size")
         }
     }
 

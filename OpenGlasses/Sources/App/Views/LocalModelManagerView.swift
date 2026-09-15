@@ -370,7 +370,7 @@ struct LocalModelManagerView: View {
         } header: {
             Text("Recommended")
         } footer: {
-            Text("These models are tested on iPhone and optimized for size. Larger models need more RAM. Keep the app open while downloading — the screen stays awake automatically.")
+            Text("Each size is the exact download for that model, measured from its published files. Larger models need more memory as well as more space, and a model can be too large for this iPhone. Keep the app open while downloading — the screen stays awake automatically.")
         }
     }
 
