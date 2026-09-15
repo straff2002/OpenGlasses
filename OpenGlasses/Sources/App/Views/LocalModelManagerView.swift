@@ -302,11 +302,22 @@ struct LocalModelManagerView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             } else {
-                ProgressView(value: staging.fractionCompleted)
-                    .accessibilityLabel(row.state.spokenLabel)
-                    .accessibilityValue("\(Int(staging.fractionCompleted * 100)) percent")
+                // The bar is determinate only while bytes are actually moving. Checking the
+                // digests and moving the files into place are separate steps with no byte
+                // denominator of their own: leaving the transfer's fraction on screen there would
+                // show a finished download as though it were still arriving (Plan FC P2).
+                let phase = LocalModelPreparationPhase(staging: staging)
+                Group {
+                    if let fraction = phase.determinateFraction {
+                        ProgressView(value: fraction)
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .accessibilityLabel(row.state.spokenLabel)
+                .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
                 HStack {
-                    Text(fileProgressCaption(staging))
+                    Text(fileProgressCaption(staging, phase: phase))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -319,11 +330,21 @@ struct LocalModelManagerView: View {
         }
     }
 
-    private func fileProgressCaption(_ staging: LocalModelStagingSummary) -> String {
+    /// Byte counts belong to the transfer. Past it — checking, installing — the caption names the
+    /// step instead, because "4.5 GB of 4.5 GB" beside a spinner reads as a download that has
+    /// stalled at the finish line rather than as the work that comes after one.
+    private func fileProgressCaption(_ staging: LocalModelStagingSummary,
+                                     phase: LocalModelPreparationPhase) -> String {
+        let fileClause: String? = staging.fileCount > 1 && staging.fileNumber != nil
+            ? "File \(staging.fileNumber!) of \(staging.fileCount)"
+            : nil
+        guard phase.determinateFraction != nil else {
+            return [fileClause, phase.displayLabel].compactMap { $0 }.joined(separator: " · ")
+        }
         let sizes = "\(LocalModelPresentation.formatBytes(staging.completedBytes))"
             + " of \(LocalModelPresentation.formatBytes(staging.totalBytes))"
-        guard let number = staging.fileNumber, staging.fileCount > 1 else { return sizes }
-        return "File \(number) of \(staging.fileCount) · \(sizes)"
+        guard let fileClause else { return sizes }
+        return "\(fileClause) · \(sizes)"
     }
 
     @ViewBuilder
@@ -729,10 +750,20 @@ struct LocalModelManagerView: View {
         } else if row.isIncompatible {
             EmptyView()
         } else if loadingModelId == row.id {
+            // The service's own phase, not a local "is a load running" flag: it is the one place
+            // that knows whether the load is still running, or is finishing a stop that was
+            // already asked for (Plan FC P2).
+            let phase = localService?.preparation ?? .loading(fraction: nil)
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Loading…").font(.caption).foregroundStyle(.secondary)
+                Text(phase.isLoadActive ? phase.displayLabel : "Preparing")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(phase.isLoadActive
+                                ? phase.spokenLabel
+                                : LocalModelPreparationPhase.loading(fraction: nil).spokenLabel)
         } else if residentModelId == row.id {
             Button { unload() } label: {
                 Label("Loaded", systemImage: "checkmark.circle.fill")
@@ -826,26 +857,41 @@ struct LocalModelManagerView: View {
 /// Shared with the first-run offline-model offer (Plan DH P2), which drives the same service call
 /// — one download path in the app, so cancel, resume and the progress reading cannot diverge.
 ///
-/// Observes the service so the download progress actually updates — with a live percentage,
-/// because a multi-GB pull with no numbers reads as a hang. A compact spinner + percent, not a
-/// linear bar: the bar-plus-Cancel cluster was wide enough to crush the model name and its
-/// Vision/Tools badges in the same row.
+/// Observes the service so the status actually updates, and shows the *phase* it is in — a
+/// multi-gigabyte pull with nothing on screen reads as a hang, and a percentage with no phase
+/// name behind it cannot say whether the bytes are still arriving or the model is being prepared.
+/// A compact spinner + caption, not a linear bar: the bar-plus-Cancel cluster was wide enough to
+/// crush the model name and its Vision/Tools badges in the same row.
 struct DownloadProgressRow: View {
     @ObservedObject var service: LocalLLMService
     let onCancel: () -> Void
     @ScaledMetric(relativeTo: .body) private var cancelTapTarget: CGFloat = 44
 
     var body: some View {
+        let phase = service.preparation
         HStack(spacing: 6) {
             ProgressView()
                 .controlSize(.small)
-            if service.downloadProgress > 0 {
-                Text("\(Int(service.downloadProgress * 100))%")
-                    .font(.caption.monospacedDigit())
+            // The phase name, always — it is the difference between a transfer and the
+            // preparation that follows it, and between either of those and a stop that is still
+            // pending. The percentage is shown only where it counts something: beside a download
+            // whose total size is known.
+            VStack(alignment: .leading, spacing: 0) {
+                Text(phase.displayLabel)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                if let percent = phase.accessibilityPercent {
+                    Text("\(percent)%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(phase.spokenLabel)
+            .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
             // BK P5: a real Cancel — routes through the service so the in-flight
-            // download is actually stopped, not just hidden.
+            // download is actually stopped, not just hidden. FC P2: during a load it cannot stop
+            // promptly, so the phase says the stop is pending and the result is discarded.
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
@@ -853,7 +899,8 @@ struct DownloadProgressRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Cancel download")
+            .disabled(!phase.isCancellable)
+            .accessibilityLabel(phase.isLoadActive ? "Stop preparing this model" : "Cancel download")
         }
     }
 }

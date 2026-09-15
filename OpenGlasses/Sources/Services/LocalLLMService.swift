@@ -13,15 +13,71 @@ import UIKit
 @MainActor
 final class LocalLLMService: ObservableObject {
     @Published var isModelLoaded = false
-    @Published var downloadProgress: Double = 0
-    @Published var isDownloading = false
     @Published var isGenerating = false
-    @Published var isLoadingModel = false   // a model is being loaded into memory right now
     @Published var loadedModelId: String?
-    @Published var downloadingModelId: String?
+
+    /// Where the current download-or-load actually is (Plan FC P2). One value, so the screen can
+    /// never show a finished download as "Downloading 99%" while a distinct load runs, and a
+    /// load's own fraction can never be drawn as downloaded bytes. `isDownloading`,
+    /// `downloadProgress`, `downloadingModelId` and `isLoadingModel` are projections of this.
+    @Published private(set) var preparation: LocalModelPreparationPhase = .idle
+
+    /// The model the current phase is about — set for the whole preparation, including its
+    /// terminal states, so a cancelled or failed row can still name what it was preparing.
+    @Published private(set) var preparingModelId: String?
+
+    /// Identifies the current preparation attempt. Every download and every load takes the next
+    /// number, and only the attempt holding it may write the phase or activate a model. That is
+    /// what makes a late completion harmless: a superseded or cancelled load returns into a world
+    /// that has moved on, and its result is dropped rather than installed.
+    private var preparationGeneration = 0
+
+    /// The generation a cancel was asked for, when it could not be honoured immediately. Such an
+    /// attempt may still write its own `.cancelled`, but nothing else — so progress from a load
+    /// that cannot be stopped promptly does not paint over "Stopping…".
+    private var cancelledPreparationGeneration: Int?
 
     private var modelContainer: ModelContainer?
     private var activeDownloadTask: Task<Void, Error>?
+
+    // MARK: - Compatibility projections of `preparation`
+
+    /// 0…1 where the phase has a measurable fraction, 0 where it does not. Prefer `preparation`:
+    /// this number cannot say *what* it is measuring, which is how a load came to be drawn as a
+    /// download in the first place.
+    var downloadProgress: Double { preparation.determinateFraction ?? 0 }
+
+    /// Bytes are being fetched right now.
+    var isDownloading: Bool { preparation.isDownloadActive }
+
+    /// The model whose bytes are moving, or nil once the transfer has stopped for any reason.
+    var downloadingModelId: String? { preparation.isDownloadActive ? preparingModelId : nil }
+
+    /// Weights are being materialized right now (including a load whose stop is still pending).
+    var isLoadingModel: Bool { preparation.isLoadActive }
+
+    /// Write the phase on behalf of one attempt. Refuses on both counts that matter: a superseded
+    /// attempt writes nothing at all, and a cancelled one may write only its own terminal state.
+    private func setPreparation(_ phase: LocalModelPreparationPhase, generation: Int) {
+        guard generation == preparationGeneration else { return }
+        if cancelledPreparationGeneration == generation, phase != .cancelled { return }
+        preparation = phase
+    }
+
+    /// Claim the next attempt number, clearing any stop recorded against the previous one. Every
+    /// download and load starts here, which is what resets the phase across a retry or a switch
+    /// to a different model mid-preparation.
+    private func beginPreparation(of modelId: String) -> Int {
+        preparationGeneration &+= 1
+        cancelledPreparationGeneration = nil
+        preparingModelId = modelId
+        return preparationGeneration
+    }
+
+    /// Whether this attempt has been asked to stop.
+    private func isPreparationCancelled(_ generation: Int) -> Bool {
+        cancelledPreparationGeneration == generation || generation != preparationGeneration
+    }
 
     /// Chain-of-thought stripped from the last generation (reasoning models only; nil
     /// otherwise). Surfaced by LLMService for the prompt inspector — never spoken.
@@ -31,6 +87,12 @@ final class LocalLLMService: ObservableObject {
     /// cancellation — without touching the network. `nil` ⇒ the real `HubClient` path. Reports
     /// fractional progress; throws (e.g. `CancellationError`) to abort.
     var downloadFunction: ((_ modelId: String, _ onProgress: @escaping (Double) -> Void) async throws -> Void)?
+
+    /// Injectable preparation primitive (Plan FC P2), mirroring `downloadFunction`, so a test can
+    /// drive a slow load — and a cancel or a model switch during one — without Metal, which the
+    /// simulator does not have. `nil` ⇒ the real model-factory path. Reports the factory-shaped
+    /// fraction; returns whether the model was prepared as a vision model; throws to fail.
+    var loadFunction: ((_ modelId: String, _ onProgress: @escaping (Double) -> Void) async throws -> Bool)?
 
     /// Set when the app enters the background during a generation so the token loop
     /// can stop before submitting the next Metal command buffer (forbidden in the
@@ -146,34 +208,40 @@ final class LocalLLMService: ObservableObject {
         guard !isDownloading else {
             throw LocalLLMError.alreadyDownloading
         }
-        isDownloading = true
-        downloadingModelId = modelId
-        downloadProgress = 0
+        // The expected total decides whether this download can honestly show a percentage at all.
+        // A catalog model has a measured snapshot size (Plan FC P0); an uncatalogued id has no
+        // denominator, and the hub's per-file fraction is not one — a model is mostly one giant
+        // safetensors, so that fraction sits near 0 for the whole pull and then jumps. Such a
+        // download runs indeterminate rather than being given an invented number.
+        let expectedBytes = Self.expectedDownloadBytes(for: modelId)
+        let hasMeasurableTotal = (expectedBytes ?? 0) > 0
+        let generation = beginPreparation(of: modelId)
+        preparation = .downloading(fraction: hasMeasurableTotal ? 0 : nil)
         // A multi-GB pull dies when iOS auto-locks the screen (the app suspends and the transfer
         // is torn down), so keep the display awake for the duration. Restored in the defer on
         // every exit path — completion, cancel, or error. No other feature owns this flag.
         UIApplication.shared.isIdleTimerDisabled = true
         defer {
             UIApplication.shared.isIdleTimerDisabled = false
-            isDownloading = false
-            downloadingModelId = nil
             activeDownloadTask = nil
         }
 
-        // The hub's progress callback is per-FILE (a fresh 0→1 fraction each file), and a model
-        // is mostly one giant safetensors — so the fraction sits at 0 for the whole pull, then
-        // jumps to done. For catalog models (known expected size) poll the bytes actually on
-        // disk instead, as the SINGLE progress writer; unknown/custom ids keep the hub fraction.
-        let expectedBytes = Self.expectedDownloadBytes(for: modelId)
+        // Where the total is known, poll the bytes actually on disk as the SINGLE progress writer.
+        // The 0.99 ceiling is deliberate and is no longer a place a finished download can rest:
+        // the estimate is of bytes in flight, and only the transfer's own return moves the phase
+        // on — to `.loading` when a load follows, never to a "Downloading 99%" that outlives the
+        // download it was describing.
         let downloadStart = Date()
         var progressPoller: Task<Void, Never>?
-        if let expectedBytes, expectedBytes > 0 {
+        if let expectedBytes, hasMeasurableTotal {
             progressPoller = Task { [weak self] in
                 while !Task.isCancelled {
                     guard let self else { return }
                     let bytes = self.onDiskDownloadBytes(for: modelId, since: downloadStart)
                     let est = min(0.99, Double(bytes) / Double(expectedBytes))
-                    if est > self.downloadProgress { self.downloadProgress = est }   // monotonic
+                    if est > self.downloadProgress {   // monotonic
+                        self.setPreparation(.downloading(fraction: est), generation: generation)
+                    }
                     try? await Task.sleep(nanoseconds: 700_000_000)
                 }
             }
@@ -187,15 +255,17 @@ final class LocalLLMService: ObservableObject {
         let task = Task { [weak self] in
             guard let self else { return }
             if let fake = self.downloadFunction {
-                try await fake(modelId) { self.downloadProgress = $0 }
+                try await fake(modelId) {
+                    self.setPreparation(.downloading(fraction: $0), generation: generation)
+                }
             } else {
                 guard let repoID = Repo.ID(rawValue: modelId) else {
                     throw LocalLLMError.generationFailed("Invalid model id: \(modelId)")
                 }
-                _ = try await self.hub.downloadSnapshot(of: repoID) { @MainActor progress in
-                    // Single-writer rule: when the byte poller runs, the per-file fraction is
-                    // noise (it thrashes 1%↔99%); only unknown-size models use it.
-                    if expectedBytes == nil { self.downloadProgress = progress.fractionCompleted }
+                _ = try await self.hub.downloadSnapshot(of: repoID) { @MainActor _ in
+                    // Single-writer rule: the byte poller owns the fraction where there is one,
+                    // and where there is not, the hub's per-file fraction is not a substitute —
+                    // it measures one file of an unknown number. Nothing is written here.
                 }
             }
         }
@@ -204,22 +274,58 @@ final class LocalLLMService: ObservableObject {
             try await task.value
         } catch is CancellationError {
             PrivacyLog.localModel(.downloadCancelled, model: PrivacyToken(modelId))
+            setPreparation(.cancelled, generation: generation)
             throw CancellationError()
+        } catch {
+            setPreparation(.failed(reason: Self.preparationFailureReason(error)),
+                           generation: generation)
+            throw error
         }
 
-        downloadProgress = 1.0
+        // The transfer returned. That — not reaching an estimated byte count — is what ends the
+        // download phase.
+        setPreparation(.ready, generation: generation)
         PrivacyLog.localModel(.downloaded, model: PrivacyToken(modelId))
+    }
+
+    /// A failure as an already-user-ready sentence for `.failed`. It says what happened, never
+    /// where: a path, a prompt or a model-server credential must not reach the phase, which is
+    /// rendered on screen and read aloud.
+    private static func preparationFailureReason(_ error: Error) -> String {
+        if let typed = error as? LocalLLMError, let described = typed.errorDescription {
+            return described
+        }
+        return SafeErrorSummary(error).description
     }
 
     /// Cancel any in-progress download and reset state (BK P5). Now that the download runs inside
     /// `activeDownloadTask`, this actually stops it instead of just clearing the UI flags.
+    ///
+    /// FC P2 extends it to a load. A load cannot be stopped promptly — the model factory has no
+    /// cancellation seam and runs to completion on its own — so the stop is honoured by
+    /// *invalidation* instead: the attempt is marked cancelled, the phase says the stop is
+    /// pending, and when the load finally returns its container is discarded rather than
+    /// activated. The user is told which of the two happened rather than being shown a Cancel
+    /// that appears to have done nothing.
     func cancelDownload() {
-        activeDownloadTask?.cancel()
-        activeDownloadTask = nil
-        isDownloading = false
-        downloadingModelId = nil
-        downloadProgress = 0
         UIApplication.shared.isIdleTimerDisabled = false   // belt-and-braces with downloadModel's defer
+        switch preparation {
+        case .loading:
+            cancelledPreparationGeneration = preparationGeneration
+            preparation = .cancelling
+        case .queued, .downloading:
+            cancelledPreparationGeneration = preparationGeneration
+            activeDownloadTask?.cancel()
+            activeDownloadTask = nil
+            preparation = .cancelled
+        case .idle, .waitingForConsent, .verifying, .installing, .ready, .cancelling,
+             .cancelled, .failed:
+            // Nothing is in flight that this owns. Retire any stale task handle and leave the
+            // phase alone: overwriting a finished `.ready` with `.cancelled` would report a
+            // successful preparation as abandoned.
+            activeDownloadTask?.cancel()
+            activeDownloadTask = nil
+        }
     }
 
     /// Load an already-downloaded model into memory.
@@ -258,9 +364,47 @@ final class LocalLLMService: ObservableObject {
                 availableBytes: availableBytes)
         }
 
-        isLoadingModel = true
-        defer { isLoadingModel = false }
+        let generation = beginPreparation(of: modelId)
+        // Indeterminate to begin with: materializing weights has no denominator until the factory
+        // offers one, and it may never offer one.
+        preparation = .loading(fraction: nil)
+        defer {
+            // Never leave the phase mid-load. A path that returned without settling it (a throw
+            // from the factory) records the failure; a settled one is left as it is.
+            if generation == preparationGeneration, preparation.isLoadActive {
+                preparation = isPreparationCancelled(generation)
+                    ? .cancelled
+                    : .failed(reason: "The model couldn't be prepared.")
+            }
+        }
         unloadModel()
+
+        // Test seam (Plan FC P2), mirroring `downloadFunction`: MLX needs Metal, which the
+        // simulator has none of, so the phase progression is driven through a fake preparation
+        // instead. `nil` ⇒ the real factory path below. Returns whether the model was prepared
+        // as a vision model.
+        if let fakeLoad = loadFunction {
+            let usedVision: Bool
+            do {
+                usedVision = try await fakeLoad(modelId) { [weak self] fraction in
+                    self?.setPreparation(.loading(fraction: fraction), generation: generation)
+                }
+            } catch {
+                setPreparation(.failed(reason: Self.preparationFailureReason(error)),
+                               generation: generation)
+                throw error
+            }
+            guard !isPreparationCancelled(generation) else {
+                setPreparation(.cancelled, generation: generation)
+                throw CancellationError()
+            }
+            loadedViaVLMFactory = usedVision
+            loadedModelId = modelId
+            isModelLoaded = true
+            setPreparation(.ready, generation: generation)
+            PrivacyLog.localModel(.loaded, model: PrivacyToken(modelId), vision: usedVision)
+            return
+        }
 
         // MLX recycles evaluation buffers through a cache whose default limit is Metal's
         // recommendedMaxWorkingSetSize — effectively "all of RAM" on iPhone. Left uncapped,
@@ -279,17 +423,25 @@ final class LocalLLMService: ObservableObject {
                 configuration: config
             ) { progress in
                 Task { @MainActor in
-                    self.downloadProgress = progress.fractionCompleted
+                    // The factory's own fraction. It covers materializing the weights (it
+                    // refetches anything the snapshot is missing), so it is *preparation*
+                    // progress and is reported as such — writing it into the download's
+                    // progress, as this used to, is what drew a load as a download.
+                    self.setPreparation(.loading(fraction: progress.fractionCompleted),
+                                        generation: generation)
                 }
             }
         }
 
         let wantsVision = Self.visionModelIds.contains(modelId)
             && !visionDemotedModelIds.contains(modelId)
+        var prepared: ModelContainer?
+        var usedVision = false
+        do {
         if wantsVision {
             do {
-                modelContainer = try await load(with: VLMModelFactory.shared)
-                loadedViaVLMFactory = true
+                prepared = try await load(with: VLMModelFactory.shared)
+                usedVision = true
             } catch {
                 // The known shape of this failure was a quant whose weight tree didn't match
                 // the VLM export (keyNotFound …k_norm.weight — device trace 2026-07-15),
@@ -300,16 +452,34 @@ final class LocalLLMService: ObservableObject {
                 PrivacyLog.localModel(.visionDemoted, model: PrivacyToken(modelId),
                                       error: SafeErrorSummary(error))
                 visionDemotedModelIds.insert(modelId)
-                modelContainer = try await load(with: LLMModelFactory.shared)
-                loadedViaVLMFactory = false
+                prepared = try await load(with: LLMModelFactory.shared)
             }
         } else {
-            modelContainer = try await load(with: LLMModelFactory.shared)
-            loadedViaVLMFactory = false
+            prepared = try await load(with: LLMModelFactory.shared)
+        }
+        } catch {
+            setPreparation(.failed(reason: Self.preparationFailureReason(error)),
+                           generation: generation)
+            throw error
+        }
+        guard let container = prepared else {
+            let failure = LocalLLMError.generationFailed("The model couldn't be prepared.")
+            setPreparation(.failed(reason: Self.preparationFailureReason(failure)),
+                           generation: generation)
+            throw failure
         }
 
+        // The load is only *activated* here, after the wait — so a stop asked for while it ran,
+        // or a switch to another model, discards this container instead of making it resident.
+        guard !isPreparationCancelled(generation) else {
+            setPreparation(.cancelled, generation: generation)
+            throw CancellationError()
+        }
+        modelContainer = container
+        loadedViaVLMFactory = usedVision
         loadedModelId = modelId
         isModelLoaded = true
+        setPreparation(.ready, generation: generation)
         PrivacyLog.localModel(.loaded, model: PrivacyToken(modelId), vision: loadedViaVLMFactory)
     }
 

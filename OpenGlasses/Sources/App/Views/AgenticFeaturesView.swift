@@ -112,14 +112,27 @@ struct AgenticFeaturesView: View {
 
                     // In-progress download row with cancel
                     if localLLM.isDownloading, let dlId = localLLM.downloadingModelId {
+                        // Determinate only where the model's size is known (Plan FC P2): an
+                        // uncatalogued id has no total to divide by, and a bar drawn from a
+                        // per-file fraction is a number that means nothing.
+                        let phase = localLLM.preparation
                         HStack {
                             Label(modelShortName(dlId), systemImage: "arrow.down.circle")
                             Spacer()
-                            ProgressView(value: localLLM.downloadProgress).frame(width: 60)
-                            Text(String(format: "%.0f%%", localLLM.downloadProgress * 100))
+                            Group {
+                                if let fraction = phase.determinateFraction {
+                                    ProgressView(value: fraction)
+                                } else {
+                                    ProgressView()
+                                }
+                            }
+                            .frame(width: 60)
+                            .accessibilityLabel(phase.spokenLabel)
+                            .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
+                            Text(phase.accessibilityPercent.map { "\($0)%" } ?? phase.displayLabel)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 36)
+                                .frame(width: 80, alignment: .trailing)
                             Button("Cancel") { localLLM.cancelDownload() }
                                 .font(.caption)
                                 .foregroundStyle(OGTheme.errorLabel)
