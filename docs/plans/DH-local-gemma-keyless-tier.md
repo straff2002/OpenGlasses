@@ -76,6 +76,18 @@ is one download path in the app with one cancel, one resume and one progress rea
 mid-download is stated in the footer rather than left to faith, and both ends of the wait are
 spoken for VoiceOver.
 
+**Revised 2026-09-11 ([#465](https://github.com/straff2002/OpenGlasses/pull/465)): a phone under
+the floor is offered a smaller model, not refused.** The four verdicts above left a phone below
+Gemma's 8 GB floor (6 GB iPhones such as the 14 Pro) with nothing, although most of the catalog
+carries no floor. `Verdict.offerSmaller` now offers the first catalog entry that fits (in
+`LocalModelCatalog.entries` order, never the primary): SmolVLM2 2.2B, stated as 1.5 GB. It gets
+its own storage check at its own size and its own already-downloaded check, and its copy says
+plainly that it is the smaller model. `deviceTooSmall` is kept for a device nothing in the catalog
+fits. The same change routed every RAM gate through `LocalLLMService.deviceMeetsRAMFloor`, which
+rounds reported memory up to the nominal size. That fixed the model picker hiding Gemma on 8 GB
+phones, which report about 7.5 GB. The decision is covered headlessly (`OfflineModelOfferTests`,
+18 to 26 cases). **Owed:** a run on a 6 GB device (iPhone 14 Pro).
+
 **Also in this change (not from this plan):** the delete-and-reinstall welcome-back page. The
 Keychain outlives an app delete and `UserDefaults` does not, so the onboarding gate read surviving
 credentials as "already set up" and skipped silently. `Config.isReinstall` is the pure verdict —

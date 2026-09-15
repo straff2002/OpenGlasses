@@ -1,8 +1,11 @@
 # Plan EG — Vault Packs (authored vaults as sellable, signed, downloadable content)
 
-**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green; the signed
-`vaultpacks/catalog.json` is minted by the vendor with the off-repo key, App Store Connect products
-per pack, and P3's first packs pending). What landed: `VaultPackManifest` (`pack.json`), archive
+**Status:** 🚧 P1 + P2 implemented 2026-09-03 (headless suite green). A signed **empty**
+`vaultpacks/catalog.json` is committed (re-signed at the 2026-09-04 key rotation), verifies against
+the production key, and has been published on the Pages site since
+[#485](https://github.com/straff2002/OpenGlasses/pull/485) (2026-09-15; checked live, HTTP 200,
+bytes identical to the repo). Still pending: App Store Connect products per pack, and P3's first
+packs. What landed: `VaultPackManifest` (`pack.json`), archive
 extraction over the existing zip reader, signature verify/sign reusing the skill-pack message and
 key, `VaultPackCatalog` with the BX envelope, the `VaultPackAccess` table, `VaultPackRowState`;
 licence payload `packs` claim carried on the evidence and unioned by `livePacks` (a lapsed code
