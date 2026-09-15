@@ -349,7 +349,14 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     // MARK: - System Instruction
 
     private func buildSystemInstruction() -> String {
-        var prompt = Config.systemPrompt
+        // This builder used to start from `Config.systemPrompt` alone, which meant the selected
+        // LiveAI mode reached Gemini and silently vanished here: a wearer who picked Blind
+        // Assistant and happened to be on the OpenAI Realtime backend got the generic assistant,
+        // with none of the safety framing the preset exists to supply. Same seam, same order as
+        // the Gemini manager's twin of this call (Plan FF P0).
+        let mode = Config.activeLiveAIMode
+        var prompt = BlindAssistanceContract.composeLiveInstruction(
+            modePrefix: mode.promptPrefix, basePrompt: Config.systemPrompt, modeID: mode.id)
 
         if isCameraStreaming {
             prompt += """

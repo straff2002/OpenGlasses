@@ -25,7 +25,17 @@ enum ReadingMode: String, CaseIterable {
 
     /// Build the instruction prepended to the OCR text for the main LLM.
     /// `level` and `targetLanguage` default from `ReadingProfile` when nil.
+    ///
+    /// Every mode carries the shared blind-assistance reading fragments (Plan FF P0), including
+    /// the transforming ones. Simplifying and translating are exactly where a model is most
+    /// tempted to smooth a gap shut — a missing dosage becomes a plausible dosage — and the wearer
+    /// cannot look down and check. The mode's own directive still owns the output shape.
     func directive(level: ReadingProfile.Level? = nil, targetLanguage: String? = nil) -> String {
+        BlindAssistanceContract.applying(BlindAssistanceContract.readingFragments,
+                                         to: modeDirective(level: level, targetLanguage: targetLanguage))
+    }
+
+    private func modeDirective(level: ReadingProfile.Level?, targetLanguage: String?) -> String {
         switch self {
         case .read:
             return """

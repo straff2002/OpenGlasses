@@ -38,16 +38,27 @@ final class NavigationAssistService: ObservableObject {
 
     var isConfigured: Bool { camera != nil && llm != nil && tts != nil }
 
-    static let systemPrompt = """
+    /// The mobility prompt, plus the shared blind-assistance contract's environment fragments.
+    ///
+    /// The urgency ladder used to grade its own floor as *"low = clear path"*, which handed the
+    /// model a phrase this service must never produce: the loop sees one filtered still every few
+    /// seconds, and grading a frame as a clear path asserts something about the ground, the traffic
+    /// and the next few seconds that no single frame can support. Low now means only what it can
+    /// mean — nothing hazardous was observed *in this view* — and the ladder says outright that
+    /// this is not the same claim. The JSON shape is untouched; `AssistiveAdvice.parse` and the
+    /// "view unclear" sentinel `tick()` filters on both depend on it (Plan FF P0).
+    static let systemPrompt = BlindAssistanceContract.applying(
+        BlindAssistanceContract.environmentFragments, to: """
     You are a mobility aid for a low-vision user who is walking. Report ONLY movement-relevant \
     hazards and landmarks: steps, drop-offs, curbs, doors, obstacles, oncoming people or vehicles. \
     Use clock positions and rough distance (e.g. "step down, two o'clock, about one meter"). One \
     sentence, at most 15 words. Respond ONLY in valid JSON: \
     {"advice": string, "urgency": "low"|"medium"|"high", "followup": string optional}. \
-    urgency: low = clear path, medium = obstacle to navigate, high = immediate hazard (drop-off, \
-    vehicle, collision). If the view is unclear, set advice to "view unclear" with urgency low. \
-    No markdown.
-    """
+    urgency: low = no hazard observed in view, medium = obstacle to navigate, high = immediate \
+    hazard (drop-off, vehicle, collision). Seeing no hazard in one frame does not establish that \
+    the way ahead is clear, empty or safe — never say or imply that it is. If the view is \
+    unclear, set advice to "view unclear" with urgency low. No markdown.
+    """)
 
     // MARK: - Lifecycle
 

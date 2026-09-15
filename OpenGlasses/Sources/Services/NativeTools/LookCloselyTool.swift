@@ -86,10 +86,10 @@ final class LookCloselyTool: NativeTool {
             }
         } catch is TimeoutError {
             PrivacyLog.vision(.lookClosely, .captureTimedOut)
-            return "Couldn't get a sharp frame — the camera did not deliver a photo in time. Answer from the streamed view and say fine detail may be missing."
+            return "Couldn't get a sharp frame — the camera did not deliver a photo in time. The detail that needed the photo is still unread: do NOT answer it from the streamed view. Tell the user the photo did not arrive, ask them to hold the item steady, and offer to try again. Never guess characters, digits, names or dates."
         } catch {
             PrivacyLog.vision(.lookClosely, .captureFailed, error: SafeErrorSummary(error))
-            return "Couldn't get a sharp frame (\(error.localizedDescription)). Answer from the streamed view and say fine detail may be missing."
+            return "Couldn't get a sharp frame (\(error.localizedDescription)). The detail that needed the photo is still unread: do NOT answer it from the streamed view. Tell the user the photo failed, ask them to hold the item steady, and offer to try again. Never guess characters, digits, names or dates."
         }
 
         lastCaptureAt = Date()
