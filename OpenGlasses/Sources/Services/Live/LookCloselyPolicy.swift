@@ -25,11 +25,11 @@ enum LookCloselyPolicy {
         // model-initiated capture doesn't qualify. The stream frame is already in its view.
         if posture == .reserve {
             return .declineWithReason(
-                "The battery is in power reserve, so no fresh photo was taken. Answer from the most recent camera frame you can already see, and say the view may lack fine detail.")
+                "The battery is in power reserve, so no fresh photo was taken. Read only what is actually legible in the most recent camera frame you can already see, say that fine detail may be missing, and never guess characters, digits, names or dates you cannot read.")
         }
         if let elapsed = secondsSinceLastCapture, elapsed < minimumCaptureInterval {
             return .declineWithReason(
-                "A sharp photo was captured only moments ago and is already in your view — read the detail from that image rather than requesting another.")
+                "A sharp photo was captured only moments ago and is already in your view — read the detail from that image rather than requesting another. Anything still not legible in it stays unread; do not guess it.")
         }
         return .captureSharpFrame
     }

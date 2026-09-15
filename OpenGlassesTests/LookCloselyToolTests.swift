@@ -110,7 +110,12 @@ final class LookCloselyToolTests: XCTestCase {
         // A thrown error would surface as a bare tool failure; the model needs marching orders.
         XCTAssertTrue(result.contains("Couldn't get a sharp frame"))
         XCTAssertTrue(result.contains("lens cap on"))
-        XCTAssertTrue(result.contains("fine detail may be missing"))
+        // Plan FF P0: this used to pin "fine detail may be missing", i.e. answer from the stream
+        // anyway and hedge. For a wearer who cannot check the label themselves that is the wrong
+        // degrade — the still was requested precisely because the stream could not resolve it.
+        XCTAssertTrue(result.contains("do NOT answer it from the streamed view"))
+        XCTAssertTrue(result.contains("Never guess characters, digits, names or dates"))
+        XCTAssertFalse(result.lowercased().contains("answer from the streamed view and say"))
         XCTAssertTrue(recorder.events.isEmpty, "failed capture must not inject anything")
     }
 

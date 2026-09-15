@@ -32,21 +32,29 @@ enum AssistiveRouter {
     "followup": string (<10 words, optional)}. No markdown, no extra text.
     """
 
+    /// The mode prompt, plus the blind-assistance fragments that apply to it (Plan FF P0).
+    ///
+    /// Scene mode describes the environment to someone who is relying on the description, so it
+    /// takes the environment set. Social mode describes a person's apparent emotional state — it
+    /// neither routes movement nor reads text — so it takes only the two rules that apply to any
+    /// spoken answer. Both keep `jsonContract` intact and the fragments land after it.
     static func systemPrompt(for mode: Mode) -> String {
         switch mode {
         case .scene:
-            return """
+            return BlindAssistanceContract.applying(
+                BlindAssistanceContract.environmentFragments, to: """
             You are an assistive AI for neurodivergent users. Provide calm, clear, grounded \
             real-time support based on what the user sees. One sentence under 15 words. Identify \
             the most useful information proactively. Assign urgency. \(jsonContract)
-            """
+            """)
         case .social:
-            return """
+            return BlindAssistanceContract.applying(
+                BlindAssistanceContract.spokenOutputFragments, to: """
             You are an assistive AI for neurodivergent users. Help the user understand the emotional \
             state of the person they are looking at — calmly, concisely, in real time. Urgency: \
             low = calm/positive, medium = unease, high = distress. If no person is visible, suggest \
             repositioning. \(jsonContract)
-            """
+            """)
         }
     }
 
@@ -139,7 +147,12 @@ extension AssistiveRouter {
     ///
     /// "Describe what changed" is not asked for here. The loop only generates on a scene `FrameGate`
     /// already called distinct, and a model asked what changed will invent a change to report.
-    static let narrationSystemPrompt = """
+    /// Composed with the environment fragments, minus `preserveFormat`: this prompt is read by
+    /// `NarrationGate`'s scorer through the words that come back, and the one format rule worth
+    /// stating here — one plain sentence, no scaffolding — the prompt already states itself
+    /// (Plan FF P0).
+    static let narrationSystemPrompt = BlindAssistanceContract.applying(
+        BlindAssistanceContract.environmentFragments.filter { $0 != .preserveFormat }, to: """
     You describe what a wearer of smart glasses is looking at, for someone who cannot see it.
 
     Reply with ONE plain sentence, under 20 words, describing the space and what matters in it: \
@@ -148,7 +161,7 @@ extension AssistiveRouter {
 
     Do not open with "the image shows" or "I see" — say the thing itself. No markdown, no lists, \
     no preamble: this is spoken aloud.
-    """
+    """)
 
     /// The user-message text accompanying a narration frame.
     static let narrationUserText = "Describe what I'm looking at."

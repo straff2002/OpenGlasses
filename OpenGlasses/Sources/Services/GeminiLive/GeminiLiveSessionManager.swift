@@ -498,9 +498,13 @@ class GeminiLiveSessionManager: ObservableObject {
     /// Build the full system instruction for Gemini Live, including vision capabilities,
     /// tool usage instructions, and the user's current location.
     private func buildSystemInstruction() -> String {
-        // Apply LiveAI mode prefix (e.g., museum guide, accessibility, translator)
-        let modePrefix = Config.activeLiveAIMode.promptPrefix
-        var prompt = modePrefix + Config.systemPrompt
+        // Apply the LiveAI mode prefix (e.g. museum guide, Blind Assistant, translator) through
+        // the shared seam, so this backend and the OpenAI Realtime one compose the preset in the
+        // same order — prefix, then the configured prompt, then the blind-assistance precedence
+        // note when that preset is the selected one (Plan FF P0).
+        let mode = Config.activeLiveAIMode
+        var prompt = BlindAssistanceContract.composeLiveInstruction(
+            modePrefix: mode.promptPrefix, basePrompt: Config.systemPrompt, modeID: mode.id)
 
         // Vision prompt depends on whether camera frames are actually flowing.
         // When streaming: full vision instructions.
