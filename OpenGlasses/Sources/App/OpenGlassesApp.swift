@@ -918,6 +918,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Narrates session transitions to VoiceOver (Plan DF P2). Held so it outlives
     /// `configureAccessibilityAnnouncements`, since the repeat guard is its state.
     private var sessionAnnouncer: SessionAnnouncer?
+    /// Plan FF P0/PR2 — the audible session lifecycle for the Blind Assistant preset. Held for the
+    /// life of the app: its queue, its generation counter and its bounded waits are the state that
+    /// stops a stale "disconnected" playing after a recovery.
+    private(set) var audibleLifecycle: AudibleLifecycleCoordinator?
     private var autoSleepTask: Task<Void, Never>?
     private var currentLLMTask: Task<Void, Never>?
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
@@ -3576,6 +3580,9 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
+            // Plan FF P0/PR2: the wearer asked for this photo, and it exists. The haptic and the
+            // banner below are both sighted-or-handheld feedback.
+            noteRequestedCaptureSucceeded()
             lastResponse = "Photo saved to camera roll"
         } catch {
             if currentMode == .direct {
@@ -3822,7 +3829,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 assistantIsSpeaking: self.speechService.isSpeaking
                     || self.geminiLiveSession.isModelSpeaking
                     || self.openAIRealtimeSession.isModelSpeaking,
-                thinkingSoundPlaying: self.speechService.isPlayingThinkingSound)
+                thinkingSoundPlaying: self.speechService.isPlayingThinkingSound,
+                blindAssistantCuesActive: Self.blindAssistantCuesActive)
         })
         sessionAnnouncer = announcer
 
@@ -3875,6 +3883,63 @@ class AppState: ObservableObject, AppStateProtocol {
         observe($isListening) { .listening($0) }
         observe(speechService.$isSpeaking) { .speaking($0) }
         observe($isConnected) { .glassesConnected($0) }
+
+        configureAudibleLifecycle()
+    }
+
+    /// Whether the audible lifecycle is the wearer's chosen experience.
+    ///
+    /// Read live rather than captured: the preset is a setting the wearer can change between
+    /// sessions, and a coordinator that decided once at launch would keep cueing a wearer who has
+    /// since switched away — or stay silent for one who has just switched in.
+    static var blindAssistantCuesActive: Bool {
+        Config.activeLiveAIModeId == BlindAssistanceContract.presetID
+    }
+
+    // MARK: - Audible Lifecycle (Plan FF P0/PR2)
+
+    /// Build the coordinator and hand each realtime backend the seam it reports through.
+    ///
+    /// The sinks are the app's existing ones: the earcons are `TextToSpeechService`'s tones and the
+    /// lines go through the same `speak` every other spoken response uses, so the lifecycle
+    /// inherits ducking, the glasses route and the HUD mirror rather than opening a second player.
+    private func configureAudibleLifecycle() {
+        let lifecycle = AudibleLifecycleCoordinator(
+            isActive: { Self.blindAssistantCuesActive },
+            style: { Config.blindAssistantCueStyle },
+            route: { [weak self] in
+                guard let self else { return .init() }
+                return AudibleLifecyclePolicy.SpeechRoute(
+                    assistantSpeaking: self.speechService.isSpeaking
+                        || self.geminiLiveSession.isModelSpeaking
+                        || self.openAIRealtimeSession.isModelSpeaking,
+                    voiceOverAnnouncing: SessionAnnouncer.isAnnouncingToVoiceOver)
+            },
+            visualEvidence: { [weak self] in
+                self?.cameraService.readinessNow.hasFreshVisualEvidence ?? false
+            },
+            playEarcon: { [weak self] earcon in
+                self?.speechService.playLifecycleEarcon(earcon)
+            },
+            speak: { [weak self] line, interrupts in
+                guard let self else { return }
+                // An interrupting line is the terminal failure: it takes the floor, because there
+                // is nothing further coming and the wearer is otherwise left waiting on silence.
+                if interrupts { self.speechService.stopSpeaking() }
+                Task { @MainActor in
+                    await self.speechService.speak(line, urgency: interrupts ? .high : .low)
+                }
+            })
+        audibleLifecycle = lifecycle
+
+        geminiLiveSession.onLifecycle = { signal in lifecycle.handle(signal) }
+        openAIRealtimeSession.onLifecycle = { signal in lifecycle.handle(signal) }
+    }
+
+    /// A capture the wearer asked for produced an image. Called from `look_closely` and from the
+    /// voice/photo capture path — never from the live session's periodic frame sampling.
+    func noteRequestedCaptureSucceeded() {
+        audibleLifecycle?.handle(.requestedCaptureSucceeded)
     }
 
     // MARK: - Power Policy (Plan BV P2)

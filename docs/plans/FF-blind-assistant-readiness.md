@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0/PR1 implemented 2026-09-16 — one shared blind-assistance contract, composed across the live preset, both realtime backends and the assistive services, with composition tests and a response auditor. PR2–PR6 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation and no live model output has been captured yet.**
+**Status: 🚧 P0 PR1+PR2 implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; and an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard. PR3–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output and no on-glasses audio check has been captured yet.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -18,7 +18,7 @@ The online experience looks close enough for a focused hardening and user-valida
 | Non-visual activation | `AskOpenGlassesIntent` and `ToggleGeminiLiveIntent` support Action Button shortcuts; wake-word activation and launch-time listening exist. VoiceOver semantics and UI audits exist. | Launch listening is not opt-in auto-start of a Gemini session. Experimental temple media trigger needs hardware validation; do not equate it with capture-button support. Finish the full setup/recovery journey without sight. |
 | Blind-user prompt | **P0 done.** `BlindAssistanceContract` holds the rules once; the Blind Assistant preset prefix is composed from it, both realtime backends apply the preset through one seam, and navigation, narration, assistive-mode and reading compose the fragments that apply to them. | Live model outputs still to be captured against `BlindAssistanceResponseAudit` on device (see the P0 evidence note). |
 | Reading-quality capture | `LookCloselyTool` captures a sharp still and injects it into the active live session, with timeout and power/cooldown policy. **P0 rewrote the failure and decline copy**: it no longer permits answering the fine-detail question from the stream. | Establish that natural reading requests reliably invoke it and that delivered image detail survives the complete pipeline (PR4). |
-| Audible state | TTS exposes connect/disconnect/listening/photo tones. Session announcements are wired in AppState; Gemini terminal failures speak locally. | VoiceOver announcements require VoiceOver and can be dropped during assistant speech. Reconnected callback restarts capture without an explicit cue there. Prove all four requested states are audible, including cloud recovery rather than only Bluetooth changes. |
+| Audible state | **P0/PR2 done in code.** `AudibleLifecyclePolicy` + `AudibleLifecycleCoordinator` give session-usable, connection-lost, service-usable-again and requested-capture-succeeded a distinct earcon and a short spoken line, delivered through the app's own speech path with VoiceOver on or off; the recovery cue is evaluated from evidence rather than at callback time, and `SessionAnnouncementPolicy` now subtracts the transitions the cues own. | Nothing heard on hardware yet: glasses output with the phone pocketed, a queued cue distinguished from a heard one, and VoiceOver on a device are all owed (see the PR2 evidence note). |
 | Session resilience | Gemini has coalesced bounded reconnects, ten-attempt limit, resumption handles and server-rotation handling. | Verify actual context continuity and usable microphone/frame recovery. Audio restart failure is logged in the reconnect callback; connection success alone is insufficient. Exhaustion ends the session. |
 | Offline local vision | MLX local vision and capability guards exist; offline turn-loop/freshness/assembler tests exist. | BU explicitly leaves offline service device wiring pending. No automatic takeover exists in the inspected Gemini failure path. llama.cpp currently advertises no vision and rejects images; a downloaded text model is not a visual fallback. |
 | Safety framing | **P0 done for the online paths.** `clear path` is gone from the navigation prompt and from every prompt this app composes; the shared safeguards reach Blind Assistant, navigation, reading, narration and the assistive-mode prompts. | The local/offline fallback prompts are PR6-7 work and do not compose the contract yet. |
@@ -126,6 +126,114 @@ Reuse TTS/earcons, `SessionAnnouncementPolicy` and existing speech/audio arbitra
 - Make cue settings accessible. Announce requested capture success only after capture succeeds, not on button press or repeated background sampling.
 
 Acceptance: injected transition sequences plus actual audio delivery checks for start, loss, retry, recovery, exhaustion, capture timeout, assistant speaking and VoiceOver speaking. Verify glasses output with the phone pocketed and distinguish a queued cue from a heard cue. Coordinate with FE's delivery feedback work.
+
+### P0 / PR2 evidence note — implemented 2026-09-16
+
+Build: worktree on `feat/ff-p1-audible-lifecycle`, stacked on the PR1 branch, build 394. Debug
+simulator build, the focused classes, the full `OpenGlassesTests` suite (5826 tests, 13 skipped,
+0 failures) and a Release simulator build all green on an iPhone 17 Pro simulator. No hardware run.
+
+**The four feedbacks.** `Services/Accessibility/AudibleLifecyclePolicy.swift` is pure and holds the
+whole decision; `AudibleLifecycleCoordinator.swift` holds the queue, the generation counter and the
+injected clock. Each notice is one earcon plus — under the wearer's chosen style — one short line:
+
+| Notice | Earcon | Line |
+|---|---|---|
+| Session usable | rising pair | "Ready. I'm listening." |
+| Connection lost / retrying | falling pair | "Connection lost. Trying to get it back." |
+| Service usable again | rising triad | "Back. I'm listening." |
+| …audio back, camera not | rising triad | "Audio is back. The camera isn't — I can hear you, but I can't see." |
+| Requested photo captured | short bright blip | "Photo taken." |
+| Reconnected, microphone did not restart | low double | "Connected again, but the microphone didn't come back. Stop and start the session to try again." |
+| Retries exhausted (terminal) | low double | "Connection lost. I couldn't get it back." |
+
+The last two are not extra features; they are the two honest endings the same signals produce. The
+degraded-reconnect line replaces a `PrivacyLog` entry that was previously the only response to an
+audio restart that threw.
+
+"Usable" is all three facts — audio session active, transport ready, microphone capture started —
+not the socket alone; a connected session with a dead microphone says nothing rather than inviting
+the wearer to talk into a void. The recovery shape is derived from evidence
+(`RecoveryEvidence`: audio restored, whether the session needs to see, `CameraReadiness`'s fresh
+visual evidence) and never from the callback's timing.
+
+**Queue, coalesce, expire.** A notice arriving while speech occupies the route — the assistant
+speaking, or an announcement this app posted to VoiceOver still in flight — is queued, not dropped
+and not played over the top. Then:
+
+* A recovery statement **expires a queued, never-delivered loss**, so "disconnected" cannot play
+  after the connection came back. A loss *after* a delivered recovery is a new notice.
+* A recovery whose loss was never heard is itself dropped when it is the plain "back, I'm listening"
+  — the wearer experienced no interruption, so there is nothing to correct. A *degraded* recovery is
+  said regardless, because a camera that is no longer usable is new information either way.
+* Failure notices never go stale by time; notices about a moment do (capture 4 s, ready 10 s,
+  recovery 20 s) and are dropped rather than played late.
+* The only outstanding failure notice is never dropped: after a bounded 8 s wait it goes out even on
+  a busy route, and the terminal exhaustion cue goes out with `interrupts: true` — the one notice
+  allowed to take the floor.
+* The queue is bounded at four and evicts by priority, so a backlog of capture cues can never push
+  the failure out. A notice from a replaced session is dropped by generation.
+* Cues are audible with VoiceOver **off**; with VoiceOver on, `AnnouncementContext.blindAssistantCuesActive`
+  makes `SessionAnnouncementPolicy.hasOwnAudioCue` claim the live-session and reconnecting
+  transitions, so the screen reader stops reading what the cues now say. The other transitions
+  (camera, mic mute, errors) are untouched in both directions.
+
+**Signals wired, per backend.** Both realtime managers gained one seam, `onLifecycle`, returning
+whether the coordinator took responsibility — which is what lets each manager keep its existing
+`speakLocalCue` for every wearer who has *not* selected Blind Assistant without two voices saying
+the same thing.
+
+| Signal | Gemini Live | OpenAI Realtime |
+|---|---|---|
+| Session usable | end of `startSession()`, connection state re-read | same, from `connectionState == .ready` |
+| Connection lost, retrying | `reconnecting` false→true edge in the state poll | same edge on its own poll |
+| Connection lost, terminal | `onDisconnected` where no retry is running, reported *before* the teardown | same |
+| Reconnected | `onReconnected`, carrying whether `startCapture()` actually restarted | same |
+| Retries exhausted | `onReconnectExhausted` | same |
+
+**Not exposed by either backend**, and therefore not claimed: neither service reports *which* retry
+attempt is running or how many remain, so the retry cue is one statement rather than a countdown;
+neither reports the audio route separately from capture, so "audio session active" is inferred from
+a capture that started without throwing; and neither has a post-setup "ready" callback distinct from
+its polled `connectionState`. OpenAI Realtime has no resumption-handle concept, so its recovery
+carries no claim about context continuity — that is PR5's to establish.
+
+**Where the capture cue moved.** It did not move away from a button press, because there was none:
+`look_closely` — the requested sharp capture a blind wearer's reading request goes through — had no
+audible confirmation at all, and `capturePhotoFromGlasses` had only a haptic and a screen banner.
+The cue is now fired from `LookCloselyTool` at the capture-succeeded boundary, after the timeout,
+failure, power-reserve and cooldown paths have all already returned, and from
+`capturePhotoFromGlasses` on success. The live session's periodic frame sampling is untouched and
+silent. `capturePhotoSilently`'s existing tone is unchanged: it is one deliberate silent capture,
+not repeated background sampling.
+
+**Cue learning and settings.** Accessibility settings gained a **Session Sounds** section: a
+"Play the Sounds" button that plays each earcon and then says what it means, and a
+"Speak What Each Sound Means" toggle (on by default) selecting spoken lines or tones only — turning
+the words off never makes an event silent. The tour runs whichever preset is selected, so a wearer
+deciding *whether* to use Blind Assistant can hear what it will sound like first.
+
+**Evidence.** 48 new headless tests: `AudibleLifecycleTests` (35) drives the coordinator through the
+same `handle(_:)` the managers call, with a fake clock, a fake route and a recording tone/speech
+sink, asserting the recorded order — start→usable, the two unusable start shapes, loss→recovery,
+"disconnected" after recovery, a loss after a recovery, the recovery not decided at callback time,
+the camera-unavailable variant, the audio-only variant, the degraded reconnect, exhaustion through a
+busy route, exhaustion superseding a queued loss, the bounded wait, capture success, a stale capture
+dropped, queue-then-deliver, an announcement in flight as a busy route, VoiceOver on and off,
+the bound, priority order, generation expiry, the repeat window, tones-only, another preset left
+alone, and the cue tour — plus `LookCloselyToolTests` (13, five new) pinning that the cue fires only
+after a capture succeeds and on no decline, timeout or failure path.
+`SessionAnnouncementTests` (16), `RealtimeReconnectTests` (19), `BlindAssistanceContractTests` (32)
+and `CameraReadinessTests` (6) stay green unchanged.
+
+**Owed — hardware.** Everything above is fixture-level. Three device checks remain and none can be
+made in a simulator: **glasses output with the phone pocketed** (the cues must arrive in the ear,
+through the same route the assistant's voice uses, with the screen off); **a queued cue distinguished
+from a heard cue** (drop the network while the assistant is mid-answer and confirm the wearer hears
+the loss cue only when the answer ends, or at the 8 s bound, and never after a recovery); and
+**VoiceOver on hardware**, confirming the cue is heard with VoiceOver both on and off and that the
+screen reader no longer reads the session transitions the cues now own. The 8 s bound, the 3 s
+recovery-evidence window and the five tone contours are proposals until a wearer has heard them.
 
 ## P1 / PR3 — Complete the non-visual entry journey
 

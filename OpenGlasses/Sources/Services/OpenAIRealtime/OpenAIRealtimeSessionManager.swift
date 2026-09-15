@@ -37,6 +37,11 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         localCueSynth.speak(utterance)
     }
 
+    /// Plan FF P0/PR2 — the same lifecycle seam the Gemini manager carries, wired to the signals
+    /// this backend actually exposes. Returns whether the coordinator took the spoken cue; the
+    /// local cues below are unchanged whenever it did not.
+    var onLifecycle: ((AudibleLifecycleCoordinator.Signal) -> Bool)?
+
     // Camera frame source — set by AppState
     var onRequestVideoFrame: (() async -> UIImage?)?
 
@@ -193,9 +198,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             Task { @MainActor in
                 guard self.isActive else { return }
                 if !self.realtimeService.reconnecting {
+                    let claimed = self.onLifecycle?(.connectionLost) ?? false
                     self.stopSession()
                     self.errorMessage = "Connection lost: \(reason ?? "Unknown error")"
-                    self.speakLocalCue("Voice session disconnected.")   // Plan BD
+                    if !claimed { self.speakLocalCue("Voice session disconnected.") }   // Plan BD
                 }
             }
         }
@@ -205,9 +211,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 guard self.isActive else { return }
+                let claimed = self.onLifecycle?(.reconnectExhausted) ?? false
                 self.stopSession()
                 self.errorMessage = "Voice session lost — couldn't reconnect."
-                self.speakLocalCue("Voice session lost. I couldn't reconnect.")
+                if !claimed { self.speakLocalCue("Voice session lost. I couldn't reconnect.") }
             }
         }
 
@@ -216,13 +223,17 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 PrivacyLog.realtimeSession(.openai, .reconnected)
+                var audioRestored = true
                 do {
                     try self.audioManager.startCapture()
                 } catch {
+                    audioRestored = false
                     PrivacyLog.realtimeSession(.openai, .audioRestartFailed,
                                                error: SafeErrorSummary(error))
                 }
                 self.startFrameCapture()
+                self.onLifecycle?(.reconnected(audioRestored: audioRestored,
+                                               needsVisualEvidence: self.isCameraStreaming))
             }
         }
 
@@ -244,6 +255,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
                 }
                 if self.reconnecting != self.realtimeService.reconnecting {
                     self.reconnecting = self.realtimeService.reconnecting
+                    if self.reconnecting { self.onLifecycle?(.connectionLost) }
                 }
             }
         }
@@ -317,6 +329,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         }
 
         startFrameCapture()
+
+        // Plan FF P0/PR2 — the same three facts. This backend reports readiness through
+        // `connectionState` rather than a setup callback, so it is read here.
+        onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
+                                           sessionConnected: realtimeService.connectionState == .ready,
+                                           microphoneListening: true)))
     }
 
     func stopSession() {

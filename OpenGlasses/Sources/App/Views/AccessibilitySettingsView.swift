@@ -15,6 +15,12 @@ struct AccessibilitySettingsView: View {
     @AppStorage("scanAssistEnabled") private var scanAssistEnabled: Bool = false
     @AppStorage("accessibilityReadingLevel") private var readingLevel: Int = ReadingProfile.Level.adult.rawValue
     @AppStorage("accessibilityReadingLanguage") private var language: String = ReadingProfile.preferredLanguage
+    /// Plan FF P0/PR2 — words alongside the lifecycle earcons. The tones play either way.
+    @AppStorage("blindAssistantSpokenCues") private var spokenCues: Bool = true
+    /// Disables the tour button for its duration, so a second tap cannot start a second tour
+    /// over the first — which, for a control whose whole purpose is teaching sounds apart, would
+    /// teach the wrong thing.
+    @State private var tourRunning = false
 
     /// Common translation targets offered in the picker. "Device default" clears the override.
     private let languageOptions: [(code: String, label: String)] = [
@@ -89,6 +95,30 @@ struct AccessibilitySettingsView: View {
                 Text("Scene Narration")
             } footer: {
                 Text("Describes the space around you as it changes, for moving through somewhere unfamiliar. Watching is silent — descriptions build up so questions about what you're looking at are answered instantly. Speaking them aloud is a separate switch.\n\nTurning watching on starts the glasses camera, and turning it off stops it again unless something else is using it. The camera takes a few seconds to come up, and it's the biggest drain on the glasses battery — so narration says when it's starting, and won't start it at all when the glasses are nearly flat or too warm.\n\nNot continuous coverage: descriptions are generated on this device, which can't run while the app is in the background or the phone is locked. Narration stops there and says so out loud. It also needs glasses that stream live video — on glasses that only take photos it can't run at all.\n\nLive captions take priority: while captions are running, narration keeps watching but stops speaking, so it doesn't talk over what people are saying or end up transcribed as if it were one of them.")
+            }
+
+            Section {
+                Toggle("Speak What Each Sound Means", isOn: $spokenCues)
+                    .tint(AppAccent.color)
+                Button {
+                    guard !tourRunning else { return }
+                    tourRunning = true
+                    Task { @MainActor in
+                        await AppStateProvider.shared?.audibleLifecycle?.playCueTour().value
+                        tourRunning = false
+                    }
+                } label: {
+                    Label(tourRunning ? "Playing the sounds…" : "Play the Sounds",
+                          systemImage: "speaker.wave.2")
+                }
+                .disabled(tourRunning)
+                // The button's job is to make sounds, so its accessible description has to say
+                // what is about to happen rather than leave a blind user tapping into silence.
+                .accessibilityHint("Plays each sound the assistant uses and says what it means.")
+            } header: {
+                Text("Session Sounds")
+            } footer: {
+                Text("While Blind Assistant is the selected live mode, the assistant plays a short sound — and says a short line — when it becomes ready, when the connection drops, when it comes back, and when a photo you asked for was taken. If the connection comes back without the camera, it says so rather than claiming it can see.\n\nSounds play whether or not VoiceOver is on. A cue that arrives while the assistant is talking waits for a gap; one that has stopped being true is dropped instead of played late.")
             }
 
             Section {

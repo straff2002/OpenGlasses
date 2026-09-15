@@ -434,6 +434,42 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
     }
 
+    /// Rising triad — the session is usable again after a drop (Plan FF P0/PR2).
+    ///
+    /// Deliberately three notes rather than two: `playConnectTone` already owns the rising pair, and
+    /// a wearer navigating by sound has to be able to tell "the glasses attached" from "the session
+    /// you lost came back" without looking at anything.
+    func playRecoveryTone() {
+        playTone(frequency: 523, duration: 0.09)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) { [weak self] in
+            self?.playTone(frequency: 659, duration: 0.09)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            self?.playTone(frequency: 784, duration: 0.14)
+        }
+    }
+
+    /// Low double — something did not work and will not fix itself (Plan FF P0/PR2). Flat rather
+    /// than falling, so it is not mistaken for the descending disconnect pair.
+    func playFailureTone() {
+        playTone(frequency: 311, duration: 0.14)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.playTone(frequency: 311, duration: 0.2)
+        }
+    }
+
+    /// The one place the audible-lifecycle earcons become sounds. Kept next to the tones so adding
+    /// a cue and giving it a voice is a single edit.
+    func playLifecycleEarcon(_ earcon: AudibleLifecyclePolicy.Earcon) {
+        switch earcon {
+        case .ready: playConnectTone()
+        case .lost: playDisconnectTone()
+        case .restored: playRecoveryTone()
+        case .captured: playPhotoTone()
+        case .failed: playFailureTone()
+        }
+    }
+
     /// Internal (was private) so CO Item 3 can give a rejected or held utterance an audible cue —
     /// the whole point of that item is that the user hears something.
     func playTone(frequency: Double, duration: Double) {

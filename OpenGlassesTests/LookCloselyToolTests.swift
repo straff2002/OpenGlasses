@@ -28,7 +28,8 @@ final class LookCloselyToolTests: XCTestCase {
         recorder: Recorder,
         injector: FakeInjector?,
         posture: PowerPosture = .normal,
-        capture: @escaping () async throws -> Data = { Data(count: 1024) }
+        capture: @escaping () async throws -> Data = { Data(count: 1024) },
+        cues: Recorder? = nil
     ) -> LookCloselyTool {
         LookCloselyTool(
             captureSharpFrame: { [recorder] in
@@ -37,7 +38,8 @@ final class LookCloselyToolTests: XCTestCase {
                 return data
             },
             injectorProvider: { injector },
-            posture: { posture })
+            posture: { posture },
+            onCaptureSucceeded: { cues?.events.append("captureCue") })
     }
 
     func testCapturesThenInjectsThenReturnsInstruction() async throws {
@@ -136,6 +138,79 @@ final class LookCloselyToolTests: XCTestCase {
         XCTAssertLessThan(elapsed, .seconds(10),
                           "must give up around the 6 s budget, not wait out the capture")
         XCTAssertTrue(recorder.events.isEmpty)
+    }
+
+    // MARK: - Plan FF P0/PR2 — the requested-capture cue
+
+    /// The wearer's "the photo exists" feedback. The rule is *where* it fires: a blind wearer
+    /// holding a medicine box steady needs to know the picture was taken, and must never be told
+    /// that when it was not.
+    func testTheCaptureCueFiresOnlyAfterTheCaptureSucceeds() async throws {
+        let recorder = Recorder()
+        let cues = Recorder()
+        let injector = FakeInjector(recorder: recorder)
+        let tool = makeTool(recorder: recorder, injector: injector, cues: cues)
+
+        _ = try await tool.execute(args: [:])
+
+        XCTAssertEqual(cues.events, ["captureCue"])
+    }
+
+    func testATimedOutCaptureNeverPlaysTheSuccessCue() async throws {
+        let recorder = Recorder()
+        let cues = Recorder()
+        let injector = FakeInjector(recorder: recorder)
+        let tool = makeTool(recorder: recorder, injector: injector,
+                            capture: {
+                                try await Task.sleep(for: .seconds(30))
+                                return Data()
+                            },
+                            cues: cues)
+
+        let result = try await tool.execute(args: [:])
+
+        XCTAssertTrue(result.contains("did not deliver a photo in time"))
+        XCTAssertTrue(cues.events.isEmpty, "a success tone after a timeout is a lie the wearer cannot check")
+    }
+
+    func testAFailedCaptureNeverPlaysTheSuccessCue() async throws {
+        struct CameraDown: LocalizedError { var errorDescription: String? { "lens cap on" } }
+        let recorder = Recorder()
+        let cues = Recorder()
+        let injector = FakeInjector(recorder: recorder)
+        let tool = makeTool(recorder: recorder, injector: injector,
+                            capture: { throw CameraDown() }, cues: cues)
+
+        _ = try await tool.execute(args: [:])
+
+        XCTAssertTrue(cues.events.isEmpty)
+    }
+
+    /// A declined request took no photo, so there is nothing to confirm — the power-reserve and
+    /// cooldown paths return before the camera is touched at all.
+    func testADeclinedRequestNeverPlaysTheSuccessCue() async throws {
+        let recorder = Recorder()
+        let cues = Recorder()
+        let injector = FakeInjector(recorder: recorder)
+        let tool = makeTool(recorder: recorder, injector: injector, posture: .reserve, cues: cues)
+
+        _ = try await tool.execute(args: [:])
+
+        XCTAssertTrue(cues.events.isEmpty)
+    }
+
+    /// The cooldown decline is the "repeated sampling" case: a second call inside the interval
+    /// floor takes no picture, so it must not sound like one.
+    func testACooldownDeclineNeverPlaysASecondSuccessCue() async throws {
+        let recorder = Recorder()
+        let cues = Recorder()
+        let injector = FakeInjector(recorder: recorder)
+        let tool = makeTool(recorder: recorder, injector: injector, cues: cues)
+
+        _ = try await tool.execute(args: [:])
+        _ = try await tool.execute(args: [:])
+
+        XCTAssertEqual(cues.events, ["captureCue"], "one photo, one cue")
     }
 
     func testDescriptionSaysWhenToReachForIt() {
