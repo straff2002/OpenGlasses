@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 📝 Drafted 2026-09-13 — source audit only; no implementation, tests, simulator run or hardware validation performed for this assessment.**
+**Status: 🚧 P0/PR1 implemented 2026-09-16 — one shared blind-assistance contract, composed across the live preset, both realtime backends and the assistive services, with composition tests and a response auditor. PR2–PR6 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation and no live model output has been captured yet.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -16,12 +16,12 @@ The online experience looks close enough for a focused hardening and user-valida
 | Requested area | Current evidence | Remaining gap |
 |---|---|---|
 | Non-visual activation | `AskOpenGlassesIntent` and `ToggleGeminiLiveIntent` support Action Button shortcuts; wake-word activation and launch-time listening exist. VoiceOver semantics and UI audits exist. | Launch listening is not opt-in auto-start of a Gemini session. Experimental temple media trigger needs hardware validation; do not equate it with capture-button support. Finish the full setup/recovery journey without sight. |
-| Blind-user prompt | `LiveAIMode` has a selectable Blind Assistant; the Gemini manager incorporates the selected prefix. Navigation mode already uses clock directions and rough distances. | Blind Assistant currently asks for detail and lacks a unified brevity, verbatim reading, uncertainty and non-visual-language contract. Distinct assistive services have different prompts. |
-| Reading-quality capture | `LookCloselyTool` captures a sharp still and injects it into the active live session, with timeout and power/cooldown policy. | Establish that natural reading requests reliably invoke it and that delivered image detail survives the complete pipeline. Failure copy currently permits answering from the stream; unreadable characters must remain unreadable. |
+| Blind-user prompt | **P0 done.** `BlindAssistanceContract` holds the rules once; the Blind Assistant preset prefix is composed from it, both realtime backends apply the preset through one seam, and navigation, narration, assistive-mode and reading compose the fragments that apply to them. | Live model outputs still to be captured against `BlindAssistanceResponseAudit` on device (see the P0 evidence note). |
+| Reading-quality capture | `LookCloselyTool` captures a sharp still and injects it into the active live session, with timeout and power/cooldown policy. **P0 rewrote the failure and decline copy**: it no longer permits answering the fine-detail question from the stream. | Establish that natural reading requests reliably invoke it and that delivered image detail survives the complete pipeline (PR4). |
 | Audible state | TTS exposes connect/disconnect/listening/photo tones. Session announcements are wired in AppState; Gemini terminal failures speak locally. | VoiceOver announcements require VoiceOver and can be dropped during assistant speech. Reconnected callback restarts capture without an explicit cue there. Prove all four requested states are audible, including cloud recovery rather than only Bluetooth changes. |
 | Session resilience | Gemini has coalesced bounded reconnects, ten-attempt limit, resumption handles and server-rotation handling. | Verify actual context continuity and usable microphone/frame recovery. Audio restart failure is logged in the reconnect callback; connection success alone is insufficient. Exhaustion ends the session. |
 | Offline local vision | MLX local vision and capability guards exist; offline turn-loop/freshness/assembler tests exist. | BU explicitly leaves offline service device wiring pending. No automatic takeover exists in the inspected Gemini failure path. llama.cpp currently advertises no vision and rejects images; a downloaded text model is not a visual fallback. |
-| Safety framing | Navigation service describes itself as supplementary in code/comments and has view-quality checks. | Its model prompt explicitly includes `low = clear path`. Shared safeguards must reach Blind Assistant, navigation, reading, narration and local fallback. An activation disclaimer does not correct the model instruction. |
+| Safety framing | **P0 done for the online paths.** `clear path` is gone from the navigation prompt and from every prompt this app composes; the shared safeguards reach Blind Assistant, navigation, reading, narration and the assistive-mode prompts. | The local/offline fallback prompts are PR6-7 work and do not compose the contract yet. |
 
 ### Evidence locations
 
@@ -44,6 +44,76 @@ Extend existing prompt composition; avoid another mode or parallel assistant ser
 - Exclude visual assumptions such as “as you can see.” Audit generic system instructions for conflicts with the selected preset.
 
 Acceptance: prompt-composition tests across Gemini, OpenAI Realtime and local/direct paths that support the preset; evaluated image/transcript cases for stairs, partial labels, no visible obstacle, blurred text and requests for unsafe certainty. Static phrase checks alone are insufficient. Record model/version and observed outputs; no safety certification is implied.
+
+### P0 / PR1 evidence note — implemented 2026-09-16
+
+Build: worktree on `feat/ff-p0-blind-assistance-contract` from `1e33ceb6`, build 393. Debug
+simulator build, the focused classes, the full `OpenGlassesTests` suite and a Release simulator
+build all green on an iPhone 17 Pro simulator. No hardware run.
+
+**Where the rules live.** `Services/Accessibility/BlindAssistanceContract.swift` holds seven
+fragments — brevity and hazards first, spatial certainty, faithful reading, no safety assurance,
+mobility-aid framing, no visual assumptions, format preserved — plus a lede, a heading, three named
+subsets (environment / reading / spoken-output) and `applying(_:to:)`, which skips a fragment the
+base prompt already carries. Nothing is copy-pasted; a path composes the subset that applies to it,
+always emitted in the one canonical order.
+
+**Which paths compose it, and in what order.**
+
+| Path | Composition |
+|---|---|
+| Blind Assistant live preset | `promptPrefix` **is** the full contract (`presetPrefix`). No literal text in `LiveAIMode` any more. |
+| Gemini Live | preset prefix → configured system prompt → precedence note → vision/tools/location/vault/visual-state/project/reading contexts → injection policy |
+| OpenAI Realtime | preset prefix → configured system prompt → precedence note → vision → location |
+| Navigation assist | mobility prompt (JSON contract intact) → environment fragments |
+| Assistive scene | scene prompt + JSON contract → environment fragments |
+| Assistive social | social prompt + JSON contract → spoken-output fragments |
+| Scene narration | narration prompt → environment fragments minus `preserveFormat` |
+| Reading (all five modes) | mode directive → reading fragments |
+
+The two realtime backends share one pure seam, `composeLiveInstruction(modePrefix:basePrompt:modeID:)`,
+which is what makes the order the same on both by construction rather than by review.
+
+**The OpenAI preset gap, closed.** `OpenAIRealtimeSessionManager.buildSystemInstruction()` started
+from `Config.systemPrompt` and applied no preset at all: `Config.activeLiveAIMode` was read in
+exactly one place in the app, the Gemini manager. A wearer who selected Blind Assistant and happened
+to be on that backend silently got the generic assistant. Both builders now go through the seam.
+
+**Phrases removed.** `low = clear path` in the navigation prompt became
+`low = no hazard observed in view`, followed by an explicit "seeing no hazard in one frame does not
+establish that the way ahead is clear, empty or safe". The `look_closely` timeout and capture-failure
+results, and the power-reserve and cooldown decline reasons, no longer tell the model to answer from
+the streamed view and hedge — unreadable stays unreadable. The old preset wording ("describe the
+environment in detail", "be specific about distances") is gone. A negative audit runs over every
+composed prompt.
+
+**Conflicts with the generic prompt, resolved by precedence.** `Config.defaultSystemPrompt` asks for
+two-to-four-sentence answers and carries its own brevity guidelines; it is the user's, shared by
+every preset and by Direct mode, so rewriting it to suit one preset would be the wrong repair.
+Ordering settles most of it (the preset leads) and an explicit precedence note settles the rest.
+`PromptInjectionPolicy.systemPromptPolicy` was audited and does not conflict — it governs untrusted
+content, not response style or visual framing.
+
+**Direct mode: decided.** Direct mode does **not** consume the live preset. `LiveAIMode` is a
+realtime-session concept end to end, and teaching the Direct-mode builders to read it would hand a
+wake-word turn the Golf Caddy and Museum Guide personas too. The contract reaches Direct mode
+through the assistive services instead — navigation, narration, assistive mode, reading and
+`look_closely` — all of which a Direct-mode wearer uses and all of which carry it unconditionally
+rather than gated on a preset they never select. Both halves are pinned by tests.
+
+**Response auditing.** `BlindAssistanceResponseAudit` is a pure classifier over a model answer:
+`assertedSafety`, `assertedAbsenceOfHazard`, `inventedDetail`, `visualAssumption` and
+`unhedgedDistance`. It reads the clause in front of an assurance so a refusal ("I can't tell you
+whether it's safe to cross") is not confused with the assurance it refuses, and it accepts an
+illegible detail only when hedged within the same clause. `Scenario.p0Fixtures` carries the five
+cases this plan names — stairs, a partial medication label, no visible obstacle, blurred text, and a
+request for a safety judgement — and lives in the app so a device harness can replay them.
+
+**Still owed.** No live model output has been captured against this auditor. The device capture —
+ask each fixture's `request` on real glasses under the Blind Assistant preset, record the model and
+version and the spoken text, run it through `flags(for:transcript:)` — is PR1's remaining evidence
+and should be recorded here. A clean audit means only that nothing this checker recognises went
+wrong. No safety certification is implied by any of this.
 
 ## P0 / PR2 — Audible lifecycle that survives interruptions
 
