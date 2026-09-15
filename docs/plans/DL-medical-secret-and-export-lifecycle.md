@@ -28,6 +28,13 @@ after themselves). Clinical data can therefore persist beyond the user's intende
 `secureDelete(at:)` helpers, but nothing in the export path calls them, and they are gated on the
 HIPAA-mode toggle besides.
 
+*Update 2026-09-15 ([#486](https://github.com/straff2002/OpenGlasses/pull/486)):* clinical exports
+keep `.complete` through `ProtectedExportFileStore`, and `protectFile(at:)` keeps `.complete` for the
+audit log; both are written only in the foreground. Recording artefacts — recordings, their
+transcripts and the recorded-sessions list — moved to a separate `protectRecordingArtefact(at:)`
+helper that applies `.completeUnlessOpen`, because a recording can be stopped while the phone is
+locked. (`secureDelete(at:)` has since become `deleteFile(at:)`.)
+
 Relevant seams:
 
 - `OpenGlasses/Sources/Services/MedicalExportService.swift`

@@ -48,13 +48,23 @@ final class RecordedSessionStore: ObservableObject {
 
     private let documentsDirectory: URL
     private let fileManager: FileManager
+    /// Whether Medical Compliance mode is on at the moment of a write. A seam for tests.
+    private let complianceMode: () -> Bool
+
+    /// Where the production store keeps its list: `Documents/recorded_sessions.json`.
+    static var defaultStorageURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(storageFileName, isDirectory: false)
+    }
 
     init(
         documentsDirectory: URL? = nil,
         fileManager: FileManager = .default,
-        loadImmediately: Bool = true
+        loadImmediately: Bool = true,
+        complianceMode: @escaping () -> Bool = { Config.hipaaMode }
     ) {
         self.fileManager = fileManager
+        self.complianceMode = complianceMode
         self.documentsDirectory = documentsDirectory
             ?? fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
@@ -126,11 +136,13 @@ final class RecordedSessionStore: ObservableObject {
             .appendingPathComponent(Self.bareFileName(session.audioFileName), isDirectory: false)
     }
 
-    private var storageURL: URL {
+    /// This store's `recorded_sessions.json`. Internal so the compliance sweep reads the real path.
+    var storageURL: URL {
         documentsDirectory.appendingPathComponent(Self.storageFileName, isDirectory: false)
     }
 
-    private var recordingsDirectoryURL: URL {
+    /// The folder the audio this store names lives in.
+    var recordingsDirectoryURL: URL {
         documentsDirectory.appendingPathComponent(Self.recordingsDirectoryName, isDirectory: true)
     }
 
@@ -147,7 +159,18 @@ final class RecordedSessionStore: ObservableObject {
         do {
             try fileManager.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(sessions)
-            try data.write(to: storageURL, options: .atomic)
+            // The list names every recording and carries its transcript, so in compliance mode it
+            // is protected like the recordings are. `completeUnlessOpen` rather than `complete`:
+            // this write follows a recording's stop and its transcription, either of which can
+            // finish while the phone is locked.
+            let inCompliance = complianceMode()
+            let options: Data.WritingOptions = inCompliance
+                ? [.atomic, .completeFileProtectionUnlessOpen]
+                : .atomic
+            try data.write(to: storageURL, options: options)
+            // An atomic write replaces the file, so the backup exclusion is set again every time.
+            ComplianceFileProtection.protect(storageURL, as: .recordingArtefact,
+                                             complianceMode: inCompliance, fileManager: fileManager)
         } catch {
             PrivacyLog.store(.recordedSessions, .saveFailed, error: SafeErrorSummary(error))
         }

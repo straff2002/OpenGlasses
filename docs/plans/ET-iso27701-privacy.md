@@ -1,6 +1,6 @@
 # ISO/IEC 27701 privacy remediation plan
 
-**Status:** Proposed; technical remediation checkpoints are in progress, with no organizational-control or certification assertion.
+**Status:** Proposed; technical remediation checkpoints are in progress, with no organizational-control or certification assertion. Data at rest, 2026-09-15 ([#486](https://github.com/straff2002/OpenGlasses/pull/486)): Medical Compliance recording artefacts are protected, pending device verification (see §2.1).
 **Assessment date:** 2026-09-04.
 **Baseline:** ISO/IEC 27701:2025, edition 2, a standalone privacy information management system (PIMS). The 2019 edition's extension model must not be reused as the current requirements map. ISO describes the current standard as applying to PII controllers and processors and confirms it can operate independently. See the [official standard record](https://www.iso.org/standard/27701).
 **Scope limitation:** Source review establishes implementation evidence, not operating effectiveness or legal applicability. Organizational policies, contracts, production configurations, processing locations, customer deployments, and audit records were not supplied. Exact requirement wording and Annex control identifiers must be checked against a licensed 2025 edition before preparing a certification control register. The clause 4–10 headings below organize management-system work; privacy controls are mapped by topic rather than invented Annex numbers.
@@ -67,7 +67,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | capturedPhotos | `AppState` | media | thirdPartySubject | platformDefault | no | none | none — photos are the wearer's media, managed in Photos | none — a photo is not indexed by who appears in it |
 | clinicalAuditLog | `HIPAAComplianceService` | operationalAudit | wearer | complete | yes | cap 1000 | `HIPAAComplianceService.clearAuditLog` | none — an audit entry is evidence; it is content-free by design |
 | clinicalConfiguration | `FHIRConfigurationStore` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
-| clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | complete | yes | clinical retention days, whatever the mode; disabled at zero | `HIPAAComplianceService.deleteFile(at:)` | none — transcripts are filed by session, not by patient |
+| clinicalTranscripts | `HIPAAComplianceService` | clinical | thirdPartySubject | completeUnlessOpenInComplianceMode | yes | clinical retention days, whatever the mode; disabled at zero | `HIPAAComplianceService.deleteFile(at:)` | none — transcripts are filed by session, not by patient |
 | consentRecords | `ConsentStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | none | none — a consent record is evidence of what was agreed; withdrawal is recorded, not erased | none — closed-vocabulary purpose/recipient/actor fields only; no subject identity is stored |
 | contextualNotes | `ContextualNoteStore` | personalMemory | wearer | platformDefault | no | none | none — the wearer's own notes, removed by query | `ContextualNoteStore.deleteMatching(_:)` |
 | conversationRecallIndex | `ConversationIndex` | derivedIndex | wearer | processMemoryOnly | yes | none | `ConversationIndex.clear()` | `ConversationIndex.delete(threadID:)` |
@@ -98,8 +98,8 @@ subject column distinguishes the wearer from a third party who never installed t
 | preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
 | ragDocuments | `DocumentStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
 | readingSessions | `ReadingSessionStore` | personalMemory | wearer | complete | yes | none | none — sessions are removed individually | n/a — no subject linkage |
-| recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | platformDefault | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |
-| recordings | `VideoRecordingService` | media | thirdPartySubject | platformDefault | no | none | none — recordings are the wearer's media, removed individually | none — a recording is not indexed by who appears in it |
+| recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | completeUnlessOpenInComplianceMode | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |
+| recordings | `VideoRecordingService` | media | thirdPartySubject | completeUnlessOpenInComplianceMode | no | none | none — recordings are the wearer's media, removed individually | none — a recording is not indexed by who appears in it |
 | remoteInvokeAudit | `RemoteInvokeService` | operationalAudit | wearer | platformDefault | no | cap 50 | none — the trail is what makes remote invocation reviewable | n/a — no subject linkage |
 | safetyAssessments | `SafetyAssessmentStore` | operationalAudit | none | platformDefault | no | none | none — assessment history is the site record | n/a — no subject linkage |
 | savedLocations | `SaveLocationTool` | locationData | wearer | platformDefault | no | none | none — the wearer's own places, removed individually | n/a — no subject linkage |
@@ -124,6 +124,17 @@ implemented for W03.3 (the periods exist and are attributable in
 `OpenGlasses/Sources/Services/Privacy/RetentionPolicy.swift`; nobody has signed them), the backup
 and recovery decisions that go with W03.5, an encrypted restore drill on a physical device, and a
 peer that acknowledges a queued deletion request rather than merely accepting it.
+
+`completeUnlessOpenInComplianceMode` (2026-09-15) covers `recordings`, `recordedSessions` and
+`clinicalTranscripts`. While Medical Compliance mode is on, `ComplianceFileProtection` gives audio
+and video recordings, each video's transcript sidecar, the Transcripts copy, a chosen-folder copy
+and `recorded_sessions.json` `.completeUnlessOpen` plus backup exclusion. That is a class a
+recording stopped while the phone is locked can still receive, and the file is sealed once closed.
+In-progress recordings are created inside a folder that already carries the class, and turning
+the mode on applies it to what was already saved. The backup-excluded column describes the store
+outside the mode, where nothing is set. The audit log and exports keep `.complete`. Owed: the
+device check, because the simulator reports no protection class back, including whether a file
+created in the protected folder inherits it.
 
 ### 2.2 Backup, recovery and erasure
 
@@ -226,6 +237,7 @@ Apple asks developers to assess their practices and integrated third parties, an
 
 Proposed actions:
 
+- A public privacy notice is published at `privacy.html`; as of 2026-09-15 its Medical Compliance and Security sections describe the recording-artefact protection above. It is not yet the full layered notice this item asks for.
 - Publish a role-appropriate layered privacy notice with responsible entity/contact, purposes, data categories, collection context, recipients, international routes, retention, rights, complaints, and automated features. Confirm legal requirements for each deployment and jurisdiction.
 - Show the selected destination and data categories before a new cloud or remote sharing purpose. Clearly distinguish local ML inference, a LAN/custom server, cloud AI, live viewers, and a remote agent.
 - Where consent is the chosen or required basis, capture a minimal versioned record of the specific purpose and affirmative action, with equivalent withdrawal. OS permissions and a generic disclaimer are not substitutes for purpose-specific analysis.

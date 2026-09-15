@@ -27,6 +27,9 @@ class AudioRecordingService: ObservableObject {
     private nonisolated(unsafe) var audioInput: AVAssetWriterInput?
     private nonisolated(unsafe) var audioStartTime: CMTime?
     private var outputURL: URL?
+    /// A recording that began under compliance mode stays protected even if the mode is turned off
+    /// before it stops.
+    private var startedInComplianceMode = false
     private var durationTimer: Timer?
     private var recordingStartDate: Date?
 
@@ -45,7 +48,11 @@ class AudioRecordingService: ObservableObject {
     func startRecording() throws {
         guard !isRecording else { return }
 
-        let tempDir = FileManager.default.temporaryDirectory
+        // In compliance mode the writer's file is created inside a folder that already carries
+        // `completeUnlessOpen`, so it is protected from its first byte — `AVAssetWriter` creates the
+        // file itself, and it stays open until the recording stops.
+        let complianceMode = Config.hipaaMode
+        let tempDir = ComplianceFileProtection.inProgressDirectory(complianceMode: complianceMode)
         let fileName = Self.recordingFileName()
         let url = tempDir.appendingPathComponent(fileName)
         try? FileManager.default.removeItem(at: url)
@@ -68,6 +75,7 @@ class AudioRecordingService: ObservableObject {
         self.writer = writer
         self.audioInput = audioInput
         self.outputURL = url
+        self.startedInComplianceMode = complianceMode
         self.audioStartTime = nil
         self.recordingTranscript = ""
         // Start from the present: captions already buffered predate this recording.
@@ -133,11 +141,21 @@ class AudioRecordingService: ObservableObject {
 
         guard let src = tempURL else { return nil }
 
+        // The stop can happen with the phone locked (by voice or from the glasses), which is why
+        // this is `completeUnlessOpen` and not `complete`: the latter cannot be applied then.
+        let complianceMode = startedInComplianceMode || Config.hipaaMode
+        startedInComplianceMode = false
+        ComplianceFileProtection.protect(src, as: .recordingArtefact, complianceMode: complianceMode)
+
         if autoSaveToFiles {
-            return saveToDocuments(src)
+            return Self.fileRecording(src, into: Self.recordingsDirectory,
+                                      complianceMode: complianceMode)
         }
         return src
     }
+
+    /// `Documents/Recordings`, shared with the video recorder.
+    static var recordingsDirectory: URL { RecordingFiler.defaultRecordingsDirectory }
 
     // MARK: - Private
 
@@ -156,20 +174,29 @@ class AudioRecordingService: ObservableObject {
         }
     }
 
-    private func saveToDocuments(_ src: URL) -> URL? {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let recDir = docs.appendingPathComponent("Recordings", isDirectory: true)
-        try? FileManager.default.createDirectory(at: recDir, withIntermediateDirectories: true)
-        let dest = recDir.appendingPathComponent(src.lastPathComponent)
+    /// Move a finished recording from temporary storage into `recordingsDirectory` and, in
+    /// compliance mode, protect it there. Returns where the recording ended up: the destination, or
+    /// `src` when the move failed. Protection never decides whether the recording is kept.
+    static func fileRecording(_ src: URL, into recordingsDirectory: URL, complianceMode: Bool,
+                              fileManager: FileManager = .default) -> URL {
+        try? fileManager.createDirectory(at: recordingsDirectory, withIntermediateDirectories: true)
+        // The folder carries the class too, so anything created in it later inherits it.
+        ComplianceFileProtection.protect(recordingsDirectory, as: .recordingArtefact,
+                                         complianceMode: complianceMode, fileManager: fileManager)
+        let dest = recordingsDirectory.appendingPathComponent(src.lastPathComponent)
         do {
-            try FileManager.default.moveItem(at: src, to: dest)
-            PrivacyLog.audio(.recording, .engineStopped,
-                             device: PrivateIdentifier(dest.lastPathComponent))
-            return dest
+            try fileManager.moveItem(at: src, to: dest)
         } catch {
             PrivacyLog.audio(.recording, .sessionConfigureFailed, error: SafeErrorSummary(error))
             return src
         }
+        PrivacyLog.audio(.recording, .engineStopped,
+                         device: PrivateIdentifier(dest.lastPathComponent))
+        // A move within a volume normally keeps the class and the backup flag. Set both anyway,
+        // rather than rely on it.
+        ComplianceFileProtection.protect(dest, as: .recordingArtefact,
+                                         complianceMode: complianceMode, fileManager: fileManager)
+        return dest
     }
 
     // MARK: - Audio Buffer (nonisolated — called from audio thread)

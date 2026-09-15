@@ -63,7 +63,7 @@
 <main>
 
 <h1>OpenGlasses Privacy Policy</h1>
-<p class="meta">Effective 14 September 2026</p>
+<p class="meta">Effective 15 September 2026</p>
 
 <div class="summary">
 <p><strong>The short version</strong></p>
@@ -237,7 +237,7 @@
 <p>Medical Compliance mode (called HIPAA mode in some places in the app) is a setting for people who handle clinical information. When it's on, the app:</p>
 <ul>
   <li>requires Face ID, Touch ID or your passcode to open the app</li>
-  <li>gives new video recordings, transcripts filed in the app's Transcripts folder, the audit log and clinical exports iOS's strongest file protection, and keeps them out of backups. Audio-only recordings, the transcript saved beside a video, and files saved before the mode was turned on keep iOS's standard protection</li>
+  <li>protects recordings (audio and video), their transcripts, the list of recorded sessions, the audit log and clinical exports with iOS file protection, so they can't be read while the phone is locked, and keeps them out of backups. A recording that is still being written can finish while the phone is locked. Once it's closed, it can't be opened until you unlock. Protection applies from when you turn the mode on, including to the recordings and transcripts already in the app's own folders at that moment. Copies you save to Photos or to a folder you chose are outside this protection</li>
   <li>turns off web search, external messaging, cloud memory sync, cloud caption translation and cloud speaker diarization</li>
   <li>keeps an audit log of access to clinical data on the device</li>
   <li>deletes clinical data older than the retention period you choose</li>
@@ -280,7 +280,7 @@
 <h2 id="security">10. Security</h2>
 <ul>
   <li>API keys and sign-in tokens are stored in the iOS Keychain, on this device only. They are not synced to iCloud or included in backups. Each key is sent only to the service it belongs to.</li>
-  <li>App data is protected by iOS Data Protection. Conversations and the face database always use the strongest protection class, which makes them unreadable while the phone is locked. In Medical Compliance mode some clinical files get it too, as described under <a href="#medical">Medical Compliance mode</a>.</li>
+  <li>App data is protected by iOS Data Protection. Conversations and the face database always use the strongest protection class, which makes them unreadable while the phone is locked. In Medical Compliance mode, recordings, their transcripts, the list of recorded sessions, the audit log and clinical exports are also unreadable while the phone is locked, as described under <a href="#medical">Medical Compliance mode</a>.</li>
   <li>"Encrypt Conversations" adds ChaCha20-Poly1305 encryption to saved conversations. The key is held by the Keychain, needs Face ID, Touch ID or your passcode to unlock, and the conversations lock again when the app goes to the background.</li>
   <li>Connections to cloud services use HTTPS. Plain, unencrypted HTTP is only allowed to addresses on your own local network and to your own Tailscale network (ts.net addresses), where Tailscale encrypts the traffic between your devices.</li>
   <li>You can lock the app's Settings behind Face ID or your passcode.</li>

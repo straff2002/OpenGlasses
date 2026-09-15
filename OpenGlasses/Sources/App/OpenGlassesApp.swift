@@ -1135,6 +1135,16 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
         videoRecorder.hipaaService = hipaaService
+        // The enable-time sweep reads the recording locations from the services that write them.
+        hipaaService.recordingArtefactLocations = { [weak self] in
+            guard let self else { return HIPAAComplianceService.defaultRecordingArtefactLocations }
+            return ComplianceFileProtection.Locations(
+                recordingsDirectories: [self.videoRecorder.recordingsDirectory,
+                                        AudioRecordingService.recordingsDirectory,
+                                        self.recordedSessionStore.recordingsDirectoryURL],
+                transcriptsDirectory: HIPAAComplianceService.defaultTranscriptsDirectory,
+                recordedSessionsFile: self.recordedSessionStore.storageURL)
+        }
         videoRecorder.meetingAssistant = meetingAssistant
         videoRecorder.llmClosure = { [weak self] prompt in
             guard let self else { throw LLMError.missingAPIKey("AppState deallocated") }
