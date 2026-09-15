@@ -216,7 +216,13 @@ class CameraService: ObservableObject, FilteredStillProviding {
     // MARK: - Continuous Video Streaming
 
     /// Start continuous video streaming from the glasses camera.
-    func startStreaming() async throws {
+    ///
+    /// - Returns: whether the stream actually came up. Today that is always `true` on a start
+    ///   that did not throw — which is exactly the behaviour Plan EW is about to change, because
+    ///   a stop issued during the cold start is currently lost and the late start claims the
+    ///   stream anyway. Stated as a return value so the callers that care can begin asking.
+    @discardableResult
+    func startStreaming() async throws -> Bool {
         // Plan CQ P1: refuse with a readable reason on hardware that has no live feed at all,
         // rather than letting the backend fail in a way the caller has to interpret.
         if case .unavailable(let reason) = availability(of: .livePreview) {
@@ -225,6 +231,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
         isStartingStream = true
         defer { isStartingStream = false }
         try await backend.startStreaming()
+        return true
     }
 
     /// Stop continuous video streaming. Session is kept alive for reuse.
