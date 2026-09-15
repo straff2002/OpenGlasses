@@ -46,6 +46,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     // Camera streaming control
     var onRequestStartCamera: (() async -> Bool)?
 
+    /// Give back the camera this session started — see the Gemini manager's twin for why a claim
+    /// rather than a bare stop.
+    var onRequestStopCamera: (() async -> Void)?
+
     /// Whether the camera is actively streaming frames.
     var isCameraStreaming: Bool = false
 
@@ -258,8 +262,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         do {
             try await audioManager.setupAudioSession(useIPhoneMode: useIPhoneAudioMode)
         } catch {
-            errorMessage = "Audio setup failed: \(error.localizedDescription)"
-            isActive = false
+            // Plan EW: a failed start gives back everything a finished one does. See the Gemini
+            // manager's twin of this comment — the partial teardown this replaces left the frame
+            // timer, the microphone lease and the camera held, unreachably.
+            let message = "Audio setup failed: \(error.localizedDescription)"
+            stopSession()
+            errorMessage = message
             return
         }
 
@@ -274,12 +282,8 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             } else {
                 msg = "Failed to connect to OpenAI Realtime"
             }
+            stopSession()   // Plan EW — the same teardown a finished session gets
             errorMessage = msg
-            realtimeService.disconnect()
-            stateObservation?.cancel()
-            stateObservation = nil
-            isActive = false
-            connectionState = .disconnected
             return
         }
 
@@ -287,12 +291,9 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         do {
             try audioManager.startCapture()
         } catch {
-            errorMessage = "Mic capture failed: \(error.localizedDescription)"
-            realtimeService.disconnect()
-            stateObservation?.cancel()
-            stateObservation = nil
-            isActive = false
-            connectionState = .disconnected
+            let message = "Mic capture failed: \(error.localizedDescription)"
+            stopSession()   // Plan EW — the same teardown a finished session gets
+            errorMessage = message
             return
         }
 
@@ -320,6 +321,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
     func stopSession() {
         PrivacyLog.realtimeSession(.openai, .sessionStopped, count: submittedFrameCount)
+        let hadCameraClaim = isCameraStreaming
         frameTimer?.cancel()
         frameTimer = nil
         audioManager.stopCapture()
@@ -334,6 +336,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         aiTranscript = ""
         errorMessage = nil
         submittedFrameCount = 0
+
+        // Plan EW — last, after `isActive` is false; see the Gemini manager's twin of this
+        // comment for why the order matters.
+        if hadCameraClaim, let stopCamera = onRequestStopCamera {
+            Task { await stopCamera() }
+        }
     }
 
     // MARK: - System Instruction

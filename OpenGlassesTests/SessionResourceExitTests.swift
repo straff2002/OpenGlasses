@@ -217,9 +217,46 @@ final class CameraServiceExitTests: XCTestCase {
         let fresh = Task { try await service.startStreaming() }
         try await waitForWarmUp(backend)
         backend.finishWarmUp()
-        XCTAssertTrue(try await fresh.value)
+        let restarted = try await fresh.value
+        XCTAssertTrue(restarted)
         XCTAssertTrue(service.isStreaming)
         XCTAssertTrue(backend.holdsStream)
+    }
+
+    // MARK: - A live session's camera claim
+
+    func testALiveSessionReleasesTheCameraItStarted() async throws {
+        let backend = WarmUpCameraBackend()
+        let service = CameraService(backend: backend)
+
+        let start = Task { try await service.claimStream(for: .liveSession) }
+        try await waitForWarmUp(backend)
+        backend.finishWarmUp()
+        try await start.value
+        XCTAssertTrue(backend.holdsStream)
+
+        // The session ends. Nothing else is consuming the stream, so it goes.
+        await service.releaseStream(for: .liveSession)
+        XCTAssertFalse(backend.holdsStream,
+                       "a live session that failed or finished must not leave the glasses streaming to nobody")
+        XCTAssertFalse(service.hasStreamClaims)
+    }
+
+    func testALiveSessionDoesNotCloseAStreamTheWearerOpened() async throws {
+        let backend = WarmUpCameraBackend()
+        let service = CameraService(backend: backend)
+
+        // The wearer opens the live preview themselves, then starts a live conversation.
+        let manual = Task { try await service.startStreaming() }
+        try await waitForWarmUp(backend)
+        backend.finishWarmUp()
+        _ = try await manual.value
+
+        try await service.claimStream(for: .liveSession)
+        await service.releaseStream(for: .liveSession)
+
+        XCTAssertTrue(backend.holdsStream,
+                      "ending a conversation must not close a camera the wearer opened first")
     }
 
     // MARK: - Repeated and empty stops

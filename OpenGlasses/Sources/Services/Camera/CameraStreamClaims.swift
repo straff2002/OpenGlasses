@@ -32,6 +32,10 @@ struct CameraStreamClaims: Equatable {
         static let sceneNarration = Owner("sceneNarration")
         /// Plan CK — fingerspelling recognition.
         static let fingerspelling = Owner("fingerspelling")
+        /// Plan EW — a Gemini Live or OpenAI Realtime conversation. Claims rather than starting
+        /// the camera outright so that a session ending, or failing to start, gives back exactly
+        /// the stream it opened and never the one the wearer opened themselves.
+        static let liveSession = Owner("liveSession")
     }
 
     /// What the service should do about a `claim`.

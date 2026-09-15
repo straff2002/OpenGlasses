@@ -51,6 +51,11 @@ class GeminiLiveSessionManager: ObservableObject {
     // Camera streaming control — set by AppState to start/check camera streaming
     var onRequestStartCamera: (() async -> Bool)?
 
+    /// Give back the camera this session started. Plan EW: the session takes a stream claim
+    /// rather than starting the camera outright, so ending — or failing to start — releases
+    /// exactly the stream it opened and leaves alone one the wearer opened themselves.
+    var onRequestStopCamera: (() async -> Void)?
+
     /// Whether the camera is actively streaming frames (used to conditionalise the vision prompt).
     var isCameraStreaming: Bool = false
 
@@ -371,8 +376,13 @@ class GeminiLiveSessionManager: ObservableObject {
         do {
             try await audioManager.setupAudioSession(useIPhoneMode: useIPhoneAudioMode)
         } catch {
-            errorMessage = "Audio setup failed: \(error.localizedDescription)"
-            isActive = false
+            // Plan EW: a failed start has to give back everything a finished one does. It used
+            // to hand-roll a partial teardown and set `isActive = false`, which made every
+            // `if isActive { stopSession() }` call site in the app skip the real teardown — so
+            // the tool router, the frame timer, the microphone lease and the camera stayed held.
+            let message = "Audio setup failed: \(error.localizedDescription)"
+            stopSession()
+            errorMessage = message
             return
         }
 
@@ -392,13 +402,9 @@ class GeminiLiveSessionManager: ObservableObject {
             let msg = GeminiLiveFailureCopy.message(
                 errorStateMessage: errorStateMessage,
                 lastCloseReason: geminiService.lastCloseReason)
+            stopSession()   // Plan EW — the same teardown a finished session gets
             errorMessage = msg
             NoticeCenter.shared.post(msg, severity: .error, source: .liveSession)
-            geminiService.disconnect()
-            stateObservation?.cancel()
-            stateObservation = nil
-            isActive = false
-            connectionState = .disconnected
             return
         }
 
@@ -406,12 +412,9 @@ class GeminiLiveSessionManager: ObservableObject {
         do {
             try audioManager.startCapture()
         } catch {
-            errorMessage = "Mic capture failed: \(error.localizedDescription)"
-            geminiService.disconnect()
-            stateObservation?.cancel()
-            stateObservation = nil
-            isActive = false
-            connectionState = .disconnected
+            let message = "Mic capture failed: \(error.localizedDescription)"
+            stopSession()   // Plan EW — the same teardown a finished session gets
+            errorMessage = message
             return
         }
 
@@ -455,6 +458,7 @@ class GeminiLiveSessionManager: ObservableObject {
                                    count: droppedNotActive)
         PrivacyLog.realtimeSession(.gemini, .frameDropped, detail: PrivacyToken("notReady"),
                                    count: droppedNotReady)
+        let hadCameraClaim = isCameraStreaming
         toolCallRouter?.cancelAll()
         toolCallRouter = nil
         frameTimer?.cancel()
@@ -474,6 +478,14 @@ class GeminiLiveSessionManager: ObservableObject {
         submittedFrameCount = 0
         droppedNotActive = 0
         droppedNotReady = 0
+
+        // Plan EW: give the camera claim back last, after `isActive` is false. The release asks
+        // whether anything else is still consuming the stream, and an active live session is one
+        // of the things that counts — asking any earlier would have this session veto its own
+        // release. A claim it never started, or one the wearer started first, is left running.
+        if hadCameraClaim, let stopCamera = onRequestStopCamera {
+            Task { await stopCamera() }
+        }
     }
 
     // MARK: - System Instruction

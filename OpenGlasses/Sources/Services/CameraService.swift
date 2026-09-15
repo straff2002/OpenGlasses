@@ -215,12 +215,16 @@ class CameraService: ObservableObject, FilteredStillProviding {
 
     // MARK: - Continuous Video Streaming
 
+    /// Which start the stream is currently obeying. See `StreamStartGeneration`: the glasses
+    /// camera cold-starts in up to 20 s, and a stop issued inside that window used to be lost.
+    private var startGeneration = StreamStartGeneration()
+
     /// Start continuous video streaming from the glasses camera.
     ///
-    /// - Returns: whether the stream actually came up. Today that is always `true` on a start
-    ///   that did not throw — which is exactly the behaviour Plan EW is about to change, because
-    ///   a stop issued during the cold start is currently lost and the late start claims the
-    ///   stream anyway. Stated as a return value so the callers that care can begin asking.
+    /// - Returns: whether the stream actually came up. `false` means a stop landed while the
+    ///   camera was still cold-starting: the start released what it had acquired and is a no-op,
+    ///   rather than an error the caller should show anybody. A caller holding something that
+    ///   depends on the stream — a claim, a session flag — has to put it back when this is `false`.
     @discardableResult
     func startStreaming() async throws -> Bool {
         // Plan CQ P1: refuse with a readable reason on hardware that has no live feed at all,
@@ -228,19 +232,33 @@ class CameraService: ObservableObject, FilteredStillProviding {
         if case .unavailable(let reason) = availability(of: .livePreview) {
             throw CameraError.unsupported(reason)
         }
+        let token = startGeneration.beginStart()
         isStartingStream = true
         defer { isStartingStream = false }
         try await backend.startStreaming()
+        // Plan EW. Everything above this line took seconds, and a stop may have landed inside it.
+        // If one did, this start has been superseded: release the stream the cold start just
+        // brought up instead of publishing it as running. A late start that claims the camera
+        // anyway holds the process-wide capability with nothing consuming its frames.
+        guard startGeneration.finish(token) == .commit else {
+            await backend.stopStreaming()
+            return false
+        }
         return true
     }
 
     /// Stop continuous video streaming. Session is kept alive for reuse.
+    ///
+    /// Always forwarded, and always safe to repeat: the backend, not this method, decides whether
+    /// there is anything left to stop.
     func stopStreaming() async {
+        startGeneration.recordStop()
         await backend.stopStreaming()
     }
 
     /// Tear down everything — called on mode switch or app termination.
     func tearDown() async {
+        startGeneration.recordStop()   // nothing may survive a teardown, a cold start included
         await backend.tearDown()
         latestFrame = nil
         streamClaims.reset()   // no claim describes a camera that no longer exists
@@ -273,7 +291,10 @@ class CameraService: ObservableObject, FilteredStillProviding {
             return
         case .startStream:
             do {
-                try await startStreaming()
+                // A stop that overtook the cold start leaves nothing to hold a claim on, and a
+                // claim on a stream that never came up would make every later release think it
+                // had something to give back.
+                if try await startStreaming() == false { streamClaims.abandon(owner) }
             } catch {
                 streamClaims.abandon(owner)
                 throw error
