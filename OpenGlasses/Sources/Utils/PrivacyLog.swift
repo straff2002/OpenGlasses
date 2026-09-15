@@ -535,7 +535,17 @@ enum PrivacyLog {
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture
         case streamStoppedWhileWanted
+        /// FD P1. `streamResumedBySDK` is the system lifting a pause it imposed — the only way
+        /// back from a pause, now that nothing issues a competing start into one.
+        /// `pauseHeldDuringStart` is a start giving up on a pause it cannot lift.
+        case streamResumedBySDK, pauseHeldDuringStart
         case reconnectScheduled, reconnectAttempt, reconnected, reconnectGaveUp
+        /// FD P1. `reconnectStopped` is the ladder standing down because the last failure is one
+        /// no retry can clear; `reconnectDeferred` is it waiting for a rebuild we own rather than
+        /// racing it for the camera capability; `reconnectStoodDown` is a rung waking up to find
+        /// nobody wants the stream any more. `sessionStopTimedOut` is a device session that did
+        /// not reach `.stopped` inside the replacement boundary.
+        case reconnectStopped, reconnectDeferred, reconnectStoodDown, sessionStopTimedOut
         case warmupAborted, warmupNudged, warmupSessionStopped, warmupAttemptFailed, warmupRetry
         case streamingReached, firstFrameTimedOut, waitAttemptFailed, streamError
         case started, stopped, suspended, resumed, unavailable, configured

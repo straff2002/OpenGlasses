@@ -51,6 +51,18 @@ protocol GlassesCameraBackend: AnyObject {
 
     /// Release everything. Called on mode switch and app termination.
     func tearDown() async
+
+    /// Plan FD P1 — how much automatic work the backend currently has armed: retry rungs, stall
+    /// and idle timers, a start still climbing, a device transition in flight.
+    ///
+    /// Exists so that "no automatic loop remains after a stop" can be *asserted* rather than
+    /// hoped for. Defaulted to zero, because a backend with no automatic work of its own — every
+    /// test fake, and any future backend that simply has none — should not have to say so.
+    var scheduledWorkCount: Int { get }
+}
+
+extension GlassesCameraBackend {
+    var scheduledWorkCount: Int { 0 }
 }
 
 /// Status of a backend's video stream, as the UI understands it.
