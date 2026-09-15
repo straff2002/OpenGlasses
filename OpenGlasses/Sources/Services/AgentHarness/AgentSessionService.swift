@@ -15,7 +15,22 @@ final class AgentSessionService: ObservableObject {
     @Published private(set) var activeRun: AgentRun?
     @Published private(set) var result = AgentRunResult()
     @Published private(set) var lastSummary: String?
-    @Published private(set) var awaitingInputPrompt: String?
+
+    /// The question the run is waiting on, with its identity (Plan FE P1). Replaces a bare prompt
+    /// string, which could neither recognise a repeat nor tell two identically-worded questions
+    /// apart.
+    @Published private(set) var pendingQuestion: AgentQuestion?
+    /// The reply the wearer authorised but we have not confirmed delivery of. Held so a retry
+    /// re-sends the *same* reply — same id, same body — rather than asking again.
+    @Published private(set) var pendingReply: AgentReply?
+    /// How the last reply attempt ended. `nil` once a reply is confirmed delivered.
+    @Published private(set) var lastReplyOutcome: AgentReplyOutcome?
+    /// A decline we relayed and the endpoint has not yet acted on. The run is not ours to call
+    /// stopped: we know only that we said no.
+    @Published private(set) var declineAwaitingEndpoint = false
+
+    /// The pending question's text, for callers that only want the words.
+    var awaitingInputPrompt: String? { pendingQuestion?.prompt }
     /// Everything spoken this session, in order — for the debug panel and tests.
     @Published private(set) var spokenLog: [String] = []
 
@@ -44,6 +59,28 @@ final class AgentSessionService: ObservableObject {
     /// confirm fails CLOSED — approval must come from a real user prompt, never from tool-call
     /// output (the prompt-injection → self-approved-push hole).
     var requestUserConsent: ((RemoteActionConsentRequest) async -> Bool)?
+
+    /// The free-text half of the same user-originated boundary (Plan FE P1): shows the answer the
+    /// wearer is about to send and hands back what they confirmed — edited if they edited it, or
+    /// `nil` if they decided not to send. Wired by AppState to the consent card's text field.
+    /// Nil seam ⇒ nothing is sent, and the wearer is told why.
+    var requestUserText: ((RemoteActionConsentRequest, String) async -> String?)?
+
+    /// The harness a run was dispatched to, held for the life of that run (Plan FE P1).
+    ///
+    /// Settings can change the default backend, the endpoint URL or the selected agent at any
+    /// moment. A reply or a cancellation belongs to the backend that started the run — sending it
+    /// to whatever is configured *now* would answer a question a different endpoint never asked.
+    private(set) var boundHarness: AgentHarness?
+
+    /// Which backend the active run is bound to.
+    var boundHarnessKind: AgentHarnessKind? { boundHarness?.kind }
+
+    /// The harness this run's follow-up traffic must use.
+    var runHarness: AgentHarness? { boundHarness ?? activeHarness }
+
+    /// Questions already surfaced, by `(id, revision)`.
+    private var announcedQuestions: Set<AgentQuestion.Identity> = []
 
     private var eventTask: Task<Void, Never>?
 
@@ -118,10 +155,12 @@ final class AgentSessionService: ObservableObject {
             if run.status == .queued { run.status = .running }
             activeRun = run
             result = AgentRunResult()
-            awaitingInputPrompt = nil
+            resetQuestionState()
             lastSummary = nil
             connectionState = .connected
             contactLostAt = nil
+            // Bind the backend to the run before anything can be asked of it.
+            boundHarness = harness
             subscribe(to: run, on: harness)
             return .success(run)
         } catch let error as AgentHarnessError {
@@ -148,6 +187,12 @@ final class AgentSessionService: ObservableObject {
     /// run's status (terminal events speak the final summary).
     func handle(_ event: AgentEvent) {
         result.apply(event)
+        // A question decides for itself whether it is worth saying out loud, so it is handled
+        // before the generic narration — which would announce every repeat.
+        if case .awaitingInput(let question) = event {
+            handleQuestion(question)
+            return
+        }
         if let line = AgentSummarizer.narration(for: event) {
             emit(line)
         }
@@ -156,9 +201,8 @@ final class AgentSessionService: ObservableObject {
             // Establish (or refresh) the active run — authoritative start from the adapter. In the
             // normal flow `dispatch` already set it; this keeps the state machine self-contained.
             activeRun = run
-        case .awaitingInput(let prompt):
-            awaitingInputPrompt = prompt
-            activeRun?.status = .awaitingInput
+        case .awaitingInput:
+            break   // handled above
         case .completed:
             finish(status: .completed)
         case .failed:
@@ -173,6 +217,40 @@ final class AgentSessionService: ObservableObject {
         case .progress, .fileCreated, .fileModified, .commandRun, .prOpened, .pushed, .assistantText:
             break
         }
+    }
+
+    /// Surface a question **once per identity** (Plan FE P1).
+    ///
+    /// The same question arriving on every poll is one question. A revision bump is the same
+    /// question on changed terms, and is asked again. A new id is a new question even when it is
+    /// worded exactly like the one before it — which is why text equality was never the right test.
+    private func handleQuestion(_ question: AgentQuestion) {
+        activeRun?.status = .awaitingInput
+        let isNew = !announcedQuestions.contains(question.identity)
+        if isNew {
+            // A different question replaces the pending one: any reply still in hand was for the
+            // old one and must not be sent against the new.
+            if pendingQuestion?.identity != question.identity {
+                pendingReply = nil
+                lastReplyOutcome = nil
+                declineAwaitingEndpoint = false
+            }
+            announcedQuestions.insert(question.identity)
+            pendingQuestion = question
+            emit(AgentSummarizer.cap(question.prompt))
+        } else if pendingQuestion == nil {
+            // Already announced, but we had cleared it (e.g. a delivered reply the endpoint has
+            // not caught up with). Track it again without saying it twice.
+            pendingQuestion = question
+        }
+    }
+
+    private func resetQuestionState() {
+        pendingQuestion = nil
+        pendingReply = nil
+        lastReplyOutcome = nil
+        declineAwaitingEndpoint = false
+        announcedQuestions.removeAll()
     }
 
     /// Connection changes never touch `activeRun.status`: whether the agent is working is the
@@ -190,7 +268,7 @@ final class AgentSessionService: ObservableObject {
     private func finish(status: AgentRunStatus,
                         cancellation: AgentSummarizer.CancellationOrigin = .remote) {
         activeRun?.status = status
-        awaitingInputPrompt = nil
+        resetQuestionState()
         connectionState = .connected
         let summary = AgentSummarizer.summarize(result, status: status, cancellation: cancellation)
         lastSummary = summary
@@ -202,48 +280,214 @@ final class AgentSessionService: ObservableObject {
     // MARK: - Controls
 
     func cancel() async {
-        guard let harness = activeHarness, let run = activeRun else { return }
+        // The run's own backend, never whatever Settings points at now.
+        guard let harness = runHarness, let run = activeRun else { return }
         try? await harness.cancel(run)
         finish(status: .cancelled, cancellation: .local)
     }
 
+    // MARK: - Answering the pending question (Plan FE P1)
+
     /// Entry for the `code_agent confirm` tool call (BN P1). The model's call is only a REQUEST
     /// to show the user-distinct consent prompt — a prompt-injected turn (web result, OCR'd sign,
-    /// ambient caption) can raise the question, but never answer it. Denying at the prompt
-    /// cancels the run, the same safety default as `respondToConfirmation(approved: false)`.
+    /// ambient caption) can raise the question, but never answer it.
     func confirmPendingActionViaUserPrompt() async -> String {
-        guard let run = activeRun, run.status == .awaitingInput else {
+        guard let question = pendingQuestion, activeRun?.status == .awaitingInput else {
             return "There's nothing waiting for confirmation."
         }
         guard let requestUserConsent else {
             return "Approval needs the on-screen confirm prompt, which isn't available right now — nothing was approved."
         }
-        let request = RemoteActionConsentRequest(
-            source: .codingAgent,
-            summary: awaitingInputPrompt ?? "proceed with the pending action")
+        let request = RemoteActionConsentRequest(source: .codingAgent, summary: question.actionSummary)
         let granted = await requestUserConsent(request)
-        await respondToConfirmation(approved: granted)
-        return granted ? "Confirmed — the agent will proceed." : "Okay, I won't proceed."
+        return await answer(granted ? .approve : .deny, to: question)
     }
 
-    /// Answer an `awaitingInput` confirmation. Declining cancels the run (safety default).
+    /// Entry for the `code_agent answer` tool call: the wearer's words, for a question that wants
+    /// words rather than permission.
+    ///
+    /// It goes through the **same user-originated boundary** as an approval. The model proposing
+    /// text does not make the text the wearer's, so the prompt shows what is about to be sent and
+    /// forwards only what comes back from it — in full, edits included.
+    func answerPendingQuestionViaUserPrompt(text: String) async -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let question = pendingQuestion, activeRun?.status == .awaitingInput else {
+            return "There's nothing waiting for an answer."
+        }
+        guard !question.kind.isApproval else {
+            // An approval question is answered by approving it, at the consent prompt. Letting
+            // arbitrary words stand in for a yes is precisely what must not happen.
+            return "That one's a confirmation, not a question — say confirm or deny."
+        }
+        guard !trimmed.isEmpty else { return "What should I tell the agent?" }
+        guard let requestUserText else {
+            return "Sending an answer needs the on-screen prompt, which isn't available right now — nothing was sent."
+        }
+        let request = RemoteActionConsentRequest(
+            source: .codingAgent,
+            summary: "send this answer to the agent: “\(AgentSummarizer.cap(trimmed))”")
+        guard let confirmed = await requestUserText(request, trimmed)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !confirmed.isEmpty else {
+            return "Okay, I didn't send an answer."
+        }
+        return await answer(.text(confirmed), to: question)
+    }
+
+    /// Re-send the reply the wearer already authorised, after a failed or unconfirmed delivery.
+    ///
+    /// The same `AgentReply` goes back out — same id, same body — so an endpoint that already
+    /// applied it can recognise the repeat. It is not a fresh authorisation and does not ask for
+    /// one: the wearer approved this exact answer, and re-asking after every dropped packet would
+    /// train them to approve without reading.
+    func retryPendingReply() async -> String {
+        guard let reply = pendingReply, let question = pendingQuestion, let run = activeRun else {
+            return "There's no answer waiting to be re-sent."
+        }
+        guard reply.answers(question) else {
+            pendingReply = nil
+            return "That answer was for an earlier question, so I didn't re-send it."
+        }
+        return await deliver(reply, question: question, run: run)
+    }
+
+    /// Answer an `awaitingInput` confirmation. Kept for the boolean callers that predate the typed
+    /// reply; approve/deny only.
+    ///
     /// The grant must be user-originated: reach here via `confirmPendingActionViaUserPrompt`
     /// (tool path, coordinator-prompted) or a direct UI control — never straight from a model turn.
-    func respondToConfirmation(approved: Bool) async {
-        guard let harness = activeHarness, let run = activeRun, run.status == .awaitingInput else { return }
-        try? await harness.respondToInput(run, approved: approved)
-        awaitingInputPrompt = nil
-        if approved {
-            activeRun?.status = .running
-            emit("Okay, proceeding.")
-        } else {
-            activeRun?.status = .cancelled
-            lastSummary = AgentSummarizer.summarize(result, status: .cancelled, cancellation: .local)
-            emit("Okay, I won't proceed.")
-            eventTask?.cancel()
-            eventTask = nil
+    @discardableResult
+    func respondToConfirmation(approved: Bool) async -> String {
+        guard let question = pendingQuestion, activeRun?.status == .awaitingInput else {
+            return "There's nothing waiting for confirmation."
+        }
+        return await answer(approved ? .approve : .deny, to: question)
+    }
+
+    /// Answer a question named **explicitly** — the path a UI control takes, where the card was
+    /// raised for one question and may be resolved after the run has moved on to another.
+    ///
+    /// An answer whose identity no longer matches the pending question is refused outright. It is
+    /// not forwarded "just in case": approving a question that has been replaced approves whatever
+    /// took its place.
+    @discardableResult
+    func answer(_ body: AgentReply.Body, questionID: AgentQuestion.ID, revision: Int) async -> String {
+        guard let question = pendingQuestion, activeRun?.status == .awaitingInput else {
+            lastReplyOutcome = .stale
+            return Self.staleLine
+        }
+        guard question.id == questionID, question.revision == revision else {
+            lastReplyOutcome = .stale
+            return Self.staleLine
+        }
+        return await answer(body, to: question)
+    }
+
+    /// Build the reply for `body` and send it. The reply id is minted once here and reused by
+    /// every retry, so re-delivery is idempotent at the endpoint.
+    private func answer(_ body: AgentReply.Body, to question: AgentQuestion) async -> String {
+        guard let run = activeRun else { return "There's nothing waiting for an answer." }
+        guard let pending = pendingQuestion, pending.identity == question.identity else {
+            // The question moved on between the prompt being raised and the wearer answering it.
+            lastReplyOutcome = .stale
+            return Self.staleLine
+        }
+        let reply = AgentReply(answering: question, body: body)
+        pendingReply = reply
+        return await deliver(reply, question: question, run: run)
+    }
+
+    /// Send one reply and report **what actually happened to it**.
+    ///
+    /// The bug this closes: the old path did `try? await harness.respondToInput(…)` and then said
+    /// "Okay, proceeding" — identical words whether the endpoint had accepted the approval, thrown
+    /// a transport error, or had no reply channel at all.
+    private func deliver(_ reply: AgentReply, question: AgentQuestion, run: AgentRun) async -> String {
+        guard let harness = runHarness else {
+            lastReplyOutcome = .failed
+            return "I've no agent backend to send that to."
+        }
+        do {
+            try await harness.respondToInput(run, reply: reply)
+            return accept(reply, question: question)
+        } catch AgentHarnessError.uncertainDelivery {
+            // Reconcile by asking the endpoint where the run stands. Never a second POST: the
+            // first may already have been applied.
+            if let status = try? await harness.status(run), status != .awaitingInput {
+                return accept(reply, question: question)
+            }
+            lastReplyOutcome = .uncertain
+            let line = "I couldn't tell whether the agent got your answer, and it's still waiting — say retry to send it again."
+            emit(line)
+            return line
+        } catch let error as AgentHarnessError {
+            return refuse(error, reply: reply)
+        } catch {
+            lastReplyOutcome = .failed
+            let line = "I couldn't get your answer to the agent — say retry to try again."
+            emit(line)
+            return line
         }
     }
+
+    /// The endpoint took the reply. Only now is anything claimed about the run.
+    private func accept(_ reply: AgentReply, question: AgentQuestion) -> String {
+        pendingQuestion = nil
+        pendingReply = nil
+        lastReplyOutcome = .delivered
+        let line: String
+        switch reply.body {
+        case .approve:
+            activeRun?.status = .running
+            declineAwaitingEndpoint = false
+            line = "Okay, proceeding."
+        case .text:
+            activeRun?.status = .running
+            declineAwaitingEndpoint = false
+            line = "Sent your answer to the agent."
+        case .deny:
+            // The run is no longer waiting on us — we answered — but what it *does* with the no is
+            // the endpoint's to report. `.running` says only that the far end has the ball; the
+            // flag keeps the status line honest until the endpoint says what became of it. Marking
+            // it `.cancelled` here would assert a remote stop nothing confirmed.
+            activeRun?.status = .running
+            declineAwaitingEndpoint = true
+            line = "I've told the agent not to proceed."
+        }
+        emit(line)
+        return line
+    }
+
+    /// The reply did not get there. The question stays pending, and nothing is claimed.
+    private func refuse(_ error: AgentHarnessError, reply: AgentReply) -> String {
+        let line: String
+        switch error {
+        case .replyUnsupported(let body):
+            lastReplyOutcome = .unsupported
+            pendingReply = nil          // no channel — a retry would fail identically
+            switch body {
+            case .text:
+                line = "This agent can't take a typed answer, so I didn't send it."
+            case .approve:
+                line = "This agent has no way to relay an approval, so nothing was sent and it's still waiting."
+            case .deny:
+                // Explicitly NOT "cancelled": we could not tell it, so the run is whatever the
+                // endpoint last said it was.
+                line = "This agent has no way to relay a decline, so I couldn't tell it to stop."
+            }
+        case .http(let code):
+            lastReplyOutcome = .failed
+            line = "The agent endpoint refused your answer (HTTP \(code)) — say retry to try again."
+        default:
+            lastReplyOutcome = .failed
+            line = "I couldn't get your answer to the agent — say retry to try again."
+        }
+        _ = reply
+        emit(line)
+        return line
+    }
+
+    /// What is said to an answer whose question has been replaced, cancelled or has expired.
+    static let staleLine = "That answer was for an earlier question, so I didn't send it."
 
     /// One spoken line describing the current state (for "agent status").
     ///
@@ -258,8 +502,12 @@ final class AgentSessionService: ObservableObject {
         }
         switch run.status {
         case .queued:        return "The agent run is queued."
-        case .running:       return "The agent is working on \(run.project ?? "your task")."
-        case .awaitingInput: return awaitingInputPrompt ?? "The agent is waiting for your confirmation."
+        case .running:
+            if declineAwaitingEndpoint {
+                return "I've told the agent not to proceed; it hasn't reported stopping yet."
+            }
+            return "The agent is working on \(run.project ?? "your task")."
+        case .awaitingInput: return pendingQuestion?.prompt ?? "The agent is waiting for your confirmation."
         case .completed:     return lastSummary ?? "The agent run is complete."
         case .failed:        return lastSummary ?? "The agent run failed."
         case .cancelled:     return "The agent run was cancelled."

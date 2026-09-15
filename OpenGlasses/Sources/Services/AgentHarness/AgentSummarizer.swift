@@ -137,14 +137,13 @@ enum AgentSummarizer {
             return "Opened a pull request."
         case .pushed:
             return "Pushed the changes."
-        case .awaitingInput(let prompt):
-            return cap(prompt)
         case .error(let message):
             return cap("The agent hit an error: \(message).")
-        case .started, .fileCreated, .fileModified, .assistantText,
+        case .started, .fileCreated, .fileModified, .assistantText, .awaitingInput,
              .completed, .failed, .cancelled, .connection:
-            // Terminal events and connection changes are narrated by the session (one final line,
-            // one contact line) — narrating them here too would say everything twice.
+            // Terminal events, connection changes and questions are narrated by the session (one
+            // final line, one contact line, one ask per question identity) — narrating them here
+            // too would say everything twice, and would re-announce every polled repeat.
             return nil
         }
     }

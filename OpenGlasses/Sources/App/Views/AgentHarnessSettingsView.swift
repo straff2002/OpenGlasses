@@ -78,7 +78,38 @@ struct AgentHarnessSettingsView: View {
             } header: {
                 Text("Field mapping")
             } footer: {
-                Text("Body keys sent on start, and dot-paths read from the responses (e.g. data.run.id).")
+                if let collision = config.fieldCollisionIssue {
+                    Label(collision, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(OGTheme.errorLabel)
+                } else {
+                    Text("Body keys sent on start, and dot-paths read from the responses (e.g. data.run.id).")
+                }
+            }
+
+            Section {
+                fieldRow("Agent field", text: $config.agentField)
+                fieldRow("Agent value", text: $config.agentValue)
+            } header: {
+                Text("Which agent")
+            } footer: {
+                Text("For an endpoint that fronts more than one coding agent: the body key and the value to send in it. Both blank means the endpoint decides. This is a fixed request value — it isn't chosen by what you say or which voice persona is active.")
+            }
+
+            Section {
+                urlField("Answer URL (POST) — use {id}", text: $config.inputURLTemplate)
+                fieldRow("Answer field", text: $config.inputField)
+                fieldRow("Question prompt path", text: $config.questionPromptPath)
+                fieldRow("Question id path", text: $config.questionIDPath)
+                fieldRow("Question revision path", text: $config.questionRevisionPath)
+                fieldRow("Question kind path", text: $config.questionKindPath)
+            } header: {
+                Text("Questions and answers")
+            } footer: {
+                if config.acceptsReplies {
+                    Text("Answers are POSTed here with the question's id and revision, plus an answer id that stays the same if a send has to be retried. Without a question-id path, two questions worded the same way are told apart only by the order they arrive in. A question whose kind path says “text” can be answered in words; anything else is treated as a confirmation.")
+                } else {
+                    Text("Optional. Without an answer address, a question this endpoint asks can be heard but not answered — and you'll be told so rather than left thinking a reply went through.")
+                }
             }
 
             Section {
@@ -105,7 +136,7 @@ struct AgentHarnessSettingsView: View {
                 } label: {
                     Label(saved ? "Saved" : "Save endpoint", systemImage: saved ? "checkmark.circle.fill" : "square.and.arrow.down")
                 }
-                .disabled(!config.isConfigured)
+                .disabled(!config.isConfigured || config.fieldCollisionIssue != nil)
 
                 if Config.customAgentHarness != nil {
                     Button(role: .destructive) {

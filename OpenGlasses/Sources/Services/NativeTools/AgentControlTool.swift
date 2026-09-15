@@ -12,7 +12,10 @@ struct AgentControlTool: NativeTool {
     Control a remote coding agent (e.g. via the OpenClaw gateway) hands-free. Use action "start" with \
     a "prompt" (and optional "project") to dispatch a task like adding a feature or fixing a bug; \
     "status" to hear how the current run is going; "cancel" to stop it; "confirm"/"deny" to answer a \
-    safety confirmation the agent is waiting on (e.g. before pushing). Only available when Agent Mode \
+    safety confirmation the agent is waiting on (e.g. before pushing); "answer" with "text" when the \
+    agent asked a question that wants words rather than permission ("only change the tests"); "retry" \
+    if an answer did not reach the agent. Confirming and answering both raise the user's own \
+    on-screen/spoken prompt — this tool can ask, never decide. Only available when Agent Mode \
     is enabled in Settings. The result is spoken; the agent narrates progress and a final summary.
     """
 
@@ -22,7 +25,8 @@ struct AgentControlTool: NativeTool {
             "properties": [
                 "action": [
                     "type": "string",
-                    "enum": ["start", "status", "cancel", "confirm", "deny", "switch_harness"],
+                    "enum": ["start", "status", "cancel", "confirm", "deny", "answer", "retry",
+                             "switch_harness"],
                     "description": "What to do. Defaults to start.",
                 ],
                 "prompt": [
@@ -32,6 +36,12 @@ struct AgentControlTool: NativeTool {
                 "project": [
                     "type": "string",
                     "description": "Optional project/repo the agent should act on.",
+                ],
+                "text": [
+                    "type": "string",
+                    "description": "For action=answer: the wearer's answer to the agent's question, "
+                        + "in full. Pass what they actually said — it is shown to them for "
+                        + "confirmation before anything is sent.",
                 ],
                 "harness": [
                     "type": "string",
@@ -87,8 +97,19 @@ struct AgentControlTool: NativeTool {
             return await session.confirmPendingActionViaUserPrompt()
 
         case "deny", "decline", "no":
-            await session.respondToConfirmation(approved: false)
-            return "Okay, I won't proceed."
+            // Same boundary as confirm: this only relays a decline the wearer gave. What it says
+            // afterwards depends on whether the agent actually received it.
+            return await session.respondToConfirmation(approved: false)
+
+        case "answer", "reply":
+            guard let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else {
+                return "What should I tell the agent?"
+            }
+            return await session.answerPendingQuestionViaUserPrompt(text: text)
+
+        case "retry", "retry_answer", "resend":
+            return await session.retryPendingReply()
 
         case "switch_harness", "switch":
             guard let raw = args["harness"] as? String,
@@ -103,7 +124,7 @@ struct AgentControlTool: NativeTool {
             return "Switched the agent backend to \(kind.displayName)."
 
         default:
-            return "Unknown agent action '\(action)'. Try start, status, cancel, confirm, or deny."
+            return "Unknown agent action '\(action)'. Try start, status, cancel, confirm, deny, answer, or retry."
         }
     }
 }

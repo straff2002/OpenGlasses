@@ -106,7 +106,9 @@ final class RemoteActionConsentTests: XCTestCase {
         let service = AgentSessionService()
         service.setHarness(mock)
         _ = await service.dispatch(prompt: "p", project: nil)
-        service.handle(.awaitingInput(prompt: "Push to main?"))
+        service.handle(.awaitingInput(AgentQuestion(id: "q1", revision: 0,
+                                                    kind: .approval(actionSummary: "Push to main?"),
+                                                    prompt: "Push to main?", runID: "run1")))
         return service
     }
 
@@ -119,7 +121,7 @@ final class RemoteActionConsentTests: XCTestCase {
         let reply = await service.confirmPendingActionViaUserPrompt()
         XCTAssertTrue(reply.contains("nothing was approved"), "got: \(reply)")
         XCTAssertEqual(service.activeRun?.status, .awaitingInput, "the run must stay waiting")
-        XCTAssertNil(mock.respondedApproved, "the harness must never hear an approval")
+        XCTAssertNil(mock.respondedBody, "the harness must never hear an approval")
     }
 
     func testConfirmToolCallRoutesThroughUserPromptAndGrantApproves() async {
@@ -133,9 +135,11 @@ final class RemoteActionConsentTests: XCTestCase {
         }
 
         let reply = await service.confirmPendingActionViaUserPrompt()
-        XCTAssertEqual(reply, "Confirmed — the agent will proceed.")
+        // Plan FE P1: the line now reports what happened to the reply, not merely that a grant was
+        // given — the previous wording was spoken even when the transport had thrown.
+        XCTAssertEqual(reply, "Okay, proceeding.")
         XCTAssertEqual(service.activeRun?.status, .running)
-        XCTAssertEqual(mock.respondedApproved, true)
+        XCTAssertEqual(mock.respondedBody, .approve)
         // The prompt is source-attributed with the run's own awaiting prompt.
         XCTAssertEqual(requests, [RemoteActionConsentRequest(source: .codingAgent, summary: "Push to main?")])
     }
@@ -146,9 +150,13 @@ final class RemoteActionConsentTests: XCTestCase {
         service.requestUserConsent = { _ in false }   // the wearer denies
 
         let reply = await service.confirmPendingActionViaUserPrompt()
-        XCTAssertEqual(reply, "Okay, I won't proceed.")
-        XCTAssertEqual(service.activeRun?.status, .cancelled, "decline still cancels (safety default)")
-        XCTAssertEqual(mock.respondedApproved, false)
+        // Plan FE P1 changed this assertion because it encoded the unconfirmed-decline bug: the
+        // run was marked `.cancelled` locally, asserting that the far end had stopped, on no
+        // evidence at all. Now the decline is relayed and only that is claimed.
+        XCTAssertEqual(reply, "I've told the agent not to proceed.")
+        XCTAssertEqual(mock.respondedBody, .deny)
+        XCTAssertNotEqual(service.activeRun?.status, .cancelled)
+        XCTAssertTrue(service.declineAwaitingEndpoint)
     }
 
     func testConfirmToolCallWithNothingPendingIsRefused() async {
@@ -167,7 +175,7 @@ private final class ConsentStubHarness: AgentHarness {
     let kind: AgentHarnessKind = .custom
     var displayName: String { "Stub" }
     var isConfigured: Bool { true }
-    private(set) var respondedApproved: Bool?
+    private(set) var respondedBody: AgentReply.Body?
 
     func start(prompt: String, project: String?) async throws -> AgentRun {
         AgentRun(id: "run1", harness: kind, prompt: prompt, project: project, status: .running, startedAt: Date())
@@ -175,5 +183,5 @@ private final class ConsentStubHarness: AgentHarness {
     func events(for run: AgentRun) -> AsyncStream<AgentEvent> { AsyncStream { $0.finish() } }
     func status(_ run: AgentRun) async throws -> AgentRunStatus { run.status }
     func cancel(_ run: AgentRun) async throws {}
-    func respondToInput(_ run: AgentRun, approved: Bool) async throws { respondedApproved = approved }
+    func respondToInput(_ run: AgentRun, reply: AgentReply) async throws { respondedBody = reply.body }
 }

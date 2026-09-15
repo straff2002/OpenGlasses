@@ -1612,6 +1612,14 @@ class AppState: ObservableObject, AppStateProtocol {
             return await self.toolConfirmationCoordinator.requestConfirmation(
                 toolName: "code_agent", summary: request.summary, source: request.source)
         }
+        // Plan FE P1: the free-text half of the same boundary — the card shows the answer, the
+        // wearer can edit it, and only what they confirm is forwarded to the agent.
+        AgentSessionService.shared.requestUserText = { [weak self] request, draft in
+            guard let self else { return nil }
+            return await self.toolConfirmationCoordinator.requestTextAnswer(
+                toolName: "code_agent", summary: request.summary, source: request.source,
+                prefill: draft)
+        }
 
         // Plan CN: the pin/camera facts the attachment policy needs, and the frame itself.
         AgentSessionService.shared.attachmentContext = { [weak self] in

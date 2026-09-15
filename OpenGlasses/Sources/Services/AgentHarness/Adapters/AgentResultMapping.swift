@@ -62,6 +62,42 @@ enum AgentResultMapping {
         return result
     }
 
+    // MARK: - Questions (Plan FE P1)
+
+    /// Cap on a question prompt. It is spoken, and it is endpoint-authored text.
+    static let maxPromptLength = 300
+
+    /// What one status response said about the question a run is waiting on. Every field is
+    /// optional: an endpoint that maps none of them still pauses, it just says nothing about why.
+    struct QuestionPayload: Equatable {
+        var id: String?
+        var revision: Int?
+        var kind: String?
+        var prompt: String?
+
+        /// True when the endpoint named the question itself, so the identity is the endpoint's
+        /// rather than one derived from arrival order.
+        var hasExplicitID: Bool { !(id ?? "").isEmpty }
+    }
+
+    /// Read the pending-question fields, with the same hygiene as every other mapped string.
+    static func question(from json: [String: Any], config: CustomHarnessConfig) -> QuestionPayload {
+        QuestionPayload(
+            id: sanitized(JSONPath.string(at: config.questionIDPath, in: json), limit: maxItemLength),
+            revision: revision(JSONPath.string(at: config.questionRevisionPath, in: json)),
+            kind: sanitized(JSONPath.string(at: config.questionKindPath, in: json),
+                            limit: maxStatusLabelLength),
+            prompt: sanitized(JSONPath.string(at: config.questionPromptPath, in: json),
+                              limit: maxPromptLength))
+    }
+
+    /// A revision number, or `nil`. A revision we cannot read is no revision at all — inventing one
+    /// would make a re-ask look like a repeat, or the reverse.
+    static func revision(_ raw: String?) -> Int? {
+        guard let raw, let value = Int(raw.trimmingCharacters(in: .whitespaces)), value >= 0 else { return nil }
+        return value
+    }
+
     /// A bounded list of bounded strings, or `nil` when the path is unmapped/absent.
     static func list(at path: String, in json: [String: Any]) -> [String]? {
         guard let raw = JSONPath.strings(at: path, in: json) else { return nil }
