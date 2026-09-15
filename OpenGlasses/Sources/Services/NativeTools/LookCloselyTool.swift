@@ -48,6 +48,14 @@ final class LookCloselyTool: NativeTool {
     /// The live session that can put the image in front of the model, or nil when none is active.
     private let injectorProvider: @MainActor () -> LiveSessionInjecting?
     private let posture: @MainActor () -> PowerPosture
+    /// Plan FF P0/PR2 — fired at the capture-succeeded boundary and nowhere else.
+    ///
+    /// This is the wearer's "requested photo captured" feedback, so *where* it is called is the
+    /// whole requirement: not when the model asks for a photo, not when the policy allows one, and
+    /// not on the repeated background frames the live session is already sending. A blind wearer
+    /// holding a medicine box steady needs to know the picture exists — and must not be told it
+    /// does when the capture timed out.
+    private let onCaptureSucceeded: @MainActor () -> Void
 
     /// A capture that never arrives must not strand the model's function call.
     static let captureTimeout: Duration = .seconds(6)
@@ -57,11 +65,13 @@ final class LookCloselyTool: NativeTool {
     init(
         captureSharpFrame: @escaping () async throws -> Data,
         injectorProvider: @escaping @MainActor () -> LiveSessionInjecting?,
-        posture: @escaping @MainActor () -> PowerPosture = { PowerPolicyService.shared.posture }
+        posture: @escaping @MainActor () -> PowerPosture = { PowerPolicyService.shared.posture },
+        onCaptureSucceeded: @escaping @MainActor () -> Void = {}
     ) {
         self.captureSharpFrame = captureSharpFrame
         self.injectorProvider = injectorProvider
         self.posture = posture
+        self.onCaptureSucceeded = onCaptureSucceeded
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -93,6 +103,8 @@ final class LookCloselyTool: NativeTool {
         }
 
         lastCaptureAt = Date()
+        // The image exists. Every other exit from this function has already returned.
+        onCaptureSucceeded()
 
         // Ordering is the contract: the image must be in the model's view before the function
         // result telling it to read that image.

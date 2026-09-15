@@ -42,6 +42,14 @@ class GeminiLiveSessionManager: ObservableObject {
         localCueSynth.speak(utterance)
     }
 
+    /// Plan FF P0/PR2 — report lifecycle facts to the audible-lifecycle coordinator.
+    ///
+    /// Returns whether the coordinator took responsibility for telling the wearer. The local cues
+    /// below stay exactly as they were whenever it did not: this manager still owns the spoken
+    /// fallback for every wearer who has not selected the Blind Assistant preset, and two voices
+    /// saying the same thing is the failure the return value exists to prevent.
+    var onLifecycle: ((AudibleLifecycleCoordinator.Signal) -> Bool)?
+
     // Camera frame source — set by AppState to the existing CameraService's periodic captures
     var onRequestVideoFrame: (() async -> UIImage?)?
 
@@ -226,10 +234,13 @@ class GeminiLiveSessionManager: ObservableObject {
             Task { @MainActor in
                 guard self.isActive else { return }
                 if !self.geminiService.reconnecting {
+                    // Report the loss before the teardown: after `stopSession()` there is no
+                    // session left for the cue to be about.
+                    let claimed = self.onLifecycle?(.connectionLost) ?? false
                     self.stopSession()
                     self.errorMessage = "Connection lost: \(reason ?? "Unknown error")"
                     // Voice-first: the phone may be pocketed, so a visual banner isn't enough (Plan BD).
-                    self.speakLocalCue("Voice session disconnected.")
+                    if !claimed { self.speakLocalCue("Voice session disconnected.") }
                 }
             }
         }
@@ -239,9 +250,10 @@ class GeminiLiveSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 guard self.isActive else { return }
+                let claimed = self.onLifecycle?(.reconnectExhausted) ?? false
                 self.stopSession()
                 self.errorMessage = "Voice session lost — couldn't reconnect."
-                self.speakLocalCue("Voice session lost. I couldn't reconnect.")
+                if !claimed { self.speakLocalCue("Voice session lost. I couldn't reconnect.") }
             }
         }
 
@@ -266,14 +278,21 @@ class GeminiLiveSessionManager: ObservableObject {
                     toolDeclarations: toolDefs
                 )
                 // Re-start audio capture
+                var audioRestored = true
                 do {
                     try self.audioManager.startCapture()
                 } catch {
+                    audioRestored = false
                     PrivacyLog.realtimeSession(.gemini, .audioRestartFailed,
                                                error: SafeErrorSummary(error))
                 }
                 // Re-start frame capture
                 self.startFrameCapture()
+                // Plan FF P0/PR2: a socket that came back is not a session the wearer can use.
+                // The coordinator decides the *shape* of the recovery — and waits for the camera
+                // to prove itself rather than reading it here, where no frame can have arrived yet.
+                self.onLifecycle?(.reconnected(audioRestored: audioRestored,
+                                               needsVisualEvidence: self.isCameraStreaming))
             }
         }
 
@@ -345,6 +364,10 @@ class GeminiLiveSessionManager: ObservableObject {
                 }
                 if self.reconnecting != self.geminiService.reconnecting {
                     self.reconnecting = self.geminiService.reconnecting
+                    // The retry ladder starting is the moment the wearer lost the assistant; the
+                    // terminal `onDisconnected` path above cannot fire for this drop, because it
+                    // guards on exactly this flag.
+                    if self.reconnecting { self.onLifecycle?(.connectionLost) }
                 }
                 if let bridge = self.openClawBridge {
                     if self.toolCallStatus != bridge.lastToolCallStatus {
@@ -452,6 +475,12 @@ class GeminiLiveSessionManager: ObservableObject {
 
         // Start periodic camera frame capture
         startFrameCapture()
+
+        // Plan FF P0/PR2: "usable" is all three facts, not the socket alone — everything above had
+        // to succeed to reach here, and the connection state is re-read rather than assumed.
+        onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
+                                           sessionConnected: geminiService.connectionState == .ready,
+                                           microphoneListening: true)))
     }
 
     func stopSession() {

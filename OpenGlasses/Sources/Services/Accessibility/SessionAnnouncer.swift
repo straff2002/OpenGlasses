@@ -57,10 +57,52 @@ final class SessionAnnouncer {
         return announcement
     }
 
+    // MARK: - Is VoiceOver still reading one of ours?
+
+    /// Announcements this app posted that have not reported finishing.
+    @MainActor private static var outstandingAnnouncements: [UUID] = []
+    @MainActor private static var finishObserver: NSObjectProtocol?
+
+    /// A posted announcement that never reports finishing must not jam the route forever. VoiceOver
+    /// drops an announcement outright when it is busy or when the wearer touches something, and the
+    /// notification does not always arrive for those.
+    static let announcementTimeout: TimeInterval = 8
+
+    /// Whether an announcement this app posted is still being read.
+    ///
+    /// Deliberately *not* called "is VoiceOver speaking": iOS exposes no such query, and this knows
+    /// only about this app's own announcements. VoiceOver reading a control the wearer just touched
+    /// is invisible here. `AudibleLifecyclePolicy.SpeechRoute` documents the same limit — it is why
+    /// the earcon, rather than the sentence, is what carries the meaning of a lifecycle cue.
+    @MainActor
+    static var isAnnouncingToVoiceOver: Bool { !outstandingAnnouncements.isEmpty }
+
+    @MainActor
+    private static func noteAnnouncementPosted() {
+        #if canImport(UIKit)
+        if finishObserver == nil {
+            finishObserver = NotificationCenter.default.addObserver(
+                forName: UIAccessibility.announcementDidFinishNotification,
+                object: nil, queue: .main) { _ in
+                    MainActor.assumeIsolated {
+                        if !outstandingAnnouncements.isEmpty { outstandingAnnouncements.removeFirst() }
+                    }
+                }
+        }
+        let token = UUID()
+        outstandingAnnouncements.append(token)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(announcementTimeout * 1_000_000_000))
+            outstandingAnnouncements.removeAll { $0 == token }
+        }
+        #endif
+    }
+
     /// The real sink.
     @MainActor
     static func postToVoiceOver(_ announcement: SessionAnnouncement) {
         #if canImport(UIKit)
+        noteAnnouncementPosted()
         // An `AttributedString` with `.accessibilitySpeechAnnouncementPriority` is how a line
         // asks to interrupt rather than queue behind whatever VoiceOver is mid-way through.
         var speech = AttributedString(announcement.message)

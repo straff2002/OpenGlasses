@@ -3463,6 +3463,19 @@ struct Config {
 
     static func setAccessibilityModeEnabled(_ enabled: Bool) { accessibilityModeEnabled = enabled }
 
+    /// Plan FF P0/PR2 — whether the audible lifecycle speaks a short line alongside each earcon.
+    ///
+    /// On by default, because a wearer meeting the cues for the first time cannot be expected to
+    /// know them; off is for the wearer who has learned the five sounds and would rather not have
+    /// a sentence land in the middle of a conversation. The earcon plays either way — turning the
+    /// words off never makes a lifecycle event silent.
+    @UserDefaultsBacked("blindAssistantSpokenCues", default: true)
+    static var blindAssistantSpokenCues: Bool
+
+    static var blindAssistantCueStyle: AudibleLifecyclePolicy.CueStyle {
+        blindAssistantSpokenCues ? .tonesAndSpeech : .tonesOnly
+    }
+
     /// Master toggle for fingerspelling recognition (Plan CK): the live camera →
     /// landmarks → CTC decode → speech pipeline. Off by default; the session also
     /// requires the downloaded model bundle before it can start.

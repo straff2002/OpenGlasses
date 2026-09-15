@@ -133,7 +133,11 @@ final class NativeToolRegistry {
             // and capturing one here would go stale on the first teardown (see LookCloselyTool).
             register(LookCloselyTool(
                 captureSharpFrame: { try await camera.capturePhoto() },
-                injectorProvider: { AppStateProvider.shared?.activeLiveInjector }))
+                injectorProvider: { AppStateProvider.shared?.activeLiveInjector },
+                // Plan FF P0/PR2: the requested-capture cue, resolved at execution time for the
+                // same reason the injector is — the coordinator belongs to an AppState this
+                // process-lifetime tool must not capture.
+                onCaptureSucceeded: { AppStateProvider.shared?.noteRequestedCaptureSucceeded() }))
             register(VisionAssessTool())   // structured vision (read the instrument, etc.) via StructuredVisionService.shared
             // Plan CG: badge OCR → person record in the brain store.
             register(BadgeScanTool(cameraService: camera, locationService: locationService,

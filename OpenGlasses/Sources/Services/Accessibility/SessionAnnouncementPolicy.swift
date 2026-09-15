@@ -40,13 +40,23 @@ struct AnnouncementContext: Equatable {
     var assistantIsSpeaking: Bool = false
     /// The processing pad is looping — the app's own "I'm working on it" sound.
     var thinkingSoundPlaying: Bool = false
+    /// `AudibleLifecycleCoordinator` is running (Blind Assistant is the selected live preset), so
+    /// the session's start, loss and recovery now have earcons and spoken lines of their own.
+    ///
+    /// This is the one input that grew the subtraction rather than the announcement list. The
+    /// lifecycle cues do not replace VoiceOver — they are heard with VoiceOver on *or* off — so the
+    /// thing that has to change is what VoiceOver *also* reads, or the wearer gets the tone, the
+    /// app's line and the screen reader's line for one event.
+    var blindAssistantCuesActive: Bool = false
 
     init(voiceOverRunning: Bool = false,
          assistantIsSpeaking: Bool = false,
-         thinkingSoundPlaying: Bool = false) {
+         thinkingSoundPlaying: Bool = false,
+         blindAssistantCuesActive: Bool = false) {
         self.voiceOverRunning = voiceOverRunning
         self.assistantIsSpeaking = assistantIsSpeaking
         self.thinkingSoundPlaying = thinkingSoundPlaying
+        self.blindAssistantCuesActive = blindAssistantCuesActive
     }
 }
 
@@ -86,7 +96,12 @@ enum SessionAnnouncementPolicy {
         // route, a failed player — the transition is genuinely silent and does earn a line.
         case .thinking(let active):
             return active && context.thinkingSoundPlaying
-        case .liveSession, .reconnecting, .cameraStreaming, .micMuted, .error:
+        // Plan FF P0/PR2: with the audible lifecycle running these three are exactly the events it
+        // plays an earcon and speaks a line for — `sessionUsable`, `connectionLost` and the
+        // recovery shapes. Without it, nothing else makes a sound for them and they stay announced.
+        case .liveSession, .reconnecting:
+            return context.blindAssistantCuesActive
+        case .cameraStreaming, .micMuted, .error:
             return false
         }
     }
