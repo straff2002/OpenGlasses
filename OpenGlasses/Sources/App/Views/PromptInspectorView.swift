@@ -93,7 +93,10 @@ struct PromptInspectorView: View {
         // present when the gateway is an active agentic capability.
         let hasOpenClaw = Config.isOpenClawAgentActive
         let locationContext = appState.locationService.locationContext
-        let memoryContext = Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil
+        // Plan FC P3: the inspector previews a prompt rather than sending one, so it renders
+        // through the same entry point but does not record a turn snapshot — a preview that
+        // claimed to be a turn would put a memory block on the ledger no backend ever received.
+        let memoryContext = appState.userMemory.renderedContext(enabled: Config.userMemoryEnabled).text
 
         var secs: [PromptSection] = []
 

@@ -182,7 +182,11 @@ final class TurnLedger: ObservableObject {
     /// Settings → Advanced → Developer "copy diagnostics" action. Text, not JSON: nothing parses
     /// this back, a developer reads it, so legibility wins (see also Plan CU P1 item 5 — no sink, no
     /// push; this on-device export is the entire surface).
-    func debugExport(now: Date = Date()) -> String {
+    /// - Parameter liveMemory: the live backends' connect-time memory snapshots, already aged (see
+    ///   `MemoryContextRecorder.liveSnapshots(asOf:)`). Passed in rather than read from the
+    ///   recorder so this stays a pure function of its arguments.
+    func debugExport(now: Date = Date(),
+                     liveMemory: [MemoryContextSnapshot.Route: MemoryContextSnapshot] = [:]) -> String {
         var lines = [
             "OpenGlasses turn ledger — \(sealed.count) turns sealed, \(inFlightCount) in flight " +
             "(cap \(maxCount) turns / \(maxBytes) bytes)",
@@ -196,6 +200,9 @@ final class TurnLedger: ObservableObject {
             if timeline.abandoned { line += "  ABANDONED" }
             if timeline.interrupted { line += "  INTERRUPTED" }
             lines.append(line)
+            if let memory = timeline.memoryContext {
+                lines.append("          memory: \(memory.reportLine)")
+            }
         }
 
         lines.append("")
@@ -207,6 +214,14 @@ final class TurnLedger: ObservableObject {
         for (cohort, stat) in byCohort.sorted(by: { Self.cohortLabel($0.key) < Self.cohortLabel($1.key) }) {
             lines.append("  \(Self.cohortLabel(cohort)): median=\(Self.formatSeconds(stat.median))  " +
                          "mean=\(Self.formatSeconds(stat.mean))  n=\(stat.count)")
+        }
+
+        if !liveMemory.isEmpty {
+            lines.append("")
+            lines.append("Live session memory context (assembled at connect, reused every turn):")
+            for (route, snapshot) in liveMemory.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                lines.append("  \(route.rawValue): \(snapshot.reportLine)")
+            }
         }
 
         return lines.joined(separator: "\n")

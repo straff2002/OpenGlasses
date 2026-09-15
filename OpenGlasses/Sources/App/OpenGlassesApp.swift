@@ -895,6 +895,21 @@ class AppState: ObservableObject, AppStateProtocol {
     /// DK: owns the disposable, lock-scoped in-memory conversation recall projection.
     let conversationRecallCoordinator = ConversationRecallCoordinator()
     let userMemory = SemanticMemoryStore()
+
+    /// The wearer-memory block for a prompt, and the record of what it contained (Plan FC P3).
+    ///
+    /// One helper for every send site because the two decisions in front of the store — is memory
+    /// on at all, and may this turn's words be used to retrieve — used to be repeated inline at a
+    /// dozen of them, and the four ways the answer can be "no block" all arrived at the backend as
+    /// the same `nil`. `MemoryContextRecorder` keeps the reason on the turn and in the diagnostics
+    /// export; retrieval itself is untouched.
+    func memoryContextForPrompt(query: String? = nil) -> String? {
+        let rendered = userMemory.renderedContext(
+            query: Config.userMemoryRetrievalEnabled ? query : nil,
+            enabled: Config.userMemoryEnabled)
+        MemoryContextRecorder.record(rendered.snapshot)
+        return rendered.text
+    }
     let documentStore = DocumentStore()
     let intentClassifier = IntentClassifier()
     let conversationClassifier = ConversationClassifier()
@@ -3153,7 +3168,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: imageData,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
+                memoryContext: memoryContextForPrompt(query: prompt)
             )
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
@@ -3198,7 +3213,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: photoData,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
+                memoryContext: memoryContextForPrompt(query: prompt)
             )
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
@@ -3346,7 +3361,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 let response = try await llmService.sendMessage(
                     text,
                     locationContext: locationService.locationContext,
-                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? text : nil) : nil
+                    memoryContext: memoryContextForPrompt(query: text)
                 )
                 lastResponse = response
                 await speechService.speak(response)
@@ -3432,7 +3447,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: photoData,
-                memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? prompt : nil) : nil
+                memoryContext: memoryContextForPrompt(query: prompt)
             )
             TurnRecorder.mark(.generationDone)
             var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
@@ -4192,7 +4207,7 @@ class AppState: ObservableObject, AppStateProtocol {
                                 query,
                                 locationContext: self.locationService.locationContext,
                                 imageData: photoData,
-                                memoryContext: Config.userMemoryEnabled ? self.userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? query : nil) : nil
+                                memoryContext: self.memoryContextForPrompt(query: query)
                             )
                         },
                         postProcess: { rawResponse in
@@ -4699,7 +4714,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     } else {
                         locationCtx = nil
                     }
-                    let memoryCtx = Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? query : nil) : nil
+                    let memoryCtx = memoryContextForPrompt(query: query)
                     // Cloud send with automatic model fall-over (BK P2b): active model leads, then
                     // the user's fallback order — spills on overflow / rate-limit / empty completion.
                     func cloudCascade() async throws -> String {
@@ -4890,7 +4905,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         query,
                         locationContext: locationService.locationContext,
                         imageData: image,
-                        memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? query : nil) : nil,
+                        memoryContext: memoryContextForPrompt(query: query),
                         playbookContext: playbookStore.playbookContext(),
                         shortcutsContext: ShortcutsCatalog.shared.promptBlock(),
                         backgrounded: UIApplication.shared.applicationState == .background,
@@ -5285,7 +5300,7 @@ class AppState: ObservableObject, AppStateProtocol {
             let response = try await TurnRecorder.offTurn {
                 try await llmService.sendMessage(
                     triagePrompt,
-                    memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? triagePrompt : nil) : nil,
+                    memoryContext: memoryContextForPrompt(query: triagePrompt),
                     agentContext: currentAgentContext
                 )
             }
@@ -5366,7 +5381,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 let summary = try await TurnRecorder.offTurn {
                     try await llmService.sendMessage(
                         summaryPrompt,
-                        memoryContext: Config.userMemoryEnabled ? userMemory.systemPromptContext(query: Config.userMemoryRetrievalEnabled ? summaryPrompt : nil) : nil,
+                        memoryContext: memoryContextForPrompt(query: summaryPrompt),
                         agentContext: currentAgentContext
                     )
                 }

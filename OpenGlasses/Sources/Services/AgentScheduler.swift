@@ -252,7 +252,7 @@ class AgentScheduler: ObservableObject {
                 try await appState.llmService.sendMessage(
                     wrappedPrompt,
                     locationContext: appState.locationService.locationContext,
-                    memoryContext: Config.userMemoryEnabled ? appState.userMemory.systemPromptContext() : nil,
+                    memoryContext: appState.memoryContextForPrompt(),
                     agentContext: appState.currentAgentContext
                 )
             }

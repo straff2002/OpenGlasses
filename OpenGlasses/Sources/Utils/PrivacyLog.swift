@@ -1447,6 +1447,52 @@ enum PrivacyLog {
         return emit(.init(.model, .modelCompaction, fields))
     }
 
+    /// What the wearer's saved memory contributed to one assembled prompt (Plan FC P3).
+    ///
+    /// Counts, sizes and case names only. A memory key, a memory value, a person's name and the
+    /// query that retrieved them have no parameter here — which is the same reason this is a
+    /// method rather than a dictionary: the absence is enforced by the signature.
+    enum MemoryContextEvent: String {
+        /// A block (or a documented absence) was assembled for a prompt.
+        case assembled
+        /// A prompt tier took only part of the block it was handed.
+        case clipped
+    }
+
+    @discardableResult
+    static func memoryContext(_ event: MemoryContextEvent,
+                              route: PrivacyToken,
+                              availability: PrivacyToken,
+                              reason: PrivacyToken? = nil,
+                              stored: Int? = nil,
+                              retrieved: Int? = nil,
+                              included: Int? = nil,
+                              characters: Int? = nil,
+                              tokens: Int? = nil,
+                              truncation: PrivacyToken? = nil,
+                              dropped: Int? = nil,
+                              clamped: Int? = nil,
+                              freshness: PrivacyToken? = nil,
+                              ageSeconds: Double? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+            .init(.source, .token(route)),
+            .init(.state, .token(availability)),
+        ]
+        if let reason { fields.append(.init(.reason, .token(reason))) }
+        if let stored { fields.append(.init(.stored, .count(stored))) }
+        if let retrieved { fields.append(.init(.retrieved, .count(retrieved))) }
+        if let included { fields.append(.init(.included, .count(included))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let tokens { fields.append(.init(.tokens, .count(tokens))) }
+        if let truncation { fields.append(.init(.detail, .token(truncation))) }
+        if let dropped { fields.append(.init(.dropped, .count(dropped))) }
+        if let clamped { fields.append(.init(.clamped, .count(clamped))) }
+        if let freshness { fields.append(.init(.phase, .token(freshness))) }
+        if let ageSeconds { fields.append(.init(.elapsed, .seconds(ageSeconds))) }
+        return emit(.init(.model, .memoryContext, fields))
+    }
+
     /// On-device inference. Model ids here are catalog ids from the app's own model list, so they
     /// are public; the generated text, the prompt it answered and the tool arguments it produced
     /// are not. Memory figures are the reason these lines exist at all — an MLX model that will
@@ -1983,7 +2029,7 @@ struct PrivacyEvent: Equatable {
         case toolGate, toolDispatch, toolRun, toolAuthorizationRefused, webSearch
         case wakeWord, speech, tts
         case audio
-        case model, modelCompaction, localModel
+        case model, modelCompaction, localModel, memoryContext
         case conversation
         case camera, photoLibrary, vision, face
         case homeBridge, medical, location, proactiveAlert
@@ -2009,6 +2055,7 @@ struct PrivacyEvent: Equatable {
         case model, configuration, tokens, megabytes, total, vision, shape
         case cacheMegabytes, footprintMegabytes, headroomMegabytes
         case messagesBefore, messagesAfter, tokensBefore, tokensAfter, signals
+        case stored, retrieved, included, dropped, clamped
         case store, thread, minutes
         case resolution, frameRate, width, height
         case posture, percent, extraction, confidence, days

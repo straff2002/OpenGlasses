@@ -143,8 +143,10 @@ class GeminiLiveSessionManager: ObservableObject {
         // Only declare OpenClaw tools if the gateway is actually connected (prevents Gemini
         // from attempting tool calls that will fail when gateway is unreachable).
         let systemInstruction = buildSystemInstruction()
-        // The instruction embeds location, personas and memory context — its length is what a
-        // context-overflow report needs, and all of it that may be persisted.
+        // The instruction embeds location, the mode prefix and the live contexts (vault, visual
+        // state, project, reading) — its length is what a context-overflow report needs, and all
+        // of it that may be persisted. Wearer memory is *not* among them; see the record at the
+        // end of `buildSystemInstruction`.
         PrivacyLog.realtimeSession(.gemini, .systemInstructionBuilt,
                                    detail: PrivacyToken(isCameraStreaming ? "vision" : "audioOnly"),
                                    characters: systemInstruction.count)
@@ -458,6 +460,9 @@ class GeminiLiveSessionManager: ObservableObject {
                                    count: droppedNotActive)
         PrivacyLog.realtimeSession(.gemini, .frameDropped, detail: PrivacyToken("notReady"),
                                    count: droppedNotReady)
+        // Plan FC P3: the connect-time snapshot describes a session that no longer exists. Drop it
+        // rather than let a diagnostics export age it forever.
+        MemoryContextRecorder.forgetLive(.liveGemini)
         let hadCameraClaim = isCameraStreaming
         toolCallRouter?.cancelAll()
         toolCallRouter = nil
@@ -618,6 +623,15 @@ class GeminiLiveSessionManager: ObservableObject {
 
         // Security baseline: untrusted-content / prompt-injection policy (mirrors Direct Mode).
         prompt += PromptInjectionPolicy.systemPromptPolicy
+
+        // Plan FC P3. Two facts about this instruction, recorded rather than assumed:
+        // it carries **no** wearer-memory block — no call to the memory store exists on this path,
+        // unlike Direct mode — and it is assembled here, once per connect/reconfigure, then reused
+        // for every turn of the session. A live turn is therefore never fresh per-turn retrieval,
+        // and a "Live mode doesn't remember me" report is answered by the first fact instead of
+        // sending someone after a retrieval bug.
+        MemoryContextRecorder.recordLive(
+            .notInjected(at: Date(), freshness: .connectSnapshot(age: 0)), route: .liveGemini)
 
         return prompt
     }

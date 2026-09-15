@@ -132,6 +132,14 @@ struct TurnTimeline: Identifiable, Equatable {
     /// rising `detectorBackstop` share is how a mis-set threshold announces itself.
     var endOfTurnReason: EndOfTurnPolicy.Reason?
 
+    /// What the wearer's saved memory contributed to this turn's prompt (Plan FC P3): availability,
+    /// how many entries were retrieved versus rendered, the size of the block that was actually
+    /// appended, and what truncated it. `nil` on a turn whose prompt was never assembled through a
+    /// memory-carrying path — which is itself the answer to "did this turn see memory?".
+    ///
+    /// Counts and case names only; see `MemoryContextSnapshot` for why no memory text can reach it.
+    var memoryContext: MemoryContextSnapshot?
+
     /// The turn never delivered — a backend error, a supersession, a wearer who walked away.
     var abandoned: Bool
     /// The wearer barged in over playback. Deliberately distinct from `abandoned`: this turn worked

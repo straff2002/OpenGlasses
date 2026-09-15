@@ -340,14 +340,72 @@ class LLMService: ObservableObject {
             """
         }
         if let memory = memoryContext?.trimmingCharacters(in: .whitespacesAndNewlines), !memory.isEmpty {
-            let clipped = memory.count > 400 ? String(memory.prefix(400)) + "…" : memory
-            prompt += "\n\nKnown about the wearer: \(clipped)"
+            let clip = clipMemoryForLeanPrompt(memory)
+            if clip.droppedCharacters > 0 {
+                // Plan FC P3: this tier is the one place a prompt takes less memory than the store
+                // rendered, so the turn's snapshot has to be corrected to what the backend saw.
+                // Measured here, at the clip, rather than guessed at the call site, which does not
+                // know which tier will answer.
+                MemoryContextRecorder.noteClip(renderedCharacters: clip.text.count,
+                                               droppedCharacters: clip.droppedCharacters)
+            }
+            prompt += "\n\nKnown about the wearer: \(clip.text)"
         }
         return prompt
     }
 
+    /// How much of a rendered memory block the lean cloud tier carries.
+    ///
+    /// The tier exists for providers with a tight context ceiling (Groq's 8k), where the whole
+    /// point is that the prompt stays small; the memory block is bounded upstream too
+    /// (`SemanticMemoryStore.maxMemoryLines` / `maxValueChars`) but eight clamped values can still
+    /// run past this. Named and separated from the prompt text so the clip is measurable rather
+    /// than inferred from a diff of two prompts.
+    static let leanMemoryClipLimit = 400
+
+    /// Clip a memory block to the lean tier's budget. Pure: returns the text the prompt will carry
+    /// and how many characters of the block it no longer contains.
+    ///
+    /// `prefix` is grapheme-based, so a clip never splits a character — an emoji or a combining
+    /// sequence either survives whole or is dropped whole.
+    static func clipMemoryForLeanPrompt(_ memory: String,
+                                        limit: Int = leanMemoryClipLimit) -> (text: String, droppedCharacters: Int) {
+        guard memory.count > limit else { return (memory, 0) }
+        return (String(memory.prefix(limit)) + "…", memory.count - limit)
+    }
+
     static func leanVisionCloudPrompt() -> String {
         leanCloudPrompt(hasImage: true)
+    }
+
+    /// The memory block exactly as a full system prompt carries it: the rendered block itself,
+    /// then the instructions that tell the model what to do with it.
+    ///
+    /// Extracted from `buildSystemPrompt` so what a turn *reports* injecting can be compared
+    /// against what is injected (Plan FC P3) without reaching into a private method or rebuilding
+    /// a whole prompt. The rendered block is appended verbatim — this tier never clips it — which
+    /// is why `MemoryContextSnapshot.renderedCharacters` is the prompt's answer here as well.
+    static func memoryPromptBlock(_ memory: String) -> String {
+        var block = "\n\n\(memory)"
+        block += """
+
+
+            MEMORY INSTRUCTIONS:
+            You can remember facts about the user by including [REMEMBER: key = value] in your response.
+            You can forget facts with [FORGET: key]. These tags will be stripped before speaking.
+            Memories persist across all conversations — they are the bridge between sessions.
+
+            What to remember: names, preferences, family members, routines, interests, important dates, relationships, stated goals.
+            Only remember when the user explicitly shares personal info — don't infer or assume.
+
+            Memory hygiene — keep memory accurate and compact:
+            - Before adding a fact, check the existing memories listed above. If one already covers that key, update it rather than creating a duplicate.
+            - Merge related facts when possible (e.g. "partner = Alex" plus "Alex's birthday is March 5" → update partner entry to include both).
+            - For time-sensitive facts (e.g. "at the airport", "working on a presentation"), include a date or context so staleness can be evaluated later.
+            - Use [FORGET: key] to remove facts the user corrects or that are clearly no longer true.
+            - When the user says "forget X" or "that's wrong", always issue a [FORGET] command before storing the correction.
+            """
+        return block
     }
 
     private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil) async -> String {
@@ -485,25 +543,7 @@ class LLMService: ObservableObject {
             """
         }
         if let memory = memoryContext {
-            prompt += "\n\n\(memory)"
-            prompt += """
-
-
-            MEMORY INSTRUCTIONS:
-            You can remember facts about the user by including [REMEMBER: key = value] in your response.
-            You can forget facts with [FORGET: key]. These tags will be stripped before speaking.
-            Memories persist across all conversations — they are the bridge between sessions.
-
-            What to remember: names, preferences, family members, routines, interests, important dates, relationships, stated goals.
-            Only remember when the user explicitly shares personal info — don't infer or assume.
-
-            Memory hygiene — keep memory accurate and compact:
-            - Before adding a fact, check the existing memories listed above. If one already covers that key, update it rather than creating a duplicate.
-            - Merge related facts when possible (e.g. "partner = Alex" plus "Alex's birthday is March 5" → update partner entry to include both).
-            - For time-sensitive facts (e.g. "at the airport", "working on a presentation"), include a date or context so staleness can be evaluated later.
-            - Use [FORGET: key] to remove facts the user corrects or that are clearly no longer true.
-            - When the user says "forget X" or "that's wrong", always issue a [FORGET] command before storing the correction.
-            """
+            prompt += Self.memoryPromptBlock(memory)
         }
         if let playbook = playbookContext {
             prompt += "\n\n\(playbook)"
