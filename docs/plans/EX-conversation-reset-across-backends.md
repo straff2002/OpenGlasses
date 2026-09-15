@@ -1,7 +1,9 @@
 # Plan EX — Conversation Reset Across Backends
 
-**Status: 📝 Drafted 2026-09-12; not scheduled.** One implementation PR, core and fake
-backend tests first; live backend/device validation follows.
+**Status: 🚧 Core shipped 2026-09-16** — `ConversationResetCoordinator`, all backend adapters and
+the marker tests are in. Owed: one live round-trip per backend against its real context/resumption
+behaviour, and recognition + spoken-cue validation on glasses. The temple double-tap investigation
+is closed (unavailable — see below).
 
 ## Gap and existing coverage
 
@@ -27,6 +29,27 @@ owns saved-thread selection. Reuse both.
    where reuse would restore the old context. Unsupported or failed resets give an honest result;
    never confirm success after only clearing the phone's display.
 
+## What shipped
+
+One coordinator (`Sources/Services/ConversationReset/`) behind all three entry points — the
+classifier's Tier-0 phrase route, the model calling `new_topic`, and the conversation UI's
+new-chat action. The per-owner inventory that shaped it is [EX-reset-inventory.md](EX-reset-inventory.md).
+
+- **Outcomes** are `completed`, `issuedUnverified`, `failed` and `unsupported` per backend. The
+  phone's history is cleared and exactly one saved thread started only when every backend in the
+  plan crossed the boundary; otherwise nothing local changes and the confirmation names what held
+  out.
+- **The generation boundary** advances when a reset is *requested*, not when it finishes: while the
+  reset runs, the conversation being retired is still producing an answer. Every turn captures the
+  generation at its start and both the transcript (`accept`) and the speaker (`speak`) reject a
+  stale one; speech already in flight is stopped at the request.
+- **The turn barrier** (`LLMService.isTurnInFlight`, a depth rather than a flag because
+  `sendMessage` → `sendLocal` nests) holds the reset until the turn has finished owing the model
+  its tool results.
+- **`new_topic` no longer claims success.** It returns a neutral acknowledgement; awaiting the
+  reset from inside the tool would deadlock against the barrier, and the coordinator owns the
+  spoken cue.
+
 ## Acceptance
 
 A scripted backend remembers a unique marker before reset and does not receive it in the next
@@ -41,6 +64,12 @@ A success cue is emitted only after the selected backend crosses the reset bound
 
 Verify one reset round-trip per backend against its actual context/resumption behavior, sharing
 [EH](EH-openclaw-2-0-wire-alignment.md)'s gateway fixture. Validate recognition and spoken cues
-on glasses. A temple double-tap is an optional investigation: inspect the installed SDK and
-current official capabilities before adding it. If no supported event exists, record unavailable
-and close that investigation; do not promise or block the voice feature on a gesture.
+on glasses. Both are owed.
+
+**Temple double-tap: unavailable — investigation closed 2026-09-16.** The pinned SDK (0.9.0) was
+read directly: `MWDATCore`, `MWDATCamera` and `MWDATDisplay`'s `arm64-apple-ios.swiftinterface`
+declare no gesture, touch, temple, hardware-button or input-event API of any kind. The only `tap`
+and `button` symbols in the whole surface are in-lens HUD view components — `Button(label:style:
+iconName:onClick:)` and `FlexBox.onTap(_:)` — which fire when the wearer selects a rendered control
+on a Display device, not when they tap the frame. There is no supported event to bind, so nothing
+was added and nothing is promised; the voice route was never made to depend on one.
