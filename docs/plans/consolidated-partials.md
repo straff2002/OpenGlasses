@@ -98,14 +98,14 @@ plans that are drafted or planned with nothing built.
 | [AS](audio-session-lease-coordinator.md) | Trim `AppState.switchMode`'s hardware-settling sleep | Unblocked: the BJ PR1 prerequisite merged. Note BJ kept `assumeOwnership` deliberately — the doc's "slated for retirement" line is wrong |
 | [DR](DR-broadcast-resilience.md) | Spoken once-per-episode notice on first drop and on give-up; then P2 multi-destination fan-out (`ParallelBroadcastCoordinator`, per-destination retry, Settings) and P3 `CaptionBurnPlan` evidentiary export | CY already shipped the reconnect/backoff/session-state core this plan's P1 assumed missing — the TTS notice is all that remains of P1 |
 | [BQ](BQ-siri-discoverability.md) | Riders: per-item `.appEntityIdentifier()` on list views, `IntentValueRepresentation` on `GlassesContentEntity`, `AppIntentsTesting` adoption, `@AppEntity(schema:)` domain adoption | P1–P3 plus the `assistant.activate` follow-up are all merged |
-| [BV](BV-power-policy.md) | Deeper posture consumers: camera snapshot-first escalation, idle stream teardown, local-model tier switch, reading-companion checkpoint | Posture is read by the throttler, `device_info`, walking routes, digest and look-closely; none of the four named escalations exist |
+| [BV](BV-power-policy.md) | Deeper posture consumers: snapshot-first escalation, shorter idle/max-duration bounds, reserve admission and active-video downgrade, local-model tier switch, reading checkpoint, optional thermal observation wiring | Posture is read by the throttler, `device_info`, walking routes, digest and look-closely; none of the four named escalations exist |
 | [CQ](CQ-third-party-glasses-backends.md) | Retro-fit `CameraFeatureGate` to the EVEN display backend's unavailable-feature list; build Track A/P2's pure halves (`PhotoWebhookReceiver` routing/multipart/correlation/timeout, warm-up + back-off against `PowerPolicyService`) | P0 + P1 + B/P4 merged; everything else in the plan is vendor-SDK or hardware bound |
 | [CN](CN-agent-vision-attachment.md) | Reconcile the doc's "default off" prose and the self-contradicting `Config` comment with `agentVisionAttachmentEnabled` defaulting **on**; fix the "EF P4" pointer to EH P4 | The frame has ridden the gateway's `attachments` list since EH P1 |
 | [DQ](DQ-third-party-telemetry-opt-out.md) | Record the SDK's own bundled privacy manifest in the App Store submission checklist | The only non-device item the plan still names |
 | [V](V-mcp-catalogue-and-transport-breadth.md) | SSE `initialize` handshake — `notYetSupported(.sse)` today | Buildable, but its fixture peer is BL's `MockOpsPeer`, so it sequences after BL P1 |
 | [T](T-offline-field-queue-and-sync.md) | Offline `llmGrounding` routing | Low value and near-superseded by the local-model tiers |
 | [CP](CP-outbound-frame-privacy.md) | Show the wearer what an outbound *stream* is sending (this exists for stills) | Gated on the two P3 decisions in §E |
-| [EO](EO-hevc-glasses-stream.md) | The stop-during-warmup race the plan records but scopes out | Belongs to the reconnect follow-up, not to EO |
+| [EO](EO-hevc-glasses-stream.md) | The stop-during-warmup race the plan records but scopes out | Owned by [EW](EW-session-resource-cleanup.md), not EO |
 | [ED](ED-vault-manual-retrieval.md) | Table-aware chunking; procedure-page anchors | Open questions, explicitly non-blocking |
 
 **Whole plan, unstarted** — nothing of these exists in the tree:
@@ -127,6 +127,30 @@ plans that are drafted or planned with nothing built.
 | [BA](BA-android-port.md) | Phase 0 spike — project skeleton, DAT SDK wiring, a MockDeviceKit vertical slice | No Android artefacts anywhere; everything through Phase 3 is headless |
 
 ### A3 — Optional / not scheduled
+
+**Coverage review 2026-09-12:** Remaining implementation gaps were mapped to existing owners.
+BV/AT/CX/EH already cover parts of the work; the following new plans are drafted, not scheduled.
+Each names its hardware/backend acceptance separately from the buildable core.
+
+| Plan | Outstanding item | Notes |
+|---|---|---|
+| [EW](EW-session-resource-cleanup.md) | Resource-by-exit inventory, manager-level teardown tests and missing release fixes | Includes EO's stop-during-warmup follow-up; preserve intentional live/background/shared owners |
+| [EX](EX-conversation-reset-across-backends.md) | One reset boundary across local, live and remote context owners | Reuse existing new-topic tool and BR session rotation; fake backends first, live reset verification after |
+| [EY](EY-power-controls-and-diagnostics.md) | Validated threshold/profile UI and bounded operational battery diagnostics | BV enforcement precedes functional profile rollout; device comparisons precede energy claims |
+| [EZ](EZ-adaptive-camera-capture.md) | Pure source-capture budget and supported backend adoption | Distinct from AT dedup; SDK capability audit and EO device evidence determine rollout |
+
+**Drafted 2026-09-13 (FA–FG):** not scheduled, nothing built; each names its device/participant/backend
+evidence separately from the headless core.
+
+| Plan | Outstanding item | Notes |
+|---|---|---|
+| [FA](FA-reading-source-and-memory-continuity.md) | Passage → source → note → resume continuity and visible, correctable memory | Reuses BT/ED/EJ and DX/EN; team pilot licence needed for the manual import/export journey; model-server experiment optional |
+| [FB](FB-scan-assist.md) | User-configurable directional scanning reminders with accessible pause/stop | Deterministic cueing first; no clinician gate, diagnosis or treatment claim; device and participant validation separate |
+| [FC](FC-local-model-remediation.md) | Corrected model-size metadata and containment of malformed local tool output | Size label verified against the artifact; honest download/preparation phases and a diagnostics audit follow; device qualification separate |
+| [FD](FD-camera-readiness-and-durable-actions.md) | One camera-readiness snapshot plus durable-action acceptance scenarios | Coordinated with BR/CM/EO/EW and DJ/DZ; real-glasses lifecycle and external-protocol evidence pending |
+| [FE](FE-agent-voice-reliability-and-feedback.md) | Truthful agent results, listener recovery, timing controls and playback-aware acknowledgement | Extends N and the existing speech policies; endpoint contracts need fixture and real-endpoint confirmation |
+| [FF](FF-blind-assistant-readiness.md) | One blind-assistance contract, audible lifecycle and the non-visual entry journey | Gate C's pocketed-phone offline promise is blocked on a supported background-inference path |
+| [FG](FG-workflow-vaults-and-enterprise-auth.md) | Enterprise sign-in over the existing MCP transport and the connected task lifecycle | P0 aviation-operations vault prepared; five PRs; second independent backend required for interoperability |
 
 | Plan | Outstanding item | Notes |
 |---|---|---|
@@ -151,6 +175,7 @@ PR8) cannot move until it happens.
 
 | Plan | Shipped core | Live edge remaining | Validate with |
 |---|---|---|---|
+| [EW](EW-session-resource-cleanup.md) · [EX](EX-conversation-reset-across-backends.md) · [EY](EY-power-controls-and-diagnostics.md) · [EZ](EZ-adaptive-camera-capture.md) | Drafted cores; no new implementation claimed | Cleanup under lock/disconnect/cold start; spoken reset; measured battery/profile effects and source FPS under motion/concurrent consumers | After corresponding core and wiring PRs; reuse BV/EO streaming session |
 | [AP](audio-session-resilience-p2.md) · [AS](audio-session-lease-coordinator.md) · [BJ](BJ-audio-activation-offmain.md) · [BO](BO-realtime-audio-activation.md) · [CW](CW-realtime-audio-rig-recovery.md) — **one audio session** | Interruption/route policies, ledger + coordinator, off-main activation seam, `AudioGraphRecovery`+`PendingPlaybackMirror` | Recovery on real interruptions and route flips; no settling race after the sleep trim; the BJ smoke (wake, TTS, BT flip, translation, call interruption); realtime start/stop + TPC sweep; CW's route-change-mid-reply verdict and restart-vs-rebuild ratio | One sitting: a call/Siri interruption, a BT↔speaker flip, and a realtime session, on glasses |
 | [BG](BG-spine-refactor.md) | P1–P5 all merged (flow engine, both handler chains, turn runner, cancellable typed turns, merged realtime audio engine) | On-glasses smoke of the P2 voice path — wake → transcribe → LLM → speak → resume, barge-in and cancel. Open since 2026-07-04 | Shares the audio sitting above |
 | [AT](frame-dedup-change-gate.md) · [AV](visual-state-memory.md) · [CB](CB-live-vision-detail.md) · [CC](CC-duplex-live-audio.md) · [CX](CX-live-session-vision-choice.md) · [EO](EO-hevc-glasses-stream.md) — **one streaming-vision session** | `PerceptualHash`+`FrameGate`; ring buffer + keyframe feed; vision detail + async delivery; graded echo cancellation; `VisionModePolicy` core; HEVC negotiation + `DecoderRecoveryPolicy` | Motion sanity-check before flipping the two dedup/keyframe defaults on; sharp-frame quality, injected-turn behaviour and zoom feel; CC's P3 barge-in matrix (gates default-on); whether warming hides the cold start; EO P2's tier/fps/decoder-rebuild/HFP/thermal numbers, which pick the codec defaults and unblock P3 | One live streaming session across the three voice modes |
@@ -217,6 +242,7 @@ is store products, a CI container, and two hosted services that have plans of th
 
 | Plan | Shipped core | Live edge remaining | Unblocked by |
 |---|---|---|---|
+| [EX](EX-conversation-reset-across-backends.md) | Existing local new-topic path; cross-backend coordinator drafted | Context-reset and resumption isolation on Gemini/OpenAI/OpenClaw/Hermes | Core/fake-backend acceptance, then reachable services; reuse EH gateway fixture |
 | [EH](EH-openclaw-2-0-wire-alignment.md) | P1 — the 2.0 wire (`GatewayWire`, request catalog, run tracker, schema-pin tests) | **P4 — a 2.0 gateway container in CI.** This is the acceptance harness for every row below it | A runnable gateway image |
 | [N](N-remote-agent-harness.md) | Harnesses + registry + tools + Codex/Claude preset adapters | Gateway `agent.*` and its live event stream; **Phase 0 live verification** of the Codex-cloud and Claude-remote trigger contracts against the real endpoints | Gateway `agent.*`; the real provider endpoints |
 | [AR](gateway-device-pairing.md) | `SetupCode`/`GatewayAuthSelector`/`PairingResponseInterpreter` | The live approval round trip (bootstrap → approve → per-device token). The client-half fixes moved to §A | A gateway implementing the v3 handshake (shared-token today) |

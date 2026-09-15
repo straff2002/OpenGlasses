@@ -32,6 +32,7 @@ struct ModelFormView: View {
     // Account sign-in state (Anthropic + ChatGPT — rendered via the shared OAuthSignInRows)
     @ObservedObject private var claudeOAuth = ClaudeOAuthService.shared
     @ObservedObject private var chatgptOAuth = ChatGPTOAuthService.shared
+    @ObservedObject private var googleOAuth = GoogleOAuthService.shared
 
     @Environment(\.appAccent) private var accent
     /// Row heights that have to grow with the type beside them, so every
@@ -260,7 +261,7 @@ struct ModelFormView: View {
             }
             .frame(minHeight: rowMinHeight)
         }
-        .disabled((apiKey.isEmpty && selectedProvider != .custom && !accountOAuthReady) || isFetchingModels)
+        .disabled(!credentialsReady || isFetchingModels)
         .accessibilityLabel(
             keyValidated
                 ? "\(availableModels.count) models available. Check again"
@@ -491,6 +492,8 @@ struct ModelFormView: View {
         case .gemini: return "Get your API key at aistudio.google.com"
         case .geminiVertex: return "Sign in with your Google account — Gemini on your own GCP project via Vertex AI, no API key. Needs a GCP iOS OAuth client ID and project ID (console.cloud.google.com). Gemini Live mode still uses the AI Studio key provider."
         case .groq: return "Get your API key at console.groq.com"
+        case .deepseek: return "Get your API key at platform.deepseek.com — default model deepseek-flash (V4.1 Flash, multimodal vision)"
+        case .mistral: return "Get your API key at admin.mistral.ai — default model mistral-medium-latest (Mistral Medium, multimodal vision)"
         case .zai: return "Z.ai subscription — OpenAI-compatible API"
         case .qwen: return "Coding Plan subscription — coding-intl.dashscope.aliyuncs.com"
         case .minimax: return "MiniMax subscription — platform.minimaxi.com"
@@ -504,11 +507,13 @@ struct ModelFormView: View {
 
     // MARK: - Account sign-in (OAuth)
 
-    /// True when the selected provider can authenticate without a pasted key.
-    private var accountOAuthReady: Bool {
-        (selectedProvider == .anthropic && claudeOAuth.isConnected)
-            || (selectedProvider == .chatgpt && chatgptOAuth.isConnected)
-            || (selectedProvider == .geminiVertex && GoogleOAuthService.shared.isConnected)
+    private var credentialsReady: Bool {
+        ModelFormValidation.credentialsReady(
+            provider: selectedProvider, apiKey: apiKey,
+            claudeConnected: claudeOAuth.isConnected,
+            chatgptConnected: chatgptOAuth.isConnected,
+            googleConnected: googleOAuth.isConnected
+        )
     }
 
     private var anthropicKeyPlaceholder: String {

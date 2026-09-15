@@ -1735,7 +1735,8 @@ struct Config {
 
     /// Local backends (MLX, Apple Foundation) can't tool-call `web_search`; when on, a hedged or
     /// freshness-sensitive local answer gets one transparent web-grounded re-ask. Default on —
-    /// `WebSearchTool` always has the keyless DuckDuckGo fallback, so no configuration is needed.
+    /// `WebSearchTool` always has keyless fallbacks (Tavily's free tier, then DuckDuckGo), so no
+    /// configuration is needed.
     @UserDefaultsBacked("localWebSearchFallbackEnabled", default: true) static var localWebSearchFallbackEnabled: Bool
 
     // MARK: - Local runtime and durable agent loops (Plan DZ)
@@ -2637,6 +2638,26 @@ struct Config {
         !braveAPIKey.isEmpty
     }
 
+    // MARK: - SearXNG Search
+
+    /// Base URL of a SearXNG instance (e.g. `https://search.example.com`). Stored in UserDefaults.
+    static var searxngBaseURL: String {
+        UserDefaults.standard.string(forKey: "searxngBaseURL") ?? ""
+    }
+
+    static func setSearXNGBaseURL(_ url: String) {
+        UserDefaults.standard.set(url.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "searxngBaseURL")
+    }
+
+    /// http is accepted, but ATS only lets it through for LAN / `.local` / Tailscale hosts; a public
+    /// http instance fails at the ATS layer and search falls through to the next provider.
+    static var isSearXNGConfigured: Bool {
+        guard let url = URL(string: searxngBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = url.host, !host.isEmpty else { return false }
+        return true
+    }
+
     // MARK: - Hermes Agent Bridge (Plan CL P5)
 
     /// Route conversation turns through a Hermes agent bridge on the LAN.
@@ -2933,24 +2954,24 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "teleprompterLead")
     }
 
-    // MARK: - WebRTC Streaming
+    // MARK: - Browser Streaming Relay
 
+    /// The MJPEG relay is **per-deployment**: whoever runs one pays for it, sees every room id that
+    /// passes through it and can read every frame. So the app ships no relay address at all — this
+    /// stays empty until an operator enters their own in Settings > Field Assist, and browser
+    /// streaming refuses to start until they do. Do not reintroduce a fallback host here.
     static var webRTCSignalingURL: String {
-        if let url = UserDefaults.standard.string(forKey: "webRTCSignalingURL"), !url.isEmpty {
-            return url
-        }
-        return "wss://openglasses-signal.fly.dev/ws"
+        UserDefaults.standard.string(forKey: "webRTCSignalingURL") ?? ""
     }
 
     static func setWebRTCSignalingURL(_ url: String) {
         UserDefaults.standard.set(url, forKey: "webRTCSignalingURL")
     }
 
+    /// Base URL of the viewer page served by that same operator-run relay; the room code is
+    /// appended to it. Empty by default for the same reason.
     static var webRTCViewerBaseURL: String {
-        if let url = UserDefaults.standard.string(forKey: "webRTCViewerBaseURL"), !url.isEmpty {
-            return url
-        }
-        return "https://openglasses-signal.fly.dev/view"
+        UserDefaults.standard.string(forKey: "webRTCViewerBaseURL") ?? ""
     }
 
     static func setWebRTCViewerBaseURL(_ url: String) {

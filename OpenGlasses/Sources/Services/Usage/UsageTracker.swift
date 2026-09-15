@@ -88,7 +88,7 @@ final class UsageTracker: ObservableObject {
                                cacheWriteTokens: 0,
                                cacheReadTokens: intValue(u["cachedContentTokenCount"]),
                                recognized: recognized)
-        case .openai, .groq, .zai, .qwen, .minimax, .xai, .openrouter, .custom, .local, .appleOnDevice:
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom, .local, .appleOnDevice:
             guard let u = json["usage"] as? [String: Any] else { return nil }
             let recognized = u["prompt_tokens"] != nil || u["completion_tokens"] != nil
             let cachedRead = (u["prompt_tokens_details"] as? [String: Any]).map { intValue($0["cached_tokens"]) } ?? 0

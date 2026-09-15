@@ -172,12 +172,19 @@ final class PrivacyFilterAvailabilityTests: XCTestCase {
             relay.publisher.sink { [weak self] in self?.published.append($0) }.store(in: &tokens)
         }
 
-        /// Send a frame and let the relay's queue hops settle.
-        func send(_ image: UIImage) async {
+        /// Send a frame and wait until the relay has published or dropped it. The detector and
+        /// compositor hop through a background queue, so a fixed sleep races them on a loaded
+        /// runner; a frame that never finishes fails here on the deadline instead.
+        func send(_ image: UIImage, file: StaticString = #filePath, line: UInt = #line) async {
             source.send(image)
-            for _ in 0..<6 { await Task.yield() }
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            for _ in 0..<6 { await Task.yield() }
+            let deadline = Date().addingTimeInterval(5)
+            while !relay.isIdle {
+                guard Date() < deadline else {
+                    XCTFail("relay still busy after 5s — a frame never finished", file: file, line: line)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000)
+            }
         }
     }
 

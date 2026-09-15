@@ -700,7 +700,6 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/MemoryRewindService.swift",
         "OpenGlasses/Sources/Services/MeetingAssistantService.swift",
         "OpenGlasses/Sources/Services/IntentClassifier.swift",
-        "OpenGlasses/Sources/Services/BackgroundVoiceService.swift",
         "OpenGlasses/Sources/Services/AudioRecordingService.swift",
         "OpenGlasses/Sources/Services/AudioCapture/StandaloneMicTapService.swift",
         "OpenGlasses/Sources/Services/AudioCapture/CaptureAudioRouter.swift",

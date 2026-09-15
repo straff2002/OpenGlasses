@@ -31,6 +31,13 @@ out="${1:-$repo_root/_site}"
 # Derived from what the site actually serves:
 #   index.html                          the Meta auth redirect page (self-contained: no external
 #                                       CSS, script or image references — checked)
+#   privacy.html                        the public privacy policy App Store Connect links to
+#                                       (self-contained like index.html; only outbound links are
+#                                       provider privacy policies and privacy.org.nz)
+#   about.html                          the App Store Connect Marketing URL page (self-contained
+#                                       like index.html; only outbound link is the GitHub repo)
+#   support.html                        the App Store Connect Support URL page (self-contained
+#                                       like index.html; outbound links are mailto and GitHub issues)
 #   .well-known/apple-app-site-association   the Universal Link association iOS fetches
 #   .nojekyll                           keeps the dot-directory above from being dropped
 #   _config.yml                         retained from the pre-staging setup; inert while
@@ -42,6 +49,9 @@ out="${1:-$repo_root/_site}"
 # website), docs/webrtc/signaling-server.js (server source, not a page asset).
 ALLOW=(
   index.html
+  privacy.html
+  about.html
+  support.html
   _config.yml
   .nojekyll
   .well-known/apple-app-site-association

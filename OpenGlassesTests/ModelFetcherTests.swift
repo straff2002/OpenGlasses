@@ -97,6 +97,53 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertEqual(ChatGPTOAuth.defaultModel, "gpt-5.6-sol")
     }
 
+    // MARK: - DeepSeek provider defaults
+
+    func testDeepSeekProviderDefaults() {
+        let config = ModelConfig.defaultConfig(for: .deepseek)
+        XCTAssertEqual(config.baseURL, "https://api.deepseek.com/chat/completions")
+        XCTAssertEqual(config.model, "deepseek-flash")
+        XCTAssertTrue(LLMProvider.deepseek.isOpenAICompatible)
+        XCTAssertTrue(LLMProvider.deepseek.requiresAPIKey)
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: LLMProvider.deepseek.defaultBaseURL),
+            "https://api.deepseek.com/models"
+        )
+    }
+
+    // MARK: - Mistral provider defaults
+
+    func testMistralProviderDefaults() {
+        let config = ModelConfig.defaultConfig(for: .mistral)
+        XCTAssertEqual(config.baseURL, "https://api.mistral.ai/v1/chat/completions")
+        XCTAssertEqual(config.model, "mistral-medium-latest")
+        XCTAssertEqual(LLMProvider.mistral.rawValue, "mistral")
+        XCTAssertEqual(LLMProvider.mistral.displayName, "Mistral AI")
+        XCTAssertTrue(LLMProvider.mistral.isOpenAICompatible)
+        XCTAssertTrue(LLMProvider.mistral.requiresAPIKey)
+        XCTAssertFalse(LLMProvider.mistral.showBaseURL)
+        XCTAssertEqual(LLMProvider.mistral.consoleURL?.absoluteString, "https://admin.mistral.ai/plateforme/api-keys")
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: LLMProvider.mistral.defaultBaseURL),
+            "https://api.mistral.ai/v1/models"
+        )
+        // The default alias must be one the vision gate recognises, or a fresh Mistral config
+        // would silently drop every camera frame.
+        XCTAssertTrue(config.visionEnabled)
+    }
+
+    func testModelsEndpointStripsChatCompletionsWithoutV1() {
+        // Z.ai's default has no /v1 segment; the listing lives beside chat/completions.
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: LLMProvider.zai.defaultBaseURL),
+            "https://api.z.ai/api/coding/paas/v4/models"
+        )
+        XCTAssertEqual(
+            ModelFetcher.modelsEndpoint(from: "https://host.example.com/chat/completions/"),
+            "https://host.example.com/models"
+        )
+    }
+
     // MARK: - xAI provider defaults
 
     func testXAIProviderDefaults() {
@@ -141,6 +188,53 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertFalse(inferredVision(.groq, "llama-3.1-70b"))
         XCTAssertFalse(inferredVision(.local, "gemma-2b"))
         XCTAssertFalse(inferredVision(.appleOnDevice, "apple"))
+    }
+
+    func testInferredVisionDeepSeekHeuristic() {
+        // V4.1-Flash accepts images and the legacy flash IDs route to it; V4-Pro is text-only.
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-flash"))
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-v4-flash"))
+        XCTAssertTrue(inferredVision(.deepseek, "deepseek-v4-flash-vision-exp"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-v4-pro"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-chat"))
+        XCTAssertFalse(inferredVision(.deepseek, "deepseek-reasoner"))
+    }
+
+    func testInferredVisionMistralHeuristic() {
+        // Documented image-input models and their aliases.
+        for model in ["mistral-medium-latest", "mistral-medium-3-5", "mistral-medium-2508",
+                      "mistral-large-latest", "mistral-large-2512",
+                      "mistral-small-latest", "mistral-small-2603", "mistral-small-2506",
+                      "ministral-3b-2512", "ministral-8b-latest", "ministral-14b-2512",
+                      " Mistral-Medium-Latest "] {
+            XCTAssertTrue(inferredVision(.mistral, model), model)
+        }
+        // Specialised models, and older text-only snapshots that share a family name.
+        for model in ["codestral-latest", "codestral-2508", "devstral-2512", "devstral-small-latest",
+                      "mistral-ocr-latest", "voxtral-mini-latest", "mistral-moderation-latest",
+                      "mistral-embed", "codestral-embed", "magistral-medium-latest",
+                      "ministral-8b-2410", "ministral-3b-2410", "mistral-large-2411",
+                      "mistral-medium-2505", "mistral-small-2501", "open-mistral-nemo"] {
+            XCTAssertFalse(inferredVision(.mistral, model), model)
+        }
+    }
+
+    /// The three cases that matter most: the default alias must see, and a coding model or an
+    /// older text-only snapshot of a vision family must never get a camera button.
+    func testMistralVisionPinsDefaultAliasAndExcludesTextOnlyModels() {
+        XCTAssertTrue(inferredVision(.mistral, LLMProvider.mistral.defaultModel))
+        XCTAssertTrue(inferredVision(.mistral, "mistral-medium-latest"))
+        XCTAssertFalse(inferredVision(.mistral, "codestral-latest"))
+        XCTAssertFalse(inferredVision(.mistral, "devstral-2512"))
+        XCTAssertFalse(inferredVision(.mistral, "mistral-large-2411"))
+    }
+
+    /// The gate lowercases and trims the model ID before an exact match, so every entry must
+    /// already be in that form or it can never match.
+    func testMistralVisionListEntriesAreNormalised() {
+        for id in ModelConfig.mistralVisionModels {
+            XCTAssertEqual(id, id.lowercased().trimmingCharacters(in: .whitespaces), id)
+        }
     }
 
     func testInferredVisionQwenHeuristic() {

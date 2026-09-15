@@ -32,6 +32,11 @@ final class OutboundFrameRelay: ObservableObject {
     @Published private(set) var droppedFrameCount = 0
     @Published private(set) var privacyDroppedFrameCount = 0
 
+    /// No frame in flight and none pending — every frame this relay has accepted has been either
+    /// published or counted as dropped. Read-only; lets a caller (in practice the tests) wait for
+    /// the background detector/compositor hops to finish instead of guessing how long they take.
+    var isIdle: Bool { !coalescer.isProcessing }
+
     private let filter: PrivacyFilterService
     private var coalescer = FrameCoalescer<UIImage>()
     private var rectCache: FaceRectCache

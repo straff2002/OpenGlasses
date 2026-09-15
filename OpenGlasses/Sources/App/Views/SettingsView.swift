@@ -104,7 +104,7 @@ struct SettingsView: View {
 
             OGSection(
                 header: "About",
-                footer: "OpenGlasses © 2026 Skunkworks NZ Ltd. All rights reserved. Free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
+                footer: "OpenGlasses © 2026 Skunkworks NZ Ltd. Source-available under the Business Source License 1.1: free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
             ) {
                 OGRow("Version", icon: "info.circle", mutedIcon: true, verbatimValue: Self.appVersion, showsChevron: false)
                 OGDivider()
@@ -115,6 +115,18 @@ struct SettingsView: View {
                 } label: {
                     OGRow("Attributions", icon: "doc.text", mutedIcon: true,
                           subtitle: "Third-party models and libraries")
+                }
+                .buttonStyle(.plain)
+                OGDivider()
+                Button {
+                    let webURL = URL(string: "https://straff2002.github.io/OpenGlasses/privacy.html")!
+                    UIApplication.shared.open(webURL)
+                } label: {
+                    OGRow("Privacy Policy", icon: "hand.raised", mutedIcon: true, showsChevron: false) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .buttonStyle(.plain)
                 OGDivider()
@@ -964,12 +976,12 @@ struct HardwarePrivacyView: View {
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
-                    info: "OpenGlasses collects nothing of its own: no developer backend, no account, so no usage analytics and no crash reports ever reach us, in any build. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
+                    info: "OpenGlasses has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
                 )
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses sends no analytics and no crash reports to its developer, and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {

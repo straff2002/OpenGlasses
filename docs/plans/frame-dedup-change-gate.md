@@ -100,3 +100,11 @@ frames are redundant. A <1 ms/frame perceptual-hash gate cuts the static-scene w
 involvement, keeps the context window full of *distinct* views instead of duplicates, and is a pure,
 fully-tested value type with a flag so the happy path is unchanged until we choose to turn it on. It's
 also the **keyframe source** the [Visual State Memory](visual-state-memory.md) plan builds on.
+
+## Coverage review — 2026-09-12
+
+Transmission deduplication and lower source capture FPS are separate capabilities.
+AT covers the former; `frameDedupEnabled` remains default off
+pending the motion sanity-check already above. Its Settings UI is implemented. Do not call AT
+sensor-rate adaptation: [EZ](EZ-adaptive-camera-capture.md) now owns that capability, source
+ceilings and fine-detail escalation, coordinated with EO's codec/device measurements.

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>OpenGlasses</title>
+<!-- Self-contained on purpose, like index.html and privacy.html: no external CSS, script,
+     font or image. The only outbound link is to the GitHub repository; the rest are
+     relative links to privacy.html and support.html. -->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1d1c1a;
+    --muted: #5d5a55;
+    --rule: #e3dfd8;
+    --link: #a4441a;
+    --panel: #f2efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161514;
+      --fg: #ebe8e3;
+      --muted: #a9a49c;
+      --rule: #34312d;
+      --link: #f08a4b;
+      --panel: #201f1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; }
+  h2 { font-size: 1.3rem; line-height: 1.3; margin: 2.5rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 .25rem; }
+  p, ul { margin: 0 0 1rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin-bottom: .35rem; }
+  a { color: var(--link); text-underline-offset: 2px; }
+  .meta { color: var(--muted); margin-bottom: 2rem; }
+  .tagline { font-size: 1.15rem; color: var(--muted); margin: 0 0 1.5rem; }
+  .summary { background: var(--panel); border-radius: 10px; padding: 1rem 1.25rem; }
+  .summary ul { margin: 0; }
+  .note { color: var(--muted); font-size: .92rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+  footer p { margin: 0 0 .5rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>OpenGlasses</h1>
+<p class="tagline">Look up. Ask anything. Keep going.</p>
+<p>Turn your smart glasses into an AI assistant for the world in front of you. Ask about what you see, translate a conversation, remember the details, and get things done&mdash;without reaching for your phone. Your choice of AI. Hands-free by voice. Offline when you need it.</p>
+
+<h2>See it. Understand it. Act on it.</h2>
+<p>Read a sign, ask about a piece of equipment, or turn a business card into a contact. OpenGlasses brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.</p>
+
+<h2>Keep the conversation flowing</h2>
+<p>Ask a quick question or settle into a live voice conversation. Translate spoken language, follow along with captions, and switch between assistants with their own voices, models, and wake words. Start with your voice, Siri, or a tap.</p>
+
+<h2>Remember the details that matter</h2>
+<p>Save where you parked, keep notes about people and places, and turn captured conversations into meeting notes. With memory rewind enabled, catch up on what was just said. Your saved context becomes something you can ask about later.</p>
+
+<h2>Say it. Get it done.</h2>
+<p>Check your calendar, set a reminder, find directions, control your music, or turn on the lights. Connect Home Assistant, Siri Shortcuts, MCP tool servers, and OpenClaw to bring your own services into the conversation. Teach the assistant a routine, then call it by name.</p>
+
+<h2>Your assistant. Your choice.</h2>
+<p>Use a cloud model, run a model on your own server, or keep the voice loop on your iPhone. OpenGlasses lets you choose the AI, speech recognition, and spoken voice separately&mdash;and route different requests to different models. Run compatible local models with Apple MLX or llama.cpp, including support for importing GGUF models, paired with on-device speech recognition and voices for a conversation that needs no cloud API key.</p>
+
+<h2>What you need</h2>
+<p>An iPhone running iOS 26 or later. Compatible Meta smart glasses are optional&mdash;phone-based features and camera fallback let you explore without them.</p>
+
+<h2>Privacy, in short</h2>
+<div class="summary">
+<p>There is no OpenGlasses account, and the app has no analytics, advertising or tracking of its own. What it keeps&mdash;conversation history, memories, notes, recordings&mdash;is stored on your iPhone. Data leaves your phone only when you use a feature that needs an outside service, such as the AI provider you picked, and it goes only to the services you choose.</p>
+</div>
+<p class="note">Read the full <a href="privacy.html">privacy policy</a> for details.</p>
+
+<footer>
+<p><a href="support.html">Support</a> &middot; <a href="privacy.html">Privacy policy</a></p>
+<p>OpenGlasses is source-available under BSL 1.1, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence.</p>
+<p>&copy; 2026 Skunkworks NZ Ltd.</p>
+</footer>
+
+</main>
+</body>
+</html>

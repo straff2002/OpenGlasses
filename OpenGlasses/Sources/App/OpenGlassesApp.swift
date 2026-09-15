@@ -797,8 +797,6 @@ class AppState: ObservableObject, AppStateProtocol {
         default: return nil
         }
     }
-    let backgroundVoice = BackgroundVoiceService()
-
     // Native tool system
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
@@ -1817,11 +1815,9 @@ class AppState: ObservableObject, AppStateProtocol {
                         isListening = false
                     case .geminiLive:
                         geminiLiveSession.stopSession()
-                        backgroundVoice.endBackgroundSession()
                         await cameraService.tearDown()
                     case .openaiRealtime:
                         openAIRealtimeSession.stopSession()
-                        backgroundVoice.endBackgroundSession()
                         await cameraService.tearDown()
                     }
 
@@ -1834,9 +1830,12 @@ class AppState: ObservableObject, AppStateProtocol {
                     case .direct:
                         try? await wakeWordService.startListening()
                     case .geminiLive, .openaiRealtime:
-                        // Background voice keeps audio alive when backgrounded; camera up so
-                        // frames are available when the session starts
-                        backgroundVoice.startBackgroundSession()
+                        // Nothing to start here for audio: a live session keeps running when the
+                        // app is backgrounded on the `audio` background mode alone. The session
+                        // manager's `RealtimeAudioEngine` holds a `.playAndRecord` session through
+                        // `AudioSessionCoordinator`/`AudioSessionActivator` for as long as the
+                        // session is up, which is what keeps capture and playback alive off-screen.
+                        // Camera up so frames are available when the session starts.
                         do {
                             try await cameraService.startStreaming()
                         } catch {

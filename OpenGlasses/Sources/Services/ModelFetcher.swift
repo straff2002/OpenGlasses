@@ -85,7 +85,7 @@ enum ModelFetcher {
             return await fetchQwen(apiKey: apiKey, baseURL: baseURL)
         case .minimax:
             return await fetchMiniMax(apiKey: apiKey, baseURL: baseURL)
-        case .openai, .groq, .zai, .xai, .openrouter, .custom:
+        case .openai, .groq, .deepseek, .mistral, .zai, .xai, .openrouter, .custom:
             return await fetchOpenAICompatible(apiKey: apiKey, baseURL: baseURL)
         case .geminiVertex:
             return []  // OAuth-only; no key-based listing endpoint (type the model ID)
@@ -198,6 +198,7 @@ enum ModelFetcher {
     /// Pure (no I/O) so it's unit-testable — the network call stays in the caller.
     /// - `…/v1/chat/completions` → `…/v1/models`
     /// - `…/v1`                  → `…/v1/models`
+    /// - `…/chat/completions` with no `/v1` (DeepSeek, Z.ai) → `…/models`
     /// - bare host (any trailing slashes trimmed) → `…/models`
     static func modelsEndpoint(from baseURL: String) -> String {
         if let range = baseURL.range(of: "/v1/", options: .backwards) {
@@ -205,7 +206,12 @@ enum ModelFetcher {
         } else if baseURL.hasSuffix("/v1") {
             return baseURL + "/models"
         } else {
-            let trimmed = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let slashes = CharacterSet(charactersIn: "/")
+            var trimmed = baseURL.trimmingCharacters(in: slashes)
+            if trimmed.hasSuffix("/chat/completions") {
+                trimmed = String(trimmed.dropLast("/chat/completions".count))
+                    .trimmingCharacters(in: slashes)
+            }
             return trimmed + "/models"
         }
     }

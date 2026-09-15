@@ -9,7 +9,8 @@ import os.lock
 /// Architecture:
 /// - Runs a local WebSocket relay: phone pushes JPEG frames to the signaling server
 /// - A companion web page connects to the same server and displays the stream
-/// - Uses a free signaling relay (configurable) so no server setup needed
+/// - The relay is the operator's to run: the app ships no address, so streaming stays off
+///   until one is entered in Settings > Field Assist
 ///
 /// For production, this could be upgraded to proper WebRTC with LiveKit or similar.
 @MainActor
@@ -40,10 +41,14 @@ class WebRTCStreamingService: ObservableObject {
     /// can't queue frames unboundedly inside URLSession.
     private let sendGate = OSAllocatedUnfairLock(initialState: false)   // true == a send is in flight
 
-    /// The signaling server URL. Users can set up their own or use a public relay.
+    /// The relay's WebSocket URL. Per-deployment: there is no default and no public fallback.
     private var signalingURL: String {
         Config.webRTCSignalingURL
     }
+
+    /// Shown when the relay address is missing or unusable. One sentence, and it names the screen
+    /// that fixes it, because there is no shipped relay to fall back to.
+    static let relayNotConfiguredMessage = "Add a relay URL in Settings, Field Assist to stream to a browser."
 
     // MARK: - Public API
 
@@ -51,6 +56,16 @@ class WebRTCStreamingService: ObservableObject {
     /// Returns a URL that can be shared with viewers.
     func startStreaming(framePublisher: PassthroughSubject<UIImage, Never>) -> String {
         guard !isStreaming else { return streamURL }
+
+        // A relay is per-deployment and the app ships none, so refuse rather than half-start:
+        // marking the stream live against an unusable address would hand the caller a viewer link
+        // that can never resolve, and page an expert with it.
+        guard case .success = EndpointPolicy.validate(signalingURL, for: .webRTCBrowserStreaming),
+              case .success = EndpointPolicy.validate(Config.webRTCViewerBaseURL,
+                                                      for: .webRTCBrowserStreaming) else {
+            errorMessage = Self.relayNotConfiguredMessage
+            return ""
+        }
 
         // Generate a random room ID
         roomId = generateRoomId()
@@ -118,7 +133,7 @@ class WebRTCStreamingService: ObservableObject {
     private func connectWebSocket() {
         guard let url = try? EndpointPolicy.requireOpenable("\(signalingURL)?role=streamer&room=\(roomId)",
                                                             for: .webRTCBrowserStreaming) else {
-            errorMessage = "Invalid signaling URL"
+            errorMessage = Self.relayNotConfiguredMessage
             return
         }
 

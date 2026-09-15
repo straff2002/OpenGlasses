@@ -4,8 +4,8 @@
   Privacy manifest for OpenGlasses.
 
   Required by Apple for App Store submission alongside the MFi / ExternalAccessory
-  integration (the Wearables DAT SDK). Public App Store distribution is not yet
-  supported by Meta, so this manifest is forward-looking groundwork.
+  integration (the Wearables DAT SDK). The App Store is the app's distribution
+  channel, so this manifest ships with every release and must match the build.
 
   NSPrivacyAccessedAPITypes below cover the required-reason APIs actually used in
   this target's source:
@@ -18,9 +18,9 @@
   device. OpenGlasses has no developer-operated backend or user account: every
   transmission is user-directed app functionality sent under the user's own API
   keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
-  / etc. for LLM + vision, ElevenLabs for TTS, Perplexity / DuckDuckGo for
-  search, open-meteo / adsb.fi for weather + flights, RTMP / WebRTC for live
-  streaming). There is no analytics, crash-reporting, or advertising SDK, and no
+  / etc. for LLM + vision, ElevenLabs for TTS, Perplexity / Tavily / Brave /
+  SearXNG (user-configured) / DuckDuckGo for search, open-meteo / adsb.fi for
+  weather + flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
   cross-app/-developer tracking — so every type below is Linked=false,
   Tracking=false, purpose = App Functionality.
 
@@ -133,7 +133,7 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- Web search queries sent to Perplexity / DuckDuckGo -->
+		<!-- Web search queries sent to Perplexity / Tavily / Brave / SearXNG (user-configured) / DuckDuckGo -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeSearchHistory</string>

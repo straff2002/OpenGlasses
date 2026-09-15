@@ -306,7 +306,7 @@ enum PrivacyLog {
     /// A web search ran. The query is the wearer's question — the most sensitive string a search
     /// tool ever holds, and the one thing a search log is always tempted to include — so the
     /// provider, the verdict and the size of the answer are all that survive.
-    enum SearchProvider: String { case perplexity, tavily, brave, duckDuckGo }
+    enum SearchProvider: String { case perplexity, tavily, brave, searxng, duckDuckGo }
 
     @discardableResult
     static func webSearch(_ provider: SearchProvider, succeeded: Bool, status: Int? = nil,
@@ -1325,7 +1325,7 @@ enum PrivacyLog {
 
     enum AudioSubsystem: String {
         case wakeWord, realtime, coordinator, captureTap, captureRouter
-        case recording, translation, backgroundVoice, session
+        case recording, translation, session
     }
 
     enum AudioEvent: String {
@@ -1344,7 +1344,6 @@ enum PrivacyLog {
         case captureStarted, clientVoiceInterrupt, modeSelected
         case leaseHeld, leaseAssumed, leaseAcquired, leaseReleased
         case leaseStale, leaseSuppressed, leaseDeactivateFailed
-        case callReported, callFailed, callAnswered, callEnded, providerReset
     }
 
     @discardableResult

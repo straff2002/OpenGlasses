@@ -11,6 +11,7 @@ struct StatusIndicator: View {
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
     @ObservedObject var openClawBridge: OpenClawBridge
     @Environment(\.appAccent) private var accent
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showDisconnectConfirm = false
 
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
@@ -119,14 +120,24 @@ struct StatusIndicator: View {
 
             // Bottom row: active mode + the connection pills (formerly a separate band above
             // the card — merged here so the home screen is one status surface, not two).
-            HStack(spacing: 8) {
+            //
+            // Stacked at accessibility sizes: the badge on its own line, the pills under it. Sharing
+            // one line there left the persona name — one user-supplied word — too little width, and
+            // it broke mid-word ("Open-Glass-es"), with "Mode:" splitting from its colon a size
+            // later. The accessibility audit reports that as clipped text. `AnyLayout` rather than
+            // two branches, so the row's elements keep their identity across a text-size change;
+            // swapping subtrees reads to the audit as text that stopped scaling.
+            footerLayout {
                 activeModeBadge
-                Spacer()
+                if !typeSize.isAccessibilitySize {
+                    Spacer()
+                }
                 glassesPill
                 if Config.isOpenClawConfigured {
                     openClawPill
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             // The pills now carry a full 44pt target, which is taller than the
             // capsules they draw — so the row's own bottom padding comes off to
@@ -232,6 +243,20 @@ struct StatusIndicator: View {
 
     // MARK: - Active Mode Badge
 
+    private var footerLayout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(spacing: 8))
+    }
+
+    /// The badge's own line break, for the same reason as the row's: at accessibility sizes the
+    /// name gets a line of its own under "Mode:", so it wraps at word boundaries or not at all.
+    private var badgeLayout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 6))
+    }
+
     private var activeModeBadge: some View {
         let persona = appState.activePersona
         let name = persona?.name ?? "OpenGlasses"
@@ -242,25 +267,27 @@ struct StatusIndicator: View {
         let dotColor: Color = connected ? OGTheme.ok : OGTheme.secondaryLabel
         let nameColor: Color = connected ? OGTheme.okLabel : OGTheme.secondaryLabel
 
-        return HStack(spacing: 6) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: statusDot, height: statusDot)
-                .accessibilityHidden(true)
-            Group {
-                if icon == "OpenGlassesLogo" {
-                    LogoIcon(size: pillGlyph)
-                } else {
-                    Image(systemName: icon)
-                        .font(.caption.weight(.medium))
+        return badgeLayout {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: statusDot, height: statusDot)
+                    .accessibilityHidden(true)
+                Group {
+                    if icon == "OpenGlassesLogo" {
+                        LogoIcon(size: pillGlyph)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.caption.weight(.medium))
+                    }
                 }
-            }
-            .foregroundStyle(nameColor)
-            .accessibilityHidden(true)
-            Text(connected ? "Active mode:" : "Mode:")
-                .font(.caption)
-                .foregroundStyle(OGTheme.secondaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(nameColor)
+                .accessibilityHidden(true)
+                Text(connected ? "Active mode:" : "Mode:")
+                    .font(.caption)
+                    .foregroundStyle(OGTheme.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             Text(name)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(nameColor)
