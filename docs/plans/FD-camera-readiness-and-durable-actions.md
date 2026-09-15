@@ -1,6 +1,6 @@
 # Plan FD — Camera Readiness and Durable Action Acceptance
 
-**Status: 📝 Drafted 2026-09-13 — implementation and device validation not performed under this plan.**
+**Status: 🚧 P0 implemented 2026-09-16 (P1–P5 unbuilt). On-glasses validation of the wait states is owed.**
 
 Harden camera readiness and session lifecycle, and prove durable action semantics end to end.
 Extend OpenGlasses' existing services and acceptance tests. Translation and proactive visual cues
@@ -40,6 +40,49 @@ Audit `CameraService`, `MetaCameraBackend`, `CameraStreamStatePolicy`, `StreamCo
 image, stream paused, disconnect and replacement. Assert readiness at the actual UI/tool boundary,
 not just an enum. Verify start remains reachable, audio-only works and stale frames cannot be used
 as a fresh visual answer. UI checks cover accessibility labels and persistent stale-preview copy.
+
+### What was built (2026-09-16)
+
+`CameraReadiness` (`Sources/Services/Camera/CameraReadiness.swift`) is a pure value type published
+from `CameraService` — no second session owner. It carries the phase (stopped, connecting, awaiting
+first frame, ready, paused, frames unavailable, decoding stalled, stopping), the age of the last
+**successfully decoded** picture on an injected monotonic clock, the session identity (the same
+counter `StreamStartGeneration` bumps on every stop, so a snapshot from a replaced session is
+recognisably about a camera that no longer exists), and the stream intent that Start/Connect
+decisions read instead of frames. `CameraBackendEvent.frame` now carries the freshness the backend
+already knew, so a picture the decoder handed over again does not move the clock; a new
+`waitReason` event carries what the SDK state listener and the decoder's own liveness clocks
+observed. No stall detection is re-implemented here — `StreamLiveness` and the reconnect ladder stay
+authoritative, and `evidenceMaxAge` deliberately sits above `StreamLiveness.stallThreshold` so the
+existing detector always notices first.
+
+The [consumer inventory](FD-readiness-inventory.md) lists every UI surface and tool, what it treated
+as "ready", and what it reads now.
+
+**Proven by fake-backend tests** (`CameraReadinessTests`, 32 tests, through the real `CameraService`
+over the shared `MockCameraBackend`): connected with no frames → awaiting first frame; a fresh
+decoded picture → ready at age zero; a held picture does not refresh the clock; the backend's
+decode-stalled and link-stalled verdicts → decoding stalled / frames unavailable; pause → paused;
+disconnect → stopped with the evidence cleared; stop-and-restart → the earlier snapshot recognised
+as stale. At the boundary: `filteredStill(for:)` refuses an aged cached picture with `noFreshView`
+while the picture is still cached, a paused stream's last picture cannot answer a vision question, a
+reader that may capture falls through to a capture instead of reusing a stale frame, starting the
+stream and claiming it for a live session both succeed with no picture anywhere, an audio-only turn
+proceeds with the camera stopped and starts nothing, and `capturePhoto()` keeps its own bounded
+contract past the freshness ceiling.
+
+**UI checks done headlessly**, against the pure label/chip/marker sources rather than SwiftUI
+rendering: no phase shares a control label with another, no non-ready phase can produce "Streaming"
+or "already streaming", the status chip is green only while pictures flow and disappears when there
+is nothing to report, a held preview always carries a marker saying it is not a live view and the
+image's accessibility label is that same sentence, and no camera-facing string infers another app's
+ownership, the wearer's wear state, or a power cycle.
+
+**Owed:** on-glasses validation. Nothing here has been seen on hardware — the phases the wait-state
+copy describes (a doff-induced pause, a link stall, a decoder stall during a real HEVC stream, a
+cold start running its full ~20 s) are reproduced from backend events in these tests, not observed.
+The wait states, the held-preview marker and the chip colours need a device pass before the copy can
+be called validated. That pass belongs with P1's device evidence.
 
 ## P1 / PR2 — Session start, pause and cancellation audit
 
@@ -161,7 +204,7 @@ model catalog and malformed local tool output; this plan does not duplicate it.
 
 | Gate | Status |
 |---|---|
-| Camera consumers and readiness audit | Pending |
+| Camera consumers and readiness audit | Done 2026-09-16 — inventory in `FD-readiness-inventory.md`; `CameraReadiness` published from `CameraService`; `CameraReadinessTests` (32) plus the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Device evidence owed |
 | SDK pause/retry contract resolved and service tests | Pending |
 | Real-glasses lifecycle evidence | Pending |
 | Durable-action failure-window tests | Pending |

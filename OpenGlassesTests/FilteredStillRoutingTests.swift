@@ -457,8 +457,13 @@ final class FilteredStillRoutingTests: XCTestCase {
 
     /// Puts a frame into `latestFrame` the way the device does — through a backend event. Reaching
     /// in any other way would exercise a path the app never takes.
+    ///
+    /// The stream comes up first, because that is the order the device reports it in and because
+    /// Plan FD's freshness gate depends on it: a picture with no stream behind it is not a current
+    /// view of anything, and the accessor now says so.
     private func deliver(_ image: UIImage, through backend: RoutingInertBackend) {
-        backend.events.send(.frame(image))
+        backend.events.send(.streamingChanged(true))
+        backend.events.send(.frame(image, fresh: true))
     }
 
     private func temporaryDirectory() -> URL {

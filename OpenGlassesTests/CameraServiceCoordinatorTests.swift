@@ -10,72 +10,6 @@ import XCTest
 @MainActor
 final class CameraServiceCoordinatorTests: XCTestCase {
 
-    /// A backend that records what it was asked to do and lets a test emit events by hand.
-    private final class MockCameraBackend: GlassesCameraBackend {
-        var capabilities: CameraCapabilities
-        let events = PassthroughSubject<CameraBackendEvent, Never>()
-        var ready: Bool
-        var permissionGranted = false
-        /// Records whether callers asked for the side-effecting form — the capture path must,
-        /// and UI must not.
-        private(set) var readyQueries: [Bool] = []
-
-        func isReady(configuringIfNeeded: Bool) -> Bool {
-            readyQueries.append(configuringIfNeeded)
-            return ready
-        }
-
-        private(set) var captureCount = 0
-        private(set) var startStreamingCount = 0
-        private(set) var stopStreamingCount = 0
-        private(set) var tearDownCount = 0
-        var captureResult: Result<Data, Error> = .success(Data([0x01, 0x02, 0x03]))
-
-        init(capabilities: CameraCapabilities = .meta, isReady: Bool = true) {
-            self.capabilities = capabilities
-            self.ready = isReady
-        }
-
-        func ensurePermission() async throws { permissionGranted = true }
-
-        func capturePhoto() async throws -> Data {
-            captureCount += 1
-            return try captureResult.get()
-        }
-
-        /// Opt-in so the tests written before claims existed keep seeing exactly what they saw.
-        var emitsStreamingEvents = false
-
-        func startStreaming() async throws {
-            startStreamingCount += 1
-            if emitsStreamingEvents { events.send(.streamingChanged(true)) }
-        }
-        func stopStreaming() async {
-            stopStreamingCount += 1
-            if emitsStreamingEvents { events.send(.streamingChanged(false)) }
-        }
-        func tearDown() async { tearDownCount += 1 }
-    }
-
-    /// The iPhone-camera fallback, faked.
-    ///
-    /// Every test that can reach the fallback branch has to inject this. The real
-    /// `PhoneCameraSource` is AVFoundation, and on a simulator whose camera privacy decision is
-    /// still unresolved it waits forever for a prompt no test runner can answer — so an
-    /// un-injected fallback doesn't fail the suite, it hangs it, and only on machines where the
-    /// permission hasn't already been cached by something else.
-    private final class MockPhoneCamera: PhoneCameraCapturing {
-        private(set) var captureCount = 0
-        /// Not decodable as an image on purpose, same as the backend mock: it keeps the
-        /// photo-library write out of a unit test.
-        var captureResult: Result<Data, Error> = .success(Data([0xBE, 0xEF]))
-
-        func capturePhoto() async throws -> Data {
-            captureCount += 1
-            return try captureResult.get()
-        }
-    }
-
     private var cancellables: Set<AnyCancellable> = []
 
     override func tearDown() {
@@ -95,7 +29,7 @@ final class CameraServiceCoordinatorTests: XCTestCase {
         service.onVideoFrame = { callbackFrames.append($0) }
 
         let frame = UIImage(systemName: "camera")!
-        backend.events.send(.frame(frame))
+        backend.events.send(.frame(frame, fresh: true))
 
         XCTAssertEqual(published.count, 1)
         XCTAssertEqual(callbackFrames.count, 1)
@@ -106,12 +40,12 @@ final class CameraServiceCoordinatorTests: XCTestCase {
         // A torn-down session's last frame must not survive to stand in for the next capture.
         let backend = MockCameraBackend()
         let service = CameraService(backend: backend)
-        backend.events.send(.frame(UIImage(systemName: "camera")!))
+        backend.events.send(.frame(UIImage(systemName: "camera")!, fresh: true))
         XCTAssertNotNil(service.latestFrame)
 
         var publishedAfterClear = 0
         service.framePublisher.sink { _ in publishedAfterClear += 1 }.store(in: &cancellables)
-        backend.events.send(.frame(nil))
+        backend.events.send(.frameCleared)
 
         XCTAssertNil(service.latestFrame)
         XCTAssertEqual(publishedAfterClear, 0, "a cache clear is not a frame")
@@ -353,7 +287,7 @@ final class CameraServiceCoordinatorTests: XCTestCase {
         XCTAssertTrue(backend.permissionGranted)
         XCTAssertTrue(service.permissionGranted)
 
-        backend.events.send(.frame(UIImage(systemName: "camera")!))
+        backend.events.send(.frame(UIImage(systemName: "camera")!, fresh: true))
         await service.tearDown()
 
         XCTAssertEqual(backend.tearDownCount, 1)

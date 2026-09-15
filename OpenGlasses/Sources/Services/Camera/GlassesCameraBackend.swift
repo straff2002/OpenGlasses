@@ -58,6 +58,30 @@ enum CameraStreamingStatus: String, Sendable, Equatable {
     case streaming, waiting, stopped
 }
 
+/// Why the backend currently is not delivering pictures.
+///
+/// Plan FD P0. `CameraStreamingStatus` collapses every one of these into `.waiting`, which is the
+/// right amount of detail for the two call sites that grew up with it and far too little for a
+/// wearer: "connecting", "paused", "nothing is arriving" and "nothing is decoding" are four
+/// different situations, and only one of them is the one they can fix by putting the glasses back
+/// on. Carried alongside the coarse status rather than replacing it.
+///
+/// Every case is something the backend **observed** — a state the SDK reported, or a verdict from
+/// the decoder's own liveness clocks. Nothing here is inferred from a quiet moment, and nothing
+/// here names a cause the app cannot see.
+enum CameraWaitReason: String, Sendable, Equatable {
+    /// A start, a warm-up or a reconnect is under way.
+    case connecting
+    /// The SDK paused the stream. Since DAT 0.9 a doff lands here, as do closed hinges.
+    case paused
+    /// The liveness clocks say nothing is arriving from the glasses at all.
+    case framesUnavailable
+    /// The liveness clocks say samples are arriving and none of them is becoming a picture.
+    case decodingStalled
+    /// A stop is in flight.
+    case stopping
+}
+
 /// Backend → coordinator notifications.
 enum CameraBackendEvent {
     /// A new frame, or nil to invalidate the cached frame.
@@ -65,8 +89,17 @@ enum CameraBackendEvent {
     /// The nil case matters: a torn-down session's last frame must not survive to stand in for
     /// the next capture. That rule is enforced twice on purpose — here, and by the freshness
     /// check inside the backend that refuses a stale frame as a photo fallback.
-    case frame(UIImage?)
+    ///
+    /// `fresh` says whether this picture was newly produced from this frame, or is the previous
+    /// one handed over again while the decoder waits for a keyframe. The app should keep seeing a
+    /// held picture — that is why one is held — but it is not a new view of the world, so it must
+    /// not move the freshness clock. The distinction was already made inside the backend; carrying
+    /// it across the seam is what lets the coordinator answer "how old is what I can see".
+    case frame(UIImage?, fresh: Bool)
     case status(CameraStreamingStatus)
+    /// Why pictures are not flowing, or nil when the backend has no such observation. Emitted on
+    /// change rather than per frame.
+    case waitReason(CameraWaitReason?)
     case streamingChanged(Bool)
     case debug(String)
     /// Actionable compatibility copy ("update the Meta AI app…"), or nil when compatible.
@@ -76,4 +109,10 @@ enum CameraBackendEvent {
     /// update their firmware when they simply doffed the glasses sends them somewhere useless.
     case transientNotice(String)
     case registrationProgress(Int)
+}
+
+extension CameraBackendEvent {
+    /// Invalidate the cached frame. A cleared cache has nothing to be fresh about, so spelling the
+    /// label out at every teardown would be noise.
+    static var frameCleared: CameraBackendEvent { .frame(nil, fresh: false) }
 }

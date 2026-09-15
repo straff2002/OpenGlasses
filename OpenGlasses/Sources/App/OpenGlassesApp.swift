@@ -1398,16 +1398,23 @@ class AppState: ObservableObject, AppStateProtocol {
         // A held pin is already filtered at pin time (CO Item 0), so only the live fallback needs
         // a pass here — re-blurring an already-blurred pin every poll would burn a Vision pass to
         // no effect.
+        // FD P0: a poll answers "what is the model looking at right now", so the live branch is
+        // gated on fresh visual evidence rather than on a picture existing. A held or aged frame
+        // pushed into a live session is indistinguishable, to the model and to the wearer, from a
+        // current one — and the session keeps asking, so one stale answer becomes every answer.
+        // A *pin* is exempt and deliberately so: a held pin IS the referent the wearer chose.
         geminiLiveSession.onRequestVideoFrame = { [weak self] in
             guard let self else { return nil }
             if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
-            guard let live = self.cameraService.latestFrame else { return nil }
+            guard self.cameraService.readinessNow.hasFreshVisualEvidence,
+                  let live = self.cameraService.latestFrame else { return nil }
             return self.privacyFilter.filtered(live, for: .liveSession)
         }
         openAIRealtimeSession.onRequestVideoFrame = { [weak self] in
             guard let self else { return nil }
             if Config.framePinEnabled, let pinned = self.framePin.pinnedFrame { return pinned }
-            guard let live = self.cameraService.latestFrame else { return nil }
+            guard self.cameraService.readinessNow.hasFreshVisualEvidence,
+                  let live = self.cameraService.latestFrame else { return nil }
             return self.privacyFilter.filtered(live, for: .liveSession)
         }
 
@@ -1538,9 +1545,11 @@ class AppState: ObservableObject, AppStateProtocol {
         AgentSessionService.shared.attachmentContext = { [weak self] in
             guard let self else { return (pinHeld: false, pinAge: nil, cameraStreaming: false) }
             let pinned = Config.framePinEnabled && self.framePin.isPinned
+            // The policy is deciding whether a live frame is worth attaching, so the fact it
+            // needs is whether one can be had — not whether a stream object exists.
             return (pinHeld: pinned,
                     pinAge: self.framePin.pinnedAt.map { Date().timeIntervalSince($0) },
-                    cameraStreaming: self.cameraService.isStreaming)
+                    cameraStreaming: self.cameraService.readinessNow.hasFreshVisualEvidence)
         }
         AgentSessionService.shared.resolveAttachment = { [weak self] decision in
             guard let self, case .attach(let source) = decision else { return nil }
@@ -1550,9 +1559,15 @@ class AppState: ObservableObject, AppStateProtocol {
             switch source {
             case .pinned: frame = self.framePin.pinnedFrame
             case .live:
-                frame = self.cameraService.latestFrame.map {
-                    self.privacyFilter.filtered($0, for: .agentAttachment)
-                }
+                // FD P0: an attachment is evidence handed to an agent, so the live branch needs a
+                // current view. Without this, a task dispatched minutes after the camera stopped
+                // would still carry the last frame it ever saw, captioned as what the wearer is
+                // looking at.
+                frame = self.cameraService.readinessNow.hasFreshVisualEvidence
+                    ? self.cameraService.latestFrame.map {
+                        self.privacyFilter.filtered($0, for: .agentAttachment)
+                    }
+                    : nil
             }
             guard let frame,
                   let raw = frame.jpegData(compressionQuality: 0.9) else { return nil }
@@ -3153,7 +3168,13 @@ class AppState: ObservableObject, AppStateProtocol {
     func configureSceneNarration() {
         let narration = SceneNarrationService.shared
 
-        narration.currentFrame = { [weak self] in self?.cameraService.latestFrame }
+        // FD P0: narration says what is in front of the wearer, so a picture that is no longer a
+        // current view is worse than no picture — the loop would describe the room they left. No
+        // frame this tick is already a case the loop handles; it simply describes nothing.
+        narration.currentFrame = { [weak self] in
+            guard let self, self.cameraService.readinessNow.hasFreshVisualEvidence else { return nil }
+            return self.cameraService.latestFrame
+        }
 
         narration.describeFrame = { [weak self] data in
             guard let self else { return nil }
@@ -4151,7 +4172,12 @@ class AppState: ObservableObject, AppStateProtocol {
            !LLMImagePreparer.isDegenerate(pinnedData) {
             return pinnedData
         }
-        guard cameraService.isStreaming, let frame = cameraService.latestFrame else { return nil }
+        // FD P0: `isStreaming` said a stream object existed, which a paused or stalled stream
+        // also satisfies — so a vision turn could be answered from the last picture of the
+        // previous room. What this needs is a current view, and the absence of one is a text-only
+        // turn rather than a confident wrong answer.
+        guard cameraService.readinessNow.hasFreshVisualEvidence,
+              let frame = cameraService.latestFrame else { return nil }
         let outbound = privacyFilter.filtered(frame, for: .directModelTurn)   // CO Item 0
         guard let data = outbound.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality),
               !LLMImagePreparer.isDegenerate(data) else { return nil }
@@ -4166,7 +4192,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// last sampled. Returns false when there's nothing to pin.
     @discardableResult
     func pinCurrentFrame() -> Bool {
-        guard Config.framePinEnabled, let frame = cameraService.latestFrame else { return false }
+        // A pin freezes what the model may see for the rest of the conversation, so pinning a
+        // picture that is already stale would make one moment's staleness permanent.
+        guard Config.framePinEnabled, cameraService.readinessNow.hasFreshVisualEvidence,
+              let frame = cameraService.latestFrame else { return false }
         // CO Item 0: filter once, here. Every downstream use of a pin — the immediate sharp-inject,
         // the heartbeat resends, the Direct-mode reuse, the pinned card on screen, a CN agent
         // attachment — then carries the same blurred pixels without repeating the Vision pass.
@@ -4263,13 +4292,18 @@ class AppState: ObservableObject, AppStateProtocol {
         // made "smart camera" the one Direct-mode vision path the bystander blur never saw —
         // `currentVisionFrameDataIfAvailable` three functions up had been filtered since CO Item 0.
         // Same scope, same chokepoint, now genuinely the same treatment.
-        if cameraService.isStreaming {
+        // FD P0: the gate is fresh evidence, not the existence of a stream. The accessor enforces
+        // the same rule underneath, so the check here is about not paying for a filter pass on a
+        // picture that is going to be refused anyway.
+        if cameraService.readinessNow.hasFreshVisualEvidence {
             let still = await cameraService.filteredStill(for: .directModelTurn)
             if let data = still.jpegData(compressionQuality: Config.geminiLiveVideoJPEGQuality) {
                 guard !LLMImagePreparer.isDegenerate(data) else { return nil }
                 return data
             }
-            if still.unavailableReason != .noStill { return nil }   // filtered path failed closed
+            // A picture that could not be prepared for privacy reasons is the end of the road; one
+            // that was merely absent or stale still has the capture path below.
+            if still.unavailableReason?.mayFallBackToCapture != true { return nil }
         }
 
         // Plan CU P1: the grab sits between commit and first token, so a vision turn's raw TTFT
