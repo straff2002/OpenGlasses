@@ -316,7 +316,7 @@ final class ConversationResetMarkerTests: XCTestCase {
     private final class ScriptedHermesSocket: HermesSocket, @unchecked Sendable {
         private let lock = NSLock()
         private var inbound: [String] = []
-        private var waiters: [CheckedContinuation<URLSessionWebSocketTask.Message, Error>] = []
+        private var waiters: [CheckedContinuation<HermesFrame, Error>] = []
         private var _sent: [String] = []
         private var cancelled = false
 
@@ -342,7 +342,7 @@ final class ConversationResetMarkerTests: XCTestCase {
             if !waiters.isEmpty {
                 let waiter = waiters.removeFirst()
                 lock.unlock()
-                waiter.resume(returning: .string(text))
+                waiter.resume(returning: .text(text))
                 return
             }
             inbound.append(text)
@@ -368,13 +368,13 @@ final class ConversationResetMarkerTests: XCTestCase {
             }
         }
 
-        func receive() async throws -> URLSessionWebSocketTask.Message {
+        func receive() async throws -> HermesFrame {
             lock.lock()
             if cancelled { lock.unlock(); throw CancellationError() }
             if !inbound.isEmpty {
                 let next = inbound.removeFirst()
                 lock.unlock()
-                return .string(next)
+                return .text(next)
             }
             return try await withCheckedThrowingContinuation { continuation in
                 waiters.append(continuation)

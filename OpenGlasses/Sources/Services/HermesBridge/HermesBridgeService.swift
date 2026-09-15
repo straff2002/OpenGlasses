@@ -177,19 +177,17 @@ final class HermesBridgeService: ObservableObject {
         }
     }
 
-    private func handle(_ message: URLSessionWebSocketTask.Message) async {
-        switch message {
-        case .data:
+    private func handle(_ frame: HermesFrame) async {
+        switch frame {
+        case .nonText:
             // Bridge TTS audio — always declined, so any stray frame is dropped.
             return
-        case .string(let text):
+        case .text(let text):
             guard let decoded = HermesBridgeProtocol.decode(text) else {
                 onDebugEvent?("Hermes bridge: undecodable frame ignored")
                 return
             }
             await handle(decoded)
-        @unknown default:
-            return
         }
     }
 
