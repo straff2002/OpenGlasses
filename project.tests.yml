@@ -6,6 +6,10 @@ targets:
       - path: OpenGlassesTests
         excludes:
           - "Fixtures/**"
+      # The accessibility gate's pure timing rules (retry policy, frame-settle tracker) live in
+      # the UI-test target but have no XCUITest dependency, so they are compiled here as well and
+      # unit-tested by AuditTimingPolicyTests. A UI-test target has no fast suite of its own.
+      - path: OpenGlassesUITests/AuditTimingPolicy.swift
       # Golden fixtures exported from the Python reference pipeline (Plan CK —
       # Scripts/export-fingerspelling-fixtures.py); loaded via Bundle(for:).
       - path: OpenGlassesTests/Fixtures

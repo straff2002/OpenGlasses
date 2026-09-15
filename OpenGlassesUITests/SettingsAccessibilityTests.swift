@@ -148,19 +148,35 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         // 'Personality', 'How It Behaves' — the category's own copy, none of it this case's
         // subject. So assert the hub is still what is on screen.
         //
-        // And the audit must not run while the list is still moving. The card's pitch belongs to
-        // the card alone, so its disappearance is the replacement finishing — a settled list
-        // rather than a timer.
+        // And the audit must not run while the list is still moving. Waiting for the card's pitch
+        // to disappear was not enough, for two reasons. The old wait was guarded by
+        // `if pitch.exists`, so when the pitch had already gone at that instant it did not wait
+        // at all. And the pitch leaving only means the card has left the tree; the row taking its
+        // place is still animating into the list. After #475 the case still failed twice in seven
+        // main runs (6f08dfe2, 8de36b08 attempt 1), each time with the same 17 Dynamic Type
+        // findings on the hub's own category titles and subtitles. The hub was on screen, the
+        // runner image was the same as on the passes, and the failing runs were the slow ones
+        // (55 s and 63 s against 32–44 s). The audit was measuring text in mid-animation.
+        //
+        // So: wait for the card to be gone unconditionally, then for the unfolded row to stop
+        // moving, then for an anchor below both the list and Discover to stop moving. That
+        // anchor's position depends on the row being added above it and the card being removed
+        // above it, so it settles only when the whole page has.
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10),
                       "Unfolding left the settings hub, so the audit would measure the pushed "
                       + "category screen rather than the list the card moved into")
 
         let pitch = app.staticTexts["Choose the model and give it a character."]
-        if pitch.exists {
-            let gone = expectation(for: NSPredicate(format: "exists == false"),
-                                   evaluatedWith: pitch)
-            wait(for: [gone], timeout: 10)
-        }
+        XCTAssertTrue(pitch.waitForNonExistence(timeout: 10),
+                      "The AI & Personality Discover card never left the page")
+
+        // With the card gone, this query can only resolve to the unfolded row.
+        awaitStableFrame(of: row, named: "The unfolded AI & Personality row")
+        awaitStableFrame(of: app.switches["Show everything"],
+                         named: "The Show everything switch below Discover")
+
+        XCTAssertTrue(app.navigationBars["Settings"].exists,
+                      "The settings hub was replaced while waiting for it to settle")
 
         audit(app, screen: "Settings hub — after unfolding a category",
               deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
