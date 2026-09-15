@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0 implemented 2026-09-16 — P1–P6 unbuilt.**
+**Status: 🚧 P0–P1 implemented 2026-09-16 — P2–P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -78,7 +78,7 @@ default cancellation wording, and an HTTP error quoting 160 characters of the en
 **Owed:** everything above is fixture-level. A real endpoint has not been run against it, so the
 recognised-alias list, the result payload shapes and the retry numbers are still proposals rather
 than field-confirmed. `respondToConfirmation` swallowing a transport error before announcing
-"Okay, proceeding" is left as-is for P1, which owns reply routing.
+"Okay, proceeding" was left as-is for P1, which owns reply routing, and is fixed there.
 
 ## P1 / PR2 — Questions, answers and explicit backend selection
 
@@ -110,6 +110,68 @@ fields; test actual saved legacy JSON. Do not let a decoding failure silently er
 with identical wording, arbitrary text answers, explicit approval/denial, unsupported replies,
 failure/retry, stale question, cancellation, endpoint changes, key collisions and config migration.
 Verify voice/UI replies reach the adapter; an unused overload is not completed functionality.
+
+**Implemented 2026-09-16.** Wire contract additions:
+[agent-harness-wire-contract.md](../agent-harness-wire-contract.md) — "Which agent", "Questions"
+and "Answers".
+
+- **Question identity.** `AgentEvent.awaitingInput` now carries an `AgentQuestion`
+  (`id`, `revision`, `kind`, `prompt`, `runID`) instead of a bare string, and the session surfaces
+  one ask per `(id, revision)`. A polled repeat is silent, a revision bump re-asks, and a new id is
+  a new question however familiar its wording. An endpoint that names no question gets a
+  deterministic id derived from `(run, wording, arrival order)` — FNV-1a, not a per-process hash, so
+  it survives a relaunch — and the contract states plainly that identically-worded questions from
+  such an endpoint are distinguished by arrival order alone. An answer naming a replaced, ended or
+  differently-revisioned question is refused and never forwarded.
+- **Free text vs approval.** `respondToInput(_:approved:)` became a thin wrapper over
+  `respondToInput(_:reply:)` taking an `AgentReply` (`.approve` / `.deny` / `.text`) with the
+  question's identity and a `replyId` that is stable across retries. Approval still goes through the
+  user-distinct consent prompt; a free-text answer goes through the same user-originated boundary —
+  the model can propose words, but only what comes back out of the wearer's prompt is sent, edits
+  included, and a `.approval` question refuses free text outright. The shared consent card gained a
+  text field with Send / Don't send, so both shapes work by touch when voice recognition does not;
+  voice yes/no is deliberately inert on a text prompt.
+- **Transport truth.** The reply's outcome is what is announced. The protocol's default
+  implementation now throws `replyUnsupported` instead of silently succeeding; a failure keeps the
+  question pending, holds the reply and offers a retry that re-sends the same `replyId`; a timeout
+  after sending is reconciled by **re-polling status**, never by a second POST; and a delivered
+  decline says only "I've told the agent not to proceed" — the run's status stays the endpoint's to
+  report. An unrelayable decline says so and leaves the status untouched.
+- **Backend binding and selection.** Optional `agentField`/`agentValue` put a configured agent name
+  in the start body (never persona or wake-word routing). Prompt/project/image/agent keys are
+  checked for collisions and the answer field may not take a reserved reply key; a collision is
+  named in Settings, disables Save, and makes the request build refuse rather than send a body with
+  a field written over. The harness a run was dispatched to is bound to the run, so a mid-run
+  Settings change cannot send its reply or cancellation to another backend.
+- **Settings.** `inputURLTemplate`, `inputField`, and `questionPrompt/ID/Revision/Kind` paths, under
+  the existing `EndpointPolicy` / `MedicalEgressGuard` / `NetworkRouteRegistry` rules (the reply
+  rides `CustomAgentHarness`'s existing `.customAgentHarness` route — no new route). Every new key
+  decodes with a default.
+
+**Evidence.** 186 headless tests across `AgentQuestionReplyTests` (42, new), `AgentSessionTests`
+(24), `AgentResultTruthTests` (32), `AgentCustomHarnessTests` (23), `AgentSummarizerTests` (18),
+`RemoteActionConsentTests`, `AgentSafetyTests`, `AgentConfirmationGapTests` and
+`AgentHarnessPresetTests`; full `OpenGlassesTests` 5600 green, Release build green. The new class
+drives adapter → session → summarizer → `code_agent` tool over the shared `URLProtocol` stub and
+asserts the spoken line, the run status, **which URL each request went to** and its body: repeated
+identity announced once, revision bump re-asked, two identically-worded questions with different
+ids both surfaced in order, derived identity across leave-and-re-enter, text forwarded verbatim with
+the question id, an edited answer replacing the proposed one, approve/deny decisions, an approval
+question refusing free text, no-answer-address reported honestly with zero requests, 503 keeping the
+question pending then a retry carrying the same `replyId`, a timeout reconciled by one status GET
+with exactly one POST, a timeout that stays unresolved, stale id and stale revision refused,
+cancellation while a question is pending, a reply following the bound endpoint after the registry is
+swapped mid-run, every collision case, the preset configs, and a literal legacy config JSON.
+Four prior assertions changed because they encoded the defects this phase names: the decline
+cancelling the run locally (twice — `AgentSessionTests`, `RemoteActionConsentTests`), the
+"Confirmed — the agent will proceed" line spoken regardless of transport, and the generic narrator
+announcing every `awaitingInput` event.
+
+**Owed:** fixture-level again. The question/answer shapes, the reserved reply keys and the kind
+labels have not been run against a real multi-agent endpoint. The uncertain-delivery signal is a
+POST timeout only — a connection dropped mid-flight is treated as a plain failure, which is the
+safe reading but not the complete one. The gateway's approval surface (`exec.approval.*`) stays the
+gateway plan's to wire; here it is honestly reported as unsupported.
 
 ## P2 / PR3 — Recover unhealthy listening without duplicate audio ownership
 
@@ -231,7 +293,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 | Gate | Status |
 |---|---|
 | Results/status/error narration | 🚧 Fixture-green 2026-09-16 (P0); live endpoint owed |
-| Questions/replies, agent selection and legacy configuration migration | Pending |
+| Questions/replies, agent selection and legacy configuration migration | 🚧 Fixture-green 2026-09-16 (P1); live endpoint owed |
 | Listener recovery and audio ownership | Pending |
 | Live timing controls and interruption usability | Pending |
 | Playback-aware acknowledgement and reconnect semantics | Pending |
