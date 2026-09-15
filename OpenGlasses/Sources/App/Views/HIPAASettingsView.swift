@@ -172,7 +172,7 @@ enum MedicalSafeguard: String, CaseIterable {
     var detail: String {
         switch self {
         case .encryption:
-            return "While this mode is on, video recordings and transcripts saved in the app's own folders get complete file protection, so they can't be read while the device is locked. The audit log and clinical exports get it too. Audio-only recordings, the transcript saved beside a video, copies in Photos or a folder you chose, and files saved before the mode was on keep iOS's standard protection."
+            return "While this mode is on, recordings (audio and video), their transcripts, the list of recorded sessions, the audit log and clinical exports can't be read while the phone is locked, and are kept out of iCloud backup. A recording that's still being written can finish while the phone is locked. Protection starts when you turn the mode on and also covers recordings already saved in the app at that moment. Copies in Photos or a folder you chose are outside this protection."
         case .accessControl:
             return "Face ID, Touch ID, or device passcode is required every time the app returns to the foreground."
         case .auditLog:
@@ -234,7 +234,7 @@ struct HIPAASettingsView: View {
                     changeRow(icon: biometricIcon, color: AppAccent.aiCoral, title: "App Lock",
                               detail: "\(biometricName) required to open app")
                     changeRow(icon: "lock.doc.fill", color: AppAccent.aiCoral, title: "File Protection",
-                              detail: "New video recordings and transcripts unreadable while locked")
+                              detail: "Recordings, transcripts, audit log and exports unreadable while locked")
                     changeRow(icon: "icloud.slash.fill", color: OGTheme.warnLabel, title: "iCloud Backup",
                               detail: "Clinical data excluded from backup")
                     changeRow(icon: "magnifyingglass", color: OGTheme.errorLabel, title: "Web Search",
@@ -471,7 +471,7 @@ struct HIPAASettingsView: View {
                 complianceEnabled = false
             }
         } message: {
-            Text("This will:\n• Require biometric authentication to open the app\n• Make new video recordings and transcripts unreadable while the phone is locked\n• Disable web search and external messaging\n• Exclude clinical data from iCloud backup\n• Enable audit logging of all data access")
+            Text("This will:\n• Require biometric authentication to open the app\n• Make recordings, transcripts, the audit log and exports unreadable while the phone is locked, including recordings already saved\n• Disable web search and external messaging\n• Exclude clinical data from iCloud backup\n• Enable audit logging of all data access")
         }
         .alert("Disable Medical Compliance?", isPresented: $showConfirmDisable) {
             Button("Disable", role: .destructive) {

@@ -44,7 +44,7 @@ struct MedicalCompliancePaywallView: View {
                 // Features
                 OGCard {
                     featureRow(icon: "lock.doc.fill", title: "File Protection",
-                               detail: "New video recordings and transcripts unreadable while the phone is locked")
+                               detail: "Recordings, transcripts, audit log and exports unreadable while the phone is locked")
                     OGDivider()
                     featureRow(icon: "faceid", title: "Biometric App Lock",
                                detail: "Face ID / Touch ID required every time the app opens")
