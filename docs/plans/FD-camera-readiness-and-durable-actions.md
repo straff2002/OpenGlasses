@@ -138,7 +138,7 @@ the same trace that produced `CameraStreamStatePolicy`. `StreamRecoveryPolicy` r
 intent: `running → paused` is the wearer's hold and `paused → running` **their** resume. No trace
 anywhere records a `start()` lifting a pause.
 
-**The rule.** Outcome (b). A pause is **reported and waited out**: the paused session, its
+**The rule.** A pause is **reported and waited out**: the paused session, its
 listeners and the camera capability are kept exactly as they are, nothing is scheduled, and the
 SDK's own resume is what brings the stream back. `StreamPausePolicy` holds the rule and holds it by
 shape — its `PauseResponse` has no case that issues a start, so a caller applying the policy cannot
@@ -340,7 +340,7 @@ model catalog and malformed local tool output; this plan does not duplicate it.
 | Gate | Status |
 |---|---|
 | Camera consumers and readiness audit | Done 2026-09-16 — inventory in `FD-readiness-inventory.md`; `CameraReadiness` published from `CameraService`; `CameraReadinessTests` (32) plus the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Device evidence owed |
-| SDK pause/retry contract resolved and service tests | Done 2026-09-16 — decision (b), waited out and never restarted, recorded above with the interface lines and the traces it rests on; `StreamPausePolicy`/`StreamReconnectPolicy`/`CameraTransitionLock`/`StreamListenerGeneration` plus the retry classification; `CameraSessionLifecycleTests` (43) and the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Backend wiring reasoned, device evidence owed |
+| SDK pause/retry contract resolved and service tests | Done 2026-09-16 — a pause is waited out and never restarted, recorded above with the interface lines and the traces it rests on; `StreamPausePolicy`/`StreamReconnectPolicy`/`CameraTransitionLock`/`StreamListenerGeneration` plus the retry classification; `CameraSessionLifecycleTests` (43) and the camera/privacy suites green, full `OpenGlassesTests` green, Release simulator build green. Backend wiring reasoned, device evidence owed |
 | Real-glasses lifecycle evidence | Pending — the P1 table above lists the runs and what each must record |
 | Durable-action failure-window tests | Pending |
 | UI/voice approval/recovery journey | Pending |

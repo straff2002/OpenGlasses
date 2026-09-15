@@ -112,7 +112,7 @@ final class StreamPausePolicyTests: XCTestCase {
         }
     }
 
-    // MARK: The other half of decision (b): the SDK's own resume has to be acted on
+    // MARK: The other half of the rule: the SDK's own resume has to be acted on
 
     /// With no nudge, the SDK lifting the pause is the only way back — so it must restore the
     /// streaming claim the pause cleared. Nothing used to: `isStreaming` stayed false for the rest

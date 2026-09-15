@@ -133,7 +133,7 @@ enum StreamPausePolicy {
     /// Whether a `.streaming` state that arrives with continuous streaming still wanted should
     /// restore the streaming claim the pause (or the drop) cleared.
     ///
-    /// The other half of decision (b), and the half that was missing entirely: with no nudge, the
+    /// The other half of the rule, and the half that was missing entirely: with no nudge, the
     /// SDK's own resume is the *only* way back, so it has to be acted on. Before this, a doff and
     /// a re-don left `isStreaming` false for the rest of the session — which also left the stall
     /// detector disarmed, since it guards on exactly that flag — while frames flowed and the UI
