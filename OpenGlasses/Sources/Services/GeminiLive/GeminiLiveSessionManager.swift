@@ -667,3 +667,15 @@ extension GeminiLiveSessionManager: LiveSessionInjecting {
         geminiService.sendText(text, completeTurn: completeTurn)
     }
 }
+
+// MARK: - Conversation reset
+
+/// The Live session *is* the context: Gemini Live has no "forget the conversation" message, so a
+/// reset cycles the session. `stopSession()` already disconnects the service, which drops the
+/// resumption handle — `holdsResumableContext` is what the adapter checks rather than trusting it.
+extension GeminiLiveSessionManager: RealtimeSessionResetting {
+    var isSessionActive: Bool { isActive }
+    var holdsResumableContext: Bool { geminiService.hasResumptionHandle }
+    func stopLiveSession() { stopSession() }
+    func startLiveSession() async { await startSession() }
+}

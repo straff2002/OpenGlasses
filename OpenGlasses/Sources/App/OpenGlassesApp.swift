@@ -781,6 +781,82 @@ class AppState: ObservableObject, AppStateProtocol {
     /// only — it listens, it does not own.
     let egressCoordinator = MedicalEgressCoordinator()
     let openClawBridge = OpenClawBridge()
+
+    /// The one place a conversation is retired, whichever way the wearer asked — the classifier's
+    /// Tier-0 phrase route, the model calling `new_topic`, or the conversation UI's new-chat
+    /// action. It owns the generation that makes the old context's late output stale.
+    let conversationReset = ConversationResetCoordinator()
+
+    private lazy var geminiLiveResetAdapter =
+        RealtimeSessionResetAdapter(backend: .geminiLive, session: geminiLiveSession)
+    private lazy var openAIRealtimeResetAdapter =
+        RealtimeSessionResetAdapter(backend: .openAIRealtime, session: openAIRealtimeSession)
+    private lazy var gatewayResetAdapter = GatewaySessionResetAdapter(gateway: openClawBridge)
+    private lazy var bridgeResetAdapter = BridgeSessionResetAdapter(bridge: hermesBridge)
+
+    /// The backends that own this conversation's context *right now*, in reset order. Only live
+    /// owners are listed: a gateway or bridge that is not currently part of the conversation has
+    /// no context to retire, and listing it would let something the wearer isn't using veto their
+    /// reset. `.phoneHistory` is the coordinator's own commit step and is not listed here.
+    private func conversationResetPlan() -> [ConversationBackendID] {
+        var plan: [ConversationBackendID] = []
+        if geminiLiveSession.isActive { plan.append(.geminiLive) }
+        if openAIRealtimeSession.isActive { plan.append(.openAIRealtime) }
+        if Config.isOpenClawAgentActive { plan.append(.openClaw) }
+        if hermesBridge.isEnabled, hermesBridge.status != .disconnected { plan.append(.hermes) }
+        return plan
+    }
+
+    private func conversationResetAdapter(for backend: ConversationBackendID)
+        -> (any ConversationContextResetting)? {
+        switch backend {
+        case .phoneHistory: return nil
+        case .geminiLive: return geminiLiveResetAdapter
+        case .openAIRealtime: return openAIRealtimeResetAdapter
+        case .openClaw: return gatewayResetAdapter
+        case .hermes: return bridgeResetAdapter
+        }
+    }
+
+    /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
+    /// entry points share one state machine and one generation.
+    private func configureConversationReset() {
+        conversationReset.configure(.init(
+            plan: { [weak self] in self?.conversationResetPlan() ?? [] },
+            adapter: { [weak self] backend in self?.conversationResetAdapter(for: backend) },
+            awaitTurnBoundary: { [weak self] in
+                guard let self else { return }
+                // A tool result still owed to the model goes out before anything is retired.
+                await ConversationTurnBoundary.wait { self.llmService.isTurnInFlight }
+            },
+            clearLocalHistory: { [weak self] in self?.llmService.requestHistoryClear() },
+            startSavedThread: { [weak self] in
+                guard let self, Config.conversationPersistenceEnabled else { return }
+                self.conversationStore.startThread(mode: self.currentMode.rawValue,
+                                                   personaId: self.activePersona?.id)
+            },
+            stopSpeech: { [weak self] in self?.speechService.stopSpeaking() },
+            announce: { [weak self] report in
+                guard let self else { return }
+                let line = ConversationResetCopy.confirmation(for: report)
+                self.lastResponse = line
+                // On the failure path the old thread records why nothing changed. On the success
+                // path the new thread is left empty — the wearer asked for a blank slate.
+                if Config.conversationPersistenceEnabled, !report.didRetireLocalContext {
+                    self.conversationStore.appendMessage(role: "assistant", content: line)
+                }
+                await self.speechService.speak(line)
+            },
+            record: { report in
+                for outcome in report.outcomes {
+                    PrivacyLog.app(.conversationCleared,
+                                   detail: PrivacyToken(outcome.backend.rawValue),
+                                   state: PrivacyToken(outcome.logToken),
+                                   count: Int(report.generation),
+                                   success: outcome.crossedBoundary)
+                }
+            }))
+    }
     let openClawEventClient = OpenClawEventClient()
     /// Remote invoke (Plan BH): gateway-initiated device commands, deny-by-default.
     lazy var remoteInvoke: RemoteInvokeService = makeRemoteInvokeService()
@@ -1352,17 +1428,13 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in StagedExportCoordinator.handleBackgroundAll() }
         }
 
-        // Hands-free "new topic" — the new_topic tool posts this; clear the LLM's context
-        // (deferred-safe when a turn is in flight) and start a fresh persistence thread so the
-        // conversation history view also breaks here.
+        // Hands-free "new topic" — the `new_topic` tool posts this when the model calls it
+        // mid-turn. It only *records* the request: retiring the phone's history here, as this
+        // observer used to, left every remote backend still holding the conversation.
+        configureConversationReset()
         NotificationCenter.default.addObserver(forName: .ogNewTopicRequested, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                self.llmService.requestHistoryClear()
-                if Config.conversationPersistenceEnabled {
-                    self.conversationStore.startThread(mode: self.currentMode.rawValue, personaId: self.activePersona?.id)
-                }
-                PrivacyLog.app(.conversationCleared)
+                await self?.conversationReset.requestReset(source: .modelToolCall)
             }
         }
 
@@ -4092,6 +4164,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.speechService.playAcknowledgmentTone()
                 self.speechService.startThinkingSound()
 
+                // The conversation this answer will belong to. A reset advances the generation,
+                // so an answer that arrives after one is stale and must reach neither the
+                // transcript nor the speaker.
+                let turnGeneration = self.conversationReset.currentGeneration
+
                 self.currentLLMTask = Task {
                     await ConversationTurnRunner.run(.init(
                         send: {
@@ -4119,6 +4196,10 @@ class AppState: ObservableObject, AppStateProtocol {
                             return response
                         },
                         accept: { response in
+                            guard self.conversationReset.isCurrent(turnGeneration) else {
+                                PrivacyLog.app(.utteranceStaleDropped, detail: PrivacyToken("conversationReset"))
+                                return
+                            }
                             self.lastResponse = response
                             if Config.conversationPersistenceEnabled {
                                 self.conversationStore.appendMessage(role: "assistant", content: response)
@@ -4131,6 +4212,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             }
                         },
                         speak: { response in
+                            guard self.conversationReset.isCurrent(turnGeneration) else { return }
                             // Start wake word listener during TTS so user can say "stop"
                             self.startStopListener()
                             await self.speechService.speak(response)
@@ -4464,6 +4546,20 @@ class AppState: ObservableObject, AppStateProtocol {
         PrivacyLog.app(.turnClassified, detail: PrivacyToken(classification.modelTier.rawValue),
                        tool: classification.directToolCall.map { PrivacyToken($0.toolName) })
 
+        // A bare reset phrase is not an ordinary tool call: `new_topic`'s tool return is a neutral
+        // acknowledgement, and the confirmation belongs to the coordinator — speaking the tool's
+        // line here as well would announce the reset twice, once before it had happened. Same
+        // classifier decision, same coordinator as the model-invoked and UI routes.
+        if classification.directToolCall?.toolName == "new_topic" {
+            isProcessing = true
+            TurnRecorder.beginTurn()
+            await conversationReset.requestReset(source: .voiceCommand)
+            isProcessing = false
+            TurnRecorder.endTurn()
+            await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+            return
+        }
+
         // Tier 0: Direct tool call — skip LLM entirely
         if let directCall = classification.directToolCall,
            let router = llmService.nativeToolRouter {
@@ -4567,6 +4663,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Normal message — send to LLM (with Tier 1 prompt trimming via sections)
         isProcessing = true
         speechService.startThinkingSound()
+
+        // See the photo turn: the generation this answer belongs to.
+        let turnGeneration = conversationReset.currentGeneration
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -4678,6 +4777,10 @@ class AppState: ObservableObject, AppStateProtocol {
                     return response
                 },
                 accept: { [self] response in
+                    guard conversationReset.isCurrent(turnGeneration) else {
+                        PrivacyLog.app(.utteranceStaleDropped, detail: PrivacyToken("conversationReset"))
+                        return
+                    }
                     lastResponse = response
 
                     // Save to conversation store
@@ -4686,6 +4789,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                 },
                 speak: { [self] response in
+                    guard conversationReset.isCurrent(turnGeneration) else { return }
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
                     await speechService.speak(response)
@@ -4758,6 +4862,9 @@ class AppState: ObservableObject, AppStateProtocol {
         let streamThreadId = conversationStore.activeThreadId
         if let streamThreadId { streamingTurn = StreamingTurn(threadId: streamThreadId, text: "") }
 
+        // See the photo turn: the generation this answer belongs to.
+        let turnGeneration = conversationReset.currentGeneration
+
         // Typed turns run the same skeleton as voice turns, tracked in `currentLLMTask` so
         // barge-in / cancel stops a typed turn too (Plan BG P2: every turn is cancellable).
         // Awaited so callers (Siri intent, askUnderPersona) still see the turn complete.
@@ -4799,6 +4906,11 @@ class AppState: ObservableObject, AppStateProtocol {
                     Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
                 },
                 accept: { [self] response in
+                    guard conversationReset.isCurrent(turnGeneration) else {
+                        streamingTurn = nil
+                        PrivacyLog.app(.utteranceStaleDropped, detail: PrivacyToken("conversationReset"))
+                        return
+                    }
                     lastResponse = response
                     streamingTurn = nil  // clear before persisting so the live bubble doesn't duplicate the saved message
 
@@ -4828,7 +4940,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 speak: { [self] response in
                     // Speak the response (user can still say "stop")
-                    guard speakResponse else { return }
+                    guard speakResponse, conversationReset.isCurrent(turnGeneration) else { return }
                     startStopListener()
                     await speechService.speak(response)
                     stopStopListener()

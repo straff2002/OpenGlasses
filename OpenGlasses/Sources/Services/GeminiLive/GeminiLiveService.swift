@@ -56,6 +56,15 @@ class GeminiLiveService: ObservableObject {
     /// intentional disconnect — a deliberately fresh session must not inherit stale context.
     private var resumptionHandle: String?
 
+    /// Whether a reconnect would resume the current context rather than cold-start.
+    /// Read by the conversation-reset adapter: a "new topic" that left a handle behind would
+    /// silently restore the conversation the wearer just asked to leave.
+    var hasResumptionHandle: Bool { resumptionHandle != nil }
+
+    /// Test-only: stand in for a handle the server would have sent, so a teardown's promise to
+    /// drop it can be asserted without a socket. No production caller.
+    func setResumptionHandleForTesting(_ handle: String?) { resumptionHandle = handle }
+
     // Reconnection
     private var intentionalDisconnect = false
     private var reconnectAttempts = 0
