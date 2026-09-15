@@ -399,7 +399,7 @@ extension NetworkRoute {
         case .openClawBridgeRequest: return ["OpenClawBridge"]
         case .openClawEventStream: return []
         case .gatewayConnectionTest: return ["EditGatewaySheet"]
-        case .hermesBridgeSession: return ["HermesBridgeService"]
+        case .hermesBridgeSession: return ["URLSessionHermesSocket"]
         case .mcpHTTPTransport: return ["HTTPTransport"]
         case .customAgentHarness: return ["CustomAgentHarness"]
         case .expertBridgeWebhook: return ["WebhookExpertNotifier"]

@@ -607,8 +607,10 @@ class LLMService: ObservableObject {
     ///   concatenate with the final reply (BM P9).
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         isProcessing = true
+        beginTurnScope()
         defer {
             isProcessing = false
+            endTurnScope()
             // A "new topic" requested DURING this turn (the model called the new_topic tool)
             // applies now that the turn is complete — clearing mid-loop would orphan the
             // pending tool_result and 400 the next request.
@@ -920,6 +922,21 @@ class LLMService: ObservableObject {
     /// Clear conversation history (e.g. when starting fresh or switching providers)
     /// Set when a "new topic" arrives while a turn is in flight; applied in `sendMessage`'s defer.
     private var pendingHistoryClear = false
+
+    /// Nesting depth of turns currently running. `isProcessing` tracks only `sendMessage`, which
+    /// the on-device agent path bypasses — and a history wipe that lands mid-`sendLocal` is worse
+    /// than one that lands mid-`sendMessage`: the turn appends its exchange *after* the clear, so
+    /// the "reset" conversation starts holding the very turn it was meant to discard. A depth
+    /// rather than a flag because `sendMessage` → `sendLocal` nests.
+    private var turnDepth = 0
+
+    /// True while any turn shape is mid-flight. The conversation-reset barrier waits on this, so a
+    /// reset requested inside a turn retires context only after the turn has finished owing the
+    /// model its tool results.
+    var isTurnInFlight: Bool { turnDepth > 0 }
+
+    private func beginTurnScope() { turnDepth += 1 }
+    private func endTurnScope() { turnDepth = max(0, turnDepth - 1) }
 
     /// Clear the conversation history — immediately when idle, or after the in-flight turn
     /// completes when the model itself requested it via the `new_topic` tool (a mid-loop wipe
@@ -3002,6 +3019,12 @@ class LLMService: ObservableObject {
     // re-generation, not an iterate-until-done loop. Routing it through the iterative driver would
     // change its behaviour, which the refactor explicitly avoids.
     private func sendLocal(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data? = nil, onToken: ((String) -> Void)? = nil) async throws -> String {
+        // The on-device agent path reaches this without going through `sendMessage`, so the turn
+        // scope is opened here too — a conversation reset must not land between this turn's
+        // generation and the history insertion at the end of it.
+        beginTurnScope()
+        defer { endTurnScope() }
+
         guard let localService = localLLMService else {
             throw LLMError.missingAPIKey("Local LLM service not initialized")
         }

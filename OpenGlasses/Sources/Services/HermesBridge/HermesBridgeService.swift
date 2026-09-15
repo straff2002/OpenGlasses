@@ -41,7 +41,8 @@ final class HermesBridgeService: ObservableObject {
     var photoProvider: (() async throws -> Data)?
     var onDebugEvent: ((String) -> Void)?
 
-    private var task: URLSessionWebSocketTask?
+    private var socket: HermesSocket?
+    private let socketFactory: HermesSocketFactory
     private var receiveLoop: Task<Void, Never>?
     private var pendingResponse: CheckedContinuation<String, Error>?
     /// Seconds a query may wait for `response` — agentic turns can be slow
@@ -50,6 +51,12 @@ final class HermesBridgeService: ObservableObject {
 
     var isEnabled: Bool {
         Config.hermesBridgeEnabled && Config.agentModeEnabled
+    }
+
+    /// The socket factory is the only seam: production dials a `URLSessionWebSocketTask`, a test
+    /// scripts frames.
+    init(socketFactory: @escaping HermesSocketFactory = URLSessionHermesSocket.make) {
+        self.socketFactory = socketFactory
     }
 
     // MARK: - Connection
@@ -71,9 +78,7 @@ final class HermesBridgeService: ObservableObject {
             return
         }
         status = .connecting
-        let task = URLSession.shared.webSocketTask(with: url)
-        self.task = task
-        task.resume()
+        self.socket = socketFactory(url)
         onDebugEvent?("Hermes bridge: connecting to \(url.absoluteString)")
         startReceiveLoop()
     }
@@ -81,8 +86,8 @@ final class HermesBridgeService: ObservableObject {
     func disconnect() {
         receiveLoop?.cancel()
         receiveLoop = nil
-        task?.cancel(with: .normalClosure, reason: nil)
-        task = nil
+        socket?.cancel()
+        socket = nil
         status = .disconnected
         failPending(with: BridgeError.closed)
     }
@@ -91,9 +96,9 @@ final class HermesBridgeService: ObservableObject {
     /// needed and pings.
     func checkConnection() async -> Bool {
         if status == .disconnected { connect() }
-        guard let task else { return false }
+        guard let socket else { return false }
         do {
-            try await task.send(.string(HermesBridgeProtocol.encodePing()))
+            try await socket.send(HermesBridgeProtocol.encodePing())
             return true
         } catch {
             onDebugEvent?("Hermes bridge: ping failed — \(error.localizedDescription)")
@@ -108,10 +113,10 @@ final class HermesBridgeService: ObservableObject {
     /// are served inline by the receive loop.
     func ask(_ text: String) async throws -> String {
         if status == .disconnected { connect() }
-        guard let task else { throw BridgeError.notConfigured }
+        guard let socket else { throw BridgeError.notConfigured }
         guard pendingResponse == nil else { throw BridgeError.notConnected }
 
-        try await task.send(.string(HermesBridgeProtocol.encodeQuery(text)))
+        try await socket.send(HermesBridgeProtocol.encodeQuery(text))
 
         return try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask { @MainActor in
@@ -131,8 +136,23 @@ final class HermesBridgeService: ObservableObject {
 
     /// Tell the bridge to forget the conversation (mirrors "new conversation").
     func resetSession() {
-        guard let task else { return }
-        Task { try? await task.send(.string(HermesBridgeProtocol.encodeNewSession())) }
+        Task { _ = await sendSessionReset() }
+    }
+
+    /// Send the reset frame and report whether it went out. The bridge protocol has no reply that
+    /// correlates to it, so this is the whole of what can be established: the frame was written to
+    /// the socket. The conversation-reset adapter reports that as issued-but-unverified rather
+    /// than as a confirmed reset.
+    @discardableResult
+    func sendSessionReset() async -> Bool {
+        guard let socket else { return false }
+        do {
+            try await socket.send(HermesBridgeProtocol.encodeNewSession())
+            return true
+        } catch {
+            onDebugEvent?("Hermes bridge: session reset failed — \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Receive loop
@@ -140,9 +160,9 @@ final class HermesBridgeService: ObservableObject {
     private func startReceiveLoop() {
         receiveLoop?.cancel()
         receiveLoop = Task { [weak self] in
-            while let self, let task = self.task, !Task.isCancelled {
+            while let self, let socket = self.socket, !Task.isCancelled {
                 do {
-                    let message = try await task.receive()
+                    let message = try await socket.receive()
                     await self.handle(message)
                 } catch {
                     if !Task.isCancelled {
@@ -157,19 +177,17 @@ final class HermesBridgeService: ObservableObject {
         }
     }
 
-    private func handle(_ message: URLSessionWebSocketTask.Message) async {
-        switch message {
-        case .data:
+    private func handle(_ frame: HermesFrame) async {
+        switch frame {
+        case .nonText:
             // Bridge TTS audio — always declined, so any stray frame is dropped.
             return
-        case .string(let text):
+        case .text(let text):
             guard let decoded = HermesBridgeProtocol.decode(text) else {
                 onDebugEvent?("Hermes bridge: undecodable frame ignored")
                 return
             }
             await handle(decoded)
-        @unknown default:
-            return
         }
     }
 
@@ -198,17 +216,17 @@ final class HermesBridgeService: ObservableObject {
     }
 
     private func serveCapturePhoto() async {
-        guard let task else { return }
+        guard let socket else { return }
         do {
             guard let photoProvider else {
                 throw NSError(domain: "HermesBridge", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "No camera available"])
             }
             let jpeg = try await photoProvider()
-            try await task.send(.string(HermesBridgeProtocol.encodePhoto(jpegBase64: jpeg.base64EncodedString())))
+            try await socket.send(HermesBridgeProtocol.encodePhoto(jpegBase64: jpeg.base64EncodedString()))
             onDebugEvent?("Hermes bridge: served photo (\(jpeg.count / 1024) KB)")
         } catch {
-            try? await task.send(.string(HermesBridgeProtocol.encodePhotoError(error.localizedDescription)))
+            try? await socket.send(HermesBridgeProtocol.encodePhotoError(error.localizedDescription))
             onDebugEvent?("Hermes bridge: photo request failed — \(error.localizedDescription)")
         }
     }
@@ -219,4 +237,14 @@ final class HermesBridgeService: ObservableObject {
             continuation.resume(throwing: error)
         }
     }
+}
+
+
+// MARK: - Conversation reset
+
+/// The bridge owns its own conversation memory on the far side of the socket, so a "new topic"
+/// that only cleared the phone would leave the agent remembering everything. `new_session` is the
+/// protocol's reset; nothing in the protocol acknowledges it, which the adapter reports honestly.
+extension HermesBridgeService: BridgeSessionResetting {
+    var isBridgeConnected: Bool { status != .disconnected }
 }

@@ -868,3 +868,10 @@ class OpenClawBridge: ObservableObject {
         return outcome
     }
 }
+
+// MARK: - Conversation reset
+
+/// Rotating the session key retires the gateway's context for this conversation: the generation is
+/// persisted and monotonic, so every later request is addressed to a session the old turns were
+/// never part of.
+extension OpenClawBridge: GatewaySessionResetting {}

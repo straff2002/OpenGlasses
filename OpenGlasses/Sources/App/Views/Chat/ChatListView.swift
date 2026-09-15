@@ -47,7 +47,7 @@ struct ChatListView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: startNewChat) {
+                    Button { Task { await startNewChat() } } label: {
                         Image(systemName: "square.and.pencil")
                     }
                     .accessibilityLabel("New chat")
@@ -80,7 +80,7 @@ struct ChatListView: View {
         } description: {
             Text("Start a chat — works with or without your glasses.")
         } actions: {
-            Button(action: startNewChat) {
+            Button { Task { await startNewChat() } } label: {
                 Label("New Chat", systemImage: "square.and.pencil")
             }
             .buttonStyle(.borderedProminent)
@@ -102,9 +102,16 @@ struct ChatListView: View {
         }
     }
 
-    private func startNewChat() {
-        let thread = store.startThread(mode: appState.currentMode.rawValue, personaId: activeProjectId)
-        path.append(thread.id)
+    /// The UI's new-conversation action is a conversation reset like any other, so it goes through
+    /// the same coordinator as the spoken command and the model's tool call. Starting a thread here
+    /// on its own would make a blank page while every backend — a live session, the gateway agent —
+    /// carried on remembering the conversation the wearer just left.
+    private func startNewChat() async {
+        let report = await appState.conversationReset.requestReset(source: .userInterface)
+        // No thread on the held-back path: the coordinator did not retire anything, and a fresh
+        // page would be the exact false confirmation this routing exists to avoid.
+        guard report.didRetireLocalContext, let threadId = store.activeThreadId else { return }
+        path.append(threadId)
     }
 }
 

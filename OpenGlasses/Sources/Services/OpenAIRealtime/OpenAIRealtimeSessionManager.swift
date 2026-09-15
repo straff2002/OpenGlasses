@@ -413,3 +413,17 @@ extension OpenAIRealtimeSessionManager: LiveSessionInjecting {
         realtimeService.sendText(text, completeTurn: completeTurn)
     }
 }
+
+// MARK: - Conversation reset
+
+/// The Realtime API can delete conversation items one id at a time; it has no bulk clear, and this
+/// client does not retain the id of every item it has ever created, so "delete them all" is not a
+/// reset we could carry out — let alone verify. Reconnecting is: a new session starts with an empty
+/// server-side conversation. There is no session resumption on this transport, so nothing survives
+/// the teardown.
+extension OpenAIRealtimeSessionManager: RealtimeSessionResetting {
+    var isSessionActive: Bool { isActive }
+    var holdsResumableContext: Bool { false }
+    func stopLiveSession() { stopSession() }
+    func startLiveSession() async { await startSession() }
+}
