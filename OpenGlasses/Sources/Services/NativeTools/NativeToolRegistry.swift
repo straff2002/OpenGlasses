@@ -37,6 +37,10 @@ final class NativeToolRegistry {
         register(dateTimeTool)
         register(CalculatorTool())
         register(NewTopicTool())
+        // Scan Assist (Plan FB): deterministic start/pause/resume/stop and side control for
+        // the accessibility reminder session. Registered unconditionally — the feature is off
+        // by default and the tool reports that honestly rather than being invisible.
+        register(ScanAssistTool())
         register(UnitConversionTool())
         register(TimerTool())
         register(SaveNoteTool())

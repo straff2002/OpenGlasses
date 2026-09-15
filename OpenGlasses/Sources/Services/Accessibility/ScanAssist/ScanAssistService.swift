@@ -26,6 +26,20 @@ final class ScanAssistService: ObservableObject {
     /// second, unrequested voice on the same audio lease.
     @Published private(set) var statusMessage: String?
 
+    /// Why the session paused, when something other than the wearer paused it. `nil` for an idle,
+    /// running or hand-paused session (docs/plans/FB-scan-assist.md P2).
+    @Published private(set) var pauseReason: ScanAssistPauseReason?
+
+    /// How many reminders this service has asked to be played.
+    ///
+    /// **Delivered means playback was requested.** It does not mean the reminder was audible, was
+    /// heard, or was acted on: nothing in this app observes any of those, and no copy derived from
+    /// this number may imply otherwise.
+    @Published private(set) var deliveredCueCount = 0
+
+    /// The pause reason as a line to show. `nil` when there is nothing automatic to explain.
+    var pauseReasonText: String? { pauseReason.map(ScanAssistCopy.pauseReason) }
+
     /// Session time left, recomputed on demand so the countdown needs no timer in this service.
     var remainingSeconds: TimeInterval? { policy.remainingSeconds }
 
@@ -39,6 +53,20 @@ final class ScanAssistService: ObservableObject {
 
     /// Monotonic seconds, shared with the policy.
     private let clock: () -> TimeInterval
+
+    /// What the audio route looks like right now. Injected rather than read here so this service
+    /// owns no subscriptions of its own — the app screen wires the real speech, voice-activity and
+    /// announcement signals, and a test supplies them by hand. Defaults to a free route, which is
+    /// what a Scan Assist session sees when nothing else in the app is talking.
+    var signals: @MainActor () -> ScanAssistAudioSignals = { .clear }
+
+    /// Whether VoiceOver is on. Only ever used with `lastAnnouncementAt` to bound the wait
+    /// described in `ScanAssistAudioSignals.voiceOverLikelySpeaking` — never as a reason on its
+    /// own, which would silence the feature for its likeliest users.
+    var voiceOverRunning: @MainActor () -> Bool = { SessionAnnouncer.voiceOverRunning }
+
+    /// When this app last posted a VoiceOver announcement, in the clock's units.
+    private var lastAnnouncementAt: TimeInterval?
 
     /// Waits out a cue interval. Matches the repo's existing sleeper seam
     /// (`CustomAgentHarness.sleeper`); tests replace it with one they can release by hand.
@@ -54,6 +82,16 @@ final class ScanAssistService: ObservableObject {
     private var pendingCue: Task<Void, Never>?
     /// The in-flight spoken reminder, so a stop can cut a cue off mid-sentence.
     private var speakingCue: Task<Void, Never>?
+
+    /// Decides whether each reminder plays, waits or is thrown away. Holds at most one waiting
+    /// reminder — see `ScanAssistCueGate`.
+    private var gate = ScanAssistCueGate()
+    /// The bounded retry for a waiting reminder. At most one, like everything else here.
+    private var deferredCue: Task<Void, Never>?
+
+    /// How often a waiting reminder asks whether the route has freed. Short enough that a cue
+    /// released the moment the assistant stops speaking still feels like a response to the gap.
+    static let deferralRetryInterval: TimeInterval = 0.5
 
     /// The `.sound` cue: one short, mid-range tone. Low enough not to be piercing at the volume
     /// someone reading has their glasses set to, short enough not to sit on top of a page turn.
@@ -72,8 +110,12 @@ final class ScanAssistService: ObservableObject {
                                        now: clock)
     }
 
-    /// Point the service at the app's speech service. Called by the view rather than at launch:
-    /// nothing about Scan Assist should run before a wearer opens its screen.
+    /// Point the service at the app's speech service.
+    ///
+    /// Wiring, not starting: this stores a weak pointer and nothing else. The app calls it at
+    /// launch alongside the audio-event observers (P2), because the voice phrases have to work for
+    /// a wearer who turned the feature on once and never reopened its screen — but no session
+    /// exists, no audio is claimed and nothing is scheduled until Start.
     func configure(speech: any ScanAssistSpeaking) {
         self.speech = speech
     }
@@ -118,6 +160,7 @@ final class ScanAssistService: ObservableObject {
         // `syncConfiguration()` below, which would replace the running session with a fresh one and
         // hand the wearer back their full session length.
         guard !policy.state.isLive else { return policy.state.isRunning }
+        pauseReason = nil
         // Otherwise the policy may predate the wearer's last edit; re-state the current
         // configuration so a session can never start on a stale side or rhythm.
         syncConfiguration()
@@ -126,25 +169,70 @@ final class ScanAssistService: ObservableObject {
         return policy.state.isRunning
     }
 
+    /// The wearer's own pause. It carries no reason, and — because it is theirs — no audio event
+    /// may lift it (`ScanAssistInterruptionPolicy`).
     func pause() {
+        pauseReason = nil
         apply(policy.handle(.pause))
         publish()
     }
 
     func resume() {
+        pauseReason = nil
         apply(policy.handle(.resume))
         publish()
     }
 
     func stop() {
+        pauseReason = nil
         apply(policy.handle(.stop))
         publish()
+    }
+
+    // MARK: - Interruptions
+
+    /// Answer an audio or lifecycle event. The decision is
+    /// `ScanAssistInterruptionPolicy`'s; this method only carries it out.
+    ///
+    /// Note what is *not* here: nothing acquires, releases, overrides or reroutes an audio
+    /// session. Scan Assist speaks through the speech service's lease, on whatever output the
+    /// wearer has chosen, and a route it does not own is not a route it may take back.
+    func handleAudioEvent(_ event: ScanAssistAudioEvent) {
+        switch ScanAssistInterruptionPolicy.recovery(for: event,
+                                                     state: policy.state,
+                                                     pauseReason: pauseReason) {
+        case .none:
+            return
+        case .pause(let reason):
+            apply(policy.handle(.pause))
+            pauseReason = reason
+            publish()
+        case .resume:
+            // Certain recovery: the policy's resume gives a fresh interval and no backlog, so
+            // nothing that came due during the call is owed.
+            pauseReason = nil
+            apply(policy.handle(.resume))
+            publish()
+        case .requireExplicitResume(let reason):
+            pauseReason = reason
+            publish(needsExplicitResume: true)
+        }
+    }
+
+    /// Record that the app has just posted a VoiceOver announcement, so the next reminder waits
+    /// out the bounded window rather than talking over a screen reader whose speech nothing can
+    /// observe finishing.
+    func noteAnnouncementPosted() {
+        lastAnnouncementAt = clock()
     }
 
     /// Speak (or sound) the chosen side's cue once, without starting anything.
     ///
     /// The point is audibility on the wearer's actual device and route — whether the cue can be
     /// heard over what they are doing, at the volume they use — which no headless check can answer.
+    ///
+    /// Deliberately not gated by `ScanAssistCueGate`: a preview is a direct request made while
+    /// looking at the screen, not a reminder arriving unasked, so it plays now or not at all.
     @discardableResult
     func preview() -> Bool {
         guard let side = store.settings.side else {
@@ -178,15 +266,19 @@ final class ScanAssistService: ObservableObject {
             switch output {
             case .cancelQueuedCue:
                 cancelPendingCue()
+                discardWaitingCue()
             case .sessionEnded:
                 cancelPendingCue()
+                discardWaitingCue()
+                // An ended session explains nothing about a pause; the ending is its own line.
+                pauseReason = nil
                 // Queued speech goes with the session. Without this a wearer who stops because the
                 // reminders became too much still hears the one already handed to the engine.
                 speakingCue?.cancel()
                 speakingCue = nil
                 speech?.stopSpeaking()
-            case .emitCue(let side, _):
-                deliver(cueFor: side)
+            case .emitCue(let side, let generation):
+                offer(cueFor: side, generation: generation)
             }
         }
         reschedule()
@@ -197,8 +289,81 @@ final class ScanAssistService: ObservableObject {
         pendingCue = nil
     }
 
-    private func deliver(cueFor side: ScanAssistSide) {
+    /// Hand one due reminder to the gate and act on its answer.
+    private func offer(cueFor side: ScanAssistSide, generation: Int) {
+        act(on: gate.offer(side: side,
+                           generation: generation,
+                           currentGeneration: policy.generation,
+                           isRunning: policy.state.isRunning,
+                           signals: currentSignals(),
+                           at: clock()))
+    }
+
+    /// Ask again whether a waiting reminder may play. Internal so a test can drive the retry
+    /// without depending on the sleeper's timing.
+    func recheckWaitingCue() {
+        deferredCue = nil
+        act(on: gate.recheck(currentGeneration: policy.generation,
+                             isRunning: policy.state.isRunning,
+                             signals: currentSignals(),
+                             at: clock()))
+    }
+
+    private func act(on decision: ScanAssistCueDecision) {
+        switch decision {
+        case .deliver(let side, _):
+            cancelDeferredCue()
+            play(cueFor: side)
+        case .deferred:
+            scheduleDeferredRecheck()
+        case .dropped, .nothingWaiting:
+            // Nothing is replayed and nothing is owed. A dropped reminder is simply gone: the
+            // next one comes at the next interval, like every other one.
+            cancelDeferredCue()
+        }
+    }
+
+    /// The single wake-up for a waiting reminder. Bounded by the gate's budget, not by this timer:
+    /// the retry only asks, the gate decides when asking has gone on long enough.
+    private func scheduleDeferredRecheck() {
+        cancelDeferredCue()
+        let sleeper = self.sleeper
+        let delay = Self.deferralRetryInterval
+        deferredCue = Task { @MainActor [weak self] in
+            await sleeper(delay)
+            guard !Task.isCancelled else { return }
+            self?.recheckWaitingCue()
+        }
+    }
+
+    private func cancelDeferredCue() {
+        deferredCue?.cancel()
+        deferredCue = nil
+    }
+
+    /// Forget the waiting reminder entirely — the session it belonged to has moved on.
+    private func discardWaitingCue() {
+        gate.cancelHeld()
+        cancelDeferredCue()
+    }
+
+    /// The audio situation, with the app's own VoiceOver window folded in.
+    private func currentSignals() -> ScanAssistAudioSignals {
+        var current = signals()
+        if !current.voiceOverIsSpeaking {
+            current.voiceOverIsSpeaking = ScanAssistAudioSignals.voiceOverLikelySpeaking(
+                voiceOverRunning: voiceOverRunning(),
+                lastAnnouncementAt: lastAnnouncementAt,
+                now: clock())
+        }
+        return current
+    }
+
+    /// Ask for playback. "Delivered" stops here: what the wearer heard is not observable, and this
+    /// counter must never be read as saying it is.
+    private func play(cueFor side: ScanAssistSide) {
         guard let speech else { return }
+        deliveredCueCount += 1
         switch store.settings.cueStyle {
         case .spoken:
             let line = ScanAssistCopy.cue(for: side)
@@ -237,13 +402,22 @@ final class ScanAssistService: ObservableObject {
         publish()
     }
 
-    private func publish() {
+    private func publish(needsExplicitResume: Bool = false) {
         state = policy.state
         switch policy.state {
-        case .idle: statusMessage = nil
-        case .running: statusMessage = ScanAssistCopy.sessionRunning
-        case .paused: statusMessage = ScanAssistCopy.sessionPaused
-        case .ended(let reason): statusMessage = ScanAssistCopy.sessionEnded(reason)
+        case .idle:
+            statusMessage = nil
+        case .running:
+            statusMessage = ScanAssistCopy.sessionRunning
+        case .paused:
+            guard let pauseReason else {
+                statusMessage = ScanAssistCopy.sessionPaused
+                return
+            }
+            statusMessage = needsExplicitResume ? ScanAssistCopy.pausedNeedsResume(pauseReason)
+                                                : ScanAssistCopy.pauseReason(pauseReason)
+        case .ended(let reason):
+            statusMessage = ScanAssistCopy.sessionEnded(reason)
         }
     }
 }

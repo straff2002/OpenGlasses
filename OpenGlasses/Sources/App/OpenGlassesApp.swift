@@ -8,6 +8,7 @@ import CarPlay
 import MLXLLM
 import MediaPlayer
 import UserNotifications
+import CallKit
 
 extension Notification.Name {
     static let onboardingCompleted = Notification.Name("onboardingCompleted")
@@ -1451,6 +1452,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // mid-turn. It only *records* the request: retiring the phone's history here, as this
         // observer used to, left every remote backend still holding the conversation.
         configureConversationReset()
+        configureScanAssist()
         NotificationCenter.default.addObserver(forName: .ogNewTopicRequested, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 await self?.conversationReset.requestReset(source: .modelToolCall)
@@ -2489,6 +2491,114 @@ class AppState: ObservableObject, AppStateProtocol {
     /// True once the Wearables listeners below are installed — this function is reachable from
     /// more than one startup path, and installing the listeners twice doubles every event
     /// (and the camera-permission pre-request chain).
+    // MARK: - Scan Assist (Plan FB P2)
+
+    /// The output route Scan Assist was on when something paused it, so a later "interruption
+    /// ended" can say whether we came back to the same thing.
+    private var scanAssistPausedRoute: String?
+
+    /// Give the Scan Assist session the two things it cannot see for itself: what else is using the
+    /// audio route, and when the OS takes the route away.
+    ///
+    /// Wiring, not starting. Everything below installs a pointer or an observer; no session
+    /// begins, no audio is claimed and nothing is scheduled until a wearer taps Start or says so.
+    /// Scan Assist never acquires an audio lease of its own — it speaks through the speech
+    /// service's, on whatever output the wearer already chose — so there is deliberately no
+    /// `AudioSessionCoordinator` call anywhere in this method.
+    private func configureScanAssist() {
+        let scanAssist = ScanAssistService.shared
+        scanAssist.configure(speech: speechService)
+
+        // What the route looks like, read fresh at the moment each reminder comes due.
+        scanAssist.signals = { [weak self] in
+            guard let self else { return .clear }
+            var signals = ScanAssistAudioSignals()
+            // The best "the wearer is talking" signal the app has: a capture turn is open. It is
+            // deliberately broad — waiting through a turn that turns out to be silence costs one
+            // reminder, and talking over someone costs their sentence.
+            signals.userIsSpeaking = self.isListening || self.wakeWordService.isListening
+            signals.assistantIsSpeaking = self.speechService.isSpeaking
+            // A realtime session owns the route outright, and an answer being composed is about to
+            // need it. Both outrank a reminder that describes nothing new.
+            signals.higherPriorityNoticeInFlight = self.isProcessing
+                || self.geminiLiveSession.isActive
+                || self.openAIRealtimeSession.isActive
+            return signals
+        }
+        scanAssist.voiceOverRunning = { SessionAnnouncer.voiceOverRunning }
+
+        // An interruption is how a phone call reaches an audio app, so the call observer is read
+        // here rather than subscribed to separately — same source `WakeWordService` uses, and it
+        // tells the wearer *which* kind of interruption stopped their session.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                switch type {
+                case .began:
+                    let onCall = CXCallObserver().calls.contains { !$0.hasEnded }
+                    self.sendToScanAssist(onCall ? .callBegan : .interruptionBegan)
+                case .ended:
+                    let options = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                        .map(AVAudioSession.InterruptionOptions.init(rawValue:)) ?? []
+                    self.sendToScanAssist(.interruptionEnded(
+                        shouldResume: options.contains(.shouldResume),
+                        routeUnchanged: self.currentOutputRouteIdentifier() == self.scanAssistPausedRoute))
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        // The output the wearer was listening on went away. Pausing is the honest answer: a
+        // reminder played into a route nobody is wearing is a session that looks like it is
+        // running and is not.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            let reason = raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            let lostOutput = AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty
+            guard reason == .oldDeviceUnavailable || lostOutput else { return }
+            MainActor.assumeIsolated { self?.sendToScanAssist(.outputLost) }
+        }
+
+        // First release: no cueing from the background and no keep-alive audio, so backgrounding
+        // or locking the phone pauses the session and says why (docs/plans/FB-scan-assist.md P2).
+        for name in [UIApplication.didEnterBackgroundNotification,
+                     UIApplication.protectedDataWillBecomeUnavailableNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sendToScanAssist(.enteredBackground) }
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sendToScanAssist(.becameActive) }
+        }
+    }
+
+    /// Forward one audio event, remembering the route first when the event is one that pauses.
+    private func sendToScanAssist(_ event: ScanAssistAudioEvent) {
+        switch event {
+        case .callBegan, .interruptionBegan, .outputLost, .enteredBackground:
+            scanAssistPausedRoute = currentOutputRouteIdentifier()
+        case .interruptionEnded, .becameActive:
+            break
+        }
+        ScanAssistService.shared.handleAudioEvent(event)
+    }
+
+    /// Identifies the current output well enough to answer "is this the same thing I was paused
+    /// on?" — port unique IDs, which distinguish two pairs of headphones, not merely two types.
+    private func currentOutputRouteIdentifier() -> String {
+        AVAudioSession.sharedInstance().currentRoute.outputs
+            .map(\.uid).sorted().joined(separator: "|")
+    }
+
     private var glassesObserversInstalled = false
 
     private func observeGlassesConnection() {
