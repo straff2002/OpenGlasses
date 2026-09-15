@@ -1,6 +1,6 @@
 # Plan FC — Local Model Remediation
 
-**Status: 📝 Drafted 2026-09-13 — no fixes implemented under this plan.**
+**Status: 🚧 P0 implemented 2026-09-15 — catalog metadata corrected and verified; P1–P3 unbuilt. Device qualification remains a separate pass.**
 
 Fix a confirmed model-size discrepancy and close local-output failure paths surfaced by a
 local-model review. Audit context diagnostics and loading feedback without adding providers,
@@ -23,6 +23,8 @@ Implement independently. A keyword filter that rejects valid English is not an a
 
 1. Recheck the selected SmolVLM2 revision, actual downloaded file set and configuration. Correct the
    size label immediately from verified evidence; do not substitute a rounded size as a RAM estimate.
+   *(Done 2026-09-15. The MLX path fetches the whole snapshot by repository id, so the repository
+   total is the download; weights and download are recorded as separate numbers.)*
 2. Audit all bundled MLX/GGUF catalog entries for artifact revision, selected file sizes,
    quantization evidence and runtime compatibility. Record unknowns explicitly. Reuse DZ's existing
    catalog/manifest structures, adding fields only where absent.
@@ -31,6 +33,13 @@ Implement independently. A keyword filter that rejects valid English is not an a
    a fallback for unknown/custom installations without representing guessed sizes as exact.
 4. Separate weight/download size, peak runtime memory and device qualification. Inspect existing
    `MemoryHeadroom` and model-budget guards; correct demonstrated gaps without replacing them.
+   *(Audited 2026-09-15, no change needed in the guards themselves: the MLX load gate measures the
+   model on disk (`modelSizeOnDisk`) rather than reading any catalog estimate, and
+   `MemoryHeadroom.workingOverheadBytes` / `LocalModelBudget.workingSetBytes` are device-derived
+   constants independent of the label. The gap was upstream of them — `estimatedWeightsBytes` came
+   from the wrong bytes, so every pre-download memory figure a screen showed was wrong for
+   SmolVLM2. It now derives from the measured safetensors size. RAM floors (`minimumRAMGB`) are
+   untouched: they are a qualification judgement, not arithmetic on the size.)*
 5. Audit the claim that models are tested on iPhone and model-specific recommendation copy. Record
    qualified hardware/context/image settings; remove unsupported assurances where evidence is missing.
 6. Keep installed-model IDs and user selections stable. Do not silently swap or delete a model.
@@ -132,11 +141,11 @@ and a second memory database. No new dependency is required by the planned fixes
 
 | Gate | Status |
 |---|---|
-| Verified artifact metadata and corrected consumers | Pending |
+| Verified artifact metadata and corrected consumers | **Done 2026-09-15.** Every bundled MLX entry now carries a `LocalModelCatalog.VerifiedSnapshot` — repository total, `model.safetensors` bytes, file count and the commit they were measured at — read from the Hugging Face model API (`/api/models/<repository>?blobs=true`) on 2026-09-15 by summing every listed file. Revisions: gemma-4-e2b `2387675`, gemma-4-e4b `475b908`, SmolVLM2 2.2B `8445160`, SmolVLM2 500M `fa57db4`, LFM2.5 2.6B `04efa23`, Qwen2.5 3B `4f83f8f`, Qwen2.5 0.5B `a5339a4`. SmolVLM2 2.2B was labelled 1.5 GB against 4,498,568,233 bytes (4.5 GB); the other six drifted a few percent because the authored string was parsed with a gibibyte multiplier. Display copy is now derived from the bytes rather than authored, `expectedDownloadBytes` returns the measured total (`nil`, never a guess, for an uncatalogued id), `estimatedWeightsBytes`/`minimumHeadroomBytes` derive from the safetensors bytes, and the first-run offer and the picker share one decimal-GB formatter. Recorded revisions are provenance only — descriptors stay unpinned, because the MLX download path still fetches the default branch and pinning would flip the acquisition pipeline's `.unpinnedRevision` refusal without changing what is fetched. Fixtures: `LocalModelVerifiedSizeTests` (11), plus updated `LocalModelCatalogTests`, `OfflineModelOfferTests`, `LocalModelBudgetTests`. No network in any test. |
 | Malformed-output regression fixtures through actual service boundaries | Pending |
 | Direct/coordinator runtime and cancellation checks | Pending |
 | Download/preparation status checks | Pending |
-| Supported-device model qualification | Pending — separate from metadata fix |
+| Supported-device model qualification | Pending — separate from metadata fix. The "tested on iPhone and optimized for size" claim in the model picker was removed on 2026-09-15 along with the unsupported superlatives in the per-model notes: no device qualification is recorded for any bundled model, so the copy now states verified sizes and memory cost only |
 | Memory diagnostics audit and gap disposition | Pending |
 
 Record build/commit, fixture or model revision, hardware/OS where applicable, result and remaining
