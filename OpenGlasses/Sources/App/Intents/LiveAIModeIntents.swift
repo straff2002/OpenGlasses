@@ -45,18 +45,11 @@ struct StartLiveAIModeIntent: AppIntent {
         // Set the LiveAI mode
         Config.setActiveLiveAIModeId(mode.rawValue)
 
-        // Switch to Gemini Live if not already
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-
-        // Start session if not active (or restart to pick up new mode)
-        if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-        await appState.geminiLiveSession.startSession()
+        // Plan FF P1/PR3: one activation owner. `restartIfActive` is what the stop-then-start
+        // below used to spell out — a running session has to come back under the newly selected
+        // preset, and the settle between the two is `ModeSwitchPolicy.settleDelay` rather than a
+        // second guess at the same handover.
+        await appState.requestLiveSession(.geminiLive, source: .siriShortcut, restartIfActive: true)
 
         return .result()
     }
@@ -82,15 +75,7 @@ struct StartMuseumModeIntent: AppIntent {
             throw IntentError.appNotRunning
         }
         Config.setActiveLiveAIModeId("museum")
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-        if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-        await appState.geminiLiveSession.startSession()
+        await appState.requestLiveSession(.geminiLive, source: .siriShortcut, restartIfActive: true)
         return .result()
     }
 
@@ -115,15 +100,7 @@ struct StartAccessibilityModeIntent: AppIntent {
             throw IntentError.appNotRunning
         }
         Config.setActiveLiveAIModeId("accessibility")
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-        if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-        await appState.geminiLiveSession.startSession()
+        await appState.requestLiveSession(.geminiLive, source: .siriShortcut, restartIfActive: true)
         return .result()
     }
 
@@ -148,15 +125,7 @@ struct StartTranslatorModeIntent: AppIntent {
             throw IntentError.appNotRunning
         }
         Config.setActiveLiveAIModeId("translator")
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-        if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-        await appState.geminiLiveSession.startSession()
+        await appState.requestLiveSession(.geminiLive, source: .siriShortcut, restartIfActive: true)
         return .result()
     }
 

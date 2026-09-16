@@ -21,6 +21,14 @@ enum ModeSwitchAction: Equatable {
 
 enum ModeSwitchPolicy {
 
+    /// How long `.settleDelay` waits for the audio session to release before the new mode claims
+    /// it. Named here rather than written as a literal at each site because Plan FF P1/PR3 needed
+    /// a second caller: the activator's stop-and-restart path stops and restarts *the same* audio
+    /// session, which is the same handover with the same cost. Every other guess at this number —
+    /// the 600 ms each Action Button / Siri entry point used to sleep before starting a session —
+    /// is gone, replaced by awaiting the switch itself.
+    static let settleDelay: TimeInterval = 0.5
+
     static func actions(from oldMode: AppMode, to newMode: AppMode,
                         wasSessionActive: Bool, autoRedial: Bool) -> [ModeSwitchAction] {
         var actions: [ModeSwitchAction] = [

@@ -195,15 +195,12 @@ enum BuiltinActionRunner {
             return "Listening disabled."
 
         case "gemini_live_toggle":
-            if appState.currentMode != .geminiLive {
-                appState.switchMode(to: .geminiLive)
-                try await Task.sleep(nanoseconds: 600_000_000)
-            }
+            // Plan FF P1/PR3 — through the one activation owner, like every other entry point.
             if appState.geminiLiveSession.isActive {
-                appState.geminiLiveSession.stopSession()
+                appState.stopLiveSession(.geminiLive, source: .siriShortcut)
                 return "Live session stopped."
             }
-            await appState.geminiLiveSession.startSession()
+            await appState.requestLiveSession(.geminiLive, source: .siriShortcut)
             return "Live session started."
 
         case let modeId where modeId.hasPrefix("live_mode_"):
@@ -238,15 +235,7 @@ enum BuiltinActionRunner {
 
     private static func startLiveMode(_ mode: String, _ appState: AppState) async throws -> String {
         Config.setActiveLiveAIModeId(mode)
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-        if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-        await appState.geminiLiveSession.startSession()
+        await appState.requestLiveSession(.geminiLive, source: .siriShortcut, restartIfActive: true)
         return "Live session started."
     }
 

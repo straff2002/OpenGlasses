@@ -87,6 +87,41 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry])
     }
 
+    /// Plan FF P1/PR3 — the launch switch, and the sentence that has to come with it.
+    ///
+    /// A switch that decides whether opening the app claims the microphone and opens the camera is
+    /// the one control in this app whose *consequence* a blind wearer cannot check by looking. So
+    /// two things are asserted: the switch is named (a bare `Toggle("")` reaches VoiceOver as an
+    /// unnamed switch), and turning it on reveals a status sentence plus the route to the iOS
+    /// permission page — the recovery that has no in-app equivalent.
+    func testStartOnLaunchSwitchIsNamedAndExplainsWhatWillHappen() {
+        let app = launch([.configured])
+        openTab("Settings", in: app)
+        awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
+        tapRow(startingWith: "Accessibility", in: app)
+        awaitScreen(app.navigationBars["Accessibility"], named: "The accessibility category")
+
+        let toggle = app.switches["Start Blind Assistant When I Open the App"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 60),
+                      "The launch switch is unnamed or missing")
+
+        if toggle.value as? String != "1" { toggle.switches.firstMatch.tap() }
+        XCTAssertEqual(toggle.value as? String, "1",
+                       "The launch switch did not turn on when its row was tapped")
+
+        let settingsRoute = app.buttons["Open iOS Settings for OpenGlasses"]
+        XCTAssertTrue(settingsRoute.waitForExistence(timeout: 20),
+                      "Turning the switch on revealed no route to the iOS permission page, which "
+                      + "is the only place a refused microphone can be granted")
+
+        audit(app, screen: "Settings — Accessibility category, start-on-launch on",
+              deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry])
+
+        // Leave the setting as it was found: it decides what the next launch does, and a UI test
+        // must not hand the next case a session it did not ask for.
+        toggle.switches.firstMatch.tap()
+    }
+
     // MARK: The model editor
 
     /// Reached through a folded category, so the walk also exercises unfolding.
