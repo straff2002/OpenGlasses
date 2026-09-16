@@ -37,6 +37,15 @@ protocol AgentHarness {
     /// previous default — a silent no-op — meant "declined" and "delivered" looked identical from
     /// the outside.
     func respondToInput(_ run: AgentRun, reply: AgentReply) async throws
+
+    /// Tell the endpoint that a result revision finished playing to the wearer (Plan FE P4).
+    ///
+    /// Optional, and honest about what it means: the acknowledgement says audio for that revision
+    /// ran to its end on this device. It is not a claim that the wearer heard or understood it,
+    /// and an endpoint is free to do nothing with it. A harness with no ack channel throws
+    /// `ackUnsupported`, which is recorded against the delivery and **never** fails the run —
+    /// a completed task does not become incomplete because a POST did not land.
+    func acknowledgeDelivery(_ run: AgentRun, ack: AgentDeliveryAck) async throws
 }
 
 extension AgentHarness {
@@ -53,6 +62,13 @@ extension AgentHarness {
         try await respondToInput(run, reply: AgentReply(questionID: "", revision: 0,
                                                         body: approved ? .approve : .deny,
                                                         runID: run.id))
+    }
+
+    /// Nothing is acknowledged unless an adapter says how (Plan FE P4). Throwing rather than
+    /// succeeding silently keeps "the endpoint was told" distinguishable from "there was nobody to
+    /// tell" — the same lesson as the reply default above.
+    func acknowledgeDelivery(_ run: AgentRun, ack: AgentDeliveryAck) async throws {
+        throw AgentHarnessError.ackUnsupported
     }
 
     /// Plan CN default: an adapter with no image channel simply ignores the attachment rather than
@@ -79,6 +95,9 @@ enum AgentHarnessError: LocalizedError, Equatable {
     /// The reply left the device but we never learned whether it was applied (a timeout after the
     /// send). Not a failure and not a success: the caller must reconcile rather than resend blindly.
     case uncertainDelivery
+    /// The harness has no way to acknowledge a delivered result (Plan FE P4). Recorded against the
+    /// delivery record; never spoken and never allowed to change the run's outcome.
+    case ackUnsupported
     case agentModeOff   // BK P0: dispatch is an autonomous action — gated at the service layer
 
     var errorDescription: String? {
@@ -103,6 +122,8 @@ enum AgentHarnessError: LocalizedError, Equatable {
             }
         case .uncertainDelivery:
             return "I couldn't tell whether the agent received your answer."
+        case .ackUnsupported:
+            return "This agent has no way to be told a result was read out."
         case .agentModeOff:
             return "Agent Mode is off; remote agent dispatch is disabled."
         }

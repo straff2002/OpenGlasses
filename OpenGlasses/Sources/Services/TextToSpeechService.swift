@@ -26,6 +26,22 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// check this to ignore stale completions from a previous speech session.
     private var speechGeneration: Int = 0
 
+    /// Plan FE P4 — how each utterance actually ended (see `SpeechDeliveryLedger`).
+    ///
+    /// Internal rather than private, and deliberately so: the simulator has no speech engine and
+    /// no audio route, so the only way to assert that `didFinish`, `didCancel`, the player's
+    /// success flag and a refused `play()` each land on the right outcome is to drive those
+    /// callbacks against this. It holds no audio and no text — only generations and outcomes.
+    var deliveryLedger = SpeechDeliveryLedger()
+
+    /// Route/policy gate consulted before anything is played (Plan FE P4).
+    ///
+    /// The default reproduces exactly the check this service already made — glasses-only audio
+    /// with no glasses connected — and adds nothing. It is a seam rather than a constant so a host
+    /// that gates speech ahead of this service (muted, silent/push-to-talk, backgrounded) can say
+    /// *which* gate it was, and so those branches are exercised in tests rather than described.
+    var suppressionCheck: (() -> SpeechDeliveryOutcome.SuppressionReason?)?
+
     /// When ElevenLabs returns quota_exceeded, cache the failure so we skip
     /// further ElevenLabs calls and go straight to iOS TTS for the session.
     private var elevenLabsQuotaExhausted = false
@@ -165,8 +181,23 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// whether the app is now expecting an answer.
     private(set) var lastSpokenText: String?
 
+    /// Speak `text`, discarding how it went. Kept as the signature every existing caller uses —
+    /// most of them (a tone's companion line, a progress narration) genuinely have nothing to do
+    /// with the answer.
     func speak(_ text: String, urgency: SpeechUrgency = .low, mirrorToHUD: Bool = true) async {
-        guard !text.isEmpty else { return }
+        _ = await speakReporting(text, urgency: urgency, mirrorToHUD: mirrorToHUD)
+    }
+
+    /// Speak `text` and report **how playback actually ended** (Plan FE P4).
+    ///
+    /// The awaited value is terminal: by the time it returns, playback has finished, been cut
+    /// short, been withheld, or broken. `completed` means the audio ran to its end — never that
+    /// the wearer heard or understood it, and callers that forward it to a backend must say so
+    /// (see `AgentDeliveryAck`).
+    @discardableResult
+    func speakReporting(_ text: String, urgency: SpeechUrgency = .low,
+                        mirrorToHUD: Bool = true) async -> SpeechDeliveryOutcome {
+        guard !text.isEmpty else { return .failed(reason: "nothing to say") }
         lastSpokenText = text
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
@@ -175,10 +206,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Callers that render a richer HUD treatment themselves pass mirrorToHUD: false.
         if mirrorToHUD { glassesDisplay?.showText(text, flashWhileInteractive: true) }
 
-        // Silence if glasses-only mode is on and glasses aren't connected
-        if Config.glassesOnlyAudio && !glassesConnected {
-            PrivacyLog.tts(.suppressed, detail: PrivacyToken("glassesOnlyAudio"))
-            return
+        // Withhold when the route says so. Reported rather than silently dropped: a suppressed
+        // result is still owed to the wearer, and somebody has to be able to offer it again.
+        if let reason = currentSuppression() {
+            PrivacyLog.tts(.suppressed, detail: PrivacyToken(reason.rawValue))
+            let outcome = SpeechDeliveryLedger.outcome(for: .withheld(reason), teardownCause: nil)
+            PrivacyLog.tts(.playbackReported, detail: PrivacyToken(outcome.token))
+            return outcome
         }
 
         // Route to speaker when glasses aren't connected (in playAndRecord sessions)
@@ -188,6 +222,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 try? session.overrideOutputAudioPort(.speaker)
             }
         }
+
+        // Whatever was speaking is about to be replaced. Record that first — synchronously, so
+        // the engine's own late `didCancel` cannot claim it later for a different reason.
+        deliveryLedger.teardownCause = .newUtterance
+        deliveryLedger.record(.superseded, liveGeneration: speechGeneration)
 
         // Cancel any in-progress speech (including in-flight network requests)
         // Do this BEFORE bumping generation so stopSpeaking()'s increment doesn't
@@ -207,13 +246,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Bump generation AFTER cleanup — capture the new value
         speechGeneration += 1
         let gen = speechGeneration
+        deliveryLedger.teardownCause = nil
 
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         // Check cancellation after the sleep — a newer speak() may have started
         guard !Task.isCancelled, gen == speechGeneration else {
             PrivacyLog.tts(.staleGeneration, detail: PrivacyToken("beforeStart"))
-            return
+            deliveryLedger.record(.superseded, for: gen, liveGeneration: speechGeneration)
+            return finishOutcome(for: gen, fallback: .interrupted(by: .newUtterance))
         }
 
         isSpeaking = true
@@ -238,6 +279,36 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             await endPause()
             PrivacyLog.tts(.finished)
         }
+
+        // Nothing recorded an outcome for this generation and it is no longer current: a newer
+        // utterance took the floor. That is an interruption, not a completion.
+        let fallback: SpeechDeliveryOutcome = gen == speechGeneration
+            ? .failed(reason: "no engine spoke it")
+            : SpeechDeliveryLedger.outcome(for: .superseded,
+                                           teardownCause: deliveryLedger.teardownCause)
+        return finishOutcome(for: gen, fallback: fallback)
+    }
+
+    // MARK: - Delivery outcome bookkeeping (Plan FE P4)
+
+    /// The route/policy reason to withhold speech right now, or `nil` to go ahead.
+    private func currentSuppression() -> SpeechDeliveryOutcome.SuppressionReason? {
+        if let suppressionCheck { return suppressionCheck() }
+        return Config.glassesOnlyAudio && !glassesConnected ? .noRoute : nil
+    }
+
+    /// Record one engine signal against the utterance the callbacks belong to.
+    private func record(_ signal: SpeechDeliveryLedger.EngineSignal) {
+        deliveryLedger.record(signal, liveGeneration: speechGeneration)
+    }
+
+    /// Take the recorded outcome for a generation, or `fallback` when nothing recorded one.
+    private func finishOutcome(for generation: Int,
+                               fallback: SpeechDeliveryOutcome) -> SpeechDeliveryOutcome {
+        let outcome = deliveryLedger.take(generation: generation, fallback: fallback,
+                                          liveGeneration: speechGeneration)
+        PrivacyLog.tts(.playbackReported, detail: PrivacyToken(outcome.token))
+        return outcome
     }
 
     // MARK: - Engine selection
@@ -246,6 +317,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// AVSpeech): try each engine in turn, advancing to the next on failure. `.system` is the
     /// guaranteed terminal — it never throws, so the chain always produces audio (or is cancelled).
     private func speakThroughEngineChain(text: String, urgency: SpeechUrgency, generation gen: Int) async {
+        // Any engine callback from here on belongs to this generation (Plan FE P4).
+        deliveryLedger.beginUtterance(generation: gen)
         let elevenLabsKey = Config.elevenLabsAPIKey
         // ElevenLabs is "ready" only with a key, online, and not quota-exhausted. Kokoro is "ready"
         // only with the model present *and* the binary compiled in (always false in the shipped
@@ -275,6 +348,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         for engine in chain {
             guard !Task.isCancelled, gen == speechGeneration else {
                 PrivacyLog.tts(.cancelled, detail: PrivacyToken("midChain"))
+                deliveryLedger.record(.superseded, for: gen, liveGeneration: speechGeneration)
                 return
             }
             do {
@@ -297,11 +371,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 return  // engine succeeded
             } catch is CancellationError {
                 PrivacyLog.tts(.cancelled)
+                deliveryLedger.record(.cancelledMidChain, for: gen, liveGeneration: speechGeneration)
                 return
             } catch {
                 // Only advance to the next engine if we weren't cancelled AND this is still current.
                 guard !Task.isCancelled, gen == speechGeneration else {
                     PrivacyLog.tts(.cancelled, detail: PrivacyToken("duringFallback"))
+                    deliveryLedger.record(.superseded, for: gen, liveGeneration: speechGeneration)
                     return
                 }
                 PrivacyLog.tts(.engineFallback, engine: PrivacyToken(engine.rawValue),
@@ -309,6 +385,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 continue
             }
         }
+        // Every engine in the chain threw. `.system` never does, so this is the empty-chain case —
+        // still recorded rather than left to a fallback, because "nothing could speak it" is a
+        // failure and must not be reported as anything gentler.
+        deliveryLedger.record(.noEngineAvailable, for: gen, liveGeneration: speechGeneration)
     }
 
     // MARK: - Kokoro on-device TTS
@@ -362,8 +442,21 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         streamSpeechTask = nil
     }
 
-    func stopSpeaking() {
+    /// `ScanAssistSpeaking`'s requirement, and every caller that just wants silence.
+    func stopSpeaking() { stopSpeaking(interruption: .stop) }
+
+    /// Stop whatever is speaking, saying **why** (Plan FE P4).
+    ///
+    /// The reason is the difference between "the wearer talked over the answer" and "the app tore
+    /// the audio down", which used to be the same call. It decides what the interrupted utterance
+    /// is recorded as, and therefore whether a result is offered for replay as something they
+    /// chose to cut off or something they never got.
+    func stopSpeaking(interruption: SpeechDeliveryOutcome.Interruption) {
         stopThinkingSound()
+        // Record before the teardown: `AVAudioPlayer.stop()` fires no delegate callback, so this
+        // is the only place the reason is known.
+        deliveryLedger.teardownCause = interruption
+        record(.tornDown(interruption))
         // Bump generation so any in-flight delegate callbacks are ignored
         speechGeneration += 1
         currentSpeechTask?.cancel()
@@ -684,9 +777,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func playAudioData(_ data: Data) async throws {
         // If glasses disconnected between network download and playback, discard the audio.
         // This closes the race where stopSpeaking() ran before audioPlayer was assigned.
-        guard !Task.isCancelled else { return }
-        guard !Config.glassesOnlyAudio || glassesConnected else {
-            PrivacyLog.tts(.discarded, detail: PrivacyToken("glassesOnlyAudio"))
+        guard !Task.isCancelled else {
+            record(.cancelledMidChain)
+            return
+        }
+        if let reason = currentSuppression() {
+            PrivacyLog.tts(.discarded, detail: PrivacyToken(reason.rawValue))
+            record(.withheld(reason))
             return
         }
 
@@ -711,6 +808,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             if started { TurnRecorder.markPlaybackStart(at: Date()) }
             PrivacyLog.tts(.playing, engine: PrivacyToken("elevenLabs"),
                            seconds: player.duration, success: started)
+            if !started {
+                // `play()` refused, so no delegate callback is ever coming. Previously this left
+                // the continuation installed and the caller awaiting an utterance that had not
+                // begun; now it is a reported failure and the await returns.
+                self.record(.playbackDidNotStart)
+                self.audioPlayer = nil
+                self.speechContinuation = nil
+                continuation.resume()
+            }
         }
     }
 
@@ -795,6 +901,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         Task { @MainActor in
             PrivacyLog.tts(.playbackFinished, engine: PrivacyToken("system"), success: true)
             TurnRecorder.markPlaybackEnd(at: finishedAt)
+            // The iOS voice reached the end of the utterance. Plan FE P4's `completed`, and only
+            // that: the words came out of a speaker, which is all any of this can ever know.
+            self.record(.systemFinished)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -803,6 +912,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
             PrivacyLog.tts(.cancelled, engine: PrivacyToken("system"))
+            // `didCancel` is the engine noticing a teardown somebody else started, so the reason
+            // was recorded there and wins. `.newUtterance` is the fallback because a cancel with
+            // no recorded cause is a `speak` that replaced this one.
+            self.record(.systemCancelled)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -916,6 +1029,10 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
             // the same continuation the same way, so the *caller* can't tell them apart — which is
             // exactly why the mark has to be made here and not where the continuation resumes.
             if flag { TurnRecorder.markPlaybackEnd(at: finishedAt) }
+            // Plan FE P4: the player's own success flag. `false` means playback stopped before the
+            // end of the audio for a reason the player owns — a failure, not a completion. A
+            // teardown we caused has already recorded its interruption and wins over this.
+            self.record(.playerFinished(success: flag))
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil
@@ -926,6 +1043,7 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
         Task { @MainActor in
             PrivacyLog.tts(.decodeFailed, engine: PrivacyToken("elevenLabs"),
                            error: error.map(SafeErrorSummary.init))
+            self.record(.playerDecodeFailed)
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil

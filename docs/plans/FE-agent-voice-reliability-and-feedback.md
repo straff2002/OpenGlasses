@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0–P3 implemented 2026-09-16 (P2 and P3 same day) — P4–P6 unbuilt.**
+**Status: 🚧 P0–P4 implemented 2026-09-16 (P2, P3 and P4 same day) — P5–P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -359,6 +359,100 @@ delivery is ambiguous, not guaranteed exactly-once. Preserve useful results for 
 reconnect, duplicate terminal polls, revised results, ack timeout/retry and crash windows. Only the
 appropriate result revision is acknowledged. Device-test actual spoken completion and interruption.
 
+### Implemented 2026-09-16
+
+- **A delivery outcome from the speech service.** `TextToSpeechService.speakReporting` returns a
+  `SpeechDeliveryOutcome`: `.completed`, `.interrupted(by: bargeIn | stop | newUtterance)`,
+  `.suppressed(reason: muted | noRoute | silentMode | backgrounded)` or `.failed(reason:)`.
+  `speak` is now a wrapper that discards it, so every existing caller is untouched. The enum is
+  deliberately **terminal** — there is no `queued` or `playing` case, because a caller awaiting it
+  is already past both and a "queued" answer would have ceased to be true by the time it was read;
+  the queued/playing half lives in the delivery record instead. The states come from the callbacks
+  the service already had — `didFinish` / `didCancel`, the `AVAudioPlayer` success flag, the decode
+  error, and the route check made before anything plays — gathered into `SpeechDeliveryLedger`, a
+  pure decision table plus a per-generation store with two rules: the **first** terminal state wins
+  (the teardown that caused a callback knows why it happened; the callback that follows does not),
+  and a late callback is attributed to the utterance it started on, never to the one that replaced
+  it. `stopSpeaking(interruption:)` now names the cause, so the barge-in path is a barge-in and a
+  disconnect teardown is a stop. The type's own documentation states the limit: **completed
+  playback is playback**, not hearing and not comprehension.
+- **What "suppressed" can actually see.** The service's built-in route check is exactly the one it
+  already made — glasses-only audio with no glasses connected, reported as `.noRoute` — and adds no
+  new behaviour. The other three reasons reach it through an injected `suppressionCheck`, so a host
+  that gates speech ahead of this service can say which gate it was. That is a seam with one real
+  implementation today, and it is named as such rather than presented as four working detectors.
+- **Delivery state on the session.** `AgentResultDelivery { runID, resultRevision, state, ackState,
+  at }` is published on `AgentSessionService`, written **before** playback is requested (so a crash
+  mid-utterance leaves a record saying `playing` rather than no record at all) and updated from the
+  awaited outcome. Revision identity is a fingerprint of the reported result plus the status and the
+  cancellation origin: an endpoint answering `completed` on every poll is one result, read out once
+  and acknowledged once; a report whose **fields** differ is a new revision with its own record and
+  its own acknowledgement, even where the spoken summary comes out identical — the ack names a
+  revision, and revision 0's must not stand in for revision 1's contents. `reported` is part of the
+  fingerprint, so P0's distinction between "it did not say" and "it said none" survives here.
+- **Replay.** `code_agent replay` re-reads the retained result and introduces it honestly: "Here's
+  the result you missed" when the record says interrupted, suppressed or failed; "Here it is again"
+  when it was already read in full; and the hedged form when the record cannot vouch either way. A
+  replay that completes updates that same revision and acknowledges it then — not before. The
+  status line gains a tail only when the wearer did **not** get the result; a completed reading
+  says nothing extra, because "and you heard it" is not ours to claim.
+- **The acknowledgement, and what it is worth.** Optional `CustomHarnessConfig.ackURLTemplate`
+  (empty by default — nothing is ever sent) POSTs `{ runId, resultRevision, deliveryState, ackId }`
+  under the existing transport, credential and route rules; it rides `CustomAgentHarness`'s
+  `.customAgentHarness` route, so no new route. Only `.completed` is acknowledged. `ackId` is
+  derived from `(run, revision)` — FNV-1a, not a per-process hash — so a retry, including one after
+  a relaunch, is recognisable as the same acknowledgement rather than a second one. Retries are
+  bounded at the first attempt plus two (`AgentPollingPolicy.maxAckRetries`), a non-retryable HTTP
+  answer stops at once, a revision superseded before its ack lands is abandoned rather than
+  acknowledged late, and **an ack failure never fails the task**: the delivery stays `completed`
+  locally with `ackState: .unacknowledged(reason:)` and nothing is spoken about it. The wire
+  contract states what the endpoint may do with an ack (suppress re-delivery of that revision) and
+  that a POSTed ack **proves nothing about reconnect behaviour**.
+- **The crash window.** `AgentDeliveryRecordStore` persists run, revision, state and ack state —
+  and deliberately not the words. A record reloaded at `pending` or `playing` is *ambiguous*: we
+  asked for playback and never learned how it ended, so "you heard it" and "you didn't" are equally
+  unsupported, and the wearer hears "I may have already read you that result" only when they ask
+  for status or a replay. A `completed` record whose ack never landed is ambiguous **to the
+  endpoint**, not to the wearer — hedging at somebody because a POST failed would be a false doubt.
+  Because the words are not persisted, an ambiguous replay can hedge but cannot re-read; writing an
+  agent's report of the wearer's work to disk to close that edge is the worse trade, and the store
+  says so.
+
+**Evidence.** 64 headless tests on the new classes: `AgentResultDeliveryTests` (38, new) and
+`SpeechDeliveryOutcomeTests` (26, new), with `AgentSessionTests` (24), `AgentResultTruthTests` (32),
+`AgentQuestionReplyTests` (42), `AgentCustomHarnessTests` (23), `AgentSummarizerTests` (18),
+`AgentHarnessPresetTests` (8), `AgentSafetyTests` (19), `AgentConfirmationGapTests` (12),
+`AudibleLifecycleTests` (35), `DataStoreRegistryTests` (25), `TTSEngineSelectorTests` (14) and
+`SpeechUrgencyTests` (3) unchanged and green — **no existing assertion needed updating**, because a
+session wired with only the old fire-and-forget speaker keeps its old behaviour and writes no
+delivery record rather than recording a completion nothing observed. The new suites drive a scripted
+playback outcome → session → adapter → fixture endpoint and assert the record, the spoken line and
+**how many requests the endpoint received**: completion recorded and acknowledged once with its
+revision and the derived id; barge-in recorded as interrupted with zero requests, then a replay that
+speaks the missed result, completes it and acknowledges it; muted and no-route suppression with a
+replay offered; engine failure; duplicate terminal reports delivering once; a revised result taking
+its own revision and its own ack; two reports with identical wording but different reported fields
+still separated; local and remote cancellation as different results; an old revision abandoned as
+`superseded` when a newer one lands mid-retry; an ack timeout retried three times carrying one id;
+a 400 not retried and a 503 retried within the bound; an ack failure leaving the task completed and
+the run status untouched; an unconfigured ack endpoint sending nothing; contact lost and regained
+producing one delivery; the record written as `playing` before playback is requested; a reloaded
+record ambiguous while a reloaded completed-but-unacknowledged one is not; the ambiguous status and
+replay copy; a run id percent-encoded into the ack template; and a literal legacy config JSON
+decoding the new key to empty with its token intact. Full `OpenGlassesTests` green; Debug and
+Release simulator builds green.
+
+**Owed — device.** Everything above is fixture-level, and the two things that matter most cannot be
+seen in a simulator, which has no speech engine and no audio route: **actual spoken completion**
+(that `didFinish` arrives when the wearer has in fact heard the whole summary, rather than after a
+route change swallowed it) and **actual interruption** (that a real barge-in over a real utterance
+lands as `.interrupted(by: .bargeIn)` and not as a completion or a failure). The
+`AVAudioPlayer`-flag mapping and the refused-`play()` path are likewise proposals until hardware
+confirms them. The ack shape, its retry numbers and what a real endpoint does with it are
+unconfirmed against any live endpoint — the same gap P0 and P1 record. The three suppression reasons
+beyond `.noRoute` have no detector of their own yet; they are reachable only through the injected
+check.
+
 ## P5 / PR6 — Speech-reactive visual feedback
 
 Add a bounded normalized playback activity signal to the existing visual model. Where audio meters
@@ -427,7 +521,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 | Questions/replies, agent selection and legacy configuration migration | 🚧 Fixture-green 2026-09-16 (P1); live endpoint owed |
 | Listener recovery and audio ownership | 🚧 Fixture-green 2026-09-16 (P2); device checks owed (first Start after sleep/route change; one listener, no orphaned mic after stop) |
 | Live timing controls and interruption usability | 🚧 Fixture-green 2026-09-16 (P3); device comparison owed (premature cut-offs vs perceived delay across the presets; the barge-in noise floor) |
-| Playback-aware acknowledgement and reconnect semantics | Pending |
+| Playback-aware acknowledgement and reconnect semantics | 🚧 Fixture-green 2026-09-16 (P4); device checks owed (actual spoken completion; actual interruption) and live endpoint owed |
 | Visual feedback, stale callbacks and accessibility | Pending |
 | Optional assistant name, identity precedence and onboarding/settings | Pending |
 

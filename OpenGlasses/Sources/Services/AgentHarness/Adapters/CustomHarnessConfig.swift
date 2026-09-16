@@ -86,6 +86,16 @@ struct CustomHarnessConfig: Codable, Equatable {
     /// **approval** — the shape that goes through the consent prompt (see `AgentQuestion.kind`).
     var questionKindPath: String = ""
 
+    // MARK: - Delivery acknowledgement (Plan FE P4)
+
+    /// POST endpoint told when a result revision finished playing to the wearer; `{id}` is the run
+    /// id. Empty by default, meaning nothing is ever sent — an endpoint that does not ask to be
+    /// told is not told, and no acknowledgement traffic appears because a feature shipped.
+    ///
+    /// What the acknowledgement means is stated in the wire contract and nowhere else is it
+    /// allowed to mean more: audio for that revision ran to its end on this device.
+    var ackURLTemplate: String = ""
+
     /// Minimum viable config: a parseable, transport-secure start URL. The auth token rides every
     /// request, so `http://` is refused except to loopback (a local bridge in development) — BM P5.
     var isConfigured: Bool {
@@ -154,6 +164,9 @@ extension CustomHarnessConfig {
         questionIDPath = string(.questionIDPath, questionIDPath)
         questionRevisionPath = string(.questionRevisionPath, questionRevisionPath)
         questionKindPath = string(.questionKindPath, questionKindPath)
+        // Plan FE P4. Same rule again: added after configs were saved, so it decodes to its
+        // default rather than failing the whole config (and taking the token with it).
+        ackURLTemplate = string(.ackURLTemplate, ackURLTemplate)
     }
 
     // MARK: - Field collisions (Plan FE P1)
@@ -189,6 +202,11 @@ extension CustomHarnessConfig {
                 + Self.reservedReplyKeys.joined(separator: ", ") + ". Pick another answer field."
         }
         return nil
+    }
+
+    /// Whether this endpoint asked to be told about delivered results.
+    var acceptsDeliveryAcks: Bool {
+        !ackURLTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Whether this endpoint can be answered at all.
@@ -302,6 +320,25 @@ extension CustomHarnessConfig {
         // "only change the tests" survives the trip.
         if let text = reply.body.text { body[answerKey] = text }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 15
+        return request
+    }
+
+    /// Build the acknowledgement (POST) request for `runID`, or `nil` when this endpoint did not
+    /// ask to be told (Plan FE P4). `nil` is not a failure: it is recorded against the delivery as
+    /// `notConfigured` and nothing is spoken, because an endpoint that never wanted an
+    /// acknowledgement is not a problem the wearer needs to hear about.
+    ///
+    /// The body carries no wearer content and no endpoint content — the run, the revision, the
+    /// playback state and the stable ack id, and that is the whole of it.
+    func ackRequest(runID: String, ack: AgentDeliveryAck) -> URLRequest? {
+        guard let filled = fillTemplate(ackURLTemplate, runID: runID),
+              let url = URL(string: filled) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ack.body)
         request.timeoutInterval = 15
         return request
     }

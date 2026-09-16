@@ -7,7 +7,8 @@ backends are the same contract with the fields pre-filled.
 
 Owning plans: [N](plans/N-remote-agent-harness.md) (the harness itself) and
 [FE](plans/FE-agent-voice-reliability-and-feedback.md) — P0 (result truthfulness, terminal state,
-retry policy) and P1 (question identity, typed replies, explicit agent selection).
+retry policy), P1 (question identity, typed replies, explicit agent selection) and P4 (result
+delivery states and the acknowledgement).
 
 Every URL, field name and dot-path below is configured by the wearer in
 **Settings → Agentic Features → Remote Agents**. Nothing is guessed: a path that is not set is a
@@ -196,6 +197,73 @@ voice recognition to be working.
 | Transport or HTTP failure | The question stays pending, the reply is held, and a retry re-sends **the same** `replyId`. Nothing is announced as success |
 | Timeout after sending | Reconciled by **re-polling the status**, never by posting again. If the run has left `awaiting_input` the answer landed; if it is still waiting, the answer is still pending and a retry is offered |
 | Stale (the question was replaced, cancelled or expired) | Refused and never forwarded — approving a question that has been replaced approves whatever took its place |
+
+## Delivery acknowledgement — `POST` to the ack URL (optional)
+
+Configured separately (`{id}` is the run id, percent-encoded as everywhere else). **Empty by
+default: without it nothing is ever sent.** An endpoint that does not ask to be told is not told.
+
+```jsonc
+{
+  "runId":          "run_42",
+  "resultRevision": 0,
+  "deliveryState":  "completed",
+  "ackId":          "ack-8f3a…"
+}
+```
+
+### What an acknowledgement means
+
+**Audio for that revision of that run's result played to its end on the wearer's phone.** That is
+the whole of it, and it is less than it sounds:
+
+- It is **not** a claim that the wearer heard it, was wearing the glasses, was paying attention, or
+  understood a word of it. Nothing on the device can know any of those, so nothing here asserts
+  them.
+- An endpoint **may** use it to stop re-sending that revision. That is the intended use, and the
+  reason only completed playback is ever acknowledged.
+- A POSTed acknowledgement **proves nothing about reconnect behaviour**. It says one HTTP request
+  succeeded at one moment. It does not establish that the phone will be reachable later, that a
+  later session will remember this exchange, or that the result reached anybody. An endpoint that
+  treats an ack as delivery-guaranteed-exactly-once is reading more into it than it carries.
+
+### What is never acknowledged
+
+| Delivery state | Sent? |
+|---|---|
+| `completed` — playback reached the end | **yes**, once per revision |
+| `pending` / `playing` — not finished | no |
+| `interrupted` — talked over, stopped, or replaced | no |
+| `suppressed` — muted, no route, silent mode, backgrounded | no |
+| `failed` — the engine broke, or none was available | no |
+
+Acknowledging unheard output as completed playback is the one thing this endpoint must never be
+used for: it would let a backend suppress re-delivery of a result nobody received. An interrupted
+or suppressed result stays unacknowledged and is offered to the wearer for **replay** instead; a
+replay that completes is acknowledged then, and not before.
+
+### Identity, retries and failure
+
+- **`ackId` is derived from `(runId, resultRevision)`** and nothing else, so every retry of the same
+  acknowledgement carries the same id — and so does one sent after the app restarted. An endpoint
+  that already recorded that id should treat the repeat as a no-op.
+- **`resultRevision`** counts the run's reports of its own outcome, from 0. Two terminal polls with
+  identical fields are one revision and are acknowledged once. A poll whose fields differ is a new
+  revision, delivered and acknowledged separately. An acknowledgement naming an older revision is
+  **abandoned** once a newer one has been read out, rather than sent late: it would tell the
+  endpoint to suppress the wrong thing.
+- **Retries are bounded** — the first attempt plus two more, on the polling policy's backoff ladder.
+  A 401/403/4xx that is not 408/429 stops immediately.
+- **An acknowledgement failure never fails the task.** The result stays completed on the device, the
+  record says the endpoint was not told and why, and the wearer is told nothing about it.
+
+### The crash window
+
+If the phone goes away between playback and a durable acknowledgement, the run id, revision,
+delivery state and ack state survive; **the result's words do not**. On the next launch such a
+delivery is reported as *ambiguous* — "I may have already read you that result" — and only when the
+wearer asks for status or a replay. It is never reported as delivered exactly once, because it was
+not.
 
 ## Cancel — `POST` to the cancel URL (optional)
 
