@@ -16,9 +16,16 @@ import SwiftUI
 struct VoiceWaveline: View {
 
     var state: VoiceVisualState = .idle
+    /// Live playback activity, `0…1`, or `nil` when nothing is playing, the speaking engine offers
+    /// no usable signal, or the gates say don't (Plan FE P5). `nil` is the approved behaviour.
+    var activity: Double?
     var height: CGFloat = 76
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Reduce Motion turns the reactive scaling off entirely rather than damping it: a wave that
+    /// twitches with every syllable is the motion the setting exists to refuse.
+    private var liveActivity: Double? { reduceMotion ? nil : activity }
 
     /// The frame the still fallback draws. Any constant does — it's picked so
     /// the strands are visibly separated rather than momentarily stacked.
@@ -91,12 +98,18 @@ struct VoiceWaveline: View {
         .frame(height: height)
         .onChange(of: state) { _, newState in
             withAnimation(.easeInOut(duration: 0.6)) {
-                amplitudes = WavelineParams.params(for: newState)
+                amplitudes = WavelineParams.params(for: newState, activity: liveActivity)
             }
         }
-        .onAppear { amplitudes = WavelineParams.params(for: state) }
+        // The activity level arrives on its own cadence, so it gets its own (short) transition —
+        // riding the 0.6 s state blend would smear every sample into the next and the wave would
+        // stop tracking anything.
+        .onChange(of: activity) { _, _ in
+            amplitudes = WavelineParams.params(for: state, activity: liveActivity)
+        }
+        .onAppear { amplitudes = WavelineParams.params(for: state, activity: liveActivity) }
         .accessibilityHidden(true)   // decorative; state is announced elsewhere
-        .animation(.easeInOut(duration: 0.6), value: amplitudes)
+        .animation(.easeInOut(duration: liveActivity == nil ? 0.6 : 0.12), value: amplitudes)
     }
 
     /// One frame of the ribbon: soft glow underlay tracing the primary strand,
@@ -167,24 +180,41 @@ struct WavelineStrand {
 /// dark mode both keep their character.
 struct VoiceAmbience: View {
     var state: VoiceVisualState = .idle
+    /// Live playback activity, `0…1`, or `nil` for the approved state-only radiance (Plan FE P5).
+    var activity: Double?
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The bound the radiance may move inside: 0.85…1.15× the approved value for the state. The
+    /// ambience is near-subliminal by design, and a signal loud enough to notice here would be
+    /// the screen being painted with the assistant rather than lit by it.
+    static let activityGlowScale: ClosedRange<Double> = 0.85...1.15
 
     /// Radiance for a state. Under Reduce Motion the glow holds steady rather
     /// than breathing with the session — the waveline's shape and the status
     /// card already carry the state, so nothing is lost but the pulse.
     /// Pure, so the fallback is covered headlessly.
-    static func glow(for state: VoiceVisualState, reduceMotion: Bool) -> Double {
+    /// Radiance for a state, optionally breathing with live playback activity (Plan FE P5).
+    /// `activity: nil` — and Reduce Motion, whatever the level — is the approved value exactly.
+    static func glow(for state: VoiceVisualState, reduceMotion: Bool,
+                     activity: Double? = nil) -> Double {
         guard !reduceMotion else { return 0.06 }
+        let base: Double
         switch state {
-        case .idle: return 0.04
-        case .listening: return 0.06
-        case .thinking: return 0.07
-        case .speaking: return 0.11
+        case .idle: base = 0.04
+        case .listening: base = 0.06
+        case .thinking: base = 0.07
+        case .speaking: base = 0.11
         }
+        guard state == .speaking, let activity else { return base }
+        let clamped = min(1, max(0, activity))
+        let scale = activityGlowScale.lowerBound
+            + (activityGlowScale.upperBound - activityGlowScale.lowerBound) * clamped
+        return base * scale
     }
 
-    private var glow: Double { Self.glow(for: state, reduceMotion: reduceMotion) }
+    private var liveActivity: Double? { reduceMotion ? nil : activity }
+    private var glow: Double { Self.glow(for: state, reduceMotion: reduceMotion, activity: liveActivity) }
 
     var body: some View {
         ZStack {
@@ -200,7 +230,9 @@ struct VoiceAmbience: View {
                 startPoint: UnitPoint(x: 0.5, y: 0.55),
                 endPoint: .bottom)
         }
-        .animation(.easeInOut(duration: 0.9), value: glow)
+        // A state change is a 0.9 s swell; an activity sample is a 20 Hz number and needs a
+        // transition shorter than its own period or the radiance lags a syllable behind the voice.
+        .animation(.easeInOut(duration: liveActivity == nil ? 0.9 : 0.14), value: glow)
         .accessibilityHidden(true)
     }
 }
@@ -241,6 +273,41 @@ struct WavelineParams: Equatable, Animatable {
     /// Never state-dependent — see the phase-continuity note on `VoiceWaveline`.
     static let spatial: (slow: Double, mid: Double, fast: Double) = (1.1, 2.3, 4.7)
     static let temporal: (slow: Double, mid: Double, fast: Double) = (1.4, 2.2, 5.6)
+
+    /// The bound the reactive scaling lives inside (Plan FE P5): the *approved* speaking
+    /// amplitudes, times 0.6…1.4. The design's shape is the thing being preserved — a live signal
+    /// may make the wave breathe with the voice, it may not redraw it. Silence still reads as
+    /// speaking (0.6× of a tall wave is still the tallest state), and a loud passage cannot
+    /// escape the lane the ribbon was drawn for.
+    static let activityAmplitudeScale: ClosedRange<Double> = 0.6...1.4
+
+    /// Map a `0…1` activity level onto `activityAmplitudeScale`. `nil` — no signal from the engine
+    /// that is speaking, or Reduce Motion — is 1×, i.e. exactly the approved parameters.
+    static func activityMultiplier(_ activity: Double?) -> Double {
+        guard let activity else { return 1 }
+        let clamped = min(1, max(0, activity))
+        return activityAmplitudeScale.lowerBound
+            + (activityAmplitudeScale.upperBound - activityAmplitudeScale.lowerBound) * clamped
+    }
+
+    /// All three harmonics scaled together, so the wave's *proportions* — which is what makes each
+    /// state recognisable — survive the scaling.
+    func scaled(by factor: Double) -> WavelineParams {
+        WavelineParams(slow: slow * factor, mid: mid * factor, fast: fast * factor)
+    }
+
+    /// The approved parameters for a state, scaled by a live playback-activity level (Plan FE P5).
+    ///
+    /// `activity: nil` returns `params(for:)` unchanged — not approximately, identically — which is
+    /// the contract that lets every engine without a usable signal, and every wearer with Reduce
+    /// Motion on, keep exactly the visuals that were approved. Only `.speaking` scales: the level
+    /// describes *playback*, and there is no honest thing for it to say about listening or
+    /// thinking.
+    static func params(for state: VoiceVisualState, activity: Double?) -> WavelineParams {
+        let base = params(for: state)
+        guard state == .speaking, let activity else { return base }
+        return base.scaled(by: activityMultiplier(activity))
+    }
 
     static func params(for state: VoiceVisualState) -> WavelineParams {
         switch state {

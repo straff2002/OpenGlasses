@@ -42,9 +42,10 @@ struct VoiceTab: View {
         // One observation point derives the voice state; the ambience (background radiance) and
         // the waveline express it together — a single motion system, not scattered effects.
         VoiceStateProvider(session: session, openAISession: openAISession,
-                           speech: appState.speechService) { voiceState in
+                           speech: appState.speechService,
+                           activity: appState.speechService.playbackActivity) { voiceState, activity in
         ZStack {
-            VoiceAmbience(state: voiceState).ignoresSafeArea()
+            VoiceAmbience(state: voiceState, activity: activity).ignoresSafeArea()
 
             // The tab's usable height, read once and handed down to the dock, which sizes its
             // resting rows from it minus what the surface above it measured. One-way: the panel
@@ -351,13 +352,31 @@ private struct VoiceStateProvider<Content: View>: View {
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
     @ObservedObject var speech: TextToSpeechService
-    @ViewBuilder var content: (VoiceVisualState) -> Content
+    /// The playback-activity signal the visuals scale themselves by (Plan FE P5). Observed here
+    /// for the same reason the rest is: this is the one place in the tab that re-renders on the
+    /// voice signals, so the 20 Hz level never widens what VoiceTab itself watches.
+    @ObservedObject var activity: PlaybackActivityMonitor
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewBuilder var content: (VoiceVisualState, Double?) -> Content
 
     var body: some View {
         content(VoiceVisualState.from(
             isSpeaking: speech.isSpeaking || session.isModelSpeaking || openAISession.isModelSpeaking,
             isProcessing: appState.isProcessing,
             isListening: appState.isListening,
-            realtimeActive: session.isActive || openAISession.isActive))
+            realtimeActive: session.isActive || openAISession.isActive),
+                activity.activity)
+        // The monitor's gates. This view's lifetime *is* the animation's visibility — it wraps the
+        // ambience — so the metering it feeds starts and stops with the screen rather than with
+        // playback, and a tab the wearer has navigated away from meters nothing at all.
+        .onAppear {
+            activity.setReduceMotion(reduceMotion)
+            activity.setSceneActive(scenePhase == .active)
+            activity.setVisible(true)
+        }
+        .onDisappear { activity.setVisible(false) }
+        .onChange(of: scenePhase) { _, phase in activity.setSceneActive(phase == .active) }
+        .onChange(of: reduceMotion) { _, reduced in activity.setReduceMotion(reduced) }
     }
 }
