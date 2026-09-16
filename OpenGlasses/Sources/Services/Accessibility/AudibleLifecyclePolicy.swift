@@ -36,11 +36,47 @@ enum AudibleLifecyclePolicy {
     /// with a dead microphone or a camera that stopped delivering pictures is the kind of cheerful
     /// lie that costs a blind wearer the next thirty seconds finding out for themselves.
     enum RecoveryShape: Equatable {
-        /// Audio is back, and — where the session needs to see — pictures are arriving again.
+        /// Audio is back, pictures are arriving where the session needs them, and the conversation
+        /// came back with them.
         case full
         /// Audio is back and the camera is not producing fresh pictures. Said plainly, because a
         /// wearer who asks "what's in front of me" needs to know the answer cannot come.
         case cameraUnavailable
+        /// Everything works and the thread of the conversation did not survive the outage (Plan FF
+        /// P1/PR5). A separate shape rather than a footnote: an assistant that comes back and
+        /// cannot say what was just being discussed has to say so, or the wearer's next sentence —
+        /// "and the other one?" — lands on nothing.
+        case contextLost
+        /// The camera is not usable **and** the thread is gone. Both, because either one alone
+        /// would leave the wearer to discover the other.
+        case cameraUnavailableAndContextLost
+
+        /// Build the shape from the two independent facts, so the four cases cannot be assembled
+        /// inconsistently at a call site.
+        static func make(cameraUsable: Bool, contextCarried: Bool) -> RecoveryShape {
+            switch (cameraUsable, contextCarried) {
+            case (true, true): return .full
+            case (false, true): return .cameraUnavailable
+            case (true, false): return .contextLost
+            case (false, false): return .cameraUnavailableAndContextLost
+            }
+        }
+
+        /// Whether this shape reports a camera that can answer a question.
+        var cameraIsUsable: Bool {
+            switch self {
+            case .full, .contextLost: return true
+            case .cameraUnavailable, .cameraUnavailableAndContextLost: return false
+            }
+        }
+
+        /// Whether this shape reports a conversation the session can still refer back to.
+        var contextCarried: Bool {
+            switch self {
+            case .full, .cameraUnavailable: return true
+            case .contextLost, .cameraUnavailableAndContextLost: return false
+            }
+        }
     }
 
     /// One thing worth making a noise about.
@@ -130,11 +166,20 @@ enum AudibleLifecyclePolicy {
         /// `CameraReadiness.hasFreshVisualEvidence` — a decoded picture from *this* camera session,
         /// newer than the evidence window.
         var hasFreshVisualEvidence: Bool
+        /// Whether the conversation itself survived — resumed on the server, or rebuilt locally
+        /// from this device's own bounded record (Plan FF P1/PR5, `LiveRecoveryAssessment`).
+        ///
+        /// Defaults to `true` so a caller that has no way to know — the OpenAI Realtime backend has
+        /// no resumption concept at all — makes no claim about context either way, which is the
+        /// behaviour every caller had before this fact existed.
+        var contextCarried: Bool
 
-        init(audioRestored: Bool, needsVisualEvidence: Bool, hasFreshVisualEvidence: Bool) {
+        init(audioRestored: Bool, needsVisualEvidence: Bool, hasFreshVisualEvidence: Bool,
+             contextCarried: Bool = true) {
             self.audioRestored = audioRestored
             self.needsVisualEvidence = needsVisualEvidence
             self.hasFreshVisualEvidence = hasFreshVisualEvidence
+            self.contextCarried = contextCarried
         }
     }
 
@@ -150,8 +195,9 @@ enum AudibleLifecyclePolicy {
     /// the failure this replaces was a reconnect that ended in silence.
     static func recoveryNotice(for evidence: RecoveryEvidence) -> Notice {
         guard evidence.audioRestored else { return .recoveryIncomplete }
-        guard evidence.needsVisualEvidence else { return .serviceRestored(.full) }
-        return .serviceRestored(evidence.hasFreshVisualEvidence ? .full : .cameraUnavailable)
+        let cameraUsable = !evidence.needsVisualEvidence || evidence.hasFreshVisualEvidence
+        return .serviceRestored(.make(cameraUsable: cameraUsable,
+                                      contextCarried: evidence.contextCarried))
     }
 
     // MARK: - Notice → cue
@@ -184,6 +230,10 @@ enum AudibleLifecyclePolicy {
             return "Back. I'm listening."
         case .serviceRestored(.cameraUnavailable):
             return "Audio is back. The camera isn't — I can hear you, but I can't see."
+        case .serviceRestored(.contextLost):
+            return "Connected again, but I lost the thread of our conversation. You may need to tell me again."
+        case .serviceRestored(.cameraUnavailableAndContextLost):
+            return "Connected again. I can't see, and I lost the thread of our conversation."
         case .captureSucceeded:
             return "Photo taken."
         case .recoveryIncomplete:
@@ -220,7 +270,9 @@ enum AudibleLifecyclePolicy {
         case .recoveryFailed: return 100
         case .recoveryIncomplete: return 90
         case .connectionLost: return 80
+        case .serviceRestored(.cameraUnavailableAndContextLost): return 75
         case .serviceRestored(.cameraUnavailable): return 70
+        case .serviceRestored(.contextLost): return 65
         case .serviceRestored(.full): return 60
         case .sessionUsable: return 40
         case .captureSucceeded: return 30
@@ -285,7 +337,8 @@ enum AudibleLifecyclePolicy {
     static func isWorthSayingWithoutAHeardLoss(_ notice: Notice) -> Bool {
         switch notice {
         case .serviceRestored(.full): return false
-        case .serviceRestored(.cameraUnavailable), .recoveryIncomplete: return true
+        case .serviceRestored(.cameraUnavailable), .serviceRestored(.contextLost),
+             .serviceRestored(.cameraUnavailableAndContextLost), .recoveryIncomplete: return true
         case .sessionUsable, .connectionLost, .captureSucceeded, .recoveryFailed: return true
         }
     }
