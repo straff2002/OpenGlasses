@@ -309,5 +309,9 @@ schemes:
       # action into a WidgetKit "show widget" launch via SpringBoard, which fails
       # on a locked device ("Failed to show Widget … device was not unlocked").
       executable: OpenGlasses
+      # Local StoreKit testing: the paywalls load these products with prices when run from
+      # Xcode, without App Store Connect or a sandbox account. Keep the file's prices in
+      # step with App Store Connect.
+      storeKitConfiguration: OpenGlasses/MedicalCompliance.storekit
     archive:
       config: Release

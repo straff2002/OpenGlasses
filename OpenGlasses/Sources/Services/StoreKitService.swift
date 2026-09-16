@@ -321,13 +321,9 @@ class StoreKitService: ObservableObject {
     }
 
     /// Whether the user can access Medical Compliance features.
-    /// Returns true if subscribed OR if running in debug/TestFlight.
+    /// Requires an active verified subscription in every build configuration.
     var canAccessMedicalCompliance: Bool {
-        #if DEBUG
-        return true // Always available in debug builds for testing
-        #else
         return isMedicalComplianceActive
-        #endif
     }
 
     /// Manage subscription in the App Store (opens subscription management).

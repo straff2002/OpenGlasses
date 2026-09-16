@@ -86,7 +86,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "9.99",
+          "displayPrice": "4.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "medical_monthly_001",
@@ -124,7 +124,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "79.99",
+          "displayPrice": "49.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "medical_annual_001",
@@ -137,17 +137,17 @@
           },
           "localizations": [
             {
-              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "description": "Full medical compliance features billed annually. Save 17% compared to monthly.",
               "displayName": "Annual",
               "locale": "en_US"
             },
             {
-              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "description": "Full medical compliance features billed annually. Save 17% compared to monthly.",
               "displayName": "Annual",
               "locale": "en_AU"
             },
             {
-              "description": "Full medical compliance features billed annually. Save 33% compared to monthly.",
+              "description": "Full medical compliance features billed annually. Save 17% compared to monthly.",
               "displayName": "Annual",
               "locale": "en_GB"
             }
@@ -202,7 +202,7 @@
           "internalID": "field_assist_annual_001",
           "localizations": [
             {
-              "description": "Field Assist for one technician with annual billing \u2014 the same price as the one-time unlock.",
+              "description": "Field Assist for one technician with annual billing — the same price as the one-time unlock.",
               "displayName": "Annual",
               "locale": "en_US"
             }
