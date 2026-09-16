@@ -290,6 +290,11 @@ final class OutboundFrameConsumerTests: XCTestCase {
         "IMAGE_CAPTURED",             // base64 image into a tool result → the model
         "attachPhoto(",               // a Field Assist session log on disk
         "image_b64",                  // served to another process
+        // Plan FF P1/PR4. The realtime inbound lane: `look_closely` pushed a full-resolution still
+        // straight into a cloud session and no pattern here saw it, because nothing about that
+        // path looks like the other five. A sink is added to this list when it is invented, not
+        // when it is found to have been leaking.
+        "injectSharpImage(",
     ]
 
     /// How a file can get camera pixels in the first place.

@@ -22,6 +22,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     private let frameThrottler = FrameThrottler(interval: 2.0)  // Less frequent than Gemini — OpenAI charges per image
     private var stateObservation: Task<Void, Never>?
 
+    /// Plan FF P1/PR4 — which session this is. Bumped on every start, so work begun for one
+    /// session (a sharp capture in flight) can tell that it came back to a different one.
+    private(set) var sessionIdentity: Int = 0
+
     /// Plan CE: after an unpin the next live frame must reach the model as a keyframe — reset
     /// the throttler's dedup gate so it isn't dropped as "same scene" as the pinned frame.
     func resetFrameGateAfterPin() {
@@ -89,6 +93,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         }
 
         isActive = true
+        sessionIdentity += 1
         errorMessage = nil
 
         // Try to start camera
@@ -429,6 +434,8 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
 extension OpenAIRealtimeSessionManager: LiveSessionInjecting {
     var canInject: Bool { isActive && connectionState == .ready }
+
+    var liveSessionIdentity: Int { sessionIdentity }
 
     /// Both halves matter here. The model half is the API's single active-response slot; the user
     /// half is server VAD, which will interrupt the response our injection just asked for if the

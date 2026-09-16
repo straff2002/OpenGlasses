@@ -1,0 +1,58 @@
+{
+  "corpus_version": "1.0",
+  "notice": "Plan FF P1/PR4 reading corpus. Every document is invented. No real person, address, account, brand or medication appears here, and the medication-style document uses a made-up name and a made-up lot number on purpose: a reading benchmark must not ship a real drug label that a reader could mistake for guidance.",
+  "variants": ["clear", "blurred", "glared", "occluded"],
+  "documents": [
+    {
+      "id": "mail",
+      "label": "Council rates notice",
+      "canvas": { "width": 1024, "height": 768 },
+      "fontSize": 40,
+      "lines": [
+        "Kaimai District Council",
+        "PO Box 411",
+        "Te Rapa 3241",
+        "Account 5820 7714",
+        "Due 14 October 2026",
+        "Amount due 128.40"
+      ]
+    },
+    {
+      "id": "small-print",
+      "label": "Terms of supply, small print",
+      "canvas": { "width": 1024, "height": 768 },
+      "fontSize": 22,
+      "lines": [
+        "Terms of supply section 4.2",
+        "Cancellation requires 30 days notice",
+        "Interest accrues at 1.5 percent monthly",
+        "Reference GX 7742 B",
+        "Issued 02 March 2026"
+      ]
+    },
+    {
+      "id": "price-tag",
+      "label": "Shelf price tag",
+      "canvas": { "width": 768, "height": 512 },
+      "fontSize": 64,
+      "lines": [
+        "Winter Jacket",
+        "89.95",
+        "was 129.00",
+        "Size 14"
+      ]
+    },
+    {
+      "id": "medication-style",
+      "label": "Synthetic medication-style label (invented name)",
+      "canvas": { "width": 1024, "height": 640 },
+      "fontSize": 48,
+      "lines": [
+        "Zorbatol 25 mg",
+        "Take 1 tablet daily",
+        "EXP 03/2027",
+        "Lot 4471B"
+      ]
+    }
+  ]
+}

@@ -38,10 +38,20 @@ struct FilteredStill {
     /// actually ran — those pixels exist only as an image.
     private let sourceData: Data?
 
-    init(image: UIImage, scope: PrivacyFilterScope, sourceData: Data? = nil) {
+    /// Pixel size of the still *before* the filter ran, when the provider knows it.
+    ///
+    /// Plan FF P1/PR4 needs the before-and-after pair to say honestly whether the privacy pass
+    /// changed the picture a model is being asked to read fine print from. `CameraService` always
+    /// fills it; a fake that constructs a still directly may leave it nil, and a report that says
+    /// "unknown" is better than one that quietly reports the filtered size twice.
+    let sourcePixelSize: CGSize?
+
+    init(image: UIImage, scope: PrivacyFilterScope, sourceData: Data? = nil,
+         sourcePixelSize: CGSize? = nil) {
         self.image = image
         self.scope = scope
         self.sourceData = sourceData
+        self.sourcePixelSize = sourcePixelSize
     }
 
     /// JPEG bytes for the sink. Returns the original capture bytes when the filter was a no-op for
@@ -134,4 +144,15 @@ extension FilteredStillProviding {
 protocol StillImageFiltering: AnyObject {
     /// Blur for `scope`, or `nil` when the scope requires filtering and it could not be done.
     func filteredOrUnavailable(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage?
+}
+
+extension UIImage {
+    /// Size in *pixels*, not points. `UIImage.size` is points and would report a 3024×4032 capture
+    /// as 1008×1344 on a 3× device — the wrong number to put in a report about whether a model can
+    /// resolve 8-point print.
+    var pixelSize: CGSize {
+        guard let cg = cgImage else { return CGSize(width: size.width * scale,
+                                                    height: size.height * scale) }
+        return CGSize(width: cg.width, height: cg.height)
+    }
 }

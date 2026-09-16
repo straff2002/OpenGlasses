@@ -672,6 +672,10 @@ enum PrivacyLog {
         case refused, powerRefused, cameraClaimFailed
         case textRecognized, recognitionFailed, documentDetected, detectionFailed
         case frameInjected, captureTimedOut, captureFailed, declined
+        // Plan FF P1/PR4 — the reading-capture outcomes. `captureRetried` is the one bounded
+        // automatic re-capture, `captureUnusable` a picture that arrived and could not be read,
+        // `captureStale` one refused because its session or its moment had passed.
+        case captureRetried, captureUnusable, captureStale
         case performanceSampled
     }
 

@@ -135,9 +135,19 @@ final class NativeToolRegistry {
             // Plan CB: sharp-frame injection for live sessions. The injector resolves through
             // AppStateProvider at execution time — the session managers are per-session objects,
             // and capturing one here would go stale on the first teardown (see LookCloselyTool).
+            //
+            // Plan FF P1/PR4: the capture goes through the still chokepoint under
+            // `PrivacyFilterScope.liveSession`, not `camera.capturePhoto()`. The unfiltered
+            // accessor is the wearer's own framed shot; these pixels are pushed into a cloud
+            // realtime session, which is an egress like the streamed frames beside them.
+            let sharpStill = SharpStillCapture(provider: camera,
+                                               cameraSession: { camera.readinessNow.session })
             register(LookCloselyTool(
-                captureSharpFrame: { try await camera.capturePhoto() },
+                captureSharpStill: { identity in
+                    await sharpStill.capture(liveSessionIdentity: identity)
+                },
                 injectorProvider: { AppStateProvider.shared?.activeLiveInjector },
+                cameraSession: { camera.readinessNow.session },
                 // Plan FF P0/PR2: the requested-capture cue, resolved at execution time for the
                 // same reason the injector is — the coordinator belongs to an AppState this
                 // process-lifetime tool must not capture.

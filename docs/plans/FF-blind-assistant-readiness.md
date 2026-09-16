@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0 PR1+PR2 and P1 PR3 (headless part) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; and one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start. PR4–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output, no on-glasses audio check and no blind-participant journey has been captured yet.**
+**Status: 🚧 P0 PR1+PR2 and P1 PR3+PR4 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; and every requested sharp capture now filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline. PR5–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output, no on-glasses audio check, no on-device reading measurement and no blind-participant journey has been captured yet.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -17,7 +17,7 @@ The online experience looks close enough for a focused hardening and user-valida
 |---|---|---|
 | Non-visual activation | **P1/PR3 done in code.** `LiveSessionActivator` is the one owner behind launch, foreground, the Action Button, every Siri shortcut and the app's own control; `BlindAssistantLaunchPolicy` decides the opt-in start-on-launch and names the nine ways it declines. VoiceOver semantics and UI audits exist, and the non-visual journey is walked in [FF-entry-journey-audit.md](FF-entry-journey-audit.md). | A blind participant completing setup and use without a sighted operator — the acceptance bar — and the device checks listed in the PR3 evidence note. Temple media trigger stays experimental; the pinned DAT SDK exposes no gesture or capture-button API (re-checked, see the audit). |
 | Blind-user prompt | **P0 done.** `BlindAssistanceContract` holds the rules once; the Blind Assistant preset prefix is composed from it, both realtime backends apply the preset through one seam, and navigation, narration, assistive-mode and reading compose the fragments that apply to them. | Live model outputs still to be captured against `BlindAssistanceResponseAudit` on device (see the P0 evidence note). |
-| Reading-quality capture | `LookCloselyTool` captures a sharp still and injects it into the active live session, with timeout and power/cooldown policy. **P0 rewrote the failure and decline copy**: it no longer permits answering the fine-detail question from the stream. | Establish that natural reading requests reliably invoke it and that delivered image detail survives the complete pipeline (PR4). |
+| Reading-quality capture | **P1/PR4 done in code.** The capture goes through the privacy chokepoint under the live-session scope, is measured into a `CaptureQualityReport` (both pixel sizes, bytes, sharpness, luma, camera and session identity), and is refused rather than injected when it predates the request or belongs to a replaced session or camera. Blur and darkness get one automatic re-capture and then a reposition or light instruction, or a confidence-floored partial transcription. The tool description now names the wearer's own phrases, composed from `ReadingRequestClassifier`; the routing audit is in [FF-reading-routing.md](FF-reading-routing.md). | Glare and occlusion are **not** detected by the quality gate and are injected as usable (see the PR4 baseline table). No on-device measurement: real mail and labels through the production adapters, and whether the model actually calls the tool on a spoken "read this". Targets are agreed after that baseline. |
 | Audible state | **P0/PR2 done in code.** `AudibleLifecyclePolicy` + `AudibleLifecycleCoordinator` give session-usable, connection-lost, service-usable-again and requested-capture-succeeded a distinct earcon and a short spoken line, delivered through the app's own speech path with VoiceOver on or off; the recovery cue is evaluated from evidence rather than at callback time, and `SessionAnnouncementPolicy` now subtracts the transitions the cues own. | Nothing heard on hardware yet: glasses output with the phone pocketed, a queued cue distinguished from a heard one, and VoiceOver on a device are all owed (see the PR2 evidence note). |
 | Session resilience | Gemini has coalesced bounded reconnects, ten-attempt limit, resumption handles and server-rotation handling. | Verify actual context continuity and usable microphone/frame recovery. Audio restart failure is logged in the reconnect callback; connection success alone is insufficient. Exhaustion ends the session. |
 | Offline local vision | MLX local vision and capability guards exist; offline turn-loop/freshness/assembler tests exist. | BU explicitly leaves offline service device wiring pending. No automatic takeover exists in the inspected Gemini failure path. llama.cpp currently advertises no vision and rejects images; a downloaded text model is not a visual fallback. |
@@ -27,7 +27,7 @@ The online experience looks close enough for a focused hardening and user-valida
 
 - [Live presets](../../OpenGlasses/Sources/Models/LiveAIMode.swift), [navigation prompt](../../OpenGlasses/Sources/Services/Accessibility/NavigationAssistService.swift), [assistive routing](../../OpenGlasses/Sources/Services/Accessibility/AssistiveRouter.swift).
 - [Action Button intent](../../OpenGlasses/Sources/App/Intents/ToggleGeminiLiveIntent.swift), [application wiring](../../OpenGlasses/Sources/App/OpenGlassesApp.swift), [media trigger plan and device caveats](CH-media-button-trigger.md).
-- [Sharp capture tool](../../OpenGlasses/Sources/Services/NativeTools/LookCloselyTool.swift), [capture policy](../../OpenGlasses/Sources/Services/Live/LookCloselyPolicy.swift).
+- [Sharp capture tool](../../OpenGlasses/Sources/Services/NativeTools/LookCloselyTool.swift), [capture policy](../../OpenGlasses/Sources/Services/Live/LookCloselyPolicy.swift), [quality report](../../OpenGlasses/Sources/Services/Vision/CaptureQualityReport.swift), [filtered sharp capture](../../OpenGlasses/Sources/Services/Vision/SharpStillCapture.swift), [degraded outcomes](../../OpenGlasses/Sources/Services/Live/ReadingCaptureOutcome.swift), [reading-request predicate](../../OpenGlasses/Sources/Services/Accessibility/ReadingRequestClassifier.swift).
 - [Announcement policy](../../OpenGlasses/Sources/Services/Accessibility/SessionAnnouncementPolicy.swift), [audio cues](../../OpenGlasses/Sources/Services/TextToSpeechService.swift).
 - [Gemini session manager](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveSessionManager.swift), [socket recovery](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveService.swift), [resumption helpers](../../OpenGlasses/Sources/Services/GeminiLive/GeminiSessionResumption.swift).
 - [Local MLX service](../../OpenGlasses/Sources/Services/LocalLLMService.swift), [llama.cpp backend](../../OpenGlasses/Sources/Services/LocalInference/LlamaCpp/LlamaCppLocalInferenceBackend.swift), [offline core tests](../../OpenGlassesTests/OfflineLiveSessionTests.swift).
@@ -350,6 +350,124 @@ what a wearer hears.
 - On blur, darkness or timeout, speak a concise reposition/hold-steady instruction or partial transcription. Never infer missing digits from packaging context. Bound retries and retain power/privacy controls.
 
 Acceptance: a fixed corpus of mail, small print, prices and synthetic medication labels, including blur/glare/occlusion; measure character/digit accuracy, capture success and end-of-question to first useful spoken text. Test capture failure and session replacement through production adapters. Proposed performance targets must be agreed after a baseline, before declaring the milestone complete.
+
+### P1 / PR4 evidence note — headless part implemented 2026-09-16
+
+Build: worktree on `feat/ff-p4-reading-detail` from `c1db0f67`, build 400. Debug simulator build,
+the ten focused classes (146 executed), the full `OpenGlassesTests` suite (6076 executed, 0
+failures, 13 skipped) and a Release simulator build all green on an iPhone 17 Pro simulator. No
+hardware run, no live model output.
+
+**The routing audit is its own document**, [FF-reading-routing.md](FF-reading-routing.md): the five
+findings, the deterministic assist that was chosen, and the three that were rejected with reasons.
+In short — nothing in the app decided whether a request was a reading request; `look_closely`'s
+description named receipt line items and gauge markings and none of the phrases a wearer actually
+says; its no-session fallback pointed at `read_text`, a tool that does not exist; `reading_assist`
+is registered only under the accessibility-mode gate; and Direct mode's Tier 0 has no reading route
+and should not get one here. The assist chosen is the smallest that the audit justifies:
+`ReadingRequestClassifier`, a pure predicate whose `triggerPhrases` **compose** the tool description,
+so the phrases the model is shown and the phrases the app recognises cannot drift; the same
+predicate picks between two guidance lines and decides whether a failed capture is worth an
+on-device recognition pass. No new router, no pre-capture, no new contract fragment, no change to
+streaming bandwidth. Pre-capturing before the turn is the reliable version and is recorded as PR5/PR6
+work, because it means owning the live turn boundary that PR5's reconnect work also edits.
+
+**A privacy correction came out of the pipeline verification.** `look_closely` captured through
+`CameraService.capturePhoto()` — the unfiltered accessor, which is the wearer's own framed shot by
+product decision — and pushed the pixels into a cloud realtime session. It now goes through
+`filteredStill(for:source:)` under `PrivacyFilterScope.liveSession`, the scope the streamed frames
+beside it already travel under, and a scope that cannot be filtered yields `.unavailable` rather
+than the source pixels. The roster scraper could not have caught it: `NativeToolRegistry` contained
+`capturePhoto()`, but the sink it fed — `injectSharpImage` — was not one of the six patterns the
+sink test knew. That pattern is added, and `SharpStillCapture` is on the roster as
+`lookCloselyCapture`.
+
+**The quality report.** `CaptureQualityReport` is produced at the capture boundary and carries the
+pixel size before the privacy filter and after it, the encoded JPEG byte count, Laplacian sharpness
+(`ImageSharpness`, reused), mean luma (`ImageBrightness`, new, the darkness half of the same pair),
+the privacy scope, the camera session, the live session and the moment of capture. `sendHighResImage`
+was checked on both wires: it neither resizes nor re-encodes — it base64s the bytes as given — so
+the delivered size is the encoded still's own and the byte count is the wire payload.
+
+**The freshness and identity guard, asserted in code.** Injection goes through one function, and it
+re-reads the world *after* the capture rather than trusting what it read before: pixels older than
+the request, a live session whose identity has moved (a reconnect inside the capture window, with
+`canInject` true again for a different conversation), a camera session that has been replaced, or an
+injector that has gone — each is refused, and each reports `noFreshView`, the existing name for
+"there is a picture and it is not a current view". `LiveSessionInjecting` gained
+`liveSessionIdentity` for this; both realtime managers bump it on every start. One request injects
+at most one image.
+
+**Degraded outcomes and their thresholds.** Darkness is checked before blur, because an underexposed
+frame also scores low on the Laplacian and would otherwise send a wearer to hold still in a dark
+room. Blur threshold 55, derived *below* `ImageSharpness.blurThreshold` (90): the existing number is
+tuned for "should I suggest holding steady when OCR found nothing", where a false positive is a
+nagging message, and here a false positive costs a whole extra capture and several seconds. Darkness
+threshold 0.18 mean luma, taken unchanged from `ImageBrightness` — roughly a stop and a half under a
+dim indoor scene, low enough that a badly-lit-but-readable label is never blamed on the light.
+Exactly one automatic re-capture; the retry re-checks power posture, so it is a request rather than a
+bypass, and the cooldown deliberately does not gate it because nothing was injected. The cooldown
+clock moved from "last capture" to "last *injected* capture", which is what its own decline text
+already claimed.
+
+The instruction, the partial transcription and the unavailable copy are all directives to the model
+in the shape PR1 established — the one sentence to say, then "the detail is still unread", then
+never guess. The live model holds the audio floor during a session, so this is how a spoken
+instruction reaches the wearer; a second app voice speaking over the model is a PR5 concern. A
+partial transcription only carries blocks at or above 0.5 Vision confidence — above `OCRService`'s
+own 0.3 floor, because this text is read aloud verbatim to someone who cannot check it.
+
+**Baseline — simulator, synthetic corpus, no thresholds set.** Four invented documents (a council
+rates notice, a block of small print, a shelf price tag, and a medication-style label with a made-up
+name, dose and lot) rendered with Core Graphics in
+`OpenGlassesTests/Fixtures/ReadingCorpus/reading-corpus.json`, each in four conditions: clear,
+Gaussian blur at an eighth of the cap height, a hard glare band over the middle 40%, and the left 34%
+occluded. Real `OCRService` over all sixteen; capture success through `look_closely` itself with a
+fake camera; time from request to tool result through the tool's injected clock.
+
+| document | variant | char acc | digit acc | bytes | sharpness | luma | verdict | tool outcome |
+|---|---|---|---|---|---|---|---|---|
+| mail | clear | 1.000 | 1.000 | 54359 | 4593 | 0.981 | usable | read-from-image |
+| mail | blurred | 0.932 | 1.000 | 25363 | 11 | 0.990 | tooBlurry | partial transcription |
+| mail | glared | 0.699 | 0.538 | 37609 | 2191 | 0.990 | usable | read-from-image |
+| mail | occluded | 0.204 | 0.385 | 25289 | 1182 | 0.741 | usable | read-from-image |
+| small print | clear | 1.000 | 1.000 | 42856 | 1161 | 0.992 | usable | read-from-image |
+| small print | blurred | 0.993 | 1.000 | 20874 | 26 | 0.995 | tooBlurry | partial transcription |
+| small print | glared | 0.324 | 0.500 | 18373 | 15 | 1.000 | tooBlurry | partial transcription |
+| small print | occluded | 0.131 | 0.000 | 20555 | 336 | 0.744 | usable | read-from-image |
+| price tag | clear | 1.000 | 1.000 | 40219 | 4766 | 0.964 | usable | read-from-image |
+| price tag | blurred | 0.000 | 0.000 | 15177 | 3 | 0.981 | tooBlurry | reposition |
+| price tag | glared | 0.868 | 0.545 | 29696 | 2829 | 0.977 | usable | read-from-image |
+| price tag | occluded | 0.289 | 0.273 | 19953 | 1621 | 0.736 | usable | read-from-image |
+| medication-style | clear | 1.000 | 1.000 | 41326 | 4547 | 0.982 | usable | read-from-image |
+| medication-style | blurred | 0.607 | 0.923 | 19276 | 5 | 0.991 | tooBlurry | partial transcription |
+| medication-style | glared | 0.643 | 0.538 | 26352 | 1762 | 0.992 | usable | read-from-image |
+| medication-style | occluded | 0.125 | 0.000 | 18622 | 856 | 0.743 | usable | read-from-image |
+
+Capture success through the tool: 15 of 16 variants reached the model's view; the sixteenth spent its
+one retry and returned a partial transcription. Request to tool result, in process: 11–17 ms when the
+first capture is usable, 488–1606 ms when it is not (a second capture plus the on-device recognition
+pass). That excludes everything this harness cannot see — the glasses shutter, the Bluetooth or Wi-Fi
+transfer, the model's own latency and its speech — so it is a floor, not an end-to-end figure. No
+targets are set: the plan agrees them after a baseline with blind participants, and this is a
+simulator measuring clean synthetic renders, which bounds the pipeline from above.
+
+**The two gaps the table shows, stated rather than buried.** Blur and darkness are caught; **glare
+and occlusion are not**. Three of the four glared variants and all four occluded variants score
+`usable` on sharpness and luma and are injected, at character accuracies as low as 0.125 and digit
+accuracies of 0.000. Sharpness and luma are global statistics and cannot see a bright band or a thumb
+over the left margin. What stands between that and a wrong answer today is the PR1 faithful-reading
+contract — the model reads what it can see and says the reading is partial — which is prompt content
+and not a guarantee. A detector for either is not in PR4 and is not implied by it. Second: a partial
+transcription of a glared still can be confidently wrong, because Vision's own confidence is the only
+signal available to the 0.5 floor.
+
+**Still owed.** The on-device measurement: real mail, real small print and real labels photographed
+through the glasses at reading distance, through the production adapters, against the same metrics;
+a session per trigger phrase under the Blind Assistant preset, recording the model and version and
+whether `look_closely` actually fired; and the end-of-question to first-spoken-word figure a wearer
+experiences, which this harness cannot produce. Performance targets are agreed after that, not
+before.
 
 ## P1 / PR5 — Prove recovery through usable conversation
 
