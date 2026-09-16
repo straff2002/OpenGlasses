@@ -41,8 +41,32 @@ final class AgentSessionService: ObservableObject {
     /// When contact was lost, for the "agent status" answer.
     @Published private(set) var contactLostAt: Date?
 
+    /// How each report of this run's outcome reached the wearer (Plan FE P4), newest last. One
+    /// record per result revision; a repeated identical terminal report adds none.
+    @Published private(set) var deliveries: [AgentResultDelivery] = []
+
+    /// The most recent delivery record — what "agent status" and a replay act on.
+    ///
+    /// Falls back to the persisted store, which is the whole point of the crash window: after a
+    /// relaunch there is nothing in memory, and "no record" would read as "nothing was ever
+    /// delivered". Scoped to the active run when there is one, so a previous run's record can
+    /// never describe the current one.
+    var latestDelivery: AgentResultDelivery? {
+        if let last = deliveries.last { return last }
+        guard let runID = activeRun?.id else { return deliveryStore?.mostRecent }
+        return deliveryStore?.latest(forRun: runID)
+    }
+
     /// Injected clock so the contact-lost timestamp is deterministic in tests.
     var now: () -> Date = Date.init
+
+    /// Injected sleeper for acknowledgement backoff, so a retry test does not wait out the ladder.
+    var sleeper: (TimeInterval) async -> Void = { seconds in
+        try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+    }
+
+    /// Bounded retry/backoff for the acknowledgement, shared with polling (Plan FE P0/P4).
+    var policy: AgentPollingPolicy = .default
 
     /// A directly-set harness (tests/back-compat). When a `registry` is present it takes precedence,
     /// so a default-harness change in Settings applies without re-dispatching.
@@ -51,8 +75,22 @@ final class AgentSessionService: ObservableObject {
     /// The harness registry (Phase 2). When set, `dispatch` uses its `active` harness.
     private(set) var registry: AgentHarnessRegistry?
 
-    /// Injected speaker. AppState wires `TextToSpeechService`; tests capture the lines.
+    /// Injected speaker for narration — progress lines, questions, reply outcomes. Fire and
+    /// forget, which is the right shape for a line whose delivery nobody is going to act on.
     var speak: (String) -> Void = { _ in }
+
+    /// Injected speaker that **reports how playback ended** (Plan FE P4). AppState wires
+    /// `TextToSpeechService.speakReporting`; tests script an outcome.
+    ///
+    /// Only the final result summary goes through it, because the result is the one thing a wearer
+    /// dispatched work to hear. When it is `nil` the summary is spoken through `speak` exactly as
+    /// before and **no delivery record is written**: a record saying `completed` on the strength of
+    /// a closure that returns `Void` would be the same false claim in a new place.
+    var speakResult: ((String) async -> SpeechDeliveryOutcome)?
+
+    /// Where delivery records survive a relaunch. `nil` keeps them in memory only (tests that do
+    /// not exercise the crash window); AppState wires the shared store.
+    var deliveryStore: AgentDeliveryRecordStore?
 
     /// User-distinct consent seam (BN P1): wired by AppState to the shared consent surface
     /// (`ToolConfirmationCoordinator`); tests inject grants/denials. When nil, a tool-called
@@ -82,7 +120,17 @@ final class AgentSessionService: ObservableObject {
     /// Questions already surfaced, by `(id, revision)`.
     private var announcedQuestions: Set<AgentQuestion.Identity> = []
 
+    /// A fingerprint per delivered result revision, in order. Its `count` is the next revision
+    /// number, and its last entry is what a repeated terminal report is compared against.
+    private var deliveredFingerprints: [String] = []
+
     private var eventTask: Task<Void, Never>?
+    /// The in-flight delivery (speak, then acknowledge). Awaited by `awaitDelivery()`.
+    private var deliveryTask: Task<Void, Never>?
+
+    /// Wait for the current result delivery — playback and acknowledgement — to settle.
+    /// Exists for tests and for a caller that needs the record before acting on it.
+    func awaitDelivery() async { await deliveryTask?.value }
 
     init() {}
 
@@ -156,6 +204,7 @@ final class AgentSessionService: ObservableObject {
             activeRun = run
             result = AgentRunResult()
             resetQuestionState()
+            resetDeliveryState()
             lastSummary = nil
             connectionState = .connected
             contactLostAt = nil
@@ -265,16 +314,236 @@ final class AgentSessionService: ObservableObject {
         eventTask = nil
     }
 
+    /// Reach a terminal state, and deliver the result **once per distinct result** (Plan FE P4).
+    ///
+    /// The dedupe is the reason this is not simply "speak the summary". An endpoint that keeps
+    /// answering `completed` on every poll is reporting the same outcome repeatedly, not finishing
+    /// repeatedly; before this, each repeat was a fresh narration. A report whose *fields* differ
+    /// is a genuinely revised result and gets its own revision, its own delivery record and its own
+    /// acknowledgement — even when the summary happens to come out word for word the same, because
+    /// the acknowledgement names a revision and must not be allowed to stand in for another's
+    /// contents.
     private func finish(status: AgentRunStatus,
                         cancellation: AgentSummarizer.CancellationOrigin = .remote) {
         activeRun?.status = status
         resetQuestionState()
         connectionState = .connected
-        let summary = AgentSummarizer.summarize(result, status: status, cancellation: cancellation)
-        lastSummary = summary
-        emit(summary)
         eventTask?.cancel()
         eventTask = nil
+
+        let fingerprint = Self.fingerprint(result, status: status, cancellation: cancellation)
+        if deliveredFingerprints.last == fingerprint {
+            PrivacyLog.agent(.session, .resultDelivered, reason: PrivacyToken("duplicateSuppressed"),
+                             count: deliveredFingerprints.count - 1)
+            return
+        }
+        let summary = AgentSummarizer.summarize(result, status: status, cancellation: cancellation)
+        lastSummary = summary
+        let revision = deliveredFingerprints.count
+        deliveredFingerprints.append(fingerprint)
+        beginDelivery(of: summary, revision: revision)
+    }
+
+    /// The terminal report's identity: what was reported, plus how the run ended and who ended it.
+    /// Cancellation origin is in it because "you cancelled this" and "the endpoint cancelled this"
+    /// are different results even when the tallies match.
+    private static func fingerprint(_ result: AgentRunResult, status: AgentRunStatus,
+                                    cancellation: AgentSummarizer.CancellationOrigin) -> String {
+        "\(status.rawValue)\u{1}\(cancellation)\u{1}\(result.deliveryFingerprint)"
+    }
+
+    private func resetDeliveryState() {
+        deliveryTask?.cancel()
+        deliveryTask = nil
+        deliveries = []
+        deliveredFingerprints = []
+    }
+
+    // MARK: - Result delivery (Plan FE P4)
+
+    /// Hand one result revision to the speech service and record what becomes of it.
+    ///
+    /// The record is written **before** the utterance is requested, so a crash between the two
+    /// leaves a `pending` record rather than no record — which is the difference between "we don't
+    /// know whether you heard it" and "as far as this app is concerned it never happened".
+    private func beginDelivery(of summary: String, revision: Int) {
+        guard let runID = activeRun?.id, speakResult != nil else {
+            // No reporting speaker (or no run to attribute it to): behave exactly as before and
+            // write no record, rather than record a completion nothing observed.
+            emit(summary)
+            return
+        }
+        let record = AgentResultDelivery(runID: runID, resultRevision: revision,
+                                         state: .pending, ackState: .pending, at: now())
+        store(record)
+        spokenLog.append(summary)
+        deliveryTask = Task { @MainActor [weak self] in
+            await self?.performDelivery(summary, record: record)
+        }
+    }
+
+    private func performDelivery(_ line: String, record: AgentResultDelivery) async {
+        var record = record
+        record.state = .playing
+        record.at = now()
+        store(record)
+
+        let outcome = await speakResult?(line) ?? .failed(reason: "no speaker")
+        record.state = Self.state(for: outcome)
+        record.at = now()
+        PrivacyLog.agent(.session, .resultDelivered, reason: PrivacyToken(outcome.token),
+                         count: record.resultRevision)
+        store(record)
+        await acknowledge(record)
+    }
+
+    private static func state(for outcome: SpeechDeliveryOutcome) -> AgentResultDelivery.State {
+        switch outcome {
+        case .completed:   return .completed
+        case .interrupted: return .interrupted
+        case .suppressed:  return .suppressed
+        case .failed:      return .failed
+        }
+    }
+
+    /// Record a delivery in memory and, when a store is wired, on disk.
+    private func store(_ record: AgentResultDelivery) {
+        if let index = deliveries.firstIndex(where: { $0.identity == record.identity }) {
+            deliveries[index] = record
+        } else {
+            deliveries.append(record)
+        }
+        deliveryStore?.save(record)
+    }
+
+    // MARK: - Acknowledging a delivered result (Plan FE P4)
+
+    /// Tell the run's **own** endpoint that this revision finished playing.
+    ///
+    /// Three rules hold this together, and each of them closes a way of lying:
+    ///
+    ///  * Only `completed` playback is acknowledged. A queued, suppressed or interrupted result
+    ///    acknowledged as delivered would let an endpoint suppress re-delivery of something the
+    ///    wearer never heard.
+    ///  * The `ackID` is derived from `(run, revision)`, so every retry carries the same id and a
+    ///    repeat is recognisable as one. Nothing else makes re-sending safe.
+    ///  * **An acknowledgement failure never fails the task.** The delivery stays `completed`
+    ///    locally and the record says why the endpoint was not told. Nothing is spoken about it:
+    ///    the wearer heard their result, and the bookkeeping between two machines is not their
+    ///    problem.
+    private func acknowledge(_ record: AgentResultDelivery) async {
+        var record = record
+        guard !record.ackState.isAcknowledged else { return }
+        guard let ack = AgentDeliveryAck.for(record) else {
+            record.ackState = .unacknowledged(reason: .notCompleted)
+            store(record)
+            return
+        }
+        // The run's own backend, bound at dispatch — never whatever Settings points at now.
+        guard let harness = runHarness, let run = activeRun else {
+            record.ackState = .unacknowledged(reason: .unsupported)
+            store(record)
+            return
+        }
+
+        var failures = 0
+        while true {
+            guard isNewestRevision(record) else {
+                // A newer result arrived while we were trying. Abandon this one rather than
+                // acknowledge it late against a revision the endpoint has already moved past.
+                record.ackState = .unacknowledged(reason: .superseded)
+                store(record)
+                return
+            }
+            do {
+                try await harness.acknowledgeDelivery(run, ack: ack)
+                record.ackState = .acknowledged
+                PrivacyLog.agent(.session, .resultAcknowledged, count: record.resultRevision)
+                store(record)
+                return
+            } catch AgentHarnessError.ackUnsupported {
+                // Nobody asked to be told. Not a failure, and nothing to retry.
+                record.ackState = .unacknowledged(reason: .unsupported)
+                store(record)
+                return
+            } catch AgentHarnessError.http(let code) where !AgentPollingPolicy.isRetryable(httpStatus: code) {
+                record.ackState = .unacknowledged(reason: .endpointRefused)
+                PrivacyLog.agent(.session, .resultAckFailed, reason: PrivacyToken("endpointRefused"),
+                                 error: .http(status: code))
+                store(record)
+                return
+            } catch {
+                failures += 1
+                switch policy.decideAck(afterFailureCount: failures) {
+                case .giveUp:
+                    record.ackState = .unacknowledged(reason: .transport)
+                    PrivacyLog.agent(.session, .resultAckFailed, reason: PrivacyToken("transport"),
+                                     count: failures)
+                    store(record)
+                    return
+                case .retry(_, let after):
+                    await sleeper(after)
+                }
+            }
+        }
+    }
+
+    private func isNewestRevision(_ record: AgentResultDelivery) -> Bool {
+        record.resultRevision == max(0, deliveredFingerprints.count - 1)
+    }
+
+    // MARK: - Replay (Plan FE P4)
+
+    /// Read the retained result out again.
+    ///
+    /// The point is the wearer who was talked over, or whose glasses were off, or who walked back
+    /// in after a relaunch: the result still exists, and the only thing that changes is how
+    /// honestly it is introduced. A delivery that was cut short or withheld is offered as one they
+    /// missed; one already read in full is offered as a repeat; one whose fate the record cannot
+    /// vouch for is hedged in both directions and never claimed either way.
+    @discardableResult
+    func replayLastResult() async -> String {
+        guard let summary = lastSummary else {
+            // A relaunch keeps the record and not the words — deliberately (see the store).
+            if let reloaded = deliveryStore?.mostRecent, reloaded.deliveryIsAmbiguous {
+                let line = AgentDeliveryPhrasing.ambiguousWithoutWords
+                emit(line)
+                return line
+            }
+            return AgentDeliveryPhrasing.nothingToReplay
+        }
+        guard var record = latestDelivery, speakResult != nil else {
+            // No record kept (no reporting speaker wired): still replay the words, claim nothing.
+            let line = AgentDeliveryPhrasing.againPrefix + summary
+            emit(line)
+            return line
+        }
+
+        let prefix: String
+        if record.deliveryIsAmbiguous {
+            prefix = AgentDeliveryPhrasing.ambiguousPrefix
+        } else if record.owesReplay || record.state == .failed {
+            prefix = AgentDeliveryPhrasing.missedPrefix
+        } else {
+            prefix = AgentDeliveryPhrasing.againPrefix
+        }
+
+        let line = prefix + summary
+        spokenLog.append(line)
+        PrivacyLog.agent(.session, .resultReplayed, reason: PrivacyToken(record.state.rawValue),
+                         count: record.resultRevision)
+        let outcome = await speakResult?(line) ?? .failed(reason: "no speaker")
+        record.state = Self.state(for: outcome)
+        record.at = now()
+        record.reloaded = false     // we watched this one; it is no longer a guess off the disk
+        store(record)
+        await acknowledge(record)
+        return line
+    }
+
+    /// Whether there is a retained result the wearer could ask to hear again.
+    var canReplayResult: Bool {
+        lastSummary != nil || deliveryStore?.mostRecent?.deliveryIsAmbiguous == true
     }
 
     // MARK: - Controls
@@ -494,7 +763,13 @@ final class AgentSessionService: ObservableObject {
     /// Contact comes first: once we have stopped following a run, every other answer here would be
     /// a stale guess dressed as the present.
     func currentStatusLine() -> String {
-        guard let run = activeRun else { return "No agent run is active." }
+        guard let run = activeRun else {
+            // Nothing running, but a result may have been read out in a process that is gone.
+            if let record = deliveryStore?.mostRecent, record.deliveryIsAmbiguous {
+                return "No agent run is active." + AgentDeliveryPhrasing.ambiguousTail
+            }
+            return "No agent run is active."
+        }
         if case .lost(let loss) = connectionState, !run.status.isTerminal {
             return AgentSummarizer.statusLine(afterContactLost: loss,
                                               at: Self.timeFormatter.string(from: contactLostAt ?? now()),
@@ -508,10 +783,21 @@ final class AgentSessionService: ObservableObject {
             }
             return "The agent is working on \(run.project ?? "your task")."
         case .awaitingInput: return pendingQuestion?.prompt ?? "The agent is waiting for your confirmation."
-        case .completed:     return lastSummary ?? "The agent run is complete."
-        case .failed:        return lastSummary ?? "The agent run failed."
-        case .cancelled:     return "The agent run was cancelled."
+        case .completed:     return (lastSummary ?? "The agent run is complete.") + deliveryTail()
+        case .failed:        return (lastSummary ?? "The agent run failed.") + deliveryTail()
+        case .cancelled:     return "The agent run was cancelled." + deliveryTail()
         }
+    }
+
+    /// What the status line adds about **whether the wearer actually got** the result (Plan FE P4).
+    ///
+    /// Nothing at all when playback completed: repeating "and you heard it" would be a claim this
+    /// app cannot make. The tail appears only when the record says they did not get it, or when it
+    /// cannot say — and in the second case it hedges rather than picking the comfortable reading.
+    private func deliveryTail() -> String {
+        guard let record = latestDelivery else { return "" }
+        if record.deliveryIsAmbiguous { return AgentDeliveryPhrasing.ambiguousTail }
+        return AgentDeliveryPhrasing.statusTail(for: record.state) ?? ""
     }
 
     /// Short local time ("3:42 PM" / "15:42"), for the contact-lost answer.

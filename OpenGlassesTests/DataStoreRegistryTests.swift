@@ -61,6 +61,13 @@ final class DataStoreRegistryTests: XCTestCase {
         "OpenGlasses/Sources/Services/GeminiLive/GeminiLiveModelCatalog.swift":
             "cached list of the provider's own model names",
 
+        // Operational bookkeeping with no content in it.
+        "OpenGlasses/Sources/Services/AgentHarness/AgentDeliveryRecordStore.swift":
+            "the delivery record for an agent result: the endpoint's own run id, which revision "
+                + "of the result it was, and two closed-vocabulary state tokens. It deliberately "
+                + "holds none of the result — the words live in memory and are gone after a "
+                + "relaunch, which is why a reloaded record can only hedge, never re-read",
+
         // UI state with no content in it.
         "OpenGlasses/Sources/Services/NativeTools/PomodoroTool.swift":
             "a timer's start time and length",

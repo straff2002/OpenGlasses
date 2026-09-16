@@ -113,6 +113,18 @@ struct AgentHarnessSettingsView: View {
             }
 
             Section {
+                urlField("Delivery ack URL (POST) — use {id}", text: $config.ackURLTemplate)
+            } header: {
+                Text("Result acknowledgement")
+            } footer: {
+                if config.acceptsDeliveryAcks {
+                    Text("Told when a result finishes playing, with the run, which revision of the result it was, and an id that stays the same if the send has to be retried. It means the audio played to the end on this phone — not that you heard it or took it in. Only a result that actually finished playing is acknowledged, and if the acknowledgement fails the task stays finished here.")
+                } else {
+                    Text("Optional. Leave blank and nothing is ever sent. Set it if your endpoint wants to know a result was read out — for example to stop re-sending it.")
+                }
+            }
+
+            Section {
                 fieldRow("Summary / final text path", text: $config.finalTextPath)
                 fieldRow("Files created path", text: $config.filesCreatedPath)
                 fieldRow("Files modified path", text: $config.filesModifiedPath)

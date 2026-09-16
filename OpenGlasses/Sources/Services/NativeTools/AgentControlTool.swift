@@ -14,7 +14,8 @@ struct AgentControlTool: NativeTool {
     "status" to hear how the current run is going; "cancel" to stop it; "confirm"/"deny" to answer a \
     safety confirmation the agent is waiting on (e.g. before pushing); "answer" with "text" when the \
     agent asked a question that wants words rather than permission ("only change the tests"); "retry" \
-    if an answer did not reach the agent. Confirming and answering both raise the user's own \
+    if an answer did not reach the agent; "replay" to hear the last result again when it was cut \
+    off, could not be read out at the time, or you just want it repeated. Confirming and answering both raise the user's own \
     on-screen/spoken prompt — this tool can ask, never decide. Only available when Agent Mode \
     is enabled in Settings. The result is spoken; the agent narrates progress and a final summary.
     """
@@ -26,7 +27,7 @@ struct AgentControlTool: NativeTool {
                 "action": [
                     "type": "string",
                     "enum": ["start", "status", "cancel", "confirm", "deny", "answer", "retry",
-                             "switch_harness"],
+                             "replay", "switch_harness"],
                     "description": "What to do. Defaults to start.",
                 ],
                 "prompt": [
@@ -111,6 +112,12 @@ struct AgentControlTool: NativeTool {
         case "retry", "retry_answer", "resend":
             return await session.retryPendingReply()
 
+        case "replay", "repeat", "again":
+            // Plan FE P4: the surface that makes an interrupted or withheld result recoverable.
+            // It reads the retained result out again and says which of those it was — never
+            // claiming the wearer heard it the first time when the record cannot support that.
+            return await session.replayLastResult()
+
         case "switch_harness", "switch":
             guard let raw = args["harness"] as? String,
                   let kind = AgentHarnessKind.matching(raw) else {
@@ -124,7 +131,7 @@ struct AgentControlTool: NativeTool {
             return "Switched the agent backend to \(kind.displayName)."
 
         default:
-            return "Unknown agent action '\(action)'. Try start, status, cancel, confirm, deny, answer, or retry."
+            return "Unknown agent action '\(action)'. Try start, status, cancel, confirm, deny, answer, retry, or replay."
         }
     }
 }

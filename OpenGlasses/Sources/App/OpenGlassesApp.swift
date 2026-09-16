@@ -1656,6 +1656,17 @@ class AppState: ObservableObject, AppStateProtocol {
         AgentSessionService.shared.configure(registry: makeAgentRegistry(), speak: { [weak self] line in
             Task { @MainActor in await self?.speechService.speak(line) }
         })
+        // Plan FE P4: the final result summary goes through the *reporting* speaker, so the
+        // session learns whether playback completed, was talked over, or never happened — the
+        // thing a fire-and-forget `Task { speak(line) }` could never tell it. Progress narration
+        // above stays fire-and-forget: nobody acts on how a progress line landed.
+        AgentSessionService.shared.speakResult = { [weak self] line in
+            guard let self else { return .failed(reason: "the app was torn down") }
+            return await self.speechService.speakReporting(line)
+        }
+        // The crash window: a record of what was read out survives a relaunch, so a result whose
+        // playback we never saw finish is hedged rather than claimed or forgotten.
+        AgentSessionService.shared.deliveryStore = AgentDeliveryRecordStore.shared
         // BN P1: a `code_agent confirm` tool call only raises the user-distinct consent prompt —
         // it can never approve itself (the prompt-injection → self-approved-push hole).
         AgentSessionService.shared.requestUserConsent = { [weak self] request in
@@ -3038,7 +3049,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // model is still generating is a turn that never delivered, and the cancellation path tags
         // that one `abandoned` instead.
         if speechService.isSpeaking { TurnRecorder.noteInterrupted() }
-        speechService.stopSpeaking()
+        // Plan FE P4: name the cause. A result the wearer talked over is one they chose to cut
+        // short; the same teardown from a disconnect is one they never got. Both used to be
+        // `stopSpeaking()`, and the replay offer depends on telling them apart.
+        speechService.stopSpeaking(interruption: .bargeIn)
         let interruptedTask = currentLLMTask
         interruptedTask?.cancel()
         currentLLMTask = nil

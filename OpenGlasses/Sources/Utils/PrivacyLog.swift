@@ -1317,6 +1317,9 @@ enum PrivacyLog {
         case engineFailed, engineFallback
         case requested, received, playing, playbackFinished, decodeFailed
         case voiceSelected, quotaExhausted, quotaCacheReset, toneFailed, voicesRequestFailed
+        // Plan FE P4 — the terminal delivery outcome handed back to the caller, as a fixed token
+        // (`completed`, `interrupted-bargeIn`, `suppressed-noRoute`, `failed`). Never the words.
+        case playbackReported
     }
 
     /// The spoken text is the assistant answering the wearer — the other half of the transcript,
@@ -1850,6 +1853,12 @@ enum PrivacyLog {
         // body is endpoint content and is never quoted); `contactLost` records that we stopped
         // polling a run, with the reason as a fixed token — never a verdict on the run itself.
         case endpointRefused, contactLost
+        // Plan FE P4 — result delivery. `resultDelivered` records how playback of a result summary
+        // actually ended (a fixed outcome token, never the words); `resultReplayed` that the wearer
+        // asked to hear one again; the ack pair whether the endpoint was told. The delivery-record
+        // pair covers the crash-window store failing to read or write.
+        case resultDelivered, resultReplayed, resultAcknowledged, resultAckFailed
+        case deliveryRecordReadFailed, deliveryRecordWriteFailed
     }
 
     /// `priority` and `reason` are fixed app enums (`AgentNotification.Priority`, the dispatcher's

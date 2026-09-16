@@ -16,6 +16,11 @@ struct AgentPollingPolicy: Equatable {
     var maxBackoff: TimeInterval = 32
     /// How many consecutive unrecognised status values we tolerate before reporting them.
     var maxUnknownStatusTicks: Int = 5
+    /// How many further attempts a **delivery acknowledgement** gets after its first failure
+    /// (Plan FE P4). Deliberately shorter than `maxRetries`: an unacknowledged result costs the
+    /// endpoint a piece of bookkeeping, while a poll that gives up costs the wearer the answer,
+    /// so the two are not worth the same number of requests. The backoff ladder is shared.
+    var maxAckRetries: Int = 2
 
     static let `default` = AgentPollingPolicy()
 
@@ -35,6 +40,13 @@ struct AgentPollingPolicy: Equatable {
     /// dead endpoint receives is therefore `1 + maxRetries`.
     func decide(afterFailureCount count: Int) -> Decision {
         count > maxRetries ? .giveUp(attempts: count) : .retry(attempt: count, after: backoff(attempt: count))
+    }
+
+    /// What to do after `count` consecutive failed acknowledgement attempts (1-based). Same
+    /// backoff as a poll, a tighter bound: `1 + maxAckRetries` requests in total, then the
+    /// delivery is recorded as unacknowledged and the run stays exactly as completed as it was.
+    func decideAck(afterFailureCount count: Int) -> Decision {
+        count > maxAckRetries ? .giveUp(attempts: count) : .retry(attempt: count, after: backoff(attempt: count))
     }
 
     /// 401/403 — the credential is wrong; hammering the endpoint with it is pointless and looks

@@ -128,6 +128,25 @@ struct CustomAgentHarness: AgentHarness {
         }
     }
 
+    /// Tell the endpoint a result revision finished playing (Plan FE P4).
+    ///
+    /// Rides the same transport, credential and route rules as every other request this adapter
+    /// makes — `.customAgentHarness`, no new route. A transport failure throws and the session
+    /// retries the *same* `ackID` under the bounded ack policy; an endpoint that already recorded
+    /// that id can treat the repeat as a no-op, which is the only thing that makes re-sending safe.
+    func acknowledgeDelivery(_ run: AgentRun, ack: AgentDeliveryAck) async throws {
+        guard let request = config.ackRequest(runID: run.id, ack: ack) else {
+            throw AgentHarnessError.ackUnsupported
+        }
+        do {
+            _ = try await sendJSON(request)
+        } catch let error as AgentHarnessError {
+            throw error
+        } catch {
+            throw AgentHarnessError.transport(error.localizedDescription)
+        }
+    }
+
     /// Status-poll event stream (no assumed push channel for an arbitrary endpoint). Emits
     /// `.started`, then polls until the run reaches a terminal state — `.completed`, `.failed` or
     /// `.cancelled`, each carrying whatever the endpoint reported — or until we lose contact, which
@@ -249,7 +268,7 @@ struct CustomAgentHarness: AgentHarness {
         case .unsupported:
             return .noStatusEndpoint       // no status URL template — polling can never work
         case .notConfigured, .transport, .unknownStatus, .agentModeOff,
-             .replyUnsupported, .uncertainDelivery:
+             .replyUnsupported, .uncertainDelivery, .ackUnsupported:
             return nil                      // transient until the bounded retries run out
         }
     }
