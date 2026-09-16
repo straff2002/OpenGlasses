@@ -174,8 +174,26 @@ struct ConversationClassifier {
             return DirectToolCall(toolName: "new_topic", arguments: [:])
         }
 
+        // "How are my requests processed" — the privacy question, answered from settings without
+        // an LLM turn. Bare-query gated like the reset above: the same words inside a longer
+        // sentence ("write about how my requests are processed") are content, not a command.
+        if let matched = matchedPattern(text, patterns: processingSummaryPatterns),
+           isBareQuery(text, matched: matched) {
+            return DirectToolCall(toolName: "processing_summary", arguments: [:])
+        }
+
         return nil
     }
+
+    /// Deliberately narrow. Every phrase here is a whole question about routing; none of them is a
+    /// fragment that could open a different sentence.
+    private let processingSummaryPatterns = [
+        "how are my requests processed", "how are my requests handled",
+        "where do my requests go", "where does my data go",
+        "does my data leave the phone", "does my data leave this phone",
+        "is this running locally", "is this running on device",
+        "is this running on the device", "what leaves my phone"
+    ]
 
     private let newTopicPatterns = [
         "new topic", "new conversation", "start over", "start fresh", "start again",

@@ -54,6 +54,7 @@ extension DomainCalcTool { var executionSemantics: ToolExecutionSemantics { .rea
 extension FoodAnalysisTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension ShazamTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension DiscoverCapabilitiesTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
+extension ProcessingSummaryTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension YieldToHumanTool { var executionSemantics: ToolExecutionSemantics { .read() } }
 /// Reads an already-published frame rather than triggering the shutter, so no hardware moves.
 extension BarcodeScannerTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }

@@ -37,6 +37,11 @@ final class NativeToolRegistry {
         register(dateTimeTool)
         register(CalculatorTool())
         register(NewTopicTool())
+        // Plan FF P1/PR8: "how are my requests processed", answered out loud. Registered
+        // unconditionally — the answer is always true of the current settings, and a
+        // privacy question that is only reachable on a screen is not reachable at all for
+        // the wearer this exists for.
+        register(ProcessingSummaryTool())
         // Scan Assist (Plan FB): deterministic start/pause/resume/stop and side control for
         // the accessibility reminder session. Registered unconditionally — the feature is off
         // by default and the tool reports that honestly rather than being invisible.

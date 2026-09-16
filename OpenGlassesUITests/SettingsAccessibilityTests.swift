@@ -122,6 +122,35 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         toggle.switches.firstMatch.tap()
     }
 
+    /// Plan FF P1/PR8 — the two new rows, and the processing summary screen itself.
+    ///
+    /// The readiness check is only asserted as a *reachable, named row*: tapping it would claim the
+    /// glasses camera and speak a test line, and a UI test that starts hardware it cannot observe
+    /// is a UI test that hangs. Its decisions are covered headlessly by
+    /// `ReadinessWalkthroughTests`; what a UI test can prove is that a wearer can find it.
+    func testTheReadinessAndProcessingRowsAreReachableAndTheSummaryPassesTheAudit() {
+        let app = launch([.configured])
+        openTab("Settings", in: app)
+        awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
+        tapRow(startingWith: "Accessibility", in: app)
+        awaitScreen(app.navigationBars["Accessibility"], named: "The accessibility category")
+
+        let readiness = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH 'Check the Assistant Is Ready'"))
+            .firstMatch
+        XCTAssertTrue(readiness.waitForExistence(timeout: 60),
+                      "The readiness check is not a reachable row in the accessibility category")
+
+        tapRow(startingWith: "How Your Requests Are Processed", in: app)
+        awaitScreen(app.navigationBars["How Requests Are Processed"],
+                    named: "The processing summary")
+        // Every row is present, whatever this launch configuration routes them to.
+        XCTAssertTrue(app.staticTexts["What you say"].waitForExistence(timeout: 20),
+                      "The transcription row is missing from the processing summary")
+        audit(app, screen: "Settings — How requests are processed",
+              deferring: [.secondaryCopyContrast, .systemFormChrome])
+    }
+
     // MARK: The model editor
 
     /// Reached through a folded category, so the walk also exercises unfolding.
