@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0 PR1+PR2 and P1 PR3–PR5 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; every requested sharp capture filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline; and a recovery that is proven as *usable conversation* — six faults injected at the socket's own handlers, four independent recovery facts (socket, microphone, visual evidence, and whether the conversation's thread survived), a bounded locally-rebuilt handover when the server will not resume, a stop that cancels every retry phase, and a paused camera that is never started into. PR6–PR7 unbuilt. Gate A's remaining exit evidence is a device and blind-participant matter, not code: heard cues through the glasses with the phone pocketed, live model outputs against the response audit, the on-device reading measurement, recovery time and repeated flapping on real glasses, and a blind participant completing setup and use without a sighted operator. Gate C stays blocked on a supported background-inference path — on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. PR8 (readiness walk-through + processing summary) drafted 2026-09-17; participant-led task acceptance added to Gate A.**
+**Status: 🚧 P0 PR1+PR2 and P1 PR3–PR5 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; every requested sharp capture filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline; and a recovery that is proven as *usable conversation* — six faults injected at the socket's own handlers, four independent recovery facts (socket, microphone, visual evidence, and whether the conversation's thread survived), a bounded locally-rebuilt handover when the server will not resume, a stop that cancels every retry phase, and a paused camera that is never started into. PR6–PR7 unbuilt. Gate A's remaining exit evidence is a device and blind-participant matter, not code: heard cues through the glasses with the phone pocketed, live model outputs against the response audit, the on-device reading measurement, recovery time and repeated flapping on real glasses, and a blind participant completing setup and use without a sighted operator. Gate C stays blocked on a supported background-inference path — on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. **PR8 (readiness walk-through + processing summary) built 2026-09-17** — five checks in order, each with one spoken status, one next instruction and a retry, where a connected SDK, a running stream and a `true` flag all fail the camera step because none of them is a picture; and a five-row account of where each part of a request goes that names a mixed setup as mixed, refuses "fully on-device" to any setup whose local assets are not downloaded, and reduces a configured endpoint to its host. Its participant runs are owed. Participant-led task acceptance added to Gate A.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -630,13 +630,118 @@ Acceptance: airplane-mode scene question and text reading with assets preinstall
 
 ## P1 / PR8 — Readiness walk-through and processing summary
 
-**Status: 📋 Drafted 2026-09-17 — the two implementation items the priority update above added to Gate A, given their own phase so the gate can say what is built.**
+**Status: 🚧 Implemented 2026-09-17 — the walk-through, the processing summary and both UI surfaces are built and covered headlessly; the participant runs below are owed and are what close the phase.**
 
 - Readiness walk-through: extend PR3's `BlindAssistantLaunchPolicy` and `LiveSessionActivator` into a guided sequence — registration → permissions → fresh camera evidence (FD's `CameraReadiness`) → microphone and spoken output (FE P2 listener health, FE P4 delivery outcome) → first useful reading request (PR4's capture quality report). Each step has one spoken status, an accessible retry and one next instruction; a connected SDK or socket alone never passes a step. No second onboarding owner.
 - Processing summary: one accessible screen and one spoken summary naming, for image, transcription, AI response, spoken voice and enabled remote tools, the configured destination (on device / which provider / which endpoint). Recomputed on every provider or engine change. It describes intended routing; the existing network monitor is separate observed evidence and is not a packet audit. A mixed configuration is named as mixed and never labelled fully local; missing downloaded assets are named before any offline promise.
 - Installation path: the tested journey starts at the App Store listing and includes the companion-app steps recorded in `FF-entry-journey-audit.md`; prerequisites are published, and independent installation is recorded separately from assisted installation.
 
 Acceptance: fake-owner tests drive every walk-through step to pass, fail and retry with the spoken status asserted; processing-summary fixtures cover local AI + cloud speech, cloud AI + local speech, unavailable assets and a provider change, none of which may read as fully local; VoiceOver focus lands on the step status after each result. Participant runs (below) close the phase, not the fixtures.
+
+### P1 / PR8 evidence note — implemented 2026-09-17
+
+Build: worktree on `feat/ff-p8-readiness-summary` from `c16e908c`, build 404. Debug simulator
+build, the focused classes, the full `OpenGlassesTests` suite and a Release simulator build all
+green on an iPhone 17 Pro simulator, plus one UI-test case on the same simulator. No hardware run.
+
+**The walk-through adds no facts.** `ReadinessWalkthrough` (`Services/Flow/`) is a decision table
+over evidence five existing owners already produce, and the ordering is the design: each step is a
+precondition of the next, so the sequence stops at the first failure and the wearer is handed one
+instruction rather than four caused by the same cause.
+
+| Step | Probe reads | Passes on | Releases |
+|---|---|---|---|
+| Glasses | `BlindAssistantLaunchPolicy.Inputs` (`glassesReady`, `isPastOnboarding`) | Registration settled — or **no glasses**, which is a pass *with a note* naming audio-only, not a failure | nothing acquired |
+| Permissions | the same inputs (microphone, speech recognition, camera) | Microphone and speech recognition granted; camera off is a pass with the audio-only note | nothing acquired |
+| Camera picture | a claim on the stream, then `CameraService.readinessNow` polled to a bounded deadline | `CameraReadiness.hasFreshVisualEvidence` — a decoded picture inside the freshness bound | the claim, through `releaseStream(for:)` |
+| Microphone and voice | `WakeWordService.healthState(origin:permission:)` → `ListenerHealthPolicy`, then one short line through `speakReporting` | decision `.healthy` or `.startFresh` **and** `SpeechDeliveryOutcome.completed` | nothing started; the health read is a question, not a request to listen |
+| Reading something | `SharpStillCapture` through the privacy chokepoint, measured by `CaptureQualityReport` | quality `.usable`; on the simulator, a rendered fixture, reported as a pass **with a note saying it was a fixture** | the claim |
+
+The two rules worth naming. **A part reporting that it exists never passes a step:** a stream that
+is up, a socket that is open and a flag that says listening all land on the camera or voice
+failure, because the step wants a decoded picture and a delivery outcome, not a component's
+opinion of itself. And **the release is the runner's obligation, not each probe's good manners** —
+`ReadinessWalkthroughRunner` calls `release(after:)` on every path including the failing one, which
+is what the fake's claim and listener counters assert. The claim goes through the existing ledger
+(`CameraStreamClaims.Owner.readinessCheck`), so a check run while a live session holds the camera
+gives back exactly what it took and stops nothing the session wanted.
+
+The reading step's wearer-facing sentences are *lifted out of* `ReadingCaptureOutcome`'s model
+directive rather than copied — `spokenInstruction(for:isReadingRequest:)` and
+`spokenUnavailable(_:)` — so the live session and this screen say the same words for the same
+condition. The registration and permission sentences are `BlindAssistantLaunchPolicy.SkipReason`'s
+own, for the same reason.
+
+**The processing summary is composed, not observed.** `ProcessingSummary.compose(facts:)` produces
+five rows from a `ProcessingFacts` value; `ProcessingFactsProvider` is the only thing that reads
+`Config`, and it reads each value from the owner that already decides it.
+
+| Row | Read from | Destination it can report |
+|---|---|---|
+| What the camera sees | the live mode, else the active model's `visionEnabled` and provider | the realtime provider, the model's provider, a configured host, `disabled` when the model takes no images |
+| What you say | the live mode, else `Config.isDiarizationConfigured`, else `ASREngineSelector.select` over `OnDeviceASREngine.isReady` | the realtime provider, the diarization vendor, on device, or `unavailable` when the on-device recognizer is selected and absent |
+| The answer | `Config.activeModel` — provider, base URL, and for `.local` whether the weights are downloaded | on device, a provider, a host, or `unavailable(asset)` |
+| The voice you hear | the live mode, else `TTSEngineSelector.select` over the ElevenLabs key and `KokoroTTSEngine.isReady` | the realtime provider, ElevenLabs, or on device |
+| Tools on other machines | `Config.isOpenClawAgentActive` and the highest-priority enabled gateway's host | a configured host, the gateway, or `disabled` |
+
+**The mixed rule.** A row is *active* unless it is `disabled`. The verdict is `fullyOnDevice` only
+when every active row is `onDevice`; `cloud` only when every active row leaves; otherwise `mixed`,
+naming the rows. `unavailable` is deliberately in neither bucket, so a selected-but-undownloaded
+local model cannot satisfy either — and the mixed sentence separates "leaves this device" from "is
+set to run here and isn't downloaded", because a row that sends nothing must never appear in a
+sentence about sending. Worked examples: **fully on-device** — local model present, on-device
+recognizer, Kokoro, remote tools off. **Mixed** — the same local model with ElevenLabs and Apple's
+recognizer, named as "What you say and The voice you hear leave this device". **Cloud** — Gemini
+Live, where the frames, the audio, the reasoning and the reply all travel on the one socket.
+**Not fully on-device** — every row local but the model not downloaded: the answer row reads
+`unavailable`, the verdict is mixed, and the offline line names the model.
+
+**The offline line** has two sources: an `unavailable` row's asset, and the on-device alternative
+for a row that currently leaves the device and has nothing installed to fall back to. Medical
+local-only does not reroute quietly — a row that would leave reads `disabled`, which is what the
+wearer will actually experience, and a configuration where that switches off every row says
+"Nothing that would leave this device is switched on" rather than claiming everything is local.
+
+**Host only, ever.** `ProcessingFacts.host(of:)` reduces a configured URL to host and non-default
+port, dropping path, query and user-info. A test asserts a base URL carrying a key in its query
+reaches neither the row nor the spoken paragraph.
+
+**Where it lives.** Settings → Accessibility gains **Before You Rely on It** with the two rows,
+beside PR3's *Opening the App*; the same summary is linked from Settings → Glasses & Privacy. Each
+result row is a single accessibility element (title as label, status and instruction as value), and
+`focusTarget` is set *before* the status is spoken so a wearer reaching for the row finds it under
+their finger. The retry re-runs its own step and carries on, rather than charging four passing
+steps for one permission.
+
+**One voice phrase, and one deliberately withheld.** `processing_summary` is reachable through the
+classifier's existing Tier-0 route, bare-query gated exactly like `new_topic`, so "how are my
+requests processed" answers without an LLM turn and the same words inside a longer sentence stay
+content. **The readiness check has no phrase**: it claims the camera and speaks a test line, both
+of which a live session is already holding, so running it from inside a conversation would measure
+the fight rather than the assistant.
+
+**Evidence.** 43 new headless tests. `ReadinessWalkthroughTests` (24): every step's pass, failure
+and exact spoken status; a connected camera with no frame and a stale frame both failing; a healthy
+listener with an interrupted test line failing with a retry; the audio-only path passing
+registration and the camera with notes and skipping the reading step; a failure stopping the
+sequence with the fix spoken; a retry re-running one step and continuing; release counters at zero
+with the two camera steps never overlapping; and focus landing on each step before its status is
+spoken. `ProcessingSummaryTests` (19): the four required configurations, the host reduction in
+four shapes, recomputation after a provider change, medical local-only, both realtime modes,
+remote tools off, and the caveat closing every spoken summary.
+
+**What the simulator could not exercise.** No glasses, so the camera step's real claim, the twelve-
+second wait and a genuine `hasFreshVisualEvidence` were never run; the reading step takes the
+documented fixture path there and reports it as a fixture. Nothing was *heard*: the spoken statuses,
+the test line and the spoken summary were asserted as strings handed to an injected sink, not as
+audio through the glasses. And `ProcessingFactsProvider` itself is not unit-tested — it reads
+`Config`, the Keychain and the model stores, so a headless assertion would be an assertion about
+this machine's settings; the table it feeds is what the tests exercise.
+
+**Owed.** The participant runs below, which are what close the phase. With them, on device: the
+whole walk-through on real glasses, including a camera that comes up slowly and one that does not;
+the spoken statuses heard with the phone pocketed; and the summary checked against what the network
+monitor actually observed for each of the five rows.
 
 ### Participant-led task acceptance and public guidance
 
@@ -664,7 +769,7 @@ readiness/processing summary and participant evidence above; Gates B/C retain th
 
 | Gate | Exit evidence | Current status |
 |---|---|---|
-| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | PR1–PR5 implemented headlessly. Remaining exit evidence is all device- or participant-bound: the three on-glasses audio checks (PR2), live model outputs against `BlindAssistanceResponseAudit` (PR1), the on-device reading measurement (PR4), recovery time and repeated flapping on glasses (PR5), and a blind participant completing setup and use without a sighted operator (PR3). **2026-09-17:** the gate now also requires PR8's readiness walk-through and processing summary and the participant-led task acceptance recorded above |
+| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | PR1–PR5 implemented headlessly. Remaining exit evidence is all device- or participant-bound: the three on-glasses audio checks (PR2), live model outputs against `BlindAssistanceResponseAudit` (PR1), the on-device reading measurement (PR4), recovery time and repeated flapping on glasses (PR5), and a blind participant completing setup and use without a sighted operator (PR3). **2026-09-17:** PR8's readiness walk-through and processing summary are **built** (see its evidence note); the participant-led task acceptance recorded above is still owed, as is running the walk-through on glasses |
 | B — Foreground offline continuity | Production offline loop and automatic handover; capability failures audible; airplane-mode evidence | Pending |
 | C — Daily-use qualification | Blind-user sessions on target phones/glasses, pocketed/locked behaviour established, latency and power results, unresolved limitations published | **Blocked** on a supported background-inference path: on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. Nothing in PR1–PR5 changes that, and none of it should be read as progress against this gate |
 
