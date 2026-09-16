@@ -134,6 +134,12 @@ struct ConversationClassifier {
             return DirectToolCall(toolName: "flashlight", arguments: ["action": "off"])
         }
 
+        // Scan Assist (Plan FB): the accessibility reminder session is controlled by phrase, never
+        // by a model deciding a reminder is due. Deterministic here, deterministic in the tool.
+        if let arguments = matchScanAssistCommand(text) {
+            return DirectToolCall(toolName: "scan_assist", arguments: arguments)
+        }
+
         // Step count
         if let matched = matchedPattern(text, patterns: stepPatterns), isBareQuery(text, matched: matched) {
             return DirectToolCall(toolName: "step_count", arguments: [:])
@@ -219,10 +225,14 @@ struct ConversationClassifier {
     /// True when removing the matched pattern leaves only filler — the query IS the pattern
     /// ("what time is it now?"), not a larger question containing it. False negatives are safe:
     /// they fall through to the LLM, which answers correctly via tools.
-    private func isBareQuery(_ text: String, matched: String) -> Bool {
+    ///
+    /// `extraFiller` widens the allowance for **one family only**. A family whose phrasing carries
+    /// its own harmless words ("scan", "reminders", "side") would otherwise have to push them into
+    /// the global set, where they would loosen every other tier-0 route at the same time.
+    private func isBareQuery(_ text: String, matched: String, extraFiller: Set<String> = []) -> Bool {
         let remainder = text.replacingOccurrences(of: matched, with: " ")
         let leftover = remainder.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-        return leftover.allSatisfy { fillerWords.contains(String($0)) }
+        return leftover.allSatisfy { fillerWords.contains(String($0)) || extraFiller.contains(String($0)) }
     }
 
     private let fillerWords: Set<String> = [
@@ -467,6 +477,87 @@ struct ConversationClassifier {
     }
 
     /// Match unambiguous music control commands.
+    // MARK: - Scan Assist (Plan FB)
+
+    /// Match a Scan Assist phrase and build the tool's arguments, or nil.
+    ///
+    /// Three families, checked in order so the most specific wins: asking which side is set,
+    /// naming a side, then the plain session controls. Each is bare-query gated the way `new_topic`
+    /// is — "stop scan reminders" is a command, "tell me about the study that had to stop scan
+    /// reminders" is content — with the family's own vocabulary allowed as filler.
+    ///
+    /// A side is read **only** from the words. A phrase that asks for a side change without naming
+    /// one, or that names "the other side", routes with no side at all: the tool then asks, which
+    /// is the one safe answer when the alternative is picking a side for someone.
+    private func matchScanAssistCommand(_ text: String) -> [String: Any]? {
+        if let matched = matchedPattern(text, patterns: scanAssistStatusPatterns),
+           isBareQuery(text, matched: matched, extraFiller: scanAssistFiller) {
+            return ["action": "status"]
+        }
+
+        if let matched = matchedPattern(text, patterns: scanAssistSidePatterns),
+           isBareQuery(text, matched: matched, extraFiller: scanAssistFiller) {
+            var arguments: [String: Any] = ["action": "set_side"]
+            if let side = scanAssistSide(in: text) { arguments["side"] = side }
+            return arguments
+        }
+
+        for (action, patterns) in scanAssistControlPatterns {
+            if let matched = matchedPattern(text, patterns: patterns),
+               isBareQuery(text, matched: matched, extraFiller: scanAssistFiller) {
+                return ["action": action]
+            }
+        }
+        return nil
+    }
+
+    /// "left" or "right" if the phrase names exactly one of them, otherwise nil.
+    ///
+    /// "right now" is stripped first: it is an English time word far more often than it is a side,
+    /// and reading it as a side would silently move someone's reminders.
+    private func scanAssistSide(in text: String) -> String? {
+        let cleaned = text.replacingOccurrences(of: "right now", with: " ")
+        let words = Set(cleaned.split(whereSeparator: { !$0.isLetter }).map(String.init))
+        switch (words.contains("left"), words.contains("right")) {
+        case (true, false): return "left"
+        case (false, true): return "right"
+        default: return nil   // neither, or both — ask rather than pick
+        }
+    }
+
+    private let scanAssistStatusPatterns = [
+        "which side am i checking", "which side am i on", "which side are my reminders",
+        "which side are the reminders", "what side am i checking", "which side is scan assist",
+        "which side are the scan reminders"
+    ]
+
+    /// Phrases that set the side. The side itself is never in the pattern — `scanAssistSide(in:)`
+    /// reads it from the sentence, so an unnamed or contradictory side falls through to the ask.
+    private let scanAssistSidePatterns = [
+        "remind me to check", "remind me to look", "switch the reminders to",
+        "change the reminders to", "put the reminders on", "move the reminders to"
+    ]
+
+    private let scanAssistControlPatterns: [(String, [String])] = [
+        ("stop", ["stop scan reminders", "stop the scan reminders", "stop my scan reminders",
+                  "stop scan assist", "turn off scan reminders", "turn off scan assist",
+                  "stop the reminders to check"]),
+        ("pause", ["pause scan reminders", "pause the scan reminders", "pause my scan reminders",
+                   "pause scan assist"]),
+        ("resume", ["resume scan reminders", "resume the scan reminders", "resume scan assist",
+                    "carry on with scan reminders", "continue scan reminders"]),
+        ("start", ["start scan reminders", "start the scan reminders", "start my scan reminders",
+                   "start scan assist", "begin scan reminders", "turn on scan reminders",
+                   "turn on scan assist"])
+    ]
+
+    /// Words that carry no instruction inside a Scan Assist phrase. Scoped to this family: adding
+    /// "side" or "other" to the global filler set would widen every other tier-0 route with it.
+    private let scanAssistFiller: Set<String> = [
+        "scan", "scanning", "assist", "reminder", "reminders", "side", "other", "which", "checking",
+        "check", "looking", "them", "again", "to", "of", "and", "or", "over", "please", "up", "you"
+    ]
+
     private func matchMusicCommand(_ text: String) -> String? {
         if text == "pause" || text == "pause music" || text == "pause the music" { return "pause" }
         if text == "resume" || text == "resume music" || text == "play music" || text == "unpause" { return "play" }

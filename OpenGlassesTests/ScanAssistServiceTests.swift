@@ -49,6 +49,17 @@ final class ReleasableSleeper {
     func fire() { releasedThrough = issued - 1 }
 }
 
+/// The audio route, as the test says it is.
+///
+/// A class rather than a value so the service's `signals` closure reads the *current* answer at
+/// the moment each reminder comes due, which is the whole point of the arbitration: the route is
+/// busy or free when the cue arrives, not when the session started.
+@MainActor
+final class FakeAudioSignals {
+    var signals = ScanAssistAudioSignals()
+    var voiceOverRunning = false
+}
+
 @MainActor
 final class ScanAssistServiceTests: XCTestCase {
 
@@ -63,6 +74,7 @@ final class ScanAssistServiceTests: XCTestCase {
     private var speech: FakeScanAssistSpeech!
     private var sleeper: ReleasableSleeper!
     private var clock: FakeClock!
+    private var route: FakeAudioSignals!
     private var service: ScanAssistService!
 
     override func setUp() {
@@ -73,6 +85,7 @@ final class ScanAssistServiceTests: XCTestCase {
         speech = FakeScanAssistSpeech()
         sleeper = ReleasableSleeper()
         clock = FakeClock()
+        route = FakeAudioSignals()
         service = makeService()
     }
 
@@ -87,6 +100,8 @@ final class ScanAssistServiceTests: XCTestCase {
     private func makeService() -> ScanAssistService {
         let service = ScanAssistService(store: store, clock: { [clock] in clock!.now })
         service.sleeper = { [sleeper] seconds in await sleeper!.sleep(seconds) }
+        service.signals = { [route] in route?.signals ?? .clear }
+        service.voiceOverRunning = { [route] in route?.voiceOverRunning ?? false }
         service.configure(speech: speech)
         return service
     }
@@ -450,6 +465,242 @@ final class ScanAssistServiceTests: XCTestCase {
 
         service.stop()
     }
+
+    // MARK: - Cue arbitration (P2)
+
+    /// Start a left-side session and get to the moment the first reminder comes due.
+    private func startAndReachFirstCue() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+        advanceAndFire(30)
+    }
+
+    func testACueArrivingDuringAssistantSpeechWaitsAndThenPlaysOnce() async {
+        route.signals.assistantIsSpeaking = true
+        await startAndReachFirstCue()
+
+        // The recheck is armed; nothing has been spoken.
+        await waitForSchedule(count: 2)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty, "a reminder must not land on top of the assistant")
+        XCTAssertEqual(service.deliveredCueCount, 0)
+
+        route.signals.assistantIsSpeaking = false
+        sleeper.fire()
+        await waitUntil("the held reminder") { self.speech.spoken.count == 1 }
+        await settle()
+        XCTAssertEqual(speech.spoken, ["Check to your left when you're ready."])
+        XCTAssertEqual(service.deliveredCueCount, 1, "once — the wait does not multiply it")
+    }
+
+    func testACueArrivingDuringVoiceOverSpeechWaits() async {
+        route.signals.voiceOverIsSpeaking = true
+        await startAndReachFirstCue()
+        await waitForSchedule(count: 2)
+        await settle()
+
+        XCTAssertTrue(speech.spoken.isEmpty, "a reminder must not talk over the screen reader")
+    }
+
+    func testACueWaitsForALifecycleNoticeThatIsAlreadyBeingAnnounced() async {
+        route.signals.lifecycleAnnouncementInFlight = true
+        await startAndReachFirstCue()
+        await waitForSchedule(count: 2)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty,
+                      "a notice about something that just changed outranks a reminder that "
+                          + "describes nothing new")
+
+        route.signals.lifecycleAnnouncementInFlight = false
+        sleeper.fire()
+        await waitUntil("the reminder once the notice is done") { self.speech.spoken.count == 1 }
+    }
+
+    /// The burst this whole design exists to prevent: two reminders come due while the route is
+    /// busy, and exactly one plays when it frees.
+    func testTwoCuesElapsingWhileBusyProduceOnlyTheNewest() async {
+        route.signals.userIsSpeaking = true
+        await startAndReachFirstCue()
+        await waitForSchedule(count: 3)
+
+        // The second reminder comes due, still against a busy route.
+        advanceAndFire(30)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty)
+
+        route.signals.userIsSpeaking = false
+        sleeper.fire()
+        await waitUntil("one reminder") { self.speech.spoken.count == 1 }
+        await settle()
+        XCTAssertEqual(speech.spoken.count, 1, "two missed reminders are not owed as two reminders")
+        XCTAssertEqual(service.deliveredCueCount, 1)
+    }
+
+    func testAWaitingCueNeverArrivesAfterAStop() async {
+        route.signals.assistantIsSpeaking = true
+        await startAndReachFirstCue()
+        await waitForSchedule(count: 2)
+
+        service.stop()
+        route.signals.assistantIsSpeaking = false
+        advanceAndFire(300)
+        await settle()
+
+        XCTAssertTrue(speech.spoken.isEmpty, "a stop takes the waiting reminder with it")
+        XCTAssertEqual(service.deliveredCueCount, 0)
+    }
+
+    /// The conservative fallback for the signal iOS does not provide: VoiceOver speech completion
+    /// cannot be observed, so a reminder waits out a bounded window after this app announces
+    /// something — and then plays, rather than waiting forever.
+    func testAnAnnouncementThisAppPostedHoldsTheNextCueForABoundedWindow() async {
+        route.voiceOverRunning = true
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        clock.advance(30)
+        service.noteAnnouncementPosted()
+        sleeper.fire()
+        await waitForSchedule(count: 2)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty, "the window has not elapsed")
+
+        clock.advance(ScanAssistCueGate.voiceOverAnnouncementWindow + 0.5)
+        sleeper.fire()
+        await waitUntil("the reminder once the window elapses") { self.speech.spoken.count == 1 }
+    }
+
+    // MARK: - Interruptions (P2)
+
+    func testAnInterruptionPausesWithItsReasonAndCancelsTheWaitingCue() async {
+        route.signals.assistantIsSpeaking = true
+        await startAndReachFirstCue()
+        await waitForSchedule(count: 2)
+
+        service.handleAudioEvent(.interruptionBegan)
+        XCTAssertEqual(service.state, .paused)
+        XCTAssertEqual(service.pauseReason, .audioInterrupted)
+        XCTAssertEqual(service.pauseReasonText, ScanAssistCopy.pauseReason(.audioInterrupted))
+        XCTAssertEqual(service.statusMessage, ScanAssistCopy.pauseReason(.audioInterrupted))
+
+        route.signals.assistantIsSpeaking = false
+        advanceAndFire(120)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty, "the reminder the interruption caught is not owed")
+    }
+
+    func testACallPausesWithTheCallReason() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.handleAudioEvent(.callBegan)
+        XCTAssertEqual(service.pauseReason, .call)
+        XCTAssertEqual(service.statusMessage, "Paused — phone call")
+    }
+
+    func testLosingTheOutputPauses() async {
+        service.chooseSide(.right)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.handleAudioEvent(.outputLost)
+        XCTAssertEqual(service.state, .paused)
+        XCTAssertEqual(service.statusMessage, "Paused — audio output changed")
+    }
+
+    func testAnInterruptionEndingCleanlyResumesWithAFreshIntervalAndNoBacklog() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        clock.advance(25)
+        service.handleAudioEvent(.interruptionBegan)
+        clock.advance(400)   // a long call
+        service.handleAudioEvent(.interruptionEnded(shouldResume: true, routeUnchanged: true))
+
+        XCTAssertEqual(service.state, .running)
+        XCTAssertNil(service.pauseReason)
+        await waitForSchedule(count: 2)
+        XCTAssertEqual(sleeper.requested.last ?? 0, 30, accuracy: 0.001,
+                       "a whole interval from the recovery")
+
+        advanceAndFire(30)
+        await waitUntil("one reminder after recovering") { self.speech.spoken.count == 1 }
+        await settle()
+        XCTAssertEqual(speech.spoken.count, 1, "nothing that came due during the call is owed")
+    }
+
+    func testAnUncertainRecoveryStaysPausedUntilTheWearerResumes() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.handleAudioEvent(.interruptionBegan)
+        service.handleAudioEvent(.interruptionEnded(shouldResume: false, routeUnchanged: true))
+
+        XCTAssertEqual(service.state, .paused, "the session does not restart itself on a guess")
+        XCTAssertEqual(service.statusMessage,
+                       ScanAssistCopy.pausedNeedsResume(.audioInterrupted))
+
+        service.resume()
+        XCTAssertEqual(service.state, .running)
+        XCTAssertNil(service.pauseReason)
+        await waitForSchedule(count: 2)
+    }
+
+    func testComingBackOnADifferentRouteStaysPaused() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.handleAudioEvent(.interruptionBegan)
+        service.handleAudioEvent(.interruptionEnded(shouldResume: true, routeUnchanged: false))
+        XCTAssertEqual(service.state, .paused)
+        XCTAssertEqual(service.pauseReason, .audioInterrupted)
+    }
+
+    func testBackgroundingPausesWithANoticeAndReturningDoesNotResume() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.handleAudioEvent(.enteredBackground)
+        XCTAssertEqual(service.state, .paused)
+        XCTAssertEqual(service.statusMessage, "Paused — app went to the background")
+
+        service.handleAudioEvent(.becameActive)
+        XCTAssertEqual(service.state, .paused, "no silent keep-alive, and no silent restart either")
+        XCTAssertEqual(service.statusMessage, ScanAssistCopy.pausedNeedsResume(.background))
+
+        advanceAndFire(300)
+        await settle()
+        XCTAssertTrue(speech.spoken.isEmpty)
+    }
+
+    func testNoAudioEventLiftsAPauseTheWearerAskedFor() async {
+        service.chooseSide(.left)
+        service.start()
+        await waitForSchedule(count: 1)
+
+        service.pause()
+        XCTAssertNil(service.pauseReason)
+        XCTAssertEqual(service.statusMessage, ScanAssistCopy.sessionPaused)
+
+        service.handleAudioEvent(.interruptionEnded(shouldResume: true, routeUnchanged: true))
+        XCTAssertEqual(service.state, .paused)
+    }
+
+    func testAudioEventsDoNothingToASessionThatIsNotRunning() async {
+        service.handleAudioEvent(.callBegan)
+        service.handleAudioEvent(.enteredBackground)
+        await settle()
+        XCTAssertEqual(service.state, .idle)
+        XCTAssertNil(service.pauseReason)
+        XCTAssertNil(service.statusMessage)
+    }
 }
 
 /// Persistence, in its own class so the defaults suite is built and torn down per test.
@@ -580,12 +831,23 @@ final class ScanAssistCopyTests: XCTestCase {
                      ScanAssistCopy.sessionPaused,
                      ScanAssistCopy.sessionEnded(.stopped),
                      ScanAssistCopy.sessionEnded(.expired),
-                     ScanAssistCopy.sideNotChosen]
+                     ScanAssistCopy.sideNotChosen,
+                     ScanAssistCopy.explicitResumeNeeded,
+                     ScanAssistCopy.voiceControlUnavailable,
+                     ScanAssistCopy.whichSideQuestion]
+        for reason in ScanAssistPauseReason.allCases {
+            lines.append(contentsOf: [ScanAssistCopy.pauseReason(reason),
+                                      ScanAssistCopy.pausedNeedsResume(reason)])
+        }
         for side in ScanAssistSide.allCases {
             lines.append(contentsOf: [ScanAssistCopy.cue(for: side),
                                       ScanAssistCopy.preview(for: side),
                                       ScanAssistCopy.sideLabel(side),
-                                      ScanAssistCopy.sideDescription(side)])
+                                      ScanAssistCopy.sideDescription(side),
+                                      ScanAssistCopy.remindersRunning(side),
+                                      ScanAssistCopy.remindersPaused(side),
+                                      ScanAssistCopy.remindersStopped(side),
+                                      ScanAssistCopy.remindersNotRunning(side)])
         }
         let forbidden = ["you missed", "you checked", "safe to proceed", "well done",
                          "treat", "therapy", "improve", "recovered", "score"]
@@ -596,5 +858,69 @@ final class ScanAssistCopyTests: XCTestCase {
                                "\"\(line)\" claims something Scan Assist cannot know or do")
             }
         }
+    }
+
+    /// Playback being requested is the furthest this feature can ever see. No line may narrow the
+    /// gap between "a reminder was sent" and "a reminder was heard".
+    func testNoCopyClaimsTheWearerHeardAnything() {
+        var lines = [ScanAssistCopy.whichSideQuestion, ScanAssistCopy.explicitResumeNeeded,
+                     ScanAssistCopy.voiceControlUnavailable]
+        for reason in ScanAssistPauseReason.allCases {
+            lines.append(ScanAssistCopy.pauseReason(reason))
+        }
+        for side in ScanAssistSide.allCases {
+            lines.append(contentsOf: [ScanAssistCopy.cue(for: side),
+                                      ScanAssistCopy.remindersRunning(side),
+                                      ScanAssistCopy.remindersPaused(side),
+                                      ScanAssistCopy.remindersStopped(side),
+                                      ScanAssistCopy.remindersNotRunning(side)])
+        }
+        for line in lines {
+            let lowered = line.lowercased()
+            for phrase in ["you heard", "heard", "you listened", "acknowledged"] {
+                XCTAssertFalse(lowered.contains(phrase),
+                               "\"\(line)\" claims something only the wearer can know")
+            }
+        }
+    }
+
+    /// Every automatic pause says what stopped the session. A session that goes quiet without
+    /// saying why reads as a feature that has broken.
+    func testEveryAutomaticPauseNamesItsCause() {
+        XCTAssertEqual(ScanAssistCopy.pauseReason(.call), "Paused — phone call")
+        XCTAssertEqual(ScanAssistCopy.pauseReason(.outputChanged), "Paused — audio output changed")
+        XCTAssertEqual(ScanAssistCopy.pauseReason(.background), "Paused — app went to the background")
+        XCTAssertEqual(ScanAssistCopy.pauseReason(.audioInterrupted),
+                       "Paused — another app is using the audio")
+        for reason in ScanAssistPauseReason.allCases {
+            XCTAssertTrue(ScanAssistCopy.pausedNeedsResume(reason).contains("Resume"),
+                          "an uncertain recovery has to say whose move it is")
+        }
+    }
+
+    /// Every spoken answer names the side, so a misheard "left" for "right" is audible at once
+    /// rather than at the first reminder half a minute later.
+    func testEverySpokenAnswerNamesTheSide() {
+        let expected: [ScanAssistSide: String] = [.left: "left", .right: "right"]
+        for side in ScanAssistSide.allCases {
+            for line in [ScanAssistCopy.remindersRunning(side), ScanAssistCopy.remindersPaused(side),
+                         ScanAssistCopy.remindersStopped(side),
+                         ScanAssistCopy.remindersNotRunning(side)] {
+                XCTAssertTrue(line.lowercased().contains(expected[side]!),
+                              "\"\(line)\" has to say which side it is talking about")
+            }
+        }
+    }
+
+    func testTheAmbiguityQuestionOffersBothSidesAndPicksNeither() {
+        let question = ScanAssistCopy.whichSideQuestion
+        XCTAssertTrue(question.lowercased().contains("left"))
+        XCTAssertTrue(question.lowercased().contains("right"))
+        XCTAssertTrue(question.hasSuffix("?"), "it asks — it does not announce a choice")
+    }
+
+    func testTheVoiceControlNoticeOffersTheTouchFallback() {
+        XCTAssertTrue(ScanAssistCopy.voiceControlUnavailable.contains("buttons"),
+                      "telling someone voice is off without saying what works instead is half a message")
     }
 }

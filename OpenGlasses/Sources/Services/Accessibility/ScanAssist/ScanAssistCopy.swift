@@ -56,6 +56,78 @@ enum ScanAssistCopy {
         }
     }
 
+    // MARK: - Automatic pauses
+
+    /// Why the session stopped on its own. Always the reason, never just "Paused" — a feature that
+    /// goes quiet without saying why reads as one that has broken, and the wearer's next move
+    /// (answer the call, plug the headphones back in, come back to the app) depends on which it
+    /// was.
+    static func pauseReason(_ reason: ScanAssistPauseReason) -> String {
+        switch reason {
+        case .call: return String(localized: "Paused — phone call")
+        case .outputChanged: return String(localized: "Paused — audio output changed")
+        case .audioInterrupted: return String(localized: "Paused — another app is using the audio")
+        case .background: return String(localized: "Paused — app went to the background")
+        }
+    }
+
+    /// Appended when recovery was uncertain. The session will not restart itself on a guess, so
+    /// the sentence has to say whose move it is.
+    static var explicitResumeNeeded: String {
+        String(localized: "Tap Resume when you're ready.")
+    }
+
+    /// The paused line plus the ask, as one sentence for the status area and VoiceOver.
+    static func pausedNeedsResume(_ reason: ScanAssistPauseReason) -> String {
+        "\(pauseReason(reason)). \(explicitResumeNeeded)"
+    }
+
+    // MARK: - Voice control
+
+    /// Shown on the session surface whenever the phrases below cannot be heard, so nobody is left
+    /// saying "stop scan reminders" at a microphone that is not listening.
+    static var voiceControlUnavailable: String {
+        String(localized: "Voice control is off in this mode. Use the buttons on this screen to start, pause or stop reminders.")
+    }
+
+    // MARK: - Spoken answers to voice commands
+
+    /// Every spoken answer names the side, so a side changed by a misheard phrase is audible
+    /// immediately rather than at the first reminder.
+    static func remindersRunning(_ side: ScanAssistSide) -> String {
+        switch side {
+        case .left: return String(localized: "Reminders on your left are running.")
+        case .right: return String(localized: "Reminders on your right are running.")
+        }
+    }
+
+    static func remindersPaused(_ side: ScanAssistSide) -> String {
+        switch side {
+        case .left: return String(localized: "Reminders on your left are paused.")
+        case .right: return String(localized: "Reminders on your right are paused.")
+        }
+    }
+
+    static func remindersStopped(_ side: ScanAssistSide) -> String {
+        switch side {
+        case .left: return String(localized: "Reminders on your left have stopped.")
+        case .right: return String(localized: "Reminders on your right have stopped.")
+        }
+    }
+
+    static func remindersNotRunning(_ side: ScanAssistSide) -> String {
+        switch side {
+        case .left: return String(localized: "Reminders are set to your left, and not running.")
+        case .right: return String(localized: "Reminders are set to your right, and not running.")
+        }
+    }
+
+    /// The answer when the phrasing could mean either side. Asking costs one exchange; guessing
+    /// costs the wearer a session spent practising the wrong side without knowing it.
+    static var whichSideQuestion: String {
+        String(localized: "Which side would you like reminders to check — your left, or your right?")
+    }
+
     // MARK: - Control labels
 
     static func sideLabel(_ side: ScanAssistSide) -> String {

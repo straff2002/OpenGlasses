@@ -41,7 +41,12 @@ struct ScanAssistSettingsView: View {
         // The refusal and the ending are the two moments a wearer most needs told about, and both
         // can happen while their eyes are elsewhere.
         .onChange(of: session.statusMessage) { _, message in
-            if let message { SessionAnnouncer.say(message) }
+            guard let message else { return }
+            SessionAnnouncer.say(message)
+            // Nothing can observe VoiceOver finishing an announcement, so the session is told an
+            // announcement went out and holds the next reminder for a bounded window rather than
+            // speaking over the screen reader.
+            session.noteAnnouncementPosted()
         }
     }
 
@@ -159,6 +164,15 @@ struct ScanAssistSettingsView: View {
         Section {
             switch session.state {
             case .running, .paused:
+                // Why it stopped, before anything else in the section: a session that goes quiet
+                // without saying why reads as a feature that has broken.
+                if let reason = session.pauseReasonText {
+                    Text(verbatim: reason)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                        .accessibilityAddTraits(.isStaticText)
+                }
+
                 if let remainingText {
                     HStack {
                         Text("Time left")
@@ -195,6 +209,15 @@ struct ScanAssistSettingsView: View {
 
             if let message = session.statusMessage {
                 Text(verbatim: message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            // The spoken controls only exist where a listener is actually running. Saying so on
+            // the screen is the difference between "voice control is off" and a wearer repeating
+            // "stop scan reminders" at a microphone that was never open.
+            if !appState.wakeWordService.isListening {
+                Text(verbatim: ScanAssistCopy.voiceControlUnavailable)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

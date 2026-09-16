@@ -86,6 +86,86 @@ final class ConversationClassifierTests: XCTestCase {
         }
     }
 
+    // MARK: - Scan Assist (Plan FB P2)
+
+    func testScanAssistControlPhrasesRouteToTheToolWithTheRightAction() {
+        let cases: [(String, String)] = [
+            ("start scan reminders", "start"),
+            ("start my scan reminders please", "start"),
+            ("turn on scan assist", "start"),
+            ("pause scan reminders", "pause"),
+            ("pause the scan reminders", "pause"),
+            ("resume scan reminders", "resume"),
+            ("continue scan reminders", "resume"),
+            ("stop scan reminders", "stop"),
+            ("stop the scan reminders now", "stop"),
+            ("turn off scan assist", "stop"),
+        ]
+        for (query, action) in cases {
+            let result = classifier.classify(query)
+            XCTAssertEqual(result.directToolCall?.toolName, "scan_assist",
+                           "'\(query)' should reach scan_assist without a model")
+            XCTAssertEqual(result.directToolCall?.arguments["action"] as? String, action,
+                           "'\(query)' should pick action '\(action)'")
+        }
+    }
+
+    func testAskingForASideSetsThatSide() {
+        for (query, side) in [("remind me to check my left", "left"),
+                              ("remind me to check left", "left"),
+                              ("remind me to check my right", "right"),
+                              ("switch the reminders to the left", "left"),
+                              ("move the reminders to my right", "right")] {
+            let result = classifier.classify(query)
+            XCTAssertEqual(result.directToolCall?.toolName, "scan_assist")
+            XCTAssertEqual(result.directToolCall?.arguments["action"] as? String, "set_side")
+            XCTAssertEqual(result.directToolCall?.arguments["side"] as? String, side,
+                           "'\(query)' names \(side) and nothing else may decide that")
+        }
+    }
+
+    /// Ambiguous phrasing routes to the tool *without* a side, so the tool asks. Guessing here
+    /// would send someone to practise the side they did not choose.
+    func testAmbiguousSidePhrasesCarryNoSide() {
+        for query in ["remind me to check the other side",
+                      "remind me to check",
+                      "remind me to check left or right"] {
+            let result = classifier.classify(query)
+            XCTAssertEqual(result.directToolCall?.toolName, "scan_assist",
+                           "'\(query)' should still be answered deterministically")
+            XCTAssertEqual(result.directToolCall?.arguments["action"] as? String, "set_side")
+            XCTAssertNil(result.directToolCall?.arguments["side"],
+                         "'\(query)' does not name a side, so nothing may supply one")
+        }
+    }
+
+    /// "right now" is a time word far more often than a side.
+    func testRightNowIsNotReadAsASide() {
+        let result = classifier.classify("remind me to check right now")
+        XCTAssertEqual(result.directToolCall?.toolName, "scan_assist")
+        XCTAssertNil(result.directToolCall?.arguments["side"])
+    }
+
+    func testAskingWhichSideIsAnsweredDeterministically() {
+        for query in ["which side am i checking", "what side am i checking",
+                      "which side are my reminders on"] {
+            let result = classifier.classify(query)
+            XCTAssertEqual(result.directToolCall?.toolName, "scan_assist", "'\(query)'")
+            XCTAssertEqual(result.directToolCall?.arguments["action"] as? String, "status")
+        }
+    }
+
+    /// Bare-query gated like `new_topic`: the same words inside a real sentence are content, and
+    /// must reach the LLM rather than silently moving someone's reminders.
+    func testScanAssistWordsInsideContentDoNotMatch() {
+        for query in ["remind me to check the oven before we leave",
+                      "remind me to check my email at four",
+                      "write a note about how to stop scan reminders in the manual"] {
+            XCTAssertNil(classifier.classify(query).directToolCall,
+                         "'\(query)' is content, not a Scan Assist command")
+        }
+    }
+
     /// Creation and modification must still reach the LLM — they need title/time extraction.
     func testCalendarMutationsDoNotMatchDirectly() {
         for query in ["add a meeting to my calendar tomorrow at 3pm",
