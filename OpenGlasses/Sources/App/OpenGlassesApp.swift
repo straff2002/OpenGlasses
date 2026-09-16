@@ -2518,6 +2518,10 @@ class AppState: ObservableObject, AppStateProtocol {
             // reminder, and talking over someone costs their sentence.
             signals.userIsSpeaking = self.isListening || self.wakeWordService.isListening
             signals.assistantIsSpeaking = self.speechService.isSpeaking
+            // A lifecycle notice (session usable / lost / restored) outranks a scan reminder:
+            // a queued or in-flight one holds the reminder back until it has been said.
+            signals.lifecycleAnnouncementInFlight = (self.audibleLifecycle?.hasPendingWork ?? false)
+                || SessionAnnouncer.isAnnouncingToVoiceOver
             // A realtime session owns the route outright, and an answer being composed is about to
             // need it. Both outrank a reminder that describes nothing new.
             signals.higherPriorityNoticeInFlight = self.isProcessing
