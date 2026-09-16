@@ -322,12 +322,12 @@ class LLMService: ObservableObject {
         // Gemma-style templates have no separate system channel — this whole prompt is merged
         // into the model's first *user* turn, and a small model can flip roles and reply to
         // "OpenGlasses" instead of the wearer. Pin the speaker identity explicitly.
-        return prompt + "\n\nThe person speaking to you is the user wearing the glasses. Address them directly as \"you\". Never address OpenGlasses — that is your own name."
+        return prompt + "\n\nThe person speaking to you is the user wearing the glasses. Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name."
     }
 
     static func leanCloudPrompt(hasImage: Bool, memoryContext: String? = nil) -> String {
         var prompt = """
-        You are OpenGlasses, a voice assistant on smart glasses. Replies are spoken aloud.
+        \(AssistantIdentity.line(name: Config.assistantName, role: "a voice assistant on smart glasses. Replies are spoken aloud."))
         Answer in 1–2 short sentences. No markdown, lists, preamble, or follow-up questions.
         """
         if hasImage {
