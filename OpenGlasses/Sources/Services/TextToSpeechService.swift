@@ -34,6 +34,72 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// callbacks against this. It holds no audio and no text — only generations and outcomes.
     var deliveryLedger = SpeechDeliveryLedger()
 
+    // MARK: - Speech-reactive visual activity (Plan FE P5)
+
+    /// The bounded `0…1` playback-activity level the voice visuals scale themselves by.
+    ///
+    /// Purely decorative: it is never spoken, never announced, never logged and never persisted,
+    /// and it runs only while something is actually playing *and* an on-screen animation is there
+    /// to consume it (`PlaybackActivityGate`). Nothing else in the app reads it.
+    let playbackActivity = PlaybackActivityMonitor()
+
+    /// The utterance the activity monitor is animating, plus the object identity that proves a
+    /// delegate callback belongs to it.
+    ///
+    /// The identity check is the load-bearing half. A generation alone cannot decide a late
+    /// callback, because by the time an older utterance's `didFinish` reaches the main actor the
+    /// service's own counter has already moved to the utterance that replaced it — so the *object*
+    /// the engine handed back is the only thing that still knows which utterance it was.
+    private var activityGeneration: Int?
+    private weak var activityPlayer: AVAudioPlayer?
+    private weak var activityUtterance: AVSpeechUtterance?
+
+    /// Playback has actually begun — start the animation for the live generation.
+    ///
+    /// The player path hands the monitor a real meter; the system-synthesizer path hands it `nil`,
+    /// which selects the explicitly approximate word pulse. Metering is switched on inside the
+    /// monitor and only if it is going to sample, so a gated-off animation never asks the player
+    /// to compute power at all.
+    private func beginPlaybackActivity(player: AVAudioPlayer?, utterance: AVSpeechUtterance?) {
+        let generation = speechGeneration
+        activityGeneration = generation
+        activityPlayer = player
+        activityUtterance = utterance
+        let meter: PlaybackMeterSource? = player.map { player in
+            PlaybackMeterSource(
+                enable: { [weak player] in player?.isMeteringEnabled = true },
+                sample: { [weak player] in
+                    guard let player, player.isPlaying else { return nil }
+                    player.updateMeters()
+                    return Double(player.averagePower(forChannel: 0))
+                })
+        }
+        playbackActivity.playbackDidStart(generation: generation, meter: meter)
+    }
+
+    /// A callback says playback ended. Honoured only when the object it names is still the one
+    /// being animated; anything older is a late callback and changes nothing.
+    private func endPlaybackActivity(player: AVAudioPlayer? = nil, utterance: AVSpeechUtterance? = nil) {
+        guard let generation = activityGeneration else { return }
+        if let player, player !== activityPlayer { return }
+        if let utterance, utterance !== activityUtterance { return }
+        playbackActivity.playbackDidEnd(generation: generation)
+        clearPlaybackActivityIdentity()
+    }
+
+    /// Teardown: the audio is already gone, so the animation goes with it rather than running a
+    /// tail over silence.
+    private func stopPlaybackActivity() {
+        playbackActivity.stopImmediately()
+        clearPlaybackActivityIdentity()
+    }
+
+    private func clearPlaybackActivityIdentity() {
+        activityGeneration = nil
+        activityPlayer = nil
+        activityUtterance = nil
+    }
+
     /// Route/policy gate consulted before anything is played (Plan FE P4).
     ///
     /// The default reproduces exactly the check this service already made — glasses-only audio
@@ -242,6 +308,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         speechContinuation?.resume()
         speechContinuation = nil
         stopThinkingSound()
+        stopPlaybackActivity()
 
         // Bump generation AFTER cleanup — capture the new value
         speechGeneration += 1
@@ -468,6 +535,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         audioPlayer = nil
         synthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
+        stopPlaybackActivity()
         // BJ PR2: the immediate teardown above stays synchronous (barge-in must stop *now*); the
         // resume-other-audio is inherently off-main now, so dispatch it without blocking the stop.
         Task { await endPause() }
@@ -805,7 +873,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             // request rather than the first sample reaching the speaker — a fixed, small optimism
             // that the iOS-voice path (a real `didStart`) does not share, so cross-engine
             // first-audio comparisons carry it.
-            if started { TurnRecorder.markPlaybackStart(at: Date()) }
+            if started {
+                TurnRecorder.markPlaybackStart(at: Date())
+                // Plan FE P5: the player path has a real meter, so this is measured level.
+                self.beginPlaybackActivity(player: player, utterance: nil)
+            }
             PrivacyLog.tts(.playing, engine: PrivacyToken("elevenLabs"),
                            seconds: player.duration, success: started)
             if !started {
@@ -813,6 +885,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 // the continuation installed and the caller awaiting an utterance that had not
                 // begun; now it is a reported failure and the await returns.
                 self.record(.playbackDidNotStart)
+                self.endPlaybackActivity(player: player)
                 self.audioPlayer = nil
                 self.speechContinuation = nil
                 continuation.resume()
@@ -841,6 +914,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             self.speechContinuation = continuation
+            // Plan FE P5: held so the word-boundary and finish/cancel callbacks can prove which
+            // utterance they belong to. Weak — the synthesizer owns it.
+            self.activityUtterance = utterance
             synthesizer.speak(utterance)
         }
     }
@@ -893,6 +969,27 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         Task { @MainActor in
             self.isSpeaking = true
             TurnRecorder.markPlaybackStart(at: startedAt)
+            // Plan FE P5: the system voice exposes no audio to meter, so its animation is the
+            // approximate word pulse — started here, at the engine's own "I have begun".
+            guard utterance === self.activityUtterance else { return }
+            self.beginPlaybackActivity(player: nil, utterance: utterance)
+        }
+    }
+
+    /// Word boundaries — the *only* signal the system voice offers about what it is doing
+    /// (Plan FE P5).
+    ///
+    /// Deliberately timing-only: the character range is not read, because a word's *length* is not
+    /// its loudness either and using it would dress the guess up as more of a measurement than it
+    /// is. Each callback moves the pulse origin; the single cadence samples the envelope. Nothing
+    /// is scheduled here, so a fast talker cannot accumulate tasks.
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                       willSpeakRangeOfSpeechString characterRange: NSRange,
+                                       utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            guard utterance === self.activityUtterance,
+                  let generation = self.activityGeneration else { return }
+            self.playbackActivity.wordBoundary(generation: generation)
         }
     }
 
@@ -904,6 +1001,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             // The iOS voice reached the end of the utterance. Plan FE P4's `completed`, and only
             // that: the words came out of a speaker, which is all any of this can ever know.
             self.record(.systemFinished)
+            self.endPlaybackActivity(utterance: utterance)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -916,6 +1014,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             // was recorded there and wins. `.newUtterance` is the fallback because a cancel with
             // no recorded cause is a `speak` that replaced this one.
             self.record(.systemCancelled)
+            self.endPlaybackActivity(utterance: utterance)
             self.speechContinuation?.resume()
             self.speechContinuation = nil
         }
@@ -1033,6 +1132,7 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
             // end of the audio for a reason the player owns — a failure, not a completion. A
             // teardown we caused has already recorded its interruption and wins over this.
             self.record(.playerFinished(success: flag))
+            self.endPlaybackActivity(player: player)
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil
@@ -1044,6 +1144,7 @@ extension TextToSpeechService: AVAudioPlayerDelegate {
             PrivacyLog.tts(.decodeFailed, engine: PrivacyToken("elevenLabs"),
                            error: error.map(SafeErrorSummary.init))
             self.record(.playerDecodeFailed)
+            self.endPlaybackActivity(player: player)
             self.audioPlayer = nil
             self.speechContinuation?.resume()
             self.speechContinuation = nil

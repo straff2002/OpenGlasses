@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0–P4 implemented 2026-09-16 (P2, P3 and P4 same day) — P5–P6 unbuilt.**
+**Status: 🚧 P0–P5 implemented 2026-09-16 (P2, P3, P4 and P5 same day) — P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -471,6 +471,81 @@ a hidden/disabled animation. Keep the visual decorative and avoid VoiceOver acti
 late callbacks, hidden screen and Reduce Motion. Device-check smoothness and overhead on actual
 system and supported audio-player paths. Cosmetic work follows reliability fixes.
 
+**Implemented 2026-09-16.**
+
+- **The signal.** `PlaybackActivityCore` (`Sources/Services/Speech/PlaybackActivity.swift`) is a
+  pure, clock-injected `0…1` value with one cadence (20 Hz), and `PlaybackActivityMonitor` is the
+  main-actor shell that owns the cadence, holds the meter and republishes the number. Nothing else
+  reads it: it is not spoken, not announced, not logged and not persisted, and both views that
+  consume it are already `accessibilityHidden`, so VoiceOver gets nothing from this.
+- **What each engine can honestly offer.** ElevenLabs and Kokoro both play through the same
+  `AVAudioPlayer` in `playAudioData`, so both get a **real meter** —
+  `isMeteringEnabled`/`updateMeters()`/`averagePower(forChannel:)`, normalised linearly from a
+  −50 dBFS floor to 0 dBFS with both ends clamped (−160 dB, the player's digital silence, is 0). The
+  system voice exposes no audio at all, so it gets an **explicitly approximate** word pulse driven
+  by `willSpeakRangeOfSpeechString`: a 50 ms attack to a deliberately sub-1 peak (0.85) and a 260 ms
+  fall, carried as `PlaybackActivitySource.wordPulse` whose `isApproximate` is `true` wherever it
+  travels. The character range is **not** read — a word's length is not its loudness either, and
+  using it would dress the guess up as more of a measurement than it is. The realtime sessions
+  compute RMS only on the *capture* side (barge-in VAD); their playback is scheduled PCM with no
+  output level, and tapping that player node to invent one is the extra audio graph the plan
+  refuses — so they keep the existing state-based visuals and no signal is claimed for them.
+- **Generation, start and decay.** Every input names its playback generation and a mismatch is
+  dropped; the level is 0 until playback actually begins (`play()` accepted, or the synthesizer's
+  own `didStart`), so a queued or downloading utterance animates nothing; a new generation starts
+  from zero rather than inheriting what it interrupted; silence decays to ≤ 0.02 within 0.6 s;
+  finish, decode error and engine cancel run a **linear** ramp to zero within 0.25 s and then stop
+  the cadence; `stopSpeaking` is immediate with no tail. Because a generation counter alone cannot
+  judge a late callback — by the time an older `didFinish` reaches the main actor the service's
+  counter has already moved on — the service also checks the **object identity** the engine handed
+  back (`player === activityPlayer`, `utterance === activityUtterance`). A word boundary moves one
+  number; it schedules nothing, so a fast talker cannot accumulate tasks.
+- **The visuals.** `WavelineParams.params(for:activity:)` and
+  `VoiceAmbience.glow(for:reduceMotion:activity:)` take an optional level. `nil` returns the
+  approved values **identically**, and only `.speaking` scales — the level describes playback and
+  has nothing honest to say about listening or thinking. The bounds keep the design's shape: the
+  waveline's three harmonics scale together by 0.6…1.4× (so the quietest reactive speaking wave is
+  still taller than thinking) and the ambience by 0.85…1.15× of its already near-subliminal
+  radiance. Coral stays coral; no colour was added or changed. This phase adds no user-visible
+  strings.
+- **Gates.** `PlaybackActivityGate.allowsMetering(visible:sceneActive:reduceMotion:posture:)` is one
+  boolean, and each of the four refuses on its own; `PowerPosture.allowsDecorativeMetering` is
+  `.normal` only, because the point of `conserve` is that the app stops spending on what the wearer
+  did not ask for. When it refuses, **no cadence is started and the meter's `enable()` is never
+  called** — the player is not asked to compute power in the first place — and a gate closing
+  mid-utterance stops the cadence outright rather than running a tail over a screen that is gone.
+  Reduce Motion turns the reactive scaling off entirely rather than damping it, so the visuals are
+  byte-identical to the approved state-only ones. The gates are driven by the view that draws the
+  animation, whose lifetime *is* its visibility.
+
+**Evidence.** 29 new headless tests — `PlaybackActivityTests` (22) and `WavelineParamsTests` (7) —
+covering: dB→level normalisation and its clamps; the level staying at zero before playback starts;
+a loud meter raising it and silence decaying inside the documented bound while the cadence stays;
+a vanished meter reading as silence rather than freezing; the word envelope's shape, its sub-1 peak
+and its `0…1` bound; twenty words in a row starting one cadence; the two sources refusing to
+cross-feed; the bounded run-down on end, its monotonicity against late inputs, and the cadence
+stopping; immediate stop; a new generation starting clean and ignoring its predecessor's samples;
+a stale `end` failing to tear down a live animation; a repeat `begin` not starting a second cadence;
+each of the four gates refusing; every gated case starting **zero** cadences and enabling metering
+**zero** times; a gate closing mid-utterance; the word-pulse path flagged approximate; and, on the
+visual side, `nil` activity being identical to the approved parameters for every state, only
+speaking scaling, the 0.6…1.4× and 0.85…1.15× bounds, proportions preserved across all three
+harmonics, the energy order surviving the quietest reactive wave, the scaled parameters still
+anchored and bounded, and Reduce Motion ignoring the level entirely. `VoiceWavelineTests` (7),
+`OGDesignAccessibilityTests` (14), `SpeechDeliveryOutcomeTests` (26), `TTSEngineSelectorTests` (14)
+and `SpeechUrgencyTests` (3) are unchanged and green — no existing assertion needed updating,
+because every new parameter defaults to "no signal". Full `OpenGlassesTests`: 6169 tests, 0
+failures, 13 skipped. Debug and Release simulator builds green.
+
+**Owed — device.** Everything above is headless, and the two things that matter most cannot be seen
+in a simulator, which has no speech engine and no audio route: **smoothness** (whether a real
+`AVAudioPlayer` meter at 20 Hz actually reads as the voice, and whether the word pulse tracks the
+system voice closely enough to be worth having) and **overhead** (what metering plus a 20 Hz
+republish costs on the player and system paths — the −50 dB floor, the 0.6…1.4× band and the 20 Hz
+cadence are all proposals until a device says otherwise). The realtime sessions are untouched and
+still state-based. The waveline view itself is not currently mounted anywhere in the app — the
+ambience is what the wearer sees — so its reactive path is covered by tests rather than by use.
+
 ## P6 / PR7 — Optional assistant name
 
 **User decision added 2026-09-13:** onboarding may ask “What would you like to call your assistant?”
@@ -522,7 +597,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 | Listener recovery and audio ownership | 🚧 Fixture-green 2026-09-16 (P2); device checks owed (first Start after sleep/route change; one listener, no orphaned mic after stop) |
 | Live timing controls and interruption usability | 🚧 Fixture-green 2026-09-16 (P3); device comparison owed (premature cut-offs vs perceived delay across the presets; the barge-in noise floor) |
 | Playback-aware acknowledgement and reconnect semantics | 🚧 Fixture-green 2026-09-16 (P4); device checks owed (actual spoken completion; actual interruption) and live endpoint owed |
-| Visual feedback, stale callbacks and accessibility | Pending |
+| Visual feedback, stale callbacks and accessibility | 🚧 Headless-green 2026-09-16 (P5); device checks owed (smoothness and CPU overhead on the system and player paths) |
 | Optional assistant name, identity precedence and onboarding/settings | Pending |
 
 Record build/commit, endpoint contract/fixture, hardware/OS where relevant, result and remaining gap.
