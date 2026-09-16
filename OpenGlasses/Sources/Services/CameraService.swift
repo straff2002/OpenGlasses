@@ -522,8 +522,11 @@ class CameraService: ObservableObject, FilteredStillProviding {
             // and the second answer is the one a wearer can act on.
             return .unavailable(hasLatestStill && source != .photoOnly ? .noFreshView : .noStill)
         }
+        // The size the camera produced, recorded before the filter can rewrite it (Plan FF P1/PR4).
+        let sourcePixelSize = image.pixelSize
         guard scope.isFiltered else {
-            return .still(FilteredStill(image: image, scope: scope, sourceData: capturedData))
+            return .still(FilteredStill(image: image, scope: scope, sourceData: capturedData,
+                                        sourcePixelSize: sourcePixelSize))
         }
         guard let privacyFilter else { return .unavailable(.filterNotWired) }
         guard let filtered = privacyFilter.filteredOrUnavailable(image, for: scope) else {
@@ -532,7 +535,8 @@ class CameraService: ObservableObject, FilteredStillProviding {
         // Identity, not equality: the filter hands back the very same image when it was a no-op
         // (filter off, or Vision verified no faces), and only then may the original bytes stand in.
         return .still(FilteredStill(image: filtered, scope: scope,
-                                    sourceData: filtered === image ? capturedData : nil))
+                                    sourceData: filtered === image ? capturedData : nil,
+                                    sourcePixelSize: sourcePixelSize))
     }
 
     // MARK: - Audio Session Helpers

@@ -78,6 +78,13 @@ enum OutboundFrameConsumer: String, CaseIterable {
     case navigationAssist
     /// The live coach's periodic form/technique frame.
     case liveCoach
+    /// `look_closely` — one sharp full-resolution still injected into an active realtime session
+    /// (Plan FF P1/PR4). Until PR4 this was the roster's blind spot: the tool was wired straight to
+    /// `capturePhoto()` and the pixels went to a cloud model unfiltered, while the sink test looked
+    /// for `IMAGE_CAPTURED` and `analyzeFrame(` and never for `injectSharpImage`. Both halves are
+    /// fixed together — the capture goes through the chokepoint under the same `liveSession` scope
+    /// as the streamed frames, and the sink pattern is now one the scraper knows.
+    case lookCloselyCapture
     /// `capture_photo` — the still the wearer asks for, base64'd into the model turn.
     case capturePhotoTool
     /// `photo_log` — attached to a Field Assist session log *and* sent to the model.
@@ -202,6 +209,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .assistiveGuidanceLoop: return "AssistiveModeService"
         case .navigationAssist: return "NavigationAssistService"
         case .liveCoach: return "LiveCoachService"
+        case .lookCloselyCapture: return "SharpStillCapture"
         case .capturePhotoTool: return "CapturePhotoTool"
         case .photoLogTool: return "PhotoLogTool"
         case .moneyIdentifierTool: return "MoneyIdentifierTool"
@@ -232,7 +240,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .rtmpBroadcast, .webRTCBrowserStream: return .broadcast
         case .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
              .expertPeerTransport, .expertTransportProtocol: return .expertStream
-        case .liveSessionPush, .liveSessionPollFallback: return .liveSession
+        case .liveSessionPush, .liveSessionPollFallback, .lookCloselyCapture: return .liveSession
         case .directModelTurn: return .directModelTurn
         case .pinnedFrame: return .pinnedFrame
         case .agentAttachment: return .agentAttachment
@@ -269,7 +277,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .mcpFrameRequest, .studyScan, .teleprompterScan, .readingAccessibilityTool,
              .smartCaptureTool, .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
-             .faceRecognitionTool: return .filteredStill
+             .faceRecognitionTool, .lookCloselyCapture: return .filteredStill
         }
     }
 
@@ -285,7 +293,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .fingerspelling, .dwellCapture: return .exemptByScope
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
-             .mcpFrameRequest, .dwellCaptureSave: return .chokepoint
+             .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture: return .chokepoint
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,

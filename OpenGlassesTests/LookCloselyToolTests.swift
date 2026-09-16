@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import OpenGlasses
 
@@ -6,15 +7,16 @@ import XCTest
 final class LookCloselyToolTests: XCTestCase {
 
     /// Records the interleaving of capture and injection — the ordering contract is the test.
-    private final class Recorder {
+    final class Recorder {
         var events: [String] = []
     }
 
     @MainActor
-    private final class FakeInjector: LiveSessionInjecting {
+    final class FakeInjector: LiveSessionInjecting {
         let recorder: Recorder
         var canInject: Bool = true
         var isBusyForInjection: Bool = false
+        var liveSessionIdentity: Int = 1
         init(recorder: Recorder) { self.recorder = recorder }
         func injectSharpImage(jpegData: Data) {
             recorder.events.append("inject(\(jpegData.count)B)")
@@ -22,6 +24,24 @@ final class LookCloselyToolTests: XCTestCase {
         func injectText(_ text: String, completeTurn: Bool) {
             recorder.events.append("text(completeTurn: \(completeTurn))")
         }
+    }
+
+    /// A report that passes every gate: sharp, well lit, this session, this camera, taken now.
+    ///
+    /// Hand-built rather than measured, because these cases are about ordering, timeouts and cues
+    /// rather than about pixels — `CaptureQualityReportTests` and `ReadingCorpusTests` own the
+    /// measurement. `capturedAt` is `.distantFuture` so a test that does not care about the
+    /// freshness guard is never tripped by clock resolution.
+    static func usableReport(bytes: Int, identity: Int = 1, camera: Int = 0) -> CaptureQualityReport {
+        CaptureQualityReport(sourcePixelSize: CGSize(width: 2000, height: 1500),
+                             deliveredPixelSize: CGSize(width: 2000, height: 1500),
+                             jpegByteCount: bytes,
+                             sharpness: 400,
+                             meanLuma: 0.5,
+                             scope: .liveSession,
+                             cameraSession: camera,
+                             liveSessionIdentity: identity,
+                             capturedAt: .distantFuture)
     }
 
     private func makeTool(
@@ -32,13 +52,16 @@ final class LookCloselyToolTests: XCTestCase {
         cues: Recorder? = nil
     ) -> LookCloselyTool {
         LookCloselyTool(
-            captureSharpFrame: { [recorder] in
+            captureSharpStill: { [recorder] identity in
                 let data = try await capture()
                 recorder.events.append("capture(\(data.count)B)")
-                return data
+                return .captured(jpeg: data,
+                                 report: Self.usableReport(bytes: data.count, identity: identity))
             },
             injectorProvider: { injector },
+            cameraSession: { 0 },
             posture: { posture },
+            recognizeText: { _ in OCRService.Result(text: "", blocks: []) },
             onCaptureSucceeded: { cues?.events.append("captureCue") })
     }
 
@@ -220,6 +243,10 @@ final class LookCloselyToolTests: XCTestCase {
         // teach the trigger conditions, not just name the tool.
         XCTAssertTrue(tool.description.contains("small print"))
         XCTAssertTrue(tool.description.contains("live session"))
+        // Plan FF P1/PR4: the wearer's own words, composed from the classifier's vocabulary so the
+        // two cannot drift. The routing audit found none of them here.
+        XCTAssertTrue(tool.description.contains("\"read this\""))
+        XCTAssertTrue(tool.description.contains("\"what's the expiry date\""))
         XCTAssertEqual(tool.name, "look_closely")
     }
 }

@@ -105,6 +105,15 @@ protocol LiveSessionInjecting: AnyObject {
     /// second, and a turn arriving mid-utterance cuts the speaker off. Consulted through
     /// `LiveInjectionAdmission`, which bounds how long a result may wait for quiet.
     var isBusyForInjection: Bool { get }
+    /// Which session this is, counting from the process's first.
+    ///
+    /// Plan FF P1/PR4. A sharp still is captured *for* a conversation, and capture takes seconds —
+    /// long enough for a reconnect to have replaced the session underneath it. `canInject` cannot
+    /// see that: it is true again the moment the *new* session is ready, so a still captured for
+    /// the old one would sail into a conversation that never asked for it and be read as the answer
+    /// to whatever is being said now. The identity makes the replacement observable, so the capture
+    /// can be refused instead.
+    var liveSessionIdentity: Int { get }
     /// Push a full-quality still into the model's view (no turn semantics — see envelope docs).
     func injectSharpImage(jpegData: Data)
     /// Put text in front of the model. `completeTurn: true` = the model responds now, in its own

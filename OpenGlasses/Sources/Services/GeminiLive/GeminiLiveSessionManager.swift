@@ -10,6 +10,9 @@ import AVFoundation
 @MainActor
 class GeminiLiveSessionManager: ObservableObject {
     @Published var isActive: Bool = false
+    /// Plan FF P1/PR4 — which session this is. Bumped on every start, so work begun for one
+    /// session (a sharp capture in flight) can tell that it came back to a different one.
+    private(set) var sessionIdentity: Int = 0
     @Published var connectionState: GeminiConnectionState = .disconnected
     @Published var isModelSpeaking: Bool = false
     @Published var userTranscript: String = ""
@@ -133,6 +136,7 @@ class GeminiLiveSessionManager: ObservableObject {
         }
 
         isActive = true
+        sessionIdentity += 1
         errorMessage = nil
 
         // Ensure camera streaming is active (may have failed on mode switch if glasses weren't connected).
@@ -699,6 +703,8 @@ class GeminiLiveSessionManager: ObservableObject {
 
 extension GeminiLiveSessionManager: LiveSessionInjecting {
     var canInject: Bool { isActive && connectionState == .ready }
+
+    var liveSessionIdentity: Int { sessionIdentity }
 
     /// Model-speaking only: the Gemini Live wire we speak gives us no user-activity event. VAD is
     /// server-side and silent — the wearer's speech first becomes visible as `interrupted` (after
