@@ -82,8 +82,41 @@ enum TurnAdmissionPolicy {
 /// Item 1 makes question-shaped answers more common by design, which is why this ships alongside it.
 enum SpeechContinuationPolicy {
 
-    /// Today's window, and the floor: this policy may lengthen the wait, never shorten it.
+    /// The shipped default, and the floor the *question* rule works from: that rule may lengthen
+    /// the wait, never shorten it. Plan FE P3 lets the wearer choose a different window; this stays
+    /// the value they get until they do, and the value every fixture without a setting assumes.
     static let baseWindow: TimeInterval = 2.0
+
+    /// Plan FE P3 — the range a stored preference is allowed to take.
+    ///
+    /// The floor is not a matter of taste: below about a second the recognizer's own burst gaps
+    /// read as silence and the turn is cut mid-sentence on nearly every utterance. The ceiling is
+    /// there so a malformed or hostile stored value cannot leave the wearer with a mic that is hot
+    /// for a minute with nothing to end it.
+    static let minimumWindow: TimeInterval = 1.0
+    static let maximumWindow: TimeInterval = 10.0
+
+    /// The windows offered in Settings. Not a bound — `clampWindow` is — just the rungs of the
+    /// ladder, from a clipped reply to dictating a paragraph a sentence at a time.
+    static let presetWindows: [TimeInterval] = [1.5, 2.0, 3.0, 4.0, 6.0]
+
+    /// Coerce a stored preference into something the timing code can use.
+    ///
+    /// Everything that is not a usable number becomes `baseWindow` rather than the nearest bound:
+    /// NaN, an infinity, a negative, a missing value and a value of the wrong type all mean "we do
+    /// not know what the wearer wanted", and the answer to that is the default they would have had
+    /// anyway — not a 1-second window that cuts them off, nor a 10-second one that hangs.
+    static func clampWindow(_ raw: Double?) -> TimeInterval {
+        guard let raw, raw.isFinite, raw > 0 else { return baseWindow }
+        return min(max(raw, minimumWindow), maximumWindow)
+    }
+
+    /// The preset to show as selected for an arbitrary stored window, so a value that arrived from
+    /// somewhere else (an older build, a synced default) still renders as one of the rungs.
+    static func nearestPreset(to window: TimeInterval) -> TimeInterval {
+        let clamped = clampWindow(window)
+        return presetWindows.min(by: { abs($0 - clamped) < abs($1 - clamped) }) ?? baseWindow
+    }
 
     /// Window after the assistant has asked something. Long enough to think, short enough that a
     /// wearer who has walked away is not left with a hot mic.
@@ -111,9 +144,63 @@ enum SpeechContinuationPolicy {
         return openers.contains { finalClause.hasPrefix($0) }
     }
 
-    /// The silence window to use after speaking `text`.
-    static func silenceWindow(afterSpeaking text: String?) -> TimeInterval {
-        guard let text, isQuestionShaped(text) else { return baseWindow }
-        return questionWindow
+    /// The silence window to use after speaking `text`, given the wearer's chosen window.
+    ///
+    /// The question rule only ever *widens*. Someone who has asked for a 6- or 10-second pause
+    /// because they dictate in sentences must not find that pause quietly cut to 6 the moment the
+    /// assistant's reply happens to end in a question — that would be the CO Item 4 bug inverted,
+    /// and it would only show up for the wearers who went looking for the setting in the first
+    /// place. Hence `max`, not "replace with `questionWindow`".
+    static func silenceWindow(afterSpeaking text: String?,
+                              userWindow: TimeInterval = baseWindow) -> TimeInterval {
+        let chosen = clampWindow(userWindow)
+        guard let text, isQuestionShaped(text) else { return chosen }
+        return max(chosen, questionWindow)
+    }
+}
+
+/// Plan FE P3 — which window a turn is running under, and when a settings change takes effect.
+///
+/// The rule this type exists to make true: **a change applies from the next turn.** A turn already
+/// in flight keeps the window it started with. Anything else means the wearer moves the slider,
+/// the timer that is already armed re-arms underneath the sentence they are halfway through, and
+/// the very act of asking for a longer pause cuts them off once. The settings footer says so in
+/// as many words, so the rule is a promise, not an implementation detail.
+///
+/// It is a value type with no clock and no services precisely so the promise is testable without
+/// a microphone: begin a turn, change the setting, assert the running window did not move, begin
+/// the next one, assert it did.
+struct SpeechTurnWindowLedger: Equatable {
+
+    /// The assistant's last utterance, kept until it is replaced — the same lifetime the old
+    /// `silenceThreshold` had, so a question asked two turns ago does not keep widening windows
+    /// but a question asked just now still does.
+    private var lastAssistantUtterance: String?
+
+    /// The window the turn that is running right now started with.
+    private(set) var currentWindow: TimeInterval
+
+    init(currentWindow: TimeInterval = SpeechContinuationPolicy.baseWindow) {
+        self.currentWindow = SpeechContinuationPolicy.clampWindow(currentWindow)
+    }
+
+    /// Whether the window in force right now was widened by the question rule.
+    var isQuestionWidened: Bool {
+        guard let lastAssistantUtterance else { return false }
+        return SpeechContinuationPolicy.isQuestionShaped(lastAssistantUtterance)
+    }
+
+    /// Record what the assistant just said. Does **not** change the running window: the turn that
+    /// is in flight is the one that was listening while the assistant spoke, and it keeps its own.
+    mutating func noteAssistantSpoke(_ text: String?) {
+        lastAssistantUtterance = text
+    }
+
+    /// Start a turn, adopting the wearer's setting exactly as it stands at this moment.
+    @discardableResult
+    mutating func beginTurn(userWindow: TimeInterval) -> TimeInterval {
+        currentWindow = SpeechContinuationPolicy.silenceWindow(afterSpeaking: lastAssistantUtterance,
+                                                               userWindow: userWindow)
+        return currentWindow
     }
 }

@@ -20,21 +20,26 @@ class TranscriptionService: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
     private var noSpeechTimer: Timer?
-    /// CO Item 4: the silence window before the conversation ends. Normally
-    /// `SpeechContinuationPolicy.baseWindow`, widened for the next turn when the assistant's own
-    /// answer was a question the user still has to think about. Set via `noteAssistantSpoke`.
-    private var silenceThreshold: TimeInterval = SpeechContinuationPolicy.baseWindow
+    /// CO Item 4 + Plan FE P3: the silence window before the conversation ends. The wearer's
+    /// chosen window, widened when the assistant's own answer was a question they still have to
+    /// think about. The ledger is what makes "a settings change applies from the next turn" true:
+    /// the value is fixed once, in `startRecording()`, and nothing moves it mid-utterance.
+    private var turnWindow = SpeechTurnWindowLedger()
+
+    private var silenceThreshold: TimeInterval { turnWindow.currentWindow }
+
+    /// Where the wearer's chosen pause comes from. A closure rather than a direct `Config` read so
+    /// the adoption rule can be exercised without `UserDefaults`; the default reads the preference
+    /// live, every turn, which is the point.
+    var userPauseWindowProvider: () -> TimeInterval = { Config.speechPauseWindow }
 
     /// Tell the transcriber what the assistant just said, so the next silence window can account
     /// for a question. Called from the TTS completion path.
+    ///
+    /// Deliberately does not re-arm anything: if a turn is somehow still running, it keeps the
+    /// window it started with, exactly as it does across a settings change.
     func noteAssistantSpoke(_ text: String?) {
-        let window = SpeechContinuationPolicy.silenceWindow(afterSpeaking: text)
-        if window != silenceThreshold {
-            PrivacyLog.speech(.dictation, .reconfigured, seconds: window,
-                              detail: PrivacyToken(window > SpeechContinuationPolicy.baseWindow
-                                                   ? "questionShaped" : "base"))
-        }
-        silenceThreshold = window
+        turnWindow.noteAssistantSpoke(text)
     }
     private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
@@ -102,6 +107,12 @@ class TranscriptionService: ObservableObject {
             PrivacyLog.speech(.dictation, .startSkippedAlreadyRecording)
             return
         }
+
+        // Plan FE P3: the one moment the window is chosen. Read the preference now, hold it for
+        // the whole turn — a change made while the wearer is mid-sentence applies to the next one.
+        let window = turnWindow.beginTurn(userWindow: userPauseWindowProvider())
+        PrivacyLog.speech(.dictation, .reconfigured, seconds: window,
+                          detail: PrivacyToken(turnWindow.isQuestionWidened ? "questionShaped" : "base"))
 
         didReceiveSpeech = false
         lastSpeechObservedAt = nil

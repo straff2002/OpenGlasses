@@ -124,6 +124,11 @@ class WakeWordService: NSObject, ObservableObject {
     var graphSnapshotOverride: (@MainActor () -> ListenerGraphSnapshot)?
     /// Replaces "is the audio-session lease held".
     var leaseHeldOverride: (@MainActor () -> Bool)?
+
+    /// Plan FE P3 — whether general speech-triggered barge-in is on, read at the moment a
+    /// transcript arrives rather than captured at launch. Overridable for tests; the default reads
+    /// the live preference.
+    var generalBargeInEnabledOverride: (@MainActor () -> Bool)?
     /// Our claim on the shared session with the coordinator. Wake word is the always-on baseline
     /// owner: it self-activates with its tuned config and registers ownership so a live session
     /// (Gemini/OpenAI) supersedes it cleanly, and its release deactivates only if still current.
@@ -1027,6 +1032,10 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
+    private func generalBargeInEnabled() -> Bool {
+        generalBargeInEnabledOverride?() ?? Config.speechBargeInEnabled
+    }
+
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
         // An intentional cancel (ensureAudioEngineRunning pausing the wake-word task so
         // the buffer forwarder can feed TranscriptionService) surfaces here as an error.
@@ -1053,19 +1062,23 @@ class WakeWordService: NSObject, ObservableObject {
         let transcript = result.bestTranscription.formattedString.lowercased()
         debugTranscript = transcript
 
-        // During TTS playback: detect any speech as barge-in interrupt
+        // During TTS playback: what this transcript is allowed to do is `BargeInPolicy`'s call
+        // (Plan FE P3). The word-count test that used to live here is now a documented noise floor
+        // inside it, and the wearer can switch general speech-triggered interruption off without
+        // losing the explicit stop phrase or the wake phrase.
         if listenForStop && !stopFired {
-            // Explicit stop command
-            if containsStopPhrase(transcript) {
+            switch BargeInPolicy.decide(transcript: transcript,
+                                        isStopPhrase: containsStopPhrase(transcript),
+                                        matchedWakePhrase: matchedWakePhrase(transcript),
+                                        generalBargeInEnabled: generalBargeInEnabled()) {
+            case .stop:
                 PrivacyLog.wakeWord(.stopCommand)
                 stopFired = true
                 pauseRecognition()
                 onStopCommand?()
                 return
-            }
 
-            // Wake word during TTS — interrupt and start new conversation
-            if let matched = matchedWakePhrase(transcript) {
+            case .newConversation(let matched):
                 PrivacyLog.wakeWord(.bargeIn, trigger: .wakePhrase)
                 stopFired = true
                 wakeWordFired = true
@@ -1076,17 +1089,17 @@ class WakeWordService: NSObject, ObservableObject {
                     self.onWakeWordDetected?(matched)
                 }
                 return
-            }
 
-            // Voice-activity barge-in: any meaningful speech interrupts TTS
-            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            let wordCount = trimmed.split(separator: " ").count
-            if wordCount >= 2 {
-                PrivacyLog.wakeWord(.bargeIn, trigger: .voiceActivity, count: wordCount)
+            case .interrupt(let text):
+                PrivacyLog.wakeWord(.bargeIn, trigger: .voiceActivity,
+                                    count: text.split(whereSeparator: { $0.isWhitespace }).count)
                 stopFired = true
                 pauseRecognition()
-                onBargeIn?(trimmed)
+                onBargeIn?(text)
                 return
+
+            case .ignore:
+                break
             }
         }
 
