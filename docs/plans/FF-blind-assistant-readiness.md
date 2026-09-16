@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0 PR1+PR2 and P1 PR3+PR4 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; and every requested sharp capture now filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline. PR5–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output, no on-glasses audio check, no on-device reading measurement and no blind-participant journey has been captured yet.**
+**Status: 🚧 P0 PR1+PR2 and P1 PR3–PR5 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; every requested sharp capture filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline; and a recovery that is proven as *usable conversation* — six faults injected at the socket's own handlers, four independent recovery facts (socket, microphone, visual evidence, and whether the conversation's thread survived), a bounded locally-rebuilt handover when the server will not resume, a stop that cancels every retry phase, and a paused camera that is never started into. PR6–PR7 unbuilt. Gate A's remaining exit evidence is a device and blind-participant matter, not code: heard cues through the glasses with the phone pocketed, live model outputs against the response audit, the on-device reading measurement, recovery time and repeated flapping on real glasses, and a blind participant completing setup and use without a sighted operator. Gate C stays blocked on a supported background-inference path — on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -19,7 +19,7 @@ The online experience looks close enough for a focused hardening and user-valida
 | Blind-user prompt | **P0 done.** `BlindAssistanceContract` holds the rules once; the Blind Assistant preset prefix is composed from it, both realtime backends apply the preset through one seam, and navigation, narration, assistive-mode and reading compose the fragments that apply to them. | Live model outputs still to be captured against `BlindAssistanceResponseAudit` on device (see the P0 evidence note). |
 | Reading-quality capture | **P1/PR4 done in code.** The capture goes through the privacy chokepoint under the live-session scope, is measured into a `CaptureQualityReport` (both pixel sizes, bytes, sharpness, luma, camera and session identity), and is refused rather than injected when it predates the request or belongs to a replaced session or camera. Blur and darkness get one automatic re-capture and then a reposition or light instruction, or a confidence-floored partial transcription. The tool description now names the wearer's own phrases, composed from `ReadingRequestClassifier`; the routing audit is in [FF-reading-routing.md](FF-reading-routing.md). | Glare and occlusion are **not** detected by the quality gate and are injected as usable (see the PR4 baseline table). No on-device measurement: real mail and labels through the production adapters, and whether the model actually calls the tool on a spoken "read this". Targets are agreed after that baseline. |
 | Audible state | **P0/PR2 done in code.** `AudibleLifecyclePolicy` + `AudibleLifecycleCoordinator` give session-usable, connection-lost, service-usable-again and requested-capture-succeeded a distinct earcon and a short spoken line, delivered through the app's own speech path with VoiceOver on or off; the recovery cue is evaluated from evidence rather than at callback time, and `SessionAnnouncementPolicy` now subtracts the transitions the cues own. | Nothing heard on hardware yet: glasses output with the phone pocketed, a queued cue distinguished from a heard one, and VoiceOver on a device are all owed (see the PR2 evidence note). |
-| Session resilience | Gemini has coalesced bounded reconnects, ten-attempt limit, resumption handles and server-rotation handling. | Verify actual context continuity and usable microphone/frame recovery. Audio restart failure is logged in the reconnect callback; connection success alone is insufficient. Exhaustion ends the session. |
+| Session resilience | **P1/PR5 done in code.** Six faults are injected at the socket's own named handlers — loss mid-turn, setup timeout, server rotation, a refused resumption handle, an audio restart that throws, and frames missing after the reconnect — and each produces a step of the existing ladder. `LiveRecoveryAssessment` keeps socket, microphone, visual evidence and conversation continuity as four separate facts; `LiveContextHandover` rebuilds a bounded six-turn handover when the server will not resume, marking an interrupted answer as never delivered and an in-flight side-effecting call as outcome-unknown rather than re-issuing it; a stop during backoff, setup, handover assembly or capture restart cancels the rest; and `LiveRecoveryCameraPolicy` cannot express a start into a paused stream. | Recovery time end to end, repeated network flapping and a real server rotation, all on glasses; and the acceptance sentence itself — a follow-up answered correctly *by the model* from the rebuilt block (see the PR5 evidence note). |
 | Offline local vision | MLX local vision and capability guards exist; offline turn-loop/freshness/assembler tests exist. | BU explicitly leaves offline service device wiring pending. No automatic takeover exists in the inspected Gemini failure path. llama.cpp currently advertises no vision and rejects images; a downloaded text model is not a visual fallback. |
 | Safety framing | **P0 done for the online paths.** `clear path` is gone from the navigation prompt and from every prompt this app composes; the shared safeguards reach Blind Assistant, navigation, reading, narration and the assistive-mode prompts. | The local/offline fallback prompts are PR6-7 work and do not compose the contract yet. |
 
@@ -29,7 +29,8 @@ The online experience looks close enough for a focused hardening and user-valida
 - [Action Button intent](../../OpenGlasses/Sources/App/Intents/ToggleGeminiLiveIntent.swift), [application wiring](../../OpenGlasses/Sources/App/OpenGlassesApp.swift), [media trigger plan and device caveats](CH-media-button-trigger.md).
 - [Sharp capture tool](../../OpenGlasses/Sources/Services/NativeTools/LookCloselyTool.swift), [capture policy](../../OpenGlasses/Sources/Services/Live/LookCloselyPolicy.swift), [quality report](../../OpenGlasses/Sources/Services/Vision/CaptureQualityReport.swift), [filtered sharp capture](../../OpenGlasses/Sources/Services/Vision/SharpStillCapture.swift), [degraded outcomes](../../OpenGlasses/Sources/Services/Live/ReadingCaptureOutcome.swift), [reading-request predicate](../../OpenGlasses/Sources/Services/Accessibility/ReadingRequestClassifier.swift).
 - [Announcement policy](../../OpenGlasses/Sources/Services/Accessibility/SessionAnnouncementPolicy.swift), [audio cues](../../OpenGlasses/Sources/Services/TextToSpeechService.swift).
-- [Gemini session manager](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveSessionManager.swift), [socket recovery](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveService.swift), [resumption helpers](../../OpenGlasses/Sources/Services/GeminiLive/GeminiSessionResumption.swift).
+- [Gemini session manager](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveSessionManager.swift), [socket recovery](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveService.swift), [resumption helpers](../../OpenGlasses/Sources/Services/GeminiLive/GeminiSessionResumption.swift), [fault vocabulary](../../OpenGlasses/Sources/Services/GeminiLive/GeminiLiveFaultInjector.swift).
+- [Recovery facts](../../OpenGlasses/Sources/Services/Live/LiveRecoveryAssessment.swift), [reconnect decisions](../../OpenGlasses/Sources/Services/Live/LiveRecoveryDriver.swift), [bounded handover](../../OpenGlasses/Sources/Services/Live/LiveContextHandover.swift), [the local record](../../OpenGlasses/Sources/Services/Live/LiveConversationRecorder.swift), [the reconnect pause rule](../../OpenGlasses/Sources/Services/Live/LiveRecoveryCameraPolicy.swift).
 - [Local MLX service](../../OpenGlasses/Sources/Services/LocalLLMService.swift), [llama.cpp backend](../../OpenGlasses/Sources/Services/LocalInference/LlamaCpp/LlamaCppLocalInferenceBackend.swift), [offline core tests](../../OpenGlassesTests/OfflineLiveSessionTests.swift).
 - [Onboarding UI audit](../../OpenGlassesUITests/OnboardingAccessibilityTests.swift): stops before glasses registration; does not establish that the complete real setup is accessible. [DF](DF-app-accessibility.md) also explicitly leaves hardware VoiceOver and blind-user validation pending.
 
@@ -480,6 +481,114 @@ Extend the existing Gemini recovery implementation, coordinating with FD camera 
 
 Acceptance: recover from a short outage without user action and answer a context-dependent follow-up correctly, using current visual evidence. A long outage exits predictably into the offline policy below or an audible limitation. Measure recovery time and test repeated network flapping on real glasses.
 
+### P1 / PR5 evidence note — headless part implemented 2026-09-16
+
+Build: worktree on `feat/ff-p5-recovery-conversation`, stacked on the PR4 branch, build 401. Debug
+simulator build, twelve focused classes, the full `OpenGlassesTests` suite and a Release simulator
+build all green on an iPhone 17 Pro simulator. No hardware run, no real network loss, no glasses.
+
+**Where the faults are injected, and why there.** The recovery ladder this phase has to prove —
+coalesced reconnects, capped backoff, the ten-attempt limit, resumption handles, the server's own
+rotation — lives inside `GeminiLiveService`, wired to `URLSessionWebSocketTask` through three
+delegate closures and one timeout task. Replacing the socket wholesale would mean a second transport
+whose agreement with the real one is itself unproven. So the close, the error, the connect timeout
+and the `goAway` each became a named method, and `injectFaultForTesting(_:)` calls those same
+methods: everything downstream is the production path, unaware it was not a socket that spoke. The
+two faults that are about an attempt *failing to come up* rather than a connection dying are scripted
+instead (`ScriptedConnectOutcome`), and a `holdAtSetupForTesting` hook parks an attempt at the setup
+boundary so a stop can be landed there deterministically rather than raced into place.
+
+| Injected fault | Observed path |
+|---|---|
+| Socket loss mid-turn | `onDisconnected` once → one scheduled reconnect → `reconnecting`, attempt 1. Close + error + receive-loop for the same failure still coalesce to one attempt. |
+| Setup timeout | The attempt resolves false with no close and no error event; `connectionState` is `Connection timed out`; the reconnect task drives the next attempt itself. |
+| Server rotation (`goAway` then close) | Announcement schedules the reconnect, the close coalesces into it — one attempt, session not torn down. This is not an edge case: the server rotates every long conversation. |
+| Expired / rejected resumption handle | Setup went out carrying the handle and the attempt did not come up → the handle is **dropped**, `lastResumptionHandleRejected` set, the next attempt cold-starts, and continuity is not `resumed`. |
+| Audio-restart failure on reconnect | `recoveryIncomplete` — the microphone fact is false while the socket fact is true, and the wearer is told which. |
+| Camera frames missing / stale after reconnect | Driven through FD P0's readiness snapshot: no fresh visual evidence inside the bounded window → `serviceRestored(.cameraUnavailable)`. |
+
+**One production rule came out of the handle fault.** The wire cannot tell "your handle is stale"
+from "the socket died after setup", so the app does not claim to either — it acts on the only reading
+that is safe for both. A handle the server will not take, retried, walks the entire ten-attempt
+ladder to exhaustion and ends a session a cold start would have recovered on the first attempt. The
+handle is therefore dropped on any failure of an attempt that *sent setup*, and kept when the attempt
+never opened a socket, because then nothing was offered and nothing was refused.
+
+**Four facts, not one.** `LiveRecoveryAssessment` carries socket-ready, microphone-restored,
+visual-evidence-fresh and `contextContinuity: .resumed | .rebuilt(turns:) | .lost`, each assertable on
+its own. Continuity is derived in one place: the server resuming makes the local record irrelevant;
+otherwise a handover with turns is `rebuilt` and a handover with none is `lost` — "the last thing we
+were on was …" may only be said when there is a last thing. `AudibleLifecyclePolicy.RecoveryShape`
+gained the two cases that follow (`contextLost`, `cameraUnavailableAndContextLost`), built from the
+two facts by `make(cameraUsable:contextCarried:)` so the four cannot be assembled inconsistently, and
+`RecoveryEvidence` gained `contextCarried` — defaulting to `true`, because the OpenAI Realtime wire
+has no resumption concept and must claim nothing about context rather than guess. No existing
+assertion had to change: nothing in the suite pinned "recovery = socket up".
+
+**The record a handover is rebuilt from did not exist.** Live turns are persisted nowhere — not in
+`ConversationStore`, not in `LLMService.conversationHistory`. Both realtime managers keep two strings
+cleared at each turn boundary, read by two transcript views. So `LiveConversationRecorder` records the
+minimum, and its privacy posture is stated rather than implied: **in memory only** (never a file,
+never a thread, never a log — `PrivacyLog` keeps counts, not speech), bounded to twelve turns, each
+clipped to 300 characters when carried, and reset both when a session starts and when it stops, so
+ending a session is the same act as forgetting it.
+
+**The handover.** `LiveContextHandover` is pure and builds a block headed
+`RECOVERED CONVERSATION CONTEXT:` from the last **six** turns — roughly three exchanges, enough that
+"and the other one?" has a referent. It is composed into the new session's system instruction
+alongside the other injected contexts, after PR1's preset prefix and precedence note, so it rides in
+the *setup message* rather than being injected into a conversation that has already started without
+it. Three rules make it safe:
+
+* **An interrupted answer is marked interrupted** — "the connection dropped before you finished. They
+  may have heard none of it. Do not treat this answer as delivered." An answer cut off by the loss, or
+  spoken over by the wearer, is never handed back as delivered.
+* **A side-effecting tool call in flight is named and never re-issued** — names only, no arguments,
+  no call: "the outcome is unknown: 'send_via'. Do NOT run it again." Read-only tools are excluded
+  (repeating a lookup changes nothing), and the journal read is bounded to this session, because
+  `OperationJournal` is durable and carries rows recovered from a process that died days ago.
+* **The block closes by forbidding a replay of anything in it**, and tells the model to say it lost
+  the thread rather than invent what is missing.
+
+**Stop, in every phase.** The service's `disconnect()` already advanced a generation gate; it now also
+disarms the reconnect work, and the reconnect task re-checks cancellation and the deliberate-disconnect
+flag after `connect()` returns, so a superseded attempt cannot publish a ready state or fire
+`onReconnected` over the stop. `LiveRecoveryDriver` holds the manager's own stop generation, captured
+at the top and re-checked after the handover assembly, the reconfigure, the microphone restart and the
+camera start — each of the four is covered by a test that stops the session *inside* that step and
+asserts nothing further ran and nothing was claimed. `GeminiLiveService.scheduledWorkCount` (the shape
+EW's camera backend uses) makes "nothing is left scheduled" an assertion rather than a reading of the
+teardown.
+
+**The pause rule, made structural.** `LiveRecoveryCameraPolicy` is the only way the reconnect path can
+reach a camera start, and it has no case that starts into a `.paused` stream — FD P1's rule, enforced
+by shape rather than remembered. A paused camera at reconnect issues no start, the SDK is left to move
+the stream, and the wearer hears the camera-unavailable line. The same policy closed a real gap in the
+other direction: a session whose camera was `.stopped` while streaming was still wanted now gets one
+start on reconnect, where before it never retried.
+
+**After exhaustion.** There is no offline hand-off point to exit into — BU's offline loop has no
+takeover from a cloud session, and PR6 owns building one. So exhaustion ends where PR2 left it: one
+terminal `recoveryFailed` cue, allowed to take the floor, superseding a queued "trying to get it
+back", with the retry work disarmed *before* the cue goes out so the statement is true at the moment
+it is heard. The test asserts one cue for ten failed attempts and `scheduledWorkCount == 0` after it.
+
+**New user-visible strings** — two, both spoken lines on the existing cue path:
+"Connected again, but I lost the thread of our conversation. You may need to tell me again." and
+"Connected again. I can't see, and I lost the thread of our conversation." The handover block itself
+is a directive to the model, not something a wearer sees or hears.
+
+**Still owed — on glasses.** Everything above is fixture-level and the acceptance bar is not.
+**Recovery time** end to end — the wearer's last word before the drop to the first usable word after
+it — cannot be produced by this harness, which measures a ladder with no network in it. **Repeated
+network flapping on real glasses**: loss, recovery, loss inside one conversation, confirming one
+notice per episode through the glasses route with the phone pocketed rather than through a recorded
+sink. **A real `goAway` rotation** on a conversation long enough to meet one, confirming the wearer
+notices nothing. And the acceptance sentence itself: a short outage, no user action, and a
+context-dependent follow-up answered correctly *by the model* from the rebuilt block — this proves the
+block is assembled and delivered, not that a model uses it well. Whether six turns is the right number,
+and whether the two new lines are the right words, are proposals until a wearer has heard them.
+
 ## P2 / PR6–7 — Offline takeover, then field qualification
 
 This is the largest gap. Extend BU/DW/DZ/FC rather than introducing a second local model manager.
@@ -496,9 +605,9 @@ Acceptance: airplane-mode scene question and text reading with assets preinstall
 
 | Gate | Exit evidence | Current status |
 |---|---|---|
-| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | Pending |
+| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | PR1–PR5 implemented headlessly. Remaining exit evidence is all device- or participant-bound: the three on-glasses audio checks (PR2), live model outputs against `BlindAssistanceResponseAudit` (PR1), the on-device reading measurement (PR4), recovery time and repeated flapping on glasses (PR5), and a blind participant completing setup and use without a sighted operator (PR3) |
 | B — Foreground offline continuity | Production offline loop and automatic handover; capability failures audible; airplane-mode evidence | Pending |
-| C — Daily-use qualification | Blind-user sessions on target phones/glasses, pocketed/locked behaviour established, latency and power results, unresolved limitations published | Blocked on a supported background-inference path |
+| C — Daily-use qualification | Blind-user sessions on target phones/glasses, pocketed/locked behaviour established, latency and power results, unresolved limitations published | **Blocked** on a supported background-inference path: on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. Nothing in PR1–PR5 changes that, and none of it should be read as progress against this gate |
 
 Gate C's pocketed-phone offline promise depends on the on-device MLX background constraint recorded in this repository — local inference cannot run backgrounded — so it is a release blocker to schedule early rather than a late qualification step.
 
