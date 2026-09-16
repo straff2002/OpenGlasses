@@ -2,7 +2,7 @@
 
 Practical examples, setup notes, and device requirements for the capabilities introduced in the [English README](../README.md) and [中文 README](../README.zh-CN.md).
 
-[Talk](#talk-and-translate) · [See](#see-and-capture) · [Remember](#remember-and-recall) · [Act](#take-action) · [Work](#field-and-clinical-work) · [AI choices](#choose-your-ai) · [Devices](#devices-and-displays) · [Privacy](#privacy-and-control)
+[Talk](#talk-and-translate) · [See](#see-and-capture) · [Accessibility](#accessibility) · [Remember](#remember-and-recall) · [Act](#take-action) · [Work](#field-and-clinical-work) · [AI choices](#choose-your-ai) · [Devices](#devices-and-displays) · [Privacy](#privacy-and-control)
 
 ## Talk and translate
 
@@ -31,13 +31,15 @@ Camera-assisted questions use a captured image or a stream frame. A vision-capab
 | Try saying | What it does |
 |---|---|
 | “What am I looking at?” | Ask the assistant about the camera view |
-| “Save this card” | Read contact details and offer to save them |
+| “Save this card” | Extract contact details; native contact creation is not yet implemented |
 | “Log this receipt” | Extract the merchant, total, and date for an expense note |
 | “Add this event” | Read an event flyer and offer a calendar action |
 | “Scan this code” | Recognize a QR code or barcode |
 | “Coach my posture” | Start periodic spoken visual feedback |
 
-Smart capture performs OCR on the phone, then passes extracted fields to the assistant. Saving a contact, note, or event is a separate tool action with its own permissions. Local OCR does not make the rest of a cloud-model conversation local.
+Smart capture performs OCR on the phone, then passes extracted fields to the assistant. Note and calendar writes use separate tools and permissions; the current contacts tool only looks up existing contacts. Receipt extraction is not a dedicated structured expense store. Local OCR does not make the rest of a cloud-model conversation local.
+
+The automatic “handle this” recommendation, review, confirmation and undo experience—including contact creation and structured expense/tracking records—is [planned in FH](plans/FH-handle-this-visual-actions.md). QR recognition exists today; the unified no-fetch preview-and-confirm flow is also planned.
 
 Live coaching can also use cooking, guitar, climbing, sports, or a custom topic. Say “Stop coaching” to end it. The quality of visual responses depends on the view, lighting, and selected model.
 
@@ -50,6 +52,27 @@ Live coaching can also use cooking, guitar, climbing, sports, or a custom topic.
 - Optionally read Twitch chat aloud during a broadcast, with rate and mentions-only settings.
 
 Streaming destinations and remote expert connections need their own network configuration. [Build and service setup](BUILDING.md) covers the app settings; the repository includes a [WebRTC signaling server](webrtc/signaling-server.js) and [expert browser client](webrtc/expert-client.html).
+
+## Accessibility
+
+Reading Assistant and Blind Assistant are selectable live presets. Reading tools can extract text
+from signs, menus and documents; visual descriptions require a capable model and usable camera view.
+Try “Read this label” or “What does this sign say?” VoiceOver semantics, spoken feedback, Siri and
+Action Button shortcuts are implemented, with availability depending on the selected mode and setup.
+
+Accessibility features have no separate paid unlock. Cloud provider usage may cost money; professional
+Field Assist and clinical features have their own access tiers. Accessibility access does not change
+the project's commercial licence terms.
+
+The complete setup, correction and recovery journey still needs blind-participant and hardware
+validation. Automated UI checks do not establish independent everyday usability. Descriptions can
+be incomplete or incorrect and are supplementary to existing mobility aids, not clearance to move
+or cross a road.
+
+Offline operation requires compatible downloaded AI, speech and voice assets. Automatic takeover
+from a failed cloud visual session is not established; phone lock/background restrictions also
+limit local inference. Test the intended setup before relying on it. See [setup and first use](BUILDING.md#availability-and-first-use)
+and [the readiness plan](plans/FF-blind-assistant-readiness.md) for the remaining work.
 
 ## Remember and recall
 
@@ -92,6 +115,10 @@ The assistant can call enabled tools as part of a conversation. Services and per
 **Skill packs:** package reusable prompts, tools, and workflows. Start with [skill pack authoring](skillpack-authoring.md); maintainers can use the [catalog publishing guide](../skillpacks/README.md).
 
 Review enabled tools and action confirmations in the app. Some communication actions open another app or a compose screen to complete the task.
+
+Connections expose only the operations supported and authorised by that service. Broader enterprise
+sign-in and independently usable connected business workflows are [planned in FG](plans/FG-workflow-vaults-and-enterprise-auth.md);
+adding an MCP server does not automatically provide access to every feature of a business application.
 
 ## Field and clinical work
 
@@ -175,3 +202,19 @@ Camera availability depends on SDK and glasses firmware compatibility, registrat
 The app includes Meta SDK telemetry opt-out configuration and a telemetry-blocking layer. That does not eliminate the connections needed for Meta registration or services you choose to use.
 
 Cloud models, cloud speech, remote tools, and broadcasts each have their own data path. Review the selected services as well as where notes and recordings are stored.
+
+Use this checklist when choosing a setup:
+
+| Component | What to check |
+|---|---|
+| Camera/text | Whether captured images or extracted text are sent to the chosen model; local OCR alone does not keep subsequent requests local |
+| Speech recognition | Which recognizer receives microphone audio and whether its language assets work offline |
+| AI responses | The selected cloud provider, your server or a compatible model on the iPhone |
+| Spoken voice | Whether synthesis uses downloaded/system voices or a remote service |
+| Tools and sharing | Destinations for search, connected services, broadcasts and exports |
+
+Network Activity shows observed requests; some SDK-internal traffic may not appear, so an empty
+list does not prove that no data left the device. A guided in-app processing/readiness summary is
+[planned under FF](plans/FF-blind-assistant-readiness.md). Choosing another AI does not remove Meta
+registration or companion-app requirements. Provider credentials and subscription support depend
+on the selected connection; do not assume a personal chat subscription supplies an API key.
