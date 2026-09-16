@@ -69,6 +69,11 @@ struct OnboardingView: View {
     @State private var isDownloadingOfflineModel = false
     @State private var offlineDownloadError: String?
 
+    // Assistant name (page 7, Plan FE P6) — prefilled with whatever the assistant is called now,
+    // which on a fresh install is OpenGlasses. Skipping the page keeps exactly that.
+    @State private var assistantName = Config.assistantDisplayName
+    @State private var assistantNameRefused = false
+
     // Connect glasses state (page 5)
     @State private var cameraGranted = false
     @State private var metaRegistered = false
@@ -81,7 +86,7 @@ struct OnboardingView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var logoSize: CGFloat = 76
     @ScaledMetric(relativeTo: .largeTitle) private var successGlyph: CGFloat = 56
 
-    private let totalPages = 7
+    private let totalPages = 8
 
     var body: some View {
         ZStack {
@@ -101,7 +106,8 @@ struct OnboardingView: View {
                     case 3: servicesPage
                     case 4: permissionsPage
                     case 5: connectGlassesPage
-                    case 6: readyPage
+                    case 6: assistantNamePage
+                    case 7: readyPage
                     default: EmptyView()
                     }
                 }
@@ -1356,7 +1362,55 @@ struct OnboardingView: View {
         appState.glassesService.startObserving()
     }
 
-    // MARK: - Page 7: Ready
+    // MARK: - Page 7: Name Your Assistant (Plan FE P6)
+
+    /// Asked late, after the permissions and the glasses, because it is the one question in the
+    /// flow that nothing depends on: naming never blocks setup, and Skip is a first-class answer.
+    private var assistantNamePage: some View {
+        VStack(spacing: 0) {
+            pageTitle(
+                "Name Your Assistant",
+                "What would you like to call your assistant?",
+                page: 6
+            )
+
+            List {
+                Section {
+                    TextField("OpenGlasses", text: $assistantName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .accessibilityLabel("Assistant name")
+                        .onChange(of: assistantName) { _, newValue in
+                            assistantNameRefused = !Config.setAssistantDisplayName(newValue)
+                        }
+
+                    if assistantNameRefused {
+                        Text("That name can't be used. Keep it to 40 characters on one line.")
+                            .font(.footnote)
+                            .foregroundStyle(OGTheme.warnLabel)
+                    }
+                } footer: {
+                    Text("This is what it calls itself when it answers. Say your wake phrase as before — changing the name does not change voice activation. A name is only a name: \"Claude\" or \"Codex\" does not pick an AI provider or a coding backend. You can change it later in Settings.")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
+
+            pageFooter {
+                primaryButton("Continue") { go(to: 7) }
+                Button("Skip — call it OpenGlasses") {
+                    Config.resetAssistantDisplayName()
+                    assistantName = AssistantIdentity.defaultName
+                    assistantNameRefused = false
+                    go(to: 7)
+                }
+                .buttonStyle(.ogQuiet)
+            }
+        }
+    }
+
+    // MARK: - Page 8: Ready
 
     private var readyPage: some View {
         VStack(spacing: 0) {
@@ -1371,7 +1425,7 @@ struct OnboardingView: View {
                         .font(.title.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityValue(pagePosition)
-                        .accessibilityFocused($focusedPage, equals: 6)
+                        .accessibilityFocused($focusedPage, equals: 7)
 
                     Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")
                         .font(.subheadline)

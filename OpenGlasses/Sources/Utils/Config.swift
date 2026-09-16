@@ -676,10 +676,80 @@ struct Config {
         return models
     }
 
+    // MARK: - Assistant Name (Plan FE P6)
+
+    private static let assistantDisplayNameKey = "assistantDisplayName"
+
+    /// The name the wearer chose for their assistant, or `AssistantIdentity.defaultName` when they
+    /// never chose one. Existing installs have no stored key and so keep OpenGlasses with nothing
+    /// written and no onboarding re-run. Re-validated on read, so a hand-edited preference file
+    /// cannot put a control character or a 900-character "name" into a prompt.
+    static var assistantDisplayName: String {
+        AssistantIdentity.sanitized(UserDefaults.standard.string(forKey: assistantDisplayNameKey))
+            ?? AssistantIdentity.defaultName
+    }
+
+    /// Store a typed name. Blank (or whitespace-only) **resets** to the default; a name that is
+    /// too long or carries a forbidden character is **refused** and the stored value is left as it
+    /// was. Returns whether the value was applied, so a field can say why nothing happened.
+    @discardableResult
+    static func setAssistantDisplayName(_ raw: String) -> Bool {
+        switch AssistantIdentity.validate(raw) {
+        case .success(let name?):
+            // Choosing the default name back is the same state as never having chosen one, so it
+            // clears the key rather than writing it — "no stored preference" stays the default's
+            // only representation.
+            if name == AssistantIdentity.defaultName {
+                resetAssistantDisplayName()
+            } else {
+                UserDefaults.standard.set(name, forKey: assistantDisplayNameKey)
+            }
+            return true
+        case .success(nil):
+            resetAssistantDisplayName()
+            return true
+        case .failure:
+            return false
+        }
+    }
+
+    static func resetAssistantDisplayName() {
+        UserDefaults.standard.removeObject(forKey: assistantDisplayNameKey)
+    }
+
+    /// The id of the persona the app is currently routed to, mirrored here by `AppState` so the
+    /// static prompt assembly can honour a persona's own identity without reaching into the view
+    /// layer. Empty when no persona is selected.
+    static var activePersonaId: String? {
+        let id = UserDefaults.standard.string(forKey: "activePersonaId") ?? ""
+        return id.isEmpty ? nil : id
+    }
+
+    static func setActivePersonaId(_ id: String?) {
+        if let id, !id.isEmpty {
+            UserDefaults.standard.set(id, forKey: "activePersonaId")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "activePersonaId")
+        }
+    }
+
+    /// The name to speak as right now: a selected persona's own name, else the preference.
+    /// See `AssistantIdentity` for the precedence rule and why the migration persona is excluded.
+    static var assistantName: String {
+        let personaName = activePersonaId.flatMap { id in
+            savedPersonas.first { $0.id == id }?.name
+        }
+        return AssistantIdentity.resolve(preference: assistantDisplayName, personaName: personaName)
+    }
+
     // MARK: - Custom System Prompt
 
-    static let defaultSystemPrompt = """
-    You are OpenGlasses, a voice assistant running on Ray-Ban Meta smart glasses. Your responses will be spoken aloud via text-to-speech. Your name is OpenGlasses and the user activates you by saying "OpenGlasses".
+    /// The shipped prompt. Computed, not a stored constant: its identity opening is composed from
+    /// the current assistant name, so renaming the assistant reaches every route that starts here
+    /// (Direct, on-device and — through `systemPrompt` — the two realtime builders) on the next
+    /// turn or the next session, without rewriting anybody's saved prompt text.
+    static var defaultSystemPrompt: String { """
+    \(AssistantIdentity.defaultPromptOpening(name: assistantName, wakePhrase: wakePhrase))
 
     RESPONSE STYLE:
     - Keep responses CONCISE but COMPLETE — typically 2-4 sentences, longer for complex topics.
@@ -729,7 +799,7 @@ struct Config {
     - If a tool call fails, say what happened briefly and suggest an alternative — don't just say "I can't."
     - Don't retry the exact same failing call. Is the service down? Wrong parameters? Missing permissions?
     - If you hit a dead end, offer the next best option instead of giving up.
-    """
+    """ }
 
     /// Compact system prompt for an on-device photo turn on a memory-constrained device.
     ///
@@ -768,6 +838,14 @@ struct Config {
     }
 
     /// Returns the active preset's prompt, falling back to default.
+    ///
+    /// Identity precedence, audited for Plan FE P6 and unchanged by it: **the prompt text wins.**
+    /// A persona does not carry a prompt — selecting one swaps the active *preset*
+    /// (`AppState.applyPersonaRouting`) — so the identity the model is given has always been
+    /// whatever the active preset's opening says. What P6 adds is where a *shipped* preset's
+    /// opening gets its name: `assistantName`, which prefers a selected persona's own name and
+    /// otherwise uses `assistantDisplayName`. A preset the wearer wrote or edited is returned
+    /// verbatim, so an explicit identity in a custom prompt still wins over both.
     static var systemPrompt: String {
         if let preset = activePreset {
             return preset.prompt
@@ -803,7 +881,7 @@ struct Config {
         return [
             PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt, isBuiltIn: true),
             PromptPreset(id: "preset-tokens", name: "Tokens Saver", prompt: """
-            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
 
             RULES:
             - Reply naturally, directly, and briefly by default. Be complete.
@@ -816,7 +894,7 @@ struct Config {
             - Use location only when relevant.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "Concise", prompt: """
-            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
 
             RULES:
             - Maximum 1-2 sentences per response. No exceptions unless the user says "explain more."
@@ -827,7 +905,7 @@ struct Config {
             - You CAN see images from the glasses camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "Technical", prompt: """
-            You are OpenGlasses, a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
 
             RESPONSE STYLE:
             - Be precise and technical. Use correct terminology.
@@ -839,7 +917,7 @@ struct Config {
             - You CAN see images from the glasses camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "Creative", prompt: """
-            You are OpenGlasses, a witty and warm voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS.
+            \(AssistantIdentity.line(name: assistantName, role: "a witty and warm voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
 
             PERSONALITY:
             - Be playful, expressive, and engaging — like a clever friend.
@@ -1198,7 +1276,7 @@ struct Config {
     private static func chineseBuiltInPresets() -> [PromptPreset] {
         [
             PromptPreset(id: "preset-default", name: "默认", prompt: """
-            你是 OpenGlasses，一个运行在 Ray-Ban Meta 智能眼镜上的语音助手。所有回复都通过语音合成（TTS）朗读。
+            \(AssistantIdentity.lineZH(name: assistantName, role: "一个运行在 Ray-Ban Meta 智能眼镜上的语音助手。所有回复都通过语音合成（TTS）朗读。"))
 
             回复规则：
             - 始终用中文回复。
@@ -1211,7 +1289,7 @@ struct Config {
             - 当用户说"看看这个"、"这是什么"、"拍张照"等，会自动拍照发送给你。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-tokens", name: "代币节省者", prompt: """
-            你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
+            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。"))
 
             规则：
             - 用中文自然回复，默认简洁但完整。
@@ -1224,7 +1302,7 @@ struct Config {
             - 仅在相关时使用位置信息。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "简洁", prompt: """
-            你是 OpenGlasses，Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。
+            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。"))
 
             规则：
             - 用中文回复，每次最多1-2句话。
@@ -1233,7 +1311,7 @@ struct Config {
             - 你可以看到眼镜相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "技术", prompt: """
-            你是 OpenGlasses，运行在 Ray-Ban Meta 智能眼镜上的技术型语音助手。
+            \(AssistantIdentity.lineZH(name: assistantName, role: "运行在 Ray-Ban Meta 智能眼镜上的技术型语音助手。"))
 
             风格要求：
             - 用中文回复，精确专业。
@@ -1244,7 +1322,7 @@ struct Config {
             - 你可以看到眼镜相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "创意", prompt: """
-            你是 OpenGlasses，Ray-Ban Meta 智能眼镜上有趣又机智的语音助手。
+            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上有趣又机智的语音助手。"))
 
             风格：
             - 用中文回复，活泼有趣。
@@ -1271,7 +1349,7 @@ struct Config {
         if let data = UserDefaults.standard.data(forKey: "savedPromptPresets"),
            let presets = try? JSONDecoder().decode([PromptPreset].self, from: data),
            !presets.isEmpty {
-            return presets
+            return withCurrentIdentity(presets)
         }
         // First access: seed with built-ins + migrate any existing custom prompt
         var presets = builtInPresets()
@@ -1290,6 +1368,39 @@ struct Config {
         }
         setSavedPresets(presets)
         return presets
+    }
+
+    /// Re-compose the *shipped* presets' text from the current assistant name (Plan FE P6).
+    ///
+    /// Stored presets were seeded on first run, so a built-in's text is frozen at the name the
+    /// wearer had then. Recomposing on read is what makes a rename reach them — and it is safe
+    /// precisely because editing a built-in clears its `isBuiltIn` flag (`PromptPresetsView`),
+    /// so anything still marked built-in is byte-identical to shipped text nobody has touched.
+    /// A user-owned prompt — a custom one, or a built-in the wearer edited — is returned exactly
+    /// as stored: its identity, whatever it says, is respected and its contents are never
+    /// rewritten.
+    private static func withCurrentIdentity(_ presets: [PromptPreset]) -> [PromptPreset] {
+        guard presets.contains(where: { $0.isBuiltIn }) else { return presets }
+        let shipped = Dictionary(builtInPresets().map { ($0.id, $0.prompt) },
+                                 uniquingKeysWith: { first, _ in first })
+        return presets.map { preset in
+            guard preset.isBuiltIn, let text = shipped[preset.id], text != preset.prompt,
+                  body(of: text) == body(of: preset.prompt) else {
+                return preset
+            }
+            var refreshed = preset
+            refreshed.prompt = text
+            return refreshed
+        }
+    }
+
+    /// Everything after a prompt's opening line. Two shipped texts whose bodies match differ only
+    /// in their identity, which is the one difference this refresh exists to close — a stored
+    /// preset whose body has moved on (a language change, an older app version's wording) is left
+    /// alone rather than quietly replaced with something else the wearer did not ask for.
+    private static func body(of prompt: String) -> Substring {
+        guard let firstBreak = prompt.firstIndex(of: "\n") else { return "" }
+        return prompt[prompt.index(after: firstBreak)...]
     }
 
     static func setSavedPresets(_ presets: [PromptPreset]) {

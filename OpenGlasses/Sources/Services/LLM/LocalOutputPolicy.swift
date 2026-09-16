@@ -278,6 +278,18 @@ enum LocalOutputPolicy {
         return result
     }
 
+    /// The leading transcript-style speaker labels a small model might emit: the fixed ones, plus
+    /// whatever the wearer named their assistant (Plan FE P6), regex-escaped so a name containing
+    /// `.` or `(` is matched literally rather than compiled as a pattern.
+    private static var speakerLabelPattern: String {
+        var labels = ["OpenGlasses", "Assistant", "AI", "Model"]
+        let name = Config.assistantName
+        if !labels.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            labels.append(NSRegularExpression.escapedPattern(for: name))
+        }
+        return #"^\s*("# + labels.joined(separator: "|") + #")\s*:\s*"#
+    }
+
     /// Everything outside `removals`, with the seams that removal leaves behind tidied up and a
     /// transcript-style speaker label dropped.
     private static func tidied(_ raw: String, removing removals: [Range<String.Index>]) -> String {
@@ -288,8 +300,9 @@ enum LocalOutputPolicy {
             .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
             // A small model fed a merged (no-system-role) prompt can answer in transcript style —
-            // "OpenGlasses: …" / "Assistant: …" — and TTS would speak the label.
-            .replacingOccurrences(of: #"^\s*(OpenGlasses|Assistant|AI|Model)\s*:\s*"#,
+            // "OpenGlasses: …" / "Assistant: …" — and TTS would speak the label. The wearer's own
+            // assistant name is dropped the same way; it is escaped, never trusted as a pattern.
+            .replacingOccurrences(of: speakerLabelPattern,
                                   with: "", options: [.regularExpression, .caseInsensitive])
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

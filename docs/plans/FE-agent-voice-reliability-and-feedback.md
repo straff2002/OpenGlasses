@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0–P5 implemented 2026-09-16 (P2, P3, P4 and P5 same day) — P6 unbuilt.**
+**Status: ✅ Shipped — P0–P6 all built 2026-09-16 (P0 and P1 the day before); device and UI passes owed, named in the evidence table.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -583,6 +583,82 @@ persona/custom-prompt precedence; consistent default identity across supported p
 changes without overwriting prompts, history or wake configuration. UI verification covers keyboard,
 VoiceOver, Dynamic Type and localisation. No app-wide branding replacement or new onboarding flow.
 
+**Implemented 2026-09-16.**
+
+- **One preference.** `Config.assistantDisplayName` (key `assistantDisplayName`, default
+  `OpenGlasses`) with `setAssistantDisplayName` / `resetAssistantDisplayName`. An install that
+  predates it has no stored key and reads as OpenGlasses with nothing written on its behalf —
+  there is no migration and onboarding is not re-run. Rules: surrounding whitespace is trimmed;
+  blank or whitespace-only **resets** to the default (the key is cleared, so "no preference" stays
+  the default's only representation, and typing `OpenGlasses` back does the same); a name longer
+  than **40 grapheme clusters**, or carrying a C0/C1 control, any line break, or a bidirectional
+  override (U+202A–U+202E, U+2066–U+2069) is **refused, not repaired** — the stored value is left
+  exactly as it was and the field says so, because a silently truncated or stripped name is one
+  the wearer did not type. Zero-width joiners and variation selectors are allowed: emoji and many
+  scripts are spelled with them, and they count inside their grapheme. The value is re-validated
+  on read, so a hand-edited preference file cannot put a control character into a prompt.
+- **Precedence, as found.** The audit's answer was that **the prompt text wins, and always has**:
+  a persona carries no prompt of its own — selecting one swaps the active *preset*
+  (`AppState.applyPersonaRouting`) — so the identity the model is given is whatever the active
+  preset's opening says. Editing a built-in preset clears its `isBuiltIn` flag, which is what
+  makes the rest safe. So: a preset still marked built-in is shipped text nobody has touched and
+  its opening is recomposed from the current name on read (`Config.withCurrentIdentity`); a
+  user-owned preset — custom, or a built-in the wearer edited — and the legacy `customSystemPrompt`
+  value are returned byte for byte, identity included. Within a shipped opening the name comes from
+  `Config.assistantName`, which prefers a **selected persona's own name** and otherwise the
+  preference; the migration persona that `savedPersonas` creates on first run carries the product
+  default `OpenGlasses` as its name, and since nobody chose that it yields to the preference.
+  `AppState.activePersona` now mirrors its id into `Config` so the static prompt assembly can ask.
+- **Composed, never replaced.** `AssistantIdentity.line(name:role:)`, `lineZH` and
+  `defaultPromptOpening(name:wakePhrase:)` are the only places an identity opening is written.
+  Composed from them: `Config.defaultSystemPrompt` (now computed), the four English built-in
+  presets that opened "You are OpenGlasses, …", the five Chinese ones, `LLMService.leanCloudPrompt`
+  and the speaker-identity line `leanOnDevicePrompt` pins. The two realtime builders inherit it
+  through `Config.systemPrompt`, unchanged. In-app: the status card's mode badge falls back to the
+  preference instead of a literal, and the on-device transcript-label filter also strips the chosen
+  name (regex-escaped, so a name with punctuation is matched as text). The activation clause quotes
+  the **wake phrase**, not the name — `Config.wakePhrase` is untouched by naming, and no name is
+  ever registered as one. Installed app name, permission strings, widget and lock-screen identity,
+  bundle ids, signing and entitlements are unchanged; `Info.plist`, intents metadata and
+  `PrivacyInfo` were not touched.
+- **Asked once, changeable anywhere.** A new onboarding page — "Name Your Assistant" / "What would
+  you like to call your assistant?", prefilled with the current name — sits eighth of eight, after
+  permissions and the glasses, because it is the one question nothing depends on; "Skip — call it
+  OpenGlasses" keeps the default. The same field is the first section of Settings → Voice &
+  Triggers, immediately above the wake-phrase picker with a "Reset to OpenGlasses" button, so the
+  copy separating the two lands where the confusion would be.
+- **Next-session boundary.** A change applies to new turns and new live sessions. Editing the name
+  invalidates only the cached on-device session; nothing reconnects, and a live session already
+  running keeps the instruction it started with until it reconnects. The Settings footer says so.
+- **Remote agents.** Nothing was sent. The harness wire contract has no display-name field, so none
+  was invented; naming selects no backend and overrides no remote agent's own identity — "Claude"
+  and "Codex" are names, and a test pins that neither changes the active model, its provider, or
+  the default harness.
+
+**Evidence.** 26 headless tests in `AssistantDisplayNameTests` (new): default with nothing stored
+and nothing written, skipped onboarding, blank/whitespace, reset, typing the default back, a
+hand-edited unusable stored value, 40 accepted / 41 refused, a family emoji and a combining
+sequence counted as one character each, CJK/Arabic/Cyrillic/Japanese/Latin-diacritic names,
+eleven control/newline/bidi refusals each leaving the stored name intact, surrounding newlines
+trimmed rather than refused, the chosen name in the default prompt and in both lean prompts, a
+realtime instruction inheriting it through `BlindAssistanceContract.composeLiveInstruction`, a
+built-in preset's frozen stored text recomposed, a custom preset and the legacy key returned byte
+for byte, persona precedence and the migration persona's exception, the wake phrase and its
+alternatives unchanged, no provider/harness movement for "Claude"/"Codex", an
+"ignore previous instructions" name confined to the identity line in every route, the composer's
+exact output, and a regex-punctuation name matched as text. `SystemPromptBuilderTests`,
+`BlindAssistanceContractTests`, `GeminiLiveSetupTests`, `LLMLocalAnswerTests`, `PersonaIntentTests`,
+`ConfigTests` and `Gemma4ChatPromptTests` needed **no assertion changes** — none of them pinned the
+literal "You are OpenGlasses" opening. `OnboardingAccessibilityTests` (UI) has its two
+"Page N of 7" assertions updated to "of 8" for the added page. Full `OpenGlassesTests` green; Debug
+and Release simulator builds green.
+
+**Owed — UI and device.** The onboarding page and the Settings section are verified by build and by
+the preference tests behind them, not by a driven UI run: the keyboard, VoiceOver, Dynamic Type and
+localisation pass over the two new surfaces is owed, as is the added page's own accessibility audit
+(the UI walk deliberately stops before the glasses page on a simulator). The name reaching a real
+spoken turn, and a live session picking it up on reconnect, are device checks.
+
 ## Delivery evidence and exclusions
 
 Implement P0 → P1 → P2 → P3 → P4 → P5 → P6, splitting further only where migration/protocol work warrants
@@ -598,7 +674,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 | Live timing controls and interruption usability | 🚧 Fixture-green 2026-09-16 (P3); device comparison owed (premature cut-offs vs perceived delay across the presets; the barge-in noise floor) |
 | Playback-aware acknowledgement and reconnect semantics | 🚧 Fixture-green 2026-09-16 (P4); device checks owed (actual spoken completion; actual interruption) and live endpoint owed |
 | Visual feedback, stale callbacks and accessibility | 🚧 Headless-green 2026-09-16 (P5); device checks owed (smoothness and CPU overhead on the system and player paths) |
-| Optional assistant name, identity precedence and onboarding/settings | Pending |
+| Optional assistant name, identity precedence and onboarding/settings | 🚧 Headless-green 2026-09-16 (P6); UI pass owed (keyboard, VoiceOver, Dynamic Type, localisation on the new onboarding page and Settings section) and device check owed (the name in a spoken turn; a live session on reconnect) |
 
 Record build/commit, endpoint contract/fixture, hardware/OS where relevant, result and remaining gap.
 No fixed product rename or changes to installed/system-facing OpenGlasses branding. P6 permits

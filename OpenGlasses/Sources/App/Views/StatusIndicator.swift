@@ -12,6 +12,8 @@ struct StatusIndicator: View {
     @ObservedObject var openClawBridge: OpenClawBridge
     @Environment(\.appAccent) private var accent
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// The assistant's chosen name (Plan FE P6) — empty when the wearer never set one.
+    @AppStorage("assistantDisplayName") private var storedAssistantName = ""
     @State private var showDisconnectConfirm = false
 
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
@@ -265,7 +267,12 @@ struct StatusIndicator: View {
 
     private var activeModeBadge: some View {
         let persona = appState.activePersona
-        let name = persona?.name ?? "OpenGlasses"
+        // No persona selected: the assistant's own name, which the wearer may have chosen. Read
+        // through `@AppStorage` so the badge redraws when Settings changes it, and through the
+        // same validator `Config` uses so an unusable stored value still reads as OpenGlasses.
+        let name = persona?.name
+            ?? AssistantIdentity.sanitized(storedAssistantName)
+            ?? AssistantIdentity.defaultName
         let icon = persona?.icon ?? "sparkles"
         let connected = appState.isConnected
         // The dot is a fill and the name beside it is text — the same state, two

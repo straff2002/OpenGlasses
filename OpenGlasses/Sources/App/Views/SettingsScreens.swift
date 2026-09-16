@@ -12,8 +12,41 @@ struct VoiceTriggersSettingsScreen: View {
     @State private var pauseWindow = SpeechContinuationPolicy.nearestPreset(to: Config.speechPauseWindow)
     @State private var bargeInEnabled = Config.speechBargeInEnabled
 
+    // Plan FE P6. The typed name, written straight back through `Config` so the validation lives
+    // in one place; `nameRefused` carries the one reason a keystroke can be turned away.
+    @State private var assistantName = Config.assistantDisplayName
+    @State private var nameRefused = false
+
     var body: some View {
         Form {
+            // MARK: Assistant Name (Plan FE P6)
+            Section {
+                TextField("OpenGlasses", text: $assistantName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.done)
+                    .accessibilityLabel("Assistant name")
+                    .onChange(of: assistantName) { _, newValue in
+                        nameRefused = !Config.setAssistantDisplayName(newValue)
+                        if !nameRefused { appState.llmService.invalidateOnDeviceSession() }
+                    }
+
+                if nameRefused {
+                    Text("That name can't be used. Keep it to 40 characters on one line.")
+                        .font(.footnote)
+                        .foregroundStyle(OGTheme.warnLabel)
+                }
+
+                Button("Reset to OpenGlasses") {
+                    assistantName = AssistantIdentity.defaultName
+                }
+                .disabled(assistantName == AssistantIdentity.defaultName)
+            } header: {
+                Text("Assistant Name")
+            } footer: {
+                Text("What your assistant calls itself, and what this app calls it. Say your wake phrase as before — changing the name does not change voice activation. A name is only a name: \"Claude\" or \"Codex\" does not pick an AI provider or a coding backend. New conversations and new live sessions use the new name; a live session already running keeps the name it started with until it reconnects.")
+            }
+
             // MARK: Wake Word
             Section {
                 Picker("Wake Phrase", selection: Binding(

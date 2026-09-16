@@ -58,7 +58,7 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         // glasses — camera permission and registration with the companion app — and a simulator
         // has no glasses to register with. Driving into it produced a page that sometimes never
         // arrived, which is a gate that fails for a reason unrelated to what it measures. Pages 6
-        // and 7 are built from the same components as the five above (`OGCard`/`OGRow` and the
+        // to 8 are built from the same components as the five above (`OGCard`/`OGRow` and the
         // permission rows audited on page 5, over the same `centeredScroll` the AX5 test drives),
         // so what is unaudited here is their composition, not their parts.
     }
@@ -72,7 +72,7 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(app.buttons["Get Started"], named: "The welcome page")
 
         let welcomeTitle = app.staticTexts["OpenGlasses"].firstMatch
-        XCTAssertEqual(welcomeTitle.value as? String, "Page 1 of 7",
+        XCTAssertEqual(welcomeTitle.value as? String, "Page 1 of 8",
                        "The welcome page's title does not say where in the flow it sits")
         XCTAssertFalse(app.buttons["Back"].exists,
                        "There is nothing behind the first page to go back to")
@@ -81,7 +81,7 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         let providerTitle = app.staticTexts["Choose your AI"]
         awaitScreen(providerTitle, named: "The provider page")
 
-        XCTAssertEqual(providerTitle.value as? String, "Page 2 of 7",
+        XCTAssertEqual(providerTitle.value as? String, "Page 2 of 8",
                        "The page position did not follow the page change")
         XCTAssertTrue(app.buttons["Back"].exists, "Back is not reachable from page 2")
 

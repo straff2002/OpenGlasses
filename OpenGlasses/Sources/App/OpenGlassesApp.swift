@@ -642,7 +642,13 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var errorMessage: String?
     @Published var currentMode: AppMode = Config.appMode
     @Published var activePersona: Persona? {
-        didSet { userMemory.activePersonaId = activePersona?.id }
+        // Mirrored into `Config` as well as memory: the static prompt assembly resolves the
+        // assistant's spoken name from the selected persona (Plan FE P6) and cannot reach the
+        // view layer to ask which one is active.
+        didSet {
+            userMemory.activePersonaId = activePersona?.id
+            Config.setActivePersonaId(activePersona?.id)
+        }
     }
     @Published var carPlayConnected: Bool = false
     @Published var listeningEnabled: Bool = Config.listeningEnabled
