@@ -1,11 +1,19 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0 PR1+PR2 and P1 PR3–PR5 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; every requested sharp capture filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline; and a recovery that is proven as *usable conversation* — six faults injected at the socket's own handlers, four independent recovery facts (socket, microphone, visual evidence, and whether the conversation's thread survived), a bounded locally-rebuilt handover when the server will not resume, a stop that cancels every retry phase, and a paused camera that is never started into. PR6–PR7 unbuilt. Gate A's remaining exit evidence is a device and blind-participant matter, not code: heard cues through the glasses with the phone pocketed, live model outputs against the response audit, the on-device reading measurement, recovery time and repeated flapping on real glasses, and a blind participant completing setup and use without a sighted operator. Gate C stays blocked on a supported background-inference path — on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today.**
+**Status: 🚧 P0 PR1+PR2 and P1 PR3–PR5 (headless parts) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start; every requested sharp capture filtered, measured and identity-checked before it can reach the model, with a bounded retry, honest degraded copy and a recorded synthetic baseline; and a recovery that is proven as *usable conversation* — six faults injected at the socket's own handlers, four independent recovery facts (socket, microphone, visual evidence, and whether the conversation's thread survived), a bounded locally-rebuilt handover when the server will not resume, a stop that cancels every retry phase, and a paused camera that is never started into. PR6–PR7 unbuilt. Gate A's remaining exit evidence is a device and blind-participant matter, not code: heard cues through the glasses with the phone pocketed, live model outputs against the response audit, the on-device reading measurement, recovery time and repeated flapping on real glasses, and a blind participant completing setup and use without a sighted operator. Gate C stays blocked on a supported background-inference path — on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. PR8 (readiness walk-through + processing summary) drafted 2026-09-17; participant-led task acceptance added to Gate A.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
 
 ## Assessment
+
+**Priority update — 2026-09-16:** a first-person account from a blind business owner of building an accessible
+API interface
+reinforces task-based, participant-led validation. A public discussion of alternatives to the stock assistant on these glasses
+also surfaces setup and processing-choice questions. These are qualitative signals, not a user study
+or evidence that our implementation works. Prioritise usable setup, reading and recovery over new
+presets. The requirements below are pending; this update does not advance delivery status.
+
 
 We are substantially closer than a developer demo: six of the seven requested areas have relevant implementation. That is architectural coverage, not six completed requirements. Automatic cloud-to-offline visual conversation is the largest missing capability. Prompt consistency, audible recovery and independent end-to-end use are the immediate gaps.
 
@@ -43,6 +51,9 @@ Extend existing prompt composition; avoid another mode or parallel assistant ser
 - Read requested text faithfully; distinguish exact transcription, partial text and interpretation. Never fill in unreadable medication names, quantities, dates or instructions.
 - Remove `clear path` from navigation guidance. Prohibit assurances that movement/crossing is safe or that an unseen hazard is absent. Describe limited visual evidence and preserve cane/guide-dog framing.
 - Exclude visual assumptions such as “as you can see.” Audit generic system instructions for conflicts with the selected preset.
+- Support progressive detail: give the requested answer first, then offer more. For tables and
+  structured results, provide an overview and navigable rows/items by voice rather than reading a
+  whole table unprompted. Support repeat, next, back and stop without losing the selected item.
 
 Acceptance: prompt-composition tests across Gemini, OpenAI Realtime and local/direct paths that support the preset; evaluated image/transcript cases for stairs, partial labels, no visible obstacle, blurred text and requests for unsafe certainty. Static phrase checks alone are insufficient. Record model/version and observed outputs; no safety certification is implied.
 
@@ -242,6 +253,22 @@ recovery-evidence window and the five tone contours are proposals until a wearer
 - Coalesce launch/shortcut/wake requests. User Stop cancels pending startup; ordinary foreground events must not repeatedly restart a stopped session.
 - Validate existing Action Button and Siri paths first. Treat temple-tap support as experimental until CH's device gate passes. Audit the pinned DAT API before proposing capture-button handling; do not promise an unsupported hardware gesture.
 - Extend DF coverage through actual registration, permission denial/retry, provider setup, mode selection, session start/stop and error recovery. Audit all controls encountered, focus order, state values and accessible alternatives to gestures.
+- Add a guided readiness walk-through by extending PR3's `BlindAssistantLaunchPolicy`/`LiveSessionActivator` (they already decide registration → permissions → provider → glasses with a spoken reason): the walk-through adds fresh camera evidence and microphone/spoken-output steps, one spoken status, an accessible retry and one next instruction per step. Steps: registration → permissions → fresh camera
+  evidence → microphone/spoken output → first useful reading request. Each step has a spoken status,
+  accessible retry and one next instruction. A connected SDK or socket alone does not pass the check.
+- Extend the existing settings/network surfaces with an accessible processing summary: image,
+  transcription, AI response, spoken voice and enabled remote tools, each showing its configured
+  destination. Identify mixed local/cloud setups and missing downloaded assets before promising
+  offline use. Settings describe intended routing; observed requests are separate evidence, and
+  the network monitor is not a complete packet audit. Recompute after provider/engine changes.
+- Keep installation and companion-app steps in the tested journey. Publish the actual distribution
+  route and prerequisites; do not assume access to a Mac, a sighted helper or a public beta invitation.
+  Installation support and an independently completed install are recorded separately.
+Also verify focus after errors, permission returns and completed actions; announce status without
+re-reading the entire screen or competing with VoiceOver. Test the processing summary with local AI
+plus cloud speech, cloud AI plus local speech, unavailable assets and a provider change. It must not
+label any of those mixed configurations “fully local”.
+
 
 Acceptance: a blind participant can complete supported setup and use the assistant without a sighted operator. Record any unavoidable OS/companion-app step, plus an accessible instruction for it. Test cold launch, repeated activation, cancellation during permission checks, lock/unlock and external audio coexistence.
 
@@ -601,11 +628,43 @@ This is the largest gap. Extend BU/DW/DZ/FC rather than introducing a second loc
 
 Acceptance: airplane-mode scene question and text reading with assets preinstalled; absent/corrupt/text-only model; unsupported ASR locale; low memory; thermal pressure; lock/unlock; cloud loss during speech; network flapping; stop during handover. Trace permitted network activity to prove the fallback does not quietly call cloud services. Measure first spoken feedback, first useful answer, accuracy, battery and thermal behaviour per target phone.
 
+## P1 / PR8 — Readiness walk-through and processing summary
+
+**Status: 📋 Drafted 2026-09-17 — the two implementation items the priority update above added to Gate A, given their own phase so the gate can say what is built.**
+
+- Readiness walk-through: extend PR3's `BlindAssistantLaunchPolicy` and `LiveSessionActivator` into a guided sequence — registration → permissions → fresh camera evidence (FD's `CameraReadiness`) → microphone and spoken output (FE P2 listener health, FE P4 delivery outcome) → first useful reading request (PR4's capture quality report). Each step has one spoken status, an accessible retry and one next instruction; a connected SDK or socket alone never passes a step. No second onboarding owner.
+- Processing summary: one accessible screen and one spoken summary naming, for image, transcription, AI response, spoken voice and enabled remote tools, the configured destination (on device / which provider / which endpoint). Recomputed on every provider or engine change. It describes intended routing; the existing network monitor is separate observed evidence and is not a packet audit. A mixed configuration is named as mixed and never labelled fully local; missing downloaded assets are named before any offline promise.
+- Installation path: the tested journey starts at the App Store listing and includes the companion-app steps recorded in `FF-entry-journey-audit.md`; prerequisites are published, and independent installation is recorded separately from assisted installation.
+
+Acceptance: fake-owner tests drive every walk-through step to pass, fail and retry with the spoken status asserted; processing-summary fixtures cover local AI + cloud speech, cloud AI + local speech, unavailable assets and a provider change, none of which may read as fully local; VoiceOver focus lands on the step status after each result. Participant runs (below) close the phase, not the fixtures.
+
+### Participant-led task acceptance and public guidance
+
+Recruit blind participants who use their own assistive technology; agree tasks and success criteria
+with them before testing. Include different levels of technical confidence. Run installation/setup,
+read a label, correct a misread, check appointments, cancel an action and recover after connection
+loss. FH owns its action implementation and FG owns connected-service integration; FF owns the
+common non-visual interaction requirements. Their unfinished features must not block independent
+acceptance of current reading and native-calendar tasks.
+
+For each task record independent completion, assistance requested, focus/announcement failures,
+unintended actions, recovery steps and time to useful output. Separate automated accessibility
+checks, researcher-assisted completion and independent completion. Use participant feedback to
+revise the interaction and retest; passing a label audit is not the exit criterion. Do not retain
+participant recordings or personal task data without an agreed research consent/retention process.
+
+Keep a dedicated public accessibility section with current features, free accessibility access
+(provider charges may still apply), tested setup paths and explicit offline/background limitations.
+Use reading and everyday-task demonstrations whose build/device configuration is stated; no claim
+of independent blind-user readiness until the corresponding gate passes. Gate A includes the
+readiness/processing summary and participant evidence above; Gates B/C retain their offline gates.
+
+
 ## Delivery gates and order
 
 | Gate | Exit evidence | Current status |
 |---|---|---|
-| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | PR1–PR5 implemented headlessly. Remaining exit evidence is all device- or participant-bound: the three on-glasses audio checks (PR2), live model outputs against `BlindAssistanceResponseAudit` (PR1), the on-device reading measurement (PR4), recovery time and repeated flapping on glasses (PR5), and a blind participant completing setup and use without a sighted operator (PR3) |
+| A — Coherent online Blind Assistant | PR1–5 implemented; complete VoiceOver journey; heard lifecycle feedback; successful sharp reading and reconnect scenarios | PR1–PR5 implemented headlessly. Remaining exit evidence is all device- or participant-bound: the three on-glasses audio checks (PR2), live model outputs against `BlindAssistanceResponseAudit` (PR1), the on-device reading measurement (PR4), recovery time and repeated flapping on glasses (PR5), and a blind participant completing setup and use without a sighted operator (PR3). **2026-09-17:** the gate now also requires PR8's readiness walk-through and processing summary and the participant-led task acceptance recorded above |
 | B — Foreground offline continuity | Production offline loop and automatic handover; capability failures audible; airplane-mode evidence | Pending |
 | C — Daily-use qualification | Blind-user sessions on target phones/glasses, pocketed/locked behaviour established, latency and power results, unresolved limitations published | **Blocked** on a supported background-inference path: on-device MLX cannot run backgrounded, so the pocketed-phone offline promise has no supported implementation today. Nothing in PR1–PR5 changes that, and none of it should be read as progress against this gate |
 

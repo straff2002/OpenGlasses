@@ -6,7 +6,7 @@
 
 **AI 由你选，开口就能用，离线也能聊。**
 
-[开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
+[开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [无障碍功能](docs/CAPABILITIES.md#accessibility) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
 
 ---
 
@@ -14,11 +14,19 @@
 
 ### 看见，理解，然后行动
 
-读懂一块标牌，了解眼前的设备，或把名片上的信息保存为联系人。OpenGlasses 让相机参与对话，提供场景描述、文字识别、智能采集与实时视觉指导。
+读懂一块标牌，了解眼前的设备，或提取名片上的信息。OpenGlasses 让相机参与对话，提供场景描述、文字识别、智能采集与实时视觉指导。
 
 *“我面前是什么？” · “保存这张名片。” · “记下这张收据。”*
 
 [了解视觉与采集 →](docs/CAPABILITIES.md#see-and-capture)
+
+自动识别“帮我处理这个”的意图、创建手机联系人，以及统一的确认与撤销流程，目前仍在[规划中](docs/plans/FH-handle-this-visual-actions.md)。
+
+### 用语音阅读和了解眼前的内容
+
+Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设支持朗读与视觉描述。无障碍功能无需单独付费解锁；所选 AI 服务商仍可能收取使用费用。应用支持 VoiceOver，并可通过 Siri 和操作按钮快捷指令启动相关功能。
+
+盲人参与者独立完成全部设置和日常使用的验证仍待进行。自动离线接管，以及手机锁屏或放入口袋时可靠运行本地视觉模型，尚未得到完整验证。[查看现有功能与限制 →](docs/CAPABILITIES.md#accessibility)
 
 ### 让交流自然继续
 
@@ -62,6 +70,8 @@
 
 你还可以决定启用哪些工具，检查发送给助手的上下文，并查看网络活动。
 
+请分别检查 AI、语音识别、朗读引擎和远程工具的配置：只选择本地模型，并不意味着整段对话都在本地处理。更换 AI 服务商后，使用 Meta 眼镜仍需完成 Meta 的配对、注册和相关设置。
+
 [选择 AI →](docs/CAPABILITIES.md#choose-your-ai) · [隐私控制 →](docs/CAPABILITIES.md#privacy-and-control)
 
 ## 让专业知识来到工作现场
@@ -75,6 +85,8 @@
 ## 开始使用
 
 准备一台运行 **iOS 26 或更高版本的 iPhone**。配对兼容的 **Meta 智能眼镜**，即可免手持使用相机和音频功能；没有眼镜时，也可以先体验手机端功能，并使用手机相机作为替代。
+
+本文档介绍的安装方式是在 Mac 上使用 Xcode 从源码构建。开始前请查看[安装途径与首次使用检查](docs/BUILDING.md#availability-and-first-use)；本指南不假定你已有 App Store 下载链接或公开 TestFlight 邀请。
 
 1. **构建应用。** 按照[源码构建指南](docs/BUILDING.md)准备 Xcode 26+、依赖项、签名及 Meta 开发者配置。
 2. **选择 AI。** 在 **设置 → AI 模型** 中连接服务商，或下载兼容的本地模型。

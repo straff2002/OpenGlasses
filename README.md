@@ -6,7 +6,7 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 **Your choice of AI. Hands-free by voice. Offline when you need it.**
 
-[Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
+[Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 
 ---
 
@@ -14,11 +14,19 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 ### See it. Understand it. Act on it.
 
-Read a sign, ask about a piece of equipment, or turn a business card into a contact. OpenGlasses brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
+Read a sign, ask about a piece of equipment, or extract the details from a business card. OpenGlasses brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
 
 *“What am I looking at?” · “Save this card.” · “Log this receipt.”*
 
 [Explore vision and capture →](docs/CAPABILITIES.md#see-and-capture)
+
+Automatic “handle this” suggestions, native contact creation and a shared confirm-and-undo flow are [planned](docs/plans/FH-handle-this-visual-actions.md).
+
+### Reading and visual assistance by voice
+
+Reading Assistant and Blind Assistant presets support spoken reading and descriptions. Accessibility features have no separate paid unlock; selected AI providers may still charge for usage. VoiceOver support, Siri and Action Button shortcuts provide ways to operate the app.
+
+Validation of complete independent setup and daily use with blind participants is still pending. Automatic offline takeover and reliable pocketed-phone local vision are not yet established. [See current capabilities and limits →](docs/CAPABILITIES.md#accessibility)
 
 ### Keep the conversation flowing
 
@@ -62,6 +70,8 @@ Download the models once, select the local engines, and enable Offline Mode for 
 
 You also control which tools are enabled, inspect the context sent to the assistant, and review network activity.
 
+Check AI, speech recognition, spoken voice and remote tools separately: selecting a local model alone does not make the whole conversation local. Choosing another AI still uses Meta's glasses integration and setup.
+
 [Choose your AI →](docs/CAPABILITIES.md#choose-your-ai) · [Privacy controls →](docs/CAPABILITIES.md#privacy-and-control)
 
 ## Expertise where the work happens
@@ -77,6 +87,8 @@ Security and privacy engineering is documented against SOC 2, ISO 27001, ISO 277
 ## Quick Start
 
 Start on an **iPhone running iOS 26+**. Pair compatible **Meta smart glasses** for hands-free camera and audio use; phone-based features and camera fallback also let you explore without glasses.
+
+The documented installation route is a source build on a Mac with Xcode. See [availability and the first-use checklist](docs/BUILDING.md#availability-and-first-use) before starting; this guide does not assume an App Store download or public TestFlight invitation.
 
 1. **Build the app.** Follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
 2. **Choose your AI.** Open **Settings → AI Models** and connect a provider or download a compatible local model.

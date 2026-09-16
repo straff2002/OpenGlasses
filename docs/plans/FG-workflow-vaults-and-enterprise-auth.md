@@ -19,6 +19,12 @@ explicitly instead of promising identical features across all backends.
 
 ## P0 — Reusable vault content
 
+**Priority update — 2026-09-16:** a first-person account of an accessible API interface
+supports a concrete product goal: let a person complete an authorised task through conversation
+without having to navigate the source application's interface. Use official supported APIs behind
+the existing gateway, with source-system permissions intact. Do not promise arbitrary app control.
+This is a planned acceptance extension, not a shipped integration or a change to licence terms.
+
 The [aviation operations example](../../examples/vaults/aviation-operations/README.md) provides seven
 selectable procedures: safety occurrence draft, manual lookup request, IT support intake, operations
 handover, crew-record review, vendor renewal review and software task brief. Each produces a draft
@@ -150,6 +156,39 @@ versions and evidence before marking the pilot complete. Ticket submission is a 
 with exact payload review, confirmation, stable request identity and a verified receipt.
 
 ## P7 — Task capability and record contracts
+
+### Accessible connected-workflow acceptance across P6–P12
+
+Preserve P6's read/draft-only pilot. Extend it through P8/P9 into one independently usable journey:
+find an authorised record → hear its details → prepare one change → correct the draft → confirm →
+read back the verified result. Reuse the IT-support fixture first. For user validation, nominate one
+administrator-authorised non-production integration with an official API and a blind participant.
+
+A scheduling pilot may instead demonstrate “What appointments do I have next week?” → select an
+appointment → propose a new time → review → confirm → verify. If chosen, explicitly define an
+appointment adapter (time zone, duration, record version, conflict and notification semantics);
+do not force appointments into the task schema or confuse FH's native event creation with remote
+rescheduling. Keep clinical records and real client data out of the fixture. Lack of a suitable
+authorised backend leaves live acceptance pending rather than substituting a claimed integration.
+
+Use FF's VoiceOver and speech conventions: concise answers with detail on request, stable result
+selection, labelled controls, focus restoration, announced errors and a text/touch alternative to
+voice. Authentication callbacks, expired access, ambiguous records, changed server data and a lost
+write reply are part of the journey. The normal successful task must not require navigating the
+source application's inaccessible UI; disclose any unavoidable external authorization step.
+
+Add a connection summary naming the organisation/account, source system, allowed operations and
+where record content is sent for AI processing. Reuse FF's processing summary and existing consent
+surfaces. Show administrator setup separately from end-user operation; a generic “connected” badge
+does not prove a workflow has its required capabilities.
+
+Acceptance is staged: **P6** independently find/read and review a local draft, with zero writes;
+**P8** approve and verify creation; **P9/P10** approve an edit and reconcile interruption without a
+duplicate; **P12** participant completion of the full supported journey. Record exact backend/API
+capabilities and any assistance required. Publish one demonstrated outcome with its limits rather
+than claiming that every MCP connection makes every business application accessible.
+
+### Task schema
 
 Define a common task representation: connection, organisation/workspace/project, stable remote ID,
 title, description, status, assignee, priority, due date/time zone, source URL, last-updated time and

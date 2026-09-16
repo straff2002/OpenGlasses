@@ -4,6 +4,41 @@ Full setup: Meta developer credentials, Universal Links, personal signing overla
 in-app configuration, and troubleshooting. Start with the [Quick Start](../README.md#quick-start)
 if you just want it running.
 
+## Availability and first use
+
+This repository documents **building from source on a Mac with Xcode 26+**, then installing on an
+**iPhone running iOS 26+** with your signing configuration. It does not supply a public App Store
+or TestFlight installation link. Any invitation or separately distributed build has its own access
+instructions; do not assume that a Meta developer invitation also installs the iPhone app.
+
+Compatible Meta glasses use Meta AI pairing, developer configuration, registration and camera
+permissions. Choosing a different AI provider does not replace those steps. Phone-based features
+and camera fallback let you explore before completing glasses setup.
+
+After following the build steps below, check one thing at a time:
+
+1. **Registration:** complete Meta setup and the callback into OpenGlasses. If Connect fails,
+   check the credentials and the troubleshooting section before repeating registration.
+2. **Permissions:** grant the microphone/camera and service permissions needed for the task;
+   denied access needs a permission fix, not a different model.
+3. **Fresh image:** request a new capture of a distinctive object. A held preview is not proof
+   that the current camera session is delivering images.
+4. **Audio:** ask a short question and check both microphone input and the intended spoken-output route.
+5. **Useful task:** read a clearly printed sign, then ask about a calendar entry or save a simple note.
+   Confirm the result in its destination. Native contact creation and the unified “handle this”
+   transaction remain planned.
+
+These are manual checks, not a claim that a guided setup checker has shipped. If using VoiceOver,
+follow [the accessibility notes](CAPABILITIES.md#accessibility); complete independent setup and
+recovery validation is still pending. For offline use, download the required models first and follow
+[the offline voice checklist](CAPABILITIES.md#set-up-offline-voice), including a disconnected trial.
+
+Cloud AI and speech credentials are configured separately. Verify the supported sign-in/API route
+for the selected provider; a personal chat subscription is not itself an API key. For processing
+destinations and the limits of the network monitor, see [Privacy and control](CAPABILITIES.md#privacy-and-control).
+
+## Build and configure
+
 ### 1. Clone
 
 ```bash

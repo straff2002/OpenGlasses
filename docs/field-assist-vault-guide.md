@@ -4,6 +4,8 @@
 
 A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 
+For an example with selectable procedures, see the [aviation operations workflow discovery vault](../examples/vaults/aviation-operations/README.md). It contains seven proposed draft workflows for organisational adaptation, not operator-approved aviation procedures or a live integration.
+
 ## What you are building
 
 Every vault has the same shape. The names in `manifest.json` have to match the files exactly, but the file names themselves are yours to choose.
