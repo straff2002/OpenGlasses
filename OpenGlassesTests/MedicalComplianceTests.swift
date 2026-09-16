@@ -713,12 +713,10 @@ final class MedicalComplianceTests: XCTestCase {
 
     // MARK: - StoreKit Gating
 
-    func testCanAccessMedicalComplianceInDebug() {
-        // In DEBUG builds, this should always return true
-        #if DEBUG
-        XCTAssertTrue(StoreKitService.shared.canAccessMedicalCompliance,
-                      "Debug builds should always allow Medical Compliance access")
-        #endif
+    func testMedicalComplianceAccessRequiresActiveSubscription() {
+        let storeKit = StoreKitService.shared
+        XCTAssertEqual(storeKit.canAccessMedicalCompliance, storeKit.isMedicalComplianceActive,
+                       "Every build must require an active subscription for Medical Compliance access")
     }
 
     // MARK: - MedicalSafeguard Completeness

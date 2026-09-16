@@ -297,6 +297,13 @@ class StoreKitService: ObservableObject {
         products.first { $0.id == Self.medicalAnnualId }
     }
 
+    /// The Medical Compliance plans only, annual first. `products` holds every product the app
+    /// sells, so a paywall that lists it directly shows Field Assist and pack products too.
+    var medicalProducts: [Product] {
+        let medical = products.filter { Self.medicalProductIds.contains($0.id) }
+        return medical.sorted { lhs, _ in lhs.id == Self.medicalAnnualId }
+    }
+
     /// The Field Assist non-consumable unlock product.
     var fieldAssistProduct: Product? {
         products.first { $0.id == Self.fieldAssistId }
@@ -321,13 +328,9 @@ class StoreKitService: ObservableObject {
     }
 
     /// Whether the user can access Medical Compliance features.
-    /// Returns true if subscribed OR if running in debug/TestFlight.
+    /// Requires an active verified subscription in every build configuration.
     var canAccessMedicalCompliance: Bool {
-        #if DEBUG
-        return true // Always available in debug builds for testing
-        #else
         return isMedicalComplianceActive
-        #endif
     }
 
     /// Manage subscription in the App Store (opens subscription management).
