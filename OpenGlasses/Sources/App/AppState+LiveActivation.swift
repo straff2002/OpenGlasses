@@ -100,7 +100,7 @@ extension AppState: LiveSessionActivationOwner {
     /// latch, which is what stops a scene activation, a glasses reconnect or an audio-route change
     /// putting back a session the wearer took down.
     func activateBlindAssistantOnForeground() {
-        guard Config.startBlindAssistantOnLaunch else { return }
+        guard Config.startBlindAssistantOnLaunch, launchActivationDecided else { return }
         Task { [weak self] in
             await self?.activateBlindAssistant(source: .foreground)
         }

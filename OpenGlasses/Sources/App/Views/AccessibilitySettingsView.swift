@@ -21,7 +21,9 @@ struct AccessibilitySettingsView: View {
     @AppStorage("startBlindAssistantOnLaunch") private var startOnLaunch: Bool = false
     /// The same launch decision the app makes, shown as a sentence, so the wearer can find out
     /// what will happen *before* the launch that does or does not happen.
-    @State private var launchStatus: String = ""
+    /// Never empty: an empty `Text` is an accessibility element with nothing to say, on the one
+    /// row whose whole job is to say what will happen.
+    @State private var launchStatus: String = "Checking what will happen when you open the app…"
     @State private var launchBlockedByPreset = false
     /// Disables the tour button for its duration, so a second tap cannot start a second tour
     /// over the first — which, for a control whose whole purpose is teaching sounds apart, would

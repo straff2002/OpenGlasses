@@ -266,6 +266,8 @@ final class LiveSessionActivatorTests: XCTestCase {
         let activator = makeActivator(owner, recorder)
         activator.stop(.geminiLive, source: .appUI)
         XCTAssertTrue(activator.stoppedByUserThisForeground)
+        XCTAssertEqual(activator.lastStopSource, .appUI,
+                       "Which control stopped it is the answer to \"why is it not coming back?\"")
         for _ in 0..<3 {
             _ = await activator.activate(.init(mode: .geminiLive, source: .foreground) {
                 activator.stoppedByUserThisForeground ? .skip(.stoppedByUser)
@@ -290,6 +292,25 @@ final class LiveSessionActivatorTests: XCTestCase {
         let owner = FakeOwner(), recorder = Recorder()
         let activator = makeActivator(owner, recorder)
         activator.noteSessionEndedExternally()
+        XCTAssertFalse(activator.stoppedByUserThisForeground)
+        XCTAssertNil(activator.lastStopSource)
+    }
+
+    func testASessionEndingOnItsOwnStillCancelsAPendingStart() async {
+        // Disconnecting the glasses is the production case: there is nothing to start into a
+        // teardown, but the wearer did not ask the assistant to stay down either.
+        let owner = FakeOwner(), recorder = Recorder()
+        owner.holdSwitch = true
+        let activator = makeActivator(owner, recorder)
+
+        let task = Task { await activator.activate(.init(mode: .geminiLive, source: .actionButton)) }
+        while owner.switchGate == nil { await Task.yield() }
+        activator.noteSessionEndedExternally()
+        owner.releaseSwitch()
+
+        let outcome = await task.value
+        XCTAssertEqual(outcome, .cancelled)
+        XCTAssertEqual(owner.startCount, 0)
         XCTAssertFalse(activator.stoppedByUserThisForeground)
     }
 

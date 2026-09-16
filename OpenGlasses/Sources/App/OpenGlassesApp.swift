@@ -935,6 +935,15 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Its `speak` sink is the app's own voice rather than a VoiceOver announcement: a wearer who
     /// asked for the assistant to start on launch has to hear why it did not with VoiceOver off as
     /// well as on, which is the same rule the audible lifecycle follows.
+    /// Whether the launch-time activation decision has been made yet.
+    ///
+    /// The foreground path deliberately does *not* wait for glasses registration — whatever state
+    /// it is in on a return to the app is the answer. On a cold launch that is the wrong reading:
+    /// registration has not settled yet, and a foreground activation racing the launch one would
+    /// announce an audio-only start that is not true a second later. So foreground activation only
+    /// begins once the launch decision has been made.
+    private(set) var launchActivationDecided = false
+
     lazy var liveActivator: LiveSessionActivator = LiveSessionActivator(
         owner: self,
         speak: { [weak self] line in
@@ -2058,7 +2067,9 @@ class AppState: ObservableObject, AppStateProtocol {
         if Config.startBlindAssistantOnLaunch {
             Task { [weak self] in
                 guard let self else { return }
-                switch await self.activateBlindAssistant(source: .launch) {
+                let outcome = await self.activateBlindAssistant(source: .launch)
+                self.launchActivationDecided = true
+                switch outcome {
                 case .started, .alreadyActive:
                     break
                 case .skipped, .cancelled:
@@ -2066,6 +2077,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             }
         } else {
+            launchActivationDecided = true
             startModeSubstrateOnLaunch()
         }
         locationService.startTracking()
@@ -5752,7 +5764,11 @@ class AppState: ObservableObject, AppStateProtocol {
         inConversation = false
         glassesIdle = false
 
-        // Stop realtime sessions
+        // Stop realtime sessions. Plan FF P1/PR3: cancel a startup still in flight too — there is
+        // nothing to start into a disconnect. Not a *user stop* of the assistant, though: the
+        // wearer put the glasses down, they did not ask the assistant to stay down, so this does
+        // not latch.
+        liveActivator.noteSessionEndedExternally()
         if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
         if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
         releaseFramePin(trigger: .sessionStop)   // Plan CE
