@@ -135,13 +135,18 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         tapRow(startingWith: "Accessibility", in: app)
         awaitScreen(app.navigationBars["Accessibility"], named: "The accessibility category")
 
-        let readiness = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label BEGINSWITH 'Check the Assistant Is Ready'"))
-            .firstMatch
-        XCTAssertTrue(readiness.waitForExistence(timeout: 60),
+        // The category is longer than a screen, and a `Form` only builds the rows it has reached,
+        // so "does not exist yet" and "is not there" are the same query until it is scrolled.
+        let readiness = scrollUntilFound(labelStartingWith: "Check the Assistant Is Ready", in: app)
+        XCTAssertTrue(readiness.exists,
                       "The readiness check is not a reachable row in the accessibility category")
 
-        tapRow(startingWith: "How Your Requests Are Processed", in: app)
+        let processing = scrollUntilFound(labelStartingWith: "How Your Requests Are Processed",
+                                          in: app)
+        XCTAssertTrue(processing.exists,
+                      "The processing summary is not a reachable row in the accessibility category")
+        processing.tap()
+
         awaitScreen(app.navigationBars["How Requests Are Processed"],
                     named: "The processing summary")
         // Every row is present, whatever this launch configuration routes them to.
@@ -149,6 +154,22 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
                       "The transcription row is missing from the processing summary")
         audit(app, screen: "Settings — How requests are processed",
               deferring: [.secondaryCopyContrast, .systemFormChrome])
+    }
+
+    /// Scroll a long settings category until a row exists, and return it. Returns the query either
+    /// way, so the caller's assertion carries the failure message.
+    private func scrollUntilFound(labelStartingWith prefix: String,
+                                  in app: XCUIApplication,
+                                  steps: Int = 10) -> XCUIElement {
+        let element = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+            .firstMatch
+        if element.waitForExistence(timeout: 5) { return element }
+        for _ in 0..<steps {
+            app.swipeUp()
+            if element.exists { return element }
+        }
+        return element
     }
 
     // MARK: The model editor

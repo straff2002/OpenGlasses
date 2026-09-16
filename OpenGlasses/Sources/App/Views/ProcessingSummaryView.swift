@@ -66,7 +66,10 @@ struct ProcessingSummaryView: View {
                         .font(.footnote)
                         .accessibilityElement(children: .combine)
                 }
-                Button {
+                // Plain text rather than a `Label`: an icon-plus-title label is laid out on one
+                // line and the audit flags it as clippable at accessibility text sizes. On the
+                // button whose whole job is to read this page aloud, legible beats decorated.
+                Button(speaking ? "Reading it out…" : "Read This Out") {
                     guard !speaking else { return }
                     speaking = true
                     Task { @MainActor in
@@ -75,9 +78,6 @@ struct ProcessingSummaryView: View {
                         }
                         speaking = false
                     }
-                } label: {
-                    Label(speaking ? "Reading it out…" : "Read This Out",
-                          systemImage: "speaker.wave.2")
                 }
                 .disabled(speaking)
                 .accessibilityHint("Says the whole summary out loud, including where each part of a request goes.")
