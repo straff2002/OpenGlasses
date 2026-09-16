@@ -15,15 +15,13 @@ struct ToggleGeminiLiveIntent: AppIntent {
             throw IntentError.appNotRunning
         }
 
-        if appState.currentMode != .geminiLive {
-            appState.switchMode(to: .geminiLive)
-            try await Task.sleep(nanoseconds: 600_000_000)
-        }
-
+        // Plan FF P1/PR3: the mode switch, the wait and the start are the activator's, not this
+        // intent's. What used to be here — switch, sleep 600 ms, start — raced every other entry
+        // point and could not be cancelled by a Stop that arrived in the middle of it.
         if appState.geminiLiveSession.isActive {
-            appState.geminiLiveSession.stopSession()
+            appState.stopLiveSession(.geminiLive, source: .actionButton)
         } else {
-            await appState.geminiLiveSession.startSession()
+            await appState.requestLiveSession(.geminiLive, source: .actionButton)
         }
 
         return .result()

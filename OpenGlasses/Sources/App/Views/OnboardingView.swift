@@ -52,6 +52,8 @@ struct OnboardingView: View {
     @State private var searxngBaseURL = Config.searxngBaseURL
 
     // Permissions state
+    /// Row titles whose permission iOS has already refused. See `permissionRow`.
+    @State private var deniedPermissions: Set<String> = []
     @State private var micGranted = false
     @State private var locationGranted = false
     @State private var bluetoothConfigured = false
@@ -1110,7 +1112,12 @@ struct OnboardingView: View {
         granted: Bool,
         action: @escaping () async -> Void
     ) -> some View {
-        HStack(spacing: OGMetrics.rowSpacing) {
+        // Plan FF P1/PR3: iOS asks for a permission exactly once. After a refusal the Grant button
+        // is a control that does nothing — indistinguishable, without sight, from a tap that did
+        // not register — and the only way back is the iOS Settings page. So after a refusal the
+        // row offers that instead of a button that has stopped working.
+        let denied = deniedPermissions.contains(title)
+        return HStack(spacing: OGMetrics.rowSpacing) {
             permissionIcon(icon)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -1132,6 +1139,15 @@ struct OnboardingView: View {
                 Label("Granted", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(OGTheme.okLabel)
+            } else if denied {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .buttonStyle(.ogProminentCompact)
+                .accessibilityLabel("Open Settings to grant \(title) access")
+                .accessibilityHint("iOS only asks once, so this permission is granted in Settings now.")
             } else {
                 Button("Grant") {
                     Task { await action() }
@@ -1162,6 +1178,11 @@ struct OnboardingView: View {
     private func checkExistingPermissions() {
         micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         speechGranted = SFSpeechRecognizer.authorizationStatus() == .authorized
+        // A refusal from a previous run is still a refusal: iOS will not ask again, so the rows
+        // have to come up already offering the route that works.
+        noteOutcome("Microphone", granted: AVCaptureDevice.authorizationStatus(for: .audio) != .denied)
+        noteOutcome("Speech Recognition", granted: SFSpeechRecognizer.authorizationStatus() != .denied)
+        noteOutcome("Camera", granted: AVCaptureDevice.authorizationStatus(for: .video) != .denied)
         let locStatus = CLLocationManager().authorizationStatus
         locationGranted = locStatus == .authorizedWhenInUse || locStatus == .authorizedAlways
         bluetoothConfigured = Config.hasCompletedOnboarding
@@ -1177,13 +1198,20 @@ struct OnboardingView: View {
     /// are the same experience. Refusal is stated, because it is the answer that stalls the
     /// flow, and a stalled flow the user cannot see is where onboarding is abandoned.
     private func announcePermission(_ name: String, granted: Bool) {
-        SessionAnnouncer.say(granted ? "\(name) access granted"
-                                     : "\(name) access not granted")
+        SessionAnnouncer.say(granted
+            ? "\(name) access granted"
+            : "\(name) access not granted. iOS only asks once, so the row now offers an Open Settings button instead.")
+    }
+
+    /// Remember a refusal, so the row can offer the only route that still works.
+    private func noteOutcome(_ rowTitle: String, granted: Bool) {
+        if granted { deniedPermissions.remove(rowTitle) } else { deniedPermissions.insert(rowTitle) }
     }
 
     private func requestMicPermission() async {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         micGranted = granted
+        noteOutcome("Microphone", granted: granted)
         announcePermission("Microphone", granted: granted)
     }
 
@@ -1194,6 +1222,7 @@ struct OnboardingView: View {
             }
         }
         speechGranted = status == .authorized
+        noteOutcome("Speech Recognition", granted: speechGranted)
         announcePermission("Speech recognition", granted: speechGranted)
     }
 
@@ -1204,6 +1233,7 @@ struct OnboardingView: View {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             let status = CLLocationManager().authorizationStatus
             locationGranted = status == .authorizedWhenInUse || status == .authorizedAlways
+            noteOutcome("Location", granted: locationGranted)
             announcePermission("Location", granted: locationGranted)
         }
     }
@@ -1296,6 +1326,7 @@ struct OnboardingView: View {
 
     private func requestCameraPermission() async {
         cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
+        noteOutcome("Camera", granted: cameraGranted)
         announcePermission("Camera", granted: cameraGranted)
     }
 

@@ -1,6 +1,6 @@
 # Plan FF — Blind Assistant Readiness
 
-**Status: 🚧 P0 PR1+PR2 implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; and an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard. PR3–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output and no on-glasses audio check has been captured yet.**
+**Status: 🚧 P0 PR1+PR2 and P1 PR3 (headless part) implemented 2026-09-16 — one shared blind-assistance contract composed across the live preset, both realtime backends and the assistive services; an audible session lifecycle (four earcons plus short spoken lines) that queues, coalesces and expires its notices so a cue is true at the moment it is heard; and one activation owner behind every live-session entry, with an opt-in start-on-launch that says out loud why it did not start. PR4–PR7 unbuilt. Gate C stays blocked on a supported background-inference path. No hardware validation, no live model output, no on-glasses audio check and no blind-participant journey has been captured yet.**
 
 Origin: a blind-user readiness request naming seven areas — non-visual activation, a blind-user prompt, reading-quality capture, audible state, session resilience, offline local vision and safety framing.
 Baseline: OpenGlasses working tree at `4573210f`, including existing local changes. Existing plan status is context, not proof of current device behaviour.
@@ -15,7 +15,7 @@ The online experience looks close enough for a focused hardening and user-valida
 
 | Requested area | Current evidence | Remaining gap |
 |---|---|---|
-| Non-visual activation | `AskOpenGlassesIntent` and `ToggleGeminiLiveIntent` support Action Button shortcuts; wake-word activation and launch-time listening exist. VoiceOver semantics and UI audits exist. | Launch listening is not opt-in auto-start of a Gemini session. Experimental temple media trigger needs hardware validation; do not equate it with capture-button support. Finish the full setup/recovery journey without sight. |
+| Non-visual activation | **P1/PR3 done in code.** `LiveSessionActivator` is the one owner behind launch, foreground, the Action Button, every Siri shortcut and the app's own control; `BlindAssistantLaunchPolicy` decides the opt-in start-on-launch and names the nine ways it declines. VoiceOver semantics and UI audits exist, and the non-visual journey is walked in [FF-entry-journey-audit.md](FF-entry-journey-audit.md). | A blind participant completing setup and use without a sighted operator — the acceptance bar — and the device checks listed in the PR3 evidence note. Temple media trigger stays experimental; the pinned DAT SDK exposes no gesture or capture-button API (re-checked, see the audit). |
 | Blind-user prompt | **P0 done.** `BlindAssistanceContract` holds the rules once; the Blind Assistant preset prefix is composed from it, both realtime backends apply the preset through one seam, and navigation, narration, assistive-mode and reading compose the fragments that apply to them. | Live model outputs still to be captured against `BlindAssistanceResponseAudit` on device (see the P0 evidence note). |
 | Reading-quality capture | `LookCloselyTool` captures a sharp still and injects it into the active live session, with timeout and power/cooldown policy. **P0 rewrote the failure and decline copy**: it no longer permits answering the fine-detail question from the stream. | Establish that natural reading requests reliably invoke it and that delivered image detail survives the complete pipeline (PR4). |
 | Audible state | **P0/PR2 done in code.** `AudibleLifecyclePolicy` + `AudibleLifecycleCoordinator` give session-usable, connection-lost, service-usable-again and requested-capture-succeeded a distinct earcon and a short spoken line, delivered through the app's own speech path with VoiceOver on or off; the recovery cue is evaluated from evidence rather than at callback time, and `SessionAnnouncementPolicy` now subtracts the transitions the cues own. | Nothing heard on hardware yet: glasses output with the phone pocketed, a queued cue distinguished from a heard one, and VoiceOver on a device are all owed (see the PR2 evidence note). |
@@ -243,6 +243,104 @@ recovery-evidence window and the five tone contours are proposals until a wearer
 - Extend DF coverage through actual registration, permission denial/retry, provider setup, mode selection, session start/stop and error recovery. Audit all controls encountered, focus order, state values and accessible alternatives to gestures.
 
 Acceptance: a blind participant can complete supported setup and use the assistant without a sighted operator. Record any unavoidable OS/companion-app step, plus an accessible instruction for it. Test cold launch, repeated activation, cancellation during permission checks, lock/unlock and external audio coexistence.
+
+### P1 / PR3 evidence note — implemented 2026-09-16
+
+Build: worktree on `feat/ff-p3-entry-journey` from `6f485ba6`, build 397. Debug simulator build,
+seven focused classes (135 tests, of which 45 are new), the full `OpenGlassesTests` suite
+(5996 tests, 13 skipped, 0 failures) and a Release simulator build all green on an iPhone 17 Pro
+simulator, plus one UI-test case run on the same simulator. No hardware run.
+
+**The journey itself is [FF-entry-journey-audit.md](FF-entry-journey-audit.md)** — per step: the
+controls encountered, focus order, what carries state, the accessible alternative to every gesture,
+and the four steps that genuinely happen outside this app with the instruction each one gets. Read
+that for the walk; this note records what changed in code.
+
+**One activation owner.** Five entry points each carried their own copy of *switch mode, sleep
+600 ms, start a session*: `ToggleGeminiLiveIntent`, `StartLiveAIModeIntent` and the three preset
+shortcuts, `RunGlassesActionIntent`'s two paths, and the session capsule. The 600 ms was nobody's
+measurement; two of those paths racing produced two sessions; and a wearer pressing Stop while one
+was in flight got a session anyway a second later.
+
+`LiveSessionActivator` (`Services/Flow/`) holds the sequence, over a `LiveSessionActivationOwner`
+seam that `AppState` implements and a recording fake stands in for:
+
+* **Coalescing** — a second request for the same mode awaits the first's outcome and returns it. A
+  request for a *different* mode waits its turn rather than joining.
+* **The sleep is gone** — replaced by awaiting `AppState.performModeSwitch(to:)`, the switch body
+  extracted out of `switchMode(to:)`'s fire-and-forget `Task` so it can be awaited to completion.
+  The only delay left is the audio handover on a deliberate restart (the preset shortcuts, whose
+  purpose is to bring a running session back under a new preset), and it is now
+  `ModeSwitchPolicy.settleDelay` rather than a second guess at the same number.
+* **A stop cancels a pending start** — a stop generation is captured at the top of the activation
+  and re-checked after every await, so a Stop during the permission wait, during the mode switch,
+  or while `startSession` is still in flight leaves nothing running and nothing scheduled. The last
+  case tears the half-started session back down rather than leaving it up.
+* **The stop latch** — `stoppedByUserThisForeground` is set by a user stop and cleared only by an
+  explicit request or by relaunching. Plan FF's name is kept; the cycle it actually spans is the
+  app's lifetime, because clearing it on backgrounding would hand every return to the foreground a
+  fresh restart, which is the repeat it exists to prevent. A session that ends on its own — retries
+  exhausted, a teardown — does not latch, because the wearer did not ask for it to stay down.
+
+**The launch decision.** `BlindAssistantLaunchPolicy` is pure and ordered: setting on → past
+onboarding → Blind Assistant is the selected preset → no session already running → not stopped by
+the wearer → not Silent Mode → microphone → speech recognition → provider key. Then a start, which
+is **audio-only when the camera permission is off or the glasses never reported in**, and says which.
+
+Speech recognition is required even though the live session streams raw audio and never touches
+`SFSpeechRecognizer`: the wake word does, and the wake word is how a wearer reaches the app again
+without looking at it. Starting a session the wearer has no non-visual way back to is worse than
+declining and naming the permission.
+
+Five of the nine skips are spoken, once each, through the app's own voice — not a VoiceOver
+announcement, so they are heard with VoiceOver off as well. Four are deliberately silent: three
+describe a state the wearer set seconds earlier (the setting is off, they stopped it, a session is
+already running) and the fourth is Silent Mode, where speaking the reason would contradict the
+setting being reported. All nine still carry a sentence for Settings to show, because a settings
+screen that goes blank is the same dead end as a launch that goes quiet.
+
+**Intent, twice.** The setting on its own does not start anything: Blind Assistant has to be the
+selected live mode as well. A setting that quietly re-selected the preset would take a choice away
+from a wearer who uses a different one, and the launch path is where a taken choice is hardest to
+notice. Settings → Accessibility → **Opening the App** carries the switch, a live status sentence
+computed from the same policy, a **"Use Blind Assistant as the Live Mode"** button when that is what
+is in the way, and **"Open iOS Settings for OpenGlasses"** for the permissions.
+
+**The one code gap the walk found.** iOS asks for a permission exactly once. After a refusal,
+onboarding's row still rendered a "Grant" button that could never work again — and without sight, a
+refusal and a tap that did not register are the same experience. The row now offers **"Open
+Settings"** instead, seeded from the authorization status so a refusal from a previous run comes up
+that way too, and the spoken refusal says which button replaced it. Nothing else in the walk needed
+a code change: the controls it passes through were already named, grouped and announced by DF.
+
+**DAT gestures, re-checked.** `MWDATCore`, `MWDATCamera` and `MWDATDisplay`'s pinned
+`.swiftinterface` files contain zero occurrences of `gesture`, `captureButton`, `shutter`, `temple`,
+`captouch`, `buttonPress` or `hardwareButton`. The only `onTap` (2, in `MWDATDisplay`) is on HUD
+`Button` views this app renders. No capture-button handling is proposed, and CH's temple trigger
+stays experimental and off by default with its device gate unpassed.
+
+**Evidence.** 45 new headless tests. `BlindAssistantLaunchPolicyTests` (20) covers every input that
+changes the decision, the reason names, the evaluation order, which reasons are spoken and the exact
+lines. `LiveSessionActivatorTests` (25) drives a recording owner: cold launch → one start; two
+concurrent requests → one start; launch plus an intent → one start; a Plan CF redial during the
+switch → no second start; a stop during the permission wait, during the settle and during
+`startSession` → no start and nothing left running; a foreground event after a user stop → no
+restart, repeatedly; an explicit request after a stop → starts; an audio-only start → starts, with
+its cue; a skip spoken once, a different skip still reported, a silent skip silent, a cancellation
+silent; a teardown that is not the wearer's cancelling a pending start without latching; and the
+restart path using the shared settle constant.
+`ModeSwitchPolicyTests`, `AudibleLifecycleTests`, `ListenerHealthPolicyTests`,
+`BlindAssistanceContractTests` and the intent tests stay green unchanged.
+`SettingsAccessibilityTests` gained one case — the launch switch is named, turning it on reveals the
+status sentence and the route to the iOS permission page, and the revealed section passes the
+accessibility audit — run once on the simulator (59 s, 1 test, 0 failures).
+
+**Owed.** The acceptance bar is a person, not a test: **a blind participant completing the supported
+setup and using the assistant without a sighted operator.** With it, on device: cold launch,
+repeated activation, cancellation during the permission checks, lock/unlock, and coexistence with
+external audio; VoiceOver through the whole walk on hardware; and the audio-only cue heard through
+the glasses with the phone pocketed. The headless tests assert the decisions. They cannot assert
+what a wearer hears.
 
 ## P1 / PR4 — Make reading requests reliably obtain usable detail
 

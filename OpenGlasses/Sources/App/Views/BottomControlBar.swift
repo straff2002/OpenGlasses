@@ -559,8 +559,10 @@ struct BottomControlBar: View {
                 color: session.isActive ? .red : accent
             ) {
                 Task {
-                    if session.isActive { session.stopSession() }
-                    else { await session.startSession() }
+                    // Plan FF P1/PR3: the wearer's own Stop, so it latches — nothing ambient puts
+                    // back a session that was taken down here.
+                    if session.isActive { appState.stopLiveSession(.geminiLive, source: .appUI) }
+                    else { await appState.requestLiveSession(.geminiLive, source: .appUI) }
                 }
             }
         } else if isOpenAI {
@@ -571,8 +573,11 @@ struct BottomControlBar: View {
                 color: openAISession.isActive ? .red : accent
             ) {
                 Task {
-                    if openAISession.isActive { openAISession.stopSession() }
-                    else { await openAISession.startSession() }
+                    if openAISession.isActive {
+                        appState.stopLiveSession(.openaiRealtime, source: .appUI)
+                    } else {
+                        await appState.requestLiveSession(.openaiRealtime, source: .appUI)
+                    }
                 }
             }
         } else if appState.isProcessing || appState.speechService.isSpeaking {

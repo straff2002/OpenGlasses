@@ -3514,6 +3514,19 @@ struct Config {
         blindAssistantSpokenCues ? .tonesAndSpeech : .tonesOnly
     }
 
+    /// Plan FF P1/PR3 — whether opening the app starts the Blind Assistant live session.
+    ///
+    /// Off by default, and opt-in in the strong sense: turning it on is not enough on its own, the
+    /// Blind Assistant preset has to be the selected live mode as well. A launch that starts a
+    /// streaming session, claims the microphone and opens the camera is not something to infer from
+    /// a wearer having once visited an accessibility screen. See `BlindAssistantLaunchPolicy`.
+    @UserDefaultsBacked("startBlindAssistantOnLaunch", default: false)
+    static var startBlindAssistantOnLaunch: Bool
+
+    static func setStartBlindAssistantOnLaunch(_ enabled: Bool) {
+        startBlindAssistantOnLaunch = enabled
+    }
+
     /// Master toggle for fingerspelling recognition (Plan CK): the live camera →
     /// landmarks → CTC decode → speech pipeline. Off by default; the session also
     /// requires the downloaded model bundle before it can start.

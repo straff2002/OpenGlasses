@@ -448,6 +448,10 @@ struct OpenGlassesApp: App {
             case .active:
                 PrivacyLog.app(.becameActive)
                 appState.restoreFromBackground()
+                // Plan FF P1/PR3: opening the app counts whether it was launched or merely
+                // brought back — but it runs the same gate, so a session the wearer stopped stays
+                // stopped and a repeated activation does not stack a second start on the first.
+                appState.activateBlindAssistantOnForeground()
                 // W03.3: two date comparisons when nothing is due, so this is free on every
                 // activation and the sweep still happens on a phone that is never relaunched.
                 appState.retention?.runIfDue()
@@ -923,6 +927,29 @@ class AppState: ObservableObject, AppStateProtocol {
     /// life of the app: its queue, its generation counter and its bounded waits are the state that
     /// stops a stale "disconnected" playing after a recovery.
     private(set) var audibleLifecycle: AudibleLifecycleCoordinator?
+    /// Plan FF P1/PR3 — the one owner of "start the live assistant". Every entry point (launch,
+    /// foreground, Action Button, Siri, the app's own control) goes through it, which is what makes
+    /// coalescing, stop-cancels-pending-start and the stop latch properties of the app rather than
+    /// of whichever caller remembered them. Built lazily because it holds `self` unowned.
+    ///
+    /// Its `speak` sink is the app's own voice rather than a VoiceOver announcement: a wearer who
+    /// asked for the assistant to start on launch has to hear why it did not with VoiceOver off as
+    /// well as on, which is the same rule the audible lifecycle follows.
+    /// Whether the launch-time activation decision has been made yet.
+    ///
+    /// The foreground path deliberately does *not* wait for glasses registration — whatever state
+    /// it is in on a return to the app is the answer. On a cold launch that is the wrong reading:
+    /// registration has not settled yet, and a foreground activation racing the launch one would
+    /// announce an audio-only start that is not true a second later. So foreground activation only
+    /// begins once the launch decision has been made.
+    private(set) var launchActivationDecided = false
+
+    lazy var liveActivator: LiveSessionActivator = LiveSessionActivator(
+        owner: self,
+        speak: { [weak self] line in
+            guard let self else { return }
+            Task { @MainActor in await self.speechService.speak(line, urgency: .high) }
+        })
     private var autoSleepTask: Task<Void, Never>?
     private var currentLLMTask: Task<Void, Never>?
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
@@ -1010,7 +1037,10 @@ class AppState: ObservableObject, AppStateProtocol {
         addDebugEvent("Callback received via \(source)")
     }
 
-    private func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
+    /// Internal rather than private since Plan FF P1/PR3: the Blind Assistant launch gate needs
+    /// the same settle wait the wake-word auto-start does, and two copies of a 20 s timeout is how
+    /// they drift apart.
+    func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
         guard WearablesBootstrap.ensureConfigured() else { return 0 }
         let waitStart = ContinuousClock.now
         while true {
@@ -1924,7 +1954,17 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
     /// Tears down the current mode's audio and starts the new one.
+    ///
+    /// Fire-and-forget form, kept because most callers are SwiftUI actions with nothing to wait
+    /// for. Anything that needs the switch to be *finished* — the live-session activator, which
+    /// used to guess at it with a fixed sleep — awaits `performModeSwitch(to:)` instead.
     func switchMode(to mode: AppMode) {
+        Task { await performModeSwitch(to: mode) }
+    }
+
+    /// The switch, awaited to completion: teardown, the audio settle, the new mode's substrate,
+    /// and the Plan CF redial when there was a call to redial.
+    func performModeSwitch(to mode: AppMode) async {
         guard mode != currentMode else { return }
         let oldMode = currentMode
         currentMode = mode
@@ -1944,69 +1984,68 @@ class AppState: ObservableObject, AppStateProtocol {
             releaseFramePin(trigger: .modeSwitch)
         }
 
-        Task {
-            for action in actions {
-                switch action {
-                case .teardown(let target):
-                    switch target {
-                    case .direct:
-                        wakeWordService.stopListening()
-                        speechService.stopSpeaking()
-                        inConversation = false
-                        isListening = false
-                    case .geminiLive:
-                        geminiLiveSession.stopSession()
-                        await cameraService.tearDown()
-                    case .openaiRealtime:
-                        openAIRealtimeSession.stopSession()
-                        await cameraService.tearDown()
-                    }
+        for action in actions {
+            switch action {
+            case .teardown(let target):
+                switch target {
+                case .direct:
+                    wakeWordService.stopListening()
+                    speechService.stopSpeaking()
+                    inConversation = false
+                    isListening = false
+                case .geminiLive:
+                    geminiLiveSession.stopSession()
+                    await cameraService.tearDown()
+                case .openaiRealtime:
+                    openAIRealtimeSession.stopSession()
+                    await cameraService.tearDown()
+                }
 
-                case .settleDelay:
-                    // Brief delay for audio session to release
-                    try? await Task.sleep(nanoseconds: 500_000_000)
+            case .settleDelay:
+                // Brief delay for audio session to release
+                try? await Task.sleep(
+                    nanoseconds: UInt64(ModeSwitchPolicy.settleDelay * 1_000_000_000))
 
-                case .startSubstrate(let target):
-                    switch target {
-                    case .direct:
-                        try? await wakeWordService.startListening()
-                    case .geminiLive, .openaiRealtime:
-                        // Nothing to start here for audio: a live session keeps running when the
-                        // app is backgrounded on the `audio` background mode alone. The session
-                        // manager's `RealtimeAudioEngine` holds a `.playAndRecord` session through
-                        // `AudioSessionCoordinator`/`AudioSessionActivator` for as long as the
-                        // session is up, which is what keeps capture and playback alive off-screen.
-                        // Camera up so frames are available when the session starts.
-                        do {
-                            try await cameraService.startStreaming()
-                        } catch {
-                            PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
-                        }
+            case .startSubstrate(let target):
+                switch target {
+                case .direct:
+                    try? await wakeWordService.startListening()
+                case .geminiLive, .openaiRealtime:
+                    // Nothing to start here for audio: a live session keeps running when the
+                    // app is backgrounded on the `audio` background mode alone. The session
+                    // manager's `RealtimeAudioEngine` holds a `.playAndRecord` session through
+                    // `AudioSessionCoordinator`/`AudioSessionActivator` for as long as the
+                    // session is up, which is what keeps capture and playback alive off-screen.
+                    // Camera up so frames are available when the session starts.
+                    do {
+                        try await cameraService.startStreaming()
+                    } catch {
+                        PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                     }
+                }
 
-                case .startSession(let target):
-                    // The redial. Errors surface exactly as a manual failed connect would —
-                    // the managers publish `connectionState`/`errorMessage` themselves, and the
-                    // automatic path must not swallow them.
-                    switch target {
-                    case .geminiLive: await geminiLiveSession.startSession()
-                    case .openaiRealtime: await openAIRealtimeSession.startSession()
-                    case .direct: break   // policy never emits this
+            case .startSession(let target):
+                // The redial. Errors surface exactly as a manual failed connect would —
+                // the managers publish `connectionState`/`errorMessage` themselves, and the
+                // automatic path must not swallow them.
+                switch target {
+                case .geminiLive: await geminiLiveSession.startSession()
+                case .openaiRealtime: await openAIRealtimeSession.startSession()
+                case .direct: break   // policy never emits this
+                }
+                let ready = (target == .geminiLive && geminiLiveSession.isActive)
+                    || (target == .openaiRealtime && openAIRealtimeSession.isActive)
+                if ready {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    // Plan CE: re-push a held pin so the new brain sees the same referent.
+                    if Config.framePinEnabled, framePin.isPinned {
+                        injectPinnedFrame()
+                        framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
                     }
-                    let ready = (target == .geminiLive && geminiLiveSession.isActive)
-                        || (target == .openaiRealtime && openAIRealtimeSession.isActive)
-                    if ready {
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        // Plan CE: re-push a held pin so the new brain sees the same referent.
-                        if Config.framePinEnabled, framePin.isPinned {
-                            injectPinnedFrame()
-                            framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
-                        }
-                        PrivacyLog.app(.modeSwitchRedialed, detail: PrivacyToken(target.rawValue))
-                    } else {
-                        PrivacyLog.app(.modeSwitchRedialFailed,
-                                       detail: PrivacyToken(target.rawValue))
-                    }
+                    PrivacyLog.app(.modeSwitchRedialed, detail: PrivacyToken(target.rawValue))
+                } else {
+                    PrivacyLog.app(.modeSwitchRedialFailed,
+                                   detail: PrivacyToken(target.rawValue))
                 }
             }
         }
@@ -2020,7 +2059,34 @@ class AppState: ObservableObject, AppStateProtocol {
         observeGlassesConnection()
         autoConnectGlasses()
 
-        // Mode-specific auto-start (mic permission)
+        // Mode-specific auto-start (mic permission). Plan FF P1/PR3: when the wearer has asked
+        // for the Blind Assistant to start on launch, that decision is made *first* — its gate
+        // contains the same registration wait the wake-word auto-start does, and letting both run
+        // would start a listener only to tear it down again a moment later. A skip falls straight
+        // through to the ordinary substrate.
+        if Config.startBlindAssistantOnLaunch {
+            Task { [weak self] in
+                guard let self else { return }
+                let outcome = await self.activateBlindAssistant(source: .launch)
+                self.launchActivationDecided = true
+                switch outcome {
+                case .started, .alreadyActive:
+                    break
+                case .skipped, .cancelled:
+                    self.startModeSubstrateOnLaunch()
+                }
+            }
+        } else {
+            launchActivationDecided = true
+            startModeSubstrateOnLaunch()
+        }
+        locationService.startTracking()
+        HomeKitTool.prepareShared()
+    }
+
+    /// What the current mode needs running when no live session is being started for it: the
+    /// wake-word listener in Direct mode, the camera in a realtime one.
+    private func startModeSubstrateOnLaunch() {
         if currentMode == .direct {
             autoStartListening()
         } else if currentMode.isRealtime {
@@ -2033,8 +2099,6 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             }
         }
-        locationService.startTracking()
-        HomeKitTool.prepareShared()
     }
 
     /// The active model id before a Field Assist session swapped in the vault's model.
@@ -5700,7 +5764,11 @@ class AppState: ObservableObject, AppStateProtocol {
         inConversation = false
         glassesIdle = false
 
-        // Stop realtime sessions
+        // Stop realtime sessions. Plan FF P1/PR3: cancel a startup still in flight too — there is
+        // nothing to start into a disconnect. Not a *user stop* of the assistant, though: the
+        // wearer put the glasses down, they did not ask the assistant to stay down, so this does
+        // not latch.
+        liveActivator.noteSessionEndedExternally()
         if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
         if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
         releaseFramePin(trigger: .sessionStop)   // Plan CE
