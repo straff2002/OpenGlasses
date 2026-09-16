@@ -1720,6 +1720,44 @@ struct Config {
 
     static func setSpeechRecognitionLocale(_ id: String) { speechRecognitionLocale = id }
 
+    // MARK: - Speech pause and interruption (Plan FE P3)
+    //
+    // Both are read live, at the moment they are needed — never captured into a `static let` or a
+    // service's stored property at launch. A wearer who changes the pause because the assistant
+    // keeps cutting them off should not have to relaunch the app to find out whether it helped.
+    //
+    // Both apply to wake-word conversations only. Gemini Live and OpenAI Realtime endpoint on the
+    // server, and nothing local can move that; the Settings copy says so rather than letting the
+    // controls imply a reach they do not have.
+
+    /// The raw stored preference. Private because nothing should read it without the clamp: a
+    /// value can arrive here as NaN, negative, absurd or the wrong type entirely (an older build,
+    /// a synced default, a hand-edited plist), and every one of those is a hot mic or a turn cut
+    /// off at the first pause.
+    @UserDefaultsBacked("speechPauseWindow", default: SpeechContinuationPolicy.baseWindow)
+    private static var storedSpeechPauseWindow: Double
+
+    /// Seconds of silence the listener waits after the wearer stops speaking before it answers.
+    /// Defaults to the window the app has always used; bounded to
+    /// `[SpeechContinuationPolicy.minimumWindow, .maximumWindow]`, with anything unusable falling
+    /// back to the default rather than to a bound.
+    static var speechPauseWindow: TimeInterval {
+        get { SpeechContinuationPolicy.clampWindow(storedSpeechPauseWindow) }
+        set { storedSpeechPauseWindow = SpeechContinuationPolicy.clampWindow(newValue) }
+    }
+
+    static func setSpeechPauseWindow(_ seconds: TimeInterval) { speechPauseWindow = seconds }
+
+    /// Whether ordinary speech heard while the assistant is talking interrupts it.
+    ///
+    /// Default on — that is today's behaviour. Off is for the wearer whose assistant is cut off by
+    /// a colleague across the room or by its own voice returning through the mic. Off never
+    /// disables the explicit stop phrase or the wake phrase: those interrupt in both settings, so
+    /// turning this off cannot leave anyone stuck inside a long answer.
+    @UserDefaultsBacked("speechBargeInEnabled", default: true) static var speechBargeInEnabled: Bool
+
+    static func setSpeechBargeInEnabled(_ enabled: Bool) { speechBargeInEnabled = enabled }
+
     // MARK: - Simple Mode
 
     /// Hide the owner-only configuration surface in Settings (models, personas, behavior, tools,

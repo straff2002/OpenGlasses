@@ -36,7 +36,25 @@ enum EndOfTurnPolicy {
     /// Longest hold granted to a detector that claims speech is still going. Deliberately past
     /// `SpeechContinuationPolicy.questionWindow` so it can never pre-empt rule 3, and far past any
     /// plausible sentence.
+    ///
+    /// Plan FE P3 made the timer window a preference, so this constant is a *floor* rather than
+    /// the whole answer — see `backstop(forWindow:)`.
     static let stuckDetectorBackstop: TimeInterval = 8.0
+
+    /// How far the backstop must sit above the window in force. Plan FE P3.
+    ///
+    /// A fixed 8 s was safely past every window the app could produce when the only two were 2 s
+    /// and 6 s. Once the wearer can choose up to 10 s it stops being safe: a backstop below the
+    /// window would commit the turn *before* the window it is supposed to outlast, which is rule 4
+    /// quietly pre-empting rule 3 — the exact failure this constant was introduced to prevent, and
+    /// one that would only appear for wearers who chose a long pause.
+    static let backstopMargin: TimeInterval = 2.0
+
+    /// The hold for a turn running under `window`: never below the historical floor, and always
+    /// clear of the window itself.
+    static func backstop(forWindow window: TimeInterval) -> TimeInterval {
+        max(stuckDetectorBackstop, window + backstopMargin)
+    }
 
     /// Everything the decision depends on, passed in — no clocks, no services, no `Date()` inside.
     struct Input: Equatable {
@@ -64,6 +82,10 @@ enum EndOfTurnPolicy {
         var timerWindow: TimeInterval
 
         var grace: TimeInterval = acousticGrace
+
+        /// A floor for the hold, not the final value: `decide` raises it to clear `timerWindow`
+        /// (see `backstop(forWindow:)`), so an explicit value here can lengthen the hold but can
+        /// never shorten it below the window the turn is running under.
         var backstop: TimeInterval = stuckDetectorBackstop
     }
 
@@ -107,8 +129,9 @@ enum EndOfTurnPolicy {
 
         // Rule 4. The detector says the wearer is still talking, so the timer does *not* cut —
         // that firing is the mid-sentence bug this plan exists to remove — but the hold is bounded.
+        let hold = max(input.backstop, backstop(forWindow: input.timerWindow))
         let backstopDeadline = (input.lastRecognizerActivityAt ?? input.now)
-            .addingTimeInterval(input.backstop)
+            .addingTimeInterval(hold)
         return input.now >= backstopDeadline ? .commit(.detectorBackstop) : .wait(until: backstopDeadline)
     }
 }

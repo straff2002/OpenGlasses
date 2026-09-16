@@ -7,6 +7,11 @@ struct VoiceTriggersSettingsScreen: View {
     @ObservedObject var appState: AppState
     @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
 
+    // Plan FE P3. Seeded from the live preference and written straight back through `Config`, so
+    // the clamp and the defaulting stay in one place rather than being re-implemented per control.
+    @State private var pauseWindow = SpeechContinuationPolicy.nearestPreset(to: Config.speechPauseWindow)
+    @State private var bargeInEnabled = Config.speechBargeInEnabled
+
     var body: some View {
         Form {
             // MARK: Wake Word
@@ -48,6 +53,39 @@ struct VoiceTriggersSettingsScreen: View {
                 Text("Voice")
             } footer: {
                 Text("The phrase that starts a conversation. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch.")
+            }
+
+            // MARK: Pause & Interruptions (Plan FE P3)
+            Section {
+                Picker("Pause Before Answering", selection: Binding(
+                    get: { pauseWindow },
+                    set: { newValue in
+                        pauseWindow = newValue
+                        Config.setSpeechPauseWindow(newValue)
+                    }
+                )) {
+                    Text("Quick (1.5 seconds)").tag(1.5)
+                    Text("Standard (2 seconds)").tag(2.0)
+                    Text("Relaxed (3 seconds)").tag(3.0)
+                    Text("Patient (4 seconds)").tag(4.0)
+                    Text("Dictation (6 seconds)").tag(6.0)
+                }
+
+                InfoToggle(
+                    title: "Interrupt When You Speak",
+                    isOn: Binding(
+                        get: { bargeInEnabled },
+                        set: { newValue in
+                            bargeInEnabled = newValue
+                            Config.setSpeechBargeInEnabled(newValue)
+                        }
+                    ),
+                    info: "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. Saying \"stop\", or the wake phrase, interrupts it either way."
+                )
+            } header: {
+                Text("Pause & Interruptions")
+            } footer: {
+                Text("How long the assistant waits after you stop speaking before it answers. Choose a longer pause if it cuts you off mid-sentence, or Dictation to speak a paragraph a sentence at a time. Changes apply from your next turn — a turn already under way keeps the pause it started with. These apply to wake-word conversations; live sessions use the provider's own timing.")
             }
 
             // MARK: Hands-Free Triggers
