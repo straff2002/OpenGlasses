@@ -297,6 +297,13 @@ class StoreKitService: ObservableObject {
         products.first { $0.id == Self.medicalAnnualId }
     }
 
+    /// The Medical Compliance plans only, annual first. `products` holds every product the app
+    /// sells, so a paywall that lists it directly shows Field Assist and pack products too.
+    var medicalProducts: [Product] {
+        let medical = products.filter { Self.medicalProductIds.contains($0.id) }
+        return medical.sorted { lhs, _ in lhs.id == Self.medicalAnnualId }
+    }
+
     /// The Field Assist non-consumable unlock product.
     var fieldAssistProduct: Product? {
         products.first { $0.id == Self.fieldAssistId }

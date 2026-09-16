@@ -68,11 +68,11 @@ struct MedicalCompliancePaywallView: View {
 
                 // Subscription Options
                 VStack(spacing: 12) {
-                    if storeKit.products.isEmpty {
+                    if storeKit.medicalProducts.isEmpty {
                         ProgressView("Loading plans...")
                             .padding()
                     } else {
-                        ForEach(storeKit.products, id: \.id) { product in
+                        ForEach(storeKit.medicalProducts, id: \.id) { product in
                             subscriptionCard(product: product)
                         }
                     }
@@ -166,7 +166,7 @@ struct MedicalCompliancePaywallView: View {
                             let monthlyAnnualized = monthly.price * 12
                             let savings = monthlyAnnualized - product.price
                             if savings > 0 {
-                                Text("Save \(savings.formatted(.currency(code: product.priceFormatStyle.currencyCode)))/year")
+                                Text("Save \(savings.formatted(product.priceFormatStyle))/year")
                                     .font(.caption)
                                     .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                             }
