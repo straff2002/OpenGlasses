@@ -276,6 +276,27 @@ final class CaptureQualityReportTests: XCTestCase {
         XCTAssertTrue(result.contains("out of date"), result)
     }
 
+    /// A capture source that stamps an identity it was not given has not measured the still this
+    /// request asked for, whatever else is true of it.
+    func testAReportStampedWithTheWrongSessionIsNeverInjected() async throws {
+        let provider = FakeProvider(.still(FilteredStill(image: textImage(), scope: .liveSession)))
+        let injector = FakeInjector()
+        let capture = SharpStillCapture(provider: provider, cameraSession: { 0 })
+        let tool = LookCloselyTool(
+            captureSharpStill: { _ in
+                // Stamps a different session than the one it was handed.
+                await capture.capture(liveSessionIdentity: 99)
+            },
+            injectorProvider: { injector },
+            cameraSession: { 0 },
+            posture: { .normal })
+
+        let result = try await tool.execute(args: [:])
+
+        XCTAssertTrue(injector.injected.isEmpty)
+        XCTAssertTrue(result.contains("out of date"), result)
+    }
+
     // MARK: - Helper
 
     private func report(sharpness: Double?, luma: Double?,

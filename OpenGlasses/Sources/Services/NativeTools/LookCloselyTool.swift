@@ -249,6 +249,16 @@ final class LookCloselyTool: NativeTool {
                               reason: PrivacyToken(CaptureQualityReport.Refusal.sessionReplaced.rawValue))
             return ReadingCaptureOutcome.unavailable(.noFreshView)
         }
+        // Internal consistency first. The capture source is *handed* the identity to stamp, so a
+        // report carrying a different one has not measured the still this request asked for.
+        // Refused rather than asserted: a wrong stamp must not reach the model, and a crash is not
+        // a degrade a wearer can act on.
+        guard report.liveSessionIdentity == requestIdentity else {
+            PrivacyLog.vision(
+                .lookClosely, .captureStale,
+                reason: PrivacyToken(CaptureQualityReport.Refusal.sessionReplaced.rawValue))
+            return ReadingCaptureOutcome.unavailable(.noFreshView)
+        }
         if let refusal = report.refusal(requestedAt: requestedAt,
                                         liveSessionIdentity: injector.liveSessionIdentity,
                                         cameraSession: cameraSession()) {
