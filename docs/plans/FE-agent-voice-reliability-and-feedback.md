@@ -1,6 +1,6 @@
 # Plan FE — Agent and Voice Reliability and Feedback
 
-**Status: 🚧 P0–P2 implemented 2026-09-16 (P2 same day) — P3–P6 unbuilt.**
+**Status: 🚧 P0–P3 implemented 2026-09-16 (P2 and P3 same day) — P4–P6 unbuilt.**
 
 Deliver truthful agent results, questions and replies, listener recovery, configurable speech
 timing, delivery acknowledgements and speech-reactive visuals.
@@ -277,6 +277,69 @@ appear controlled by an unrelated local setting.
 long dictation pauses, short replies, explicit stop, general barge-in disabled, echo/background
 speech and language fixtures. On device compare premature cut-offs and perceived response delay.
 
+### Implemented 2026-09-16
+
+- **Two settings, read live.** `Config.speechPauseWindow` (seconds of silence before the listener
+  answers; default 2.0 — the value that shipped) and `Config.speechBargeInEnabled` (default on).
+  Neither is captured into a constant at launch: the window is read once per turn in
+  `TranscriptionService.startRecording()` through an injectable provider, and the barge-in switch is
+  read at the moment a transcript arrives in `WakeWordService`. Changing either takes effect without
+  a relaunch.
+- **Bounds, and what an unusable value means.** The persisted window is clamped to
+  `[SpeechContinuationPolicy.minimumWindow, .maximumWindow]` = [1.0, 10.0]; the presets offered are
+  1.5 / 2 / 3 / 4 / 6, with the longest labelled for dictation. NaN, ±infinity, a negative, zero, a
+  missing key and a value of the wrong type all resolve to the **default**, not to the nearest
+  bound — a 1-second window recovered from a corrupt value would cut people off and a 10-second one
+  would leave a hot mic, and neither is a better guess at intent than the value the wearer would
+  have had anyway. The setter clamps too, so a bad value cannot reach the store.
+- **Adoption: from the next turn.** `SpeechTurnWindowLedger` fixes the window when the turn starts
+  and nothing moves it afterwards — not a settings change, not the assistant speaking. Re-arming a
+  running timer would mean that asking for a longer pause cut the wearer off once on the way to
+  getting it. The Settings footer states the rule.
+- **Question window and backstop.** `SpeechContinuationPolicy.silenceWindow(afterSpeaking:userWindow:)`
+  returns `max(chosen, questionWindow)`: the question rule may only widen, so a chosen 8 s is never
+  cut to 6 because a reply ended in a question. `EndOfTurnPolicy.backstop(forWindow:)` derives the
+  stuck-detector hold as `max(8.0, window + 2.0)` and `decide` raises any explicit backstop to it —
+  a backstop below the window would commit the turn before the window it exists to outlast, which is
+  rule 4 pre-empting rule 3 and would only ever appear for wearers who chose a long pause. For the
+  default 2 s window the hold is unchanged at 8 s.
+- **Barge-in as a policy.** `BargeInPolicy.decide(transcript:isStopPhrase:matchedWakePhrase:generalBargeInEnabled:)`
+  → `.stop` / `.newConversation(phrase:)` / `.interrupt(text:)` / `.ignore`, replacing the inline
+  `wordCount >= 2` branch. The explicit stop phrase and the wake phrase interrupt in **both**
+  settings — an interruption control that could disable the way out of a long answer would be a
+  trap. The word count survives only as a documented noise floor (the least filtering that keeps a
+  stray partial from cutting playback off), paired with a character-count fallback so the floor is
+  structural rather than a rule a script without word spacing can never satisfy. The policy takes no
+  view on echo or on which language it is reading: the assistant's own voice is suppressed upstream
+  by the recognition pause around playback and `SpeechActivityGate`, and a second, weaker echo test
+  here would mask failures in the real one.
+- **Scope, stated in the UI.** Both controls sit in Voice & Triggers under "Pause & Interruptions",
+  and the footer names what they reach: wake-word conversations. Gemini Live and OpenAI Realtime
+  endpoint on the server and nothing local can move that.
+
+**Evidence.** 125 headless tests on the focused classes: `SpeechPauseSettingsTests` (20, new) and
+`BargeInPolicyTests` (15, new), with `EndOfTurnPolicyTests` (11), `TurnAdmissionAndBudgetTests` (15),
+`SpeechActivityGateTests` (9), `WakeWordHardeningTests` (8), `WakeWordListenerRecoveryTests` (19) and
+`ListenerHealthPolicyTests` (28) unchanged and green. The new suites prove: no stored value behaves
+exactly as the app did before; every unusable value resolves to the default and every out-of-range
+one to a bound; every offered preset round-trips unchanged; a turn started on 1.5 s keeps 1.5 s while
+the setting moves to 6 s and the *next* turn gets 6 s; a 6 s window does not commit at 2.5 s of
+silence and does at 6 s; a 1.5 s window commits at 1.5 s; a question never shortens a 7/8/10 s window
+but still widens a 1.5 s one; the derived backstop outlasts every allowed window and `decide` uses it
+rather than the constant; an explicit stop returns `.stop` and a wake phrase `.newConversation` with
+general barge-in both on and off; general speech returns `.interrupt` when on and `.ignore` when off;
+empty, whitespace-only and single short tokens are ignored; a sentence in a script without word
+spacing still interrupts; and transcripts of the same shape in four languages get identical decisions
+in both settings — including an echoed assistant phrase, which is treated as ordinary speech on
+purpose. Full `OpenGlassesTests` 5908 green; Debug and Release simulator builds green.
+
+**Owed — device.** The two numbers this ships are proposals until a wearer measures them: the plan's
+**premature cut-offs vs perceived response delay** comparison across the presets (with
+`TurnRecorder.noteEndOfTurnReason` separating an acoustic commit from a silence-timer one, so "it cut
+me off" becomes a count rather than a feeling), and the barge-in noise floor, which is currently the
+smallest filter that works rather than a measured one. Neither can be made in a simulator: there is
+no microphone route and no real recognizer.
+
 ## P4 / PR5 — Acknowledge result delivery accurately
 
 Replace fire-and-forget acknowledgement after `emit` with a defined delivery state tied to the
@@ -363,7 +426,7 @@ contracts require fixture and real-endpoint confirmation before claiming full su
 | Results/status/error narration | 🚧 Fixture-green 2026-09-16 (P0); live endpoint owed |
 | Questions/replies, agent selection and legacy configuration migration | 🚧 Fixture-green 2026-09-16 (P1); live endpoint owed |
 | Listener recovery and audio ownership | 🚧 Fixture-green 2026-09-16 (P2); device checks owed (first Start after sleep/route change; one listener, no orphaned mic after stop) |
-| Live timing controls and interruption usability | Pending |
+| Live timing controls and interruption usability | 🚧 Fixture-green 2026-09-16 (P3); device comparison owed (premature cut-offs vs perceived delay across the presets; the barge-in noise floor) |
 | Playback-aware acknowledgement and reconnect semantics | Pending |
 | Visual feedback, stale callbacks and accessibility | Pending |
 | Optional assistant name, identity precedence and onboarding/settings | Pending |
