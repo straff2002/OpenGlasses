@@ -124,6 +124,12 @@ extension ManualFigureTool {
 extension NewTopicTool {
     var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
 }
+// Starts, pauses or stops the wearer's own reminder session and writes the chosen side to local
+// settings. Nothing leaves the device, and every action converges: starting a running session,
+// stopping a stopped one, or setting the side twice all land on the same state.
+extension ScanAssistTool {
+    var executionSemantics: ToolExecutionSemantics { .local(idempotency: .intrinsic) }
+}
 // The work-record tools (Plan EM). All three write session state and the append-only audit log and
 // nothing else — the queued operations they leave behind are local tombstones until an endpoint is
 // configured, so nothing has left the device when one of these returns. None is idempotent: a

@@ -1,11 +1,13 @@
 # Plan FB — Scan Assist
 
-**Status: 🚧 PR1 (P1 deterministic core + configuration/preview UI) implemented 2026-09-16.**
-P2's audio arbitration and voice phrases, P3 and P4 are unbuilt; device and user validation pending.
+**Status: 🚧 PR1 + PR2 implemented 2026-09-16.** P3 and P4 are unbuilt; device and user
+validation pending.
 Shipped: `ScanAssistSettings`/`ScanAssistSettingsStore`, `ScanAssistPolicy`, `ScanAssistService`,
 `ScanAssistCopy` and the `ScanAssistSpeaking` seam over `TextToSpeechService`, plus
-`ScanAssistSettingsView` reached from Settings › Accessibility. Off by default, no side until the
-wearer answers the question, no camera, no auto-start, no entitlement.
+`ScanAssistSettingsView` reached from Settings › Accessibility (PR1); and `ScanAssistCueGate`,
+`ScanAssistInterruptionPolicy` and the deterministic `ScanAssistTool` (`scan_assist`) with its
+Tier-0 classifier phrases (PR2). Off by default, no side until the wearer answers the question, no
+camera, no auto-start, no entitlement, and no audio lease of its own.
 
 Bring user-configurable directional reminders into OpenGlasses for people who want help checking
 one side during reading or seated everyday tasks, including people living with hemispatial neglect.
@@ -162,11 +164,68 @@ out of product copy. Localisation must preserve wearer-relative left/right and c
 
 | Evidence | Status |
 |---|---|
+| Cue arbitration, interruptions and voice phrases | Done 2026-09-16 (PR2) — see the PR2 note below. `ScanAssistCueGateTests` (17), `ScanAssistInterruptionPolicyTests` (9), `ScanAssistToolTests` (13), 15 added `ScanAssistServiceTests` and 6 added `ConversationClassifierTests`. Full suite green (5911, 13 skipped); Release simulator build green |
 | Session policy/service tests | Done 2026-09-16 — `ScanAssistPolicyTests` (27), `ScanAssistServiceTests` (21), `ScanAssistSettingsStoreTests` (6), `ScanAssistCopyTests` (6) on a fake clock, a releasable sleeper and a recording speech sink: start refused with no side and nothing spoken, left/right copy, repeat start/stop harmless, side change during a queued cue, timing changes from the change time, pause/resume with no backlog, finite expiry cancelling the pending cue and queued speech, late generation callbacks silent, preview once, and no running state surviving a fresh service. Full suite green (5742) |
 | UI accessibility and left/right comprehension | Pending |
 | Device audio, interruption, stop and lock checks | Pending |
 | User/OT usability feedback | Pending |
 | Optional OCR/task-context checks | Pending |
+
+### PR2 note — what the code now guarantees, and what only a device can show
+
+**Cue arbitration (`ScanAssistCueGate`).** Each reminder is offered to a pure gate with the audio
+signals as they are at that instant, and the answer is deliver, defer with a reason, or drop.
+It defers while the wearer is speaking, while the assistant is speaking (`TextToSpeechService.isSpeaking`),
+while VoiceOver is speaking, while a session lifecycle notice is being announced, or while a
+higher-priority notice holds the route — in that priority order. **At most one reminder is ever
+outstanding:** a newer one replaces the one waiting rather than queueing behind it, so when the
+route frees exactly one plays and nothing is replayed as a burst. A waiting reminder is dropped
+instead of played if the session stopped, paused, changed side or moved generation under it, or if
+it has waited longer than the gate's budget (10 s, deliberately shorter than the shortest
+selectable interval so a held cue can never land on the next one's slot).
+
+**The one signal iOS does not offer.** Nothing reports when VoiceOver has *finished* an
+announcement — only whether VoiceOver is running. Treating "running" as "speaking" would silence
+the feature for its likeliest users, so the documented conservative fallback is a bounded wait: the
+app assumes VoiceOver is busy for 2.5 s after *it* posted an announcement, then delivers. Tested
+both ways in `ScanAssistCueGateTests` and `ScanAssistServiceTests`.
+
+**Delivered never means heard.** The service counts playback *requests* (`deliveredCueCount`) and
+nothing else; `ScanAssistCopyTests` scans every user-facing line for claims to the contrary.
+
+**Pauses carry a reason** (`pauseReason` / "Paused — phone call", "Paused — audio output changed",
+"Paused — another app is using the audio", "Paused — app went to the background"). A call is read
+from the same `CXCallObserver` source `WakeWordService` uses, at the moment the audio interruption
+arrives. Output loss comes from `oldDeviceUnavailable` or an empty output route; background and
+lock from `didEnterBackgroundNotification` and `protectedDataWillBecomeUnavailableNotification`.
+There is no keep-alive audio and no background cueing in this release.
+
+**Resume is only automatic when recovery is certain** — the pause was ours, the interruption ended
+*with* `.shouldResume`, and the output route is the one we were paused on (compared by port UID).
+Then the session resumes with a fresh interval and no backlog. Every other ending — no
+`.shouldResume`, a different route, an output-loss pause, a return from the background — stays
+paused and asks for an explicit Resume. A pause the wearer asked for is never lifted by an audio
+event.
+
+**Route ownership:** Scan Assist acquires no audio lease, never overrides the output port and never
+steers a cue to one ear; cues and the preview play on whatever route the speech service is already
+using.
+
+**Voice phrases** reach `ScanAssistTool` (`scan_assist`) through the existing Tier-0 classifier
+route, bare-query gated the way `new_topic` is, so the same words inside a sentence stay content:
+start/pause/resume/stop scan reminders (and "turn on/off scan assist"), "remind me to check my
+left/right", "switch/move the reminders to …", and "which side am I checking". A phrase that names
+no side — or names both, or says "the other side" — routes with **no** side and the tool asks;
+"right now" is never read as a side. Every answer names the resulting side, so an accidental change
+is audible at once. The session surface says "Voice control is off in this mode. Use the buttons on
+this screen…" whenever the wake-word listener is not running.
+
+**Device checks still owed (none of these can be closed headlessly):** phone speaker, glasses and
+headset routes, including audibility of the preview on each; a real phone call, a real interruption
+from another audio app, and a real lock/background cycle, checking the reason shown and that no
+burst follows recovery; recognition failure and the touch fallback for every voice phrase, in the
+modes where the listener actually runs; and a UI audit with VoiceOver and Dynamic Type on both side
+selections, covering the pause-reason line and the centred worded Stop.
 
 Record build/commit, hardware/OS, scenario, result and remaining gap here as implementation proceeds.
 Headless checks cannot close device or participant evidence. This plan adds assistive controls;
