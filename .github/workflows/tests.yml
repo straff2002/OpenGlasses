@@ -80,7 +80,11 @@ jobs:
         uses: ./.github/actions/xcode-project
 
       - name: MediaPipe registration guards and real graph smoke
-        timeout-minutes: 5
+        # The fixed prefix (guards, bootstatus, fixture downloads) has taken up to ~160 s and the
+        # clang compile up to ~90 s on the hosted runner, and the smoke helper now allows two
+        # 120 s spawn attempts, so the worst case is about 8 minutes. The slowest green run
+        # already used more than four of the old five minutes.
+        timeout-minutes: 10
         run: |
           python3 -B -m unittest discover -s Scripts/tests -p test_mediapipe_linking.py -v
           xcrun simctl bootstatus "${{ steps.project.outputs.simulator-udid }}" -b

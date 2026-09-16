@@ -19,6 +19,36 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Seconds allowed for one simulator spawn. The in-simulator work is usually a few seconds on the
+# hosted macOS runner, but one passing run took 31 s, and two runs in September 2026 hit the old
+# 45 s cap on otherwise healthy runners and passed on a plain rerun. This is roughly four times
+# the slowest observed pass, and the whole compile-plus-spawn interval has never exceeded about
+# two minutes on a green run.
+SPAWN_TIMEOUT = 120
+
+
+def decoded(stream):
+    """TimeoutExpired carries the partial capture as bytes on POSIX and nothing at all if unread."""
+    if stream is None:
+        return ""
+    return stream if isinstance(stream, str) else stream.decode(errors="replace")
+
+
+def spawn_smoke(command, output):
+    """Run the smoke binary on the simulator, retrying once and only when the spawn times out."""
+    for last_attempt in [False, True]:
+        try:
+            return subprocess.run(command, capture_output=True, text=True, timeout=SPAWN_TIMEOUT)
+        except subprocess.TimeoutExpired as timeout:
+            if last_attempt:
+                raise
+            (output / "run-timeout.log").write_text(decoded(timeout.stdout) + decoded(timeout.stderr))
+            print(f"Simulator spawn exceeded {SPAWN_TIMEOUT}s; retrying once "
+                  f"(partial output in {output / 'run-timeout.log'})")
+            # simctl spawn runs the binary as a host process and killing simctl need not reap it,
+            # so clear any orphan before the retry competes with it. pkill exits 1 on no match.
+            subprocess.run(["pkill", "-f", str(output / "smoke")], check=False)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -58,9 +88,8 @@ def main():
     link_map = (output / "link.map").read_text(errors="replace")
     if re.search(r"\(fst_types\.o\)|FstRegisterer", link_map):
         raise ValueError("OpenFst registration unexpectedly linked; do not launch this binary")
-    result = subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(output / "smoke"),
-                             str(args.model.resolve()), str(args.image.resolve())],
-                            capture_output=True, text=True, timeout=45)
+    result = spawn_smoke(["xcrun", "simctl", "spawn", args.simulator, str(output / "smoke"),
+                          str(args.model.resolve()), str(args.image.resolve())], output)
     log = result.stdout + result.stderr
     (output / "run.log").write_text(log)
     print(log)
