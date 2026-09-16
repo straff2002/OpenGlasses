@@ -65,10 +65,53 @@ class GeminiLiveService: ObservableObject {
     /// drop it can be asserted without a socket. No production caller.
     func setResumptionHandleForTesting(_ handle: String?) { resumptionHandle = handle }
 
+    /// Test-only: the handle currently held, so "the server refused it and we dropped it" is
+    /// asserted rather than inferred from a later attempt's behaviour.
+    var resumptionHandleForTesting: String? { resumptionHandle }
+
+    // MARK: - Recovery facts (Plan FF P1/PR5)
+
+    /// Whether the setup that most recently went out carried a resumption handle.
+    ///
+    /// Set when setup is actually sent, which is what makes the distinction below possible: an
+    /// attempt that never opened a socket never sent setup, so a network failure on the way up
+    /// leaves the handle alone.
+    private(set) var setupCarriedResumptionHandle = false
+
+    /// Whether the connection that is currently up resumed the previous conversation.
+    ///
+    /// This is the transport's half of `LiveRecoveryAssessment.ContextContinuity`: true means the
+    /// server took the handle and handed the conversation back, so nothing has to be rebuilt.
+    private(set) var lastConnectResumedContext = false
+
+    /// Whether the last attempt went out with a handle and did not come up — the server refusing or
+    /// having expired it.
+    ///
+    /// The wire does not distinguish "your handle is stale" from "the socket died after setup", so
+    /// this does not claim to either. What it does is act on the only safe reading of both: the
+    /// handle is dropped rather than retried. A handle the server will not take, retried, walks the
+    /// entire ten-attempt ladder to exhaustion and ends a session that a cold start would have
+    /// recovered in one attempt.
+    private(set) var lastResumptionHandleRejected = false
+
+    /// The system instruction the most recent setup carried.
+    ///
+    /// Recorded rather than reconstructed, so a rebuilt-context handover can be asserted to have
+    /// actually reached the wire. Instruction text only — never audio, never a frame.
+    private(set) var lastSetupInstruction: String?
+
     // Reconnection
     private var intentionalDisconnect = false
-    private var reconnectAttempts = 0
+    private(set) var reconnectAttempts = 0
     private let maxReconnectAttempts = 10
+    /// Whether a reconnect is scheduled or running. Distinct from `reconnectTask != nil`, which
+    /// stays non-nil after an attempt has finished — "armed" is the question a teardown assertion
+    /// actually wants answered (Plan EW's `scheduledWorkCount` shape, Plan FF P1/PR5).
+    private var reconnectWorkArmed = false
+    /// Test-only: multiplier on every backoff delay, so a ten-attempt ladder can be driven to
+    /// exhaustion headlessly instead of over two minutes of real sleeping. 1 in production, and no
+    /// production caller sets it.
+    var reconnectDelayScaleForTesting: Double = 1
     private let maxBackoffSeconds: Double = 30
     private var reconnectTask: Task<Void, Never>?
     /// True from the moment a reconnect is scheduled until its task starts running — coalesces the
@@ -84,6 +127,17 @@ class GeminiLiveService: ObservableObject {
     /// Called when reconnection is exhausted or the session dies terminally — the session manager
     /// plays an audible cue (Plan BD: voice-first apps must not fail silently).
     var onReconnectExhausted: (() -> Void)?
+
+    /// How much work this service still has armed: a reconnect scheduled or running, a connect
+    /// timeout ticking, and a receive loop attached.
+    ///
+    /// Exposed so "the wearer stopped it and nothing is left scheduled" is an assertion rather than
+    /// a reading of the teardown code — the same reason `GlassesCameraBackend` exposes one.
+    var scheduledWorkCount: Int {
+        (reconnectWorkArmed ? 1 : 0)
+            + (connectTimeoutTask == nil ? 0 : 1)
+            + (receiveTask == nil ? 0 : 1)
+    }
 
     // Latency tracking
     private var lastUserSpeechEnd: Date?
@@ -157,6 +211,9 @@ class GeminiLiveService: ObservableObject {
             connectionState = .error(MedicalEgressRefusal.userMessage)
             return false
         }
+        // Plan FF P1/PR5: a scripted attempt stands in for the socket only; everything the outcome
+        // then drives — the ladder, the handle bookkeeping, the callbacks — is the production path.
+        if scriptedTransportEnabled { return await runScriptedConnect() }
         await prepareLiveModel()
         lastCloseReason = nil
         guard let url = Config.geminiLiveWebSocketURL else {
@@ -165,6 +222,7 @@ class GeminiLiveService: ObservableObject {
         }
 
         intentionalDisconnect = false
+        setupCarriedResumptionHandle = false
         let gen = generationGate.advance()
         connectionState = .connecting
 
@@ -190,16 +248,10 @@ class GeminiLiveService: ObservableObject {
                                                    detail: PrivacyToken("staleClose"))
                         return
                     }
-                    self.resolveConnect(success: false)
-                    self.connectionState = .disconnected
-                    self.isModelSpeaking = false
-                    let msg = "Connection closed (code \(code.rawValue): \(reasonStr))"
-                    // Keep it: a *refused* session closes rather than errors, so this is the only
-                    // signal that carries the server's reason, and the state above is deliberately
-                    // not `.error` (a normal end-of-session close lands here too).
-                    self.lastCloseReason = msg
-                    self.onDisconnected?(msg)
-                    self.scheduleReconnect(reason: msg)
+                    // Keep the message: a *refused* session closes rather than errors, so this is
+                    // the only signal that carries the server's reason, and the state the handler
+                    // sets is deliberately not `.error` (a normal end-of-session close lands here).
+                    self.handleSocketClosed(message: "Connection closed (code \(code.rawValue): \(reasonStr))")
                 }
             }
 
@@ -212,11 +264,7 @@ class GeminiLiveService: ObservableObject {
                                                    detail: PrivacyToken("staleError"))
                         return
                     }
-                    self.resolveConnect(success: false)
-                    self.connectionState = .error(msg)
-                    self.isModelSpeaking = false
-                    self.onDisconnected?(msg)
-                    self.scheduleReconnect(reason: msg)
+                    self.handleSocketErrored(message: msg)
                 }
             }
 
@@ -231,15 +279,178 @@ class GeminiLiveService: ObservableObject {
                 guard let self, !Task.isCancelled else { return }
                 await MainActor.run {
                     guard self.generationGate.isCurrent(gen) else { return }
-                    if self.connectionState == .connecting || self.connectionState == .settingUp {
-                        self.connectionState = .error("Connection timed out")
-                    }
-                    self.resolveConnect(success: false)
+                    self.handleConnectTimedOut()
                 }
             }
         }
 
-        return result
+        return finishConnect(success: result)
+    }
+
+    // MARK: - Socket events, as named paths (Plan FF P1/PR5)
+    //
+    // Extracted from the delegate closures so a fault injection drives the same bodies the socket
+    // drives. A test-only copy of this ladder would prove only that the copy works.
+
+    /// The socket closed. A normal end-of-session close lands here too, which is why the state is
+    /// `.disconnected` rather than `.error`.
+    private func handleSocketClosed(message: String) {
+        resolveConnect(success: false)
+        connectionState = .disconnected
+        isModelSpeaking = false
+        lastCloseReason = message
+        onDisconnected?(message)
+        scheduleReconnect(reason: message)
+    }
+
+    /// The transport reported an error rather than a clean close.
+    private func handleSocketErrored(message: String) {
+        resolveConnect(success: false)
+        connectionState = .error(message)
+        isModelSpeaking = false
+        onDisconnected?(message)
+        scheduleReconnect(reason: message)
+    }
+
+    /// Setup never completed inside the connect timeout. No close and no error arrives in this
+    /// shape — the reschedule is driven by `connect()` returning false, not by an event.
+    private func handleConnectTimedOut() {
+        if connectionState == .connecting || connectionState == .settingUp {
+            connectionState = .error("Connection timed out")
+        }
+        resolveConnect(success: false)
+    }
+
+    /// The server is rotating the connection. Sent before its session time limit, so every long
+    /// conversation meets it.
+    private func handleGoAway(secondsRemaining seconds: Int) {
+        isModelSpeaking = false
+        PrivacyLog.realtimeGoAway(.gemini, secondsRemaining: seconds)
+        scheduleReconnect(reason: "server rotating connection")   // sets reconnecting = true first
+        onDisconnected?("Server rotating connection (time left: \(seconds)s)")
+    }
+
+    /// Settle what an attempt means for the resumption handle, and report whether it came up.
+    ///
+    /// The rule is in one place because it is easy to get subtly wrong in two: a *successful*
+    /// attempt that carried a handle resumed the conversation; a *failed* attempt that carried one
+    /// drops it, so the next attempt cold-starts instead of re-offering a handle the server may
+    /// already have refused; and a failure that never got as far as sending setup keeps it, because
+    /// nothing was offered and nothing was refused.
+    @discardableResult
+    private func finishConnect(success: Bool) -> Bool {
+        let carried = setupCarriedResumptionHandle
+        if success {
+            lastConnectResumedContext = carried
+            lastResumptionHandleRejected = false
+        } else {
+            lastConnectResumedContext = false
+            if carried {
+                resumptionHandle = nil
+                lastResumptionHandleRejected = true
+                PrivacyLog.realtimeSession(.gemini, .unhandledEvent,
+                                           detail: PrivacyToken("resumptionHandleDropped"))
+            }
+        }
+        return success
+    }
+
+    // MARK: - Fault injection (test-only, Plan FF P1/PR5)
+
+    /// What a scripted connect attempt does instead of opening a socket.
+    ///
+    /// Only the outcomes that are *about an attempt failing to come up* live here; a connection
+    /// that dies once it is up is injected as a ``GeminiLiveFault`` through the same handlers the
+    /// socket uses.
+    enum ScriptedConnectOutcome: Equatable {
+        /// Setup completed. The session is ready.
+        case ready
+        /// The socket opened, setup went out, and nothing came back inside the timeout.
+        case setupTimedOut
+        /// The socket opened, setup went out carrying a resumption handle, and the server refused
+        /// it. The expired-handle fault.
+        case setupRejected(reason: String)
+        /// The socket never opened. Setup was never sent — so a held handle survives this.
+        case failedBeforeSetup(reason: String)
+    }
+
+    /// Test-only: parked at the moment setup has gone out and the answer has not come back — the
+    /// window a stop has to be able to land in, held open so the landing is deterministic rather
+    /// than a race against a scheduler. No production caller.
+    var holdAtSetupForTesting: (@MainActor () async -> Void)?
+
+    private var scriptedTransportEnabled = false
+    private var scriptedConnectOutcomes: [ScriptedConnectOutcome] = []
+    /// How many scripted attempts have run. The ladder's shape, asserted directly.
+    private(set) var scriptedConnectCount = 0
+
+    /// Test-only: stand a script of connect outcomes in for the socket. No production caller.
+    func setScriptedConnectOutcomesForTesting(_ outcomes: [ScriptedConnectOutcome]) {
+        scriptedTransportEnabled = true
+        scriptedConnectOutcomes = outcomes
+    }
+
+    /// Test-only: drive a socket event through the production handler it would have driven.
+    func injectFaultForTesting(_ fault: GeminiLiveFault) {
+        switch fault {
+        case .socketClosed(let reason):
+            handleSocketClosed(message: reason)
+        case .socketError(let reason):
+            handleSocketErrored(message: reason)
+        case .setupTimedOut:
+            handleConnectTimedOut()
+        case .serverRotation(let seconds):
+            // The real sequence: the announcement schedules the reconnect, then the close arrives
+            // and coalesces into the attempt already pending.
+            handleGoAway(secondsRemaining: seconds)
+            handleSocketClosed(message: "Connection closed (code 1000: server rotating connection)")
+        }
+    }
+
+    private func runScriptedConnect() async -> Bool {
+        lastCloseReason = nil
+        intentionalDisconnect = false
+        setupCarriedResumptionHandle = false
+        let gen = generationGate.advance()
+        connectionState = .connecting
+        scriptedConnectCount += 1
+
+        let outcome = scriptedConnectOutcomes.isEmpty
+            ? ScriptedConnectOutcome.failedBeforeSetup(reason: "no scripted outcome remaining")
+            : scriptedConnectOutcomes.removeFirst()
+
+        // A real connect suspends here; so does this, which is what gives a stop somewhere to land.
+        await Task.yield()
+        guard generationGate.isCurrent(gen) else { return false }
+
+        if case .failedBeforeSetup(let reason) = outcome {
+            connectionState = .disconnected
+            lastCloseReason = reason
+            onDisconnected?(reason)
+            return finishConnect(success: false)
+        }
+
+        connectionState = .settingUp
+        noteSetupGoingOut()
+        await holdAtSetupForTesting?()
+        await Task.yield()
+        guard generationGate.isCurrent(gen) else { return false }
+
+        switch outcome {
+        case .ready:
+            connectionState = .ready
+            return finishConnect(success: true)
+        case .setupTimedOut:
+            connectionState = .error("Connection timed out")
+            return finishConnect(success: false)
+        case .setupRejected(let reason):
+            connectionState = .error(reason)
+            lastCloseReason = reason
+            onDisconnected?(reason)
+            return finishConnect(success: false)
+        case .failedBeforeSetup:
+            return finishConnect(success: false)   // handled above
+        }
     }
 
     func disconnect() {
@@ -250,7 +461,11 @@ class GeminiLiveService: ObservableObject {
         reconnectTask = nil
         reconnecting = false
         reconnectPending = false
+        reconnectWorkArmed = false   // FF P1/PR5: nothing is scheduled after a stop, and says so
         reconnectAttempts = 0   // a fresh session must not inherit an exhausted counter (Plan BD)
+        setupCarriedResumptionHandle = false
+        lastConnectResumedContext = false
+        lastResumptionHandleRejected = false
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
         receiveTask?.cancel()
@@ -285,20 +500,25 @@ class GeminiLiveService: ObservableObject {
             PrivacyLog.realtimeReconnectExhausted(.gemini, attempts: maxReconnectAttempts)
             connectionState = .error("Connection lost after \(maxReconnectAttempts) reconnect attempts")
             reconnecting = false
+            // Disarmed *before* the terminal cue: the wearer is about to be told nothing further is
+            // coming, and that has to be true at the moment it is said (Plan FF P1/PR5).
+            reconnectWorkArmed = false
             onReconnectExhausted?()
             return
         }
 
         reconnecting = true
         reconnectPending = true
+        reconnectWorkArmed = true
         reconnectAttempts += 1
         // The reason is derived from an error's description at every call site — dropped.
         PrivacyLog.realtimeReconnectScheduled(.gemini, attempt: reconnectAttempts,
                                               of: maxReconnectAttempts, delaySeconds: delay)
 
         reconnectTask?.cancel()
+        let scaledDelay = delay * max(0, reconnectDelayScaleForTesting)
         reconnectTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(scaledDelay * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             self.reconnectPending = false
 
@@ -309,9 +529,16 @@ class GeminiLiveService: ObservableObject {
             self.webSocketTask = nil
 
             let success = await self.connect()
+            // A stop that landed during the backoff or during setup: the generation has moved, the
+            // old callbacks are stale, and nothing further is scheduled from here.
+            guard !Task.isCancelled, !self.intentionalDisconnect else {
+                self.reconnectWorkArmed = false
+                return
+            }
             if success {
                 self.reconnectAttempts = 0
                 self.reconnecting = false
+                self.reconnectWorkArmed = false
                 PrivacyLog.realtimeSession(.gemini, .reconnected)
                 self.onReconnected?()
             } else {
@@ -420,7 +647,16 @@ class GeminiLiveService: ObservableObject {
         }
     }
 
+    /// Record what this setup carries, before it goes out. The handle fact is what
+    /// `finishConnect(success:)` later reads to decide whether a failure means the server refused
+    /// to resume (Plan FF P1/PR5).
+    private func noteSetupGoingOut() {
+        setupCarriedResumptionHandle = resumptionHandle != nil
+        lastSetupInstruction = systemInstruction
+    }
+
     private func sendSetupMessage() {
+        noteSetupGoingOut()
         var toolsArray: [[String: Any]] = []
         if !toolDeclarations.isEmpty {
             // Flag-gated: NON_BLOCKING lets the model keep the conversation going while a
@@ -582,11 +818,7 @@ class GeminiLiveService: ObservableObject {
         // proactively schedule a reconnect so a long conversation survives the server's rotation.
         if let goAway = json["goAway"] as? [String: Any] {
             let timeLeft = goAway["timeLeft"] as? [String: Any]
-            let seconds = timeLeft?["seconds"] as? Int ?? 0
-            isModelSpeaking = false
-            PrivacyLog.realtimeGoAway(.gemini, secondsRemaining: seconds)
-            scheduleReconnect(reason: "server rotating connection")   // sets reconnecting = true first
-            onDisconnected?("Server rotating connection (time left: \(seconds)s)")
+            handleGoAway(secondsRemaining: timeLeft?["seconds"] as? Int ?? 0)
             return
         }
 

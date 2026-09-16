@@ -35,7 +35,19 @@ final class AudibleLifecycleCoordinator {
         case connectionLost
         /// The socket came back and the restart ran. `audioRestored` is whether microphone capture
         /// actually restarted — the thing that used to be a log line when it threw.
-        case reconnected(audioRestored: Bool, needsVisualEvidence: Bool)
+        /// `contextCarried` is Plan FF P1/PR5's fourth fact: whether the conversation itself came
+        /// back, by server resumption or by a locally rebuilt handover.
+        case reconnected(audioRestored: Bool, needsVisualEvidence: Bool, contextCarried: Bool)
+
+        /// A reconnect reported by a backend that has no way to know what became of the
+        /// conversation — the OpenAI Realtime wire has no resumption concept — so it claims
+        /// nothing about context rather than guessing. This is the shape every caller used before
+        /// the fourth fact existed, kept as an overload so those call sites keep saying exactly
+        /// what they always said.
+        static func reconnected(audioRestored: Bool, needsVisualEvidence: Bool) -> Signal {
+            .reconnected(audioRestored: audioRestored, needsVisualEvidence: needsVisualEvidence,
+                         contextCarried: true)
+        }
         /// The retry ladder gave up.
         case reconnectExhausted
         /// The session ended (stopped, or torn down after a terminal failure).
@@ -90,6 +102,9 @@ final class AudibleLifecycleCoordinator {
     private struct PendingRecovery {
         let audioRestored: Bool
         let needsVisualEvidence: Bool
+        /// Decided at reconnect time and carried through the wait unchanged: waiting for the camera
+        /// tells you nothing new about whether the conversation survived.
+        let contextCarried: Bool
         let generation: Int
         let deadline: Date
     }
@@ -152,8 +167,9 @@ final class AudibleLifecycleCoordinator {
             post(.connectionLost)
             accepted = true
 
-        case .reconnected(let audioRestored, let needsVisualEvidence):
-            noteReconnect(audioRestored: audioRestored, needsVisualEvidence: needsVisualEvidence)
+        case .reconnected(let audioRestored, let needsVisualEvidence, let contextCarried):
+            noteReconnect(audioRestored: audioRestored, needsVisualEvidence: needsVisualEvidence,
+                          contextCarried: contextCarried)
             accepted = true
 
         case .reconnectExhausted:
@@ -196,13 +212,15 @@ final class AudibleLifecycleCoordinator {
         cancelPumpIfIdle()
     }
 
-    private func noteReconnect(audioRestored: Bool, needsVisualEvidence: Bool) {
+    private func noteReconnect(audioRestored: Bool, needsVisualEvidence: Bool,
+                               contextCarried: Bool) {
         guard audioRestored else {
             // Nothing to wait for: a reconnect with no microphone is decided the moment it happens.
             post(AudibleLifecyclePolicy.recoveryNotice(
                 for: .init(audioRestored: false,
                            needsVisualEvidence: needsVisualEvidence,
-                           hasFreshVisualEvidence: false)))
+                           hasFreshVisualEvidence: false,
+                           contextCarried: contextCarried)))
             return
         }
         // Evidence may already be in hand (an audio-only session, or a camera that never stopped).
@@ -212,11 +230,13 @@ final class AudibleLifecycleCoordinator {
             post(AudibleLifecyclePolicy.recoveryNotice(
                 for: .init(audioRestored: true,
                            needsVisualEvidence: needsVisualEvidence,
-                           hasFreshVisualEvidence: true)))
+                           hasFreshVisualEvidence: true,
+                           contextCarried: contextCarried)))
             return
         }
         pendingRecovery = PendingRecovery(audioRestored: true,
                                           needsVisualEvidence: true,
+                                          contextCarried: contextCarried,
                                           generation: generation,
                                           deadline: now().addingTimeInterval(Self.recoveryEvidenceWindow))
         // A recovery under evaluation already makes the queued loss false.
@@ -329,7 +349,8 @@ final class AudibleLifecycleCoordinator {
         post(AudibleLifecyclePolicy.recoveryNotice(
             for: .init(audioRestored: recovery.audioRestored,
                        needsVisualEvidence: recovery.needsVisualEvidence,
-                       hasFreshVisualEvidence: haveEvidence)))
+                       hasFreshVisualEvidence: haveEvidence,
+                       contextCarried: recovery.contextCarried)))
     }
 
     /// Play and speak. Returns whether it actually went out — an identical notice inside the repeat

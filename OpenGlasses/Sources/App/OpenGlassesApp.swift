@@ -1582,6 +1582,12 @@ class AppState: ObservableObject, AppStateProtocol {
         openAIRealtimeSession.onRequestStartCamera = cameraStartHandler
         geminiLiveSession.onRequestStopCamera = cameraStopHandler
         openAIRealtimeSession.onRequestStopCamera = cameraStopHandler
+        // Plan FF P1/PR5 over FD P1: the reconnect path reads the camera's own snapshot before it
+        // decides whether a start is even permissible. A paused stream is waited out, never started
+        // into — `LiveRecoveryCameraPolicy` is where that is expressed.
+        geminiLiveSession.cameraReadiness = { [weak self] in
+            self?.cameraService.readinessNow ?? .cleared(session: 0)
+        }
 
         // Wire Watch app connectivity
         WatchConnectivityManager.shared.appState = self

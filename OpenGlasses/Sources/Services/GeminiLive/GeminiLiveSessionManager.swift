@@ -35,6 +35,14 @@ class GeminiLiveSessionManager: ObservableObject {
     private var toolCallRouter: ToolCallRouter?
     private var stateObservation: Task<Void, Never>?
 
+    /// Plan FF P1/PR5 — the phone's own bounded, in-memory record of this session's turns, and the
+    /// object that decides what a reconnect actually restored. Both live and die with the session.
+    private let conversationRecorder = LiveConversationRecorder()
+    private var recoveryDriver: LiveRecoveryDriver?
+    /// When this session started. Bounds the journal read a handover makes: the journal is durable
+    /// and outlives sessions, and an operation from last week is not part of this conversation.
+    private var sessionStartedAt: Date?
+
     /// Local, network-independent speech for terminal session cues (Plan BD) — never ElevenLabs,
     /// since the network may be exactly what failed.
     private let localCueSynth = AVSpeechSynthesizer()
@@ -69,6 +77,11 @@ class GeminiLiveSessionManager: ObservableObject {
 
     /// Whether the camera is actively streaming frames (used to conditionalise the vision prompt).
     var isCameraStreaming: Bool = false
+
+    /// The camera's own readiness snapshot (Plan FD P0), supplied by AppState. Read on reconnect to
+    /// decide whether a camera start is even permissible — a paused stream is waited out, never
+    /// started into (Plan FD P1 / `LiveRecoveryCameraPolicy`).
+    var cameraReadiness: (() -> CameraReadiness)?
 
     /// Whether to use iPhone audio mode (voiceChat with echo suppression) or glasses mode (videoChat).
     /// When true: aggressive echo cancellation + mic muting during model speech (co-located speaker/mic).
@@ -138,6 +151,9 @@ class GeminiLiveSessionManager: ObservableObject {
         isActive = true
         sessionIdentity += 1
         errorMessage = nil
+        // FF P1/PR5: a session's record belongs to that session and to nothing else.
+        conversationRecorder.reset()
+        sessionStartedAt = Date()
 
         // Ensure camera streaming is active (may have failed on mode switch if glasses weren't connected).
         // If startCamera succeeds, trust that frames will arrive — the user has approved camera permission
@@ -196,13 +212,18 @@ class GeminiLiveSessionManager: ObservableObject {
 
         // Wire interruption → stop playback
         geminiService.onInterrupted = { [weak self] in
-            self?.audioManager.stopPlayback()
+            guard let self else { return }
+            self.audioManager.stopPlayback()
+            // FF P1/PR5: an answer the wearer spoke over is committed marked. What they heard of it
+            // is unknown, and a handover must never present it as delivered.
+            self.conversationRecorder.noteInterruption()
         }
 
         // Wire turn complete
         geminiService.onTurnComplete = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
+                self.conversationRecorder.completeTurn()
                 self.userTranscript = ""
             }
         }
@@ -216,6 +237,9 @@ class GeminiLiveSessionManager: ObservableObject {
             Task { @MainActor in
                 self.userTranscript = ScriptAwareJoiner.join(self.userTranscript, text)
                 self.aiTranscript = ""
+                // FF P1/PR5: the phone's own record. Passed the whole accumulated string so it
+                // shares this joiner rather than re-implementing it.
+                self.conversationRecorder.setWearerTurn(self.userTranscript)
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
                 // The wearer is asking about what is in front of them *now*. With the content gate
@@ -229,6 +253,7 @@ class GeminiLiveSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
+                self.conversationRecorder.setAssistantTurn(self.aiTranscript)
             }
         }
 
@@ -237,6 +262,9 @@ class GeminiLiveSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 guard self.isActive else { return }
+                // FF P1/PR5: whatever was being said when the socket went is now unfinished, and a
+                // handover has to say so rather than hand the answer back as though it landed.
+                self.conversationRecorder.noteInterruption()
                 if !self.geminiService.reconnecting {
                     // Report the loss before the teardown: after `stopSession()` there is no
                     // session left for the cue to be about.
@@ -261,42 +289,14 @@ class GeminiLiveSessionManager: ObservableObject {
             }
         }
 
-        // Wire reconnection
+        // Wire reconnection. Plan FF P1/PR5: the decisions live in `LiveRecoveryDriver`, which is
+        // constructible headlessly; this is the wiring that gives it the real session to act on.
+        recoveryDriver = LiveRecoveryDriver(seams: makeRecoverySeams())
         geminiService.onReconnected = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
                 PrivacyLog.realtimeSession(.gemini, .reconnected)
-                // Re-configure with current settings (including fresh location)
-                let includeOpenClaw = Config.isOpenClawAgentActive   // BK P0: gate on Agent Mode too
-                var toolDefs = ToolDeclarations.allDeclarations(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
-                // BR P1: breaker-suspended tools stay out of the re-declared list — the new
-                // setup message must not re-offer what this session already tripped on.
-                if let suspended = self.toolCallRouter?.suspendedToolNames, !suspended.isEmpty {
-                    toolDefs = toolDefs.filter { decl in
-                        guard let name = decl["name"] as? String else { return true }
-                        return !suspended.contains(name)
-                    }
-                }
-                self.geminiService.configure(
-                    systemInstruction: self.buildSystemInstruction(),
-                    toolDeclarations: toolDefs
-                )
-                // Re-start audio capture
-                var audioRestored = true
-                do {
-                    try self.audioManager.startCapture()
-                } catch {
-                    audioRestored = false
-                    PrivacyLog.realtimeSession(.gemini, .audioRestartFailed,
-                                               error: SafeErrorSummary(error))
-                }
-                // Re-start frame capture
-                self.startFrameCapture()
-                // Plan FF P0/PR2: a socket that came back is not a session the wearer can use.
-                // The coordinator decides the *shape* of the recovery — and waits for the camera
-                // to prove itself rather than reading it here, where no frame can have arrived yet.
-                self.onLifecycle?(.reconnected(audioRestored: audioRestored,
-                                               needsVisualEvidence: self.isCameraStreaming))
+                await self.recoveryDriver?.handleReconnected()
             }
         }
 
@@ -499,6 +499,12 @@ class GeminiLiveSessionManager: ObservableObject {
         let hadCameraClaim = isCameraStreaming
         toolCallRouter?.cancelAll()
         toolCallRouter = nil
+        // FF P1/PR5: a stop cancels a recovery still working, and forgets the record it would have
+        // rebuilt from. Ending a session is the same act as forgetting it.
+        recoveryDriver?.noteStop()
+        recoveryDriver = nil
+        conversationRecorder.reset()
+        sessionStartedAt = nil
         frameTimer?.cancel()
         frameTimer = nil
         audioManager.stopCapture()
@@ -526,11 +532,69 @@ class GeminiLiveSessionManager: ObservableObject {
         }
     }
 
+    // MARK: - Recovery (Plan FF P1/PR5)
+
+    /// Hand the recovery driver this session's real world.
+    ///
+    /// The tool re-declaration and the instruction rebuild stay here because they are this
+    /// backend's wire shapes; what the driver owns is the *order* they happen in, the stop checks
+    /// between them and what is claimed afterwards.
+    private func makeRecoverySeams() -> LiveRecoveryDriver.Seams {
+        LiveRecoveryDriver.Seams(
+            isSessionActive: { [weak self] in self?.isActive ?? false },
+            resumedOnServer: { [weak self] in self?.geminiService.lastConnectResumedContext ?? false },
+            recentTurns: { [weak self] limit in
+                self?.conversationRecorder.recentTurns(limit) ?? []
+            },
+            interruptedOperations: { [weak self] in
+                guard let self, let journal = self.nativeToolRouter?.operationJournal else { return [] }
+                return LiveContextHandover.interruptedSideEffectingOperations(
+                    in: journal, since: self.sessionStartedAt)
+            },
+            cameraReadiness: { [weak self] in self?.cameraReadiness?() },
+            sessionNeedsVision: { [weak self] in self?.isCameraStreaming ?? false },
+            reconfigure: { [weak self] handover in
+                guard let self else { return }
+                // Re-configure with current settings (including fresh location).
+                let includeOpenClaw = Config.isOpenClawAgentActive   // BK P0: gate on Agent Mode too
+                var toolDefs = ToolDeclarations.allDeclarations(
+                    registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+                // BR P1: breaker-suspended tools stay out of the re-declared list — the new setup
+                // message must not re-offer what this session already tripped on.
+                if let suspended = self.toolCallRouter?.suspendedToolNames, !suspended.isEmpty {
+                    toolDefs = toolDefs.filter { decl in
+                        guard let name = decl["name"] as? String else { return true }
+                        return !suspended.contains(name)
+                    }
+                }
+                self.geminiService.configure(
+                    systemInstruction: self.buildSystemInstruction(recoveredContext: handover),
+                    toolDeclarations: toolDefs)
+            },
+            restartMicrophone: { [weak self] in
+                guard let self else { return }
+                try self.audioManager.startCapture()
+            },
+            restartFrameCapture: { [weak self] in self?.startFrameCapture() },
+            startCamera: { [weak self] in
+                guard let self, let startCamera = self.onRequestStartCamera else { return false }
+                let ok = await startCamera()
+                if ok { self.isCameraStreaming = true }
+                PrivacyLog.realtimeSession(.gemini, .cameraStarted, success: ok)
+                return ok
+            },
+            report: { [weak self] signal in self?.onLifecycle?(signal) })
+    }
+
     // MARK: - System Instruction
 
     /// Build the full system instruction for Gemini Live, including vision capabilities,
     /// tool usage instructions, and the user's current location.
-    private func buildSystemInstruction() -> String {
+    ///
+    /// - Parameter recoveredContext: Plan FF P1/PR5's locally rebuilt handover, when a reconnect
+    ///   could not resume the conversation server-side. Composed with the other injected contexts,
+    ///   after the preset prefix and the precedence note, so PR1's composition order is unchanged.
+    private func buildSystemInstruction(recoveredContext: String? = nil) -> String {
         // Apply the LiveAI mode prefix (e.g. museum guide, Blind Assistant, translator) through
         // the shared seam, so this backend and the OpenAI Realtime one compose the preset in the
         // same order — prefix, then the configured prompt, then the blind-assistance precedence
@@ -656,6 +720,12 @@ class GeminiLiveSessionManager: ObservableObject {
         // present from the start, and stale-but-spoiler-safe beats absent.
         if let readingContext = ReadingCompanionService.shared.promptContext() {
             prompt += "\n\n\(readingContext)"
+        }
+
+        // Plan FF P1/PR5: the bounded handover that stands in for a conversation the server would
+        // not resume. Last of the contexts, nearest the turn it is about.
+        if let recoveredContext, !recoveredContext.isEmpty {
+            prompt += "\n\n\(recoveredContext)"
         }
 
         // Security baseline: untrusted-content / prompt-injection policy (mirrors Direct Mode).
