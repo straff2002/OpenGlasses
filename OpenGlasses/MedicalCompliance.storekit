@@ -175,7 +175,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "19.99",
+          "displayPrice": "9.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "field_assist_monthly_001",
@@ -196,13 +196,13 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "149.99",
+          "displayPrice": "99.99",
           "familyShareable": false,
           "groupNumber": 2,
           "internalID": "field_assist_annual_001",
           "localizations": [
             {
-              "description": "Field Assist for one technician with annual billing — the same price as the one-time unlock.",
+              "description": "Field Assist for one technician with annual billing. Save 17% compared to monthly.",
               "displayName": "Annual",
               "locale": "en_US"
             }
