@@ -104,6 +104,28 @@ final class LicenseServiceTests: XCTestCase {
         XCTAssertNil(service.activeLicense)
     }
 
+    /// A code that stops verifying (a rotated signing key, a damaged paste restored from backup)
+    /// leaves the locked screen showing its error until a valid code replaces it. Removing the
+    /// stored code must return the decision to a plain "no evidence" denial, which is what lets a
+    /// device go back to the ordinary purchase offer.
+    func testClearRemovesAStoredCodeThatNoLongerVerifies() throws {
+        let otherKey = Curve25519.Signing.PrivateKey()
+        let foreign = try LicenseService.makeCode(
+            payload: LicenseService.LicensePayload(feature: "field_assist", licensee: "Acme Co",
+                                                   issued: Date(timeIntervalSince1970: 0), expires: nil),
+            privateKeyBase64: otherKey.rawRepresentation.base64EncodedString())
+        UserDefaults.standard.set(foreign, forKey: LicenseService.storageKey)
+        service.loadStored()
+
+        XCTAssertNil(service.activeLicense)
+        XCTAssertEqual(storedCodeDecision().denial, .unverifiableLicense)
+
+        service.clear()
+
+        XCTAssertNil(UserDefaults.standard.string(forKey: LicenseService.storageKey))
+        XCTAssertEqual(storedCodeDecision().denial, .noEvidence)
+    }
+
     func testMalformedCodeRejected() {
         XCTAssertThrowsError(try service.verify(code: "not-a-valid-code")) { error in
             guard case LicenseService.LicenseError.malformed = error else {
