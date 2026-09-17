@@ -27,6 +27,51 @@ Audited at build 397, worktree `feat/ff-p3-entry-journey`.
 | 6 | The glasses pairing step genuinely leaves this app. | **Unavoidable** — see "Steps outside this app" below; the app announces both ends of the wait and states what to do in the other app. |
 | 7 | No gesture on the glasses can be claimed as an entry point. | **Confirmed again** — see "Hardware gestures". |
 
+## Step 0 — Getting the app at all
+
+Added with PR8. The journey a participant walks has to start where a real one does — at the App
+Store listing, on a phone that may have never had this app or the companion app on it — because
+every step below assumes an installed, launched app and none of them says how that happened.
+
+**Distribution route:** the App Store is the channel. Nothing here assumes a Mac, a developer
+account, a TestFlight invitation, or a sighted helper; where a step genuinely needs one of those,
+it is not part of the supported journey and is not listed.
+
+### Prerequisites, as a checklist
+
+| # | Step | Where it happens | Accessible on its own? |
+|---|---|---|---|
+| 1 | Find the listing and install | App Store | Apple's, and natively accessible. The listing's own name and subtitle are the only part we control |
+| 2 | Install the glasses companion app, if it is not already there | App Store, then that app's own onboarding | **Not ours.** Its accessibility is its vendor's, and it has to be recorded as observed, not assumed |
+| 3 | Pair the glasses to the phone | iOS Settings → Bluetooth, and the companion app | Outside every app boundary we control (see "Steps outside this app") |
+| 4 | Sign in to the companion app, if it asks | that app | Not ours |
+| 5 | Launch OpenGlasses and complete onboarding | this app, pages 1–7 | Audited below. A wearer with no glasses can complete it — "Skip — no glasses yet" is what makes an audio-only setup reachable |
+| 6 | Approve OpenGlasses in the companion app when onboarding asks | that app | Not ours; this app announces both ends of the wait and says what to do there |
+| 7 | Add a provider key, or choose an on-device model | this app, onboarding page 3 or Settings | Audited below (Step 3) |
+| 8 | Run **Settings → Accessibility → Check the Assistant Is Ready** | this app | Added by PR8; five checks, each spoken |
+
+Steps 2, 3, 4 and 6 are the ones this app cannot make accessible. They are listed so a participant
+run records *where* help was needed rather than only *that* it was.
+
+### Two outcomes, recorded separately
+
+An installation a researcher helped with and an installation the participant completed alone are
+different results, and collapsing them is the specific way a setup claim becomes untrue. So each
+participant run records both, per step of the checklist above:
+
+* **Independently completed** — the participant did it with their own assistive technology and no
+  intervention. Record the time taken and anything they had to work around.
+* **Assisted** — record *which* step, *what* the assistance was (spoken description, a tap, reading
+  something aloud, taking the phone), and whether the participant could have completed it given
+  more time. "Assisted" with no step named is not a usable record.
+
+Neither outcome is a pass or a fail on its own. A journey completed only with assistance is
+evidence about this app, and it stays evidence until the step that needed help is fixed or
+published as a known limitation.
+
+**Nothing here has been walked by a participant yet.** The checklist is what a run should record;
+it is not a record.
+
 ## Step 1 — Registration (glasses pairing)
 
 Screens: `OnboardingView` page 6 of 7 (`connectGlassesPage`), and afterwards Settings → the glasses
@@ -170,7 +215,9 @@ in PR3 depends on it.
 ## Owed
 
 * A blind participant completing this journey without a sighted operator — the acceptance bar PR3
-  states, and the only evidence that closes it.
+  states, and the only evidence that closes it. With PR8, that now starts at the App Store
+  listing (Step 0) and ends with the readiness check run on glasses, and the assisted and
+  independent outcomes are recorded separately per step.
 * VoiceOver on hardware, through the whole walk.
 * Cold launch, repeated activation, cancellation during the permission checks, lock/unlock and
   external audio coexistence, on a real phone with real glasses. The headless tests assert the

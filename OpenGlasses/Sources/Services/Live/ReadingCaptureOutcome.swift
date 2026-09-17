@@ -62,20 +62,42 @@ enum ReadingCaptureOutcome {
     // during a session, so this is how a spoken instruction actually reaches the wearer; a second
     // voice speaking over the model is a Plan FF PR5 concern, not a reading one.
 
-    /// The concise instruction for an unusable picture.
-    static func instruction(for quality: CaptureQualityReport.Quality,
-                            isReadingRequest: Bool) -> String {
-        let spoken: String
+    /// The one sentence a wearer hears when a picture is not good enough to read from.
+    ///
+    /// Separated from the model directive below because two callers need the same words in
+    /// different wrappers: a live session is told to say them, and a surface that speaks for
+    /// itself — the readiness walk-through — says them directly. One copy, two envelopes.
+    static func spokenInstruction(for quality: CaptureQualityReport.Quality,
+                                  isReadingRequest: Bool) -> String {
         switch quality {
         case .tooDark:
-            spoken = "It's too dark to read; find more light."
+            return "It's too dark to read; find more light."
         case .tooBlurry:
-            spoken = isReadingRequest
+            return isReadingRequest
                 ? "Hold still and move a little closer to the text."
                 : "Hold still for a moment so I can get a sharper picture."
         case .undecodable, .usable:
-            spoken = "The picture didn't come through. Hold the item steady and I'll try again."
+            return "The picture didn't come through. Hold the item steady and I'll try again."
         }
+    }
+
+    /// The one sentence a wearer hears when no picture arrived at all. Same reasoning as
+    /// `spokenInstruction(for:isReadingRequest:)`.
+    static func spokenUnavailable(_ reason: FilteredStillResult.Reason) -> String {
+        switch reason {
+        case .noStill:
+            return "I'm not getting a picture from the camera right now."
+        case .noFreshView:
+            return "The only picture I have is out of date, so I didn't read from it."
+        case .filterUnavailable, .filterNotWired:
+            return "I couldn't prepare the picture, so I haven't read it."
+        }
+    }
+
+    /// The concise instruction for an unusable picture.
+    static func instruction(for quality: CaptureQualityReport.Quality,
+                            isReadingRequest: Bool) -> String {
+        let spoken = spokenInstruction(for: quality, isReadingRequest: isReadingRequest)
         return """
             The photo arrived but is not good enough to read fine detail from, and a second attempt \
             was no better. Say exactly this to the user, in one short sentence: "\(spoken)" The \
@@ -91,15 +113,7 @@ enum ReadingCaptureOutcome {
     /// picture exists and is no longer a current view — is the case a stale-session or
     /// stale-by-time refusal lands on, and it must not be reported as "the camera failed".
     static func unavailable(_ reason: FilteredStillResult.Reason) -> String {
-        let spoken: String
-        switch reason {
-        case .noStill:
-            spoken = "I'm not getting a picture from the camera right now."
-        case .noFreshView:
-            spoken = "The only picture I have is out of date, so I didn't read from it."
-        case .filterUnavailable, .filterNotWired:
-            spoken = "I couldn't prepare the picture, so I haven't read it."
-        }
+        let spoken = spokenUnavailable(reason)
         return """
             No usable photo was added to your view. Say exactly this to the user, in one short \
             sentence: "\(spoken)" The detail that needed the photo is still unread — do NOT answer \

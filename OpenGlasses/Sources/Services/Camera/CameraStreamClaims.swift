@@ -36,6 +36,10 @@ struct CameraStreamClaims: Equatable {
         /// the camera outright so that a session ending, or failing to start, gives back exactly
         /// the stream it opened and never the one the wearer opened themselves.
         static let liveSession = Owner("liveSession")
+        /// Plan FF P1/PR8 — the readiness walk-through's camera step. Claims rather than starting
+        /// the stream outright so a check run on top of a live session gives back exactly what it
+        /// took and never the session's own camera.
+        static let readinessCheck = Owner("readinessCheck")
     }
 
     /// What the service should do about a `claim`.

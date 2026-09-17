@@ -154,6 +154,26 @@ struct AccessibilitySettingsView: View {
             .onAppear { refreshLaunchStatus() }
 
             Section {
+                NavigationLink {
+                    ReadinessWalkthroughView()
+                } label: {
+                    Label("Check the Assistant Is Ready", systemImage: "checkmark.seal")
+                }
+                .accessibilityHint("Runs five checks in order and says each result out loud.")
+
+                NavigationLink {
+                    ProcessingSummaryView()
+                } label: {
+                    Label("How Your Requests Are Processed", systemImage: "arrow.triangle.branch")
+                }
+                .accessibilityHint("Shows where the camera picture, what you say, the answer, the voice and remote tools each go.")
+            } header: {
+                Text("Before You Rely on It")
+            } footer: {
+                Text("The readiness check starts the camera, waits for a real picture, and plays a line you have to be able to hear — a part reporting that it is connected never passes it. It stops at the first thing that is wrong and tells you the one thing to do about it.\n\nThe processing summary says which parts of a request stay on this phone and which go to a provider. It describes how your settings are configured, not what was actually sent.")
+            }
+
+            Section {
                 Toggle("Speak What Each Sound Means", isOn: $spokenCues)
                     .tint(AppAccent.color)
                 Button {
