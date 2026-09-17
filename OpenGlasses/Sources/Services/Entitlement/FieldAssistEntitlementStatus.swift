@@ -75,6 +75,9 @@ enum FieldAssistPaywallCopy {
     static let teamOnly = "Your own vaults and manuals, and audited PDF export, are team capabilities. Your purchase covers the bundled vaults; a team licence from your organisation unlocks the rest."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
+    /// The way out of a stored code that stopped verifying or expired: without it the locked screen
+    /// shows its error until a valid code is entered, even for someone who only wants to buy.
+    static let removeStoredCode = "Remove Stored Code"
     static let subscriptionLapsed = "Your Field Assist subscription has lapsed. Manage it in your App Store subscriptions."
     static let manageSubscription = "Manage Subscription"
     static let seatsNote = "Seats are recorded for your records; this device does not enforce them."
@@ -93,7 +96,7 @@ enum FieldAssistPaywallCopy {
     /// Every static string, for the copy guard test.
     static var all: [String] {
         [locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
-         teamOnly, renewLicense, unverifiable, subscriptionLapsed, manageSubscription, seatsNote,
+         teamOnly, renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),
          expiring(.expiring(daysRemaining: 1, threshold: 7)),
          expiring(.expiring(daysRemaining: 12, threshold: 30))]

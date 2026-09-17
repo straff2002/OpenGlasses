@@ -653,6 +653,7 @@ struct FieldAssistSettingsView: View {
                         Text(FieldAssistPaywallCopy.renewLicense)
                             .font(.caption)
                             .foregroundStyle(OGTheme.errorLabel)
+                        removeStoredCodeButton
                     } else {
                         Text(FieldAssistPaywallCopy.subscriptionLapsed)
                             .font(.caption)
@@ -665,6 +666,7 @@ struct FieldAssistSettingsView: View {
                     Text(FieldAssistPaywallCopy.unverifiable)
                         .font(.caption)
                         .foregroundStyle(OGTheme.errorLabel)
+                    removeStoredCodeButton
                 default:
                     EmptyView()
                 }
@@ -707,6 +709,17 @@ struct FieldAssistSettingsView: View {
         } footer: {
             Text(FieldAssistPaywallCopy.purchaseFooter)
         }
+    }
+
+    /// Drops a stored licence code that expired or no longer verifies, so the locked screen goes back
+    /// to a plain offer. Borderless so it is its own tap target inside the multi-line row.
+    private var removeStoredCodeButton: some View {
+        Button(FieldAssistPaywallCopy.removeStoredCode, role: .destructive) {
+            license.clear()
+            licenseMessage = nil
+        }
+        .font(.caption)
+        .buttonStyle(.borderless)
     }
 
     @ViewBuilder
