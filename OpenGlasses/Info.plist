@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Apple's meaning, not the EAR's: NO = no export compliance documentation is required.
+	     The app uses standard algorithms (WebRTC DTLS-SRTP, the glasses SDK) beyond Apple's, and
+	     App Store Connect requires no documents for that while the app is not sold in France.
+	     YES without an ITSEncryptionExportComplianceCode is refused at upload (ITMS-90592).
+	     If France is ever made available, upload the French declaration, then set YES and add
+	     the code Apple issues. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
