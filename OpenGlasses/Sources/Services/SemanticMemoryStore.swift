@@ -78,8 +78,14 @@ class SemanticMemoryStore: ObservableObject {
     private var db: OpaquePointer?
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let docsDir: URL
-    private let maxGlobalChars = 3000
-    private let maxPersonaChars = 1500
+    /// Storage caps, in characters of key + value summed across a namespace (Plan FI).
+    ///
+    /// These bound what the store *keeps on disk*, not what reaches a prompt: prompt injection is
+    /// bounded separately by `maxMemoryLines` entries per section and `maxValueChars` per value,
+    /// so raising these does not grow the prompt budget. When a write pushes a namespace past its
+    /// cap, the least-recently-written rows are evicted first (see `trim`).
+    let maxGlobalChars: Int
+    let maxPersonaChars: Int
     private let maxGatewayResults = 10
 
     /// Routed through the shared [[Embedder]] seam (sentence model preferred over the old word-average,
@@ -87,11 +93,21 @@ class SemanticMemoryStore: ObservableObject {
     /// vectors carry a version stamp ([[EmbeddingVersion]]) so a model change re-embeds on access.
     private let embedder = Embedder()
 
+    /// Clock for write stamps. Injectable so eviction-order tests control recency without sleeping.
+    private let now: () -> Date
+
     // MARK: - Init
 
-    /// `directory` is injectable so tests can point at a temp folder instead of the app's documents.
-    init(directory: URL? = nil) {
+    /// `directory` is injectable so tests can point at a temp folder instead of the app's documents;
+    /// the caps and the clock are injectable so eviction can be tested at a small scale.
+    init(directory: URL? = nil,
+         maxGlobalChars: Int = 20_000,
+         maxPersonaChars: Int = 10_000,
+         now: @escaping () -> Date = Date.init) {
         docsDir = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.maxGlobalChars = maxGlobalChars
+        self.maxPersonaChars = maxPersonaChars
+        self.now = now
         openDatabase()
         createTables()
         migrateFromLegacyJSONIfNeeded()
@@ -105,36 +121,20 @@ class SemanticMemoryStore: ObservableObject {
 
     // MARK: - Public API (legacy key-value compatible)
 
-    /// Returns false when the write did not reach the database — callers at a tool/spoken
-    /// boundary should say so rather than claim the fact was saved.
+    /// Returns false when the fact was not kept — the write did not reach the database, or the
+    /// fact alone is larger than its namespace's storage cap. Callers at a tool/spoken boundary
+    /// should say so rather than claim the fact was saved.
     @discardableResult
     func remember(_ key: String, value: String) -> Bool {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
-        let ns = activePersonaId ?? "global"
-        if activePersonaId != nil {
+        if let pid = activePersonaId {
             if personaMemories[k] == value { return true }
-            guard upsert(key: k, value: value, namespace: ns) else {
-                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .persona)
-                return false
-            }
-            refreshPersonaCache()
-            trim(namespace: ns, maxChars: maxPersonaChars)
-            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .persona,
-                             characters: value.count)
+            return write(key: k, value: value, namespace: pid, maxChars: maxPersonaChars)
         } else {
             if memories[k] == value { return true }
-            guard upsert(key: k, value: value, namespace: "global") else {
-                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
-                return false
-            }
-            refreshGlobalCache()
-            trim(namespace: "global", maxChars: maxGlobalChars)
-            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
-                             characters: value.count)
+            return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
         }
-        pushToGateway(key: k, value: value)
-        return true
     }
 
     @discardableResult
@@ -142,14 +142,31 @@ class SemanticMemoryStore: ObservableObject {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
         if memories[k] == value { return true }
-        guard upsert(key: k, value: value, namespace: "global") else {
-            PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
+        return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
+    }
+
+    /// The shared write path: size check, upsert, evict to fit, then log and sync.
+    ///
+    /// A fact that could never fit its namespace's cap on its own is refused *before* the upsert,
+    /// so it neither overwrites an earlier value for the same key nor evicts anything to make room
+    /// it could not use.
+    private func write(key k: String, value: String, namespace ns: String, maxChars: Int) -> Bool {
+        let scope: PrivacyLog.StoreScope = ns == "global" ? .global : .persona
+        guard k.count + value.count <= maxChars else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
+                             characters: value.count, detail: PrivacyToken("overCap"))
             return false
         }
-        refreshGlobalCache()
-        trim(namespace: "global", maxChars: maxGlobalChars)
-        PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
-                         characters: value.count)
+        guard upsert(key: k, value: value, namespace: ns) else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope)
+            return false
+        }
+        guard trim(namespace: ns, maxChars: maxChars, keeping: k) else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
+                             characters: value.count, detail: PrivacyToken("overCap"))
+            return false
+        }
+        PrivacyLog.store(.semanticMemory, .recordWritten, scope: scope, characters: value.count)
         pushToGateway(key: k, value: value)
         return true
     }
@@ -638,7 +655,7 @@ class SemanticMemoryStore: ObservableObject {
     private func upsert(key: String, value: String, namespace: String) -> Bool {
         let id = "\(namespace):\(key)"
         let topic = detectTopic(key: key, value: value)
-        let now = Date().timeIntervalSince1970
+        let now = self.now().timeIntervalSince1970
         let ok = run("""
         INSERT INTO memories (id, key_name, value, topic, namespace, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -806,23 +823,46 @@ class SemanticMemoryStore: ObservableObject {
 
     // MARK: - Private: Trim
 
-    private func trim(namespace: String, maxChars: Int) {
+    /// Evict until `namespace` fits `maxChars`, never evicting the row keyed `kept` (the one the
+    /// current write just produced). Returns whether that row survived.
+    ///
+    /// Policy (Plan FI): least-recently-written first — `created_at` ascending, which `upsert`
+    /// restamps on every write so it is effectively last-write time — with ties broken by `id`
+    /// ascending so the order is deterministic. The earlier policy evicted the *shortest* rows
+    /// first, which threw away short, high-value facts ("parking = lot B, level 3") before long
+    /// ones and could evict the row just written while `remember` still reported success.
+    ///
+    /// If the kept row alone exceeds the cap, it is deleted and nothing else is evicted for it.
+    /// Always refreshes the namespace's cache, whether or not anything was evicted.
+    @discardableResult
+    private func trim(namespace: String, maxChars: Int, keeping kept: String) -> Bool {
         // The pool, not the persona: a namespace is a persona id, which is a small wearer-visible
         // set that a hash would not anonymise.
         let isGlobal = namespace == "global"
+        defer {
+            if isGlobal { refreshGlobalCache() } else { refreshPersonaCache() }
+        }
         let rows = fetchAllMemories(namespace: namespace)
-        var total = rows.reduce(0) { $0 + $1.keyName.count + $1.value.count }
-        guard total > maxChars else { return }
-        let sorted = rows.sorted { ($0.keyName.count + $0.value.count) < ($1.keyName.count + $1.value.count) }
-        for row in sorted {
+        let size: (MemoryEntry) -> Int = { $0.keyName.count + $0.value.count }
+        var total = rows.reduce(0) { $0 + size($1) }
+        guard total > maxChars else { return true }
+
+        if let keptRow = rows.first(where: { $0.keyName == kept }), size(keptRow) > maxChars {
+            deleteMemory(key: kept, namespace: namespace)
+            return false
+        }
+
+        let candidates = rows
+            .filter { $0.keyName != kept }
+            .sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        for row in candidates {
             guard total > maxChars else { break }
-            total -= row.keyName.count + row.value.count
+            total -= size(row)
             deleteMemory(key: row.keyName, namespace: namespace)
             PrivacyLog.store(.semanticMemory, .evicted, scope: isGlobal ? .global : .persona,
-                             characters: row.keyName.count + row.value.count)
+                             characters: size(row))
         }
-        if namespace == "global" { refreshGlobalCache() }
-        else { refreshPersonaCache() }
+        return true
     }
 
     // MARK: - Private: Migration

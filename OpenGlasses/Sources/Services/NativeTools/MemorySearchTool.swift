@@ -32,6 +32,10 @@ struct MemorySearchTool: NativeTool {
     /// Resolves the active project's namespace (Plan AN). Defaults to "global". Search is scoped
     /// through this so a global chat never surfaces another persona's memory (Plan BM P8).
     var activeNamespace: (() -> String)?
+    /// The wearer's memory switch. When it is off, the tool reads nothing (Plan FI) — the prompt
+    /// path already honours it, and a tool must not be a side door to the same facts. Injectable
+    /// so tests don't have to mutate the shared defaults.
+    var memoryEnabled: () -> Bool = { Config.userMemoryEnabled }
 
     /// Namespaces a scoped search may read: shared "global" plus the active project.
     private func scopedNamespaces() -> [String] {
@@ -40,6 +44,9 @@ struct MemorySearchTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard memoryEnabled() else {
+            return "Saved memory is turned off, so there is nothing to search. It can be turned back on in Settings."
+        }
         guard let store = memoryStore else {
             return "Memory search unavailable."
         }

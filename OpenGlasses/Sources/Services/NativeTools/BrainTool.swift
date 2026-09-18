@@ -45,6 +45,15 @@ struct BrainTool: NativeTool {
     /// project is active. Retrieval is scoped through this so an unscoped/global chat never sees a
     /// project's documents or another persona's memory (the inverse of projects-see-global).
     var activeNamespace: (() -> String)?
+    /// The wearer's memory switch. When it is off, saved facts are not searched at all (Plan FI):
+    /// the prompt path already honours it and the brain must not be a side door to the same facts.
+    /// Other sources (graph, documents, people, notes) are separate stores and are unaffected.
+    /// Injectable so tests don't have to mutate the shared defaults.
+    var memoryEnabled: () -> Bool = { Config.userMemoryEnabled }
+
+    /// Said instead of a "no remembered facts" gap: with memory off nothing was searched, so
+    /// claiming nothing matched would be false.
+    private static let memoryOffNote = "Saved memory is switched off, so remembered facts were not searched."
 
     private static let maxResultChars = 2200
 
@@ -159,7 +168,7 @@ struct BrainTool: NativeTool {
 
         case "status", "stats":
             let stats = brain.stats
-            let memoryCount = memoryStore != nil ? "available" : "disabled"
+            let memoryCount = !memoryEnabled() ? "switched off" : (memoryStore != nil ? "available" : "disabled")
             let docCount = documentStore?.documentCount(namespace: currentNamespace()) ?? 0
             return "Brain: \(stats.entities) entities, \(stats.edges) relationships, \(stats.encounters) encounters, \(stats.openNeeds) open follow-ups. " +
                    "Semantic memory \(memoryCount); \(docCount) documents; \(SocialContextStore.shared.allPeople().count) people with notes."
@@ -190,10 +199,14 @@ struct BrainTool: NativeTool {
 
         // Semantic memory (embedding search over remembered facts). Scoped to global + the active
         // project so an unscoped chat never surfaces another persona's remembered facts.
-        let memoryHits = memoryStore?.semanticSearch(query: question, limit: 4, namespaces: scopedNamespaces()) ?? []
-        if memoryHits.isEmpty { gaps.append("remembered facts") } else {
-            let lines = memoryHits.map { "- \($0.keyName): \($0.value) [memory, \(shortDate($0.createdAt))]" }
-            sections.append("REMEMBERED FACTS:\n" + lines.joined(separator: "\n"))
+        // With memory switched off this is skipped outright — not reported as a gap.
+        let memoryOn = memoryEnabled()
+        if memoryOn {
+            let memoryHits = memoryStore?.semanticSearch(query: question, limit: 4, namespaces: scopedNamespaces()) ?? []
+            if memoryHits.isEmpty { gaps.append("remembered facts") } else {
+                let lines = memoryHits.map { "- \($0.keyName): \($0.value) [memory, \(shortDate($0.createdAt))]" }
+                sections.append("REMEMBERED FACTS:\n" + lines.joined(separator: "\n"))
+            }
         }
 
         // Documents (embedding search over ingested document chunks). Scoped to the active project
@@ -245,6 +258,10 @@ struct BrainTool: NativeTool {
         }
 
         guard !sections.isEmpty else {
+            guard memoryOn else {
+                return "The brain has nothing on \"\(question)\" — no matching documents, people, meetings, or relationships. " +
+                       Self.memoryOffNote
+            }
             return "The brain has nothing on \"\(question)\" — no matching facts, documents, people, meetings, or relationships. " +
                    "Tell me things to remember, ingest documents, or add facts about people and I'll connect them."
         }
@@ -256,6 +273,7 @@ struct BrainTool: NativeTool {
         if !gaps.isEmpty {
             result += "\n\nNOT IN THE BRAIN: no matching \(gaps.joined(separator: ", ")). Answer only from the findings above; flag what's missing if relevant."
         }
+        if !memoryOn { result += "\n\n" + Self.memoryOffNote }
         return result
     }
 
@@ -285,7 +303,9 @@ struct BrainTool: NativeTool {
             sections.append("OPEN FOLLOW-UPS:\n" + openNeeds.map { "- \($0.text)" }.joined(separator: "\n"))
         }
 
-        let memoryHits = memoryStore?.semanticSearch(query: person, limit: 3, namespaces: scopedNamespaces()) ?? []
+        let memoryHits = memoryEnabled()
+            ? memoryStore?.semanticSearch(query: person, limit: 3, namespaces: scopedNamespaces()) ?? []
+            : []
         if !memoryHits.isEmpty {
             sections.append("FROM MEMORY:\n" + memoryHits.map { "- \($0.keyName): \($0.value)" }.joined(separator: "\n"))
         }
