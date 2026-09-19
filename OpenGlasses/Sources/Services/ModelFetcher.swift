@@ -137,6 +137,7 @@ enum ModelFetcher {
                 PrivacyLog.requestFailed(.modelCatalog, .http(status: code))
                 return .httpError(code)
             }
+            await ChatGPTContextCatalog.update(data: data, accountID: accountID)
             let models = parseChatGPTModels(data)
             return models.isEmpty ? .emptyCatalog : .models(models)
         } catch {
