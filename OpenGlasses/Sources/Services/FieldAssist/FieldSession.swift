@@ -32,6 +32,15 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var identityFields: [DeviceIdentityField] = []
     /// Readings, photos, opened citations and verified pages recorded while no task was active.
     var jobEvidence: Evidence = Evidence()
+    /// A new scope on equipment change prevents carrying work onto another machine (FM).
+    var continuityScope: String = "initial"
+    var taskEquipmentScopes: [String: String] = [:]
+    var identityEquipmentScopes: [String: String] = [:]
+    var procedureEquipmentScope: String?
+
+    func belongsToCurrentEquipment(_ task: Task) -> Bool {
+        (taskEquipmentScopes[task.id] ?? "initial") == continuityScope
+    }
 
     enum Mode: String, Codable {
         /// AI is the remote expert; grounded by vault content.
@@ -81,18 +90,18 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// The task work is currently being recorded against, if any. The **most recent** one in
     /// progress: "add a task: cleaned the condensate trap" while something else is running means
     /// the technician has moved on to the trap, and the evidence should follow them.
-    var activeTask: Task? { tasks.last { $0.status == .inProgress } }
+    var activeTask: Task? { tasks.last { $0.status == .inProgress && belongsToCurrentEquipment($0) } }
 
     /// The most recent recommendation still awaiting a decision — what "do it" and "skip that"
     /// resolve to when the technician names no task.
     var latestRecommendation: Task? {
-        tasks.last { $0.status == .recommended }
+        tasks.last { $0.status == .recommended && belongsToCurrentEquipment($0) }
     }
 
     /// The task "start" picks up when the technician names none: something accepted or put off
     /// earlier, most recent first.
     var nextStartable: Task? {
-        tasks.last { $0.status == .accepted || $0.status == .deferred }
+        tasks.last { ($0.status == .accepted || $0.status == .deferred) && belongsToCurrentEquipment($0) }
     }
 
     // MARK: - Codable
@@ -101,6 +110,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case id, vaultId, assetId, mode, startedAt, endedAt, pausedAt, resumedAt, outcome
         case startLocation, endLocation, escalations, billableSeconds, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
+        case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
     }
 }
 
@@ -134,5 +144,9 @@ extension FieldSession {
         partsRequests = try c.decodeIfPresent([PartsRequest].self, forKey: .partsRequests) ?? []
         identityFields = try c.decodeIfPresent([DeviceIdentityField].self, forKey: .identityFields) ?? []
         jobEvidence = try c.decodeIfPresent(Evidence.self, forKey: .jobEvidence) ?? Evidence()
+        continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
+        taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
+        identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]
+        procedureEquipmentScope = try c.decodeIfPresent(String.self, forKey: .procedureEquipmentScope)
     }
 }

@@ -10,7 +10,10 @@ final class FieldSessionTool: NativeTool {
     let description = """
     Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support \
     (refrigeration, IT, electrical, automotive). Sessions load a domain knowledge vault and emit an audit log. \
-    Use 'start' when the technician begins work on equipment, 'end' when they finish.
+    Use 'start' when the technician begins work on equipment, 'end' when they finish. \
+    Use 'recall' to retrieve older technician reports, readings and task results for the current \
+    equipment when they are absent from the working context. Reports are not independently \
+    verified. Read subsequent records for corrections; paginate until the relevant record is complete.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -22,6 +25,14 @@ final class FieldSessionTool: NativeTool {
             "format": [
                 "type": "string",
                 "description": "On 'export': 'pdf', 'json', or 'both' (default). 'pdf' is the customer-facing work order; 'json' is the structured audit record."
+            ],
+            "query": [
+                "type": "string",
+                "description": "On recall: phrase or source ID to find. Empty retrieves all current-equipment records chronologically."
+            ],
+            "offset": [
+                "type": "integer",
+                "description": "On recall: character offset from the previous page's continuation, default 0. Keep the same query."
             ],
             "vault": [
                 "type": "string",
@@ -58,6 +69,8 @@ final class FieldSessionTool: NativeTool {
         let service = FieldSessionService.shared
 
         switch action {
+        case "recall":
+            return service.recallContinuity(query: args["query"] as? String, offset: args["offset"] as? Int ?? 0)
         case "start":
             return await startSession(args: args, service: service)
         case "pause":

@@ -1414,7 +1414,7 @@ enum PrivacyLog {
     // and the useful diagnostics are its shape, not its substance.
 
     enum ModelEvent: String {
-        case turnStarted, turnCompleted, requestSent
+        case turnStarted, turnCompleted, requestSent, contextBudget, contextRecovery
         case historyLoaded, historyCleared, compressionFailed
         case planLoopEmpty, planLoopCompleted, cascadeSwitched
         case apiError, streamError, streamRetry, requestFailed

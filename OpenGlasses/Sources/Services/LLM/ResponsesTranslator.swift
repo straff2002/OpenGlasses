@@ -140,6 +140,7 @@ enum ResponsesTranslator {
     struct StreamAccumulator {
         private(set) var completedResponse: [String: Any]?
         private(set) var failureMessage: String?
+        private(set) var failureCode: String?
         /// Output items collected from `response.output_item.done` as they stream. The backend's
         /// `response.completed` envelope has slimmed to metadata/usage — the upstream client never
         /// reads `output` from it, and neither can we: the items arrive one event each, done-side.
@@ -178,7 +179,8 @@ enum ResponsesTranslator {
             case "response.failed", "error":
                 let error = (json["response"] as? [String: Any])?["error"] as? [String: Any]
                     ?? json["error"] as? [String: Any]
-                failureMessage = error?["message"] as? String ?? "response failed"
+                failureMessage = error?["message"] as? String ?? json["message"] as? String ?? "response failed"
+                failureCode = error?["code"] as? String ?? json["code"] as? String
                 return nil
             default:
                 return nil

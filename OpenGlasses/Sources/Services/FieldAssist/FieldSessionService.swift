@@ -23,7 +23,10 @@ final class FieldSessionService: ObservableObject {
     /// All sessions ever created (most recent first).
     @Published private(set) var history: [FieldSession] = []
 
-    private var logger: SessionLogger?
+    private var logger: SessionLogger? {
+        didSet { conversationSourceIDs = nil }
+    }
+    private var conversationSourceIDs: Set<String>?
     private var lastResumeAt: Date?
 
     /// Procedures available in the active session's vault.
@@ -234,6 +237,11 @@ final class FieldSessionService: ObservableObject {
     /// path, so the audit record and a crash-restored session both carry it.
     func setEquipment(_ identity: EquipmentIdentity) {
         guard var session = activeSession else { return }
+        if let previous = session.equipment, previous.heading != identity.heading {
+            session.continuityScope = UUID().uuidString
+            runner = nil
+            activeProcedureId = nil
+        }
         session.equipment = identity
         activeSession = session
         activeEquipment = identity
@@ -254,6 +262,9 @@ final class FieldSessionService: ObservableObject {
     func clearEquipment() {
         guard var session = activeSession else { return }
         let previous = session.equipment
+        session.continuityScope = UUID().uuidString
+        runner = nil
+        activeProcedureId = nil
         session.equipment = nil
         activeSession = session
         activeEquipment = nil
@@ -337,6 +348,7 @@ final class FieldSessionService: ObservableObject {
             // technician is standing in front of.
             session.identityFields.removeAll { $0.name.lowercased() == name.lowercased() }
             session.identityFields.append(field)
+            session.identityEquipmentScopes[name.lowercased()] = session.continuityScope
         }
         logger?.append(.init(timestamp: Date(), kind: .identityFieldRecorded, text: field.summary,
                              payload: ["field": AnyCodable(name), "value": AnyCodable(value),
@@ -373,7 +385,10 @@ final class FieldSessionService: ObservableObject {
             title: title, why: why, origin: .recommended, status: .recommended,
             procedureId: (procedureId?.isEmpty == true) ? nil : procedureId,
             citation: citation, safetyNote: safetyNote, parts: parts)
-        mutateSession { $0.tasks.append(task) }
+        mutateSession {
+            $0.tasks.append(task)
+            $0.taskEquipmentScopes[task.id] = $0.continuityScope
+        }
         logger?.append(.init(timestamp: Date(), kind: .taskProposed, text: title, payload: [
             "task_id": AnyCodable(task.id),
             "citation": AnyCodable(citation),
@@ -393,7 +408,10 @@ final class FieldSessionService: ObservableObject {
         let now = Date()
         let task = FieldSession.Task(title: title, why: why, origin: .operatorAdded,
                                      status: .inProgress, createdAt: now, acceptedAt: now)
-        mutateSession { $0.tasks.append(task) }
+        mutateSession {
+            $0.tasks.append(task)
+            $0.taskEquipmentScopes[task.id] = $0.continuityScope
+        }
         logger?.append(.init(timestamp: now, kind: .taskStarted, text: title,
                              payload: ["task_id": AnyCodable(task.id),
                                        "origin": AnyCodable(task.origin.rawValue)]))
@@ -746,7 +764,8 @@ final class FieldSessionService: ObservableObject {
     /// that nothing did, so the model cannot fall back to general knowledge silently.
     func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
-        var context = VaultPromptBuilder.promptContext(for: store)
+        var context = VaultPromptBuilder.promptContext(for: store,
+            referenceByteLimit: Config.activeModel?.llmProvider == .chatgpt ? 24_000 : nil, turn: turn)
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }
@@ -755,6 +774,9 @@ final class FieldSessionService: ObservableObject {
             if !procedureContext.isEmpty {
                 context = (context.map { $0 + "\n\n" } ?? "") + procedureContext
             }
+        }
+        if let continuity = continuityContext(turn: turn) {
+            context = (context.map { $0 + "\n\n" } ?? "") + continuity
         }
         if let manuals = manualPassagesContext(turn: turn, store: store) {
             context = (context.map { $0 + "\n\n" } ?? "") + manuals
@@ -1048,7 +1070,32 @@ final class FieldSessionService: ObservableObject {
     // MARK: - Audit-log convenience
 
     func logUserMessage(_ text: String) {
-        logger?.appendUserMessage(text)
+        recordConversationTurn(text, sourceID: UUID().uuidString)
+    }
+
+    /// Preserve exact reports without interpreting questions as performed work.
+    func recordConversationTurn(_ text: String, sourceID: String) {
+        guard let session = activeSession, let logger, !text.isEmpty else { return }
+        if conversationSourceIDs == nil {
+            conversationSourceIDs = Set(logger.readEvents().compactMap { $0.payload?["source_id"]?.value as? String })
+        }
+        guard conversationSourceIDs?.insert(sourceID).inserted == true else { return }
+        logger.append(.init(timestamp: Date(), kind: .userMessage, text: text, payload: [
+            "source_id": AnyCodable(sourceID),
+            "equipment_scope": AnyCodable(session.continuityScope),
+            "task_id": AnyCodable(session.activeTask?.id ?? "")
+        ]))
+    }
+
+    func continuityContext(turn: String? = nil) -> String? {
+        guard let session = activeSession else { return nil }
+        return FieldSessionContextSnapshot.render(session: session, events: logger?.readEvents() ?? [])
+    }
+
+    func recallContinuity(query: String?, offset: Int = 0) -> String {
+        guard let session = activeSession else { return "No active Field Assist session." }
+        return FieldSessionContextSnapshot.recall(session: session, events: logger?.readEvents() ?? [],
+                                                  query: query, offset: offset)
     }
 
     func logAssistantMessage(_ text: String, citations: [String]? = nil) {
@@ -1058,7 +1105,11 @@ final class FieldSessionService: ObservableObject {
     /// Append a finished capture-flow record to the audit log so `SessionExporter` folds it into
     /// the consolidated export (no-op if no session).
     func logCaptureRecord(_ record: CaptureRecord) {
-        logger?.append(record.auditEvent)
+        let event = record.auditEvent
+        var payload = event.payload ?? [:]
+        payload["equipment_scope"] = AnyCodable(activeSession?.continuityScope ?? "initial")
+        payload["source_id"] = AnyCodable(record.id)
+        logger?.append(.init(timestamp: event.timestamp, kind: event.kind, text: event.text, payload: payload))
         // A reading taken while a task is running belongs to that task; with none running it
         // belongs to the job (Plan EM).
         attachEvidence { evidence in
@@ -1122,6 +1173,7 @@ final class FieldSessionService: ObservableObject {
         let newRunner = try ProcedureRunner(starting: procedure, logger: logger)
         runner = newRunner
         activeProcedureId = procedure.id
+        mutateSession { $0.procedureEquipmentScope = $0.continuityScope }
         guard let entry = newRunner.currentStep else { throw FieldSessionError.unknownProcedure(id) }
         return entry
     }
@@ -1232,6 +1284,8 @@ final class FieldSessionService: ObservableObject {
     /// when the app was interrupted. Replays procedure events, using the visited-stack snapshot
     /// carried in the last `procedureStep` event to restore position.
     private func reconstructRunner(from events: [SessionLogger.Event], logger: SessionLogger) {
+        guard let session = activeSession,
+              (session.procedureEquipmentScope ?? "initial") == session.continuityScope else { return }
         var activeProcId: String?
         var stack: [String] = []
         for event in events {
