@@ -176,6 +176,72 @@ final class SemanticMemoryEvictionTests: XCTestCase {
         XCTAssertNotNil(store.recall("r3"))
     }
 
+    // MARK: - Refused saves from [REMEMBER…] tags
+
+    private func occurrences(of needle: String, in text: String) -> Int {
+        text.components(separatedBy: needle).count - 1
+    }
+
+    func testOversizedTagAddsTheNoticeAndStoresNothing() {
+        let clock = TestClock()
+        let store = makeStore(global: 60, clock: clock)
+        let huge = String(repeating: "q", count: 80)
+        let out = store.parseAndExecuteCommands(in: "Sure thing. [REMEMBER_GLOBAL: bio = \(huge)]")
+
+        XCTAssertEqual(occurrences(of: SemanticMemoryStore.saveFailedNotice, in: out), 1)
+        XCTAssertFalse(out.contains("[REMEMBER"), "the tag is still stripped")
+        XCTAssertTrue(out.hasPrefix("Sure thing."))
+        XCTAssertNil(store.recall("bio"), "the refused value is not stored")
+    }
+
+    func testTwoFailedTagsAddTheNoticeOnce() {
+        let clock = TestClock()
+        let store = makeStore(global: 60, persona: 40, clock: clock)
+        let huge = String(repeating: "q", count: 80)
+        let out = store.parseAndExecuteCommands(
+            in: "Noted. [REMEMBER: a = \(huge)] [REMEMBER_GLOBAL: b = \(huge)] [REMEMBER: c = \(huge)]")
+
+        XCTAssertEqual(occurrences(of: SemanticMemoryStore.saveFailedNotice, in: out), 1)
+        XCTAssertFalse(out.contains("[REMEMBER"))
+        XCTAssertNil(store.recall("a"))
+        XCTAssertNil(store.recall("b"))
+        XCTAssertNil(store.recall("c"))
+    }
+
+    func testSuccessfulTagAddsNoNotice() {
+        let clock = TestClock()
+        let store = makeStore(global: 60, clock: clock)
+        let out = store.parseAndExecuteCommands(in: "Got it. [REMEMBER: parking = lot B]")
+
+        XCTAssertEqual(out, "Got it.")
+        XCTAssertEqual(store.recall("parking"), "lot B")
+    }
+
+    /// A reply mixing tag kinds is stripped cleanly. Each pass used to match the original reply
+    /// and cut the already-shortened text, so the second kind was removed at the wrong offsets.
+    func testMixedTagKindsAreStrippedCleanly() {
+        let clock = TestClock()
+        let store = makeStore(global: 1_000, clock: clock)
+        let out = store.parseAndExecuteCommands(
+            in: "[REMEMBER_GLOBAL: home = Wellington] Done, I'll keep that. [REMEMBER: parking = lot B]")
+
+        XCTAssertEqual(out, "Done, I'll keep that.")
+        XCTAssertEqual(store.recall("home"), "Wellington")
+        XCTAssertEqual(store.recall("parking"), "lot B")
+    }
+
+    /// One tag saved and one refused: the saved fact stays, and the notice still appears once.
+    func testMixedTagsKeepTheGoodFactAndStillNotify() {
+        let clock = TestClock()
+        let store = makeStore(global: 60, clock: clock)
+        let huge = String(repeating: "q", count: 80)
+        let out = store.parseAndExecuteCommands(in: "OK. [REMEMBER: parking = lot B] [REMEMBER: bio = \(huge)]")
+
+        XCTAssertEqual(occurrences(of: SemanticMemoryStore.saveFailedNotice, in: out), 1)
+        XCTAssertEqual(store.recall("parking"), "lot B")
+        XCTAssertNil(store.recall("bio"))
+    }
+
     // MARK: - Memory off in the tools
 
     private func storeWithFact() -> SemanticMemoryStore {
