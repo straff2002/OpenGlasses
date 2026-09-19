@@ -6,18 +6,28 @@ import Foundation
 /// emit a structured audit log. See `FieldSessionService` and `VaultRegistry`.
 @MainActor
 final class FieldSessionTool: NativeTool {
+    private let sessionService: FieldSessionService?
+
+    init(service: FieldSessionService? = nil) {
+        sessionService = service
+    }
+
     let name = "field_session"
     let description = """
     Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support \
-    (refrigeration, IT, electrical, automotive). Sessions load a domain knowledge vault and emit an audit log. \
-    Use 'start' when the technician begins work on equipment, 'end' when they finish.
+    including installed custom vaults. Sessions load a knowledge vault and emit an audit log. \
+    Use 'start' when the technician begins work on equipment, 'end' when they finish. \
+    For the user's default vault, omit vault or use 'default'. Use 'vaults' to discover installed \
+    vault IDs, names and the configured default. Never substitute another vault after a failure \
+    without the user's choice. An equipment/asset name does not select its knowledge vault. \
+    The default applies to new jobs only; an active job keeps its vault until ended.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
+                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
             ],
             "format": [
                 "type": "string",
@@ -25,7 +35,7 @@ final class FieldSessionTool: NativeTool {
             ],
             "vault": [
                 "type": "string",
-                "description": "Vault id when starting: 'refrigeration', 'health', etc. Defaults to the configured default vault when omitted."
+                "description": "Installed vault ID or full display name when starting. Omit or use 'default' for the configured default. Use action 'vaults' to discover choices; do not guess a generic domain instead of a custom vault."
             ],
             "asset_id": [
                 "type": "string",
@@ -55,9 +65,11 @@ final class FieldSessionTool: NativeTool {
             return "No action specified. Use 'start', 'pause', 'resume', 'end', 'status', 'list', or 'escalate'."
         }
 
-        let service = FieldSessionService.shared
+        let service = sessionService ?? FieldSessionService.shared
 
         switch action {
+        case "vaults":
+            return vaultSummary()
         case "start":
             return await startSession(args: args, service: service)
         case "pause":
@@ -86,7 +98,21 @@ final class FieldSessionTool: NativeTool {
             return "Field Assist is disabled. Enable it in Settings → Field Assist before starting a session."
         }
 
-        let vaultId = (args["vault"] as? String) ?? Config.fieldAssistDefaultVaultId
+        if let value = args["vault"], !(value is String), !(value is NSNull) {
+            return "Could not start session: vault must be an installed ID, name, or 'default'. No session was changed."
+        }
+        let vaultId: String
+        do {
+            vaultId = try VaultSelection.resolve(args["vault"] as? String,
+                                                 defaultId: Config.fieldAssistDefaultVaultId,
+                                                 manifests: VaultRegistry.shared.allManifests)
+        } catch {
+            return "Could not start session: \(error.localizedDescription) No session was changed. \(vaultSummary()) Do not substitute another vault; ask the user to choose."
+        }
+        if let active = service.activeSession {
+            let name = VaultRegistry.shared.manifest(id: active.vaultId)?.name ?? active.vaultId
+            return "No new session was started. The active job uses \(name) [\(active.vaultId)]. The requested vault is [\(vaultId)]. Changing the default does not change an active job. Ask the user whether to finish the current job before starting another; do not end it automatically."
+        }
         let assetId = args["asset_id"] as? String
         let modeRaw = (args["mode"] as? String) ?? Config.fieldAssistDefaultMode
         let mode = FieldSession.Mode(rawValue: modeRaw) ?? .aiOnly
@@ -100,6 +126,16 @@ final class FieldSessionTool: NativeTool {
         } catch {
             return "Could not start session: \(error.localizedDescription)"
         }
+    }
+
+    private func vaultSummary() -> String {
+        let registry = VaultRegistry.shared
+        let defaultId = Config.fieldAssistDefaultVaultId
+        let defaultName = registry.manifest(id: defaultId)?.name ?? "Unavailable"
+        let choices = registry.allManifests.map { manifest in
+            "• \(manifest.name) [\(manifest.id)]" + (registry.isUnlocked(manifest) ? "" : " (locked)")
+        }
+        return "Configured default for new jobs: \(defaultName) [\(defaultId)]. Installed vaults:\n" + choices.joined(separator: "\n")
     }
 
     private func pauseSession(service: FieldSessionService) async -> String {
@@ -134,14 +170,14 @@ final class FieldSessionTool: NativeTool {
 
     private func statusSummary(service: FieldSessionService) async -> String {
         guard let session = service.activeSession else {
-            return "No active Field Assist session."
+            return "No active Field Assist session. " + vaultSummary()
         }
         let vaultName = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
         let runningFor = Int(Date().timeIntervalSince(session.startedAt))
         let mins = runningFor / 60
         let asset = session.assetId.map { ", asset \($0)" } ?? ""
         let pause = session.pausedAt != nil ? " [paused]" : ""
-        return "Active session: \(vaultName)\(asset). Running ~\(mins) min, \(session.escalations.count) escalation(s).\(pause)"
+        return "Active session: \(vaultName) [\(session.vaultId)]\(asset). Running ~\(mins) min, \(session.escalations.count) escalation(s).\(pause)\n" + vaultSummary()
     }
 
     private func historySummary(service: FieldSessionService) async -> String {

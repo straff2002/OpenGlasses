@@ -185,3 +185,46 @@ final class VaultRegistry {
     /// Reset cached stores — used by tests.
     func resetCache() { storeCache.removeAll() }
 }
+
+/// Resolve conversational selections without guessing a different technical knowledge source.
+/// Defaults remain exact persisted IDs; a removed default must not match an unrelated display name.
+enum VaultSelection {
+    enum Failure: LocalizedError {
+        case missingDefault(String)
+        case unknown(String)
+        case ambiguous(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingDefault(let id): return "The configured default vault [\(id)] is not installed."
+            case .unknown(let value): return "No installed vault matches '\(value)'."
+            case .ambiguous(let value): return "More than one installed vault matches '\(value)'; use its exact ID."
+            }
+        }
+    }
+
+    static func resolve(_ requested: String?, defaultId: String, manifests: [VaultManifest]) throws -> String {
+        let value = requested?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = normalized(value)
+        if value.isEmpty || ["default", "defaultvault", "configureddefault", "configureddefaultvault"].contains(key) {
+            guard manifests.contains(where: { $0.id == defaultId }) else {
+                throw Failure.missingDefault(defaultId)
+            }
+            return defaultId
+        }
+        // Exact IDs are authoritative, even if another vault has the same display name.
+        if let exact = manifests.first(where: { $0.id == value }) { return exact.id }
+        guard !key.isEmpty else { throw Failure.unknown(value) }
+        let matches = manifests.filter { normalized($0.id) == key || normalized($0.name) == key }
+        guard matches.count == 1 else {
+            if matches.isEmpty { throw Failure.unknown(value) }
+            throw Failure.ambiguous(value)
+        }
+        return matches[0].id
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init).joined()
+    }
+}

@@ -57,7 +57,7 @@ struct FieldAssistSettingsView: View {
 
             // ──────────────── Vault selection
             if enabled {
-                Section("Default Vault") {
+                Section {
                     ForEach(VaultRegistry.shared.allManifests, id: \.id) { manifest in
                         let unlocked = VaultRegistry.shared.isUnlocked(manifest)
                         Button {
@@ -86,6 +86,10 @@ struct FieldAssistSettingsView: View {
                         }
                         .disabled(!unlocked)
                     }
+                } header: {
+                    Text("Default Vault")
+                } footer: {
+                    Text("Used for new jobs. An active job keeps its original vault until you finish it.")
                 }
 
                 // ──────────────── Reference file editing
