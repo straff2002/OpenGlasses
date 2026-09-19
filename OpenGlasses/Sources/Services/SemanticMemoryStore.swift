@@ -51,6 +51,11 @@ class SemanticMemoryStore: ObservableObject {
     @Published var personaMemories: [String: String] = [:]
     @Published var gatewayMemories: [String] = []
 
+    /// Last-write time per key, kept alongside the key→value caches and refreshed with them, so
+    /// the prompt render can order by recency without a second store read (Plan FI).
+    private var globalWrittenAt: [String: Date] = [:]
+    private var personaWrittenAt: [String: Date] = [:]
+
     // MARK: - Configuration
 
     var activePersonaId: String? {
@@ -78,8 +83,14 @@ class SemanticMemoryStore: ObservableObject {
     private var db: OpaquePointer?
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let docsDir: URL
-    private let maxGlobalChars = 3000
-    private let maxPersonaChars = 1500
+    /// Storage caps, in characters of key + value summed across a namespace (Plan FI).
+    ///
+    /// These bound what the store *keeps on disk*, not what reaches a prompt: prompt injection is
+    /// bounded separately by `maxMemoryLines` entries per section and `maxValueChars` per value,
+    /// so raising these does not grow the prompt budget. When a write pushes a namespace past its
+    /// cap, the least-recently-written rows are evicted first (see `trim`).
+    let maxGlobalChars: Int
+    let maxPersonaChars: Int
     private let maxGatewayResults = 10
 
     /// Routed through the shared [[Embedder]] seam (sentence model preferred over the old word-average,
@@ -87,11 +98,21 @@ class SemanticMemoryStore: ObservableObject {
     /// vectors carry a version stamp ([[EmbeddingVersion]]) so a model change re-embeds on access.
     private let embedder = Embedder()
 
+    /// Clock for write stamps. Injectable so eviction-order tests control recency without sleeping.
+    private let now: () -> Date
+
     // MARK: - Init
 
-    /// `directory` is injectable so tests can point at a temp folder instead of the app's documents.
-    init(directory: URL? = nil) {
+    /// `directory` is injectable so tests can point at a temp folder instead of the app's documents;
+    /// the caps and the clock are injectable so eviction can be tested at a small scale.
+    init(directory: URL? = nil,
+         maxGlobalChars: Int = 20_000,
+         maxPersonaChars: Int = 10_000,
+         now: @escaping () -> Date = Date.init) {
         docsDir = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.maxGlobalChars = maxGlobalChars
+        self.maxPersonaChars = maxPersonaChars
+        self.now = now
         openDatabase()
         createTables()
         migrateFromLegacyJSONIfNeeded()
@@ -105,36 +126,20 @@ class SemanticMemoryStore: ObservableObject {
 
     // MARK: - Public API (legacy key-value compatible)
 
-    /// Returns false when the write did not reach the database — callers at a tool/spoken
-    /// boundary should say so rather than claim the fact was saved.
+    /// Returns false when the fact was not kept — the write did not reach the database, or the
+    /// fact alone is larger than its namespace's storage cap. Callers at a tool/spoken boundary
+    /// should say so rather than claim the fact was saved.
     @discardableResult
     func remember(_ key: String, value: String) -> Bool {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
-        let ns = activePersonaId ?? "global"
-        if activePersonaId != nil {
+        if let pid = activePersonaId {
             if personaMemories[k] == value { return true }
-            guard upsert(key: k, value: value, namespace: ns) else {
-                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .persona)
-                return false
-            }
-            refreshPersonaCache()
-            trim(namespace: ns, maxChars: maxPersonaChars)
-            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .persona,
-                             characters: value.count)
+            return write(key: k, value: value, namespace: pid, maxChars: maxPersonaChars)
         } else {
             if memories[k] == value { return true }
-            guard upsert(key: k, value: value, namespace: "global") else {
-                PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
-                return false
-            }
-            refreshGlobalCache()
-            trim(namespace: "global", maxChars: maxGlobalChars)
-            PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
-                             characters: value.count)
+            return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
         }
-        pushToGateway(key: k, value: value)
-        return true
     }
 
     @discardableResult
@@ -142,14 +147,31 @@ class SemanticMemoryStore: ObservableObject {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
         if memories[k] == value { return true }
-        guard upsert(key: k, value: value, namespace: "global") else {
-            PrivacyLog.store(.semanticMemory, .writeFailed, scope: .global)
+        return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
+    }
+
+    /// The shared write path: size check, upsert, evict to fit, then log and sync.
+    ///
+    /// A fact that could never fit its namespace's cap on its own is refused *before* the upsert,
+    /// so it neither overwrites an earlier value for the same key nor evicts anything to make room
+    /// it could not use.
+    private func write(key k: String, value: String, namespace ns: String, maxChars: Int) -> Bool {
+        let scope: PrivacyLog.StoreScope = ns == "global" ? .global : .persona
+        guard k.count + value.count <= maxChars else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
+                             characters: value.count, detail: PrivacyToken("overCap"))
             return false
         }
-        refreshGlobalCache()
-        trim(namespace: "global", maxChars: maxGlobalChars)
-        PrivacyLog.store(.semanticMemory, .recordWritten, scope: .global,
-                         characters: value.count)
+        guard upsert(key: k, value: value, namespace: ns) else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope)
+            return false
+        }
+        guard trim(namespace: ns, maxChars: maxChars, keeping: k) else {
+            PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
+                             characters: value.count, detail: PrivacyToken("overCap"))
+            return false
+        }
+        PrivacyLog.store(.semanticMemory, .recordWritten, scope: scope, characters: value.count)
         pushToGateway(key: k, value: value)
         return true
     }
@@ -176,6 +198,8 @@ class SemanticMemoryStore: ObservableObject {
     func clearAll() {
         memories.removeAll()
         personaMemories.removeAll()
+        globalWrittenAt.removeAll()
+        personaWrittenAt.removeAll()
         exec("DELETE FROM memories")
         exec("DELETE FROM diary")
         PrivacyLog.store(.semanticMemory, .cleared)
@@ -216,6 +240,7 @@ class SemanticMemoryStore: ObservableObject {
     func clearPersonaMemories() {
         guard let pid = activePersonaId else { return }
         personaMemories.removeAll()
+        personaWrittenAt.removeAll()
         run("DELETE FROM memories WHERE namespace = ?", [.text(pid)])
         PrivacyLog.store(.semanticMemory, .cleared, scope: .persona)
     }
@@ -229,8 +254,9 @@ class SemanticMemoryStore: ObservableObject {
     /// BK P2 — bound the memory block so it can't silently balloon the prompt past the on-device
     /// budget as the store grows. Every branch is capped: at most `maxMemoryLines` entries per
     /// section (the semantic-hit path was already limited to 8; these caps extend the same
-    /// discipline to the sorted global fallback, persona, and gateway paths, which previously
-    /// dumped the *entire* store), and each value is clamped to `maxValueChars`.
+    /// discipline to the recent-first global fallback, persona, and gateway paths, which previously
+    /// dumped the *entire* store), and each value is clamped to `maxValueChars`. Where no semantic
+    /// ranking applies, the kept entries are the most recently written (see `recentFirst`).
     static let maxMemoryLines = 8
     static let maxValueChars = 300
 
@@ -324,12 +350,13 @@ class SemanticMemoryStore: ObservableObject {
             if let q = query, !q.isEmpty, embedder.isAvailable {
                 let results = semanticSearch(query: q, limit: Self.maxMemoryLines, namespace: "global")
                 pairs = results.isEmpty
-                    ? memories.sorted { $0.key < $1.key }
+                    ? Self.recentFirst(memories, writtenAt: globalWrittenAt)
                     : results.map { ($0.keyName, $0.value) }
             } else {
                 // No query / embedder unavailable / retrieval off: previously dumped the whole
-                // store. Clamp to the same cap so a large global store can't overflow the budget.
-                pairs = memories.sorted { $0.key < $1.key }
+                // store. Clamp to the same cap so a large global store can't overflow the budget,
+                // keeping the most recently written facts rather than the alphabetically first.
+                pairs = Self.recentFirst(memories, writtenAt: globalWrittenAt)
             }
             let kept = pairs.prefix(Self.maxMemoryLines)
             retrieved += pairs.count
@@ -339,7 +366,7 @@ class SemanticMemoryStore: ObservableObject {
         }
 
         if hasPersona, let pid = activePersonaId {
-            let sorted = personaMemories.sorted { $0.key < $1.key }
+            let sorted = Self.recentFirst(personaMemories, writtenAt: personaWrittenAt)
             let kept = sorted.prefix(Self.maxMemoryLines)
             retrieved += sorted.count
             included += kept.count
@@ -362,7 +389,22 @@ class SemanticMemoryStore: ObservableObject {
                         clampedValues: clamped)
     }
 
+    /// Entries newest-written first; ties (and keys with no recorded time) broken by key ascending,
+    /// so the order never depends on dictionary iteration.
+    private static func recentFirst(_ entries: [String: String],
+                                    writtenAt: [String: Date]) -> [(key: String, value: String)] {
+        entries.map { (key: $0.key, value: $0.value) }.sorted { a, b in
+            let ta = writtenAt[a.key] ?? .distantPast
+            let tb = writtenAt[b.key] ?? .distantPast
+            if ta != tb { return ta > tb }
+            return a.key < b.key
+        }
+    }
+
     // MARK: - Semantic Search (new)
+
+    /// Whether a query can be ranked by embeddings here; when false, `render` uses recency.
+    var isSemanticRankingAvailable: Bool { embedder.isAvailable }
 
     /// Search memories by meaning. Falls back to keyword scoring if no embedding model.
     /// `namespace: nil` searches EVERY namespace — including other personas' scoped memory —
@@ -485,16 +527,31 @@ class SemanticMemoryStore: ObservableObject {
 
     // MARK: - AI Response Parsing (legacy key-value compat)
 
+    /// Said once, appended to the cleaned reply, when any `[REMEMBER…]` tag in it was not saved —
+    /// so a refused save (over the storage cap, or a failed write) never reads as a success.
+    static var saveFailedNotice: String {
+        String(localized: "I couldn't save that to memory.",
+               comment: "Appended to a spoken reply when a fact the assistant tried to remember was not saved.")
+    }
+
     func parseAndExecuteCommands(in response: String) -> String {
         var cleaned = response
+        var anySaveFailed = false
+        // Each pass matches against the text as it stands after the previous pass, so its ranges
+        // are valid for the string they are removed from. (Matching the original response and
+        // removing from the already-shortened text cut at the wrong offsets when a reply mixed
+        // tag kinds.) Removal runs in reverse so earlier ranges stay valid within a pass.
 
         let globalPattern = #"\[REMEMBER_GLOBAL:\s*(.+?)\s*=\s*(.+?)\]"#
         if let regex = try? NSRegularExpression(pattern: globalPattern) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
+            let source = cleaned
+            let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let kr = Range(match.range(at: 1), in: response),
-                   let vr = Range(match.range(at: 2), in: response) {
-                    rememberGlobal(String(response[kr]), value: String(response[vr]))
+                if let kr = Range(match.range(at: 1), in: source),
+                   let vr = Range(match.range(at: 2), in: source) {
+                    if !rememberGlobal(String(source[kr]), value: String(source[vr])) {
+                        anySaveFailed = true
+                    }
                 }
                 if let fr = Range(match.range, in: cleaned) { cleaned.removeSubrange(fr) }
             }
@@ -502,11 +559,14 @@ class SemanticMemoryStore: ObservableObject {
 
         let rememberPattern = #"\[REMEMBER:\s*(.+?)\s*=\s*(.+?)\]"#
         if let regex = try? NSRegularExpression(pattern: rememberPattern) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
+            let source = cleaned
+            let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let kr = Range(match.range(at: 1), in: response),
-                   let vr = Range(match.range(at: 2), in: response) {
-                    remember(String(response[kr]), value: String(response[vr]))
+                if let kr = Range(match.range(at: 1), in: source),
+                   let vr = Range(match.range(at: 2), in: source) {
+                    if !remember(String(source[kr]), value: String(source[vr])) {
+                        anySaveFailed = true
+                    }
                 }
                 if let fr = Range(match.range, in: cleaned) { cleaned.removeSubrange(fr) }
             }
@@ -514,9 +574,10 @@ class SemanticMemoryStore: ObservableObject {
 
         let forgetPattern = #"\[FORGET:\s*(.+?)\]"#
         if let regex = try? NSRegularExpression(pattern: forgetPattern) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
+            let source = cleaned
+            let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let kr = Range(match.range(at: 1), in: response) { forget(String(response[kr])) }
+                if let kr = Range(match.range(at: 1), in: source) { forget(String(source[kr])) }
                 if let fr = Range(match.range, in: cleaned) { cleaned.removeSubrange(fr) }
             }
         }
@@ -524,14 +585,17 @@ class SemanticMemoryStore: ObservableObject {
         // Diary entries from agent responses
         let diaryPattern = #"\[DIARY:\s*(.+?)\]"#
         if let regex = try? NSRegularExpression(pattern: diaryPattern, options: .dotMatchesLineSeparators) {
-            let matches = regex.matches(in: response, range: NSRange(response.startIndex..., in: response))
+            let source = cleaned
+            let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let tr = Range(match.range(at: 1), in: response) { writeDiary(String(response[tr])) }
+                if let tr = Range(match.range(at: 1), in: source) { writeDiary(String(source[tr])) }
                 if let fr = Range(match.range, in: cleaned) { cleaned.removeSubrange(fr) }
             }
         }
 
-        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard anySaveFailed else { return trimmed }
+        return trimmed.isEmpty ? Self.saveFailedNotice : trimmed + " " + Self.saveFailedNotice
     }
 
     // MARK: - Turn Nudge
@@ -638,7 +702,7 @@ class SemanticMemoryStore: ObservableObject {
     private func upsert(key: String, value: String, namespace: String) -> Bool {
         let id = "\(namespace):\(key)"
         let topic = detectTopic(key: key, value: value)
-        let now = Date().timeIntervalSince1970
+        let now = self.now().timeIntervalSince1970
         let ok = run("""
         INSERT INTO memories (id, key_name, value, topic, namespace, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -795,34 +859,63 @@ class SemanticMemoryStore: ObservableObject {
 
     private func refreshGlobalCache() {
         let rows = fetchAllMemories(namespace: "global")
+        globalWrittenAt = Dictionary(uniqueKeysWithValues: rows.map { ($0.keyName, $0.createdAt) })
         memories = Dictionary(uniqueKeysWithValues: rows.map { ($0.keyName, $0.value) })
     }
 
     private func refreshPersonaCache() {
-        guard let pid = activePersonaId else { personaMemories.removeAll(); return }
+        guard let pid = activePersonaId else {
+            personaWrittenAt.removeAll()
+            personaMemories.removeAll()
+            return
+        }
         let rows = fetchAllMemories(namespace: pid)
+        personaWrittenAt = Dictionary(uniqueKeysWithValues: rows.map { ($0.keyName, $0.createdAt) })
         personaMemories = Dictionary(uniqueKeysWithValues: rows.map { ($0.keyName, $0.value) })
     }
 
     // MARK: - Private: Trim
 
-    private func trim(namespace: String, maxChars: Int) {
+    /// Evict until `namespace` fits `maxChars`, never evicting the row keyed `kept` (the one the
+    /// current write just produced). Returns whether that row survived.
+    ///
+    /// Policy (Plan FI): least-recently-written first — `created_at` ascending, which `upsert`
+    /// restamps on every write so it is effectively last-write time — with ties broken by `id`
+    /// ascending so the order is deterministic. The earlier policy evicted the *shortest* rows
+    /// first, which threw away short, high-value facts ("parking = lot B, level 3") before long
+    /// ones and could evict the row just written while `remember` still reported success.
+    ///
+    /// If the kept row alone exceeds the cap, it is deleted and nothing else is evicted for it.
+    /// Always refreshes the namespace's cache, whether or not anything was evicted.
+    @discardableResult
+    private func trim(namespace: String, maxChars: Int, keeping kept: String) -> Bool {
         // The pool, not the persona: a namespace is a persona id, which is a small wearer-visible
         // set that a hash would not anonymise.
         let isGlobal = namespace == "global"
+        defer {
+            if isGlobal { refreshGlobalCache() } else { refreshPersonaCache() }
+        }
         let rows = fetchAllMemories(namespace: namespace)
-        var total = rows.reduce(0) { $0 + $1.keyName.count + $1.value.count }
-        guard total > maxChars else { return }
-        let sorted = rows.sorted { ($0.keyName.count + $0.value.count) < ($1.keyName.count + $1.value.count) }
-        for row in sorted {
+        let size: (MemoryEntry) -> Int = { $0.keyName.count + $0.value.count }
+        var total = rows.reduce(0) { $0 + size($1) }
+        guard total > maxChars else { return true }
+
+        if let keptRow = rows.first(where: { $0.keyName == kept }), size(keptRow) > maxChars {
+            deleteMemory(key: kept, namespace: namespace)
+            return false
+        }
+
+        let candidates = rows
+            .filter { $0.keyName != kept }
+            .sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        for row in candidates {
             guard total > maxChars else { break }
-            total -= row.keyName.count + row.value.count
+            total -= size(row)
             deleteMemory(key: row.keyName, namespace: namespace)
             PrivacyLog.store(.semanticMemory, .evicted, scope: isGlobal ? .global : .persona,
-                             characters: row.keyName.count + row.value.count)
+                             characters: size(row))
         }
-        if namespace == "global" { refreshGlobalCache() }
-        else { refreshPersonaCache() }
+        return true
     }
 
     // MARK: - Private: Migration
