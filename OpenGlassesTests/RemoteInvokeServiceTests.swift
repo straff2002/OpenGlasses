@@ -142,7 +142,21 @@ final class RemoteInvokeServiceTests: XCTestCase {
         let log = Box<[String]>([])
         let svc = service(log: log)
         _ = await svc.handleFrame(invoke("speak", extra: ["text": "hello"]))
-        XCTAssertEqual(log.value, ["speak(hello)"])
+        XCTAssertEqual(log.value, ["speak(Message from the gateway: hello)"])
+    }
+
+    // MARK: - Spoken text is attributed to its source
+
+    func testSpokenTextNamesItsOrigin() async {
+        let log = Box<[String]>([])
+        let svc = service(log: log)
+        _ = await svc.handleFrame(invoke("speak", extra: ["text": "hello"]), origin: .mcpPeer(id: "ops"))
+
+        XCTAssertEqual(log.value, ["speak(Message from Peer ops: hello)"],
+                       "remote speech must name the caller the policy and audit already knew about")
+        XCTAssertEqual(log.value.filter { $0.hasPrefix("speak(") }.count, 1,
+                       "attribution and body are one utterance — a barge-in must not be able to "
+                       + "leave an unattributed body playing")
     }
 
     // MARK: - Transcript reads are capture-class

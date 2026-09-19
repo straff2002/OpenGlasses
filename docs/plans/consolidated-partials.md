@@ -19,7 +19,8 @@ phase is shipped and headless-tested — and appear below only because a device 
 still owed: [AD](structured-vision-assessment.md), [AG](teleprompter.md),
 [AP](audio-session-resilience-p2.md), [AA](first-aid-assist.md),
 [X](X-interactive-hud-now-next-tasks.md), [AK](standalone-chat-experience.md),
-[BG](BG-spine-refactor.md), [BJ](BJ-audio-activation-offmain.md),
+[BG](BG-spine-refactor.md), [BH](BH-gateway-remote-invoke.md),
+[BJ](BJ-audio-activation-offmain.md),
 [BO](BO-realtime-audio-activation.md), [BR](BR-realtime-and-stream-hardening.md),
 [BS](BS-transcript-guard-and-broadcast-breadth.md), [BT](BT-reading-companion.md),
 [BW](BW-chatgpt-subscription-provider.md), [CB](CB-live-vision-detail.md),
@@ -62,7 +63,6 @@ plans that are drafted or planned with nothing built.
 
 | Plan | Outstanding item | Notes |
 |---|---|---|
-| [BH](BH-gateway-remote-invoke.md) | One open safety gap: attribute remote `speak` text to its source | Re-verified in `RemoteCommandExecutor` — remote text is still spoken verbatim, indistinguishable from the local assistant. The origin-aware policy/audit refactor the doc still calls "scheduled" shipped as BN P2 |
 | [AR](gateway-device-pairing.md) | Accept a `device.paired` token only mid-bootstrap; wire `startPairing`/`onPairingStatusChange` into `GatewaySettingsView`; consume `payload.url` | `OpenClawEventClient` accepts the token unconditionally; `startPairing` has zero callers and the status callback zero subscribers |
 | [CJ](CJ-survey-hardening-sweep.md) item 1 · [L](L-webrtc-expert-transport.md) · [M](M-webrtc-infra-and-audio.md) | WebRTC signaling security triad — path-traversal guard on static serving, per-room creator tokens, per-IP rate limits on create/join. This is also L/M's room-token gate | The room ID is still a bare capability string embedded in the viewer URL; no token, rate-limit or traversal code in `WebRTCStreamingService` |
 | [CJ](CJ-survey-hardening-sweep.md) item 2 | Relative-time guard for `TimerTool` / `AppleRemindersTool` — deterministic parse of "in 15 minutes" overriding model arithmetic | No relative-time parsing in either tool today |

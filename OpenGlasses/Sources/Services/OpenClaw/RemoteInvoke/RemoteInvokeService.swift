@@ -103,7 +103,7 @@ final class RemoteInvokeService: ObservableObject {
                 return RemoteInvokeReply.denied(id: request.id, reason: reason)
 
             case .allow:
-                switch await executor.execute(command) {
+                switch await executor.execute(command, origin: origin) {
                 case .success(let payload):
                     audit(origin: origin, action: command.canonicalAction, disposition: "allowed")
                     return RemoteInvokeReply.success(id: request.id, payload: payload)
