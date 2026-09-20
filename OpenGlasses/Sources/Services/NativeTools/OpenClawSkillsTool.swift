@@ -78,7 +78,7 @@ struct OpenClawSkillsTool: NativeTool {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(await bridge.activeToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(bridge.activeToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 5
 
         do {
@@ -108,7 +108,7 @@ struct OpenClawSkillsTool: NativeTool {
             return "OpenClaw bridge not available."
         }
         let request = GatewayRequestCatalog.skillsStatus()
-        guard await bridge.supports(request.method),
+        guard bridge.supports(request.method),
               let payload = await successPayload(bridge, request) else {
             return await askGatewayForSkills()
         }
@@ -127,7 +127,7 @@ struct OpenClawSkillsTool: NativeTool {
         }
 
         let request = GatewayRequestCatalog.skillsDetail(slug: skillName)
-        if await bridge.supports(request.method),
+        if bridge.supports(request.method),
            let payload = await successPayload(bridge, request),
            let skill = payload["skill"] as? [String: Any] {
             let title = skill["displayName"] as? String ?? skill["slug"] as? String ?? skillName
@@ -155,7 +155,7 @@ struct OpenClawSkillsTool: NativeTool {
         }
 
         let request = GatewayRequestCatalog.skillsSearch(query: query)
-        if await bridge.supports(request.method),
+        if bridge.supports(request.method),
            let payload = await successPayload(bridge, request) {
             let hits = (payload["results"] as? [[String: Any]] ?? []).compactMap { hit -> String? in
                 guard let slug = hit["slug"] as? String, !slug.isEmpty else { return nil }

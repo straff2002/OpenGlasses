@@ -4212,7 +4212,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 return try await self.openClawBridge.agentRequest(method: method, params: params)
             },
             runState: { [weak self] runId in
-                await self?.openClawBridge.runTracker.state(runId: runId)
+                self?.openClawBridge.runTracker.state(runId: runId)
             })
         let custom = CustomAgentHarness(config: Config.customAgentHarness ?? CustomHarnessConfig())
 

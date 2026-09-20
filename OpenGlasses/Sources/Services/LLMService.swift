@@ -361,7 +361,7 @@ class LLMService: ObservableObject {
     /// (`SemanticMemoryStore.maxMemoryLines` / `maxValueChars`) but eight clamped values can still
     /// run past this. Named and separated from the prompt text so the clip is measurable rather
     /// than inferred from a diff of two prompts.
-    static let leanMemoryClipLimit = 400
+    nonisolated static let leanMemoryClipLimit = 400
 
     /// Clip a memory block to the lean tier's budget. Pure: returns the text the prompt will carry
     /// and how many characters of the block it no longer contains.

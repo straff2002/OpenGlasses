@@ -100,8 +100,9 @@ final class ScanAssistService: ObservableObject {
 
     // MARK: - Init
 
-    init(store: ScanAssistSettingsStore = .shared,
+    init(store: ScanAssistSettingsStore? = nil,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        let store = store ?? .shared
         self.store = store
         self.clock = clock
         self.policy = ScanAssistPolicy(side: store.settings.side,
