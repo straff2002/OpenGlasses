@@ -49,6 +49,13 @@ class StoreKitService: ObservableObject {
     /// Loaded products from the App Store.
     @Published private(set) var products: [Product] = []
 
+    @Published private(set) var isLoadingProducts = false
+    @Published private(set) var catalogError: String?
+    @Published private(set) var isRestoring = false
+    /// False means unknown, not an absent purchase. Set only after recording verified evidence.
+    @Published private(set) var hasCheckedEntitlements = false
+    @Published private(set) var restoreMessage: String?
+
     /// Whether the user has an active Medical Compliance subscription.
     @Published private(set) var isMedicalComplianceActive = false
 
@@ -71,6 +78,17 @@ class StoreKitService: ObservableObject {
     /// Transaction listener task — kept alive for the app's lifetime.
     private var transactionListener: Task<Void, Never>?
 
+    /// Only the StoreKit adapter constructs these from verified, unrevoked transactions.
+    struct Entitlement {
+        let productID: String
+        let expiration: Date?
+    }
+
+    private let productLoader: @MainActor (Set<String>) async throws -> [Product]
+    private let synchronize: @MainActor () async throws -> Void
+    private let entitlementLoader: @MainActor () async -> [Entitlement]
+    private var entitlementGeneration = 0
+
     struct SubscriptionInfo {
         let productId: String
         let expirationDate: Date?
@@ -89,24 +107,55 @@ class StoreKitService: ObservableObject {
 
     // MARK: - Init
 
-    private init() {
+    init(startAutomatically: Bool = true,
+         productLoader: @escaping @MainActor (Set<String>) async throws -> [Product] = { try await Product.products(for: $0) },
+         synchronize: @escaping @MainActor () async throws -> Void = { try await AppStore.sync() },
+         entitlementLoader: @escaping @MainActor () async -> [Entitlement] = { await StoreKitService.currentEntitlements() }) {
+        self.productLoader = productLoader
+        self.synchronize = synchronize
+        self.entitlementLoader = entitlementLoader
+        if startAutomatically { start() }
+    }
+
+    private func start() {
         transactionListener = listenForTransactions()
-        Task {
-            await loadProducts()
-            await checkSubscriptionStatus()
+        // An unavailable catalog must never delay restoring an existing customer's access.
+        Task { await checkSubscriptionStatus() }
+        Task { await loadProducts() }
+    }
+
+    private static func currentEntitlements() async -> [Entitlement] {
+        var entitlements: [Entitlement] = []
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result, transaction.revocationDate == nil {
+                entitlements.append(Entitlement(productID: transaction.productID,
+                                                expiration: transaction.expirationDate))
+            }
         }
+        return entitlements
     }
 
     // MARK: - Load Products
 
     /// Fetch product metadata from the App Store.
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
+        isLoadingProducts = true
+        catalogError = nil
+        defer { isLoadingProducts = false }
         do {
-            let loaded = try await Product.products(for: Self.allProductIds)
-            // Sort: annual first (better value), then monthly
-            products = loaded.sorted { a, _ in a.id == Self.medicalAnnualId }
-            PrivacyLog.purchase(.catalogLoaded, count: products.count)
+            let loaded = try await productLoader(Self.allProductIds)
+            // Keep separately loaded vault products when retrying the feature catalog.
+            products = (products.filter { !Self.allProductIds.contains($0.id) } + loaded)
+                .sorted { $0.id < $1.id }
+            if !Self.fieldAssistCatalogProductIds.isSubset(of: Set(loaded.map(\.id))) {
+                catalogError = "Some Field Assist plans are unavailable. Check your connection and App Store sign-in, then retry."
+            }
+            PrivacyLog.purchase(.catalogLoaded, count: loaded.count)
+            let generation = entitlementGeneration
+            Task { await refreshRenewalInformation(generation: generation) }
         } catch {
+            catalogError = "Unable to load purchases: \(error.localizedDescription)"
             PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
         }
     }
@@ -116,8 +165,10 @@ class StoreKitService: ObservableObject {
     /// Purchase any product in the catalog (a Medical Compliance subscription, or a Field Assist
     /// unlock or subscription); entitlement is re-derived from the receipt afterwards.
     func purchase(_ product: Product) async {
+        guard !isPurchasing && !isRestoring else { return }
         isPurchasing = true
         purchaseError = nil
+        restoreMessage = nil
 
         do {
             let result = try await product.purchase()
@@ -157,84 +208,49 @@ class StoreKitService: ObservableObject {
     /// still written, but only as a display mirror. This runs at launch and on every transaction
     /// update, and resolves against the on-device receipt, so it holds offline.
     func checkSubscriptionStatus() async {
-        var medicalActive = false
-        var fieldProducts: [(productID: String, expiration: Date?)] = []
-        var fieldSubscription: SubscriptionInfo?
-        var packProducts = Set<String>()
+        entitlementGeneration += 1
+        let generation = entitlementGeneration
+        let entitlements = await entitlementLoader()
+        // A slower, older read must not overwrite the result of a purchase or restore.
+        guard generation == entitlementGeneration else { return }
+        let field = entitlements.filter { Self.fieldAssistProductIds.contains($0.productID) }
+        let medical = entitlements.first { Self.medicalProductIds.contains($0.productID) }
+        let packs = Set(entitlements.map(\.productID).filter { VaultPackManifest.isPackProductId($0) })
 
-        for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result {
-                guard transaction.revocationDate == nil else { continue }
+        // Commit evidence before publishing UI changes. A missing catalog is not a missing receipt.
+        VerifiedStorePurchaseRecorder.shared.record(products: field.map { ($0.productID, $0.expiration) })
+        VerifiedStorePurchaseRecorder.shared.recordPackProducts(packs)
+        Config.setFieldAssistPurchased(!field.isEmpty)
+        isFieldAssistPurchased = !field.isEmpty
+        isMedicalComplianceActive = medical != nil
+        subscriptionStatus = medical.map { subscriptionInfo(for: $0) }
+        fieldAssistSubscription = field.filter { Self.fieldAssistSubscriptionIds.contains($0.productID) }
+            .max { ($0.expiration ?? .distantFuture) < ($1.expiration ?? .distantFuture) }
+            .map { subscriptionInfo(for: $0) }
+        hasCheckedEntitlements = true
+        Task { await refreshRenewalInformation(generation: generation) }
+    }
 
-                if Self.medicalProductIds.contains(transaction.productID) {
-                    medicalActive = true
+    private func subscriptionInfo(for entitlement: Entitlement) -> SubscriptionInfo {
+        SubscriptionInfo(productId: entitlement.productID, expirationDate: entitlement.expiration,
+                         isInGracePeriod: false, willAutoRenew: true)
+    }
 
-                    // Get renewal info
-                    var willRenew = true
-                    var gracePeriod = false
-                    if let statuses = try? await product(for: transaction.productID)?.subscription?.status,
-                       let status = statuses.first {
-                        if case .verified(let renewalInfo) = status.renewalInfo {
-                            willRenew = renewalInfo.willAutoRenew
-                        }
-                        gracePeriod = status.state == .inGracePeriod
-                    }
-
-                    subscriptionStatus = SubscriptionInfo(
-                        productId: transaction.productID,
-                        expirationDate: transaction.expirationDate,
-                        isInGracePeriod: gracePeriod,
-                        willAutoRenew: willRenew
-                    )
-                } else if VaultPackManifest.isPackProductId(transaction.productID) {
-                    // A vault pack (Plan EG): recorded apart from the feature evidence.
-                    packProducts.insert(transaction.productID)
-                } else if Self.fieldAssistProductIds.contains(transaction.productID) {
-                    fieldProducts.append((transaction.productID, transaction.expirationDate))
-                    if Self.fieldAssistSubscriptionIds.contains(transaction.productID) {
-                        var willRenew = true
-                        var gracePeriod = false
-                        if let statuses = try? await product(for: transaction.productID)?.subscription?.status,
-                           let status = statuses.first {
-                            if case .verified(let renewalInfo) = status.renewalInfo {
-                                willRenew = renewalInfo.willAutoRenew
-                            }
-                            gracePeriod = status.state == .inGracePeriod
-                        }
-                        let info = SubscriptionInfo(productId: transaction.productID,
-                                                    expirationDate: transaction.expirationDate,
-                                                    isInGracePeriod: gracePeriod,
-                                                    willAutoRenew: willRenew)
-                        // Two live subscriptions (an upgrade mid-period): keep the one that lasts.
-                        if let existing = fieldSubscription,
-                           let a = existing.expirationDate, let b = info.expirationDate, a >= b {
-                            // keep existing
-                        } else {
-                            fieldSubscription = info
-                        }
-                    }
-                }
-            }
+    /// Renewal metadata can require a network request; access is already available before it runs.
+    private func refreshRenewalInformation(generation: Int) async {
+        for info in [subscriptionStatus, fieldAssistSubscription].compactMap({ $0 }) {
+            guard let statuses = try? await product(for: info.productId)?.subscription?.status,
+                  let status = statuses.first(where: {
+                      if case .verified(let transaction) = $0.transaction { return transaction.productID == info.productId }
+                      return false
+                  }), case .verified(let renewal) = status.renewalInfo else { continue }
+            guard generation == entitlementGeneration else { return }
+            let updated = SubscriptionInfo(productId: info.productId, expirationDate: info.expirationDate,
+                                           isInGracePeriod: status.state == .inGracePeriod,
+                                           willAutoRenew: renewal.willAutoRenew)
+            if Self.medicalProductIds.contains(info.productId) { subscriptionStatus = updated }
+            else { fieldAssistSubscription = updated }
         }
-
-        isMedicalComplianceActive = medicalActive
-        if !medicalActive {
-            subscriptionStatus = nil
-        }
-
-        let fieldActive = !fieldProducts.isEmpty
-        isFieldAssistPurchased = fieldActive
-        fieldAssistSubscription = fieldSubscription
-        Config.setFieldAssistPurchased(fieldActive)
-        // Revocation lands here: clearing the record makes every later gate deny, so nothing new
-        // opens. Work already in flight finishes — the gates are entry checks. Every entitling
-        // product is recorded; the evaluator prefers the perpetual unlock over a dated subscription.
-        if fieldActive {
-            VerifiedStorePurchaseRecorder.shared.record(products: fieldProducts)
-        } else {
-            VerifiedStorePurchaseRecorder.shared.clear()
-        }
-        VerifiedStorePurchaseRecorder.shared.recordPackProducts(packProducts)
     }
 
     /// Fetch store metadata for vault packs the catalog lists, so a pack row can show a price and
@@ -256,9 +272,24 @@ class StoreKitService: ObservableObject {
     }
 
     /// Restore purchases (triggers App Store sign-in if needed).
-    func restorePurchases() async {
-        try? await AppStore.sync()
-        await checkSubscriptionStatus()
+    @discardableResult
+    func restorePurchases() async -> Bool {
+        guard !isRestoring && !isPurchasing else { return false }
+        isRestoring = true
+        purchaseError = nil
+        restoreMessage = nil
+        defer { isRestoring = false }
+        do {
+            try await synchronize()
+            await checkSubscriptionStatus()
+            restoreMessage = isFieldAssistPurchased
+                ? "Field Assist purchases restored."
+                : "No active Field Assist purchase was found for this App Store account."
+            return true
+        } catch {
+            purchaseError = "Restore failed: \(error.localizedDescription)"
+            return false
+        }
     }
 
     // MARK: - Transaction Listener

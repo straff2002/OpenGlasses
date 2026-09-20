@@ -319,7 +319,17 @@ struct FieldAssistSettingsView: View {
             refreshUnsentCount()
             license.loadStored()
             // Defensive: a lapsed entitlement (expired license, revoked purchase) disables the toggle.
-            if enabled && !Config.fieldAssistUnlocked { enabled = false }
+            if store.hasCheckedEntitlements && enabled && !Config.fieldAssistUnlocked { enabled = false }
+        }
+        .task {
+            if store.hasCheckedEntitlements { await store.checkSubscriptionStatus() }
+            await store.loadProducts()
+        }
+        .onChange(of: store.hasCheckedEntitlements) { _, checked in
+            if checked && enabled && !Config.fieldAssistUnlocked { enabled = false }
+        }
+        .onChange(of: store.isFieldAssistPurchased) { _, _ in
+            if store.hasCheckedEntitlements && enabled && !Config.fieldAssistUnlocked { enabled = false }
         }
         .onChange(of: sessionService.lastDeliveryCancelled) { _, _ in refreshUnsentCount() }
         .onChange(of: sessionService.activeSession?.id) { _, _ in refreshUnsentCount() }
@@ -722,12 +732,22 @@ struct FieldAssistSettingsView: View {
         Section {
             purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime")
             purchaseRow(store.fieldAssistAnnualProduct, title: "Annual", subtitle: "Billed once a year")
-            if store.fieldAssistMonthlyProduct == nil && store.fieldAssistAnnualProduct == nil {
-                Text("Purchase is unavailable right now. Check your connection and App Store sign-in.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if !store.hasCheckedEntitlements {
+                ProgressView("Checking purchases…")
             }
-            Button("Restore Purchases") { Task { await store.restorePurchases() } }
+            if store.isLoadingProducts {
+                ProgressView("Loading plans…")
+            } else if let error = store.catalogError {
+                Text(error).font(.caption).foregroundStyle(.secondary)
+                Button("Retry Loading Plans") { Task { await store.loadProducts() } }
+            }
+            Button(store.isRestoring ? "Restoring…" : "Restore Purchases") {
+                Task { await store.restorePurchases() }
+            }
+            .disabled(store.isRestoring || store.isPurchasing)
+            if let message = store.restoreMessage {
+                Text(message).font(.caption).foregroundStyle(.secondary)
+            }
             if let error = store.purchaseError {
                 Text(error).font(.caption).foregroundStyle(OGTheme.errorLabel)
             }
@@ -785,7 +805,7 @@ struct FieldAssistSettingsView: View {
                     Text(product.displayPrice).foregroundStyle(.secondary)
                 }
             }
-            .disabled(store.isPurchasing)
+            .disabled(store.isPurchasing || store.isRestoring)
         }
     }
 
@@ -825,7 +845,7 @@ struct FieldAssistSettingsView: View {
                     license.clear()
                     licenseCode = ""
                     licenseMessage = nil
-                    if enabled && !Config.fieldAssistUnlocked { enabled = false }
+                    if store.hasCheckedEntitlements && enabled && !Config.fieldAssistUnlocked { enabled = false }
                 }
             }
         } header: {

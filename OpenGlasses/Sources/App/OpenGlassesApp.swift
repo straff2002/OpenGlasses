@@ -241,6 +241,8 @@ struct OpenGlassesApp: App {
         NetworkMonitorService.register()
         // Re-validate any stored Field Assist license (catches expiry between launches).
         LicenseService.shared.loadStored()
+        // Restore verified purchases at launch, before a settings screen first needs the gate.
+        _ = StoreKitService.shared
     }
 
     var body: some Scene {

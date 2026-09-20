@@ -243,6 +243,27 @@ final class FieldAssistEntitlementTests: XCTestCase {
         XCTAssertTrue(suite.bool(forKey: "fieldAssistEnabled"))
     }
 
+    func testSavedLicenseSurvivesMigrationAndFreshProvider() throws {
+        let name = "LicenseUpdate-\(UUID().uuidString)"
+        let suite = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { suite.removePersistentDomain(forName: name) }
+        let signedCode = try code()
+        suite.set(signedCode, forKey: LicenseService.storageKey)
+        suite.set(true, forKey: FieldAssistEntitlement.legacyDeveloperUnlockKey)
+        FieldAssistEntitlement.removeLegacyPreferenceKeys(from: suite)
+
+        let storedCode = suite.string(forKey: LicenseService.storageKey)
+        let freshProvider = LiveFieldAssistEntitlementProvider(
+            storePurchases: VerifiedStorePurchaseRecorder(),
+            licensePublicKeyBase64: publicKeyBase64,
+            licenseCode: { storedCode })
+        let decision = FieldAssistEntitlementEvaluator.decide(freshProvider.evidence())
+        XCTAssertTrue(decision.isGranted)
+        XCTAssertEqual(decision.tier, .team)
+        XCTAssertNil(decision.expiresAt)
+        XCTAssertEqual(storedCode, signedCode)
+    }
+
     func testMigrationIsIdempotent() throws {
         let name = "EntitlementMigrationRepeat-\(UUID().uuidString)"
         let suite = try XCTUnwrap(UserDefaults(suiteName: name))
