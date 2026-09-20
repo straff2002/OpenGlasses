@@ -542,6 +542,27 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertEqual(record.billingSummary, "2 units")
     }
 
+    func testEmailBodyCarriesTheCompleteCustomerRecord() {
+        var session = Self.scriptedSession()
+        session.billableSeconds = 16 * 60 + 12
+        session.billingBasis = .units
+        session.minutesPerBillingUnit = 15
+        let record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        let request = DeliveryRequest.make(record: record, channel: .email,
+                                           recipients: ["service@example.com"], attachments: [])
+        let body = ReportComposerModel(request: request).filledBody
+
+        XCTAssertEqual(request.subject, "Job WO-4471 — Lennox SLP99 Furnace Service")
+        XCTAssertTrue(body.contains("Job WO-4471 — Lennox SLP99 Furnace Service."), body)
+        XCTAssertTrue(body.contains("Done: Check the pressure switch tubing."), body)
+        XCTAssertTrue(body.contains("Parts used:"), body)
+        XCTAssertTrue(body.contains("14T65 (High-altitude pressure switch)"), body)
+        XCTAssertTrue(body.contains("Time on job: 16 minutes 12 seconds."), body)
+        XCTAssertTrue(body.contains("Billable units: 2 units (15 minutes per unit; partial units round up)."), body)
+        XCTAssertFalse(body.contains("ai_only"), body)
+        XCTAssertFalse(body.contains("in_progress"), body)
+    }
+
     func testTheRecordJSONRoundTripsAndIsStable() throws {
         let record = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service")
         let data = record.json
