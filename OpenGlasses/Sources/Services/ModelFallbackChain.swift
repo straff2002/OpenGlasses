@@ -54,6 +54,11 @@ enum ModelFallbackChain {
     /// Classify a thrown error into a cascade decision.
     static func classify(_ error: Error) -> FailureClass {
         if error is CancellationError { return .terminalForTurn }
+        // ChatGPT already attempted bounded recovery below the tool dispatcher. Restarting
+        // this user turn on another provider could repeat completed state-changing tools.
+        if error is RequestContextBudget.CapacityError || RequestContextBudget.isOverflow(error: error) {
+            return .terminalForTurn
+        }
 
         if let local = error as? LocalLLMError {
             switch local {

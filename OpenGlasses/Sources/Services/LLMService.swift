@@ -566,7 +566,7 @@ class LLMService: ObservableObject {
         // Inject Field Assist vault content when a session is active.
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
         if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
-            prompt += "\n\n\(vaultContext)"
+            prompt += "\n\n<field_assist_context>\n\(vaultContext)\n</field_assist_context>"
         }
         // Inject the active project's knowledge-base grounding when it has documents (Plan AN).
         if let projectContext = ProjectContextService.shared.promptContext() {
@@ -645,7 +645,12 @@ class LLMService: ObservableObject {
     /// - Parameter onStreamReset: invoked at the start of each streamed tool-loop iteration so the
     ///   caller can clear its accumulated bubble — intermediate tool-turn text must never
     ///   concatenate with the final reply (BM P9).
+    private var fieldConversationSourceID: String?
+
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        let previousFieldSourceID = fieldConversationSourceID
+        fieldConversationSourceID = previousFieldSourceID ?? UUID().uuidString
+        defer { fieldConversationSourceID = previousFieldSourceID }
         isProcessing = true
         beginTurnScope()
         defer {
@@ -661,12 +666,15 @@ class LLMService: ObservableObject {
             }
         }
 
-        // Compress context window if conversation history has grown too large
-        // Use LLM summarization in agentic mode, heuristic fallback otherwise
-        if Config.agentModeEnabled {
-            await compressContextWindowWithLLM()
-        } else {
-            compressContextWindowIfNeeded()
+        FieldSessionService.shared.recordConversationTurn(text, sourceID: fieldConversationSourceID ?? UUID().uuidString)
+        // ChatGPT selects a bounded request copy at every submission. Never run the legacy
+        // history-only compactor first: it can erase evidence before the full budget is known.
+        if Config.activeModel?.llmProvider != .chatgpt {
+            if Config.agentModeEnabled {
+                await compressContextWindowWithLLM()
+            } else {
+                compressContextWindowIfNeeded()
+            }
         }
 
         guard let requestedModel = Config.activeModel else {
@@ -786,6 +794,8 @@ class LLMService: ObservableObject {
         // already prunes): stale images re-upload with every turn, and on the Gemini /
         // OpenAI-compatible paths an unpruned photo history overflowed the context window
         // outright. Prune here so all providers start the turn with at most one prior image.
+        // These are disposable in-memory model attachments, not ConversationStore's saved
+        // photos. Keep their lifetime bounded even when text history is retained for FM.
         conversationHistory = HistoryHygiene.pruneImages(conversationHistory, keepLast: 1)
 
         let rawResponse: String
@@ -837,6 +847,10 @@ class LLMService: ObservableObject {
     /// one candidate. Exhaustion throws the *last real* error (not a generic line) so the caller can
     /// speak the true reason.
     func sendMessageCascading(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, backgrounded: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil, onModelSwitch: ((_ from: ModelConfig?, _ to: ModelConfig?, _ failure: ModelFallbackChain.FailureClass) async -> Void)? = nil) async throws -> String {
+
+        let previousSourceID = fieldConversationSourceID
+        fieldConversationSourceID = UUID().uuidString
+        defer { fieldConversationSourceID = previousSourceID }
 
         func send() async throws -> String {
             try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
@@ -1002,8 +1016,8 @@ class LLMService: ObservableObject {
         for msg in messages {
             conversationHistory.append(["role": msg.role, "content": msg.content])
         }
-        // Compact immediately if the restored history is too large for the context window
-        compressContextWindowIfNeeded()
+        // ChatGPT budgets a copy at submission, retaining the restored evidence.
+        if Config.activeModel?.llmProvider != .chatgpt { compressContextWindowIfNeeded() }
         PrivacyLog.model(.historyLoaded, count: conversationHistory.count,
                          total: messages.count)
     }
@@ -2202,6 +2216,9 @@ class LLMService: ObservableObject {
             throw LLMError.invalidConfiguration("Invalid ChatGPT backend URL: \(endpoint)")
         }
 
+        let protectedStart = conversationHistory.count
+        let sourceID = fieldConversationSourceID
+        let recovery = ResponsesContextRecovery()
         // Append the user turn in chat shape (image as image_url, so pruning recognises it).
         if let imageData, config.visionEnabled {
             let base64 = LLMImagePreparer.prepared(imageData).base64EncodedString()
@@ -2214,7 +2231,6 @@ class LLMService: ObservableObject {
         } else {
             conversationHistory.append(["role": "user", "content": text])
         }
-        trimHistory()
 
         var chatTools: [[String: Any]]?
         if includeTools {
@@ -2228,24 +2244,20 @@ class LLMService: ObservableObject {
             dispatcher: makeToolDispatcher(),
             performTurn: { [weak self] in
                 guard let self else { throw LLMError.invalidResponse("ChatGPT") }
+                // A field_session start tool may have created the session during this turn.
+                if let sourceID { FieldSessionService.shared.recordConversationTurn(text, sourceID: sourceID) }
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 ChatGPTAuth.apply(credential: token, accountID: accountID, to: &request)
-                let historyForRequest = self.requestHistory(for: .chatgpt, smallContext: smallContext)
-                let body = ResponsesTranslator.requestBody(
-                    model: config.model, instructions: systemPrompt,
-                    history: historyForRequest, tools: tools)
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                request.timeoutInterval = 120
-
-                // The backend only serves streamed responses; without a token sink we still read
-                // the SSE and use the completed payload.
-                if onToken != nil {
-                    // New tool-loop iteration: clear the caller's accumulated bubble first (BM P9).
-                    onStreamReset?()
-                }
-                let responseJSON = try await self.streamResponsesTurn(request: request, onToken: onToken)
+                let limit = RequestContextBudget.resolve(
+                    model: config.model, endpoint: endpoint,
+                    catalogContext: ChatGPTContextCatalog.context(model: config.model, accountID: accountID))
+                let responseJSON = try await self.budgetedResponsesTurn(
+                    request: request, model: config.model, history: self.conversationHistory,
+                    tools: tools, protectedStart: protectedStart, limit: limit, recovery: recovery,
+                    instructions: { self.refreshedFieldInstructions(systemPrompt, turn: text) },
+                    onToken: onToken, onStreamReset: onStreamReset)
 
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
                 // The parse-vs-sent diagnostic seam — where "tool_call returned but nothing
@@ -2301,6 +2313,81 @@ class LLMService: ObservableObject {
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
 
+    /// One recovery allowance shared by all requests in a user turn, not one retry per tool.
+    final class ResponsesContextRecovery {
+        var attempted = false
+        var allowance: Int?
+    }
+
+    /// Replace the entire Field Assist contribution after every tool iteration. In particular,
+    /// a change-equipment or end-session tool must not leave the previous machine in instructions.
+    func refreshedFieldInstructions(_ original: String, turn: String) -> String {
+        let fresh = FieldSessionService.shared.promptContext(turn: turn)
+        return Self.replacingFieldInstructions(original, fresh: fresh)
+    }
+
+    static func replacingFieldInstructions(_ original: String, fresh: String?) -> String {
+        let opening = "<field_assist_context>"
+        let closing = "</field_assist_context>"
+        var result = original
+        if let start = result.range(of: opening),
+           let end = result.range(of: closing, range: start.upperBound..<result.endIndex) {
+            result.removeSubrange(start.lowerBound..<end.upperBound)
+        }
+        if let fresh {
+            result += "\n\n\(opening)\n\(fresh)\n\(closing)"
+        }
+        return result
+    }
+
+    /// The retry is inside performTurn, below the dispatcher. Previously completed tools and
+    /// the user message therefore cannot execute/append again when the provider rejects input.
+    func budgetedResponsesTurn(request template: URLRequest, model: String, history: [[String: Any]],
+                               tools: [[String: Any]]?, protectedStart: Int,
+                               limit: RequestContextBudget.Limit, recovery: ResponsesContextRecovery,
+                               instructions: () -> String,
+                               onToken: ((String) -> Void)?, onStreamReset: (() -> Void)?) async throws -> [String: Any] {
+        while true {
+            try Task.checkCancellation()
+            let allowance = min(limit.inputAllowance, recovery.allowance ?? limit.inputAllowance)
+            let selected = try RequestContextBudget.build(model: model, instructions: instructions(),
+                history: history, tools: tools, protectedStart: protectedStart, allowance: allowance)
+            PrivacyLog.model(.contextBudget, provider: PrivacyToken("chatgpt"), model: PrivacyToken(model),
+                             count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
+                             detail: PrivacyToken(limit.provenance))
+            for (component, count) in [("instructions", selected.estimate.instructions),
+                                       ("input", selected.estimate.input),
+                                       ("tools", selected.estimate.tools),
+                                       ("framing", selected.estimate.framing)] {
+                PrivacyLog.model(.contextBudget, provider: PrivacyToken("chatgpt"),
+                                 tokens: count, detail: PrivacyToken(component))
+            }
+            var request = template
+            request.httpBody = try JSONSerialization.data(withJSONObject: selected.body)
+            request.timeoutInterval = 120
+            onStreamReset?()
+            do {
+                let response = try await streamResponsesTurn(request: request, onToken: onToken)
+                if recovery.attempted {
+                    PrivacyLog.model(.contextRecovery, provider: PrivacyToken("chatgpt"), success: true)
+                }
+                return response
+            } catch {
+                // Do not recover after partial delivery unless the caller can replace its bubble.
+                // A nil token callback means no partial output was presented.
+                guard RequestContextBudget.isOverflow(error: error), !recovery.attempted,
+                      onToken == nil || onStreamReset != nil else { throw error }
+                recovery.attempted = true
+                // Reduce relative to BOTH the model allowance and the rejected actual request.
+                // Otherwise a short rejected request would be retried unchanged.
+                recovery.allowance = min(allowance / 2, selected.estimate.total * 3 / 4)
+                PrivacyLog.model(.contextRecovery, provider: PrivacyToken("chatgpt"), attempt: 1,
+                                 total: recovery.allowance, success: false)
+                onStreamReset?()
+            }
+        }
+    }
+
     /// One streamed Responses turn: SSE events → `onToken` text deltas (nil when the caller
     /// only wants the final payload); returns the authoritative `response.completed` payload
     /// (a shed delta is cosmetic, never corrupting). Events are fed to the parser only at
@@ -2320,7 +2407,7 @@ class LLMService: ObservableObject {
             let text = String(data: errorBody, encoding: .utf8) ?? ""
             PrivacyLog.model(.apiError, provider: PrivacyToken("chatgpt"),
                              status: status, bytes: errorBody.count)
-            throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: String(text.prefix(300)))
+            throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: text)
         }
 
         var parser = SSEEventParser()
@@ -2348,7 +2435,10 @@ class LLMService: ObservableObject {
         feed(String(decoding: buffer, as: UTF8.self), flush: true)
 
         if let failure = accumulator.failureMessage {
-            throw LLMError.apiError(provider: "ChatGPT", statusCode: 200, message: failure)
+            let error: [String: Any] = ["code": accumulator.failureCode ?? "", "message": failure]
+            let encoded = try JSONSerialization.data(withJSONObject: error)
+            throw LLMError.apiError(provider: "ChatGPT", statusCode: 200,
+                                    message: String(decoding: encoded, as: UTF8.self))
         }
         guard let completed = accumulator.effectiveResponse else {
             throw LLMError.invalidResponse("ChatGPT (stream ended without completion)")
@@ -2377,6 +2467,9 @@ class LLMService: ObservableObject {
                 body["tool_choice"] = ["type": "function", "name": forcedToolName]
             }
         }
+        let limit = RequestContextBudget.resolve(model: model, endpoint: url.absoluteString,
+            catalogContext: ChatGPTContextCatalog.context(model: model, accountID: ChatGPTOAuthService.shared.accountID))
+        guard RequestContextBudget.estimate(body).total <= limit.inputAllowance else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

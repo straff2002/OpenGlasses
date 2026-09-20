@@ -20,21 +20,26 @@ class StoreKitService: ObservableObject {
     nonisolated static let medicalMonthlyId = "com.openglasses.medical_compliance_monthly"
     nonisolated static let medicalAnnualId = "com.openglasses.medical_compliance_annual"
 
-    /// Field Assist (solo) — a one-time non-consumable unlock. Complements the license-code path.
+    /// Legacy Field Assist non-consumable. It is no longer offered, but verified purchases remain
+    /// valid so removing the product does not revoke access from existing customers.
     nonisolated static let fieldAssistId = "com.openglasses.field_assist"
-    /// Field Assist (solo) — monthly and annual auto-renewing subscriptions beside the one-time unlock.
+    /// Field Assist (solo) monthly and annual auto-renewing subscriptions.
     nonisolated static let fieldAssistMonthlyId = "com.openglasses.field_assist_monthly"
     nonisolated static let fieldAssistAnnualId = "com.openglasses.field_assist_annual"
 
-    /// Every store product that grants the solo tier. Teams are licensed by signed code, not StoreKit.
+    /// Every store product that grants the solo tier, including the retired non-consumable so
+    /// existing owners continue to pass receipt validation. Teams use signed licences.
     nonisolated static let fieldAssistProductIds: Set<String> = [fieldAssistId, fieldAssistMonthlyId, fieldAssistAnnualId]
     nonisolated static let fieldAssistSubscriptionIds: Set<String> = [fieldAssistMonthlyId, fieldAssistAnnualId]
+    /// Products offered for new Field Assist purchases. The legacy non-consumable is deliberately
+    /// excluded from catalog loading and therefore cannot appear on the paywall.
+    nonisolated static let fieldAssistCatalogProductIds: Set<String> = fieldAssistSubscriptionIds
 
     /// Medical Compliance subscription products.
     private static let medicalProductIds: Set<String> = [medicalMonthlyId, medicalAnnualId]
 
     /// All known product identifiers (loaded from the App Store / .storekit).
-    private static let allProductIds: Set<String> = medicalProductIds.union(fieldAssistProductIds)
+    private static let allProductIds: Set<String> = medicalProductIds.union(fieldAssistCatalogProductIds)
 
     /// Subscription group name (must match App Store Connect).
     static let subscriptionGroupId = "medical_compliance"
@@ -47,7 +52,8 @@ class StoreKitService: ObservableObject {
     /// Whether the user has an active Medical Compliance subscription.
     @Published private(set) var isMedicalComplianceActive = false
 
-    /// Whether any store product entitles Field Assist (one-time unlock or a live subscription).
+    /// Whether any store product entitles Field Assist (a live subscription or a grandfathered
+    /// legacy non-consumable).
     @Published private(set) var isFieldAssistPurchased = false
 
     /// The Field Assist subscription's renewal state, when the entitlement comes from one.
@@ -144,8 +150,7 @@ class StoreKitService: ObservableObject {
 
     // MARK: - Subscription Status
 
-    /// Check current entitlements for both the Medical Compliance subscription and the Field Assist
-    /// non-consumable.
+    /// Check current entitlements for both the Medical Compliance subscription and Field Assist.
     ///
     /// The Field Assist result is recorded as entitlement *evidence* in `VerifiedStorePurchaseRecorder`
     /// — a process-local record of a verified, unrevoked transaction. `Config.fieldAssistPurchased` is
@@ -304,11 +309,6 @@ class StoreKitService: ObservableObject {
         return medical.sorted { lhs, _ in lhs.id == Self.medicalAnnualId }
     }
 
-    /// The Field Assist non-consumable unlock product.
-    var fieldAssistProduct: Product? {
-        products.first { $0.id == Self.fieldAssistId }
-    }
-
     /// The Field Assist monthly subscription product.
     var fieldAssistMonthlyProduct: Product? {
         products.first { $0.id == Self.fieldAssistMonthlyId }
@@ -319,7 +319,7 @@ class StoreKitService: ObservableObject {
         products.first { $0.id == Self.fieldAssistAnnualId }
     }
 
-    /// Whether the perpetual one-time unlock specifically is owned (as opposed to a subscription).
+    /// Whether the retired perpetual unlock is owned. Kept for grandfathered receipt handling.
     var ownsFieldAssistUnlock: Bool {
         VerifiedStorePurchaseRecorder.shared.allEvidence.contains {
             if case .verifiedStoreProduct(let id, _) = $0 { return id == Self.fieldAssistId }

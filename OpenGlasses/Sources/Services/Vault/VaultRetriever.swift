@@ -220,7 +220,35 @@ struct VaultRetriever {
 
     /// The block appended to the system prompt for a turn. States insufficiency explicitly so the
     /// model does not fall back to general knowledge silently.
-    static func promptBlock(_ outcome: RetrievalOutcome) -> String {
+    static func promptBlock(_ outcome: RetrievalOutcome, characterLimit: Int = 12_000) -> String {
+        let bounded = boundedOutcome(outcome, characterLimit: characterLimit)
+        return unboundedPromptBlock(bounded.outcome) + bounded.notice
+    }
+
+    /// Select complete ranked passages, retaining citations, table headers and units together.
+    /// Oversized evidence is explicitly unavailable; a partial warning must not look complete.
+    static func boundedOutcome(_ outcome: RetrievalOutcome, characterLimit: Int) -> (outcome: RetrievalOutcome, notice: String) {
+        guard case .sufficient(let passages) = outcome else { return (outcome, "") }
+        var selected: [Passage] = []
+        var remaining = max(0, characterLimit)
+        var seen = Set<String>()
+        for passage in passages {
+            let key = "\(passage.documentId):\(passage.chunkIndex)"
+            guard seen.insert(key).inserted else { continue }
+            let cost = passage.text.utf8.count + passage.citation.utf8.count + 256
+            guard cost <= remaining else { continue }
+            selected.append(passage)
+            remaining -= cost
+        }
+        let omitted = passages.count - selected.count
+        guard omitted > 0 else { return (outcome, "") }
+        let notice = "\n\n\(omitted) manual passages omitted by the context budget. Do not assume omitted warnings or evidence are absent; narrow the lookup or open the cited manual before relying on incomplete coverage."
+        return (selected.isEmpty
+            ? .insufficient(reason: "Retrieved evidence could not fit as complete passages. Narrow the lookup; do not diagnose from missing evidence.")
+            : .sufficient(selected), notice)
+    }
+
+    private static func unboundedPromptBlock(_ outcome: RetrievalOutcome) -> String {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in
@@ -240,6 +268,11 @@ struct VaultRetriever {
 
     /// Tool-result rendering: same passages, numbered, with an instruction the model can act on.
     static func toolResult(_ outcome: RetrievalOutcome, query: String) -> String {
+        let bounded = boundedOutcome(outcome, characterLimit: 12_000)
+        return unboundedToolResult(bounded.outcome, query: query) + bounded.notice
+    }
+
+    private static func unboundedToolResult(_ outcome: RetrievalOutcome, query: String) -> String {
         switch outcome {
         case .sufficient(let passages):
             let body = passages.enumerated().map { i, p in

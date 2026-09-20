@@ -696,10 +696,9 @@ struct FieldAssistSettingsView: View {
         licenseEntrySection
 
         Section {
-            purchaseRow(store.fieldAssistProduct, title: "One-time unlock", subtitle: "Yours on this Apple ID, no renewal")
             purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime")
             purchaseRow(store.fieldAssistAnnualProduct, title: "Annual", subtitle: "Billed once a year")
-            if store.fieldAssistProduct == nil && store.fieldAssistMonthlyProduct == nil && store.fieldAssistAnnualProduct == nil {
+            if store.fieldAssistMonthlyProduct == nil && store.fieldAssistAnnualProduct == nil {
                 Text("Purchase is unavailable right now. Check your connection and App Store sign-in.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

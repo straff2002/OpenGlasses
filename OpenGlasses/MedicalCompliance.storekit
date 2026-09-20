@@ -1,23 +1,7 @@
 {
   "identifier": "medical_compliance_storekit",
   "nonRenewingSubscriptions": [],
-  "products": [
-    {
-      "displayPrice": "149.99",
-      "familyShareable": false,
-      "internalID": "field_assist_001",
-      "localizations": [
-        {
-          "description": "Hands-free, domain-grounded guidance for service technicians: knowledge vaults, guided procedures, domain calculators, and expert escalation.",
-          "displayName": "Field Assist",
-          "locale": "en_US"
-        }
-      ],
-      "productID": "com.openglasses.field_assist",
-      "referenceName": "Field Assist",
-      "type": "NonConsumable"
-    }
-  ],
+  "products": [],
   "settings": {
     "_applicationInternalID": "0",
     "_developerTeamID": "",
@@ -175,7 +159,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "9.99",
+          "displayPrice": "129.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "field_assist_monthly_001",
@@ -196,13 +180,13 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "99.99",
+          "displayPrice": "999.99",
           "familyShareable": false,
           "groupNumber": 2,
           "internalID": "field_assist_annual_001",
           "localizations": [
             {
-              "description": "Field Assist for one technician with annual billing. Save 17% compared to monthly.",
+              "description": "Field Assist for one technician with annual billing. Save 36% compared to monthly.",
               "displayName": "Annual",
               "locale": "en_US"
             }

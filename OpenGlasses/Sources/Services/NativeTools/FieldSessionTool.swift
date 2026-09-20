@@ -17,6 +17,9 @@ final class FieldSessionTool: NativeTool {
     Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support \
     including installed custom vaults. Sessions load a knowledge vault and emit an audit log. \
     Use 'start' when the technician begins work on equipment, 'end' when they finish. \
+    Use 'recall' to retrieve older technician reports, readings and task results for the current \
+    equipment when they are absent from the working context. Reports are not independently \
+    verified. Read subsequent records for corrections; paginate until the relevant record is complete. \
     For the user's default vault, omit vault or use 'default'. Use 'vaults' to discover installed \
     vault IDs, names and the configured default. Never substitute another vault after a failure \
     without the user's choice. An equipment/asset name does not select its knowledge vault. \
@@ -27,11 +30,19 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
+                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
             ],
             "format": [
                 "type": "string",
                 "description": "On 'export': 'pdf', 'json', or 'both' (default). 'pdf' is the customer-facing work order; 'json' is the structured audit record."
+            ],
+            "query": [
+                "type": "string",
+                "description": "On recall: phrase or source ID to find. Empty retrieves all current-equipment records chronologically."
+            ],
+            "offset": [
+                "type": "integer",
+                "description": "On recall: character offset from the previous page's continuation, default 0. Keep the same query."
             ],
             "vault": [
                 "type": "string",
@@ -62,7 +73,7 @@ final class FieldSessionTool: NativeTool {
             return AIFeatureGate.disabledMessage(.fieldAssist)
         }
         guard let action = (args["action"] as? String)?.lowercased() else {
-            return "No action specified. Use 'start', 'pause', 'resume', 'end', 'status', 'list', or 'escalate'."
+            return "No action specified. Use 'start', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', or 'export'."
         }
 
         let service = sessionService ?? FieldSessionService.shared
@@ -70,6 +81,8 @@ final class FieldSessionTool: NativeTool {
         switch action {
         case "vaults":
             return vaultSummary()
+        case "recall":
+            return service.recallContinuity(query: args["query"] as? String, offset: args["offset"] as? Int ?? 0)
         case "start":
             return await startSession(args: args, service: service)
         case "pause":
@@ -87,7 +100,7 @@ final class FieldSessionTool: NativeTool {
         case "export":
             return await exportSession(args: args, service: service)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'pause', 'resume', 'end', 'status', 'list', 'escalate', or 'export'."
+            return "Unknown action '\(action)'. Use 'start', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', or 'export'."
         }
     }
 
