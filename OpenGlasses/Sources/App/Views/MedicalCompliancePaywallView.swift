@@ -93,7 +93,7 @@ struct MedicalCompliancePaywallView: View {
                         }
                     }
                     .buttonStyle(.ogProminent)
-                    .disabled(storeKit.isPurchasing)
+                    .disabled(storeKit.isPurchasing || storeKit.isRestoring)
                     .padding(.horizontal, 24)
                 }
 
@@ -108,13 +108,14 @@ struct MedicalCompliancePaywallView: View {
                 VStack(spacing: 8) {
                     Button("Restore Purchases") {
                         Task {
-                            await storeKit.restorePurchases()
-                            if !storeKit.isMedicalComplianceActive {
+                            let restored = await storeKit.restorePurchases()
+                            if restored && !storeKit.isMedicalComplianceActive {
                                 showRestoreAlert = true
                             }
                         }
                     }
                     .font(.subheadline)
+                    .disabled(storeKit.isRestoring || storeKit.isPurchasing)
 
                     Text("Subscription renews automatically. Cancel anytime in Settings → Apple ID → Subscriptions.")
                         .font(.caption2)
