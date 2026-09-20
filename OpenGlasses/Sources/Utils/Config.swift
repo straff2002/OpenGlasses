@@ -3802,6 +3802,27 @@ struct Config {
         UserDefaults.standard.set(mode, forKey: "fieldAssistDefaultMode")
     }
 
+    /// Billing presentation captured by each new Field Assist job. The exact active duration is
+    /// always retained; units are a rounded-up presentation derived from it.
+    static var fieldAssistBillingBasis: FieldAssistBillingBasis {
+        FieldAssistBillingBasis(rawValue: UserDefaults.standard.string(
+            forKey: "fieldAssistBillingBasis") ?? "minutes") ?? .minutes
+    }
+
+    static func setFieldAssistBillingBasis(_ basis: FieldAssistBillingBasis) {
+        UserDefaults.standard.set(basis.rawValue, forKey: "fieldAssistBillingBasis")
+    }
+
+    static var fieldAssistMinutesPerBillingUnit: Int {
+        let stored = UserDefaults.standard.integer(forKey: "fieldAssistMinutesPerBillingUnit")
+        return stored > 0 ? min(stored, 240) : 15
+    }
+
+    static func setFieldAssistMinutesPerBillingUnit(_ minutes: Int) {
+        UserDefaults.standard.set(min(max(1, minutes), 240),
+                                  forKey: "fieldAssistMinutesPerBillingUnit")
+    }
+
     // MARK: - Field Assist job reports (Plan EM P2)
 
     /// Where a finished job report may go, and to whom. The endpoint's bearer token lives in the

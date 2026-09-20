@@ -36,7 +36,12 @@ struct WorkRecord: Codable, Equatable {
     let escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
+    /// Exact accumulated active time. Optional so older exported records still decode.
+    let billableSeconds: TimeInterval?
     let billableMinutes: Int
+    let billingBasis: FieldAssistBillingBasis?
+    let minutesPerBillingUnit: Int?
+    let billableUnits: Int?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -52,7 +57,11 @@ struct WorkRecord: Codable, Equatable {
         case escalations
         case startedAt = "started_at"
         case endedAt = "ended_at"
+        case billableSeconds = "billable_seconds"
         case billableMinutes = "billable_minutes"
+        case billingBasis = "billing_basis"
+        case minutesPerBillingUnit = "minutes_per_unit"
+        case billableUnits = "billable_units"
     }
 
     // MARK: - Assembly
@@ -78,7 +87,14 @@ struct WorkRecord: Codable, Equatable {
         }
         self.startedAt = session.startedAt
         self.endedAt = session.endedAt
+        self.billableSeconds = session.billableSeconds
         self.billableMinutes = Int((session.billableSeconds / 60.0).rounded())
+        self.billingBasis = session.billingBasis
+        self.minutesPerBillingUnit = session.minutesPerBillingUnit
+        self.billableUnits = session.billingBasis == .units
+            ? FieldAssistBillingBasis.units(for: session.billableSeconds,
+                                            minutesPerUnit: session.minutesPerBillingUnit)
+            : nil
     }
 
     // MARK: - Derived views
@@ -128,6 +144,12 @@ struct WorkRecord: Codable, Equatable {
         }
         if tasks.isEmpty { lines.append("No tasks were recorded on this job.") }
 
+        let used = partsUsed
+        if !used.isEmpty {
+            lines.append("Parts used:")
+            lines.append(contentsOf: used.map { "  \($0.summary)" })
+        }
+
         if !jobEvidence.isEmpty, let phrase = Self.evidencePhrase(jobEvidence) {
             lines.append("Against the job itself: \(phrase).")
         }
@@ -148,7 +170,11 @@ struct WorkRecord: Codable, Equatable {
                              + (escalation.resolved ? " (resolved)." : " (open)."))
             }
         }
-        lines.append("Time on site: \(Self.minutesPhrase(minutes: billableMinutes)).")
+        lines.append("Time on job: \(durationPhrase).")
+        if billingBasis == .units, let billableUnits, let minutesPerBillingUnit {
+            lines.append("Billable units: \(Self.unitPhrase(billableUnits)) "
+                         + "(\(minutesPerBillingUnit) minute\(minutesPerBillingUnit == 1 ? "" : "s") per unit; partial units round up).")
+        }
         return lines
     }
 
@@ -215,8 +241,10 @@ struct WorkRecord: Codable, Equatable {
         var parts = [head]
         if let why = task.why, !why.isEmpty { parts.append("Why: \(why)") }
         if let procedureId = task.procedureId {
-            parts.append(task.procedureOutcome.map { "Procedure \(procedureId) finished as \($0)" }
-                         ?? "Procedure \(procedureId)")
+            let procedure = prettyLabel(procedureId)
+            parts.append(task.procedureOutcome.map {
+                "Procedure \(procedure) finished as \(prettyLabel($0).lowercased())"
+            } ?? "Procedure \(procedure)")
         }
         if let note = task.completionNote, !note.isEmpty { parts.append("Note: \(note)") }
         if !task.parts.isEmpty {
@@ -254,5 +282,57 @@ struct WorkRecord: Codable, Equatable {
         case 1: return "1 minute"
         default: return "\(minutes) minutes"
         }
+    }
+
+    var durationPhrase: String {
+        guard let billableSeconds else { return Self.minutesPhrase(minutes: billableMinutes) }
+        return Self.durationPhrase(seconds: billableSeconds)
+    }
+
+    var billingSummary: String {
+        Self.billingSummary(seconds: billableSeconds ?? Double(billableMinutes * 60),
+                            basis: billingBasis ?? .minutes,
+                            minutesPerUnit: minutesPerBillingUnit ?? 15)
+    }
+
+    static func durationPhrase(seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        guard total >= 60 else { return "\(total) second\(total == 1 ? "" : "s")" }
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let seconds = total % 60
+        var pieces: [String] = []
+        if hours > 0 { pieces.append("\(hours) hour\(hours == 1 ? "" : "s")") }
+        if minutes > 0 { pieces.append("\(minutes) minute\(minutes == 1 ? "" : "s")") }
+        if seconds > 0 { pieces.append("\(seconds) second\(seconds == 1 ? "" : "s")") }
+        return pieces.joined(separator: " ")
+    }
+
+    static func unitPhrase(_ units: Int) -> String {
+        "\(units) unit\(units == 1 ? "" : "s")"
+    }
+
+    static func billingSummary(seconds: TimeInterval, basis: FieldAssistBillingBasis,
+                               minutesPerUnit: Int) -> String {
+        switch basis {
+        case .minutes:
+            return durationPhrase(seconds: seconds)
+        case .units:
+            return unitPhrase(FieldAssistBillingBasis.units(for: seconds,
+                                                            minutesPerUnit: minutesPerUnit))
+        }
+    }
+
+    static func prettyLabel(_ raw: String) -> String {
+        let words = raw.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+        return words.enumerated().map { index, word in
+            let lower = word.lowercased()
+            if ["ai", "id", "ocr", "pdf"].contains(lower) { return lower.uppercased() }
+            if lower.contains(where: \.isNumber) { return lower.uppercased() }
+            if index == 0 { return lower.prefix(1).uppercased() + lower.dropFirst() }
+            return lower
+        }.joined(separator: " ")
     }
 }

@@ -87,6 +87,29 @@ final class FieldSessionServiceTests: XCTestCase {
         XCTAssertEqual(resumed.outcome, .inProgress)
     }
 
+    func testActiveExportUsesLiveTimeAndCustomerFacingLabels() throws {
+        let session = try service.startSession(vaultId: "refrigeration", assetId: nil)
+        Thread.sleep(forTimeInterval: 0.05)
+
+        let leases = try service.exportSession(id: session.id, formats: [.json])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let export = try decoder.decode(SessionExport.self,
+                                        from: Data(contentsOf: try XCTUnwrap(leases.first).fileURL))
+
+        XCTAssertGreaterThan(export.billableSeconds ?? 0, 0)
+        XCTAssertGreaterThan(export.workRecord?.billableSeconds ?? 0, 0)
+        let lines = SessionExporter.summaryLines(export)
+        XCTAssertTrue(lines.contains("Support: AI-assisted (no remote expert joined)"), lines.description)
+        XCTAssertTrue(lines.contains("Status: In progress"), lines.description)
+        XCTAssertTrue(lines.contains("Ended: Session still active"), lines.description)
+        XCTAssertTrue(lines.contains { $0.hasPrefix("Time on job: ") && $0.hasSuffix(" seconds") },
+                      lines.description)
+        XCTAssertFalse(lines.joined().contains("ai_only"), lines.description)
+        XCTAssertFalse(lines.joined().contains("in_progress"), lines.description)
+    }
+
     func testEndSessionMarksOutcomeAndClearsActive() throws {
         _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
         let ended = try service.endSession(outcome: .resolved)
@@ -290,6 +313,47 @@ final class FieldVaultSelectionTests: XCTestCase {
         XCTAssertTrue(result.contains("\(lennox.name) [\(lennox.id)]"))
         XCTAssertTrue(result.contains("Configured default for new jobs:"))
         XCTAssertNil(service.activeSession)
+    }
+
+    func testJobReferenceToolActionPersistsIntoSubmittedRecord() async throws {
+        _ = try await tool.execute(args: ["action": "start", "vault": "default"])
+
+        let reply = try await tool.execute(args: [
+            "action": "set_job_reference",
+            "job_reference": " 101 "
+        ])
+
+        XCTAssertTrue(reply.contains("Job reference 101 is recorded"), reply)
+        XCTAssertEqual(service.activeSession?.jobReference, "101")
+        XCTAssertEqual(service.workRecord()?.jobReference, "101")
+
+        let leases = try service.exportSession(formats: [.json])
+        defer { leases.forEach { StagedExportCoordinator.fieldSession.release($0) } }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let submitted = try decoder.decode(SessionExport.self,
+                                           from: Data(contentsOf: try XCTUnwrap(leases.first).fileURL))
+        XCTAssertEqual(submitted.workRecord?.jobReference, "101")
+
+        let restored = FieldSessionService(sessionsRoot: root)
+        XCTAssertEqual(restored.activeSession?.jobReference, "101")
+        XCTAssertEqual(restored.workRecord()?.jobReference, "101")
+    }
+
+    func testJobReferenceToolActionRejectsFalseAcknowledgements() async throws {
+        let noSession = try await tool.execute(args: [
+            "action": "set_job_reference", "job_reference": "101"
+        ])
+        XCTAssertTrue(noSession.contains("no Field Assist session is active"), noSession)
+
+        _ = try await tool.execute(args: ["action": "start", "vault": "default"])
+        for value: Any in ["", "   ", 101] {
+            let reply = try await tool.execute(args: [
+                "action": "set_job_reference", "job_reference": value
+            ])
+            XCTAssertTrue(reply.hasPrefix("Could not record job reference"), reply)
+            XCTAssertNil(service.activeSession?.jobReference)
+        }
     }
 
     func testAmbiguousNamesRequireExactID() throws {

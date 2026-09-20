@@ -17,6 +17,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var endLocation: GeoPoint?
     var escalations: [Escalation]
     var billableSeconds: TimeInterval
+    /// Billing presentation captured when the job starts, so later settings changes do not rewrite
+    /// an existing work record.
+    var billingBasis: FieldAssistBillingBasis = .minutes
+    var minutesPerBillingUnit: Int = 15
     /// The machine the session is working on, once it has been recognised (Plan EL). Optional and
     /// synthesized-key, so a session written before this existed decodes with it nil.
     var equipment: EquipmentIdentity?
@@ -47,6 +51,13 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case aiOnly = "ai_only"
         /// Human expert joins via WebRTC; AI assists with knowledge lookup + transcription.
         case humanAssisted = "human_assisted"
+
+        var customerDescription: String {
+            switch self {
+            case .aiOnly: return "AI-assisted (no remote expert joined)"
+            case .humanAssisted: return "AI-assisted with a remote expert"
+            }
+        }
     }
 
     enum Outcome: String, Codable {
@@ -56,6 +67,17 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case escalated
         case deferred
         case cancelled
+
+        var displayName: String {
+            switch self {
+            case .inProgress: return "In progress"
+            case .paused: return "Paused"
+            case .resolved: return "Resolved"
+            case .escalated: return "Escalated"
+            case .deferred: return "Deferred"
+            case .cancelled: return "Cancelled"
+            }
+        }
     }
 
     struct GeoPoint: Codable, Equatable {
@@ -108,7 +130,8 @@ struct FieldSession: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, vaultId, assetId, mode, startedAt, endedAt, pausedAt, resumedAt, outcome
-        case startLocation, endLocation, escalations, billableSeconds, equipment
+        case startLocation, endLocation, escalations, billableSeconds, billingBasis
+        case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
     }
@@ -138,6 +161,8 @@ extension FieldSession {
         endLocation = try c.decodeIfPresent(GeoPoint.self, forKey: .endLocation)
         escalations = try c.decodeIfPresent([Escalation].self, forKey: .escalations) ?? []
         billableSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .billableSeconds) ?? 0
+        billingBasis = try c.decodeIfPresent(FieldAssistBillingBasis.self, forKey: .billingBasis) ?? .minutes
+        minutesPerBillingUnit = max(1, try c.decodeIfPresent(Int.self, forKey: .minutesPerBillingUnit) ?? 15)
         equipment = try c.decodeIfPresent(EquipmentIdentity.self, forKey: .equipment)
         jobReference = try c.decodeIfPresent(String.self, forKey: .jobReference)
         tasks = try c.decodeIfPresent([Task].self, forKey: .tasks) ?? []
@@ -148,5 +173,18 @@ extension FieldSession {
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]
         procedureEquipmentScope = try c.decodeIfPresent(String.self, forKey: .procedureEquipmentScope)
+    }
+}
+
+enum FieldAssistBillingBasis: String, Codable, CaseIterable {
+    case minutes
+    case units
+
+    var label: String { self == .minutes ? "Minutes" : "Units" }
+
+    static func units(for seconds: TimeInterval, minutesPerUnit: Int) -> Int {
+        guard seconds > 0 else { return 0 }
+        let unitSeconds = Double(max(1, minutesPerUnit) * 60)
+        return max(1, Int(ceil(seconds / unitSeconds)))
     }
 }

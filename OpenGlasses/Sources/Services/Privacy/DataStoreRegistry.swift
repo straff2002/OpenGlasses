@@ -87,6 +87,7 @@ enum SensitiveStore: String, CaseIterable {
     case operationJournal
     case remoteInvokeAudit
     case debugEventLog
+    case diagnosticBreadcrumbs
     case spotlightIndex
 
     // Skills
@@ -630,6 +631,16 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "AppState",
                           ownerPaths: ["OpenGlasses/Sources/App/OpenGlassesApp.swift"],
                           location: "Documents/debug-events.log")
+
+        case .diagnosticBreadcrumbs:
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("most recent 500 events; previous run readable for 48 hours"),
+                          deleteAll: .api("DiagnosticRing.shared.clear()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "DiagnosticRing",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Diagnostics/DiagnosticRing.swift"],
+                          location: "Application Support/Diagnostics/last-session.json")
 
         case .spotlightIndex:
             return Record(store: self, dataClass: .derivedIndex, subjectLinkage: .wearer,

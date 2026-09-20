@@ -188,7 +188,7 @@ extension WorkRecord {
             let numbers = partsRequests.map { "\($0.quantity) × \($0.part.number)" }
             lines.append("Parts requested: " + numbers.joined(separator: ", ") + ".")
         }
-        lines.append("Time on site: \(Self.minutesPhrase(minutes: billableMinutes)).")
+        lines.append("Time on job: \(durationPhrase).")
         return lines.joined(separator: "\n")
     }
 }

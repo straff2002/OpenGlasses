@@ -44,7 +44,8 @@ enum SessionExporter {
     static func export(sessionDir: URL,
                        formats: Set<Format> = [.json, .pdf],
                        coordinator: StagedExportCoordinator? = nil,
-                       provenance: AIProvenance? = nil) throws -> [StagedExportLease] {
+                       provenance: AIProvenance? = nil,
+                       sessionOverride: FieldSession? = nil) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device at any tier.
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
@@ -53,7 +54,8 @@ enum SessionExporter {
         guard FileManager.default.fileExists(atPath: sessionDir.path) else {
             throw ExportError.sessionNotFound(sessionDir)
         }
-        guard let document = buildExport(sessionDir: sessionDir, provenance: provenance) else {
+        guard let document = buildExport(sessionDir: sessionDir, provenance: provenance,
+                                         sessionOverride: sessionOverride) else {
             throw ExportError.metadataUnreadable
         }
         var leases: [StagedExportLease] = []
@@ -81,12 +83,19 @@ enum SessionExporter {
     // MARK: - Reconstruction
 
     /// Reconstruct the consolidated export from the session metadata + append-only event log.
-    static func buildExport(sessionDir: URL, provenance: AIProvenance? = nil) -> SessionExport? {
+    static func buildExport(sessionDir: URL, provenance: AIProvenance? = nil,
+                            sessionOverride: FieldSession? = nil) -> SessionExport? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let metaData = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
-              let session = try? decoder.decode(FieldSession.self, from: metaData) else {
-            return nil
+        let session: FieldSession
+        if let sessionOverride, sessionOverride.id == sessionDir.lastPathComponent {
+            session = sessionOverride
+        } else {
+            guard let metaData = try? Data(contentsOf: sessionDir.appendingPathComponent("session.json")),
+                  let decoded = try? decoder.decode(FieldSession.self, from: metaData) else {
+                return nil
+            }
+            session = decoded
         }
         let events = readEvents(sessionDir.appendingPathComponent("log.jsonl"), decoder: decoder)
         // What the technician did about the answers' citations. Collected first because a citation
@@ -180,7 +189,14 @@ enum SessionExporter {
             equipment: session.equipment.map(SessionExport.Equipment.init),
             mode: session.mode.rawValue,
             outcome: session.outcome.rawValue,
+            billableSeconds: session.billableSeconds,
             billableMinutes: Int((session.billableSeconds / 60.0).rounded()),
+            billingBasis: session.billingBasis,
+            minutesPerBillingUnit: session.minutesPerBillingUnit,
+            billableUnits: session.billingBasis == .units
+                ? FieldAssistBillingBasis.units(for: session.billableSeconds,
+                                                minutesPerUnit: session.minutesPerBillingUnit)
+                : nil,
             location: session.startLocation.map { .init(latitude: $0.latitude, longitude: $0.longitude) },
             transcript: transcript,
             photos: photos,
@@ -252,7 +268,7 @@ enum SessionExporter {
                 layout.section("Procedures")
                 for run in document.proceduresRun {
                     let outcome = run.outcome ?? "in progress"
-                    layout.body("• \(run.procedureId) — \(run.stepsCompleted) step(s), outcome: \(outcome)")
+                    layout.body("• \(humanReadable(run.procedureId)) — \(run.stepsCompleted) step(s), outcome: \(humanReadable(outcome))")
                 }
             }
 
@@ -260,9 +276,9 @@ enum SessionExporter {
                 layout.section("Captured Records")
                 for capture in document.captures {
                     let asset = capture.assetId.map { " (\($0))" } ?? ""
-                    layout.body("• \(capture.flowId)\(asset) — \(capture.fields.count) field(s)")
+                    layout.body("• \(humanReadable(capture.flowId))\(asset) — \(capture.fields.count) field(s)")
                     for field in capture.fields {
-                        layout.body("    \(field.field): \(field.value) [\(field.method)]")
+                        layout.body("    \(humanReadable(field.field)): \(field.value) [\(humanReadable(field.method))]")
                     }
                 }
             }
@@ -340,14 +356,22 @@ enum SessionExporter {
     static func summaryLines(_ d: SessionExport) -> [String] {
         var lines: [String] = []
         if let equipment = d.equipment { lines.append(equipment.sentence) }
+        let duration = d.billableSeconds.map { WorkRecord.durationPhrase(seconds: $0) }
+            ?? WorkRecord.minutesPhrase(minutes: d.billableMinutes)
         lines += [
-            "Asset: \(d.assetId ?? "—")",
-            "Mode: \(d.mode)",
-            "Outcome: \(d.outcome)",
+            "Asset: \(d.assetId ?? "Not recorded")",
+            "Support: \(supportDescription(d.mode))",
+            "Status: \(humanReadable(d.outcome))",
             "Started: \(dateTime(d.startedAt))",
-            "Ended: \(d.endedAt.map(dateTime) ?? "—")",
-            "Billable time: \(d.billableMinutes) min"
+            "Ended: \(d.endedAt.map(dateTime) ?? "Session still active")",
+            "Time on job: \(duration)"
         ]
+        if d.billingBasis == .units,
+           let billableUnits = d.billableUnits,
+           let minutesPerUnit = d.minutesPerBillingUnit {
+            lines.append("Billable units: \(WorkRecord.unitPhrase(billableUnits)) "
+                         + "(\(minutesPerUnit) minute\(minutesPerUnit == 1 ? "" : "s") per unit; partial units round up)")
+        }
         if let loc = d.location {
             lines.append("Location: \(String(format: "%.5f", loc.latitude)), \(String(format: "%.5f", loc.longitude))")
         }
@@ -362,6 +386,18 @@ enum SessionExporter {
     private static func time(_ date: Date) -> String {
         let f = DateFormatter(); f.dateStyle = .none; f.timeStyle = .medium
         return f.string(from: date)
+    }
+
+    private static func humanReadable(_ raw: String) -> String {
+        WorkRecord.prettyLabel(raw)
+    }
+
+    private static func supportDescription(_ raw: String) -> String {
+        switch FieldSession.Mode(rawValue: raw) {
+        case .aiOnly: return FieldSession.Mode.aiOnly.customerDescription
+        case .humanAssisted: return FieldSession.Mode.humanAssisted.customerDescription
+        case nil: return humanReadable(raw)
+        }
     }
 }
 

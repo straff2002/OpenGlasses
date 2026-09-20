@@ -187,6 +187,8 @@ final class DiagnosticBreadcrumbStore: @unchecked Sendable {
                 #else
                 try data.write(to: url, options: .atomic)
                 #endif
+                StoreProtection.apply(.completeUntilFirstUserAuthentication,
+                                      backupExcluded: true, to: url)
             } catch {
                 // Diagnostics must never crash the app or recursively log their own I/O failure.
             }

@@ -12,6 +12,8 @@ struct FieldAssistSettingsView: View {
     @AppStorage("fieldAssistEnabled") private var enabled: Bool = false
     @AppStorage("fieldAssistDefaultVaultId") private var defaultVaultId: String = "refrigeration"
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
+    @AppStorage("fieldAssistBillingBasis") private var billingBasis: String = "minutes"
+    @AppStorage("fieldAssistMinutesPerBillingUnit") private var minutesPerBillingUnit: Int = 15
 
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
@@ -142,6 +144,28 @@ struct FieldAssistSettingsView: View {
                     Text("AI-Only uses the vault to ground responses. Human-Assisted brings a remote expert into the session — coming in v2.")
                 }
 
+                Section {
+                    Picker("Billing basis", selection: $billingBasis) {
+                        ForEach(FieldAssistBillingBasis.allCases, id: \.rawValue) { basis in
+                            Text(basis.label).tag(basis.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if billingBasis == FieldAssistBillingBasis.units.rawValue {
+                        Stepper("\(minutesPerBillingUnit) minute\(minutesPerBillingUnit == 1 ? "" : "s") per unit",
+                                value: $minutesPerBillingUnit, in: 1...240)
+                    }
+                } header: {
+                    Text("Time Billing")
+                } footer: {
+                    if billingBasis == FieldAssistBillingBasis.units.rawValue {
+                        Text("Partial units round up, with a minimum of one unit after any recorded work. Applied to new jobs; the exact time remains in the record.")
+                    } else {
+                        Text("Reports show the exact recorded active time. Applied to new jobs.")
+                    }
+                }
+
                 // ──────────────── Expert escalation
                 Section {
                     Picker("Stream transport", selection: Binding(
@@ -224,7 +248,7 @@ struct FieldAssistSettingsView: View {
                             Text("Started: \(session.startedAt.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("Status: \(session.outcome.rawValue)")
+                            Text("Status: \(session.outcome.displayName)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -276,7 +300,7 @@ struct FieldAssistSettingsView: View {
                             let vault = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(vault).font(.subheadline)
-                                Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) — \(session.outcome.rawValue) — \(Int(session.billableSeconds / 60)) min")
+                                Text("\(session.startedAt.formatted(date: .abbreviated, time: .shortened)) — \(session.outcome.displayName) — \(WorkRecord.billingSummary(seconds: session.billableSeconds, basis: session.billingBasis, minutesPerUnit: session.minutesPerBillingUnit))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

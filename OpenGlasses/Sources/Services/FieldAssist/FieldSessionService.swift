@@ -99,7 +99,9 @@ final class FieldSessionService: ObservableObject {
             startLocation: startLocation.map(FieldSession.GeoPoint.init),
             endLocation: nil,
             escalations: [],
-            billableSeconds: 0
+            billableSeconds: 0,
+            billingBasis: Config.fieldAssistBillingBasis,
+            minutesPerBillingUnit: Config.fieldAssistMinutesPerBillingUnit
         )
         if let reference = jobReference?.trimmingCharacters(in: .whitespacesAndNewlines),
            !reference.isEmpty {
@@ -624,12 +626,16 @@ final class FieldSessionService: ObservableObject {
 
     /// The visit's record as it stands — what "read back the job" speaks, and what leaves at the
     /// end. Deterministic: no model is asked to summarise anything.
-    func workRecord() -> WorkRecord? {
-        guard let session = activeSession else { return nil }
-        var snapshot = session
+    private func activeSessionSnapshot() -> FieldSession? {
+        guard var snapshot = activeSession else { return nil }
         // Time on site as it is right now, without disturbing the session's own accounting.
         if let lastResumeAt { snapshot.billableSeconds += Date().timeIntervalSince(lastResumeAt) }
-        return WorkRecord(session: snapshot, vaultName: activeVault?.manifest.name ?? session.vaultId)
+        return snapshot
+    }
+
+    func workRecord() -> WorkRecord? {
+        guard let session = activeSessionSnapshot() else { return nil }
+        return WorkRecord(session: session, vaultName: activeVault?.manifest.name ?? session.vaultId)
     }
 
     // MARK: Delivery (Plan EM P2)
@@ -1225,7 +1231,9 @@ final class FieldSessionService: ObservableObject {
             throw FieldSessionError.noActiveSession
         }
         let dir = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
-        let leases = try SessionExporter.export(sessionDir: dir, formats: formats)
+        let liveSnapshot = activeSession?.id == sessionId ? activeSessionSnapshot() : nil
+        let leases = try SessionExporter.export(sessionDir: dir, formats: formats,
+                                                sessionOverride: liveSnapshot)
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
         // The op records which formats were produced, never their paths: a staged artifact's path

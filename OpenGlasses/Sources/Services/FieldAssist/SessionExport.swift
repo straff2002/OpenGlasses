@@ -17,7 +17,12 @@ struct SessionExport: Codable, Equatable {
     let equipment: Equipment?
     let mode: String
     let outcome: String
+    /// Exact accumulated active time. Optional so older exports still decode.
+    let billableSeconds: TimeInterval?
     let billableMinutes: Int
+    let billingBasis: FieldAssistBillingBasis?
+    let minutesPerBillingUnit: Int?
+    let billableUnits: Int?
     let location: Location?
     let transcript: [TranscriptEntry]
     let photos: [PhotoRef]
@@ -163,7 +168,11 @@ struct SessionExport: Codable, Equatable {
         case assetId = "asset_id"
         case equipment
         case mode, outcome
+        case billableSeconds = "billable_seconds"
         case billableMinutes = "billable_minutes"
+        case billingBasis = "billing_basis"
+        case minutesPerBillingUnit = "minutes_per_unit"
+        case billableUnits = "billable_units"
         case location, transcript, photos
         case proceduresRun = "procedures_run"
         case captures, citations, escalations
