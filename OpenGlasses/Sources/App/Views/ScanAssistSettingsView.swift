@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Scan Assist: configure directional reminders and run one session.

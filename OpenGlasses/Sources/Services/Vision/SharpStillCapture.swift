@@ -36,11 +36,11 @@ enum ReadingCaptureResult {
 struct SharpStillCapture {
 
     /// The scope a still injected into a live realtime session travels under.
-    static let scope: PrivacyFilterScope = .liveSession
+    nonisolated static let scope: PrivacyFilterScope = .liveSession
 
     /// Encode quality. High on purpose: the whole reason this path exists is that the streamed
     /// frames' quality-0.5 encode discards the thin strokes that make small print legible.
-    static let jpegQuality: CGFloat = 0.9
+    nonisolated static let jpegQuality: CGFloat = 0.9
 
     private let provider: any FilteredStillProviding
     private let cameraSession: @MainActor () -> Int

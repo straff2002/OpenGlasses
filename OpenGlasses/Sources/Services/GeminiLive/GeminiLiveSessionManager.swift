@@ -371,7 +371,7 @@ class GeminiLiveSessionManager: ObservableObject {
                     // The retry ladder starting is the moment the wearer lost the assistant; the
                     // terminal `onDisconnected` path above cannot fire for this drop, because it
                     // guards on exactly this flag.
-                    if self.reconnecting { self.onLifecycle?(.connectionLost) }
+                    if self.reconnecting { _ = self.onLifecycle?(.connectionLost) }
                 }
                 if let bridge = self.openClawBridge {
                     if self.toolCallStatus != bridge.lastToolCallStatus {
@@ -482,7 +482,7 @@ class GeminiLiveSessionManager: ObservableObject {
 
         // Plan FF P0/PR2: "usable" is all three facts, not the socket alone — everything above had
         // to succeed to reach here, and the connection state is re-read rather than assumed.
-        onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
+        _ = onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
                                            sessionConnected: geminiService.connectionState == .ready,
                                            microphoneListening: true)))
     }
@@ -583,7 +583,7 @@ class GeminiLiveSessionManager: ObservableObject {
                 PrivacyLog.realtimeSession(.gemini, .cameraStarted, success: ok)
                 return ok
             },
-            report: { [weak self] signal in self?.onLifecycle?(signal) })
+            report: { [weak self] signal in _ = self?.onLifecycle?(signal) })
     }
 
     // MARK: - System Instruction

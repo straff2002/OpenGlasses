@@ -237,7 +237,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
                                                error: SafeErrorSummary(error))
                 }
                 self.startFrameCapture()
-                self.onLifecycle?(.reconnected(audioRestored: audioRestored,
+                _ = self.onLifecycle?(.reconnected(audioRestored: audioRestored,
                                                needsVisualEvidence: self.isCameraStreaming))
             }
         }
@@ -260,7 +260,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
                 }
                 if self.reconnecting != self.realtimeService.reconnecting {
                     self.reconnecting = self.realtimeService.reconnecting
-                    if self.reconnecting { self.onLifecycle?(.connectionLost) }
+                    if self.reconnecting { _ = self.onLifecycle?(.connectionLost) }
                 }
             }
         }
@@ -337,7 +337,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
         // Plan FF P0/PR2 — the same three facts. This backend reports readiness through
         // `connectionState` rather than a setup callback, so it is read here.
-        onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
+        _ = onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
                                            sessionConnected: realtimeService.connectionState == .ready,
                                            microphoneListening: true)))
     }
