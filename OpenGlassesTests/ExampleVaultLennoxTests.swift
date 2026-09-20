@@ -273,7 +273,7 @@ final class ExampleVaultLennoxTests: XCTestCase {
         XCTAssertTrue(readBack.hasPrefix("Job WO-4471 — Lennox SLP99 Furnace Service."), readBack)
         XCTAssertTrue(readBack.contains("  Serial: 5820A12345 (from the nameplate)"), readBack)
         XCTAssertTrue(readBack.contains("Done: Check the pressure switch tubing."), readBack)
-        XCTAssertTrue(readBack.contains("Procedure slp99_pressure_switch_lockout finished as resolved"), readBack)
+        XCTAssertTrue(readBack.contains("Procedure SLP99 pressure switch lockout finished as resolved"), readBack)
         XCTAssertTrue(readBack.contains("Done: Cleaned the condensate trap (added by the technician). Note: flushed it, ran clear."),
                       readBack)
         XCTAssertTrue(readBack.contains("2 × 14T65"), readBack)
