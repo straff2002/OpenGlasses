@@ -64,6 +64,14 @@ struct MainView: View {
                     .zIndex(1)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            PrivacyLog.app(.memoryWarning)
+        }
+        .onChange(of: selectedTab, initial: true) { _, tab in
+            let names = ["voice", "modes", "chat", "settings"]
+            guard names.indices.contains(tab) else { return }
+            PrivacyLog.app(.tabSelected, detail: PrivacyToken(names[tab]))
+        }
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
         .preferredColorScheme(colorScheme)

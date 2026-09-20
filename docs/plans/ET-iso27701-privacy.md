@@ -73,6 +73,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | conversationRecallIndex | `ConversationIndex` | derivedIndex | wearer | processMemoryOnly | yes | none | `ConversationIndex.clear()` | `ConversationIndex.delete(threadID:)` |
 | conversationThreads | `ConversationStore` | conversationContent | wearer | complete | yes | wearer history retention days; off by default | `ConversationStore.deleteAllThreads()` | `ConversationStore.deleteThread(_:)` |
 | debugEventLog | `AppState` | operationalAudit | wearer | platformDefault | no | ring-capped on write | none — the ring overwrites itself | n/a — no subject linkage |
+| diagnosticBreadcrumbs | `DiagnosticRing` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | most recent 500 events; previous run readable for 48 hours | `DiagnosticRing.shared.clear()` | n/a — no subject linkage |
 | diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
 | erasureLedger | `ErasureLedger` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 200 | `ErasureLedger.clear()` | none — the entry is what makes the erasure survive; removing it would let a restore bring the subject back |
 | evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | completeUntilFirstUserAuthentication | yes | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |

@@ -267,6 +267,28 @@ final class StoreIntegrityTests: XCTestCase {
         XCTAssertEqual(reopened.threads.first?.messages.first?.content, "hello")
     }
 
+    func testConversationStoreRepairsDuplicatePersistedThreadIDsWithoutLosingConversations() throws {
+        var first = ConversationThread(mode: "direct", title: "First")
+        first.messages.append(ConversationMessage(role: "user", content: "alpha"))
+        var second = first
+        second.title = "Second"
+        second.messages = [ConversationMessage(role: "user", content: "beta")]
+        let data = try JSONEncoder().encode([first, second])
+        try data.write(to: tempDir.appendingPathComponent("conversations.json"))
+
+        let store = ConversationStore(directory: tempDir)
+
+        XCTAssertEqual(store.threads.count, 2)
+        XCTAssertEqual(Set(store.threads.map(\.id)).count, 2)
+        XCTAssertEqual(Set(store.threads.map(\.title)), ["First", "Second"])
+        XCTAssertEqual(Set(store.threads.flatMap(\.messages).map(\.content)), ["alpha", "beta"])
+
+        let repairedIDs = store.threads.map(\.id)
+        let reopened = ConversationStore(directory: tempDir)
+        XCTAssertEqual(reopened.threads.map(\.id), repairedIDs,
+                       "repaired row identities must remain stable across launches")
+    }
+
     // MARK: - Teleprompter share inbox: drain must not outrun the save
 
     func testInboxPeekDoesNotConsume() {

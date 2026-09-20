@@ -14,6 +14,8 @@ final class ConfigTests: XCTestCase {
         "openClawGatewayToken",
         "geminiLiveAPIKey",
         "geminiLiveModel",
+        "fieldAssistBillingBasis",
+        "fieldAssistMinutesPerBillingUnit",
     ]
 
     // Secrets now live in the Keychain (see KeychainService), so they must be
@@ -179,6 +181,21 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(Config.geminiLiveAudioBitsPerSample, 16)
         XCTAssertEqual(Config.geminiLiveVideoFrameInterval, 1.0)
         XCTAssertEqual(Config.geminiLiveVideoJPEGQuality, 0.5)
+    }
+
+    func testFieldAssistBillingDefaultsAndClampsUnitLength() {
+        XCTAssertEqual(Config.fieldAssistBillingBasis, .minutes)
+        XCTAssertEqual(Config.fieldAssistMinutesPerBillingUnit, 15)
+
+        Config.setFieldAssistBillingBasis(.units)
+        Config.setFieldAssistMinutesPerBillingUnit(1)
+        XCTAssertEqual(Config.fieldAssistBillingBasis, .units)
+        XCTAssertEqual(Config.fieldAssistMinutesPerBillingUnit, 1)
+
+        Config.setFieldAssistMinutesPerBillingUnit(0)
+        XCTAssertEqual(Config.fieldAssistMinutesPerBillingUnit, 1)
+        Config.setFieldAssistMinutesPerBillingUnit(999)
+        XCTAssertEqual(Config.fieldAssistMinutesPerBillingUnit, 240)
     }
 
     // MARK: - OpenClawConnectionMode Enum

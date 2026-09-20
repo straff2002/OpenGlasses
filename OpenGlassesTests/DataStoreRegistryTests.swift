@@ -343,6 +343,15 @@ final class DataStoreRegistryTests: XCTestCase {
                              match: .operationJournal)
     }
 
+    func testDiagnosticBreadcrumbAttributesMatchTheRegistry() throws {
+        let url = workspace.appendingPathComponent("last-session.json")
+        let store = DiagnosticBreadcrumbStore(url: url)
+        store.schedule([.init(timestamp: Date(), category: .lifecycle, name: .app,
+                              line: "[lifecycle] app event=becameActive")])
+        store.waitForPendingWrites()
+        try assertAttributes(of: url, match: .diagnosticBreadcrumbs)
+    }
+
     @MainActor
     func testDocumentCorpusDatabaseAttributesMatchTheRegistry() throws {
         _ = DocumentStore(directory: workspace)

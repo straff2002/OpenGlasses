@@ -483,17 +483,19 @@ final class WorkRecordTests: XCTestCase {
             "Equipment: SLP99UH090XV60CK (from the nameplate), work order asset Unit 47B.",
             "  Serial: 5820A12345 (from the nameplate)",
             "Done: Check the pressure switch tubing. Why: E223 on a heat call. "
-                + "Procedure slp99_pressure_switch_lockout finished as resolved. Note: cleared the tubing. "
+                + "Procedure SLP99 pressure switch lockout finished as resolved. Note: cleared the tubing. "
                 + "Parts: 14T65 (High-altitude pressure switch) — verified, parts.md § Conversion and high altitude. "
                 + "1 reading, 1 page verified. Cited SLP99UHVK Service Manual, page 39. 12 minutes.",
             "Done: Cleaned the condensate trap (added by the technician). 3 minutes.",
             "Declined: Replace the flame sensor. Cited SLP99UHVK Service Manual, page 65.",
+            "Parts used:",
+            "  14T65 (High-altitude pressure switch) — verified, parts.md § Conversion and high altitude",
             "Against the job itself: 1 photo.",
             "Parts requested:",
             "  2 × 14T65 (High-altitude pressure switch) — verified, parts.md § Conversion and high altitude — today, not on the van. Base: None in stock, three days",
             "Pages verified against the manufacturer's document: SLP99UHVK Service Manual, page 39.",
             "Escalated: Readings did not match the flowchart (resolved).",
-            "Time on site: 25 minutes."
+            "Time on job: 25 minutes."
         ])
 
         // The derived views agree with the lines.
@@ -501,6 +503,64 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertEqual(record.notDone.map(\.title), ["Replace the flame sensor"])
         XCTAssertEqual(record.readings, ["pressure_readings@1970-01-01T00:00:00Z"])
         XCTAssertEqual(record.billableMinutes, 25)
+        XCTAssertEqual(record.billableSeconds, 1_500)
+    }
+
+    func testTheRecordShowsExactActiveTimeWithoutRawFormatting() {
+        var session = Self.scriptedSession()
+        session.billableSeconds = 252
+        let record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(record.summaryLines.last, "Time on job: 4 minutes 12 seconds.")
+        XCTAssertFalse(record.summary.contains("_"))
+    }
+
+    func testSubMinuteRecordShowsExactSeconds() {
+        var session = Self.scriptedSession()
+        session.billableSeconds = 1
+        let record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(record.summaryLines.last, "Time on job: 1 second.")
+    }
+
+    func testBillingUnitsRoundUpWithOneUnitMinimum() {
+        var session = Self.scriptedSession()
+        session.billingBasis = .units
+        session.minutesPerBillingUnit = 15
+
+        session.billableSeconds = 1
+        var record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(record.billableUnits, 1)
+        XCTAssertEqual(record.summaryLines.last,
+                       "Billable units: 1 unit (15 minutes per unit; partial units round up).")
+
+        session.billableSeconds = 15 * 60
+        record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(record.billableUnits, 1)
+
+        session.billableSeconds += 1
+        record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(record.billableUnits, 2)
+        XCTAssertEqual(record.billingSummary, "2 units")
+    }
+
+    func testEmailBodyCarriesTheCompleteCustomerRecord() {
+        var session = Self.scriptedSession()
+        session.billableSeconds = 16 * 60 + 12
+        session.billingBasis = .units
+        session.minutesPerBillingUnit = 15
+        let record = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        let request = DeliveryRequest.make(record: record, channel: .email,
+                                           recipients: ["service@example.com"], attachments: [])
+        let body = ReportComposerModel(request: request).filledBody
+
+        XCTAssertEqual(request.subject, "Job WO-4471 — Lennox SLP99 Furnace Service")
+        XCTAssertTrue(body.contains("Job WO-4471 — Lennox SLP99 Furnace Service."), body)
+        XCTAssertTrue(body.contains("Done: Check the pressure switch tubing."), body)
+        XCTAssertTrue(body.contains("Parts used:"), body)
+        XCTAssertTrue(body.contains("14T65 (High-altitude pressure switch)"), body)
+        XCTAssertTrue(body.contains("Time on job: 16 minutes 12 seconds."), body)
+        XCTAssertTrue(body.contains("Billable units: 2 units (15 minutes per unit; partial units round up)."), body)
+        XCTAssertFalse(body.contains("ai_only"), body)
+        XCTAssertFalse(body.contains("in_progress"), body)
     }
 
     func testTheRecordJSONRoundTripsAndIsStable() throws {

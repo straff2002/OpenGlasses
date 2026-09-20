@@ -9,13 +9,13 @@ import Foundation
 /// tap defensible; a ring of content would need consent to *collect*, and this one needs consent
 /// only to *leave the device*.
 ///
-/// It has no persistence. The buffer lives in this process and dies with it, so a diagnostics
-/// export can only ever describe the session the wearer is reporting on, and there is no file for
-/// anything else to find later.
+/// The shared ring checkpoints its bounded tail locally. The previous run is loaded separately
+/// for a consented export after a crash; it is not evidence that the previous exit was a crash.
+/// Writes are asynchronous, so an abrupt exit may lose the latest queued events.
 final class DiagnosticRing: @unchecked Sendable {
 
     /// One recorded event: when it happened, what it was, and the encoded line itself.
-    struct Entry: Equatable {
+    struct Entry: Equatable, Codable {
         let timestamp: Date
         let category: PrivacyLog.Category
         let name: PrivacyEvent.Name
@@ -27,7 +27,13 @@ final class DiagnosticRing: @unchecked Sendable {
     /// that the whole buffer is readable in a preview the wearer is expected to actually read.
     static let defaultCapacity = 500
 
-    static let shared = DiagnosticRing()
+    static let shared = DiagnosticRing(persistenceURL: FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask).first?
+        .appendingPathComponent("Diagnostics/last-session.json"))
+
+    /// Frozen at launch: current activity must not push the previous run out of the export.
+    let previousEntries: [Entry]
+    private let persistence: DiagnosticBreadcrumbStore?
 
     let capacity: Int
 
@@ -36,9 +42,12 @@ final class DiagnosticRing: @unchecked Sendable {
     private var buffer: [Entry] = []
     private var tap: PrivacyLog.TapToken?
 
-    init(capacity: Int = DiagnosticRing.defaultCapacity, clock: @escaping () -> Date = Date.init) {
+    init(capacity: Int = DiagnosticRing.defaultCapacity, clock: @escaping () -> Date = Date.init,
+         persistenceURL: URL? = nil) {
         self.capacity = max(1, capacity)
         self.clock = clock
+        persistence = persistenceURL.map { DiagnosticBreadcrumbStore(url: $0) }
+        previousEntries = persistence?.read(capacity: max(1, capacity), now: clock()) ?? []
         buffer.reserveCapacity(min(self.capacity, 64))
     }
 
@@ -57,6 +66,9 @@ final class DiagnosticRing: @unchecked Sendable {
         if buffer.count > capacity {
             buffer.removeFirst(buffer.count - capacity)
         }
+        // Queue while holding the ring lock so concurrent producers cannot persist an older
+        // snapshot after a newer one. Disk work itself never runs under this lock or on the UI.
+        persistence?.schedule(buffer)
         lock.unlock()
     }
 
@@ -67,6 +79,8 @@ final class DiagnosticRing: @unchecked Sendable {
         return buffer
     }
 
+    func waitForPendingWrites() { persistence?.waitForPendingWrites() }
+
     var count: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -76,6 +90,7 @@ final class DiagnosticRing: @unchecked Sendable {
     func clear() {
         lock.lock()
         buffer.removeAll(keepingCapacity: true)
+        persistence?.schedule([])
         lock.unlock()
     }
 
@@ -114,5 +129,76 @@ final class DiagnosticRing: @unchecked Sendable {
         tap = nil
         lock.unlock()
         if let token { PrivacyLog.removeTap(token) }
+    }
+}
+
+
+/// Coalesces pending snapshots so a burst of events cannot queue unbounded disk writes.
+/// Only encoded, content-free events enter this store. No crash-time handler does file I/O.
+final class DiagnosticBreadcrumbStore: @unchecked Sendable {
+    private let url: URL
+    private let queue = DispatchQueue(label: "com.openglasses.diagnostic-breadcrumbs", qos: .utility)
+    private let lock = NSLock()
+    private var pending: [DiagnosticRing.Entry]?
+    private var scheduled = false
+
+    init(url: URL) { self.url = url }
+
+    func read(capacity: Int, now: Date) -> [DiagnosticRing.Entry] {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size <= 2_000_000,
+              let data = try? Data(contentsOf: url),
+              let entries = try? JSONDecoder().decode([DiagnosticRing.Entry].self, from: data)
+        else { return [] }
+        return Array(entries.filter {
+            now.timeIntervalSince($0.timestamp) <= 48 * 60 * 60 && $0.timestamp <= now
+        }.suffix(capacity))
+    }
+
+    func schedule(_ entries: [DiagnosticRing.Entry]) {
+        lock.lock()
+        pending = entries
+        let needsWorker = !scheduled
+        scheduled = true
+        if needsWorker { queue.async { self.drain() } }
+        lock.unlock()
+    }
+
+    private func drain() {
+        while true {
+            lock.lock()
+            guard let entries = pending else {
+                scheduled = false
+                lock.unlock()
+                return
+            }
+            pending = nil
+            lock.unlock()
+            do {
+                let directory = url.deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                var excludedDirectory = directory
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                try excludedDirectory.setResourceValues(values)
+                let data = try JSONEncoder().encode(entries)
+                #if os(iOS)
+                try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                #else
+                try data.write(to: url, options: .atomic)
+                #endif
+                StoreProtection.apply(.completeUntilFirstUserAuthentication,
+                                      backupExcluded: true, to: url)
+            } catch {
+                // Diagnostics must never crash the app or recursively log their own I/O failure.
+            }
+        }
+    }
+
+    /// For tests/background callers only. Never block the main thread waiting for diagnostics.
+    func waitForPendingWrites() {
+        lock.lock()
+        lock.unlock() // Any accepted worker is enqueued before the barrier is submitted.
+        queue.sync {}
     }
 }

@@ -14,9 +14,11 @@ final class FieldSessionTool: NativeTool {
 
     let name = "field_session"
     let description = """
-    Start, pause, resume, end, or query a Field Assist session for grounded, domain-specific technical support \
+    Start, pause, resume, end, update, or query a Field Assist session for grounded, domain-specific technical support \
     including installed custom vaults. Sessions load a knowledge vault and emit an audit log. \
-    Use 'start' when the technician begins work on equipment, 'end' when they finish. \
+    Use 'start' when the technician begins work on equipment, 'set_job_reference' whenever the \
+    technician gives or corrects a job/work-order number, and 'end' when they finish. Only confirm \
+    that a job reference was recorded after this tool action succeeds. \
     Use 'recall' to retrieve older technician reports, readings and task results for the current \
     equipment when they are absent from the working context. Reports are not independently \
     verified. Read subsequent records for corrections; paginate until the relevant record is complete. \
@@ -30,7 +32,7 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
+                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
             ],
             "format": [
                 "type": "string",
@@ -51,6 +53,10 @@ final class FieldSessionTool: NativeTool {
             "asset_id": [
                 "type": "string",
                 "description": "Optional equipment/asset identifier (e.g. 'Unit 47B', 'Carrier 30RB s/n 1234')."
+            ],
+            "job_reference": [
+                "type": "string",
+                "description": "Required on 'set_job_reference': the technician's exact job or work-order number. Do not invent or normalize it."
             ],
             "mode": [
                 "type": "string",
@@ -85,6 +91,8 @@ final class FieldSessionTool: NativeTool {
             return service.recallContinuity(query: args["query"] as? String, offset: args["offset"] as? Int ?? 0)
         case "start":
             return await startSession(args: args, service: service)
+        case "set_job_reference":
+            return setJobReference(args: args, service: service)
         case "pause":
             return await pauseSession(service: service)
         case "resume":
@@ -100,7 +108,7 @@ final class FieldSessionTool: NativeTool {
         case "export":
             return await exportSession(args: args, service: service)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', or 'export'."
+            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', or 'export'."
         }
     }
 
@@ -151,6 +159,24 @@ final class FieldSessionTool: NativeTool {
         return "Configured default for new jobs: \(defaultName) [\(defaultId)]. Installed vaults:\n" + choices.joined(separator: "\n")
     }
 
+    private func setJobReference(args: [String: Any], service: FieldSessionService) -> String {
+        guard service.activeSession != nil else {
+            return "Could not record job reference: no Field Assist session is active."
+        }
+        guard let supplied = args["job_reference"] as? String else {
+            return "Could not record job reference: job_reference must be the technician's exact job or work-order number."
+        }
+        let reference = supplied.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reference.isEmpty else {
+            return "Could not record job reference: job_reference cannot be empty."
+        }
+        service.setJobReference(reference)
+        guard service.activeSession?.jobReference == reference else {
+            return "Could not record job reference."
+        }
+        return "Job reference \(reference) is recorded for this active session and will be included in its submitted record."
+    }
+
     private func pauseSession(service: FieldSessionService) async -> String {
         do {
             _ = try service.pauseSession()
@@ -174,8 +200,10 @@ final class FieldSessionTool: NativeTool {
         let outcome = FieldSession.Outcome(rawValue: outcomeRaw) ?? .resolved
         do {
             let session = try service.endSession(outcome: outcome)
-            let minutes = Int((session.billableSeconds / 60.0).rounded())
-            return "Session ended with outcome '\(outcome.rawValue)'. Billable time: \(minutes) min. Audit log saved."
+            let billing = WorkRecord.billingSummary(
+                seconds: session.billableSeconds, basis: session.billingBasis,
+                minutesPerUnit: session.minutesPerBillingUnit)
+            return "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved."
         } catch {
             return "Could not end session: \(error.localizedDescription)"
         }
@@ -190,7 +218,7 @@ final class FieldSessionTool: NativeTool {
         let mins = runningFor / 60
         let asset = session.assetId.map { ", asset \($0)" } ?? ""
         let pause = session.pausedAt != nil ? " [paused]" : ""
-        return "Active session: \(vaultName) [\(session.vaultId)]\(asset). Running ~\(mins) min, \(session.escalations.count) escalation(s).\(pause)\n" + vaultSummary()
+        return "Active session: \(vaultName) [\(session.vaultId)]\(asset). Running about \(WorkRecord.minutesPhrase(minutes: mins)), \(session.escalations.count) escalation(s).\(pause)\n" + vaultSummary()
     }
 
     private func historySummary(service: FieldSessionService) async -> String {
@@ -199,8 +227,10 @@ final class FieldSessionTool: NativeTool {
         let lines = recent.map { session -> String in
             let vault = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
             let date = DateFormatter.localizedString(from: session.startedAt, dateStyle: .short, timeStyle: .short)
-            let minutes = Int((session.billableSeconds / 60.0).rounded())
-            return "• \(date) — \(vault), \(session.outcome.rawValue), \(minutes) min"
+            let billing = WorkRecord.billingSummary(
+                seconds: session.billableSeconds, basis: session.billingBasis,
+                minutesPerUnit: session.minutesPerBillingUnit)
+            return "• \(date) — \(vault), \(session.outcome.displayName), \(billing)"
         }
         return "Recent sessions:\n\(lines.joined(separator: "\n"))"
     }

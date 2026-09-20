@@ -27,7 +27,7 @@ struct StreamingTurn: Equatable {
 
 /// A conversation thread with metadata.
 struct ConversationThread: Codable, Identifiable, Sendable {
-    let id: String
+    var id: String
     var title: String
     var summary: String?      // Auto-generated mini summary of what was discussed
     var messages: [ConversationMessage]
@@ -619,6 +619,7 @@ class ConversationStore: ObservableObject {
     /// touch. The merged list is re-sorted newest-first, which is the ordering
     /// `startThread`'s `insert(at: 0)` maintains everywhere else.
     private func adoptReloadedThreads(_ decoded: [ConversationThread], detail: String) {
+        let (decoded, _) = Self.repairingDuplicateThreadIDs(decoded)
         let onDiskIds = Set(decoded.map(\.id))
         let unsaved = threads.filter { !onDiskIds.contains($0.id) }
         threads = (decoded + unsaved).sorted { $0.updatedAt > $1.updatedAt }
@@ -700,13 +701,16 @@ class ConversationStore: ObservableObject {
             Task { @MainActor [weak self] in
                 do {
                     let data = try await enc.decryptFile(at: url)
-                    let decoded = try JSONDecoder().decode([ConversationThread].self, from: data)
+                    let (decoded, repairedDuplicateIDs) = Self.repairingDuplicateThreadIDs(
+                        try JSONDecoder().decode([ConversationThread].self, from: data)
+                    )
                     self?.threads = decoded
                     self?.saveBlocked = false
                     self?.isLocked = false
                     self?.recallCoordinator?.storeDidUnlock(threads: decoded)
                     PrivacyLog.conversation(.conversations, .loaded, count: decoded.count,
                                             detail: PrivacyToken("encrypted"))
+                    if repairedDuplicateIDs { self?.save() }
                 } catch {
                     self?.isLocked = true
                     PrivacyLog.conversation(.conversations, .awaitingAuthentication)
@@ -717,14 +721,18 @@ class ConversationStore: ObservableObject {
 
         switch JSONStore.loadArray(ConversationThread.self, at: storageURL, name: "conversations") {
         case .loaded(let decoded):
-            threads = decoded
+            let (loaded, repairedDuplicateIDs) = Self.repairingDuplicateThreadIDs(decoded)
+            threads = loaded
             saveBlocked = false
-            PrivacyLog.conversation(.conversations, .loaded, count: decoded.count,
+            PrivacyLog.conversation(.conversations, .loaded, count: threads.count,
                                     detail: PrivacyToken("plaintext"))
+            if repairedDuplicateIDs { save() }
         case .recovered(let decoded, _):
-            threads = decoded
+            let (loaded, repairedDuplicateIDs) = Self.repairingDuplicateThreadIDs(decoded)
+            threads = loaded
             saveBlocked = false
-            PrivacyLog.conversation(.conversations, .recovered, count: decoded.count)
+            PrivacyLog.conversation(.conversations, .recovered, count: threads.count)
+            if repairedDuplicateIDs { save() }
         case .corrupt:
             // Original preserved in StoreRecovery — start fresh rather than crash-loop.
             threads = []
@@ -734,6 +742,25 @@ class ConversationStore: ObservableObject {
         case .absent:
             break
         }
+    }
+
+    /// A `ForEach`/`List` requires every row identity to be unique. Repair duplicate persisted ids
+    /// before observers can render them. Every record is retained: the first keeps its id and each
+    /// later collision receives a fresh one. Callers persist a repaired result so those identities
+    /// remain stable across launches.
+    static func repairingDuplicateThreadIDs(
+        _ threads: [ConversationThread]
+    ) -> (threads: [ConversationThread], repaired: Bool) {
+        var seen = Set<String>()
+        var repaired = false
+        let result = threads.map { thread in
+            guard !seen.insert(thread.id).inserted else { return thread }
+            var copy = thread
+            repeat { copy.id = UUID().uuidString } while !seen.insert(copy.id).inserted
+            repaired = true
+            return copy
+        }
+        return (result, repaired)
     }
 
     @discardableResult

@@ -66,7 +66,7 @@ enum QueuedRecordRows {
             if !record.partsRequests.isEmpty {
                 pieces.append("\(record.partsRequests.count) part\(record.partsRequests.count == 1 ? "" : "s") requested")
             }
-            pieces.append(WorkRecord.minutesPhrase(minutes: record.billableMinutes))
+            pieces.append(record.billingSummary)
             return QueuedRecordRow(
                 id: op.id, kind: op.kind, state: op.state, sessionId: op.sessionId,
                 jobReference: job,

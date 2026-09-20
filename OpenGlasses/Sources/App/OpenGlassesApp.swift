@@ -186,7 +186,7 @@ struct OpenGlassesApp: App {
         // listeners. Production refuses those listeners independently at their start boundary;
         // clearing the preferences here also prevents the UI from representing them as enabled.
         LocalServiceExposurePolicy.current.clearPersistedOptIns()
-        // Start the in-memory diagnostic ring before anything else can log, so a launch-time fault
+        // Start the persistent diagnostic ring before anything else can log, so a launch-time fault
         // is in the buffer a wearer would export. It records the *encoded* events — the same lines
         // the OS log already receives — so this collects nothing new; only exporting it needs
         // consent, and that is a preview the wearer reads in full.
