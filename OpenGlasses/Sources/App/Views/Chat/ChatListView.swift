@@ -58,6 +58,13 @@ struct ChatListView: View {
                 ChatThreadView(threadId: id)
             }
         }
+        .onChange(of: sortedThreads.map(\.id), initial: true) { _, _ in
+            // Structure only: no thread ids, titles, or conversation content leave the store.
+            // This gives a future UIKit list assertion the row count and active screen that the
+            // TestFlight crash report itself omits.
+            PrivacyLog.app(.listUpdated, detail: PrivacyToken("ChatListView"),
+                           count: sortedThreads.count)
+        }
     }
 
     private var threadList: some View {

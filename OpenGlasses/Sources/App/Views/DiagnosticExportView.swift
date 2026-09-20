@@ -31,8 +31,8 @@ struct DiagnosticExportView: View {
                     OGRowValue(value: "\(document?.eventCount ?? 0)")
                 }
                 OGDivider()
-                OGRow("Kept In Memory Only", icon: "memorychip", mutedIcon: true, showsChevron: false) {
-                    OGRowValue(value: "This session")
+                OGRow("Saved Locally", icon: "internaldrive", mutedIcon: true, showsChevron: false) {
+                    OGRowValue(value: "Recent runs")
                 }
             }
 
@@ -88,6 +88,7 @@ struct DiagnosticExportView: View {
         document = DiagnosticExportBuilder.build(
             entries: DiagnosticRing.shared.entries,
             environment: .current,
+            previousEntries: DiagnosticRing.shared.previousEntries,
             capacity: DiagnosticRing.shared.capacity
         )
     }

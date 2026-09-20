@@ -31,7 +31,7 @@ enum PrivacyLog {
 
     /// Fixed subsystem categories. Adding one is a deliberate act — a category is how a reader
     /// (and a future diagnostics export) filters, so an open-ended set defeats the point.
-    enum Category: String {
+    enum Category: String, Codable {
         /// Tool dispatch: which tool, how long, what verdict.
         case tools
         /// Live model sessions (Gemini Live, OpenAI Realtime): state, counts, timing.
@@ -1936,6 +1936,7 @@ enum PrivacyLog {
         case fieldSessionStarted, fieldSessionEnded
         case operationSettledLate, chatReadbackUnconfigured, powerPosture
         case quickDisconnect
+        case screenAppeared, screenDisappeared, tabSelected, listUpdated, memoryWarning
     }
 
     /// `detail` and `state` are fixed app vocabularies — a routing tier, a command label, a power
@@ -2043,7 +2044,7 @@ struct PrivateIdentifier: Equatable, CustomStringConvertible {
 struct PrivacyEvent: Equatable {
 
     /// The closed set of events this app emits. A new event is a new case, reviewable as a diff.
-    enum Name: String, CaseIterable {
+    enum Name: String, CaseIterable, Codable {
         case toolCallReceived, toolCallRefused, toolCallAcked, toolCallCancelled, toolCallCompleted
         case realtimeSession, realtimeUtterance, realtimeMedia, realtimeSendSkipped
         case realtimeTruncated, realtimeReconnectScheduled, realtimeReconnectExhausted

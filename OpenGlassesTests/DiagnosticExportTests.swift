@@ -67,6 +67,57 @@ final class DiagnosticRingTests: XCTestCase {
         XCTAssertEqual(Set(ring.entries.map(\.line)).count, 100, "no entry may be written twice")
     }
 
+    func testPersistedTailSurvivesRelaunchWithoutMixingCurrentRun() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("breadcrumbs.json")
+        let now = Date()
+        let store = DiagnosticBreadcrumbStore(url: url)
+        let entries = (0..<8).map {
+            DiagnosticRing.Entry(timestamp: now, category: .lifecycle, name: .app, line: "event-\($0)")
+        }
+        store.schedule(entries)
+        store.waitForPendingWrites()
+        let relaunched = DiagnosticRing(capacity: 3, clock: { now }, persistenceURL: url)
+        XCTAssertEqual(relaunched.previousEntries.map(\.line), ["event-5", "event-6", "event-7"])
+        XCTAssertTrue(relaunched.entries.isEmpty)
+        relaunched.record(event(1), line: "new-run")
+        XCTAssertEqual(relaunched.entries.map(\.line), ["new-run"])
+        XCTAssertEqual(relaunched.previousEntries.count, 3)
+        relaunched.waitForPendingWrites()
+    }
+
+    func testPersistenceRejectsExpiredAndCorruptData() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("breadcrumbs.json")
+        let now = Date()
+        let store = DiagnosticBreadcrumbStore(url: url)
+        store.schedule([
+            .init(timestamp: now.addingTimeInterval(-49 * 3600), category: .lifecycle, name: .app, line: "old"),
+            .init(timestamp: now, category: .lifecycle, name: .app, line: "recent")
+        ])
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.read(capacity: 10, now: now).map(\.line), ["recent"])
+        try Data("partial-json".utf8).write(to: url)
+        XCTAssertTrue(store.read(capacity: 10, now: now).isEmpty)
+    }
+
+    func testPersistenceCoalescingKeepsNewestSnapshotAndCanClear() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DiagnosticBreadcrumbStore(url: directory.appendingPathComponent("breadcrumbs.json"))
+        let now = Date()
+        for index in 0..<200 {
+            store.schedule([.init(timestamp: now, category: .lifecycle, name: .app, line: "\(index)")])
+        }
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.read(capacity: 10, now: now).map(\.line), ["199"])
+        store.schedule([])
+        store.waitForPendingWrites()
+        XCTAssertTrue(store.read(capacity: 10, now: now).isEmpty)
+    }
+
     /// Attaching subscribes to the real facade; detaching actually stops it.
     func testAttachRecordsRealEventsAndDetachStops() {
         let ring = DiagnosticRing(capacity: 50)
@@ -167,6 +218,18 @@ final class DiagnosticExportBuilderTests: XCTestCase {
         XCTAssertFalse(document.body.contains("CANARY-7f3a-SECRET"),
                        "the final redaction pass must mask a token value")
         XCTAssertTrue(document.body.contains("token=***"))
+    }
+
+    func testPreviousRunIsLabeledDatedAndRedactedInExport() {
+        let previous = DiagnosticRing.Entry(timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            category: .capture, name: .qrFetchLoaded, line: "url=https://example.test/?token=CANARY-SECRET")
+        let document = DiagnosticExportBuilder.build(entries: entries(1), environment: environment,
+            previousEntries: [previous], timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(document.eventCount, 2)
+        XCTAssertTrue(document.body.contains("Previous run (may be a different app build; exit reason unknown)"))
+        XCTAssertTrue(document.body.contains("2023-11-14"))
+        XCTAssertFalse(document.body.contains("CANARY-SECRET"))
+        XCTAssertTrue(document.body.contains("Nothing is sent automatically"))
     }
 
     func testDisplayNameIsADateAndNothingElse() {

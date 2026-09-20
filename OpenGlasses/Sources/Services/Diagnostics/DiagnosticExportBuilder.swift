@@ -49,12 +49,13 @@ enum DiagnosticExportBuilder {
         "This file is a list of what the app did — one line per structured event, with its category, event name, counts, durations and outcome.",
         "It contains no conversation content, no transcripts, no tool arguments or results, no photos, no names, no locations, no medical values, no URLs, and no keys or tokens. Those have no way into a log line: the logging API has no parameter that accepts them.",
         "Identifiers that would name a device, a gateway or a thread appear only as short one-way fingerprints (#a1b2c3d4), which can be compared with each other but not read back.",
-        "Only this session is here. The buffer is in memory, holds the most recent events, and is gone when the app quits.",
+        "Recent structured events are saved locally in a bounded buffer, excluded from backup. This export can include the previous run (up to 48 hours old), which may have ended normally or unexpectedly. The last events before an abrupt exit may be missing. Nothing is sent automatically.",
         "A note on the system log: marking a log field private tells the operating system to hide it from other readers on the device. It does not make the value safe to send to us, so this app does not put values in log fields and then rely on that. What you are reading is all there is.",
     ]
 
     static func build(entries: [DiagnosticRing.Entry],
                       environment: DiagnosticExportEnvironment,
+                      previousEntries: [DiagnosticRing.Entry] = [],
                       capacity: Int = DiagnosticRing.defaultCapacity,
                       now: Date = Date(),
                       timeZone: TimeZone = .current) -> DiagnosticExportDocument {
@@ -78,12 +79,17 @@ enum DiagnosticExportBuilder {
         body += eventLines.isEmpty
             ? "(no events recorded yet)"
             : eventLines.joined(separator: "\n")
+        if !previousEntries.isEmpty {
+            body += "\n\nPrevious run (may be a different app build; exit reason unknown)\n"
+            body += previousEntries.map { "\(generated.string(from: $0.timestamp))  \($0.line)" }
+                .joined(separator: "\n")
+        }
         body += "\n"
 
         return DiagnosticExportDocument(headerLines: headerLines,
                                         eventLines: eventLines,
                                         body: LogRedaction.redact(body),
-                                        eventCount: entries.count,
+                                        eventCount: entries.count + previousEntries.count,
                                         ringWasFull: entries.count >= capacity)
     }
 

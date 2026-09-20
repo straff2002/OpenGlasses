@@ -1158,7 +1158,21 @@ extension View {
     /// Stock `Form`/`List` screens keep their controls but pick up the warm
     /// canvas and accent tint, so a sub-page never flashes cool iOS grey
     /// against the hub.
-    func ogFormStyle() -> some View {
-        modifier(OGFormStyle())
+    func ogFormStyle(file: StaticString = #fileID) -> some View {
+        modifier(OGFormStyle()).diagnosticScreen(file)
+    }
+}
+
+extension View {
+    /// Call-site file identifiers are fixed code vocabulary, never a user-authored screen title.
+    func diagnosticScreen(_ file: StaticString = #fileID) -> some View {
+        let name = String(describing: file).split(separator: "/").last ?? "unknown"
+        let token = PrivacyToken(String(name))
+        return onAppear {
+            PrivacyLog.app(.screenAppeared, detail: token)
+        }
+        .onDisappear {
+            PrivacyLog.app(.screenDisappeared, detail: token)
+        }
     }
 }
