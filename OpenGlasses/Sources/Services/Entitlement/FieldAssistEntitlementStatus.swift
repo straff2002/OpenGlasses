@@ -66,12 +66,12 @@ struct FieldAssistEntitlementStatus: Equatable {
 /// *purchase*.
 enum FieldAssistPaywallCopy {
     static let locked = "Field Assist is locked"
-    static let lockedDetail = "Unlock the solo tier with a one-time purchase or a subscription, or enter the licence code your organisation issued."
+    static let lockedDetail = "Unlock the solo tier with a subscription, or enter the licence code your organisation issued."
     static let licenseHeader = "Organisation Licence"
     static let licenseFooter = "Enter the code your organisation issued. Codes are signed and validated on-device — no network required."
     static let purchaseHeader = "Solo — In-App Purchase"
-    static let purchaseFooter = "One-time unlock or subscription, on this Apple ID. Solo covers the bundled vaults, guided procedures, domain calculators, session log, and expert escalation."
-    static let purchased = "Unlocked with a one-time purchase"
+    static let purchaseFooter = "Subscription on this Apple ID. Solo covers the bundled vaults, guided procedures, domain calculators, session log, and expert escalation."
+    static let purchased = "Unlocked with a legacy purchase"
     static let teamOnly = "Your own vaults and manuals, and audited PDF export, are team capabilities. Your purchase covers the bundled vaults; a team licence from your organisation unlocks the rest."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
