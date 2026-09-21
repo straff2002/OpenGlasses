@@ -1,7 +1,9 @@
 # Plan FO — Guided Job Flow and the Job Tab
 
 **Status:** 🚧 Drafted 2026-09-21; evidence-at-close addendum (§5, P2a/P2b) added 2026-09-21;
-**P0 implemented 2026-09-21** (inventory below + the typed tab identifier). P1–P4 unbuilt.
+**P0 implemented 2026-09-21** (inventory below + the typed tab identifier);
+**P1 implemented 2026-09-22, headless and wired into Direct mode** — see *P1 as built* below.
+P2–P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -208,12 +210,9 @@ plain capture, a picture added in chat from the phone) are not attached to the j
   started/resumed/ended and every entry point that starts, re-scopes or ends a field session,
   mapped in *P0 inventory* below — including six findings that change P1's scope. `MainTab`
   replaces the bare-`Int` tab identifier, with the legacy numbers frozen; no visible change.
-- **P1 — deterministic core, headless.** `JobThreadPolicy`, `JobIntakeState`,
-  `JobChangeDetector`, the `FieldSession` field + migration test, `FieldSessionTool.start`
-  accepting `job_reference`. Wired into Direct mode. Tests are the gate: thread continuity across
-  wake-word cycles and app restart; intake including declined and misheard-digits read-back;
-  change detector corpus (same model different serial, accessory vs unit, low-confidence read);
-  compaction does not lose intake/change state.
+- **P1 — deterministic core, headless.** ✅ **Implemented 2026-09-22.** `JobThreadPolicy`,
+  `JobIntakeState`, `JobChangeDetector`, the `FieldSession` fields + migration test,
+  `FieldSessionTool.start` accepting `job_reference`. Wired into Direct mode. See *P1 as built*.
 - **P2 — Job tab.** The three states above over existing components; thread titling; past-jobs
   list. Snapshot/UI tests with Field Assist off (tab absent) and on.
 - **P2a — photo evidence at close.** Headless first: `EvidenceSelection`, `EvidenceImageBudget`,
@@ -235,12 +234,94 @@ plain capture, a picture added in chat from the phone) are not attached to the j
   has not been coached: start by voice, number captured, two units on one job, a forgotten-close
   caught by the change question, close and deliver, review later by job number.
 
+## P1 as built (2026-09-22)
+
+Everything under `OpenGlasses/Sources/Services/FieldAssist/Job/`: the four pure types and the one
+`@MainActor` coordinator, `GuidedJobFlow`, that composes them and touches the app.
+
+### Decisions the draft left open
+
+- **Binding is lazy, with adopt-if-one-exists.** Starting a job binds the conversation that is
+  already open; with none, the first turn's thread is bound. Eager creation was rejected for the
+  reason `ConversationContinuity.startFresh` already gives — an empty thread up front litters the
+  switcher with conversations nobody had, and a job started from a settings screen and abandoned
+  would leave one every time. In practice the adopt path is the normal one: "start a job" is itself
+  a turn, so by the time the tool runs its thread exists.
+- **"Start a separate chat" detaches rather than unbinds.** The job keeps `conversationThreadId` so
+  it can still be reviewed under the job; a new `conversationThreadDetached` flag stops turns
+  resolving to it. Unbinding would have lost the job's conversation; doing nothing would have made
+  the answer a lie, because the very next turn would have gone straight back into the job's thread.
+- **A paused job is still the job.** The binding, the intake and a held change question all key on
+  `endedAt == nil`, not `isActive`. `isActive` means "accepting input", and launch-restore pauses
+  every recovered session on purpose — reading it there orphaned a crash-restored job's
+  conversation on the first tap.
+- **A job number is never normalised.** The only text removed is a leading carrier phrase
+  ("it's job number 1005" → "1005"), matched ignoring punctuation and case, dropped by whole words,
+  and the remainder kept character for character. The read-back shows the result before it is
+  written down.
+- **Declined does not block delivery** (owner decision, 2026-09-21, now implemented): the record is
+  flagged in the audit log, `workRecord()` and the export are untouched, and the question is never
+  asked again.
+- **Gemini Live's missing `recordConversationTurn` stays a P3 item.** The binding did not close it.
+  Closing it means giving the live path an audit hook it has never had, which belongs with the rest
+  of the live-mode parity work rather than bolted onto a Direct-mode state machine.
+- **The equipment question is raised only where recognition *happened to* the session** — a spoken
+  model number, a nameplate the camera read. A spoken correction ("no, it's the 070") and a tap on
+  the phone's model list still go straight to `setEquipment`: those are the technician saying which
+  machine this is, and a question there would be the app arguing with an instruction.
+- **CarPlay and the watch have nowhere to put the question**, so they ask
+  `leaveJobThreadQuestion()` and, when there is one, leave the job's conversation alone. The phone
+  surfaces (conversation page, its switcher, Chat list, Chat thread) present a shared alert.
+- **Spoken strings are plain Swift strings**, as every other Field Assist spoken line already is
+  (`EquipmentIdentity.announcement`, the tool results). The one new rendered surface — the
+  "keep this in the job?" alert — uses ordinary SwiftUI `Text`/`Button` literals, which the string
+  catalog picks up on its own.
+
+### What the draft got wrong
+
+- §1 says the thread's title "becomes *Job 1005 — Lennox SLP99* once known". It cannot become
+  anything until a number is known, and there is no sensible title from equipment alone, so a job
+  with no number keeps whatever title the store gave it. Renaming is also narrower than drafted: a
+  title the wearer chose is never replaced, so only the placeholder, the store's own auto-title and
+  an earlier title for the same job are.
+- §3's `.unclear` needed a *reason*, because the two cases behave the same but are different facts
+  for the corpus: a read that matched several models, and a model-like token the vault mentions in
+  prose but never as a machine (a board, a kit part number).
+- The P0 inventory's "the quick action is a prompt" is addressed but not by changing its type:
+  `AppState.executeQuickAction` starts the job itself for the built-in action and the prompt text
+  now says the session is already running. Adding a `QuickAction.ActionType` case would have put a
+  creatable "start a field session" row in the quick-action settings picker for everyone.
+
+### Seams P2 calls
+
+On `AppState.guidedJobFlow`:
+
+```swift
+@discardableResult func startJob(vaultId: String, assetId: String? = nil,
+                                 mode: FieldSession.Mode = .aiOnly,
+                                 jobReference: String? = nil) throws -> FieldSession
+@discardableResult func closeJob(outcome: FieldSession.Outcome = .resolved) throws -> FieldSession
+func supplyJobReference(_ text: String)          // typed on the Job tab
+func declineJobReference()                       // "I don't have one", by button
+var intakeState: JobIntakeState { get }          // badge the outstanding number
+var boundThreadId: String? { get }               // "Open conversation"
+@Published private(set) var pendingUnitQuestion: JobUnitChangeQuestion?
+func answerUnitChange(_ answer: JobUnitChangeAnswer) async
+func leaveJobThreadQuestion(switchingTo threadId: String? = nil) -> JobThreadQuestion?
+func confirmLeaveJobThread()
+```
+
+`FieldSession` now also carries `conversationThreadId`, `conversationThreadDetached`, `jobIntake`,
+`pendingUnitChange` and `visitedUnits` (the multi-unit list §"Open questions" asked about — one
+`equipment` plus a list, scoped by FM's continuity scope so the export can partition later).
+
 ## Open questions
 
-- Should a declined job number block delivery, or only flag the record? Leaning: flag, never block.
-- Multi-unit jobs: is one `equipment` plus a list of visited units enough for the work record, or
-  does each unit need its own task/evidence grouping in the export? (FM's scopes already partition
-  tasks; the export does not show it yet.)
+- ~~Should a declined job number block delivery, or only flag the record?~~ **Answered in P1:**
+  flagged in the audit log, never blocking.
+- Multi-unit jobs: `visitedUnits` (P1) is the list, each with the FM continuity scope its work was
+  recorded under. Still open: whether the *export* needs to group tasks and evidence by unit rather
+  than listing them flat.
 - Auto-suggest closing a job after long inactivity or a large location change — useful, but it is
   a nag risk and touches billing; out of scope until a pilot asks.
 - Team tier: does the office need to push a job number/assignment to the phone (ops bridge)
