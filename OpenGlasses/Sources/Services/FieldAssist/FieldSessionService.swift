@@ -827,12 +827,20 @@ final class FieldSessionService: ObservableObject {
     func manualRetriever(store: VaultStore) -> VaultRetriever {
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
         let documentStore = self.documentStore
+        // Read once per turn: a manual whose removal was already in flight when the turn started.
+        let pending = VaultManualRemoval.pendingDocumentIds(for: store.manifest.id)
         return VaultRetriever(query: { query, limit in
             documentStore?.query(query, limit: limit, namespace: namespace) ?? []
         }, tokenSearch: { token, limit in
             documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
         }, provenance: { documentId in
             documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
+        }, availability: { documentId in
+            // Two questions, because a removal that started before the turn and one that finished
+            // during it fail different ones: is this manual on its way out, and does the store
+            // still hold it at the moment the answer is about to be built?
+            guard !pending.contains(documentId) else { return false }
+            return documentStore?.list(namespace: namespace).contains { $0.id == documentId } ?? false
         }, policy: retrievalPolicy, modelScope: retrievalModelScope)
     }
 
@@ -938,6 +946,9 @@ final class FieldSessionService: ObservableObject {
     func sourcePDFURL(for figure: StagedFigure) -> URL? {
         guard figure.hasSourcePage, let file = figure.sourceFile, let store = activeVault else { return nil }
         let manifest = store.manifest
+        // A manual with a removal in flight is already unavailable: its file may still be on disk
+        // until cleanup finishes, and opening it would show the page a citation was told to forget.
+        guard !VaultManualRemoval.isPending(file: file, vaultId: manifest.id) else { return nil }
         guard let document = manifest.documents.first(where: { $0.file == file }) else { return nil }
         let url = VaultImporter.baselineDirectory(for: manifest.id)
             .appendingPathComponent(manifest.documentRelativePath(document))
@@ -973,6 +984,7 @@ final class FieldSessionService: ObservableObject {
     func manufacturerPDFURL(for figure: StagedFigure) -> URL? {
         if let direct = sourcePDFURL(for: figure) { return direct }
         guard let store = activeVault, let document = manifestDocument(for: figure),
+              !VaultManualRemoval.isPending(file: document.file, vaultId: store.manifest.id),
               let relative = store.manifest.documentSourceRelativePath(document) else { return nil }
         let url = VaultImporter.baselineDirectory(for: store.manifest.id).appendingPathComponent(relative)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil

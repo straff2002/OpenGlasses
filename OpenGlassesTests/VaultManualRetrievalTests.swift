@@ -521,7 +521,7 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(store.documentCount(namespace: DocumentStore.vaultNamespace(manifest.id)), 1, "old document forgotten")
         XCTAssertEqual(VaultImporter.documentLedger(for: manifest.id), third)
 
-        VaultImporter.uninstall(id: manifest.id, documentStore: store)
+        await VaultImporter.uninstall(id: manifest.id, documentStore: store)
         XCTAssertEqual(store.documentCount(namespace: DocumentStore.vaultNamespace(manifest.id)), 0)
     }
 

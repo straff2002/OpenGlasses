@@ -499,8 +499,13 @@ enum SensitiveStore: String, CaseIterable {
                           deleteAll: .api("VaultDocumentLedger.clear(in:)"),
                           deleteSubject: .api("VaultDocumentLedger.forget(documentId:in:)"),
                           owner: "VaultDocumentLedger",
-                          ownerPaths: ["OpenGlasses/Sources/Services/Vault/VaultDocumentLedger.swift"],
-                          location: "Documents/Vaults/{id}/_documents.json")
+                          // The removal journal lives beside the ledger and is the same record in
+                          // two halves: which manuals this vault has ingested, and which of them a
+                          // removal has started on and not finished.
+                          ownerPaths: ["OpenGlasses/Sources/Services/Vault/VaultDocumentLedger.swift",
+                                       "OpenGlasses/Sources/Services/Vault/VaultManualRemoval.swift"],
+                          location: "Documents/Vaults/{id}/_documents.json, and _removals.json beside "
+                              + "it while a manual removal is in flight")
 
         case .fieldDeliverySettings:
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,

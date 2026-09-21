@@ -1776,6 +1776,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // camera enables the hands-free scan → OCR source.
         // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
         FieldSessionService.shared.documentStore = documentStore
+        // Finish any manual removal a previous run was interrupted part-way through. Ordering is
+        // not what makes this safe — a pending removal's manual is already excluded from retrieval
+        // and from being opened, whether or not this has run yet — but leaving one unfinished would
+        // leave a manual unreachable forever.
+        Task { await VaultManualRemoval.recoverPendingRemovals(documentStore: documentStore) }
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
         // Reading companion (Plan BT) — camera frames for page turns, Study Mode for the
