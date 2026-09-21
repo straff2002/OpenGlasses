@@ -281,6 +281,123 @@ final class DocumentStore: ObservableObject {
         refresh()
     }
 
+    /// What went wrong deleting one document. `forget(documentId:)` above reports none of this —
+    /// it cannot tell a delete that removed nothing from a delete SQLite refused — which is why a
+    /// caller that has to *know* the rows are gone uses the checked form below.
+    enum DeletionError: LocalizedError, Equatable {
+        /// SQLite refused a statement. The transaction was rolled back; nothing was deleted.
+        ///
+        /// Codes rather than SQLite's own message, which quotes the statement it failed on — and
+        /// the statements here carry document ids.
+        case sqlite(code: Int32, extended: Int32)
+        /// The document is in a different namespace than the caller expected, so deleting it would
+        /// reach outside the caller's scope. Nothing was deleted.
+        case wrongNamespace(expected: String, actual: String)
+        /// The delete ran but rows survived it. The transaction was rolled back.
+        case rowsRemain(documents: Int, chunks: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .sqlite(let code, let extended):
+                return "The document index refused the delete (SQLite \(code)/\(extended))."
+            case .wrongNamespace(let expected, let actual):
+                return "That document belongs to \(actual), not \(expected)."
+            case .rowsRemain(let documents, let chunks):
+                return "The delete left \(documents) document row(s) and \(chunks) chunk(s) behind."
+            }
+        }
+    }
+
+    /// Delete one document and its chunks, in a transaction, refusing to reach outside `namespace`.
+    ///
+    /// Three differences from `forget(documentId:)`, all of them the reason a vault manual removal
+    /// uses this one: a SQL failure propagates rather than being swallowed, the row's namespace is
+    /// checked before anything is deleted (a vault's removal can never take a personal document or
+    /// another vault's manual), and success is *verified* — the rows are counted again inside the
+    /// transaction and a survivor rolls the whole thing back. So "it returned" means the metadata
+    /// and the chunks are both absent, which is what removal has to be able to promise.
+    ///
+    /// Idempotent: a document that is already gone deletes nothing and returns 0 rather than
+    /// throwing, so a retry after a half-finished removal completes instead of failing.
+    @discardableResult
+    func forget(documentId: String, inNamespace namespace: String) throws -> Int {
+        let id = escapedSQL(documentId)
+        // The row the delete will touch, read from the table rather than from the published list,
+        // so the namespace check sees what is actually there.
+        guard let actual = storedNamespace(documentId: documentId) else {
+            // Already absent. Sweep any orphaned chunks so a half-finished delete cannot leave
+            // retrievable text behind a missing document row, then report nothing removed.
+            let orphans = chunkCount(documentId: documentId)
+            if orphans > 0 {
+                try transaction {
+                    try execChecked("DELETE FROM doc_chunks WHERE document_id = '\(id)'")
+                }
+                refresh()
+            }
+            return orphans
+        }
+        guard actual == namespace else {
+            throw DeletionError.wrongNamespace(expected: namespace, actual: actual)
+        }
+
+        let chunks = chunkCount(documentId: documentId)
+        try transaction {
+            try execChecked("DELETE FROM doc_chunks WHERE document_id = '\(id)'")
+            try execChecked("DELETE FROM documents WHERE id = '\(id)' AND namespace = '\(escapedSQL(namespace))'")
+            let remainingDocuments = storedNamespace(documentId: documentId) == nil ? 0 : 1
+            let remainingChunks = chunkCount(documentId: documentId)
+            guard remainingDocuments == 0, remainingChunks == 0 else {
+                throw DeletionError.rowsRemain(documents: remainingDocuments, chunks: remainingChunks)
+            }
+        }
+        refresh()
+        PrivacyLog.store(.ragDocuments, .cleared, count: chunks)
+        return chunks
+    }
+
+    /// The namespace stored for a document id, read straight from the table rather than from the
+    /// published list — the check has to see the row the delete will touch, including one written
+    /// by another instance since this one last refreshed.
+    private func storedNamespace(documentId: String) -> String? {
+        let sql = "SELECT namespace FROM documents WHERE id = '\(escapedSQL(documentId))'"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW, let raw = sqlite3_column_text(stmt, 0) else { return nil }
+        return String(cString: raw)
+    }
+
+    /// How many chunk rows a document still has. Counted rather than trusted from `chunk_count`,
+    /// which records what an ingest wrote and not what is there now.
+    func chunkCount(documentId: String) -> Int {
+        let sql = "SELECT COUNT(*) FROM doc_chunks WHERE document_id = '\(escapedSQL(documentId))'"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(stmt, 0))
+    }
+
+    /// Run `body` between BEGIN IMMEDIATE and COMMIT, rolling back on any throw. Nested use is not
+    /// supported and is not needed: the one caller is the checked delete above.
+    private func transaction(_ body: () throws -> Void) throws {
+        try execChecked("BEGIN IMMEDIATE")
+        do {
+            try body()
+            try execChecked("COMMIT")
+        } catch {
+            exec("ROLLBACK")
+            throw error
+        }
+    }
+
+    /// `exec` that reports the failure instead of discarding it. The message SQLite offers is
+    /// deliberately not read: it quotes the statement, and these statements name documents.
+    private func execChecked(_ sql: String) throws {
+        guard sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK else { return }
+        throw DeletionError.sqlite(code: sqlite3_errcode(db), extended: sqlite3_extended_errcode(db))
+    }
+
     func clearAll() {
         exec("DELETE FROM doc_chunks")
         exec("DELETE FROM documents")
