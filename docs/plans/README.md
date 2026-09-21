@@ -185,6 +185,8 @@ flag-gated / unwired pending a device or backend result · 📋 Planned (schedul
 | [FJ](FJ-live-wearer-memory-continuity.md) | Wearer Memory Across Live Voice Sessions | 📝 Drafted 2026-09-19 — shared bounded setup snapshots for both live providers, generation-safe invalidation and truthful freshness; depends on FI's selection contract; nothing implemented. **Reviewed 2026-09-19** against `main` |
 | [FK](FK-memory-quality-and-continuity-benchmarks.md) | Memory Quality and Conversation Continuity Benchmarks | 📝 Drafted 2026-09-19 — synthetic multilingual corpus, real store/prompt adapters, measured baselines and lifecycle/privacy CI gates; can begin before FI/FJ/FL; nothing implemented. **Reviewed 2026-09-19** against `main` |
 | [FL](FL-correction-effectiveness-evidence.md) | Evidence for Whether Approved Corrections Help | 📝 Drafted 2026-09-19 — approval provenance, revision-bound prompt exposure and explicit feedback, protected retention/erasure and accessible review; nothing implemented. **Reviewed 2026-09-19** against `main` |
+| [FM](FM-conversation-context-and-field-continuity.md) | Conversation Context Budgeting and Field Session Continuity | 🚧 Core shipped 2026-09-19 ([#519](https://github.com/straff2002/OpenGlasses/pull/519)) — whole-request budgeting for ordinary ChatGPT Subscription turns and durable Field Assist continuity scopes; simulator-validated. Remaining: device acceptance, reproduction of the tester's overflow, other providers and the live sessions |
+| [FO](FO-guided-job-flow-and-job-tab.md) | Guided Job Flow and the Job Tab | 📝 Drafted 2026-09-21 from a pilot technician's build-407 report — one thread per job (explicit job ↔ thread binding), an app-driven job-number prompt with read-back, a held "is the previous job finished?" question on equipment change, and a **Job tab shown only while Field Assist is active**; five phases, deterministic core first; nothing implemented. Prerequisite: the voice-turn reliability fix PR from the same report |
 
 **Three selectable expert-stream transports** (Plans L/M + the meeting-link connector): **MJPEG** (same-LAN browser viewer), **Meeting link** (zero-infra — your meeting tool hosts the call; recommended for remote, nothing to self-host), and **WebRTC** (self-hosted peer-to-peer, needs your own signaling + TURN).
 
@@ -356,6 +358,10 @@ the suggested sequences.
   undo; P3 adds expense/tracking records; P4 completes translation, product, document and QR actions;
   P5 qualifies the combined experience on devices. Reuses DU capture work, FD camera readiness and
   DJ/DZ execution semantics. One PR per phase; no completion claim from the existing smart-capture glue.
+- **Round 33 — guided field jobs (FO).** Drafted 2026-09-21. P0 inventories thread/session entry
+  points and moves tabs to typed identifiers; P1 is the headless core (thread policy, job-number
+  intake, job-change detector); P2 the Job tab; P3 live-session/HUD/CarPlay parity; P4 an uncoached
+  pilot job on a device. Builds on F, EL, EM and FM; one PR per phase.
 - **Standalone tools.** First-Aid (AA), HECA (AC), Structured Vision (AD), Study Mode (AE), Memory/Recall (AY), Vehicle (AZ), and AB, AF, AG, AH, AI, BP sit outside a single round but are indexed and lettered above.
 
 ## Dependency graph
