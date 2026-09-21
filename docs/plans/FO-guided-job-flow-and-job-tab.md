@@ -2,8 +2,10 @@
 
 **Status:** 🚧 Drafted 2026-09-21; evidence-at-close addendum (§5, P2a/P2b) added 2026-09-21;
 **P0 implemented 2026-09-21** (inventory below + the typed tab identifier);
-**P1 implemented 2026-09-22, headless and wired into Direct mode** — see *P1 as built* below.
-P2–P4 unbuilt.
+**P1 implemented 2026-09-22, headless and wired into Direct mode** — see *P1 as built* below;
+**P2 implemented 2026-09-22** — the Job tab, verified headless and on a simulator (accessibility
+audits in three states at the default and largest text sizes, screenshots in both appearances); see
+*P2 as built* below. P2a, P2b, P3 and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -213,8 +215,9 @@ plain capture, a picture added in chat from the phone) are not attached to the j
 - **P1 — deterministic core, headless.** ✅ **Implemented 2026-09-22.** `JobThreadPolicy`,
   `JobIntakeState`, `JobChangeDetector`, the `FieldSession` fields + migration test,
   `FieldSessionTool.start` accepting `job_reference`. Wired into Direct mode. See *P1 as built*.
-- **P2 — Job tab.** The three states above over existing components; thread titling; past-jobs
-  list. Snapshot/UI tests with Field Assist off (tab absent) and on.
+- **P2 — Job tab.** ✅ **Implemented 2026-09-22.** The three states above over existing components;
+  the past-jobs list; UI audits with Field Assist off (tab absent) and on (three states, default and
+  AX5 text). See *P2 as built*.
 - **P2a — photo evidence at close.** Headless first: `EvidenceSelection`, `EvidenceImageBudget`,
   job-scoped attachment of photos from every capture route (each asking for a filtered still in its
   own right), `SessionExporter` inline rendering, the selection persisted in the work record
@@ -314,6 +317,96 @@ func confirmLeaveJobThread()
 `FieldSession` now also carries `conversationThreadId`, `conversationThreadDetached`, `jobIntake`,
 `pendingUnitChange` and `visitedUnits` (the multi-unit list §"Open questions" asked about — one
 `equipment` plus a list, scoped by FM's continuity scope so the export can partition later).
+
+## P2 as built (2026-09-22)
+
+Two pure types beside P1's (`OpenGlasses/Sources/Services/FieldAssist/Job/`) and five thin views
+(`OpenGlasses/Sources/App/Views/Job/`). `JobTabPresence` decides whether the bar carries the tab;
+`JobTabModel` derives every state, row, label and button enablement from `FieldSessionService` and
+`GuidedJobFlow`. The views hold no job state of their own.
+
+### Decisions the draft left open
+
+- **Position: between Chat and Settings**, not at the end. Settings is the drawer everything else is
+  kept out of and stays last; Voice is the capture surface and stays first; the job is content, so
+  it belongs with the content tabs. Inserting it there moves only Settings, and nothing in the app
+  addresses a tab by position — the UI tests use `AccessibilityAudit.openTab(_:in:)`, which is the
+  spoken label. `MainTab.displayOrder` now carries every tab and `visibleOrder(showingJob:)` is what
+  the bar is built from, so the four that shipped keep their order exactly.
+- **"Not entitled" and "not asked yet" are different answers.** `StoreKitService.hasCheckedEntitlements`
+  is false until the store check has run, and a false `fieldAssistUnlocked` before then means
+  *unknown*. `JobTabPresence.Decision` therefore has three cases, not two: `.undetermined` draws
+  exactly what `.hidden` draws, so the tab can only ever appear, never flash away. A signed
+  organisation licence verifies synchronously and never waits on the store at all.
+- **An open job outranks the entitlement and the wearer's own switch.** Keyed on `endedAt`, like the
+  rest of P1: a licence lapsing mid-visit, or the toggle going off, must still leave the technician
+  able to close, read back and send. Only `.job` is ever bounced out of the selection, and only to
+  Voice.
+- **The two questions are cards in the page, not alerts.** A modal that steals focus is the wrong
+  shape for a question a technician may want to leave sitting while they finish tightening
+  something. The unit-change card renders `JobUnitChangeQuestion.spoken` verbatim; the
+  leave-the-job's-conversation card renders `JobThreadQuestion.spoken` verbatim. The shipped
+  `jobThreadQuestionAlert` is untouched on the four surfaces that already use it.
+- **"Open conversation" goes through `requestResume`**, never by assigning `activeThreadId` — the
+  id-without-history defect P1 fixed on CarPlay and the watch. Selecting the tab needed a seam that
+  did not exist: `AppState.openChatThread(_:)` sets a requested tab and a thread for `MainView` and
+  `ChatListView` to consume and clear. It is a request, not a second copy of the selection.
+- **A past job's conversation is a separate read-only view**, not `ChatThreadView`. That view
+  activates the thread it shows the moment it appears, which is right for live chat and wrong here:
+  reviewing last Tuesday and then speaking would have appended to last Tuesday. `JobTranscriptView`
+  renders the stored messages through the shipped `MessageBubble` with no composer and no activation.
+- **Closing lands on the finished job's own page**, which already has the record, the conversation
+  and Send report. So "close, check, send" is one movement, and the confirmation step is the natural
+  place for P2a's evidence review to slot in.
+- **`.ogQuiet` is not used for these rows.** It centres its label, paints it in the secondary label
+  colour and swallows a destructive role, which turned four distinct actions — one of which ends the
+  job — into four identical grey centred strings. Plain `Form` buttons are leading-aligned, tinted
+  and keep their role. Related trap, hit twice: `.foregroundStyle(.primary)`/`.secondary` inside a
+  tinted button resolve against the *tint*, so content inside a button row uses `Color.primary` /
+  `Color.secondary`.
+- **The elapsed line is minute-grained and ticks once a minute** (`JobClock`). The record's exact
+  seconds go in the export; a live second counter would redraw sixty times a minute and re-announce
+  itself under a VoiceOver cursor. Both phrases (`billableMinutes`, `billableUnits`) are the work
+  record's own fields, so the screen and the PDF cannot disagree.
+
+### What the draft got wrong
+
+- §4 says the empty state offers "past jobs by job number/date/outcome" and says nothing about how a
+  job with no number renders. A declined or never-asked number is a real state, and a row rendering
+  as a blank line is untappable with any confidence, so it reads **"No job number"** — asserted.
+- §4's "job number (editable)" understates the intake: the field has to say *which* of the seven
+  `JobIntakeState` cases it is in, including "asked, waiting" and "declined", or the technician
+  cannot tell whether the app is waiting on them. `JobTabModel.IntakeCopy` is one line per case.
+- The tab needed no accessibility identifier: nothing in this app sets one. Every tab and row is
+  addressed by its spoken label, which is what makes a VoiceOver user and a UI test walk the same
+  tree.
+
+### A P1 defect found and left alone
+
+`GuidedJobFlow.leaveJobThreadQuestion(switchingTo:)` documents itself as "a query, not an action",
+and it **writes an audit event every time it is called** (`logThreadQuestion`). P1's four callers all
+call it from a tap, so nothing is wrong today — but a view body calling it would fill the session log
+with questions nobody was asked. P2 works around it (the card is raised by a tap and held in view
+state, never queried during a render) and does not change P1's behaviour. Worth splitting the log
+from the query when P3 touches this.
+
+### Slots left for P2a
+
+- A **Photos** section in `ActiveJobView`, marked in place, between the work list and the actions.
+- The **close confirmation** is the step the evidence review goes in front of: `JobTabModel.closeJob`
+  already takes the record before the session ends, which is what a review of that record needs.
+- `PastJobView` is where "Share full-size photos" and the re-rendered PDF land; its Send report
+  already re-exports the finished session by id, so a selection persisted on the record is honoured
+  by the existing path without another call site.
+- The plain "Face blur: On/Off" line is **not** in P2, on purpose — it arrives with the photos it
+  describes.
+
+### Verification
+
+Headless: `JobTabModelTests` (40) and `JobTabPresenceTests` (15) new, `MainTabTests` extended to 16.
+Full suite 6689 tests, 13 skipped, 0 failures. Simulator: `JobTabAccessibilityTests` (5) runs
+`performAccessibilityAudit` on the tab absent, the empty state, the past-job list, a past job, a job
+in progress and its controls, and the whole screen again at `AccessibilityXXXL`. No device run.
 
 ## Open questions
 
