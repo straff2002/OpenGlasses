@@ -6,7 +6,7 @@ import SwiftUI
 /// tab bar matching the OpenVision-style navigation.
 struct MainView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedTab = 0
+    @State private var selectedTab: MainTab = .voice
     @State private var showOnboarding = Config.needsOnboarding
     // Default is "system" — the app follows the phone's appearance unless the user has
     // said otherwise. Kept in sync with `SettingsView` and `LookFeelSettingsScreen`.
@@ -28,21 +28,22 @@ struct MainView: View {
     var body: some View {
         ZStack {
             TabView(selection: $selectedTab) {
-                Tab("Voice", systemImage: "waveform", value: 0) {
+                // Declared in `MainTab.displayOrder`; keep the two in step.
+                Tab("Voice", systemImage: "waveform", value: MainTab.voice) {
                     VoiceTab()
                 }
 
-                Tab("Modes", systemImage: "person.2.fill", value: 1) {
+                Tab("Modes", systemImage: "person.2.fill", value: MainTab.modes) {
                     NavigationStack {
                         PersonaPickerTab(appState: appState)
                     }
                 }
 
-                Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: 2) {
+                Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
                     ChatListView()
                 }
 
-                Tab("Settings", systemImage: "gearshape.fill", value: 3) {
+                Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
                     NavigationStack {
                         SettingsView(appState: appState)
                     }
@@ -67,10 +68,11 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             PrivacyLog.app(.memoryWarning)
         }
+        // The raw values are the same tokens the parallel name array used to supply, so the log
+        // keeps reading "voice" / "modes" / "chat" / "settings" — and a tab can no longer be
+        // selected that the log has no name for.
         .onChange(of: selectedTab, initial: true) { _, tab in
-            let names = ["voice", "modes", "chat", "settings"]
-            guard names.indices.contains(tab) else { return }
-            PrivacyLog.app(.tabSelected, detail: PrivacyToken(names[tab]))
+            PrivacyLog.app(.tabSelected, detail: PrivacyToken(tab.rawValue))
         }
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
