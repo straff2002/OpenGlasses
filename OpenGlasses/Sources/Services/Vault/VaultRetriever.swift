@@ -103,6 +103,16 @@ struct VaultRetriever {
     /// Whether a document (by id) was read by recognition. Nil means "unknown", treated as no.
     typealias Provenance = (_ documentId: String) -> Bool
 
+    /// Whether a document may still be published, asked once per candidate immediately before the
+    /// evidence gate runs.
+    ///
+    /// Retrieval and removal overlap by construction: a query is issued, the store is read, the
+    /// passages are ranked — and a manual removal can complete anywhere in there, because both
+    /// yield. Without this last check the turn would quote a manual the vault no longer has, which
+    /// is precisely the guarantee removal exists to make. Nil means every candidate is available,
+    /// which is the behaviour of every caller that has nothing to withhold.
+    typealias Availability = (_ documentId: String) -> Bool
+
     /// The machine the session is working on, and the other machines the vault covers (Plan EL).
     ///
     /// A manual for a family of units prints rows for all of them; the row for a *different* model
@@ -134,16 +144,18 @@ struct VaultRetriever {
     var query: QueryFunction
     var tokenSearch: TokenSearch?
     var provenance: Provenance?
+    var availability: Availability?
     var policy = RetrievalEvidencePolicy()
     var modelScope: ModelScope?
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
-         provenance: Provenance? = nil,
+         provenance: Provenance? = nil, availability: Availability? = nil,
          policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy(),
          modelScope: ModelScope? = nil) {
         self.query = query
         self.tokenSearch = tokenSearch
         self.provenance = provenance
+        self.availability = availability
         self.policy = policy
         self.modelScope = modelScope
     }
@@ -196,7 +208,11 @@ struct VaultRetriever {
             a.rankScore != b.rankScore ? a.rankScore > b.rankScore
                 : (a.documentName, a.chunkIndex) < (b.documentName, b.chunkIndex)
         }
-        let candidates = Array(merged.values)
+        // The availability check runs here, after everything has been gathered and before anything
+        // is decided: this is the last moment at which the answer can still be "that manual is
+        // gone" rather than a quotation from it.
+        let candidates = availability.map { check in Array(merged.values).filter { check($0.documentId) } }
+            ?? Array(merged.values)
         let ranked = candidates.filter { !$0.matchedTokens.isEmpty }.sorted(by: precedes)
             + candidates.filter { $0.matchedTokens.isEmpty }.sorted(by: precedes)
         // The lexical criterion compares a passage against everything that was searched, not just

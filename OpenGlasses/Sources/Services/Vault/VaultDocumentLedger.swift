@@ -91,6 +91,27 @@ struct VaultDocumentLedger: Codable, Equatable {
         return ledger
     }
 
+    /// Whether a ledger has ever been written for this vault. A never-synced vault and a vault
+    /// whose ledger is unreadable both read as empty through `load`, and only one of those is safe
+    /// to treat as "nothing was indexed".
+    static func exists(in directory: URL) -> Bool {
+        FileManager.default.fileExists(atPath: directory.appendingPathComponent(filename).path)
+    }
+
+    /// `load` that distinguishes the three states `load` collapses into one: nil when no ledger has
+    /// been written, a ledger when one decodes, and a throw when a file is there but unreadable.
+    ///
+    /// Deletion is why this exists. `load`'s empty-on-failure behaviour is right for a sync — the
+    /// worst case is re-ingesting — but a removal that read a corrupt ledger as empty would report
+    /// a clean index it never looked at, and would have nothing left to identify the document by
+    /// except its title.
+    static func loadStrict(from directory: URL) throws -> VaultDocumentLedger? {
+        let url = directory.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(VaultDocumentLedger.self, from: data)
+    }
+
     func save(to directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
@@ -106,6 +127,15 @@ struct VaultDocumentLedger: Codable, Equatable {
     @discardableResult
     mutating func remove(documentId: String) -> Entry? {
         guard let index = entries.firstIndex(where: { $0.documentId == documentId }) else { return nil }
+        return entries.remove(at: index)
+    }
+
+    /// Drop one document's entry by the manifest file it was ingested from. Removal addresses a
+    /// manual by file rather than by title or document id, because the file is the one identity
+    /// that exists whether or not the manual was ever indexed.
+    @discardableResult
+    mutating func remove(file: String) -> Entry? {
+        guard let index = entries.firstIndex(where: { $0.file == file }) else { return nil }
         return entries.remove(at: index)
     }
 

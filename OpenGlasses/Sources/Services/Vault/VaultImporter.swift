@@ -114,6 +114,11 @@ enum VaultImporter {
                 for relative in [manifest.documentRelativePath(document),
                                  manifest.documentSourceRelativePath(document)].compactMap({ $0 }) {
                     let dest = staging.appendingPathComponent(relative)
+                    // Two documents may name the same original — one manufacturer's PDF behind an
+                    // installation and a service extract is an ordinary shape — and copying it a
+                    // second time failed the whole install on "an item with the same name already
+                    // exists". The same path is the same file, so the first copy is the answer.
+                    guard !fm.fileExists(atPath: dest.path) else { continue }
                     try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try fm.copyItem(at: sourceDir.appendingPathComponent(relative), to: dest)
                 }
@@ -148,8 +153,14 @@ enum VaultImporter {
     /// the manifest dropped or replaced, ingest what is new or changed, leave the rest alone.
     /// Idempotent — a second call with nothing changed does no work. Returns the updated ledger.
     ///
-    /// Gated on the Field Assist entitlement: manuals are a paid capability, and the gate belongs
-    /// at the boundary where the store is written, not only where a session starts.
+    /// Gated on the Field Assist entitlement: *ingesting* manuals is a paid capability, and the gate
+    /// belongs at the boundary where the store is written, not only where a session starts. A sync
+    /// with nothing to ingest is cleanup — forgetting manuals the manifest dropped — and is not
+    /// gated: a lapsed licence must not be able to leave indexed passages behind that the vault no
+    /// longer lists and the reader can no longer get rid of.
+    ///
+    /// Serialised per vault against import, individual manual removal and uninstall, and finishes
+    /// any interrupted removal before diffing (Plan FN §1).
     @MainActor
     @discardableResult
     static func syncDocuments(manifest: VaultManifest,
@@ -160,7 +171,34 @@ enum VaultImporter {
                               renderPolicy: ScanRenderPolicy = ScanRenderPolicy(),
                               progress: DocumentProgress? = nil,
                               recognitionProgress: RecognitionProgress? = nil) async throws -> VaultDocumentLedger {
-        guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else { throw ImportError.notEntitled }
+        try await VaultOperationLock.withLock(manifest.id) {
+            // An interrupted removal is finished before anything is diffed. Skipped when the caller
+            // injected its own directories, because then this is not the installed vault's layout
+            // and there is no journal of its own to read.
+            if baseline == nil, ledgerDirectory == nil {
+                VaultManualRemoval.recoverLocked(vaultId: manifest.id, documentStore: store)
+            }
+            return try await syncDocumentsLocked(
+                manifest: manifest, into: store, baseline: baseline, ledgerDirectory: ledgerDirectory,
+                scanReader: scanReader, renderPolicy: renderPolicy,
+                progress: progress, recognitionProgress: recognitionProgress)
+        }
+    }
+
+    @MainActor
+    private static func syncDocumentsLocked(manifest: VaultManifest,
+                                            into store: DocumentStore,
+                                            baseline: URL?,
+                                            ledgerDirectory: URL?,
+                                            scanReader: ScannedPageReader?,
+                                            renderPolicy: ScanRenderPolicy,
+                                            progress: DocumentProgress?,
+                                            recognitionProgress: RecognitionProgress?) async throws -> VaultDocumentLedger {
+        // A removal that completed since this call was queued has already reduced the manifest in
+        // the registry; re-reading it here is what stops a queued re-index re-ingesting the manual
+        // the removal just took out.
+        let manifest = (ledgerDirectory == nil && baseline == nil
+            ? installedManifests().first { $0.id == manifest.id } : nil) ?? manifest
         let root = baseline ?? baselineDirectory(for: manifest.id)
         let ledgerDir = ledgerDirectory ?? overlayDirectory(for: manifest.id)
         let namespace = DocumentStore.vaultNamespace(manifest.id)
@@ -184,9 +222,20 @@ enum VaultImporter {
         var ledger = VaultDocumentLedger.load(from: ledgerDir)
         let plan = VaultDocumentLedger.plan(current: ledger, desired: desired)
         guard !plan.isNoop else { return ledger }
+        // The gate sits here rather than at the top: work that only forgets is cleanup, and a
+        // vault whose licence lapsed still has to be able to shed manuals it no longer lists.
+        guard plan.toIngest.isEmpty || FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
+            throw ImportError.notEntitled
+        }
 
         for entry in plan.toForget {
-            store.forget(documentId: entry.documentId)
+            // Checked and namespace-scoped: a forget that SQLite refused used to pass silently and
+            // leave retrievable chunks behind a ledger that said they were gone.
+            do {
+                try store.forget(documentId: entry.documentId, inNamespace: namespace)
+            } catch {
+                throw ImportError.documentFailed(error.localizedDescription)
+            }
         }
         var entries = plan.unchanged
         for want in plan.toIngest {
@@ -256,16 +305,30 @@ enum VaultImporter {
         VaultDocumentLedger.load(from: overlayDirectory(for: id))
     }
 
+    /// Whether an install needs a document sync at all.
+    ///
+    /// Not the same question as `manifest.hasDocuments`, and that difference was a bug: a manifest
+    /// re-imported with its manuals taken out listed nothing to ingest, so the import skipped the
+    /// sync entirely and the previously indexed passages stayed retrievable for a vault that no
+    /// longer claimed them. A sync is needed whenever the manifest lists manuals *or* the ledger
+    /// still holds entries — the second case is cleanup-only, and runs without the ingest gate.
+    static func needsDocumentSync(manifest: VaultManifest) -> Bool {
+        manifest.hasDocuments || !documentLedger(for: manifest.id).entries.isEmpty
+    }
+
     /// Fully remove an installed user vault: baseline + overlay edits + registry entry, and every
-    /// reference document it ingested into `documentStore`.
+    /// reference document it ingested into `documentStore`. Serialised against import, re-index and
+    /// individual manual removal for the same vault.
     @MainActor
-    static func uninstall(id: String, documentStore: DocumentStore) {
-        for entry in VaultDocumentLedger.load(from: overlayDirectory(for: id)).entries {
-            documentStore.forget(documentId: entry.documentId)
+    static func uninstall(id: String, documentStore: DocumentStore) async {
+        await VaultOperationLock.withLock(id) {
+            for entry in VaultDocumentLedger.load(from: overlayDirectory(for: id)).entries {
+                documentStore.forget(documentId: entry.documentId)
+            }
+            // Backstop: anything in the vault's namespace the ledger lost track of.
+            documentStore.clear(namespace: DocumentStore.vaultNamespace(id))
+            uninstall(id: id)
         }
-        // Backstop: anything in the vault's namespace the ledger lost track of.
-        documentStore.clear(namespace: DocumentStore.vaultNamespace(id))
-        uninstall(id: id)
     }
 
     /// Fully remove an installed user vault: baseline + overlay edits + registry entry. Ingested

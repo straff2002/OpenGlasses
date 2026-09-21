@@ -294,7 +294,9 @@ struct VaultManagerView: View {
                 warnings = report.warnings
                 reloadLedgers()
                 successMessage = "Installed \(report.manifest.name)."
-                if report.manifest.hasDocuments {
+                // Not `hasDocuments`: a manifest re-imported with its manuals removed still has to
+                // reconcile what the previous import indexed, or those passages stay retrievable.
+                if VaultImporter.needsDocumentSync(manifest: report.manifest) {
                     Task { await sync(report.manifest) }
                 }
             } catch {
@@ -328,10 +330,15 @@ struct VaultManagerView: View {
     }
 
     private func remove(at offsets: IndexSet) {
-        for index in offsets {
-            VaultImporter.uninstall(id: installed[index].id, documentStore: appState.documentStore)
+        // Uninstall is serialised against an in-flight index or manual removal for the same vault,
+        // so it awaits rather than running straight through the swipe handler.
+        let ids = offsets.map { installed[$0].id }
+        Task {
+            for id in ids {
+                await VaultImporter.uninstall(id: id, documentStore: appState.documentStore)
+            }
+            VaultRegistry.shared.reloadUserManifests()
+            reloadLedgers()
         }
-        VaultRegistry.shared.reloadUserManifests()
-        reloadLedgers()
     }
 }
