@@ -9,6 +9,13 @@ import Foundation
 /// in-app editing — technician edits go to the `Documents/Vaults/{id}/` overlay, which `VaultStore`
 /// merges *over* the baseline. So an admin can re-push a new vault version (updating the baseline)
 /// without clobbering technician overlay edits.
+///
+/// **One operation does write to the baseline: removing a single manual** ([[VaultManualRemoval]],
+/// Plan FN). That is deliberate and is not editing — it is installation management, the same kind of
+/// act as uninstalling the vault, and it is why the rule above is about *editing*. It deletes the
+/// installed copy of one document and reduces the installed manifest; it never touches the reader's
+/// original import folder, a signed pack, or the core-file overlay. A later import containing that
+/// manual is authoritative and puts it back, because no record of the removal is kept.
 enum VaultImporter {
 
     enum ImportError: LocalizedError {

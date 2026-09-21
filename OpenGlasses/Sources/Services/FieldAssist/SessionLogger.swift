@@ -66,6 +66,11 @@ final class SessionLogger {
             case pageVerified = "page_verified"
             /// A page was turned to inside the figure sheet.
             case pageViewed = "page_viewed"
+            /// A manual was removed from the session's vault while the session was running
+            /// (Plan FN). The job continues; the record says which book stopped being available
+            /// part-way through it, because an answer given before it and one given after it were
+            /// drawn from different shelves.
+            case manualRemoved = "manual_removed"
             /// The session learned which machine is in front of the technician (Plan EL).
             case equipmentRecognised = "equipment_recognised"
             /// …and gave it up again.

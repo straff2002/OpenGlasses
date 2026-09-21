@@ -3333,9 +3333,18 @@ class AppState: ObservableObject, AppStateProtocol {
         let session = FieldSessionService.shared
         switch citation.kind {
         case .manual:
-            guard let staged = session.stagedFigure(for: citation) else { return }
-            session.logCitationOpened(citation, origin: origin)
-            presentManualFigure(staged)
+            // A citation outlives the manual it names. Tapping one whose manual has been removed
+            // has to say so — silence reads as a broken chip, and opening a page that is no longer
+            // part of the vault is the thing removal promised would not happen.
+            switch session.resolveCitation(citation) {
+            case .figure(let staged):
+                session.logCitationOpened(citation, origin: origin)
+                presentManualFigure(staged)
+            case .removed(let title):
+                errorMessage = VaultManualRemovalPresentation.removedCitationNotice(manual: title)
+            case .unknown(let title):
+                errorMessage = VaultManualRemovalPresentation.unknownCitationNotice(manual: title)
+            }
         case .coreFile:
             guard let store = session.activeVault,
                   let filename = store.manifest.files.first(where: { $0.lowercased() == citation.title.lowercased() })
@@ -3361,6 +3370,22 @@ class AppState: ObservableObject, AppStateProtocol {
         // The lens says where the drawing is and nothing else — it cannot render one legibly.
         ManualFigureCue.show(staged, on: glassesDisplay)
         return presenter
+    }
+
+    /// A manual has just been removed from an installed vault (Plan FN).
+    ///
+    /// Everything durable is already done by the time this runs; what is left is the state the app
+    /// is holding in front of the reader — a figure sheet open on a page that has gone, and the
+    /// session reading from a vault that has changed under it. The session keeps its job, its
+    /// tasks and its chat; see `FieldSessionService.vaultDidRemoveManual`.
+    func vaultDidRemoveManual(_ result: VaultManualRemoval.RemovalResult) {
+        VaultRegistry.shared.reloadUserManifests()
+        if let open = manualFigureRequest,
+           open.presenter.figure.documentId == result.documentId
+            || open.presenter.figure.sourceFile == result.file {
+            manualFigureRequest = nil
+        }
+        FieldSessionService.shared.vaultDidRemoveManual(result)
     }
 
     // MARK: - Phone-camera fallback (photo actions when glasses are off)

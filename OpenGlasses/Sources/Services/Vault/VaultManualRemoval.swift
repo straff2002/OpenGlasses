@@ -136,6 +136,27 @@ enum VaultManualRemoval {
         pendingFiles(for: vaultId).contains(file)
     }
 
+    /// The check every consumer of manual material applies before delivering it.
+    ///
+    /// Two questions, not one, because a removal that began before the caller did and one that
+    /// finishes while it works fail different ones: is this manual on its way out, and does the
+    /// index still hold it at the moment the answer is about to be built? The pending set is read
+    /// once — a removal in flight stays in flight for the length of a call — and the store is asked
+    /// live, so cleanup landing mid-call is seen.
+    ///
+    /// One helper rather than a rule each call site remembers, because the call sites are a
+    /// retriever, three tools, a parts lookup and a page sheet, and the one that forgets is the one
+    /// that quotes a manual the reader deleted.
+    static func availabilityCheck(forVault vaultId: String,
+                                  documentStore: DocumentStore?) -> (String) -> Bool {
+        let pending = pendingDocumentIds(for: vaultId)
+        let namespace = DocumentStore.vaultNamespace(vaultId)
+        return { documentId in
+            guard !pending.contains(documentId) else { return false }
+            return documentStore?.list(namespace: namespace).contains { $0.id == documentId } ?? false
+        }
+    }
+
     // MARK: - Removal
 
     /// Remove one manual from an installed vault, addressed by the manifest's file name.

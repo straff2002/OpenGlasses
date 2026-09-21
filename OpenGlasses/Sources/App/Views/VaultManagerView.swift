@@ -18,8 +18,37 @@ struct VaultManagerView: View {
     /// Recognition runs before chunking for a scanned manual and is the slow part; it gets its own line.
     @State private var recognitionProgress: (title: String, done: Int, total: Int)?
     @State private var shareItem: ShareItem?
+    /// Manual file names each vault's removal journal has an unfinished removal for. Re-read with
+    /// the ledgers, because a removal interrupted by a previous launch is a state the list has to
+    /// show — the manual is already unreachable and the row must not claim otherwise.
+    @State private var pendingRemovals: [String: Set<String>] = [:]
+    /// The manual a confirmation is up for.
+    @State private var confirmingRemoval: ManualRemovalRequest?
+    /// The removal currently running, so the row says so and everything that touches the same
+    /// vault stands down until it returns.
+    @State private var removalInFlight: ManualRemovalRequest?
+    /// What the last removal attempt came to, and — when it can be retried — what to retry.
+    @State private var removalOutcome: ManualRemovalOutcome?
     @StateObject private var packs = VaultPackCatalogService()
     @ObservedObject private var store = StoreKitService.shared
+
+    /// One manual of one vault, named the way a removal is addressed: by the manifest's file name,
+    /// never by the title a citation might have got wrong.
+    private struct ManualRemovalRequest: Identifiable, Equatable {
+        let vaultId: String
+        let vaultName: String
+        let file: String
+        let title: String
+        /// Finishing a removal that was interrupted rather than starting a new one.
+        let isRetry: Bool
+        var id: String { "\(vaultId)/\(file)" }
+    }
+
+    private struct ManualRemovalOutcome: Equatable {
+        let outcome: VaultManualRemovalPresentation.Outcome
+        /// Non-nil when the message comes with a Retry.
+        let retry: ManualRemovalRequest?
+    }
 
     /// Custom vaults are a team capability; the import button says so instead of failing later.
     private var teamCheck: FieldAssistTierCheck { FieldAssistEntitlement.shared.check(atLeast: .team) }
@@ -32,7 +61,7 @@ struct VaultManagerView: View {
                 } label: {
                     Label("Import Vault Folder…", systemImage: "square.and.arrow.down")
                 }
-                .disabled(syncProgress != nil || !teamCheck.isGranted)
+                .disabled(syncProgress != nil || removalInFlight != nil || !teamCheck.isGranted)
                 if case .insufficientTier = teamCheck {
                     Text(FieldAssistPaywallCopy.teamOnly)
                         .font(.caption)
@@ -52,12 +81,15 @@ struct VaultManagerView: View {
                 Section {
                     ForEach(installed, id: \.id) { manifest in
                         vaultRow(manifest)
+                            // A vault with a removal running is mid-rewrite of the manifest the
+                            // uninstall would read; the swipe stands down until it finishes.
+                            .deleteDisabled(isBusy(manifest.id))
                     }
                     .onDelete(perform: remove)
                 } header: {
                     Text("Installed Vaults")
                 } footer: {
-                    Text("Swipe a vault to export it as a folder (manifest.json + markdown + procedures/ + documents). Exports include your in-app edits and re-import directly via “Import Vault Folder…”.")
+                    Text("Swipe a vault to export it as a folder (manifest.json + markdown + procedures/ + documents). Exports include your in-app edits and re-import directly via “Import Vault Folder…”. Removing one manual leaves the rest of its vault working.")
                 }
             }
 
@@ -73,6 +105,34 @@ struct VaultManagerView: View {
                             Text("Indexing \(syncProgress.title)…")
                             ProgressView(value: Double(syncProgress.completed), total: Double(max(syncProgress.total, 1)))
                         }
+                    }
+                }
+            }
+
+            if let removalInFlight {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Removing \(removalInFlight.title)…")
+                        ProgressView()
+                        Text("The manual is already unavailable to answers. Keep the app open until this finishes.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+
+            if let removalOutcome {
+                Section {
+                    OGStatusLabel(removalOutcome.outcome.message,
+                                  kind: removalOutcome.outcome.isFailure ? .error : .ok)
+                    if let retry = removalOutcome.retry {
+                        Button("Retry removal") {
+                            self.removalOutcome = nil
+                            Task { await performRemoval(retry) }
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                        .disabled(isBusy(retry.vaultId))
                     }
                 }
             }
@@ -107,6 +167,24 @@ struct VaultManagerView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        // Destructive and named. The vault's own delete is a swipe on the vault row; this is a
+        // button under one manual, and the message says which manual of which vault it is.
+        .confirmationDialog(VaultManualRemovalPresentation.confirmationTitle(manual: confirmingRemoval?.title ?? ""),
+                            isPresented: Binding(get: { confirmingRemoval != nil },
+                                                 set: { if !$0 { confirmingRemoval = nil } }),
+                            titleVisibility: .visible,
+                            presenting: confirmingRemoval) { request in
+            // Two literals rather than one ternary, so both stay in the string catalogue.
+            if request.isRetry {
+                Button("Finish removing", role: .destructive) { confirm(request) }
+            } else {
+                Button("Remove manual", role: .destructive) { confirm(request) }
+            }
+            Button("Keep", role: .cancel) { confirmingRemoval = nil }
+        } message: { request in
+            Text(VaultManualRemovalPresentation.confirmationMessage(manual: request.title,
+                                                                    vault: request.vaultName))
         }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: item.items)
@@ -209,30 +287,20 @@ struct VaultManagerView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if manifest.hasDocuments {
-                ForEach(manifest.documents, id: \.file) { document in
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.text")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(document.title)
-                            .font(.caption)
-                        Spacer()
-                        if let entry = ledger.entries.first(where: { $0.file == document.file }) {
-                            Text(Self.entrySummary(entry))
-                                .font(.caption2)
-                                .foregroundStyle((entry.lowConfidencePages ?? 0) > 0 ? OGTheme.errorLabel : .secondary)
-                        } else {
-                            Text("not indexed")
-                                .font(.caption2)
-                                .foregroundStyle(OGTheme.errorLabel)
-                        }
-                    }
+                let rows = manualRows(for: manifest, ledger: ledger)
+                ForEach(rows) { row in
+                    manualRow(row, manifest: manifest, ledger: ledger)
+                }
+                // The same sentence for every manual of a signed pack, so it is said once.
+                if let reason = rows.compactMap(\.unavailableReason).first {
+                    Text(reason).font(.caption2).foregroundStyle(.secondary)
                 }
                 Button("Re-index manuals") {
                     Task { await sync(manifest) }
                 }
                 .font(.caption)
-                .disabled(syncProgress != nil)
+                .buttonStyle(.borderless)
+                .disabled(syncProgress != nil || isBusy(manifest.id))
             }
         }
         .swipeActions(edge: .leading) {
@@ -245,6 +313,83 @@ struct VaultManagerView: View {
                 .tint(AppAccent.color)
             }
         }
+    }
+
+    /// One manual: what it is, what the index has of it, and — for a vault the reader imported —
+    /// the action that takes it out. The action sits under the manual it belongs to and nowhere
+    /// near the swipe that deletes the whole vault.
+    @ViewBuilder
+    private func manualRow(_ row: VaultManualRowState, manifest: VaultManifest,
+                           ledger: VaultDocumentLedger) -> some View {
+        let entry = ledger.entries.first { $0.file == row.file }
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: row.isPendingRemoval ? "doc.badge.ellipsis" : "doc.text")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(row.title)
+                    .font(.caption)
+                Spacer()
+                Text(row.statusText)
+                    .font(.caption2)
+                    .foregroundStyle(row.isStatusAdverse || (entry?.lowConfidencePages ?? 0) > 0
+                                     ? OGTheme.errorLabel : .secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: row.accessibilityLabel))
+
+            if let action = row.action {
+                let request = ManualRemovalRequest(vaultId: manifest.id, vaultName: manifest.name,
+                                                   file: row.file, title: row.title,
+                                                   isRetry: action == .retryRemoval)
+                Group {
+                    // Literals rather than the state's `title`, so the two words stay in the
+                    // string catalogue; the state keeps them for the tests and for VoiceOver.
+                    switch action {
+                    case .remove:
+                        Button("Remove manual…", role: .destructive) { confirmingRemoval = request }
+                    case .retryRemoval:
+                        Button("Retry removal", role: .destructive) { confirmingRemoval = request }
+                    }
+                }
+                .font(.caption2)
+                .buttonStyle(.borderless)
+                .disabled(!row.isActionEnabled)
+                .accessibilityLabel(Text(verbatim: "\(action.title.replacingOccurrences(of: "…", with: "")): \(row.title)"))
+                .accessibilityHint(Text(verbatim: row.accessibilityActionHint ?? ""))
+            }
+        }
+    }
+
+    /// Start the removal a confirmation was shown for.
+    private func confirm(_ request: ManualRemovalRequest) {
+        confirmingRemoval = nil
+        Task { await performRemoval(request) }
+    }
+
+    /// The rows for one vault's manuals, decided by [[VaultManualRowState]] rather than inline, so
+    /// what a row offers is provable without a screen.
+    private func manualRows(for manifest: VaultManifest,
+                            ledger: VaultDocumentLedger) -> [VaultManualRowState] {
+        let eligibility = VaultManualRemoval.eligibility(of: manifest.id)
+        let pending = pendingRemovals[manifest.id] ?? []
+        let inFlight = removalInFlight?.vaultId == manifest.id ? removalInFlight?.file : nil
+        return manifest.documents.map { document in
+            let entry = ledger.entries.first { $0.file == document.file }
+            return VaultManualRowState.make(document: document, ledgerEntry: entry,
+                                            summary: entry.map(Self.entrySummary),
+                                            pendingFiles: pending, inFlightFile: inFlight,
+                                            eligibility: eligibility,
+                                            isVaultBusy: isBusy(manifest.id))
+        }
+    }
+
+    /// Whether an operation owns this vault: a removal this screen started, an index running for
+    /// it, or anything else holding the per-vault lock (an uninstall, a launch-time recovery).
+    private func isBusy(_ vaultId: String) -> Bool {
+        if removalInFlight?.vaultId == vaultId { return true }
+        if syncProgress?.vaultId == vaultId { return true }
+        return VaultOperationLock.isBusy(vaultId)
     }
 
     /// "412 sections · 11 diagram pages · 38 pages read by recognition · 3 low confidence".
@@ -267,6 +412,44 @@ struct VaultManagerView: View {
     private func reloadLedgers() {
         installed = VaultImporter.installedManifests()
         ledgers = Dictionary(uniqueKeysWithValues: installed.map { ($0.id, VaultImporter.documentLedger(for: $0.id)) })
+        pendingRemovals = Dictionary(uniqueKeysWithValues: installed.map {
+            ($0.id, VaultManualRemoval.pendingFiles(for: $0.id))
+        })
+    }
+
+    /// Take one manual out of an installed vault.
+    ///
+    /// Nothing is reported until the operation returns: a removal is four durable steps behind a
+    /// journal, and "removed" printed before they finish is the one message this screen must never
+    /// show. Removing installed content is deliberately not gated on the licence — importing
+    /// manuals is the paid capability, deleting your own is not, and a lapsed team must still be
+    /// able to take a superseded manual out of a vault its technicians are working from
+    /// (`VaultManualRemoval.isPermittedByEntitlement`).
+    private func performRemoval(_ request: ManualRemovalRequest) async {
+        successMessage = nil
+        removalOutcome = nil
+        removalInFlight = request
+        // The journal is written before anything durable changes, so the row says "Removing…"
+        // from this point whatever happens next.
+        defer { removalInFlight = nil; reloadLedgers() }
+        do {
+            let result = try await VaultManualRemoval.remove(file: request.file,
+                                                             fromVault: request.vaultId,
+                                                             documentStore: appState.documentStore)
+            // The live session reads from this vault and may have the manual's page on screen.
+            appState.vaultDidRemoveManual(result)
+            removalOutcome = ManualRemovalOutcome(
+                outcome: VaultManualRemovalPresentation.success(result, vaultName: request.vaultName),
+                retry: nil)
+        } catch {
+            let outcome = VaultManualRemovalPresentation.outcome(for: error, manual: request.title,
+                                                                 vaultName: request.vaultName)
+            // "Already gone" means this list was stale, not that anything failed: re-read it and
+            // say so plainly rather than raising a failure alert over a manual that has gone.
+            if case .alreadyGone = outcome { VaultRegistry.shared.reloadUserManifests() }
+            removalOutcome = ManualRemovalOutcome(outcome: outcome,
+                                                  retry: outcome.isRetryable ? request : nil)
+        }
     }
 
     private func exportVault(_ manifest: VaultManifest) {
