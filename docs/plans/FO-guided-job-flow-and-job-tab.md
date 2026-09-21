@@ -1,6 +1,6 @@
 # Plan FO — Guided Job Flow and the Job Tab
 
-**Status:** Drafted 2026-09-21. Nothing in this plan is implemented. The voice-turn reliability fixes
+**Status:** Drafted 2026-09-21; evidence-at-close addendum (§5, P2a/P2b) added 2026-09-21. The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
 alongside this draft in the same PR; they are a **prerequisite**, not part of this plan, and a
@@ -17,8 +17,8 @@ phrase) starts a job; the assistant asks for the job number and records what it 
 said, measured, photographed and cited until the job is closed lives in one thread, reviewable
 later under that job number. If the technician starts talking about a different unit, the assistant
 asks whether the previous job is finished before anything is re-scoped. Closing the job reads back
-the record and offers delivery. None of this requires knowing what a "chat", "thread" or "session
-id" is.
+the record, lets the technician pick which photos and clips go with it, and offers delivery. None of
+this requires knowing what a "chat", "thread" or "session id" is.
 
 ## Verified starting point (main @ build 408)
 
@@ -119,6 +119,81 @@ bare `Int` values first, so inserting one cannot shift persisted selections or d
 - A "Wake word" row is **not** duplicated here — the accompanying fix puts it in Field Assist settings.
 VoiceOver order, Dynamic Type and the HUD-less case are acceptance criteria, not afterthoughts.
 
+### 5. Evidence review at close (photos and clips in what gets sent)
+
+Owner request, 2026-09-21: the technician wants to send evidence of the fault and of the fix. The
+moment for that is the end of the job — *Close job* walks through choosing the pictures and clips
+before anything is rendered or sent. Owner decisions the same day: video clips are **in scope**;
+full-size originals are offered through the share sheet; Fault/Fix marking is **optional**.
+
+**Verified starting point.** `photo_log` already saves a filtered still into the session's `photos/`
+directory with a caption, records it on the current task's `Evidence.photos` (or the session's
+`jobEvidence` when no task is open), and queues a `.photoUpload` for the offline sink. But nothing
+the recipient gets contains a picture: `SessionExporter` prints each photo as a text bullet
+(`"• \(photo.path)" + caption`), and its private `PDFLayout` has no image-drawing method at all;
+`DeliveryRequest.Attachment.Kind` is `pdf | json` only. Photos taken any other way during a job (a
+plain capture, a picture added in chat from the phone) are not attached to the job at all —
+`attachPhoto` has exactly one caller, `PhotoLogTool`. There is no clip/video evidence on a session:
+`Task.Evidence` is `readings`, `photos`, `citationsOpened`, `pagesVerified`.
+
+**Design.**
+- *During the job, capture stays cheap.* Every photo taken while a job is active — `photo_log`, a
+  plain capture, a phone-camera or library picture added from the Job tab or the job's thread — lands
+  in the job's evidence with its time, task and caption. No question is asked mid-job. Filtering is
+  not inherited: `photo_log` goes through `CameraService.filteredStill(for: .toolPhotoCapture,
+  source:)`, but `capturePhoto()` is deliberately exempt (the wearer's own framed shot), and the
+  phone-camera path (`handlePhoneCapture`) is filtered by neither. So each newly attached route must
+  ask for a filtered still explicitly — `filteredStill(for:source: .photoOnly)` for the shutter
+  image, the same privacy filter applied to a phone-sourced picture before it is stored — or the job
+  would carry unblurred bystanders while `photo_log` does not.
+- *Close job → evidence review.* The close flow gains one step before the read-back and delivery:
+  a grid of the job's photos and clips, grouped by task, newest last. Each item can be included or
+  left out, captioned/re-captioned, and **optionally** marked **Fault** or **Fix** — never prompted,
+  never required (pure `EvidenceSelection` model: item id, included, role?, caption, order).
+  Default: everything captured through `photo_log` included, everything else offered but not
+  pre-selected. Skipping the step is one tap and sends the text-only record exactly as today. By
+  voice: "include all", "skip photos", and a per-item yes/no read-out for the hands-busy case; the
+  HUD-less/VoiceOver path is an acceptance criterion.
+- *The PDF carries the pictures.* `SessionExporter` renders selected photos inline under their task,
+  Fault before Fix before unmarked, downscaled (long edge and JPEG quality fixed by a pure
+  `EvidenceImageBudget` so a twenty-photo job still produces a mailable PDF), each with caption and
+  timestamp. `PDFLayout` gains an image method — it has only `heading`/`section`/`body`/`spacer`
+  today. Unselected photos stay in the on-device record and the JSON's `photos` list (marked
+  `included: false`) but are not rendered and never leave the device through delivery.
+- *Full-size originals by share sheet.* The review step and a past job's record both offer "Share
+  full-size photos" for the selected items: the stored (already privacy-filtered) originals go to
+  the system share sheet, so the technician picks the route (AirDrop, Files, Mail, a job system's
+  share extension). The PDF keeps the downscaled copies; the composer-based delivery channels are
+  not asked to carry originals.
+- *Clips.* A PDF cannot carry video. A selected clip is sent as its own attachment where the channel
+  can take it, bounded by a per-channel size budget; over budget, the flow says so and offers the
+  share sheet for that clip instead of silently dropping it. `DeliveryRequest.Attachment.Kind` gains
+  `video`; `DeliveryChannel.carriesAttachments` — today a plain `Bool` that zeroes attachments for
+  channels that cannot carry files — grows a size-aware check. The PDF lists each included clip
+  (caption, time, duration) under its task so the record is complete even when the clip travels
+  separately. Clip *capture* during a job ("record a clip of this") subscribes to
+  `outboundFrames.publisher` like every other camera-rate consumer (bystander blur shared via
+  `OutboundFrameRelay`), registers in the `OutboundFrameConsumer` roster, is length-capped, and is
+  stored under the session like photos.
+- *Face blur follows the global setting, and says so.* `Config.privacyFilterEnabled` is one app-wide
+  toggle with no per-call override, and the copy stored for a filtered route is the filtered one —
+  raw pixels are never kept — so nothing can be un-blurred at review time. The Job tab and the
+  close-job review show the current state in plain words ("Face blur: On/Off", linking to the
+  setting), and an item captured while the filter was on is labelled as such in the review grid so
+  the technician knows what the recipient will see. There is no per-job or per-photo override
+  (owner decision 2026-09-21). The filter touches faces only; nameplates, gauges and fault sites are
+  unaffected.
+- *Invariants.* Nothing is sent without the technician's Send tap (EM) — enforced by the composer
+  sheet on `AppState.deliveryComposerRequest`, with `completeDelivery` recording `.sent` only on a
+  real send outcome; the share sheet is likewise only ever opened by a tap. The selection is part of
+  the work record, so a re-send from a past job reproduces the same PDF. HIPAA/medical restrictions
+  and the privacy-filter scope rules are unchanged; any new store registers with `DataStoreRegistry`.
+  **Deletion is an open problem, not an invariant:** there is no way to delete a field session
+  today, and `DataStoreRegistry` marks `.fieldSessionLogs` `deleteAll: .unavailable("a session log
+  is the engineer's compliance record")`. Adding media does not change that posture, but it raises
+  the stakes, so P2a records the media under the same store and the deletion question moves to the
+  open list rather than being answered here.
+
 ## Phases (one PR each)
 
 - **P0 — inventory and seams.** Map every place a thread is started/ended and every entry point
@@ -133,6 +208,19 @@ VoiceOver order, Dynamic Type and the HUD-less case are acceptance criteria, not
   compaction does not lose intake/change state.
 - **P2 — Job tab.** The three states above over existing components; thread titling; past-jobs
   list. Snapshot/UI tests with Field Assist off (tab absent) and on.
+- **P2a — photo evidence at close.** Headless first: `EvidenceSelection`, `EvidenceImageBudget`,
+  job-scoped attachment of photos from every capture route (each asking for a filtered still in its
+  own right), `SessionExporter` inline rendering, the selection persisted in the work record
+  (decode-if-present) and honoured on re-send. Then the close-flow review step in the Job tab with
+  its voice path, and "Share full-size photos". Tests are the gate: PDF contains the selected images
+  and none of the unselected; Fault → Fix → unmarked ordering with marking absent entirely also
+  valid; size budget holds at 20+ photos; skip reproduces today's output; re-send determinism;
+  every newly attached capture route stores a filtered copy; the share-sheet item list is exactly
+  the selected originals.
+- **P2b — clips.** Length-capped clip capture as a rostered `OutboundFrameConsumer` on the blurred
+  relay, stored under the session; clips in the review grid; `video` attachment kind with the
+  per-channel size budget and the share-sheet fallback; clip lines in the PDF. Tests: roster/guard
+  suites stay green, over-budget never silently drops, re-send determinism.
 - **P3 — live sessions and other surfaces.** Gemini Live / OpenAI Realtime parity via their
   context snapshots; HUD cue for the two questions; CarPlay/watch read-only job state.
 - **P4 — device acceptance (owed to a pilot run).** One real job end-to-end by a technician who
@@ -149,6 +237,13 @@ VoiceOver order, Dynamic Type and the HUD-less case are acceptance criteria, not
   a nag risk and touches billing; out of scope until a pilot asks.
 - Team tier: does the office need to push a job number/assignment to the phone (ops bridge)
   instead of the technician speaking it? Natural follow-on, not v1.
+- Clip limits: maximum length per clip and total size per delivery channel (defaults proposed in
+  P2b, confirmed on a pilot device).
+- Should the office also receive full-resolution originals automatically through the sync sink, in
+  addition to the share-sheet route?
+- Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a
+  session log a compliance record). Photos and clips make that harder to defend — does a job's media
+  need its own retention rule, separate from the log it belongs to?
 
 Related: [F Field Assist](F-field-assist.md), [EL equipment identity](EL-equipment-identity.md),
 [EM work record](EM-work-record-and-parts.md), [FM context and field continuity](FM-conversation-context-and-field-continuity.md),
