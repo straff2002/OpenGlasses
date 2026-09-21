@@ -15,7 +15,7 @@ invariants hold — but Phase 1 is a prerequisite for every future retrieval cha
 index-side work listed under *Follow-on work*, which cannot state an acceptance criterion without it.
 **Surfaces:** Retrieval and its test harness only. No UI, no HUD, no schema change, no re-index.
 Pairs with [Plan EJ](EJ-manual-retrieval-fidelity.md) (whose invariants it must preserve),
-[Plan EK](EK-manual-structure-and-figures.md) (citation-as-door, which bears on §3's open decision),
+[Plan EK](EK-manual-structure-and-figures.md) (citation-as-door, which bears on §3's cross-manual decision),
 [Plan EL](EL-equipment-identity.md) (the model-scope penalty, likewise) and
 [Plan AM](embedding-quality-upgrade.md) (which owns the embedding backend and is untouched).
 
@@ -240,7 +240,7 @@ passage the gate refused and never causes a refusal — `decide` still returns `
 empty evidence set, unchanged. `boundedOutcome`'s exact-identity de-duplication (`:251-253`) stays as
 the last line of defence for the character budget.
 
-#### Open decision — does the same row in two manuals count as redundant?
+#### Decided 2026-09-21 — the same row in two manuals is not redundant
 
 The Lennox pair reprints its whole diagnostic table: a query for `E223` legitimately returns the row
 from Service Manual page 20 **and** from Installation Instructions page 47. Under the rule above
@@ -256,15 +256,15 @@ or whose copy of one is the OCR-recognised one carrying the provenance note.
 sources is not corroboration to a listener, it is repetition — and it costs a slot out of four that a
 genuinely different passage could have used.
 
-**Recommendation: exempt the token-hit group, apply MMR only to the non-token group.** A verbatim
+**Decision (Greig, 2026-09-21): exempt cross-manual token hits.** A verbatim
 code match is the strongest evidence the retriever has and it is exactly the case where the same row
 legitimately appears twice; the prose group is where near-duplicates are noise rather than a second
 door. Concretely: MMR runs unconditionally on the non-token group, and on the token-hit group only
 between passages of the **same document** (so a reprinted table in one manual is still trimmed, and
-the cross-manual pair survives). This is stated as a policy flag, both behaviours are measured in the
-harness, and the plan is not implemented on this point until Greig picks.
+the cross-manual pair survives). The harness still measures both behaviours, so the cost of the
+exemption is on record.
 
-**→ Open decision for Greig.** The alternative worth considering is coupling it to EL instead: when
+**Considered and not taken.** Coupling it to EL instead: when
 `FieldSessionService.retrievalModelScope` (`:290`) reports an identified machine, the second manual's
 row is more likely to be redundant (both are about the machine in the room); when no machine is
 identified, both citations help the technician work out which manual applies. That is a more precise
@@ -293,12 +293,12 @@ House style: deterministic core first, the live edge last. All three phases are 
   `OpenGlassesTests/VaultManualRetrievalTests.swift:306` is the instrument) and a case pinning that
   the gate is still given the original terms; `RetrievalGateCalibrationTests` reports the table with
   and without expansion.
-- **P3 — diversity (one PR).** §3, after Greig settles the open decision. λ and the redundancy rule
+- **P3 — diversity (one PR).** §3, with the cross-manual exemption as decided. λ and the redundancy rule
   on `RetrievalEvidencePolicy`; the greedy selection in `decide`; the group-boundary invariant.
   Tests: `VaultManualRetrievalTests` (two near-identical passages and one different one at `limit:
   2` returns one of each; a token hit still outranks a higher-scoring non-token passage after
   selection; determinism across repeated calls); `ExampleVaultLennoxTests` asserts the group
-  invariant and the reprinted-table behaviour the decision picks;
+  invariant, that a table reprinted within one manual is trimmed, and that the cross-manual E223 pair keeps both citations;
   `RetrievalGateCalibrationTests` sweeps λ as a variant column.
 - **Owed, not a phase.** The device run of the Phase 1 table on the `nl-sentence` backend, which is
   the same device run [Plan EJ](EJ-manual-retrieval-fidelity.md) already owes and should be taken
@@ -323,7 +323,7 @@ corpus on one backend.
   overlap with an earlier selected passage falls to zero in the non-token group. `recall@4` does not
   fall by more than 0.02; `MRR` does not fall at all (diversity reorders the tail, not the head);
   insufficiency recall is unchanged (selection runs after the gate and cannot change its verdict).
-  The chosen cross-manual behaviour is asserted against the real E223 query in
+  The cross-manual exemption is asserted against the real E223 query in
   `ExampleVaultLennoxTests`.
 - **Throughout.** No assertion anywhere in this plan compares an absolute cosine. No change to
   `documents.sqlite`, `VaultManifest`, `DocumentChunker`, any chunk boundary, any embedding, or any
@@ -368,7 +368,7 @@ corpus on one backend.
   built to be invisible to them, and the acceptance criteria pin that.
 - **[EK](EK-manual-structure-and-figures.md)** — the type-driven heading grammar, `kind`/`figure`
   on chunks, diagram exclusion from semantic query, citation format and the citation-as-door route
-  are unchanged. §3's open decision is informed by EK P3 but changes nothing in it.
+  are unchanged. §3's cross-manual decision is informed by EK P3 but changes nothing in it.
 - **[EL](EL-equipment-identity.md)** — `EquipmentScopeCheck`, the `ACTIVE EQUIPMENT` block and the
   model-mismatch penalty are unchanged; §3 reads `rankScore`, which already has the penalty folded
   in, rather than re-deriving it.
