@@ -1,8 +1,10 @@
 # Plan FO — Guided Job Flow and the Job Tab
 
-**Status:** Drafted 2026-09-21. Nothing implemented. The voice-turn reliability fixes that came out
-of the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
-wake phrases) ship separately as a fix PR and are a **prerequisite**, not part of this plan.
+**Status:** Drafted 2026-09-21. Nothing in this plan is implemented. The voice-turn reliability fixes
+from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
+wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
+alongside this draft in the same PR; they are a **prerequisite**, not part of this plan, and a
+device run confirming them is still owed.
 **Trigger:** A pilot technician on build 407 asked for three workflow changes: one continuous chat
 per job, the assistant asking for the job number by itself when a job starts, and a confirmation
 when the conversation moves to different equipment. The stated bar: *the workflow should guide the
@@ -27,7 +29,7 @@ id" is.
   the technician is asked is left to the model's initiative.
 - `FieldSession` has **no link to a conversation thread**. A saved thread lives exactly as long as
   `AppState.inConversation`; `returnToWakeWord()` ends it. The only coupling is
-  `FieldSessionService.recordConversationTurn`, an event-log dedup hook. (The fix PR adds the
+  `FieldSessionService.recordConversationTurn`, an event-log dedup hook. (The accompanying fix adds the
   narrow rule "don't end the saved thread while a field session is active"; this plan replaces that
   rule with an explicit binding.)
 - `FieldSessionService.setEquipment` **silently re-scopes** when the recognised heading changes:
@@ -114,7 +116,7 @@ bare `Int` values first, so inserting one cannot shift persisted selections or d
   task list and readings from `WorkRecordSurface`, *Open conversation* (the bound thread),
   *Read back*, *Close job* (→ existing export/delivery flow).
 - **Past job:** the work record, its thread (read-only), re-send delivery.
-- A "Wake word" row is **not** duplicated here — the fix PR puts it in Field Assist settings.
+- A "Wake word" row is **not** duplicated here — the accompanying fix puts it in Field Assist settings.
 VoiceOver order, Dynamic Type and the HUD-less case are acceptance criteria, not afterthoughts.
 
 ## Phases (one PR each)
