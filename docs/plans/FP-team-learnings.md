@@ -1,6 +1,8 @@
 # Plan FP — Team Learnings (what the organisation's technicians learn reaches every technician)
 
-**Status:** 📝 Drafted 2026-09-21 — nothing implemented.
+**Status:** 📝 Drafted 2026-09-21 — nothing implemented. Two owner decisions recorded the same day: the
+reviewer is a supervisor back at base, and a learning may answer where the manual is silent so long
+as it is clearly one (open questions 1 and 4).
 **Origin:** A commercial partner reselling Field Assist to service companies asked for the thing a
 vault cannot currently hold: not the manufacturer's book, but what *this* organisation's crew has
 worked out about the machines in its territory. A technician who discovers that a particular board
@@ -14,7 +16,7 @@ citations; the vault export and pack routes. No new backend.
 
 ## Product promise
 
-"Say what you worked out while you are still standing in front of it. A lead reads it, fixes the
+"Say what you worked out while you are still standing in front of it. Your supervisor back at base reads it, fixes the
 wording and approves it. From then on every technician's answer can quote it — named as your crew's
 finding, never mixed up with the manufacturer's book, and never allowed to outrank a safety note."
 
@@ -98,11 +100,29 @@ customer's job record shows that an observation was filed *and* that it was not 
 
 ### 2 · Review, with nobody's server
 
-**Recommended for P1–P3: a lead reviews on their own phone, and the bundle travels by the delivery
-channels that already ship.** The organisation already puts Field Assist on the lead's phone under
-the same team licence; the app already has a vault editor and a composer; and a Mac-side script would
-strand the decision on one laptop, which is exactly the failure Plan EI diagnosed for licence
-minting. An organisation HTTP endpoint (`EndpointSyncSink`) is a P5 accelerator for customers who run
+**Decided 2026-09-21: the reviewer is a supervisor (or whoever holds that job) back at base, not a
+technician in the field.** So the loop has a direction: candidates travel *in* from the field phones
+to the supervisor's device, and approved entries travel back *out* to every technician. For P1–P3 the
+supervisor reviews in the app on their own iPhone or iPad, and both legs ride the delivery channels
+that already ship. The organisation already puts Field Assist on that device under the same team
+licence; the app already has a vault editor and a composer; and a Mac-side script would strand the
+decision on one laptop, which is exactly the failure Plan EI diagnosed for licence minting.
+
+Three consequences of putting the reviewer at base:
+
+- **Capture and review are different devices by default.** A field phone files and sends; it does
+  not show the review queue. The queue appears only on a device marked as a reviewer, so a technician
+  cannot approve their own finding by accident. `LearningReview` refuses an approval whose approver
+  is the entry's author unless the device is a reviewer device — the one-person shop still works, and
+  the record says that author and approver were the same person.
+- **Sending is part of capture, not an afterthought.** A candidate that never leaves the phone helps
+  nobody, so filing one queues a bundle for the organisation's configured channel (`OfflineQueue`,
+  a new `OpKind`), sent when the technician next has signal — the supervisor is not standing next to
+  them. The session shows *filed*, *sent* and, when the outbound bundle arrives, *approved* or
+  *not taken up* with the supervisor's reason, so the author hears what became of it.
+- **The supervisor works at a desk, in batches.** Review is a list with equipment, symptom, fix,
+  evidence and the author, sorted by model, with duplicates grouped — not a voice flow. A larger
+  desk surface than a phone is a later question; nothing in P1–P3 depends on one. An organisation HTTP endpoint (`EndpointSyncSink`) is a P5 accelerator for customers who run
 one; the BL bridge is a P5 successor, not a dependency.
 
 `LearningReview` is a pure state machine: `candidate → approved | edited+approved | rejected |
@@ -164,10 +184,17 @@ the reviewer instead of being silently deduplicated.
 - **Two provenances, never one heap.** `VaultRetriever.Passage` gains
   `provenance: .manual | .teamLearning`, set from the namespace by the caller; the prompt block
   labels learnings and the spoken answer names them ("your crew noted, not in the manual").
-- **A learning is not evidence on its own.** `RetrievalEvidencePolicy.decide` may return
-  `.sufficient` on a `.teamLearning` passage only when a `.manual` passage also clears the floor;
-  otherwise the outcome is the manual-silent sentence *plus* the learning, offered as a colleague's
-  report. This keeps EJ's gate meaning what it said.
+- **A learning may answer where the manual is silent — as long as it is clear that it is one
+  (decided 2026-09-21).** `RetrievalEvidencePolicy.decide` may return `.sufficient` on a
+  `.teamLearning` passage only when a `.manual` passage also clears the floor, so EJ's gate keeps
+  meaning "the manual covers this". When only a learning clears it, the outcome is a third, named
+  result — `.teamLearningOnly` — not a quiet pass: the answer *opens* by saying the manual does not
+  cover this and that what follows is the crew's own finding, then gives it. "Clear" is enforced in
+  four places rather than left to the model's phrasing: the spoken lead-in is composed
+  deterministically and prepended; the citation reads "Team learning · …", never a manual title; the
+  phone and HUD surfaces badge the answer as a team learning; and the session log and `WorkRecord`
+  record that the answer rested on a learning alone, with the entry's id and approver, so a job
+  record never implies the manufacturer said it. `TeamLearningDisclosureTests` pins all four.
 - **A learning never overrides a safety note.** A standing prompt rule beside the manifest's
   `prompt_rules`, plus a deterministic `LearningSafetyCheck` at review time that *surfaces* — never
   auto-rejects — a candidate colliding with the vault's safety core file, because "the manual says X
@@ -197,18 +224,23 @@ the reviewer instead of being silently deduplicated.
   retract, the artefact renderer and citation name, `provenance` on the passage, the evidence-gate
   rule, `ModelScope` by identity, the prompt rules, `LearningSafetyCheck`. Tests:
   `TeamLearningReviewTests`, `TeamLearningRetrievalTests` (a learning alone never yields
-  `.sufficient`; a learning beside a manual passage does; the citation head is exact),
+  `.sufficient` and instead yields `.teamLearningOnly`; a learning beside a manual passage does; the
+  citation head is exact), `TeamLearningDisclosureTests` (lead-in, citation, badge flag and the
+  work-record line all present on a learning-only answer), a review state machine that refuses
+  author-as-approver off a reviewer device,
   `TeamLearningSupersessionTests` (stamped and kept, gone from the namespace, replay idempotent).
 - **P3 — bundle exchange, headless.** `LearningBundle` codec, structural validation of untrusted
-  input, `LearningBundleMerge`, `QueuedOp.teamLearning`, the learnings artefact added to
+  input, `LearningBundleMerge`, `QueuedOp.teamLearning` with both directions (candidates in to the
+  reviewer, decisions and approved entries out), the filed / sent / approved / not-taken-up status
+  on the author's session, the learnings artefact added to
   `VaultExporter`. Tests: `LearningBundleTests` (truncated, reordered and unknown-version bundles each
   refused whole), `LearningBundleMergeTests` (tombstone precedence, duplicate surfacing, two-phone
   convergence).
-- **P4 — surfaces.** Review queue (Custom Vaults, and the Job tab if Plan FO has landed), capture
+- **P4 — surfaces.** The reviewer-device setting and a batch review queue shown only there (Custom Vaults, and the Job tab if Plan FO has landed), capture
   confirmation read-back, a corpus browser with retract, a HUD line when an answer leans on a
   learning, vault-guide Step 8 and a fourth situation in its sharing section.
 - **P5 — the deferred edge.** A signed `learnings.json` in the pack format; the endpoint channel; the
-  BL bridge; and device acceptance with a real crew — two technicians capturing, one lead approving,
+  BL bridge; and device acceptance with a real crew — two technicians capturing in the field, one supervisor approving at base,
   a third phone answering from the result. None of it blocks P1–P4.
 
 ## Acceptance
@@ -226,19 +258,20 @@ the reviewer instead of being silently deduplicated.
 
 ## Open questions for the owner
 
-1. **Who is the reviewer, structurally?** There is no server and seats are recorded, not enforced, so
-   "lead" is a role the organisation asserts and the app records. Is a device-local role setting
-   enough for v1, or should a Plan CT organisation profile name the approver, so the role is at least
-   signed by the vendor's key?
+1. **How is the reviewer role asserted?** *Who* is decided (2026-09-21): a supervisor or similar back
+   at base — see §2. What remains is how a device comes to be a reviewer device. There is no server
+   and seats are recorded, not enforced, so the role is one the organisation asserts and the app
+   records. Is a device-local setting enough for v1, or should a Plan CT organisation profile name
+   the reviewer, so the role is at least signed by the vendor's key?
 2. **Does an unapproved candidate help its own author?** Arguably the person who wrote it should be
    able to retrieve it on their own phone. The draft says no, on the grounds that the first thing a
    technician would do is read it back to a customer as if it were the book.
 3. **One corpus per vault, or one per organisation across vaults?** The namespace is keyed by vault
    id, which is simple and scoped; a crew running both a refrigeration and an IT vault would file the
    same finding twice.
-4. **May a team learning answer a question the manual is silent on?** The draft allows it, clearly
-   labelled and never as `.sufficient` evidence. The stricter alternative — a learning may only
-   annotate an answer the manual already grounds — is safer and considerably less useful.
+4. ~~May a team learning answer a question the manual is silent on?~~ **Decided 2026-09-21: yes, as
+   long as it is clear that it is a team learning** — see §5 for what "clear" is held to. The
+   stricter annotate-only alternative is not taken.
 5. **Bundle authenticity.** Given that a crew cannot sign, is an unsigned reviewed bundle acceptable
    for v1, or should the vendor offer per-organisation signing as part of the Plan EI issuance work,
    so a bundle can be attributed as well as read?
