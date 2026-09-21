@@ -932,6 +932,28 @@ class AppState: ObservableObject, AppStateProtocol {
     /// through it, because a binding that only covered the end of a voice turn was a binding a
     /// CarPlay tap could break.
     let guidedJobFlow: GuidedJobFlow
+
+    /// A tab one surface has asked the root tab bar to show, cleared by `MainView` once it has.
+    ///
+    /// The selection is `MainView`'s own scene state and stays that way — this is a request, not a
+    /// second copy of it, so nothing else can be left holding a stale idea of which tab is up.
+    @Published var requestedTab: MainTab?
+
+    /// A saved conversation the Chat tab should open when it next appears. Consumed and cleared by
+    /// `ChatListView`, which is the only thing that knows how to push onto its own stack.
+    ///
+    /// **Never a way to change which thread is active.** Whatever sets this has already gone
+    /// through `GuidedJobFlow` — the id *and* the history — and all that is left is putting the
+    /// screen in front of the wearer.
+    @Published var chatThreadToOpen: String?
+
+    /// Show a conversation in the Chat tab. The two halves are set together so the tab cannot
+    /// arrive before the thread it was asked for.
+    func openChatThread(_ threadId: String) {
+        chatThreadToOpen = threadId
+        requestedTab = .chat
+    }
+
     /// DK: owns the disposable, lock-scoped in-memory conversation recall projection.
     let conversationRecallCoordinator = ConversationRecallCoordinator()
     let userMemory = SemanticMemoryStore()

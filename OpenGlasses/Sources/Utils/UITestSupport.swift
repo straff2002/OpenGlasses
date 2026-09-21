@@ -34,6 +34,20 @@ enum UITestSupport {
         case seedConversations = "-OGUITestSeedConversations"
         /// A delete-and-reinstall: the Keychain kept a provider key, `UserDefaults` kept nothing.
         case reinstall = "-OGUITestReinstall"
+        /// Field Assist entitled and switched on, with no job open — the Job tab present, showing
+        /// its empty state.
+        case fieldAssist = "-OGUITestFieldAssist"
+        /// Field Assist as above, plus one finished job in the history, so the past-job list and
+        /// the past-job page have something in them.
+        case seedFieldHistory = "-OGUITestSeedFieldHistory"
+        /// Field Assist as above, plus a job open with a number, a machine and two tasks on it.
+        case seedFieldJob = "-OGUITestSeedFieldJob"
+    }
+
+    /// Whether any of the Field Assist flags is set. They are cumulative: seeding a job implies
+    /// the feature is on, because a job cannot exist otherwise.
+    static var wantsFieldAssist: Bool {
+        isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -85,6 +99,30 @@ enum UITestSupport {
             // leaves no Discover card to audit. The folded hub is the shape this seeds.
             seedJourney(showsEverything: isSet(.showAllSettings))
         }
+
+        if wantsFieldAssist {
+            // The entitlement comes from the seam that already exists for development and demos —
+            // in-memory, `#if DEBUG` only, producing an evidence case that does not compile into a
+            // Release binary. Nothing here weakens the shipped gate: `Config`, `VaultRegistry` and
+            // every field tool still ask the same evaluator the same question.
+            FieldAssistEntitlement.shared.setInternalDeveloperGrant(true)
+            applyFieldAssistSwitch()
+            // Sessions live in Documents, which outlives the defaults wipe, so a seeded run starts
+            // from no jobs rather than piling another one on every launch.
+            clearFieldSessions()
+        }
+    }
+
+    /// Turn Field Assist on, and make sure the write has actually landed.
+    ///
+    /// Written last and flushed on purpose. `removePersistentDomain` above is not ordered against
+    /// the writes that follow it, and a launch where this one was swallowed comes up with no Job
+    /// tab at all — which looked exactly like a bug in the tab's own visibility rule until the
+    /// failing run's accessibility tree showed four tabs and a `fieldAssistEnabled` of false.
+    /// `seedRuntime` asserts it a second time, once `AppState` exists.
+    private static func applyFieldAssistSwitch() {
+        Config.setFieldAssistEnabled(true)
+        UserDefaults.standard.synchronize()
     }
 
     /// The one fact a reinstall is made of, stated directly because the store that carries it
@@ -133,12 +171,29 @@ enum UITestSupport {
     static func seedRuntime(_ appState: AppState) {
         guard isActive else { return }
 
+        if wantsFieldAssist {
+            // Asserted again, and deliberately: see `applyFieldAssistSwitch`. The gating cache is
+            // main-actor state, so it is re-read here rather than beside the grant that made it
+            // stale.
+            applyFieldAssistSwitch()
+            VaultRegistry.shared.resetCache()
+        }
+
         if isSet(.seedMyDay) {
             appState.myDayService.seedForUITest(seededDay())
         }
 
         if isSet(.seedConversations) {
             seedConversations(appState)
+        }
+
+        if isSet(.seedFieldHistory) || isSet(.seedFieldJob) {
+            // Deferred by one runloop turn on purpose. Starting a session builds the vault's model
+            // and parts indexes on the main thread, and doing that inside launch pushes a cold
+            // first launch of a large Debug build towards the watchdog — which shows up as an app
+            // that "launched" and has no UI. The tab itself does not wait on this: its visibility
+            // comes from the switch and the entitlement, both already set.
+            Task { @MainActor in seedFieldJobs(appState) }
         }
 
         if isSet(.seedCaptions) {
@@ -237,6 +292,58 @@ enum UITestSupport {
         ("Remind me what tape you said.",
          "Butyl tape — the black rubbery kind, not the foil-faced flashing tape."),
     ]
+
+    // MARK: - Field Assist jobs
+
+    /// Wipe `Documents/FieldSessions`, so a seeded launch starts from no jobs at all.
+    ///
+    /// Runs before anything touches `FieldSessionService.shared`, which reads the directory in its
+    /// initialiser. Only ever under `-OGUITest`, and only alongside a Field Assist flag.
+    private static func clearFieldSessions() {
+        guard let documents = FileManager.default.urls(for: .documentDirectory,
+                                                       in: .userDomainMask).first else { return }
+        try? FileManager.default.removeItem(
+            at: documents.appendingPathComponent("FieldSessions", isDirectory: true))
+    }
+
+    /// One finished job, and — with `.seedFieldJob` — one open one on top of it.
+    ///
+    /// Written through the service's own API, so what lands on disk is exactly what a real visit
+    /// would have left: a session record, an audit log, a job number recorded through the intake,
+    /// and tasks in the states a technician's decisions put them in.
+    @MainActor
+    private static func seedFieldJobs(_ appState: AppState) {
+        let sessions = FieldSessionService.shared
+        let vaultId = Config.fieldAssistDefaultVaultId
+        guard VaultRegistry.shared.isUnlocked(vaultId) else { return }
+        guard sessions.activeSession == nil else { return }
+
+        // The finished one, so the past-job list and its page have something in them.
+        if (try? sessions.startSession(vaultId: vaultId, assetId: nil, mode: .aiOnly,
+                                       jobReference: "1004")) != nil {
+            if let task = try? sessions.addOperatorTask(title: "Replaced the condensate trap",
+                                                        why: "Blocked; water in the burner box") {
+                _ = try? sessions.completeTask(id: task.id, note: "New trap fitted and tested.")
+            }
+            _ = try? sessions.endSession(outcome: .resolved)
+        }
+
+        guard isSet(.seedFieldJob) else { return }
+
+        // The open one. Through the guided flow, so the binding, the intake and the thread title
+        // are the ones the shipped path produces.
+        guard (try? appState.guidedJobFlow.startJob(vaultId: vaultId, assetId: nil, mode: .aiOnly,
+                                                    jobReference: "1005")) != nil else { return }
+        if let model = sessions.modelIndex.models.first {
+            sessions.setEquipment(EquipmentIdentity(model: model, token: model.name, source: .manual))
+        }
+        if let done = try? sessions.addOperatorTask(title: "Checked the pressure switch tubing",
+                                                    why: "Intermittent lockout on ignition") {
+            _ = try? sessions.completeTask(id: done.id, note: "Tubing clear; switch held at 0.6 in w.c.")
+        }
+        _ = try? sessions.addOperatorTask(title: "Clean the flame sensor",
+                                          why: "Signal reading low")
+    }
 
     /// The lines a real session would have produced. Two of the three carry a diarized speaker, so
     /// the speaker chip is on screen for the audit to measure — without one the chip never renders

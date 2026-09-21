@@ -17,12 +17,56 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
     case voice
     case modes
     case chat
+    /// Field Assist's job dashboard. Conditional — see `JobTabPresence`.
+    case job
     case settings
 
     var id: String { rawValue }
 
-    /// Left-to-right order in the tab bar. `MainView` builds its tabs in this order.
-    static let displayOrder: [MainTab] = [.voice, .modes, .chat, .settings]
+    /// Left-to-right order in the tab bar, with every tab the app has. `MainView` builds its bar
+    /// from `visibleOrder(showingJob:)`, which is this filtered by what is actually on.
+    ///
+    /// The Job tab sits between Chat and Settings. Voice is the primary capture surface and stays
+    /// first; Settings is the drawer everything else is kept out of and stays last; the job is
+    /// content, so it belongs with the content tabs. Inserting it there moves only Settings, and
+    /// Settings is reached by its label — the UI tests address every tab by name
+    /// (`AccessibilityAudit.openTab(_:in:)`), and nothing in the app addresses one by position.
+    static let displayOrder: [MainTab] = [.voice, .modes, .chat, .job, .settings]
+
+    /// The bar as it is actually built. Without Field Assist this is exactly the four tabs that
+    /// shipped, in the order they shipped in.
+    static func visibleOrder(showingJob: Bool) -> [MainTab] {
+        showingJob ? displayOrder : displayOrder.filter { $0 != .job }
+    }
+
+    /// The tab's spoken name. Also its accessibility label, because a tab bar button's label is
+    /// the word the wearer hears.
+    var title: String {
+        switch self {
+        case .voice: return "Voice"
+        case .modes: return "Modes"
+        case .chat: return "Chat"
+        case .job: return "Job"
+        case .settings: return "Settings"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .voice: return "waveform"
+        case .modes: return "person.2.fill"
+        case .chat: return "bubble.left.and.bubble.right"
+        // A clipboard with a tick: the job is a list of work that gets signed off, and it reads
+        // differently from the waveform, the people and the gear beside it.
+        case .job: return "checklist"
+        case .settings: return "gearshape.fill"
+        }
+    }
+
+    // No `accessibilityIdentifier` here, deliberately: nothing in this app sets one. Every tab —
+    // and every row the UI tests reach — is addressed by its spoken label
+    // (`AccessibilityAudit.openTab(_:in:)`, `tapRow(startingWith:)`), which is also what makes a
+    // VoiceOver user and a UI test walk the same tree. `title` is that label.
 
     /// The tab a legacy `Int` selection refers to, or `nil` if the number never named a tab.
     ///
@@ -52,6 +96,10 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         case .modes: return 1
         case .chat: return 2
         case .settings: return 3
+        // Added after the identifier was typed, and deliberately never given a number: `.job` sits
+        // between Chat and Settings, so numbering it would have to renumber Settings, which is the
+        // exact rewrite freezing the table prevents.
+        case .job: return nil
         }
     }
 }

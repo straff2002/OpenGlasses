@@ -71,6 +71,18 @@ struct ChatListView: View {
             appState.guidedJobFlow.confirmLeaveJobThread()
             Task { await performNewChat() }
         }
+        // A conversation another tab asked to show — the Job tab's "Open conversation" (Plan FO
+        // P2). `initial: true` because a tab's content is built lazily: the request is usually
+        // already standing by the time this view first appears.
+        //
+        // Nothing here changes which thread is active. Whoever set this has already been through
+        // `GuidedJobFlow`, which resumed the thread properly — id *and* history — and this only
+        // puts the page in front of the wearer.
+        .onChange(of: appState.chatThreadToOpen, initial: true) { _, requested in
+            guard let requested, store.threads.contains(where: { $0.id == requested }) else { return }
+            if path.last != requested { path.append(requested) }
+            appState.chatThreadToOpen = nil
+        }
     }
 
     private var threadList: some View {
