@@ -196,9 +196,17 @@ struct PersonaEditorView: View {
                             Text("Custom: \(wakePhrase)").tag(wakePhrase)
                         }
                     }
-                    .onChange(of: wakePhrase) { _, newValue in
-                        let defaults = Config.defaultAlternativesForPhrase(newValue)
-                        wakeAlts = defaults.joined(separator: ", ")
+                    .onChange(of: wakePhrase) { oldValue, newValue in
+                        // Re-seed the alternatives for the new phrase, but only when the field is
+                        // still the previous phrase's suggestions. Anything the user typed is
+                        // theirs — the old behaviour overwrote it on the next keystroke in the
+                        // custom field, which is the field right below this one.
+                        let previous = Config.defaultAlternativesForPhrase(oldValue)
+                            .joined(separator: ", ")
+                        guard wakeAlts.trimmingCharacters(in: .whitespaces).isEmpty
+                                || wakeAlts == previous else { return }
+                        wakeAlts = Config.defaultAlternativesForPhrase(newValue)
+                            .joined(separator: ", ")
                     }
 
                     TextField("Custom wake phrase", text: $wakePhrase)
@@ -211,7 +219,7 @@ struct PersonaEditorView: View {
                 } header: {
                     Text("Wake Word")
                 } footer: {
-                    Text("Say this phrase to activate this persona. Add alternatives for common misrecognitions.")
+                    Text("Say this phrase to activate this persona. Add alternatives for common misrecognitions. A short phrase — one word — is matched exactly, so add the ways the recogniser writes it down.")
                 }
 
                 Section {

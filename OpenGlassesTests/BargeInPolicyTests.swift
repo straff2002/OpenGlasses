@@ -8,11 +8,13 @@ final class BargeInPolicyTests: XCTestCase {
     private func decide(_ transcript: String,
                         isStopPhrase: Bool = false,
                         matchedWakePhrase: String? = nil,
-                        generalBargeInEnabled: Bool = true) -> BargeInPolicy.Decision {
+                        generalBargeInEnabled: Bool = true,
+                        assistantSpeech: BargeInPolicy.AssistantSpeech = .silent) -> BargeInPolicy.Decision {
         BargeInPolicy.decide(transcript: transcript,
                              isStopPhrase: isStopPhrase,
                              matchedWakePhrase: matchedWakePhrase,
-                             generalBargeInEnabled: generalBargeInEnabled)
+                             generalBargeInEnabled: generalBargeInEnabled,
+                             assistantSpeech: assistantSpeech)
     }
 
     // MARK: - The two signals the switch cannot disable
@@ -106,18 +108,63 @@ final class BargeInPolicyTests: XCTestCase {
         }
     }
 
-    // MARK: - Echo and background speech stay someone else's problem
+    // MARK: - Echo, while the assistant is speaking
 
-    /// The assistant's own words returning through the mic are suppressed upstream — the
-    /// recognition pause around playback and `SpeechActivityGate`. If they reach this policy it
-    /// treats them like any other speech, deliberately: a second, weaker echo test here would mask
-    /// failures in the real one and would be the thing that eventually gets tuned per language.
-    func testAnEchoedAssistantPhraseGetsNoSpecialTreatment() {
-        let echoed = "the next train is at ten past"
-        XCTAssertEqual(decide(echoed), .interrupt(text: echoed),
-                       "echo suppression is upstream; this policy must not second-guess it")
-        XCTAssertEqual(decide(echoed, generalBargeInEnabled: false), .ignore,
-                       "the switch is the wearer's answer to echo and background talk, not a heuristic")
+    /// Nothing is playing ⇒ nothing to mistake for the wearer. The floor is the only filter.
+    func testWithNothingPlayingAnyClearUtteranceInterrupts() {
+        let words = "the next train is at ten past"
+        XCTAssertEqual(decide(words), .interrupt(text: words))
+        XCTAssertEqual(decide(words, generalBargeInEnabled: false), .ignore,
+                       "the switch is the wearer's answer to background talk")
+    }
+
+    /// The field failure (build 407): the recogniser hears the assistant read its own answer back
+    /// and cuts it off a second in. There is no echo cancellation on that path, so the policy has
+    /// to refuse the interrupt itself.
+    func testTheAssistantReadingItsOwnAnswerBackDoesNotCutItOff() {
+        let spoken = "The next train to Wellington is at ten past four from platform two."
+        XCTAssertEqual(decide("the next train to wellington is at ten past",
+                              assistantSpeech: .speaking(text: spoken)),
+                       .ignore)
+        XCTAssertEqual(decide("at ten past four from platform two",
+                              assistantSpeech: .speaking(text: spoken)),
+                       .ignore)
+    }
+
+    /// The wearer talking over the answer still gets through — the refusal is about echo, not
+    /// about playback.
+    func testTheWearerSayingSomethingElseStillInterrupts() {
+        let spoken = "The next train to Wellington is at ten past four from platform two."
+        XCTAssertEqual(decide("actually I need the bus", assistantSpeech: .speaking(text: spoken)),
+                       .interrupt(text: "actually I need the bus"))
+    }
+
+    /// Playback with no idea what is being said is no evidence either way, and the answer to no
+    /// evidence is to leave the answer running — "stop" and the wake phrase are still the way out.
+    func testPlaybackWithoutTheSpokenTextRefusesGeneralInterrupts() {
+        XCTAssertEqual(decide("no wait", assistantSpeech: .speaking(text: nil)), .ignore)
+        XCTAssertEqual(decide("stop", isStopPhrase: true, assistantSpeech: .speaking(text: nil)),
+                       .stop)
+        XCTAssertEqual(decide("hey claude", matchedWakePhrase: "hey claude",
+                              assistantSpeech: .speaking(text: nil)),
+                       .newConversation(phrase: "hey claude"))
+    }
+
+    /// The explicit signals are never echo-tested, even when the assistant is literally saying the
+    /// word. Being unable to stop a reply that is talking about stopping would be the trap this
+    /// policy's contract exists to forbid.
+    func testTheExplicitSignalsAreNeverEchoTested() {
+        let spoken = "Say stop at any time and I will stop talking."
+        XCTAssertEqual(decide("stop", isStopPhrase: true, assistantSpeech: .speaking(text: spoken)),
+                       .stop)
+    }
+
+    func testEchoDetectionIsAWordOverlapNotASubstring() {
+        let spoken = "Check the suction pressure before you top up the refrigerant."
+        // Same words, recognised out of order and with a word missing: still the assistant.
+        XCTAssertTrue(BargeInPolicy.echoesSpokenText("the suction pressure before you", spoken: spoken))
+        // Shares a word or two with what is playing, but is a question of its own.
+        XCTAssertFalse(BargeInPolicy.echoesSpokenText("what pressure should it be at", spoken: spoken))
     }
 
     /// Background conversation is the other case the switch exists for, and it is indistinguishable

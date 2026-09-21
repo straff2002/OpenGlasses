@@ -23,13 +23,35 @@ import Foundation
 ///
 /// - **Look at the language.** No locale, no script detection, no per-language word counts. The
 ///   floor is structural and applies identically to every transcript.
-/// - **Judge echo.** The assistant's own words coming back through the mic are suppressed upstream
-///   (`SpeechActivityGate` and the recognition pause around playback). If they reach here they are
-///   treated exactly like any other speech — inventing a second, weaker echo test here would mask
-///   failures in the real one.
 /// - **Gate the explicit stop.** "Stop" and the wake phrase cut through in every configuration.
 ///   An interruption control that can disable the way out of a long answer is a trap.
+///
+/// # Echo
+///
+/// This comment used to say echo was somebody else's problem — suppressed upstream, so a
+/// transcript arriving here could be treated as speech. That was not true of the wake-word
+/// recogniser, which is the one running during playback: the gate lives on the capture router's
+/// path, there is no acoustic echo cancellation on the wearer's route, and a field build (407)
+/// cut every single reply off one to two seconds in because the recogniser was hearing the
+/// assistant read its own answer back. A noise floor cannot tell that apart — the assistant's
+/// voice clears any floor you care to set.
+///
+/// So while the assistant is speaking, a *general* interrupt now needs evidence that the words
+/// came from the wearer rather than from the speaker, and the only evidence available at this
+/// layer is that they are not what is being said. That check is deliberately weak, which is why
+/// it only gates general speech: the explicit stop and the wake phrase are unaffected and still
+/// cut through, so the wearer is never stuck inside a long answer.
 enum BargeInPolicy {
+
+    /// What the microphone is hearing from the app itself while this transcript arrives.
+    enum AssistantSpeech: Equatable {
+        /// Nothing is playing — every transcript is somebody in the room.
+        case silent
+        /// TTS is playing. `text` is the utterance being spoken, when the caller can supply it;
+        /// `nil` means the caller knows playback is live but cannot say what it is saying, and
+        /// then there is nothing to distinguish the wearer from the echo.
+        case speaking(text: String?)
+    }
 
     enum Decision: Equatable {
         /// An explicit stop. Cut the speech; the words themselves are not a query.
@@ -65,20 +87,48 @@ enum BargeInPolicy {
     ///   - matchedWakePhrase: the wake phrase the caller matched, if any.
     ///   - generalBargeInEnabled: the wearer's setting. `false` means *only* the two explicit
     ///     signals above may interrupt.
+    ///   - assistantSpeech: what the app is playing as this transcript arrives. Defaults to
+    ///     `.silent`, which is the right answer for every caller outside the playback window.
     static func decide(transcript: String,
                        isStopPhrase: Bool,
                        matchedWakePhrase: String?,
-                       generalBargeInEnabled: Bool) -> Decision {
+                       generalBargeInEnabled: Bool,
+                       assistantSpeech: AssistantSpeech = .silent) -> Decision {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .ignore }
 
-        // Explicit signals first, and unconditionally: neither is affected by the setting.
+        // Explicit signals first, and unconditionally: neither is affected by the setting, and
+        // neither is affected by the echo test below. A wearer saying "stop" over the assistant is
+        // exactly the case that must never be mistaken for the assistant.
         if isStopPhrase { return .stop }
         if let matchedWakePhrase { return .newConversation(phrase: matchedWakePhrase) }
 
         guard generalBargeInEnabled else { return .ignore }
         guard clearsNoiseFloor(trimmed) else { return .ignore }
+        if case .speaking(let spoken) = assistantSpeech {
+            // No idea what is playing ⇒ no evidence this is the wearer ⇒ don't cut the answer.
+            guard let spoken, !echoesSpokenText(trimmed, spoken: spoken) else { return .ignore }
+        }
         return .interrupt(text: trimmed)
+    }
+
+    /// Share of a transcript's words that must also appear in what is being spoken before it reads
+    /// as the assistant's own voice rather than the wearer's.
+    ///
+    /// Two thirds, because both halves of the mistake are cheap to picture. Too low and a wearer
+    /// who repeats a word back ("no — *Tuesday*?") cannot interrupt; too high and a recogniser
+    /// that mangles one word in three stops recognising the echo. It is a bag of words on purpose:
+    /// the recogniser hears the playback at a delay and out of order often enough that requiring a
+    /// contiguous run would catch almost nothing.
+    static let echoOverlapThreshold = 2.0 / 3.0
+
+    /// Whether `transcript` reads as `spoken` coming back through the microphone.
+    static func echoesSpokenText(_ transcript: String, spoken: String) -> Bool {
+        let heard = PhraseMatcher.tokenize(transcript)
+        let said = Set(PhraseMatcher.tokenize(spoken))
+        guard !heard.isEmpty, !said.isEmpty else { return false }
+        let overlap = heard.filter { said.contains($0) }.count
+        return Double(overlap) / Double(heard.count) >= echoOverlapThreshold
     }
 
     /// Whether `trimmed` is more than a stray fragment. Either signal is enough; neither is a claim

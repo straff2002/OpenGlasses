@@ -107,3 +107,106 @@ final class WakeAutoRestartPolicyTests: XCTestCase {
         XCTAssertFalse(restart(already: true))
     }
 }
+
+/// The end-of-turn re-arm, and the reason a field build (407) only ever heard one wake word per
+/// launch: `returnToWakeWord()` skipped on a cached `isConnected` that had latched false, logged a
+/// line and returned, and nothing was left watching for the condition to clear.
+final class WakeRearmPolicyTests: XCTestCase {
+
+    private func decide(listening: Bool = true,
+                        silent: Bool = false,
+                        wasInConversation: Bool = true,
+                        connected: Bool = true,
+                        muted: Bool = false) -> WakeRearmPolicy.Decision {
+        WakeRearmPolicy.decide(.init(listeningEnabled: listening,
+                                     silentMode: silent,
+                                     wasInConversation: wasInConversation,
+                                     isConnected: connected,
+                                     micMuted: muted))
+    }
+
+    func testAnOrdinaryTurnEndsWithTheMicReArmed() {
+        XCTAssertEqual(decide(), .restart)
+    }
+
+    func testTheMasterToggleSkipsAndIsNotRetried() {
+        XCTAssertEqual(decide(listening: false), .skip(.masterOff))
+        XCTAssertFalse(WakeRearmPolicy.SkipReason.masterOff.isRecoverable,
+                       "the wearer turned listening off; retrying would turn the mic back on")
+    }
+
+    /// Silent mode suppresses the *initial* auto-start only. Someone who has just been talking
+    /// expects the mic back for their next wake word.
+    func testPushToTalkStillReArmsAfterAConversation() {
+        XCTAssertEqual(decide(silent: true, wasInConversation: true), .restart)
+        XCTAssertEqual(decide(silent: true, wasInConversation: false), .skip(.silentMode))
+    }
+
+    func testAMutedMicSkipsAndIsNotRetried() {
+        XCTAssertEqual(decide(muted: true), .skip(.micMuted))
+        XCTAssertFalse(WakeRearmPolicy.SkipReason.micMuted.isRecoverable)
+    }
+
+    /// The bug's shape: the one skip the wearer did not ask for, and the only one that may clear
+    /// on its own — so it must be the one that schedules another attempt.
+    func testADisconnectedLinkIsTheOnlyRecoverableSkip() {
+        XCTAssertEqual(decide(connected: false), .skip(.disconnected))
+        XCTAssertTrue(WakeRearmPolicy.SkipReason.disconnected.isRecoverable)
+        for reason in [WakeRearmPolicy.SkipReason.masterOff, .silentMode, .micMuted] {
+            XCTAssertFalse(reason.isRecoverable, "\(reason) is the wearer's decision, not a fault")
+        }
+    }
+
+    /// Order matters: a wearer with listening off and no glasses must not be retried at, so the
+    /// master toggle has to be read before the link.
+    func testTheMasterToggleIsReadBeforeTheLink() {
+        XCTAssertEqual(decide(listening: false, connected: false), .skip(.masterOff))
+    }
+
+    func testEveryReasonIsLoggableAsAStableToken() {
+        XCTAssertEqual(WakeRearmPolicy.SkipReason.masterOff.rawValue, "masterOff")
+        XCTAssertEqual(WakeRearmPolicy.SkipReason.silentMode.rawValue, "silentMode")
+        XCTAssertEqual(WakeRearmPolicy.SkipReason.disconnected.rawValue, "disconnected")
+        XCTAssertEqual(WakeRearmPolicy.SkipReason.micMuted.rawValue, "micMuted")
+    }
+
+    func testTheRetryScheduleIsBoundedAndAscending() {
+        XCTAssertFalse(WakeRearmPolicy.retryDelays.isEmpty)
+        XCTAssertEqual(WakeRearmPolicy.retryDelays, WakeRearmPolicy.retryDelays.sorted())
+        XCTAssertLessThanOrEqual(WakeRearmPolicy.retryDelays.reduce(0, +), 30,
+                                 "a re-arm that keeps trying forever is a mic that turns itself on")
+    }
+}
+
+/// A job's turns belong in one thread. Tying the saved thread's life to `inConversation` filed
+/// every wake-word turn as its own one-turn conversation.
+final class ConversationThreadContinuityPolicyTests: XCTestCase {
+
+    private func shouldEnd(persistence: Bool = true,
+                           hasThread: Bool = true,
+                           fieldSession: Bool = false) -> Bool {
+        ConversationThreadContinuityPolicy.shouldEndSavedThread(persistenceEnabled: persistence,
+                                                                hasActiveThread: hasThread,
+                                                                fieldSessionActive: fieldSession)
+    }
+
+    func testAnOrdinaryTurnClosesItsThread() {
+        XCTAssertTrue(shouldEnd())
+    }
+
+    func testAJobKeepsItsThreadOpenBetweenTurns() {
+        XCTAssertFalse(shouldEnd(fieldSession: true),
+                       "the next wake word continues the job's conversation")
+    }
+
+    func testNothingToEndIsNotAnEnd() {
+        XCTAssertFalse(shouldEnd(hasThread: false))
+        XCTAssertFalse(shouldEnd(persistence: false))
+    }
+
+    /// The rule is scoped to the job being active — finishing it must let the thread close again.
+    func testTheThreadClosesOnceTheJobIsOver() {
+        XCTAssertFalse(shouldEnd(fieldSession: true))
+        XCTAssertTrue(shouldEnd(fieldSession: false))
+    }
+}

@@ -71,6 +71,25 @@ enum MicRoutePolicy {
     /// headsets report `.headsetMic`.
     static let bluetoothMicPorts: [AVAudioSession.Port] = [.bluetoothHFP, .bluetoothLE, .headsetMic]
 
+    /// Whether any of these ports is a mic the glasses could be on.
+    ///
+    /// The route-change and interruption handlers in `WakeWordService` each used to ask this with
+    /// an inline `portType == .bluetoothHFP`, which is the same list minus everything iOS 26 added
+    /// to it. On a device whose glasses negotiate LC3 that reads as "the glasses are gone" on
+    /// every route flip — and one of those handlers reports a disconnect that latches the app's
+    /// cached connection flag off. Same question, one answer.
+    static func containsBluetoothMic(_ ports: [AVAudioSession.Port]) -> Bool {
+        ports.contains { bluetoothMicPorts.contains($0) }
+    }
+
+    /// Bluetooth output port types, for "is the link still there" checks that look at both
+    /// directions. A2DP appears here and not in `bluetoothMicPorts` because it carries no mic.
+    static let bluetoothOutputPorts: [AVAudioSession.Port] = [.bluetoothHFP, .bluetoothLE, .bluetoothA2DP]
+
+    static func containsBluetoothOutput(_ ports: [AVAudioSession.Port]) -> Bool {
+        ports.contains { bluetoothOutputPorts.contains($0) }
+    }
+
     /// Category options per route. The phone route deliberately excludes
     /// every Bluetooth option — with them present, iOS re-routes input to
     /// the glasses on its own and the "phone mic" choice silently stops

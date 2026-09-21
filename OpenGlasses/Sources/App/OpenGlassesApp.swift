@@ -627,7 +627,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 wakeWordService.stopListening()
                 isListening = false
                 PrivacyLog.app(.micMuted)
-            } else if isConnected {
+            } else if glassesConnectionIsLive() {
                 Task {
                     try? await wakeWordService.startListening()
                     PrivacyLog.app(.micUnmuted)
@@ -960,6 +960,9 @@ class AppState: ObservableObject, AppStateProtocol {
         })
     private var autoSleepTask: Task<Void, Never>?
     private var currentLLMTask: Task<Void, Never>?
+    /// The bounded re-arm waiting on a recoverable end-of-turn skip (see `scheduleWakeRearm`).
+    /// At most one: a later turn's schedule replaces it.
+    private var wakeRearmRetry: Task<Void, Never>?
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
     /// narrates only the FIRST fallback hop (not once per hop). Reset at the start of every turn.
     private var didNarrateModelSwitchThisTurn = false
@@ -2478,6 +2481,14 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        // What the mic is hearing from us, so a transcript arriving during playback can be told
+        // from the assistant's own voice coming back through it. There is no echo cancellation on
+        // this path — without this the reply cut itself off one to two seconds in, every time.
+        wakeWordService.assistantSpeechContext = { [weak self] in
+            guard let self, self.speechService.isSpeaking else { return .silent }
+            return .speaking(text: self.speechService.lastSpokenText)
+        }
+
         // Voice-activity barge-in: user starts speaking during TTS → stop and process new query
         wakeWordService.onBargeIn = { [weak self] bargeInText in
             Task { @MainActor in
@@ -3105,7 +3116,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if enabled {
             // Restart wake word detection and Live Activity
             liveActivityManager.start(glassesName: glassesService.deviceName ?? "OpenGlasses")
-            if isConnected {
+            if glassesConnectionIsLive() {
                 Task { try? await wakeWordService.startListening() }
             }
             PrivacyLog.app(.listeningEnabled)
@@ -5852,36 +5863,94 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak("Resuming \(media.displayName).")
         }
         updateLiveActivity()
-        // End active conversation thread
-        if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
+        // End the saved thread — unless a Field Assist job is running, in which case the job owns
+        // the thread and the next wake-word turn continues it (see the policy for why).
+        if ConversationThreadContinuityPolicy.shouldEndSavedThread(
+            persistenceEnabled: Config.conversationPersistenceEnabled,
+            hasActiveThread: conversationStore.activeThreadId != nil,
+            fieldSessionActive: FieldSessionService.shared.activeSession != nil) {
             conversationStore.endThread()
         }
-        // The master toggle wins over every restart rule below.
-        if !listeningEnabled {
-            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("masterOff"))
+
+        switch WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation)) {
+        case .skip(let reason):
+            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken(reason.rawValue))
+            if reason.isRecoverable {
+                scheduleWakeRearm(after: reason, wasInConversation: wasInConversation)
+            }
             return
+        case .restart:
+            wakeRearmRetry?.cancel()
+            wakeRearmRetry = nil
+            await armWakeWord()
         }
-        // In silent mode, don't restart wake word UNLESS we just finished an
-        // active conversation — the user was just talking, so they expect the
-        // mic to come back for the next wake word.
-        if Config.silentMode && !wasInConversation {
-            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("silentMode"))
-            return
-        }
-        // Don't restart mic on phone speaker when glasses are disconnected
-        if !isConnected {
-            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("disconnected"))
-            return
-        }
-        if micMuted {
-            PrivacyLog.app(.listeningDisabled, detail: PrivacyToken("micMuted"))
-            return
-        }
+    }
+
+    /// The re-arm decision's inputs, with connection **observed** rather than read from the cached
+    /// flag — see `glassesConnectionIsLive()`.
+    private func rearmInputs(wasInConversation: Bool) -> WakeRearmPolicy.Inputs {
+        WakeRearmPolicy.Inputs(listeningEnabled: listeningEnabled,
+                               silentMode: Config.silentMode,
+                               wasInConversation: wasInConversation,
+                               isConnected: glassesConnectionIsLive(),
+                               micMuted: micMuted)
+    }
+
+    /// Whether the glasses are connected *now*.
+    ///
+    /// `isConnected` is a cache that only clears on a Bluetooth event, and one of the handlers
+    /// that clears it fired on a route flip the glasses survived — after which the flag stayed
+    /// false for the rest of the launch and every end-of-turn re-arm skipped as `disconnected`.
+    /// Three sources, any of which being true means there is something to listen on: the cached
+    /// flag, the connection service, and the live audio route.
+    func glassesConnectionIsLive() -> Bool {
+        isConnected || glassesService.isConnected || wakeWordService.hasBluetoothAudioRoute()
+    }
+
+    /// Open the wake-word listener, reporting failure the way the wearer can act on.
+    private func armWakeWord() async {
         do {
             try await wakeWordService.startListening()
         } catch {
             PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
             errorMessage = "Tap Test Microphone to restart"
+        }
+    }
+
+    /// Try again, a bounded number of times, after a skip whose condition can clear on its own.
+    ///
+    /// The events that clear it re-arm on their own (the route-change handler, the reconnect
+    /// handler, `isConnected`'s smart-connect branch). This covers the gap before one of them
+    /// arrives — and the case where none does, because the route never actually changed and the
+    /// app had simply stopped believing in the glasses.
+    private func scheduleWakeRearm(after reason: WakeRearmPolicy.SkipReason,
+                                   wasInConversation: Bool) {
+        wakeRearmRetry?.cancel()
+        PrivacyLog.app(.listeningRearmScheduled, detail: PrivacyToken(reason.rawValue))
+        wakeRearmRetry = Task { @MainActor [weak self] in
+            for delay in WakeRearmPolicy.retryDelays {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                // Something else got there first — a reconnect, a new conversation, the wearer
+                // tapping the mic. Nothing to re-arm.
+                guard !self.wakeWordService.isListening, !self.inConversation, !self.isProcessing else { return }
+                // Still the same turn's re-arm: push-to-talk's "they were just talking" allowance
+                // belongs to the turn that was skipped, not to the moment the retry fires.
+                switch WakeRearmPolicy.decide(
+                    self.rearmInputs(wasInConversation: wasInConversation)) {
+                case .restart:
+                    PrivacyLog.app(.listeningRearmed, detail: PrivacyToken(reason.rawValue))
+                    await self.armWakeWord()
+                    return
+                case .skip(let current) where !current.isRecoverable:
+                    // The wearer has since turned listening off (or muted): stop asking.
+                    PrivacyLog.app(.listeningRearmAbandoned, detail: PrivacyToken(current.rawValue))
+                    return
+                case .skip:
+                    continue
+                }
+            }
+            PrivacyLog.app(.listeningRearmAbandoned, detail: PrivacyToken(reason.rawValue))
         }
     }
 }

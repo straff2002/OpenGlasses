@@ -39,6 +39,43 @@ struct FieldAssistSettingsView: View {
     /// re-evaluated on every published change the session makes.
     @State private var unsentRecordCount = 0
 
+    /// The persona whose phrase is live: the one currently routing, or the only enabled one. With
+    /// several enabled and none active, no single persona owns the answer and the global phrase is
+    /// the honest thing to show.
+    private var governingPersona: Persona? {
+        if let active = appState.activePersona,
+           let match = Config.enabledPersonas.first(where: { $0.id == active.id }) {
+            return match
+        }
+        let enabled = Config.enabledPersonas
+        return enabled.count == 1 ? enabled.first : nil
+    }
+
+    private var activeWakePhrase: String {
+        governingPersona?.wakePhrase ?? Config.wakePhrase
+    }
+
+    /// Both settings are live at once — every enabled persona's phrase wakes the app, and so does
+    /// the one in Voice settings. Saying so is the only way the row is not a half-truth.
+    private var wakeWordFooter: String {
+        let global = Config.wakePhrase
+        if let persona = governingPersona, persona.wakePhrase != global {
+            return "Say this to start a hands-free turn. It belongs to the \(persona.name) persona; "
+                + "\u{201C}\(global)\u{201D} from Voice settings still works too. Tap to change it."
+        }
+        return "Say this to start a hands-free turn. Tap to change it, or to add the spellings the "
+            + "recogniser writes it down as — a short phrase is matched exactly."
+    }
+
+    @ViewBuilder
+    private var wakeWordDestination: some View {
+        if governingPersona != nil {
+            PersonasView()
+        } else {
+            VoiceTriggersSettingsScreen(appState: appState)
+        }
+    }
+
     var body: some View {
         Form {
             // ──────────────── Toggle
@@ -117,6 +154,29 @@ struct FieldAssistSettingsView: View {
                     Text("Reference Files")
                 } footer: {
                     Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported.")
+                }
+
+                // ──────────────── Wake word
+                //
+                // On a job the wake word is the whole interface — gloves on, hands full — and it
+                // was previously only visible two screens away, under two different settings that
+                // both govern it. This row says what the glasses are listening for and opens the
+                // one that owns it.
+                Section {
+                    NavigationLink {
+                        wakeWordDestination
+                    } label: {
+                        HStack {
+                            Label("Wake word", systemImage: "waveform")
+                            Spacer()
+                            Text("\u{201C}\(activeWakePhrase)\u{201D}")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Voice")
+                } footer: {
+                    Text(wakeWordFooter)
                 }
 
                 // ──────────────── Offline sync (Plan T)

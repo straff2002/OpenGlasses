@@ -201,6 +201,45 @@ struct ConversationClassifier {
         "forget this conversation", "forget that", "reset the conversation", "fresh start"
     ]
 
+    /// Reset phrasings that exist for the **tool** path only.
+    ///
+    /// Tier-0 deliberately does not carry these: each one is a leading fragment rather than a
+    /// whole command, and routing on a fragment without an LLM turn is how "forget everything you
+    /// know about refrigerant" would become a wiped conversation. `new_topic` reaching this list
+    /// has already been chosen by a model that read the whole sentence, and the bare-query test
+    /// below still has to agree.
+    private let toolOnlyResetPatterns = [
+        "forget everything", "forget what we", "wipe the conversation", "wipe this conversation",
+        "erase the conversation", "erase this conversation", "reset our conversation"
+    ]
+
+    /// Words that may trail a reset command without making it about something else. Scoped to the
+    /// reset family — see `isBareQuery`'s `extraFiller`.
+    private let resetTailFiller: Set<String> = [
+        "we", "just", "talked", "talking", "about", "discussed", "said", "were", "was",
+        "been", "everything", "that", "this", "all", "and", "so", "far", "until", "up", "to", "now"
+    ]
+
+    /// Whether `text` is a genuine, bare request to reset the conversation.
+    ///
+    /// Shared with `NewTopicTool` so the model-invoked route is held to the same standard as the
+    /// deterministic one. A field tester said "start a new field service session as signed job
+    /// 1005" and the model called `new_topic`: the words *start a new* are there, the intent is
+    /// not, and the reset cut the reply off mid-sentence and filed the job under a fresh thread.
+    /// "Start a new X" is a request to start an X.
+    func isBareResetRequest(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        if let matched = matchedPattern(lower, patterns: newTopicPatterns),
+           isBareQuery(lower, matched: matched) {
+            return true
+        }
+        if let matched = matchedPattern(lower, patterns: toolOnlyResetPatterns),
+           isBareQuery(lower, matched: matched, extraFiller: resetTailFiller) {
+            return true
+        }
+        return false
+    }
+
     /// Match an informational calendar question and pick the tool action for it, or nil.
     /// Three gates: names a calendar-ish noun, is NOT a creation command, and has an
     /// inspection shape ("do I have…", "what's on…"). Then the day words choose the action.

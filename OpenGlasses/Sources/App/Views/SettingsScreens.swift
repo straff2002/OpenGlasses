@@ -17,6 +17,32 @@ struct VoiceTriggersSettingsScreen: View {
     @State private var assistantName = Config.assistantDisplayName
     @State private var nameRefused = false
 
+    private let wakePhrasePresets = [
+        "openglasses", "hey openglasses", "hey claude", "hey jarvis",
+        "hey computer", "hey assistant", "hey rayban"
+    ]
+
+    /// The misrecognitions currently being listened for alongside the phrase. Shown because a
+    /// custom phrase now gets generated ones, and a wake word that answers to words the wearer
+    /// never chose should say so.
+    private var customAlternatives: [String] {
+        wakePhrasePresets.contains(wakePhrase) ? [] : Config.alternativeWakePhrases
+    }
+
+    /// Store a new wake phrase, carrying the alternatives with it.
+    ///
+    /// The alternatives follow the phrase only while they are still the previous phrase's
+    /// suggestions. Once they have been edited — in the persona editor, which writes the same
+    /// list — they are the wearer's, and changing the phrase must not silently discard them.
+    private func adoptWakePhrase(_ phrase: String, replacing previous: String) {
+        Config.setWakePhrase(phrase)
+        let inherited = Config.defaultAlternativesForPhrase(previous)
+        if Config.alternativeWakePhrases == inherited {
+            Config.setAlternativeWakePhrases(Config.defaultAlternativesForPhrase(phrase))
+        }
+        wakePhrase = phrase.lowercased()
+    }
+
     var body: some View {
         Form {
             // MARK: Assistant Name (Plan FE P6)
@@ -51,10 +77,7 @@ struct VoiceTriggersSettingsScreen: View {
             Section {
                 Picker("Wake Phrase", selection: Binding(
                     get: { wakePhrase.isEmpty ? "openglasses" : wakePhrase },
-                    set: { newValue in
-                        Config.setWakePhrase(newValue)
-                        Config.setAlternativeWakePhrases(Config.defaultAlternativesForPhrase(newValue))
-                    }
+                    set: { newValue in adoptWakePhrase(newValue, replacing: wakePhrase) }
                 )) {
                     Text("OpenGlasses").tag("openglasses")
                     Text("Hey OpenGlasses").tag("hey openglasses")
@@ -63,6 +86,30 @@ struct VoiceTriggersSettingsScreen: View {
                     Text("Hey Computer").tag("hey computer")
                     Text("Hey Assistant").tag("hey assistant")
                     Text("Hey Rayban").tag("hey rayban")
+                    if !wakePhrasePresets.contains(wakePhrase) && !wakePhrase.isEmpty {
+                        Text("Custom: \(wakePhrase)").tag(wakePhrase)
+                    }
+                }
+
+                // Free text, matching the persona editor. The picker alone meant the one phrase a
+                // wearer might actually want — their own name for the assistant, or a short call
+                // sign — could only be set by editing a persona, which is a different screen with
+                // a different list of phrases and no indication it is the same setting.
+                TextField("Custom wake phrase", text: Binding(
+                    get: { wakePhrase },
+                    set: { newValue in
+                        let phrase = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        adoptWakePhrase(phrase, replacing: wakePhrase)
+                    }
+                ))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel("Custom wake phrase")
+
+                if !customAlternatives.isEmpty {
+                    Text("Also listening for: \(customAlternatives.joined(separator: ", "))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 InfoToggle(
@@ -85,7 +132,7 @@ struct VoiceTriggersSettingsScreen: View {
             } header: {
                 Text("Voice")
             } footer: {
-                Text("The phrase that starts a conversation. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch.")
+                Text("The phrase that starts a conversation — pick one or type your own. A short phrase (one word) is matched exactly, so choose something you don't say often. Push-to-Talk Mode stops the always-listening mic (so it won't fight other audio) — trigger on demand via the Action Button, Siri, widget, or watch.")
             }
 
             // MARK: Pause & Interruptions (Plan FE P3)

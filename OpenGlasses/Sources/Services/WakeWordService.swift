@@ -129,6 +129,15 @@ class WakeWordService: NSObject, ObservableObject {
     /// transcript arrives rather than captured at launch. Overridable for tests; the default reads
     /// the live preference.
     var generalBargeInEnabledOverride: (@MainActor () -> Bool)?
+
+    /// What the app is playing as a transcript arrives, so `BargeInPolicy` can tell the wearer's
+    /// voice from the assistant's own coming back through the mic. Wired by `AppState` to the
+    /// speech service.
+    ///
+    /// Unset, this reports `.speaking(text: nil)` for the playback window — the safe answer, not
+    /// the convenient one. The barge-in branch below only runs while `listenForStop` is set, i.e.
+    /// while a reply is being read out, and an unwired app has no way to tell an echo from speech.
+    var assistantSpeechContext: (@MainActor () -> BargeInPolicy.AssistantSpeech)?
     /// Our claim on the shared session with the coordinator. Wake word is the always-on baseline
     /// owner: it self-activates with its tuned config and registers ownership so a live session
     /// (Gemini/OpenAI) supersedes it cleanly, and its release deactivates only if still current.
@@ -163,6 +172,11 @@ class WakeWordService: NSObject, ObservableObject {
     private var allWakePhrases: [String] { Config.allActiveWakePhrases }
     /// Legacy single phrase for backward compatibility.
     private var wakePhrase: String { Config.wakePhrase }
+    /// Alternatives for the global phrase. The matcher used to read the persona alternatives and
+    /// not these, so a wearer who set a custom phrase in Settings got no misrecognition cover at
+    /// all — which is precisely where it is needed, since a phrase nobody shipped is a phrase
+    /// nobody tuned the recogniser against.
+    private var alternativePhrases: [String] { Config.alternativeWakePhrases }
     private let stopPhrases = ["stop", "stop stop"]
 
     /// Dynamic stop phrases that include all persona wake words
@@ -398,7 +412,7 @@ class WakeWordService: NSObject, ObservableObject {
             }
             // Only restart if Bluetooth (glasses) route is available
             let route = AVAudioSession.sharedInstance().currentRoute
-            let hasBluetooth = route.inputs.contains { $0.portType == .bluetoothHFP }
+            let hasBluetooth = MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType))
             guard shouldAutoRestart() else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
                                  detail: PrivacyToken("listeningDisabled"))
@@ -434,8 +448,10 @@ class WakeWordService: NSObject, ObservableObject {
 
         switch reason {
         case .oldDeviceUnavailable:
-            // Bluetooth device disconnected — kill the engine so it's recreated fresh
-            let lostBluetooth = !route.inputs.contains { $0.portType == .bluetoothHFP }
+            // Bluetooth device disconnected — kill the engine so it's recreated fresh.
+            // Judged on inputs *and* outputs: when playback starts the mic port can drop out of
+            // the route while the glasses are still the speaker, and that is not a disconnect.
+            let lostBluetooth = !hasBluetoothAudioRoute()
             PrivacyLog.audio(.wakeWord, .deviceDisconnected,
                              detail: PrivacyToken(lostBluetooth ? "bluetoothLost" : "bluetoothRetained"))
             pauseForAudioDisruption()
@@ -445,7 +461,7 @@ class WakeWordService: NSObject, ObservableObject {
         case .newDeviceAvailable:
             // New device connected — only restart if it's Bluetooth (glasses back on)
             let newRoute = AVAudioSession.sharedInstance().currentRoute
-            let isBluetooth = newRoute.inputs.contains { $0.portType == .bluetoothHFP }
+            let isBluetooth = MicRoutePolicy.containsBluetoothMic(newRoute.inputs.map(\.portType))
             if isBluetooth {
                 PrivacyLog.audio(.wakeWord, .deviceReconnected)
                 pauseForAudioDisruption()
@@ -1036,6 +1052,10 @@ class WakeWordService: NSObject, ObservableObject {
         generalBargeInEnabledOverride?() ?? Config.speechBargeInEnabled
     }
 
+    private func assistantSpeech() -> BargeInPolicy.AssistantSpeech {
+        assistantSpeechContext?() ?? .speaking(text: nil)
+    }
+
     private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
         // An intentional cancel (ensureAudioEngineRunning pausing the wake-word task so
         // the buffer forwarder can feed TranscriptionService) surfaces here as an error.
@@ -1070,7 +1090,8 @@ class WakeWordService: NSObject, ObservableObject {
             switch BargeInPolicy.decide(transcript: transcript,
                                         isStopPhrase: containsStopPhrase(transcript),
                                         matchedWakePhrase: matchedWakePhrase(transcript),
-                                        generalBargeInEnabled: generalBargeInEnabled()) {
+                                        generalBargeInEnabled: generalBargeInEnabled(),
+                                        assistantSpeech: assistantSpeech()) {
             case .stop:
                 PrivacyLog.wakeWord(.stopCommand)
                 stopFired = true
@@ -1129,69 +1150,35 @@ class WakeWordService: NSObject, ObservableObject {
         PhraseMatcher.containsStopPhrase(transcript, phrases: allStopPhrases, position: .anywhere)
     }
 
-    /// Check all persona wake phrases and return the matched one, or nil.
-    /// Uses exact matching first, then fuzzy Levenshtein distance matching
-    /// to handle speech recognition errors ("Hey Clause", "Hey Cloud" → "Hey Claude").
-    private func matchedWakePhrase(_ transcript: String) -> String? {
-        let lower = transcript.lowercased()
-        let words = lower.split(separator: " ").map(String.init)
-
-        // Pass 1: Exact substring match (fast path)
-        for persona in Config.enabledPersonas {
-            if lower.contains(persona.wakePhrase) { return persona.wakePhrase }
-            for alt in persona.alternativeWakePhrases {
-                if lower.contains(alt) { return persona.wakePhrase }
+    /// Every phrase that may wake the app: each enabled persona's, its alternatives (reporting the
+    /// persona's primary phrase), and the global wake phrase.
+    private var wakeCandidates: [WakePhraseMatcher.Candidate] {
+        Config.enabledPersonas.flatMap { persona in
+            [WakePhraseMatcher.Candidate(phrase: persona.wakePhrase)] +
+            persona.alternativeWakePhrases.map {
+                WakePhraseMatcher.Candidate(phrase: $0, primary: persona.wakePhrase)
             }
-        }
-        if lower.contains(wakePhrase) { return wakePhrase }
-
-        // Pass 2: Fuzzy match — check sliding window of word pairs/triples against wake phrases
-        let allPhrases: [(phrase: String, primary: String)] = Config.enabledPersonas.flatMap { persona in
-            [(persona.wakePhrase, persona.wakePhrase)] +
-            persona.alternativeWakePhrases.map { ($0, persona.wakePhrase) }
-        } + [(wakePhrase, wakePhrase)]
-
-        for (phrase, primary) in allPhrases {
-            let phraseWords = phrase.split(separator: " ").map(String.init)
-            let windowSize = phraseWords.count
-            guard windowSize > 0, words.count >= windowSize else { continue }
-
-            for i in 0...(words.count - windowSize) {
-                let window = words[i..<(i + windowSize)].joined(separator: " ")
-                let distance = levenshteinDistance(window, phrase)
-                // Allow up to 2 character edits for short phrases, 3 for longer ones
-                let threshold = phrase.count <= 10 ? 2 : 3
-                if distance <= threshold && distance > 0 {
-                    PrivacyLog.wakeWord(.fuzzyDetected, distance: distance)
-                    return primary
-                }
-            }
-        }
-
-        return nil
+        } + [WakePhraseMatcher.Candidate(phrase: wakePhrase)]
+        + alternativePhrases.map { WakePhraseMatcher.Candidate(phrase: $0, primary: wakePhrase) }
     }
 
-    /// Levenshtein edit distance between two strings.
-    private func levenshteinDistance(_ a: String, _ b: String) -> Int {
-        let aChars = Array(a)
-        let bChars = Array(b)
-        let m = aChars.count
-        let n = bChars.count
-        if m == 0 { return n }
-        if n == 0 { return m }
+    /// Check all persona wake phrases and return the matched one, or nil.
+    ///
+    /// Whole-token matching first, then a length-scaled fuzzy pass — see `WakePhraseMatcher` for
+    /// why a single-word phrase gets no fuzzy allowance at all.
+    private func matchedWakePhrase(_ transcript: String) -> String? {
+        let candidates = wakeCandidates
+        let tokens = PhraseMatcher.tokenize(transcript)
+        guard !tokens.isEmpty else { return nil }
 
-        var prev = Array(0...n)
-        var curr = [Int](repeating: 0, count: n + 1)
-
-        for i in 1...m {
-            curr[0] = i
-            for j in 1...n {
-                let cost = aChars[i - 1] == bChars[j - 1] ? 0 : 1
-                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
-            }
-            prev = curr
+        for candidate in candidates where !candidate.phrase.isEmpty {
+            if PhraseMatcher.contains(candidate.phrase, in: tokens) { return candidate.primary }
         }
-        return prev[n]
+        if let fuzzy = WakePhraseMatcher.fuzzyMatch(tokens: tokens, candidates: candidates) {
+            PrivacyLog.wakeWord(.fuzzyDetected, distance: fuzzy.distance)
+            return fuzzy.primary
+        }
+        return nil
     }
 
     private func handleWakeWordDetected(matchedPhrase: String) {
@@ -1216,12 +1203,23 @@ class WakeWordService: NSObject, ObservableObject {
         pauseRecognition()
     }
 
+    /// Whether the live audio route still carries a Bluetooth mic or speaker.
+    ///
+    /// An observation, taken now. `AppState.isConnected` is a cached flag that only clears on a
+    /// Bluetooth event, so a handler that latched it false leaves it false; anything deciding
+    /// whether it may open the mic should ask the route as well as the flag.
+    func hasBluetoothAudioRoute() -> Bool {
+        let route = AVAudioSession.sharedInstance().currentRoute
+        return MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType)) ||
+               MicRoutePolicy.containsBluetoothOutput(route.outputs.map(\.portType))
+    }
+
     /// Re-configure audio session if Bluetooth route changed (glasses disconnect/reconnect)
     /// Call this before startListening() when recovering from background or route change
     func reconfigureAudioSessionIfNeeded() async {
         let route = AVAudioSession.sharedInstance().currentRoute
-        let hasBluetooth = route.inputs.contains { $0.portType == .bluetoothHFP } ||
-                           route.outputs.contains { $0.portType == .bluetoothHFP || $0.portType == .bluetoothA2DP }
+        let hasBluetooth = MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType)) ||
+                           MicRoutePolicy.containsBluetoothOutput(route.outputs.map(\.portType))
 
         // Check if current engine format is valid
         if let engine = audioEngine {
