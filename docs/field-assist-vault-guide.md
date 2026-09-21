@@ -332,6 +332,28 @@ A composer you dismiss sends nothing, and nothing pretends otherwise: the record
 
 Edit the folder on the computer, bump `version`, and import again with the same `id`. Manuals whose content has not changed are skipped; a changed manual is re-indexed and its old index removed; a manual you dropped from the manifest is removed. Technicians' in-app edits to the core files are kept and layered over your new originals. To pull a vault off the phone with those edits included, swipe the vault row and choose **Export**; the exported folder imports straight back in.
 
+## Removing one manual on the phone
+
+A manual gets superseded, or it turns out to be the wrong revision, and the technician holding the phone is not the person with the vault folder on a computer. Open **Settings › Custom Vaults**, find the manual under its vault, and tap **Remove manual…**.
+
+The confirmation names the manual and the vault and says what it does: *Remove this manual from this device's vault and search index? Existing conversations and core reference files are unchanged. Importing a vault containing this manual again can restore it.* Tap **Remove manual** and the row shows **Removing…** until it is done; the rest of the vault keeps working throughout, and the vault itself stays installed even if you remove the last manual in it.
+
+Three things are worth being precise about, because they are three different kinds of memory:
+
+- **Manual retrieval** — the passages the assistant searches to answer a question. This is what the removal takes away, permanently and on this device: after it finishes nothing can retrieve that manual, including after a restart and after tapping **Re-index manuals**.
+- **Core reference files** — your markdown (`error_codes.md`, `models.md`, safety rules). These are loaded whole into every prompt and are **untouched**. If a fact was copied out of the manual into a core file, it is still there; edit the core file if you want it gone.
+- **Conversation history** — the questions and answers already on screen, and the session records already written. These are **not rewritten**, and neither is what was already sent to an AI model. An older answer can still quote the manual you removed, and tapping its citation now says *Manual removed from this vault* instead of opening the page.
+
+So **start a fresh conversation for a clean test.** Ask the same question again in a new conversation: the assistant should answer from the manuals that are left, or say the loaded manuals do not cover it. Do not treat an old answer still quoting the removed manual as a failure — that answer was given while the manual was loaded.
+
+A job in progress is not interrupted. The session keeps its job reference, the machine it identified, its tasks and parts and its audit log; only the manual's own material drops out from that moment, and the record notes that a manual was removed part-way through the visit.
+
+**If the removal reports a failure**, the manual stays unavailable and the row offers **Retry removal** — a removal that stopped part-way is finished by trying again, or at the next launch. If it says the vault's manual index needs repairing, import the vault's folder again; that rebuilds the index and the removal can then proceed.
+
+**Restoring one.** There is no undo, and nothing keeps a list of what was removed. Importing a vault folder that contains the manual puts it back — an explicit import is always authoritative. What an export cannot do is bring it back: an export of the reduced vault no longer lists the manual, so re-importing that export does not restore it. Keep the original folder on a computer.
+
+Removing a manual is only offered for vaults you imported yourself. A signed pack's manuals belong to its publisher; remove the whole pack instead. Removing installed content does **not** need a current team licence — importing manuals does, but taking a superseded one off a phone should not stop working when a licence lapses.
+
 ## If the import refuses
 
 | Message | Fix |

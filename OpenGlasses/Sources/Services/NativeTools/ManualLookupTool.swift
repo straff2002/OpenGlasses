@@ -119,7 +119,9 @@ final class ManualLookupTool: NativeTool {
             documentStore.passages(containingToken: token, namespace: namespace, documentIds: documentIds, limit: limit)
         }, provenance: { documentId in
             documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
+        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                              documentStore: documentStore),
+        policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText,
                                                procedureStep: nil, limit: session.manualPassageLimit))
         let label = query.flatMap { $0.isEmpty ? nil : $0 } ?? "what the label says"

@@ -169,7 +169,9 @@ final class EquipmentLookupTool: NativeTool {
             documentStore.passages(containingToken: token, namespace: namespace, limit: limit)
         }, provenance: { documentId in
             documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
+        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                              documentStore: documentStore),
+        policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText, limit: 3))
         guard outcome.isSufficient else { return nil }
         return VaultRetriever.toolResult(outcome, query: query ?? "the label")

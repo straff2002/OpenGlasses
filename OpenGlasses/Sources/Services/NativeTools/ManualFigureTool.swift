@@ -75,10 +75,17 @@ final class ManualFigureTool: NativeTool {
         let requestedFigure = (args["figure"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedPage = Self.integer(args["page"])
 
+        // This tool asks the index by caption and by page rather than by similarity, so it never
+        // builds a retriever and would not otherwise get the retriever's availability check. A
+        // caption is exactly the kind of thing a technician asks for again after the manual it was
+        // printed in has been taken out of the vault.
+        let isAvailable = VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                               documentStore: documentStore)
         var passage: VaultRetriever.Passage?
         if let requestedFigure, !requestedFigure.isEmpty {
             for label in Self.candidateLabels(for: requestedFigure) {
-                if let hit = documentStore.passages(figure: label, namespace: namespace, limit: 1).first {
+                if let hit = documentStore.passages(figure: label, namespace: namespace, limit: 4)
+                    .first(where: { isAvailable($0.documentId) }) {
                     passage = Self.retrieved(hit)
                     break
                 }
@@ -87,7 +94,8 @@ final class ManualFigureTool: NativeTool {
                 return "No \(requestedFigure) in the manuals loaded for this vault. Ask for it by page number, or search the manuals with manual_lookup."
             }
         } else if let requestedPage {
-            guard let hit = documentStore.passages(onPage: requestedPage, namespace: namespace, limit: 1).first else {
+            guard let hit = documentStore.passages(onPage: requestedPage, namespace: namespace, limit: 4)
+                .first(where: { isAvailable($0.documentId) }) else {
                 return "Nothing is stored for page \(requestedPage) of the loaded manuals."
             }
             passage = Self.retrieved(hit)

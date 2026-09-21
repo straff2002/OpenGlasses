@@ -306,9 +306,15 @@ final class FieldSessionService: ObservableObject {
         let documentStore = self.documentStore
         return PartsVerifier(index: partsIndex) { token in
             guard let store, store.manifest.hasDocuments, let documentStore else { return [] }
+            // The same availability check the retriever runs. A part number is written into a task
+            // and ordered from it, so a citation to a manual that has gone is the last thing this
+            // route may produce — verified-from-the-book has to mean a book that is still here.
+            let isAvailable = VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                                   documentStore: documentStore)
             return documentStore.passages(containingToken: token,
                                           namespace: DocumentStore.vaultNamespace(store.manifest.id),
                                           limit: 3)
+                .filter { isAvailable($0.documentId) }
         }
     }
 
@@ -827,21 +833,15 @@ final class FieldSessionService: ObservableObject {
     func manualRetriever(store: VaultStore) -> VaultRetriever {
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
         let documentStore = self.documentStore
-        // Read once per turn: a manual whose removal was already in flight when the turn started.
-        let pending = VaultManualRemoval.pendingDocumentIds(for: store.manifest.id)
         return VaultRetriever(query: { query, limit in
             documentStore?.query(query, limit: limit, namespace: namespace) ?? []
         }, tokenSearch: { token, limit in
             documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
         }, provenance: { documentId in
             documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, availability: { documentId in
-            // Two questions, because a removal that started before the turn and one that finished
-            // during it fail different ones: is this manual on its way out, and does the store
-            // still hold it at the moment the answer is about to be built?
-            guard !pending.contains(documentId) else { return false }
-            return documentStore?.list(namespace: namespace).contains { $0.id == documentId } ?? false
-        }, policy: retrievalPolicy, modelScope: retrievalModelScope)
+        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                              documentStore: documentStore),
+        policy: retrievalPolicy, modelScope: retrievalModelScope)
     }
 
     /// Whether the active vault has manuals available to search.
@@ -852,6 +852,57 @@ final class FieldSessionService: ObservableObject {
 
     /// Whether a session is currently active and accepting input.
     var isSessionActive: Bool { activeSession?.isActive == true }
+
+    // MARK: - A manual was removed under a live session (Plan FN)
+
+    /// Bring the active session in line with a vault a manual has just been removed from.
+    ///
+    /// **What this must not do is end anything.** A technician removing a superseded manual from
+    /// Settings has not finished the job they are standing in: the session id, the machine, the
+    /// tasks and their decisions, the parts, the audit log and the chat all continue. What changes
+    /// is the vault the session reads from, and the material derived from the manual that has gone.
+    ///
+    /// Safe to call when the removal was for some other vault, when no session is running, and
+    /// twice for the same removal.
+    func vaultDidRemoveManual(_ result: VaultManualRemoval.RemovalResult) {
+        removedManualTitles[result.vaultId, default: []].insert(result.title)
+        guard let session = activeSession, session.vaultId == result.vaultId else { return }
+
+        // The registry's cached store still holds the manifest as it was; the removal has already
+        // reloaded the installed manifests, so asking for the store again builds it from the
+        // reduced one. The session keeps everything else it has.
+        if let refreshed = VaultRegistry.shared.store(forId: result.vaultId) {
+            activeVault = refreshed
+            modelIndex = VaultModelIndex(store: refreshed)
+            partsIndex = VaultPartsIndex(store: refreshed)
+            library = ProcedureLibrary(store: refreshed)
+        }
+
+        // A figure staged from the removed manual would otherwise stay on the turn and reopen from
+        // "show that again". The other manual's figure is left exactly where it is.
+        if stagedFigure.map({ isFrom(result, figure: $0) }) == true { stagedFigure = nil }
+        if lastShownFigure.map({ isFrom(result, figure: $0) }) == true { lastShownFigure = nil }
+
+        logger?.append(.init(timestamp: Date(), kind: .manualRemoved, text: result.title,
+                             payload: ["document": AnyCodable(result.title),
+                                       "file": AnyCodable(result.file),
+                                       "vault": AnyCodable(result.vaultId),
+                                       "remaining_documents": AnyCodable(result.remainingDocuments)]))
+    }
+
+    /// Whether a staged figure came off the manual this result removed. By document id when the
+    /// manual was indexed, by file name when it never was — the same identity rule the removal
+    /// itself uses, and never the displayed title.
+    private func isFrom(_ result: VaultManualRemoval.RemovalResult, figure: StagedFigure) -> Bool {
+        if let documentId = result.documentId, figure.documentId == documentId { return true }
+        return figure.sourceFile == result.file
+    }
+
+    /// Manual titles removed from a vault since launch. For the tests and for a citation that has
+    /// to say what happened to the page it names.
+    func removedManuals(inVault vaultId: String) -> Set<String> {
+        removedManualTitles[vaultId] ?? []
+    }
 
     // MARK: - Figures (Plan EK)
 
@@ -927,6 +978,16 @@ final class FieldSessionService: ObservableObject {
     @discardableResult
     func restageLastFigure() -> StagedFigure? {
         guard let last = lastShownFigure else { return nil }
+        // "Show that again" is the one path that reaches back past the current turn, so it is also
+        // the one that can reach a manual removed since it was shown. The session's own refresh
+        // clears this; the check is here too because a figure outliving its manual by a route
+        // nobody thought of is exactly the failure removal exists to prevent.
+        if let store = activeVault, let documentStore,
+           !VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
+                                                 documentStore: documentStore)(last.documentId) {
+            lastShownFigure = nil
+            return nil
+        }
         stagedFigure = last
         return last
     }
@@ -990,18 +1051,60 @@ final class FieldSessionService: ObservableObject {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// Turn a citation parsed out of an answer back into the page it names, or nil when no manual
-    /// in this vault answers to that title. Matching is by the title the ledger recorded, which is
-    /// the title the citation was built from, so a chip can only ever open the document it names.
-    func stagedFigure(for citation: Citation) -> StagedFigure? {
-        guard citation.kind == .manual, let store = activeVault else { return nil }
+    /// What a citation parsed out of an answer resolves to now.
+    ///
+    /// A citation outlives the manual it names: an answer given ten minutes ago stays in the chat,
+    /// and the manual it quoted can be removed from the vault in between. The three cases are
+    /// genuinely different to the reader, so they are three cases and not an optional — opening the
+    /// page, being told the manual has gone, and being told this vault never had it.
+    enum CitationResolution: Equatable {
+        case figure(StagedFigure)
+        /// The manual was removed from this vault. `title` is the manual's own title.
+        case removed(title: String)
+        /// No manual in this vault answers to that title, and nothing says one ever did.
+        case unknown(title: String)
+    }
+
+    /// Titles of manuals removed from a vault while this app has been running, so a chip tapped
+    /// afterwards can say what happened rather than nothing.
+    ///
+    /// In memory and small on purpose: once the removal has completed there is no record of the
+    /// manual left anywhere — Plan FN keeps no tombstone, because an explicit later import is
+    /// authoritative and an exclusion list would be a lie. After a restart a stale chip falls to
+    /// `.unknown`, which is the honest answer then.
+    private var removedManualTitles: [String: Set<String>] = [:]
+
+    /// Turn a citation back into the page it names.
+    ///
+    /// Matching is by the title the ledger recorded — the title the citation was built from — so a
+    /// chip can only ever open the document it names. A manual with a removal in flight resolves as
+    /// removed rather than as a page, because its file may still be on disk until cleanup finishes.
+    func resolveCitation(_ citation: Citation) -> CitationResolution {
+        guard citation.kind == .manual, let store = activeVault else {
+            return .unknown(title: citation.title)
+        }
         let wanted = citation.title.lowercased()
         let entries = VaultImporter.documentLedger(for: store.manifest.id).entries
         guard let entry = entries.first(where: { $0.title.lowercased() == wanted })
-                ?? entries.first(where: { $0.title.lowercased().contains(wanted) }) else { return nil }
-        return StagedFigure(documentId: entry.documentId, documentTitle: entry.title,
-                            page: max(citation.page ?? 1, 1), figure: citation.figure,
-                            sourceFile: entry.file)
+                ?? entries.first(where: { $0.title.lowercased().contains(wanted) }) else {
+            let removed = removedManualTitles[store.manifest.id] ?? []
+            return removed.contains(where: { $0.lowercased() == wanted || $0.lowercased().contains(wanted) })
+                ? .removed(title: citation.title)
+                : .unknown(title: citation.title)
+        }
+        guard !VaultManualRemoval.isPending(file: entry.file, vaultId: store.manifest.id) else {
+            return .removed(title: entry.title)
+        }
+        return .figure(StagedFigure(documentId: entry.documentId, documentTitle: entry.title,
+                                    page: max(citation.page ?? 1, 1), figure: citation.figure,
+                                    sourceFile: entry.file))
+    }
+
+    /// The page a citation names, or nil when it no longer names one. `resolveCitation` says which
+    /// kind of nothing it is; this is for the callers that only need the page.
+    func stagedFigure(for citation: Citation) -> StagedFigure? {
+        if case .figure(let staged) = resolveCitation(citation) { return staged }
+        return nil
     }
 
     /// Everything the figure sheet needs for one staged figure: which document it can show, the
@@ -1012,7 +1115,13 @@ final class FieldSessionService: ObservableObject {
         let document = manifestDocument(for: figure)
         let entry = ledgerEntry(for: figure)
         let isPDF = document?.isPDF ?? (figure.sourceFile?.lowercased().hasSuffix(".pdf") == true)
-        let pages: [ManualPageSheetModel.Page] = isPDF ? [] :
+        // The extracted-text route reads the index by document id, so it needs the availability
+        // check the PDF route gets for free through `manufacturerPDFURL`: a manual whose rows have
+        // gone has no pages, and one whose removal is in flight must not show the ones it still has.
+        let isAvailable = activeVault.map {
+            VaultManualRemoval.availabilityCheck(forVault: $0.manifest.id, documentStore: documentStore)
+        }
+        let pages: [ManualPageSheetModel.Page] = isPDF || isAvailable?(figure.documentId) == false ? [] :
             (documentStore?.pageTexts(documentId: figure.documentId) ?? [])
                 .map { .init(number: $0.page, text: $0.text) }
         let published = document?.sourceUrl
