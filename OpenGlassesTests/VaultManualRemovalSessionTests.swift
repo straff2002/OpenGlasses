@@ -183,6 +183,10 @@ final class VaultManualRemovalSessionTests: XCTestCase {
         service.vaultDidRemoveManual(elsewhere)
         XCTAssertEqual(service.activeVault?.manifest.documents.count, 2)
         XCTAssertFalse(try auditLines(service).contains("manual_removed"))
+        // …but it is still recorded, so a citation to that vault's manual can say what happened
+        // if the session moves there later in the run.
+        XCTAssertEqual(service.removedManuals(inVault: "some_other_vault"), ["Another Manual"])
+        XCTAssertTrue(service.removedManuals(inVault: Self.vaultId).isEmpty)
     }
 
     func testRemovalUnderALapsedTeamEntitlementStillWorksAndKeepsTheJob() async throws {
