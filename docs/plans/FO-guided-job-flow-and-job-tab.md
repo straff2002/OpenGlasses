@@ -1,6 +1,8 @@
 # Plan FO — Guided Job Flow and the Job Tab
 
-**Status:** Drafted 2026-09-21; evidence-at-close addendum (§5, P2a/P2b) added 2026-09-21. The voice-turn reliability fixes
+**Status:** 🚧 Drafted 2026-09-21; evidence-at-close addendum (§5, P2a/P2b) added 2026-09-21;
+**P0 implemented 2026-09-21** (inventory below + the typed tab identifier). P1–P4 unbuilt.
+The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
 alongside this draft in the same PR; they are a **prerequisite**, not part of this plan, and a
@@ -27,11 +29,17 @@ this requires knowing what a "chat", "thread" or "session id" is.
   jobReference:)` accepts one, but the tool's `start` action never passes it and its reply
   ("Started … Session id: 1a2b3c4d.") neither asks for a job number nor tells the model to. Whether
   the technician is asked is left to the model's initiative.
-- `FieldSession` has **no link to a conversation thread**. A saved thread lives exactly as long as
-  `AppState.inConversation`; `returnToWakeWord()` ends it. The only coupling is
-  `FieldSessionService.recordConversationTurn`, an event-log dedup hook. (The accompanying fix adds the
-  narrow rule "don't end the saved thread while a field session is active"; this plan replaces that
-  rule with an explicit binding.)
+- `FieldSession` has **no thread id field**, and `FieldSessionService` never mentions
+  `ConversationStore`. The coupling runs the other way and is one line: `returnToWakeWord()` asks
+  `ConversationThreadContinuityPolicy.shouldEndSavedThread(…, fieldSessionActive:)` — the
+  accompanying fix's narrow rule, already shipped — before ending the thread. The other coupling is
+  `FieldSessionService.recordConversationTurn`, an event-log dedup hook. This plan replaces the
+  narrow rule with an explicit binding.
+- **Correction to the draft:** a saved thread does *not* live "exactly as long as
+  `AppState.inConversation`". The two are unrelated pieces of state. `inConversation` is a mic flag,
+  never `@Published`, and has no reference to `ConversationStore` at all; the thread is
+  `ConversationStore.activeThreadId`, created lazily on the first turn's text and restored at launch
+  if under two hours old. A thread routinely outlives `inConversation` — see the inventory below.
 - `FieldSessionService.setEquipment` **silently re-scopes** when the recognised heading changes:
   new `continuityScope`, procedure runner dropped (FM). Correct for continuity, but nobody is asked
   whether the previous job is finished, and a forgotten open job keeps accruing billable time.
@@ -196,10 +204,10 @@ plain capture, a picture added in chat from the phone) are not attached to the j
 
 ## Phases (one PR each)
 
-- **P0 — inventory and seams.** Map every place a thread is started/ended and every entry point
-  that starts/ends a field session (tool, quick action, Siri/App Intents, CarPlay, watch, offline
-  queue restore). Typed tab identifier refactor with no visible change. Output: the inventory in
-  this doc + the refactor.
+- **P0 — inventory and seams.** ✅ **Implemented 2026-09-21.** Every place a thread is
+  started/resumed/ended and every entry point that starts, re-scopes or ends a field session,
+  mapped in *P0 inventory* below — including six findings that change P1's scope. `MainTab`
+  replaces the bare-`Int` tab identifier, with the legacy numbers frozen; no visible change.
 - **P1 — deterministic core, headless.** `JobThreadPolicy`, `JobIntakeState`,
   `JobChangeDetector`, the `FieldSession` field + migration test, `FieldSessionTool.start`
   accepting `job_reference`. Wired into Direct mode. Tests are the gate: thread continuity across
@@ -244,6 +252,109 @@ plain capture, a picture added in chat from the phone) are not attached to the j
 - Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a
   session log a compliance record). Photos and clips make that harder to defend — does a job's media
   need its own retention rule, separate from the log it belongs to?
+
+## P0 inventory (2026-09-21)
+
+Read, not grepped, against main at build 410; symbols are the durable reference. All types
+named are `@MainActor` unless the row says otherwise, so P1's hooks can be plain MainActor calls.
+
+### 1. Where a conversation thread begins, resumes, switches or ends
+
+The thread is `ConversationStore.activeThreadId` (a `UUID` string, persisted in `conversations.json`).
+`AppState.inConversation` is a separate mic flag; nothing links them.
+
+| Surface | Symbol | Thread effect | Modes |
+|---|---|---|---|
+| Wake word / tap-to-talk / Action Button | `AppState.handleWakeWordDetected(manual:)` → `ConversationStartSequence.run` | sets `inConversation = true`; the thread itself is created later, in `AppState.handleTranscription`, only once transcript text exists (`ConversationStore.startThread`) | Direct |
+| Typed chat | `ChatThreadView.send` → `AppState.sendTextMessage` | `startThread` if none active | Direct/cloud/local |
+| Return to wake word | `AppState.returnToWakeWord()` | `inConversation = false`, then `endThread()` **only if** `ConversationThreadContinuityPolicy.shouldEndSavedThread(persistenceEnabled:hasActiveThread:fieldSessionActive:)` says so | Direct |
+| `new_topic` (spoken, Tier-0) | `ConversationClassifier` → `AppState.handleTranscription` → `ConversationResetCoordinator.requestReset(source: .voiceCommand)` | retires every live backend at a turn boundary, then `clearLocalHistory` + `startThread` | all |
+| `new_topic` (model tool) | `NewTopicTool.execute` posts `.ogNewTopicRequested`; observer calls `requestReset(source: .modelToolCall)` | as above | Direct, Gemini Live |
+| Chat tab → New chat | `ChatListView.startNewChat()` → `requestReset(source: .userInterface)` | as above | all |
+| Chat tab → open a thread | `ChatThreadView.activateThread` → `AppState.activateConversationThread` → `ConversationContinuity.resume` | sets `activeThreadId` **and** replays history into `LLMService` | Direct |
+| Chat tab → delete | `ChatListView` `.onDelete` → `ConversationStore.deleteThread` | destroys the thread, no confirmation (the switcher sheet has one; the list does not) | — |
+| Conversation page header → New conversation | `ConversationPageHeader.newConversation()` → `ConversationContinuity.startFresh` | **bypasses `ConversationResetCoordinator`** — ends the thread and clears local history without retiring Gemini Live / Realtime / gateway context | all |
+| Siri: ask / run action | `AskOpenGlassesIntent` (`startDirectTranscription`), `AskQuestionIntent` / `RunGlassesActionIntent` (`sendTextMessage`) | start or continue | Direct |
+| Siri: persona | `AskPersonaIntent` → `ConversationStore.continueRecentOrStartThread(mode:within:)` | the only recency-based resume in the app (5 min) | Direct |
+| CarPlay | `CarPlaySceneDelegate.startVoice/stopVoice/startNewConversation/resumeConversation` | `stopVoice` sets `inConversation = false` without `returnToWakeWord()`; `startNewConversation` calls `endThread()` **directly**, bypassing the coordinator; `resumeConversation` assigns `activeThreadId` **directly** — no `resumeThread()` log, no history replay | Direct |
+| Watch | `WatchConnectivityManager` `"ask"` / `"persona"` / `"resumeThread"` | same direct-assignment resume gap as CarPlay | Direct |
+| Notification reply | `AgentNotificationQueue.deliver` / `deliverSummary` | sets `inConversation = true` **directly**, bypassing `ConversationStartSequence`; never touches `ConversationStore`, so the reply is not in any thread | Direct |
+| Deep links | `openglasses://persona/<id>`, `action/ask` → `connectAndListen`; `disconnect` → `disconnectGlasses()` which ends the thread | start / end | Direct |
+| Widget quick action | `AppState.executeQuickAction` → `LLMService.sendMessage` | **none** — a quick-action reply is never saved to a thread | Direct |
+| Launch | `ConversationStore.restoreActiveSession()` | restores `activeThreadId` if the thread is under 2 h old; no history replay, `inConversation` always starts false | — |
+| Glasses disconnect (BT drop) | `AppState.isConnected` didSet | `inConversation = false`, thread left open | — |
+| Background / foreground / termination | — | no handler touches the thread | — |
+
+### 2. Where a field session begins, is re-scoped, or ends
+
+`FieldSessionTool` actions: `start`, `set_job_reference`, `pause`, `resume`, `end`, `status`,
+`list`, `recall`, `vaults`, `escalate`, `export`.
+
+| Surface | Symbol | Session effect | Modes |
+|---|---|---|---|
+| Tool `start` | `FieldSessionTool.startSession(args:service:)` → `FieldSessionService.startSession(vaultId:assetId:mode:startLocation:jobReference:)` | reads `vault` / `asset_id` / `mode` only — **never passes `jobReference`**, though the service parameter exists | Direct, Gemini Live |
+| Tool `set_job_reference` | `FieldSessionTool` → `FieldSessionService.setJobReference` | the only way a job number is recorded today | Direct, Gemini Live |
+| Tool `pause` / `resume` / `end` | `FieldSessionService.pauseSession/resumeSession/endSession(outcome:)` | billable-time accumulation | Direct, Gemini Live |
+| Quick action "Field Assist" | `QuickAction` `.prompt` — sends *text* asking the model to start a session | **indirect**: it is a prompt, not a call, so whether a session starts is the model's decision | whichever mode is live |
+| Settings → Field Assist | `FieldAssistSettingsView` Pause / Resume / End / "Start Default Session" | calls the service directly, bypassing the tool (and so any tool-level guard) | UI only |
+| Launch restore | `FieldSessionService.restoreInProgressSessionIfAny()` (from `init`) | rebuilds vault/parts index and `ProcedureRunner`, then **auto-pauses** unless already paused | — |
+| Equipment set | `FieldSessionService.setEquipment` ← `EquipmentLookupTool` (spoken, spoken-correction, nameplate/OCR), `EquipmentSurface` (manual tap), `startSession` (work-order `asset_id` match) | on a changed `identity.heading`: new `continuityScope`, `runner = nil`, `activeProcedureId = nil` — **silently**, as drafted | Direct, Gemini Live / UI |
+| Equipment clear | `FieldSessionService.clearEquipment()` | same reset, unconditional | Direct, Gemini Live |
+| Offline queue | `OfflineQueue.recoverInFlight()` | re-arms stranded ops that *reference* a session id; never starts or ends a session | — |
+| Licence lapse | `Config.fieldAssistActive` re-checked inside each tool's `execute` | refuses **new** tool actions; an already-open session is untouched — which is what "a lapse must not strand an open job" needs | — |
+| Audit hook | `FieldSessionService.recordConversationTurn(_:sourceID:)` ← `LLMService` | appends a `.userMessage` event tagged with `continuityScope` and `activeTask?.id`, deduped by `sourceID`. Confirmed: an event-log hook, nothing more | Direct only |
+
+Persistence: `Documents/FieldSessions/{id}/{session.json, log.jsonl, photos/}` via `SessionLogger`,
+registered as `DataStoreRegistry.SensitiveStore.fieldSessionLogs`. `FieldSession` has a hand-written
+`init(from:)` precisely so new fields can be added — `continuityScope = try
+c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"` is the pattern P1's
+`conversationThreadId` should copy.
+
+### 3. What P1 has to hook, and what the draft got wrong
+
+- **`JobThreadPolicy` hooks one place for the happy path and four for correctness.** The happy path
+  is `returnToWakeWord()`, where `ConversationThreadContinuityPolicy` already stands — P1 replaces
+  that call. The four that bypass it: `ConversationPageHeader.newConversation()` (no coordinator),
+  `CarPlaySceneDelegate.startNewConversation/resumeConversation` (direct `endThread()` / direct
+  `activeThreadId` assignment), `WatchConnectivityManager` `"resumeThread"` (same), and
+  `AppState.disconnectGlasses()` (ends the thread with no field-session check). A binding that only
+  covers `returnToWakeWord` is a binding a CarPlay tap breaks.
+- **Thread *creation* is lazy and late.** `startThread` runs inside `handleTranscription` after ASR
+  produces text, so "start a job" cannot bind a thread that does not exist yet. `JobThreadPolicy`
+  must tolerate `boundThreadId == nil` until the first turn, or bind at `startThread` time.
+- **Resume is two-step and three callers skip step two.** `ConversationContinuity.resume` sets
+  `activeThreadId` *and* replays history into `LLMService`; CarPlay, Watch and launch-restore set
+  the id only. A job thread rebound on launch through the id-only path would be an empty-context
+  thread wearing a job number — P1's re-binding must go through `ConversationContinuity.resume`.
+- **The quick action cannot start a job deterministically.** It sends prompt text; the plan's
+  "guidance is deterministic app behaviour, not model goodwill" therefore does not hold for the one
+  entry point a technician is most likely to tap. P1 or P2 should give the Job tab (and ideally the
+  quick action) a direct `startSession` call.
+- **OpenAI Realtime has no Field Assist at all.** Not "parity deferred": `OpenAIRealtimeSessionManager`
+  has no `ToolCallRouter` / `ToolDeclarations` reference and its `buildSystemInstruction()` never
+  calls `FieldSessionService.promptContext()`. P3's scope for that mode is *wiring tools at all*,
+  not adding a state machine to existing ones.
+- **Gemini Live does not write to the session audit log.** `recordConversationTurn` is called only
+  from `LLMService`, so a job run in Gemini Live has no `.userMessage` events. P1 should decide
+  whether the binding also closes that gap.
+- **There is a second gate.** Besides `Config.fieldAssistActive` (licence + toggle),
+  `FieldSessionTool` checks `AIFeatureGate.isEnabled(.fieldAssist)` (`Config.fieldAssistToolsEnabled`).
+  The Job tab's visibility rule should say which gate it follows. HIPAA does **not** gate
+  `field_session` — it is not in `Config.hipaaDisabledTools`.
+- **No `UIApplicationShortcutItem` exists** anywhere in the app. "Quick action" always means the
+  in-app `QuickAction` grid, and P0 found no home-screen shortcut to inventory.
+
+### 4. Readers and writers of the tab selection
+
+One writer, one reader, both in `MainView`: `@State private var selectedTab` and the
+`.onChange(of:initial:)` that logs `PrivacyLog.app(.tabSelected, …)`. Nothing else in the app reads
+or writes it — no `@AppStorage`, no `@SceneStorage`, no deep link (`onOpenURL` handles callbacks,
+trust, personas, skill packs; never a tab), no App Intent, no quick action, no notification, no
+launch argument. The UI tests address tabs by their button label through
+`AccessibilityAudit.openTab(_:in:)`, never by index. So the typed identifier landed without a
+compatibility shim being needed anywhere; `MainTab.legacy(_:)` exists because the numbers *were* the
+API while the bare-`Int` bar shipped, and freezing the mapping is what lets P2 insert `.job` without
+auditing this again.
 
 Related: [F Field Assist](F-field-assist.md), [EL equipment identity](EL-equipment-identity.md),
 [EM work record](EM-work-record-and-parts.md), [FM context and field continuity](FM-conversation-context-and-field-continuity.md),
