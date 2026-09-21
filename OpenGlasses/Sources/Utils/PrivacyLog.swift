@@ -1926,7 +1926,13 @@ enum PrivacyLog {
         case backgrounded, foregrounded, becameActive
         case backgroundOptimized, backgroundOptimizationSkipped, foregroundRestored
         case listeningEnabled, listeningDisabled, micMuted, micUnmuted
+        /// The end of a turn left the mic shut for a condition that can clear on its own, and a
+        /// bounded re-arm is now waiting on it; then whether that re-arm opened the mic or ran out
+        /// of attempts. `detail` carries the skip reason.
+        case listeningRearmScheduled, listeningRearmed, listeningRearmAbandoned
         case conversationCleared, conversationEnded
+        /// A `new_topic` tool call whose turn was not a reset request. Nothing was cleared.
+        case conversationResetRefused
         case turnCancelled, responseCancelled, playbackStopped, alreadyProcessing
         case utteranceHeld, utteranceRejected, utteranceStaleDropped
         case bargeIn, consentAnsweredByVoice

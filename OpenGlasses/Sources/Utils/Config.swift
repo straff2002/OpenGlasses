@@ -274,8 +274,9 @@ struct Config {
         if let phrase = UserDefaults.standard.string(forKey: "wakePhrase"), !phrase.isEmpty {
             return phrase.lowercased()
         }
-        // No "hey" prefix: matching is substring-based, so the bare name also catches anyone
-        // who still says "hey openglasses" — one default covers both habits.
+        // No "hey" prefix: the phrase is matched as whole words anywhere in the utterance, so the
+        // bare name also catches anyone who still says "hey openglasses" — one default covers both
+        // habits.
         return "openglasses"
     }
 
@@ -295,7 +296,11 @@ struct Config {
         UserDefaults.standard.set(phrases.map { $0.lowercased() }, forKey: "alternativeWakePhrases")
     }
 
-    /// Default alternative spellings for common wake phrases
+    /// Default alternative spellings for a wake phrase.
+    ///
+    /// Hand-tuned for the phrases the app offers; `WakePhraseAlternatives` generates the
+    /// structural variants for anything else, because a custom phrase returning `[]` left the one
+    /// phrase nobody has tested the recogniser against with no misrecognition cover at all.
     static func defaultAlternativesForPhrase(_ phrase: String) -> [String] {
         switch phrase.lowercased() {
         case "hey claude":
@@ -316,7 +321,7 @@ struct Config {
             // "hey" anchor they'd false-trigger on ordinary speech.
             return ["open glasses", "openglass", "open glass"]
         default:
-            return []
+            return WakePhraseAlternatives.generated(for: phrase)
         }
     }
 

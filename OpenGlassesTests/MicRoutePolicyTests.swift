@@ -108,3 +108,50 @@ final class MicRoutePolicyTests: XCTestCase {
         XCTAssertTrue(Config.useGlassesMicForWakeWord)
     }
 }
+
+/// The route tests that decide whether the glasses are still there.
+///
+/// `WakeWordService` asked this four times with an inline `portType == .bluetoothHFP`, which is
+/// this list minus everything iOS 26 added. On a device whose glasses negotiate LC3 that reads as
+/// "the glasses are gone" on any route flip — and one of those four reports a disconnect that
+/// latches the app's cached connection flag off for the rest of the launch.
+final class BluetoothRouteRecognitionTests: XCTestCase {
+
+    func testTheLC3MicCountsAsBluetooth() {
+        XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([.bluetoothLE]),
+                      "iOS 26 surfaces the glasses mic as bluetoothLE, not HFP")
+    }
+
+    func testTheClassicHandsFreeMicStillCounts() {
+        XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([.bluetoothHFP]))
+        XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([.headsetMic]))
+    }
+
+    func testTheBuiltInMicIsNotBluetooth() {
+        XCTAssertFalse(MicRoutePolicy.containsBluetoothMic([.builtInMic]))
+        XCTAssertFalse(MicRoutePolicy.containsBluetoothMic([]))
+    }
+
+    func testAMixedRouteIsRecognisedByItsBluetoothPort() {
+        XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([.builtInMic, .bluetoothLE]))
+    }
+
+    /// The mic list and the output list are not the same question: A2DP carries no microphone, so
+    /// it proves the link is up without proving anything can be heard.
+    func testA2DPIsAnOutputOnly() {
+        XCTAssertTrue(MicRoutePolicy.containsBluetoothOutput([.bluetoothA2DP]))
+        XCTAssertFalse(MicRoutePolicy.containsBluetoothMic([.bluetoothA2DP]))
+    }
+
+    func testTheBuiltInSpeakerIsNotBluetooth() {
+        XCTAssertFalse(MicRoutePolicy.containsBluetoothOutput([.builtInSpeaker]))
+    }
+
+    /// Whatever the selection rules prefer, the recognition test has to agree it is Bluetooth —
+    /// otherwise a route the app chose can read as a route the app has lost.
+    func testEveryPreferredMicPortIsRecognised() {
+        for port in MicRoutePolicy.bluetoothMicPorts {
+            XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([port]), port.rawValue)
+        }
+    }
+}
