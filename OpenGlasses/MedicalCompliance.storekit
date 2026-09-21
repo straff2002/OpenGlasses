@@ -70,7 +70,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "4.99",
+          "displayPrice": "9.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "medical_monthly_001",
@@ -108,7 +108,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "49.99",
+          "displayPrice": "99.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "medical_annual_001",
@@ -180,7 +180,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "999.99",
+          "displayPrice": "1299.99",
           "familyShareable": false,
           "groupNumber": 2,
           "internalID": "field_assist_annual_001",
