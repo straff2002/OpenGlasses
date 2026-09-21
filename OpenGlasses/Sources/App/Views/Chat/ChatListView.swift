@@ -7,6 +7,8 @@ struct ChatListView: View {
     @State private var path: [String] = []
     /// When on, the list shows only the active project's (Persona's) threads (Plan AN).
     @State private var projectScoped = false
+    /// Raised when "New chat" would take the technician out of an open job (Plan FO P1).
+    @State private var pendingLeaveJob: JobThreadQuestion?
 
     private var store: ConversationStore { appState.conversationStore }
     private var activeProjectId: String? { appState.activePersona?.id }
@@ -65,6 +67,10 @@ struct ChatListView: View {
             PrivacyLog.app(.listUpdated, detail: PrivacyToken("ChatListView"),
                            count: sortedThreads.count)
         }
+        .jobThreadQuestionAlert($pendingLeaveJob) { _ in
+            appState.guidedJobFlow.confirmLeaveJobThread()
+            Task { await performNewChat() }
+        }
     }
 
     private var threadList: some View {
@@ -114,6 +120,16 @@ struct ChatListView: View {
     /// on its own would make a blank page while every backend — a live session, the gateway agent —
     /// carried on remembering the conversation the wearer just left.
     private func startNewChat() async {
+        // A job owns its conversation, so "New chat" asks before it walks out of one (Plan FO P1).
+        // The reset itself is untouched — only the question is new.
+        if let question = appState.guidedJobFlow.leaveJobThreadQuestion() {
+            pendingLeaveJob = question
+            return
+        }
+        await performNewChat()
+    }
+
+    private func performNewChat() async {
         let report = await appState.conversationReset.requestReset(source: .userInterface)
         // No thread on the held-back path: the coordinator did not retire anything, and a fresh
         // page would be the exact false confirmation this routing exists to avoid.

@@ -240,6 +240,32 @@ class ConversationStore: ObservableObject {
         onThreadLeft?(ended)
     }
 
+    /// Rename a thread whose title is still machine-generated.
+    ///
+    /// A Field Assist job owns its conversation, and "Job 1005 — SLP99UH" is what a technician
+    /// looks it up by a week later; the first sentence of the job ("start a job on the default
+    /// vault") is not. But a title the *wearer* chose is theirs, so this replaces only the
+    /// placeholder, the auto-title this store would have generated itself, and whatever
+    /// `isOwnTitle` recognises as its own earlier work.
+    ///
+    /// - Parameter isOwnTitle: given the current title, whether the caller wrote it.
+    func applyJobTitle(_ title: String, to threadId: String, isOwnTitle: (String) -> Bool) {
+        guard let idx = threads.firstIndex(where: { $0.id == threadId }) else { return }
+        let existing = threads[idx].title
+        guard existing != title else { return }
+        guard existing == "New Conversation" || isOwnTitle(existing) || isAutoTitle(existing, in: threads[idx])
+        else { return }
+        threads[idx].title = title
+        save()
+    }
+
+    /// Whether `title` is what this store's own auto-titling would have produced for the thread —
+    /// i.e. nobody has renamed it.
+    private func isAutoTitle(_ title: String, in thread: ConversationThread) -> Bool {
+        guard let firstUser = thread.messages.first(where: { $0.role == "user" }) else { return false }
+        return title == Self.generateTitle(from: firstUser.content)
+    }
+
     /// Give a still-default thread a title derived from its first user message. Safe to call
     /// repeatedly — it only acts while the title is the placeholder. Used by the live Chat tab,
     /// which never calls `endThread()` (the thread stays open as the user keeps chatting).

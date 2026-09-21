@@ -59,13 +59,18 @@ final class EquipmentLookupTool: NativeTool {
     private let documentStore: DocumentStore?
     /// Session to read the active vault from; nil means the shared service. Injectable for tests.
     private let injectedSession: FieldSessionService?
+    /// The guided job flow, when the app has one (Plan FO P1). Recognition goes through it so a
+    /// machine that is not the one the job is on raises a question instead of silently re-scoping.
+    private let flow: GuidedJobFlow?
 
     init(cameraService: (any FilteredStillProviding)? = nil, ocr: OCRService = OCRService(),
-         documentStore: DocumentStore? = nil, sessionService: FieldSessionService? = nil) {
+         documentStore: DocumentStore? = nil, sessionService: FieldSessionService? = nil,
+         flow: GuidedJobFlow? = nil) {
         self.cameraService = cameraService
         self.ocr = ocr
         self.documentStore = documentStore
         self.injectedSession = sessionService
+        self.flow = flow
     }
 
     private var session: FieldSessionService { injectedSession ?? .shared }
@@ -132,6 +137,24 @@ final class EquipmentLookupTool: NativeTool {
         if session.activeEquipment?.heading == model.heading { return (nil, nil) }
         let identity = EquipmentIdentity(model: model, token: model.name, source: source,
                                          nameplateText: nameplateText)
+        // Plan FO P1: this is the path where recognition *happens to* the session — a model number
+        // said in passing, a nameplate the camera read. On a job that is already on a machine,
+        // re-scoping silently leaves the previous job open and still billing, so the flow holds the
+        // change and asks whether that job is finished. The correction path ("no, it's the 070")
+        // and a tap on the phone's model list go straight to `setEquipment` below: those are the
+        // technician saying which machine this is, and a question there would be arguing with them.
+        if let flow {
+            guard flow.proposeEquipment(.model(identity)) == nil else {
+                // Held. The app puts the question itself at the end of the turn, so the model is
+                // told what is happening rather than handed the question to relay.
+                let current = session.activeEquipment?.modelToken ?? "the current unit"
+                return ("\(identity.modelToken) is not \(current). The technician is being asked "
+                        + "whether this job is finished or this is another unit on the same job; "
+                        + "the session stays on \(current) until they answer. Do not ask or answer "
+                        + "that question yourself.", nil)
+            }
+            return (identity.announcement, nil)
+        }
         session.setEquipment(identity)
         return (identity.announcement, nil)
     }

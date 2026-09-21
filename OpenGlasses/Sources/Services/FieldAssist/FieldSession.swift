@@ -28,6 +28,22 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// The job this visit belongs to, as the work order names it. Spoken at the start, or carried
     /// in by an organisation profile.
     var jobReference: String?
+    /// The saved conversation this job owns (Plan FO P1). Everything said on the job lives in one
+    /// thread, reviewable later under the job number, rather than one thread per wake-word turn.
+    /// Nil until the job has a thread to bind — creation is lazy, see `JobThreadPolicy`.
+    var conversationThreadId: String?
+    /// True once the technician answered "start a separate chat" to the question raised when they
+    /// tried to leave the job's thread. The id above is kept so the job can still be reviewed;
+    /// turns simply stop resolving to it.
+    var conversationThreadDetached: Bool = false
+    /// Where the job number stands. Persisted, because "still owed" must survive a restart.
+    var jobIntake: JobIntakeState = .needsReference
+    /// A change-of-unit question that has been put and not yet answered. Persisted for the same
+    /// reason: a question the app forgot it asked is worse than one it never asked.
+    var pendingUnitChange: PendingUnitChange?
+    /// Every unit this job has covered, in the order they were first seen. `equipment` holds only
+    /// the current one; a job may legitimately span several.
+    var visitedUnits: [VisitedUnit] = []
     /// What was recommended and what was decided about it, in the order it happened.
     var tasks: [Task] = []
     /// What base is being asked for. A request may stand without a task.
@@ -134,6 +150,8 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
+        case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
+        case visitedUnits
     }
 }
 
@@ -173,6 +191,21 @@ extension FieldSession {
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]
         procedureEquipmentScope = try c.decodeIfPresent(String.self, forKey: .procedureEquipmentScope)
+        conversationThreadId = try c.decodeIfPresent(String.self, forKey: .conversationThreadId)
+        conversationThreadDetached = try c.decodeIfPresent(Bool.self, forKey: .conversationThreadDetached) ?? false
+        // A session written before the guided flow existed has no intake state. Its number is
+        // either already recorded or it was never asked for — and asking for it now, days later,
+        // would be nonsense, so a legacy session with no number is `.notRequired` rather than
+        // outstanding.
+        if let intake = try c.decodeIfPresent(JobIntakeState.self, forKey: .jobIntake) {
+            jobIntake = intake
+        } else if let reference = jobReference {
+            jobIntake = .recorded(reference: reference)
+        } else {
+            jobIntake = .notRequired
+        }
+        pendingUnitChange = try c.decodeIfPresent(PendingUnitChange.self, forKey: .pendingUnitChange)
+        visitedUnits = try c.decodeIfPresent([VisitedUnit].self, forKey: .visitedUnits) ?? []
     }
 }
 

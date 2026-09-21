@@ -7,9 +7,15 @@ import Foundation
 @MainActor
 final class FieldSessionTool: NativeTool {
     private let sessionService: FieldSessionService?
+    /// The guided job flow, when the app has one (Plan FO P1). Starting and closing a job go
+    /// through it so the thread binding, the job-number intake and the audit trail happen
+    /// identically however the job was started — tool call, quick action, or (P2) the Job tab.
+    /// Nil in headless contexts, where the service call alone is the whole behaviour.
+    private let flow: GuidedJobFlow?
 
-    init(service: FieldSessionService? = nil) {
+    init(service: FieldSessionService? = nil, flow: GuidedJobFlow? = nil) {
         sessionService = service
+        self.flow = flow
     }
 
     let name = "field_session"
@@ -56,7 +62,7 @@ final class FieldSessionTool: NativeTool {
             ],
             "job_reference": [
                 "type": "string",
-                "description": "Required on 'set_job_reference': the technician's exact job or work-order number. Do not invent or normalize it."
+                "description": "The technician's exact job or work-order number. Required on 'set_job_reference'; optional on 'start' when they already said it (\"start job 1005\"). Pass only a number they actually gave. Do not invent or normalize it, and never take it from an asset id."
             ],
             "mode": [
                 "type": "string",
@@ -137,13 +143,26 @@ final class FieldSessionTool: NativeTool {
         let assetId = args["asset_id"] as? String
         let modeRaw = (args["mode"] as? String) ?? Config.fieldAssistDefaultMode
         let mode = FieldSession.Mode(rawValue: modeRaw) ?? .aiOnly
+        // "Start job 1005" in one step (Plan FO P1). Absent, the app asks for the number itself —
+        // and the result below says so, so the model neither asks nor supplies one.
+        let jobReference = (args["job_reference"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         do {
-            let session = try service.startSession(vaultId: vaultId, assetId: assetId, mode: mode)
+            let session: FieldSession
+            if let flow {
+                session = try flow.startJob(vaultId: vaultId, assetId: assetId, mode: mode,
+                                            jobReference: jobReference)
+            } else {
+                session = try service.startSession(vaultId: vaultId, assetId: assetId, mode: mode,
+                                                   jobReference: jobReference)
+            }
             let vaultName = VaultRegistry.shared.manifest(id: vaultId)?.name ?? vaultId
             let asset = assetId.map { " on \($0)" } ?? ""
             let modeLabel = mode == .aiOnly ? "AI-only" : "human-assisted"
-            return "Started \(modeLabel) Field Assist session against the \(vaultName) vault\(asset). Session id: \(session.id.prefix(8))."
+            let job = session.jobReference.map { " Job \($0) is recorded." }
+                ?? " No job number yet — the app asks the technician for it directly, so do not ask for one, do not offer one, and do not infer one."
+            return "Started \(modeLabel) Field Assist session against the \(vaultName) vault\(asset). Session id: \(session.id.prefix(8)).\(job)"
         } catch {
             return "Could not start session: \(error.localizedDescription)"
         }
@@ -170,7 +189,9 @@ final class FieldSessionTool: NativeTool {
         guard !reference.isEmpty else {
             return "Could not record job reference: job_reference cannot be empty."
         }
-        service.setJobReference(reference)
+        // Through the flow when there is one, so the intake stops asking and the job's conversation
+        // takes the number as its title (Plan FO P1).
+        if let flow { flow.supplyJobReference(reference) } else { service.setJobReference(reference) }
         guard service.activeSession?.jobReference == reference else {
             return "Could not record job reference."
         }
@@ -199,7 +220,9 @@ final class FieldSessionTool: NativeTool {
         let outcomeRaw = (args["outcome"] as? String) ?? "resolved"
         let outcome = FieldSession.Outcome(rawValue: outcomeRaw) ?? .resolved
         do {
-            let session = try service.endSession(outcome: outcome)
+            // Through the flow when there is one: finishing the job is one of the two things that
+            // really do end its conversation (Plan FO P1).
+            let session = try flow?.closeJob(outcome: outcome) ?? service.endSession(outcome: outcome)
             let billing = WorkRecord.billingSummary(
                 seconds: session.billableSeconds, basis: session.billingBasis,
                 minutesPerUnit: session.minutesPerBillingUnit)

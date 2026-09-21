@@ -212,21 +212,35 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         refreshModesTab()
     }
 
+    /// Plan FO P1: through the job chokepoint, not `endThread()` directly. A tap here used to end
+    /// whatever thread was open with no idea a Field Assist job owned it — and a CarPlay tap that
+    /// breaks the job's conversation is the exact failure the binding exists to prevent.
+    ///
+    /// There is nowhere in CarPlay to put the "keep this in the job?" question, so the answer here
+    /// is the safe one: while a job owns the open conversation, New Conversation keeps it. The
+    /// driver gets the job's thread, which is where the next thing they say belongs anyway.
     private func startNewConversation() {
         PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("newConversation"))
         Task { @MainActor in
-            AppStateProvider.shared?.conversationStore.endThread()
+            guard let appState = AppStateProvider.shared else { return }
+            if appState.guidedJobFlow.leaveJobThreadQuestion() == nil {
+                appState.guidedJobFlow.requestNewChat()
+            }
         }
         startVoice()
     }
 
+    /// The two-step resume, at last: this used to assign `activeThreadId` and stop, so the driver
+    /// carried on a conversation the model had never been shown.
     private func resumeConversation(threadId: String) {
         PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("resumeThread"),
                           item: PrivateIdentifier(threadId))
         Task { @MainActor in
             guard let appState = AppStateProvider.shared else { return }
-            appState.conversationStore.endThread()
-            appState.conversationStore.activeThreadId = threadId
+            // Same rule as above: no question surface here, so a job keeps its conversation.
+            if appState.guidedJobFlow.leaveJobThreadQuestion(switchingTo: threadId) == nil {
+                appState.activateConversationThread(threadId)
+            }
         }
         startVoice()
     }

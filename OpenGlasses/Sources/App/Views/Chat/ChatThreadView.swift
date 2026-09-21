@@ -21,6 +21,8 @@ struct ChatThreadView: View {
     @State private var editingMessageId: String?
     @State private var editingText = ""
     @State private var attachNotice: String?
+    /// Raised when making this thread the live one would take the technician out of an open job.
+    @State private var pendingLeaveJob: JobThreadQuestion?
 
     private let bottomAnchor = "chat-bottom"
 
@@ -84,6 +86,9 @@ struct ChatThreadView: View {
             TextField("Message", text: $editingText)
             Button("Send", action: commitEdit)
             Button("Cancel", role: .cancel) { editingMessageId = nil }
+        }
+        .jobThreadQuestionAlert($pendingLeaveJob) { _ in
+            appState.activateConversationThread(threadId, confirmed: true)
         }
     }
 
@@ -194,8 +199,13 @@ struct ChatThreadView: View {
     /// Make this thread the one new messages append to, and load its history into the LLM context.
     /// One seam, shared with the dock's conversation page — resuming has to mean the same thing
     /// wherever it is asked for.
+    ///
+    /// While a job owns another conversation this raises the question rather than switching: simply
+    /// opening a thread to read it must not quietly move the job's turns into it (Plan FO P1).
     private func activateThread() {
-        appState.activateConversationThread(threadId)
+        if let question = appState.activateConversationThread(threadId) {
+            pendingLeaveJob = question
+        }
     }
 
     private func send(_ text: String, _ image: Data?) {

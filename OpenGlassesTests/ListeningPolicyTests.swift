@@ -177,36 +177,3 @@ final class WakeRearmPolicyTests: XCTestCase {
                                  "a re-arm that keeps trying forever is a mic that turns itself on")
     }
 }
-
-/// A job's turns belong in one thread. Tying the saved thread's life to `inConversation` filed
-/// every wake-word turn as its own one-turn conversation.
-final class ConversationThreadContinuityPolicyTests: XCTestCase {
-
-    private func shouldEnd(persistence: Bool = true,
-                           hasThread: Bool = true,
-                           fieldSession: Bool = false) -> Bool {
-        ConversationThreadContinuityPolicy.shouldEndSavedThread(persistenceEnabled: persistence,
-                                                                hasActiveThread: hasThread,
-                                                                fieldSessionActive: fieldSession)
-    }
-
-    func testAnOrdinaryTurnClosesItsThread() {
-        XCTAssertTrue(shouldEnd())
-    }
-
-    func testAJobKeepsItsThreadOpenBetweenTurns() {
-        XCTAssertFalse(shouldEnd(fieldSession: true),
-                       "the next wake word continues the job's conversation")
-    }
-
-    func testNothingToEndIsNotAnEnd() {
-        XCTAssertFalse(shouldEnd(hasThread: false))
-        XCTAssertFalse(shouldEnd(persistence: false))
-    }
-
-    /// The rule is scoped to the job being active — finishing it must let the thread close again.
-    func testTheThreadClosesOnceTheJobIsOver() {
-        XCTAssertFalse(shouldEnd(fieldSession: true))
-        XCTAssertTrue(shouldEnd(fieldSession: false))
-    }
-}

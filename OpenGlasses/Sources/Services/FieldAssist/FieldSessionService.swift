@@ -103,10 +103,11 @@ final class FieldSessionService: ObservableObject {
             billingBasis: Config.fieldAssistBillingBasis,
             minutesPerBillingUnit: Config.fieldAssistMinutesPerBillingUnit
         )
-        if let reference = jobReference?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !reference.isEmpty {
-            session.jobReference = reference
-        }
+        // "Start job 1005" is one step; starting without a number leaves the intake owing one, and
+        // the app — not the model — asks for it (Plan FO P1).
+        let intake = JobIntakeState.needsReference.advance(.jobStarted(reference: jobReference))
+        session.jobReference = intake.recordedReference
+        session.jobIntake = intake.state
 
         activeSession = session
         activeVault = store
@@ -245,6 +246,14 @@ final class FieldSessionService: ObservableObject {
             activeProcedureId = nil
         }
         session.equipment = identity
+        // Every unit the job has been on, in the order they were first seen (Plan FO P1). Recorded
+        // here rather than in the guided flow, because a job also reaches this by a spoken
+        // correction, a tap on the phone's model list and a work order's asset id — a list that is
+        // only filled by one of the four routes is not a record of the job.
+        let unit = VisitedUnit(identity: identity, serial: nil, continuityScope: session.continuityScope)
+        if !session.visitedUnits.contains(where: { $0.heading == unit.heading }) {
+            session.visitedUnits.append(unit)
+        }
         activeSession = session
         activeEquipment = identity
         history = history.replacingFirst(matching: session.id, with: session)
@@ -338,8 +347,91 @@ final class FieldSessionService: ObservableObject {
     func setJobReference(_ reference: String) {
         let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, activeSession != nil else { return }
-        mutateSession { $0.jobReference = trimmed }
+        mutateSession {
+            $0.jobReference = trimmed
+            $0.jobIntake = .recorded(reference: trimmed)
+            return ()
+        }
         logger?.append(.init(timestamp: Date(), kind: .jobReferenceSet, text: trimmed, payload: nil))
+    }
+
+    // MARK: - Guided job flow (Plan FO P1)
+
+    /// Bind the job to a saved conversation, or let go of one.
+    ///
+    /// Everything the technician says on a job belongs in one thread. This is where the job
+    /// records which; `JobThreadCoordinator` is the only thing that decides *what* to pass.
+    func bindConversationThread(_ threadId: String?, reason: JobThreadPolicy.BindReason? = nil) {
+        guard let session = activeSession, session.conversationThreadId != threadId else { return }
+        mutateSession {
+            $0.conversationThreadId = threadId
+            $0.conversationThreadDetached = false
+            return ()
+        }
+        logger?.append(.init(timestamp: Date(), kind: .jobThreadBound, text: reason?.rawValue,
+                             payload: ["thread": AnyCodable(threadId ?? ""),
+                                       "reason": AnyCodable(reason?.rawValue ?? "")]))
+    }
+
+    /// The technician chose to carry on in a separate chat. The job keeps the thread it owned so
+    /// it can still be reviewed; new turns stop landing in it.
+    func detachConversationThread() {
+        guard activeSession?.conversationThreadDetached == false else { return }
+        mutateSession { $0.conversationThreadDetached = true; return () }
+        logger?.append(.init(timestamp: Date(), kind: .jobThreadBound, text: "detached",
+                             payload: ["detached": AnyCodable(true)]))
+    }
+
+    /// Where the job number stands.
+    func updateJobIntake(_ state: JobIntakeState) {
+        guard let session = activeSession, session.jobIntake != state else { return }
+        mutateSession { $0.jobIntake = state; return () }
+    }
+
+    /// Record what the app asked and what came back. Both are evidence: an unanswered question
+    /// and a declined job number are facts about the visit.
+    func logJobQuestion(_ question: String, asked: Bool, answer: String? = nil,
+                        detail: [String: AnyCodable] = [:]) {
+        var payload = detail
+        payload["question"] = AnyCodable(question)
+        if let answer { payload["answer"] = AnyCodable(answer) }
+        logger?.append(.init(timestamp: Date(),
+                             kind: asked ? .jobQuestionAsked : .jobQuestionAnswered,
+                             text: answer ?? question, payload: payload))
+    }
+
+    /// Hold (or release) a change-of-unit question. Held on the session so an app restart in the
+    /// middle of one does not silently drop it.
+    func setPendingUnitChange(_ pending: PendingUnitChange?) {
+        guard activeSession?.pendingUnitChange != pending else { return }
+        mutateSession { $0.pendingUnitChange = pending; return () }
+    }
+
+    /// Write the serial onto the unit the job is currently on, so two identical machines on one
+    /// site can be told apart in the record. No-op when the serial is already there.
+    func recordSerialForActiveUnit(_ serial: String?) {
+        guard let serial, !serial.isEmpty else { return }
+        mutateSession { session in
+            guard let idx = session.visitedUnits.lastIndex(where: {
+                $0.heading == session.equipment?.heading
+            }), session.visitedUnits[idx].serial != serial else { return }
+            let existing = session.visitedUnits[idx]
+            session.visitedUnits[idx] = VisitedUnit(
+                identity: .init(modelToken: existing.modelToken, heading: existing.heading,
+                                file: "", source: .spoken),
+                serial: serial, continuityScope: existing.continuityScope,
+                firstSeenAt: existing.firstSeenAt)
+        }
+    }
+
+    /// The serial the session has written down for the machine it is on, if any. `recordIdentityField`
+    /// is where serials land, and it is the only thing that tells two identical units apart.
+    var activeSerial: String? {
+        guard let session = activeSession else { return nil }
+        return session.identityFields.last {
+            $0.name.lowercased().contains("serial")
+                && (session.identityEquipmentScopes[$0.name.lowercased()] ?? "initial") == session.continuityScope
+        }?.value
     }
 
     /// Write down a field read off the machine — model, serial, board part number, firmware,
