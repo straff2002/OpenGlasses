@@ -831,6 +831,24 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Wire the guided job flow to speech, the model's context and the thread store (Plan FO P1),
+    /// then let it pick up whatever a cold launch restored.
+    ///
+    /// The launch call repairs a defect on its way past: `ConversationStore.restoreActiveSession()`
+    /// puts back the active thread's *id* and nothing else, so before this the first sentence after
+    /// a relaunch carried on a conversation the model had never been shown. Resuming is two steps,
+    /// here as everywhere else.
+    private func configureGuidedJobFlow() {
+        guidedJobFlow.connect(.init(
+            speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
+            loadHistory: { [weak self] history in self?.llmService.loadConversationHistory(history) },
+            clearHistory: { [weak self] in self?.llmService.clearHistory() },
+            threadMode: { [weak self] in self?.currentMode.rawValue ?? AppMode.direct.rawValue },
+            personaId: { [weak self] in self?.activePersona?.id },
+            persistenceEnabled: { Config.conversationPersistenceEnabled }))
+        guidedJobFlow.restoreOnLaunch()
+    }
+
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
     /// entry points share one state machine and one generation.
     private func configureConversationReset() {
@@ -905,6 +923,15 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // Tier 1 services
     let conversationStore = ConversationStore()
+
+    /// The guided job flow (Plan FO P1): one conversation per job, the job-number question the app
+    /// asks itself, and the held re-scope when a different machine turns up.
+    ///
+    /// Also the **only** thing allowed to start, switch or end a saved thread while a job is
+    /// running — the conversation page header, CarPlay, the watch and the disconnect path all go
+    /// through it, because a binding that only covered the end of a voice turn was a binding a
+    /// CarPlay tap could break.
+    let guidedJobFlow: GuidedJobFlow
     /// DK: owns the disposable, lock-scoped in-memory conversation recall projection.
     let conversationRecallCoordinator = ConversationRecallCoordinator()
     let userMemory = SemanticMemoryStore()
@@ -1077,6 +1104,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // `userMemory` (already initialized + kept current by activePersona.didSet) so the
         // closure resolves the live project id without capturing the half-built AppState.
         let memoryForNamespace = userMemory
+        // Built before the tool registry, because `field_session` start/end go through it: whether
+        // a job starts is an app decision, not the model's (Plan FO P1). Its device-facing seams
+        // are connected later, in `configureGuidedJobFlow()`.
+        guidedJobFlow = GuidedJobFlow(sessions: FieldSessionService.shared, store: conversationStore)
         nativeToolRegistry = NativeToolRegistry(
             locationService: locationService,
             conversationStore: conversationStore,
@@ -1092,7 +1123,8 @@ class AppState: ObservableObject, AppStateProtocol {
             documentStore: documentStore,
             activeNamespace: { memoryForNamespace.activePersonaId ?? "global" },
             eventKitStore: sharedEventKitStore,
-            travelTimeSource: sharedTravelTimeSource
+            travelTimeSource: sharedTravelTimeSource,
+            guidedJobFlow: guidedJobFlow
         )
         nativeToolRouter = NativeToolRouter(registry: nativeToolRegistry, openClawBridge: openClawBridge)
 
@@ -1493,6 +1525,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // mid-turn. It only *records* the request: retiring the phone's history here, as this
         // observer used to, left every remote backend still holding the conversation.
         configureConversationReset()
+        configureGuidedJobFlow()
         configureScanAssist()
         NotificationCenter.default.addObserver(forName: .ogNewTopicRequested, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -3604,6 +3637,17 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Capture a photo and send it to the LLM for analysis (manual camera button).
     /// Execute a QuickAction by type — used by widget deep links and overlay.
     func executeQuickAction(_ action: QuickAction) async {
+        // Plan FO P1: starting a job is an app action, not a sentence the model may or may not act
+        // on. The prompt that follows is only the introduction.
+        if action.id == QuickAction.fieldAssist.id, Config.fieldAssistActive,
+           FieldSessionService.shared.activeSession == nil {
+            do {
+                try guidedJobFlow.startJob(vaultId: Config.fieldAssistDefaultVaultId)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
         switch action.type {
         case .prompt:
             guard let text = action.promptText, !text.isEmpty else { return }
@@ -4368,6 +4412,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter ensureEngine: run the audio-engine keepalive first — needed after TTS playback,
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
+        // Plan FO P1: the turn is over, so this is the moment the app's own question goes out —
+        // after whatever was being said, and before the microphone re-arms, so the next thing
+        // heard is the answer. Speaks only when something is genuinely due, and the ask budget
+        // means a technician who ignores it is not nagged.
+        await guidedJobFlow.speakPendingQuestionIfDue()
         // The user may have disabled listening while the turn was finishing — a finish stage must
         // never turn the microphone back on behind their back. But it must still CLOSE the
         // conversation: returning with `inConversation` left true stranded the app until a
@@ -4406,6 +4455,18 @@ class AppState: ObservableObject, AppStateProtocol {
     /// teleprompter → HUD task → launcher select → launcher open → intent-ignore filter.
     private func preLLMHandlers() -> [VoiceCommandHandler] {
         [
+            // Guided job flow (Plan FO P1). First in the chain because the app asked a direct
+            // question a moment ago and this is its answer: a bare "1005" would otherwise be
+            // filtered as bystander speech by `intent-ignore`, and the one thing the whole visit
+            // is filed under would be lost. The flow only consumes an utterance that genuinely
+            // answers an outstanding question — "what's this error code?" returns false here and
+            // goes to the model untouched, with the question still open.
+            VoiceCommandHandler(label: "job-question") { [weak self] text in
+                guard let self, await self.guidedJobFlow.handleUtterance(text) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("jobQuestion"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
             // Teleprompter (Phase 2): while a session is running it owns the display, so
             // "next/back/pause/resume/restart/faster/slower/stop" drive the prompter rather than
             // the LLM. Checked first since it's a focused, full-screen mode.
@@ -4856,7 +4917,11 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
-        // Track in conversation store
+        // Track in conversation store. While a Field Assist job is running the thread is the
+        // job's, whichever wake-word cycle this turn belongs to (Plan FO P1) — the flow binds or
+        // resumes it before anything is appended, so a turn is never filed in the wrong
+        // conversation and moved afterwards.
+        guidedJobFlow.prepareThreadForTurn(manuallyTriggered ? .tapToTalk : .wakeWord)
         if Config.conversationPersistenceEnabled {
             if conversationStore.activeThreadId == nil {
                 conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
@@ -5174,6 +5239,9 @@ class AppState: ObservableObject, AppStateProtocol {
         currentTranscription = query
         isListening = false
         errorMessage = nil
+
+        // A typed turn belongs to the job's conversation exactly as a spoken one does (Plan FO P1).
+        guidedJobFlow.prepareThreadForTurn(.typed)
 
         // Track in conversation store
         if Config.conversationPersistenceEnabled {
@@ -5853,10 +5921,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // Stop ambient features that use mic/speakers
         if ambientCaptions.isActive { ambientCaptions.stop() }
 
-        // End conversation thread
-        if Config.conversationPersistenceEnabled && conversationStore.activeThreadId != nil {
-            conversationStore.endThread()
-        }
+        // End conversation thread — through the job chokepoint, because putting the glasses down
+        // mid-job is not finishing the job, and the thread the technician comes back to has to be
+        // the same one (Plan FO P1).
+        guidedJobFlow.endThreadForDisconnect()
 
         // Disconnect the glasses (triggers isConnected didSet cleanup too)
         glassesService.disconnect()
@@ -5888,14 +5956,9 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak("Resuming \(media.displayName).")
         }
         updateLiveActivity()
-        // End the saved thread — unless a Field Assist job is running, in which case the job owns
-        // the thread and the next wake-word turn continues it (see the policy for why).
-        if ConversationThreadContinuityPolicy.shouldEndSavedThread(
-            persistenceEnabled: Config.conversationPersistenceEnabled,
-            hasActiveThread: conversationStore.activeThreadId != nil,
-            fieldSessionActive: FieldSessionService.shared.activeSession != nil) {
-            conversationStore.endThread()
-        }
+        // End the saved thread — unless a Field Assist job owns it, in which case the next
+        // wake-word turn continues the same conversation (Plan FO P1: `JobThreadPolicy`).
+        guidedJobFlow.endThreadForVoiceReturn()
 
         switch WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation)) {
         case .skip(let reason):

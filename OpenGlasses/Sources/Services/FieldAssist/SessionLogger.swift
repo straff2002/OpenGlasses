@@ -88,6 +88,15 @@ final class SessionLogger {
             /// A nameplate or display field was written down, with its source.
             case identityFieldRecorded = "identity_field_recorded"
             case jobReferenceSet = "job_reference_set"
+            /// The app put one of the guided flow's two questions to the technician — the job
+            /// number, or whether the previous job is finished (Plan FO). Asked by the app itself,
+            /// so the record shows it happened whatever the model did.
+            case jobQuestionAsked = "job_question_asked"
+            /// …and what came back, including "I don't have one" and "not sure".
+            case jobQuestionAnswered = "job_question_answered"
+            /// The job took ownership of a saved conversation, or had to take a new one because
+            /// the one it owned was deleted.
+            case jobThreadBound = "job_thread_bound"
             /// The job report left by a channel the technician chose (Plan EM P2).
             case reportSent = "report_sent"
             /// …or the composer was dismissed, and the record is still in the queue.

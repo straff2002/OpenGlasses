@@ -295,7 +295,13 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             case "resumeThread":
                 if let threadId = message["thread_id"] as? String {
-                    appState.conversationStore.activeThreadId = threadId
+                    // Plan FO P1: the two-step resume through the one seam — this used to set the
+                    // id alone, so the watch resumed a conversation the model had no history of.
+                    // A job keeps its own conversation: the watch has nowhere to put the
+                    // "keep this in the job?" question, so it does not take the technician out of one.
+                    if appState.guidedJobFlow.leaveJobThreadQuestion(switchingTo: threadId) == nil {
+                        appState.activateConversationThread(threadId)
+                    }
                     // Start listening for follow-up in the resumed thread
                     appState.wakeWordService.stopListening()
                     try? await Task.sleep(nanoseconds: 100_000_000)

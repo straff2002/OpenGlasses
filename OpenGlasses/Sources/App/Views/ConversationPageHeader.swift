@@ -15,6 +15,8 @@ struct ConversationPageHeader: View {
     @Environment(\.appAccent) private var accent
 
     @State private var showingSwitcher = false
+    /// Raised when starting a new conversation would take the technician out of an open job.
+    @State private var pendingLeaveJob: JobThreadQuestion?
 
     private var title: String { ConversationContinuity.headerTitle(for: store) }
     private var hasThreads: Bool { !store.threads.isEmpty }
@@ -85,6 +87,14 @@ struct ConversationPageHeader: View {
             ConversationSwitcherSheet(store: store)
                 .environmentObject(appState)
         }
+        .jobThreadQuestionAlert($pendingLeaveJob) { asked in
+            switch asked.requested {
+            case .newChat:
+                appState.guidedJobFlow.requestNewChat(confirmed: true)
+            case .switchThread(let id):
+                appState.activateConversationThread(id, confirmed: true)
+            }
+        }
     }
 
     /// End the current thread cleanly and clear the model's context, so the next thing said
@@ -92,12 +102,17 @@ struct ConversationPageHeader: View {
     /// the Chat tab a moment later.
     /// The two-step resume, through the one seam the Chat tab also uses.
     private func resume(_ threadId: String) {
-        appState.activateConversationThread(threadId)
+        if let question = appState.activateConversationThread(threadId) {
+            pendingLeaveJob = question
+        }
     }
 
     private func newConversation() {
-        ConversationContinuity.startFresh(in: store) {
-            appState.llmService.clearHistory()
+        // Through the job chokepoint (Plan FO P1): with a job running this is the one tap that can
+        // take the technician out of the job's conversation, so it asks first rather than silently
+        // leaving it. With no job it does exactly what it always did.
+        if let question = appState.guidedJobFlow.requestNewChat() {
+            pendingLeaveJob = question
         }
     }
 }
@@ -114,6 +129,7 @@ struct ConversationSwitcherSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var pendingDeletion: ConversationContinuity.DeletionScope?
+    @State private var pendingLeaveJob: JobThreadQuestion?
 
     private var threads: [ConversationThread] { ConversationContinuity.recentThreads(in: store) }
 
@@ -155,6 +171,14 @@ struct ConversationSwitcherSheet: View {
                 Button("Cancel", role: .cancel) {}
             } message: { scope in
                 Text(scope.confirmMessage)
+            }
+            // Picking another conversation out of the switcher is one of the taps that could have
+            // walked a technician out of their job without saying so (Plan FO P1).
+            .jobThreadQuestionAlert($pendingLeaveJob) { asked in
+                if case .switchThread(let id) = asked.requested {
+                    appState.activateConversationThread(id, confirmed: true)
+                    dismiss()
+                }
             }
         }
     }
@@ -220,8 +244,9 @@ struct ConversationSwitcherSheet: View {
     /// lands, and the model is handed that thread's history so the conversation actually
     /// continues rather than restarting inside an old transcript.
     private func resume(_ thread: ConversationThread) {
-        ConversationContinuity.resume(thread.id, in: store) { history in
-            appState.llmService.loadConversationHistory(history)
+        if let question = appState.activateConversationThread(thread.id) {
+            pendingLeaveJob = question
+            return
         }
         dismiss()
     }
@@ -233,9 +258,13 @@ extension AppState {
     /// Make `threadId` the thread the next turn appends to, with its history in the model's
     /// context. The Chat tab and the dock's conversation page both call this, so "resume" means
     /// one thing in the app rather than two similar things in two files.
-    func activateConversationThread(_ threadId: String) {
-        ConversationContinuity.resume(threadId, in: conversationStore) { [self] history in
-            llmService.loadConversationHistory(history)
-        }
+    ///
+    /// Plan FO P1: while a job owns the open conversation, opening a different one is a question
+    /// rather than a silent switch. The question comes back for the caller to present; passing
+    /// `confirmed` performs the switch and releases the job's hold on its thread. With no job
+    /// running this is the two-step resume it always was.
+    @discardableResult
+    func activateConversationThread(_ threadId: String, confirmed: Bool = false) -> JobThreadQuestion? {
+        guidedJobFlow.requestResume(threadId: threadId, confirmed: confirmed)
     }
 }

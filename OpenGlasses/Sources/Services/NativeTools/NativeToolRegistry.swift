@@ -18,7 +18,8 @@ final class NativeToolRegistry {
          documentStore: DocumentStore? = nil,
          activeNamespace: (() -> String)? = nil,
          eventKitStore: EventKitDayStore? = nil,
-         travelTimeSource: (any TravelTimeDaySource)? = nil) {
+         travelTimeSource: (any TravelTimeDaySource)? = nil,
+         guidedJobFlow: GuidedJobFlow? = nil) {
         let eventKitStore = eventKitStore ?? EventKitDayStore()
         let weatherTool = WeatherTool(locationService: locationService)
         let travelTimeSource = travelTimeSource
@@ -191,7 +192,7 @@ final class NativeToolRegistry {
         // Tools re-check Config.fieldAssistActive at execute time too, so a lapsed license/IAP
         // disables them and users see a clear message.
         if Config.fieldAssistActive {
-            register(FieldSessionTool())
+            register(FieldSessionTool(flow: guidedJobFlow))
             register(ProjectNoteTool())
             register(ProcedureRunnerTool())
             register(CaptureFlowTool())
@@ -199,7 +200,8 @@ final class NativeToolRegistry {
             register(EscalateToExpertTool())
             register(NetworkCalcTool())
             // equipment_lookup gains an on-device OCR path when a camera is present.
-            register(EquipmentLookupTool(cameraService: cameraService, documentStore: documentStore))
+            register(EquipmentLookupTool(cameraService: cameraService, documentStore: documentStore,
+                                        flow: guidedJobFlow))
             // manual_lookup searches the vault's imported OEM manuals (reference tier, Plan ED).
             register(ManualLookupTool(documentStore: documentStore, cameraService: cameraService))
             // The work record (Plan EM): a recommendation is an object the technician decides on,

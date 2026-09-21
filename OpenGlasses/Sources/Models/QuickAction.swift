@@ -75,14 +75,19 @@ struct QuickAction: Codable, Identifiable, Equatable {
 
     /// Built-in Field Assist quick action. Injected at the front of `Config.quickActions`
     /// whenever Field Assist is active (see `withFieldAssistAction`) — it is never persisted,
-    /// so it appears/disappears with the entitlement. A `.prompt` action so it routes through
-    /// the existing pipeline and the AI starts the session via the `field_session` tool.
+    /// so it appears/disappears with the entitlement.
+    ///
+    /// Still a `.prompt` so it keeps its persisted shape, but **`AppState` starts the job itself**
+    /// before the prompt is sent (Plan FO P1): this is the entry point a technician is most likely
+    /// to tap, and whether a job starts cannot be left to the model's reading of a sentence. The
+    /// text below is the introduction that follows, and it says the session is already running so
+    /// nothing tries to start a second one.
     static let fieldAssist = QuickAction(
         id: "field-assist",
         label: "Field Assist",
         icon: "wrench.and.screwdriver.fill",
         type: .prompt,
-        promptText: "Start a Field Assist session on my default vault. Briefly confirm you're ready and what you can help me troubleshoot."
+        promptText: "A Field Assist session has just been started on my default vault — do not call field_session start. Briefly confirm you're ready and what you can help me troubleshoot."
     )
 
     /// Built-in record toggle — merged into existing users' persisted lists like the travel
