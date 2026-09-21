@@ -175,8 +175,9 @@ final class FieldAssistTierTests: XCTestCase {
 
     // MARK: - Gates
 
-    private func customManifest() -> VaultManifest {
+    private func customManifest(documents: [VaultDocument] = []) -> VaultManifest {
         VaultManifest(id: "tier_test", name: "Tier Test", version: "1.0.0", files: ["info.md"],
+                      documents: documents,
                       gating: .init(iap: "enterprise"), promptRules: ["Never fabricate.", "Cite sources."])
     }
 
@@ -201,17 +202,30 @@ final class FieldAssistTierTests: XCTestCase {
             guard case SessionExporter.ExportError.notEntitled = error else { return XCTFail("\(error)") }
         }
         let store = DocumentStore(directory: tempRoot)
+        // The gate is on *ingest*, so it needs a manual to ingest: a sync with nothing to do, or
+        // one that only forgets, is cleanup and deliberately runs without a team grant (Plan FN).
+        let withManual = customManifest(documents: [VaultDocument(file: "manual.txt", title: "Manual")])
+        try "Fault code ZX9 indicates a low charge on the RTU-500."
+            .write(to: tempRoot.appendingPathComponent("manual.txt"), atomically: true, encoding: .utf8)
         do {
-            _ = try await VaultImporter.syncDocuments(manifest: customManifest(), into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
+            _ = try await VaultImporter.syncDocuments(manifest: withManual, into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
             XCTFail("expected notEntitled")
         } catch VaultImporter.ImportError.notEntitled {
             // expected
         }
+        // No documents listed and none ever ingested: nothing to do, and no gate to fail.
+        let noop = try await VaultImporter.syncDocuments(manifest: customManifest(), into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
+        XCTAssertTrue(noop.entries.isEmpty)
 
         FieldAssistEntitlement.shared.provider = AlwaysGrantedEntitlementProvider(tier: .team)
-        // A team grant passes the gate; with no documents listed the sync is a no-op.
-        let ledger = try await VaultImporter.syncDocuments(manifest: customManifest(), into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
-        XCTAssertTrue(ledger.entries.isEmpty)
+        let ledger = try await VaultImporter.syncDocuments(manifest: withManual, into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
+        XCTAssertEqual(ledger.entries.map(\.file), ["manual.txt"])
+
+        // And with the grant withdrawn again, dropping the manual from the manifest still cleans up.
+        FieldAssistEntitlement.shared.provider = AlwaysGrantedEntitlementProvider(tier: .solo)
+        let cleaned = try await VaultImporter.syncDocuments(manifest: customManifest(), into: store, baseline: tempRoot, ledgerDirectory: tempRoot)
+        XCTAssertTrue(cleaned.entries.isEmpty)
+        XCTAssertEqual(store.documentCount(namespace: DocumentStore.vaultNamespace("tier_test")), 0)
     }
 
     func testSessionStartRecordsTheEntitlementSource() throws {

@@ -286,7 +286,10 @@ final class DocumentStore: ObservableObject {
     /// caller that has to *know* the rows are gone uses the checked form below.
     enum DeletionError: LocalizedError, Equatable {
         /// SQLite refused a statement. The transaction was rolled back; nothing was deleted.
-        case sqlite(String)
+        ///
+        /// Codes rather than SQLite's own message, which quotes the statement it failed on — and
+        /// the statements here carry document ids.
+        case sqlite(code: Int32, extended: Int32)
         /// The document is in a different namespace than the caller expected, so deleting it would
         /// reach outside the caller's scope. Nothing was deleted.
         case wrongNamespace(expected: String, actual: String)
@@ -295,7 +298,8 @@ final class DocumentStore: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .sqlite(let message): return "The document index refused the delete: \(message)"
+            case .sqlite(let code, let extended):
+                return "The document index refused the delete (SQLite \(code)/\(extended))."
             case .wrongNamespace(let expected, let actual):
                 return "That document belongs to \(actual), not \(expected)."
             case .rowsRemain(let documents, let chunks):
@@ -387,13 +391,11 @@ final class DocumentStore: ObservableObject {
         }
     }
 
-    /// `exec` that reports SQLite's own message instead of discarding it.
+    /// `exec` that reports the failure instead of discarding it. The message SQLite offers is
+    /// deliberately not read: it quotes the statement, and these statements name documents.
     private func execChecked(_ sql: String) throws {
-        var message: UnsafeMutablePointer<CChar>?
-        guard sqlite3_exec(db, sql, nil, nil, &message) != SQLITE_OK else { return }
-        let detail = message.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(db))
-        sqlite3_free(message)
-        throw DeletionError.sqlite(detail)
+        guard sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK else { return }
+        throw DeletionError.sqlite(code: sqlite3_errcode(db), extended: sqlite3_extended_errcode(db))
     }
 
     func clearAll() {

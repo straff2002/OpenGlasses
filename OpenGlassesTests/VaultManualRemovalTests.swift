@@ -1079,7 +1079,7 @@ final class DocumentStoreCheckedDeletionTests: XCTestCase {
     }
 
     func testDeletionErrorsDescribeThemselves() {
-        XCTAssertNotNil(DocumentStore.DeletionError.sqlite("disk I/O error").errorDescription)
+        XCTAssertNotNil(DocumentStore.DeletionError.sqlite(code: 5, extended: 261).errorDescription)
         XCTAssertNotNil(DocumentStore.DeletionError
             .wrongNamespace(expected: "vault:a", actual: "vault:b").errorDescription)
         XCTAssertNotNil(DocumentStore.DeletionError.rowsRemain(documents: 1, chunks: 3).errorDescription)
