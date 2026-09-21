@@ -12,6 +12,12 @@ enum LaunchState: String {
     case seedCaptions = "-OGUITestSeedCaptions"
     case seedConversations = "-OGUITestSeedConversations"
     case reinstall = "-OGUITestReinstall"
+    /// Field Assist entitled and switched on, with no job open.
+    case fieldAssist = "-OGUITestFieldAssist"
+    /// The above, plus one finished job in the history.
+    case seedFieldHistory = "-OGUITestSeedFieldHistory"
+    /// The above, plus a job open with a number, a machine and two tasks on it.
+    case seedFieldJob = "-OGUITestSeedFieldJob"
 }
 
 // MARK: - Deferrals

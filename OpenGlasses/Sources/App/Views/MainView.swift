@@ -1,13 +1,18 @@
 import SwiftUI
 
-/// Root tab view — Voice / Modes / Chat / Settings.
+/// Root tab view — Voice / Modes / Chat / Settings, with a Job tab for Field Assist.
 ///
 /// Replaces the previous single-screen modal design with a proper
 /// tab bar matching the OpenVision-style navigation.
 struct MainView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var store = StoreKitService.shared
+    @StateObject private var sessions = FieldSessionService.shared
     @State private var selectedTab: MainTab = .voice
     @State private var showOnboarding = Config.needsOnboarding
+    /// The wearer's own Field Assist switch. Read reactively so turning it off in Settings takes
+    /// the tab away in the same breath.
+    @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled: Bool = false
     // Default is "system" — the app follows the phone's appearance unless the user has
     // said otherwise. Kept in sync with `SettingsView` and `LookFeelSettingsScreen`.
     @AppStorage("appAppearance") private var appearance: String = "system"
@@ -23,6 +28,21 @@ struct MainView: View {
 
     private var accent: Color {
         AppAccent.color(for: accentColorName)
+    }
+
+    /// Whether the bar carries a Job tab right now. The whole rule is in `JobTabPresence`; this
+    /// only gathers the four facts it decides from.
+    ///
+    /// `hasCheckedEntitlements` is the one that matters at cold launch: until the store check has
+    /// run, a false `fieldAssistUnlocked` means *unknown*, and a tab drawn on that guess would
+    /// appear in front of somebody who never bought anything. So nothing is drawn until the
+    /// answer is real — and it can only ever appear, never flash away.
+    private var jobTabPresence: JobTabPresence.Decision {
+        JobTabPresence.decide(.init(
+            featureEnabled: fieldAssistEnabled,
+            entitled: Config.fieldAssistUnlocked,
+            entitlementChecked: store.hasCheckedEntitlements,
+            hasOpenJob: sessions.activeSession.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false))
     }
 
     var body: some View {
@@ -41,6 +61,15 @@ struct MainView: View {
 
                 Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
                     ChatListView()
+                }
+
+                // Field Assist only, and only once the entitlement is a real answer — see
+                // `jobTabPresence`. It sits here rather than at the end because Settings is the
+                // drawer everything else is kept out of, and the job is content.
+                if jobTabPresence.showsTab {
+                    Tab(MainTab.job.title, systemImage: MainTab.job.systemImage, value: MainTab.job) {
+                        JobTab()
+                    }
                 }
 
                 Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
@@ -73,6 +102,18 @@ struct MainView: View {
         // selected that the log has no name for.
         .onChange(of: selectedTab, initial: true) { _, tab in
             PrivacyLog.app(.tabSelected, detail: PrivacyToken(tab.rawValue))
+        }
+        // A tab that goes away must not leave the wearer on a blank one. Only `.job` can, and it
+        // falls back to Voice rather than to whatever happens to be next along the bar.
+        .onChange(of: jobTabPresence) { _, presence in
+            selectedTab = JobTabPresence.selection(selectedTab, after: presence)
+        }
+        // Another surface asked for a tab — the Job tab's "Open conversation", so far. Cleared
+        // here, so nothing is left holding a request that has already been honoured.
+        .onChange(of: appState.requestedTab) { _, requested in
+            guard let requested else { return }
+            selectedTab = requested
+            appState.requestedTab = nil
         }
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)

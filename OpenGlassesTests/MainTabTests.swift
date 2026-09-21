@@ -14,6 +14,7 @@ final class MainTabTests: XCTestCase {
         XCTAssertEqual(MainTab.voice.rawValue, "voice")
         XCTAssertEqual(MainTab.modes.rawValue, "modes")
         XCTAssertEqual(MainTab.chat.rawValue, "chat")
+        XCTAssertEqual(MainTab.job.rawValue, "job")
         XCTAssertEqual(MainTab.settings.rawValue, "settings")
     }
 
@@ -26,7 +27,11 @@ final class MainTabTests: XCTestCase {
         for tab in MainTab.allCases {
             XCTAssertEqual(MainTab(rawValue: tab.rawValue), tab)
         }
-        XCTAssertNil(MainTab(rawValue: "job"), "an unknown identifier must not resolve to a tab")
+        // "job" was the stand-in for an identifier no tab had, until FO P2 made it one. The
+        // assertion is the same — an unknown identifier resolves to nothing — on a token that is
+        // still unknown.
+        XCTAssertNil(MainTab(rawValue: "jobs"), "an unknown identifier must not resolve to a tab")
+        XCTAssertNil(MainTab(rawValue: "Job"), "the raw values are case-sensitive")
     }
 
     func testIdentifierIsTheRawValue() {
@@ -44,8 +49,45 @@ final class MainTabTests: XCTestCase {
         XCTAssertEqual(MainTab.displayOrder.count, MainTab.allCases.count)
     }
 
-    func testDisplayOrderIsVoiceModesChatSettings() {
-        XCTAssertEqual(MainTab.displayOrder, [.voice, .modes, .chat, .settings])
+    func testDisplayOrderPutsTheJobTabBetweenChatAndSettings() {
+        XCTAssertEqual(MainTab.displayOrder, [.voice, .modes, .chat, .job, .settings])
+    }
+
+    /// The bar as everybody without Field Assist sees it: the four tabs that shipped, in the order
+    /// they shipped in. Inserting `.job` must not have moved any of them relative to each other.
+    func testWithoutTheJobTabTheBarIsExactlyWhatItAlwaysWas() {
+        XCTAssertEqual(MainTab.visibleOrder(showingJob: false), [.voice, .modes, .chat, .settings])
+    }
+
+    func testWithTheJobTabTheOtherFourKeepTheirOrder() {
+        let withJob = MainTab.visibleOrder(showingJob: true).filter { $0 != .job }
+        XCTAssertEqual(withJob, MainTab.visibleOrder(showingJob: false))
+    }
+
+    /// Whatever the bar is, it is a prefix-preserving subsequence of the full order — no tab can be
+    /// drawn twice and none can jump position.
+    func testVisibleOrderIsAlwaysASubsequenceOfDisplayOrder() {
+        for showingJob in [true, false] {
+            let visible = MainTab.visibleOrder(showingJob: showingJob)
+            XCTAssertEqual(Set(visible).count, visible.count)
+            XCTAssertEqual(visible, MainTab.displayOrder.filter { visible.contains($0) })
+        }
+    }
+
+    // MARK: - What the bar says
+
+    func testEveryTabHasATitleAndASymbol() {
+        for tab in MainTab.allCases {
+            XCTAssertFalse(tab.title.isEmpty, "\(tab) has no name to read out")
+            XCTAssertFalse(tab.systemImage.isEmpty, "\(tab) has no symbol")
+        }
+        XCTAssertEqual(MainTab.job.title, "Job")
+    }
+
+    func testTitlesAreDistinct() {
+        let titles = MainTab.allCases.map(\.title)
+        XCTAssertEqual(Set(titles).count, titles.count,
+                       "two tabs with the same spoken name cannot be told apart by VoiceOver or a UI test")
     }
 
     // MARK: - Legacy Int selections
@@ -84,5 +126,14 @@ final class MainTabTests: XCTestCase {
 
         let numbered = MainTab.allCases.compactMap(\.legacyValue)
         XCTAssertEqual(Set(numbered).count, numbered.count)
+    }
+
+    /// The table is closed. A tab added after the identifier was typed has no legacy number, and
+    /// giving it one would have to renumber Settings — the exact rewrite freezing the table
+    /// prevents.
+    func testTheJobTabHasNoLegacyNumber() {
+        XCTAssertNil(MainTab.job.legacyValue)
+        XCTAssertFalse((0...3).contains { MainTab.legacy($0) == .job })
+        XCTAssertNil(MainTab.legacy(4))
     }
 }
