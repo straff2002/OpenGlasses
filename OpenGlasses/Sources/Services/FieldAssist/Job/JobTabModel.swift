@@ -570,7 +570,10 @@ struct JobTabModel {
     /// Nil when the job has no included clips, or no channel is allowed at all.
     func clipDelivery(sessionId: String) -> ClipDelivery? {
         guard let session = host.history.first(where: { $0.id == sessionId }) else { return nil }
-        let record = WorkRecord(session: session, vaultName: defaults.vaultName(session.vaultId))
+        let clipVaultName = defaults.vaultName(session.vaultId)
+        let record = WorkRecord(session: session, vaultName: clipVaultName,
+                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                                    .recordLine(vaultName: clipVaultName))
         let clips = record.includedClips
         guard !clips.isEmpty else { return nil }
         guard let channel = DeliveryPolicy(settings: Config.deliverySettings).defaultChannel else {
@@ -668,7 +671,9 @@ struct JobTabModel {
             return nil
         }
         let vaultName = defaults.vaultName(session.vaultId)
-        let record = WorkRecord(session: session, vaultName: vaultName)
+        let record = WorkRecord(session: session, vaultName: vaultName,
+                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                                    .recordLine(vaultName: vaultName))
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         return PastJob(
             sessionId: session.id,

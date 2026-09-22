@@ -83,6 +83,21 @@ struct BoundedHTTPClient {
             idleTimeout: 8
         )
 
+        /// A vault received from a publisher's link (Plan FS §3). The largest thing this client
+        /// fetches by a wide margin, because the point of a received vault is that the manuals
+        /// come already extracted — so the byte cap is the feature's own ceiling and the deadlines
+        /// are sized for a long transfer on a phone connection rather than for a JSON document.
+        static let vaultArchive = Profile(
+            name: "vaultArchive",
+            maximumBytes: Config.vaultLinkMaxBytes,
+            acceptedMIMETypes: ["application/zip", "application/octet-stream", "application/x-zip-compressed"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 900,
+            firstByteTimeout: 15,
+            idleTimeout: 20
+        )
+
         #if DEBUG
         static let internalSkillPack = Profile(
             name: "internalSkillPack",

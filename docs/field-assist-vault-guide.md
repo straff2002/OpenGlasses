@@ -371,6 +371,109 @@ Removing a manual is only offered for vaults you imported yourself. A signed pac
 | `no terminal step is reachable` | Give the procedure at least one step with `"terminal": true` that the entry step can reach. |
 | `core files total … characters (budget 32768)` | Warning only. Move the long material into a document. |
 
+## Receiving a vault from a link or a QR code
+
+Not everybody builds a vault. If a publisher — a distributor, a dealer, a manufacturer's own
+support arm, whoever may lawfully supply the manuals — sells you a set, they can hand it over as a
+link or a code on the page you land on after buying. The phone does the rest, and the manuals
+arrive already read for search, so there is no afternoon of on-device text recognition.
+
+**The app only ever receives.** There is no "share this vault" anywhere in it: no link to send, no
+code to show somebody, no upload. A vault you built stays on the phones you put it on, and the
+export you can make of it carries no manuals at all. That is deliberate — an in-app share would
+make every subscriber a redistributor of manufacturers' manuals.
+
+You need an active subscription (or a team licence) to add a vault of your own, by link or by
+folder.
+
+1. Open **Settings › Custom Vaults** and tap **Add from Link or QR…**. Paste the address from the
+   publisher's page, or tap **Scan a QR code** and point the phone at theirs. Scanning the same code
+   with the phone's own Camera app works too — it opens the app on this screen.
+2. The app shows you the **site** the vault would come from and asks before it downloads anything.
+   It shows the site and nothing else of the address: a post-purchase link is often a one-time
+   token, so the app treats it as a secret and never puts it on screen, in a log, in an export or
+   in a job record.
+3. When the download finishes you get a **review**: the vault's name and version, the site, how big
+   it is, the manuals by title, and either
+   - **Signed by <publisher>** — the archive is signed with a key the app knows, and nothing in it
+     has changed since it was signed. One tap installs it; or
+   - a highlighted **unverified source** warning — the archive is not signed, or is signed by
+     somebody nobody has listed. It can still be installed, at your own risk, after you tick a
+     second box saying you know where it came from. It is then marked **Unverified source**
+     wherever it is listed, and the job record of any session that uses it says so.
+4. Two things are refused outright, with no way to override them: an archive that has been
+   **altered** since it was signed, and one signed by a publisher who has been **revoked**. A vault
+   already installed from a publisher who is revoked later is left alone — you may be standing in a
+   plant room depending on it — and is flagged in the list instead.
+5. On a phone in **medical mode**, and on a phone carrying an organisation configuration that says
+   so, unsigned vaults are refused as well. Ask the publisher to get their key listed.
+6. Installing over a vault with the same id replaces the publisher's files and keeps your own edits
+   to the core files. Indexing starts as it does after a folder import.
+
+If anything goes wrong — the download fails, the archive is not readable, you change your mind —
+nothing is installed and nothing is left behind.
+
+## Publishing a vault
+
+This section is for the other side: you hold the right to supply a set of manuals and you want a
+customer to be able to get the whole vault onto a phone from the page they land on after buying.
+
+> You must hold the right to supply the manuals you put in a vault you publish. What that requires
+> is between you and the manufacturer.
+
+**You host it, not us.** A vault archive lives on your own site. The vendor does not host, mirror or
+proxy vaults, and the app's own catalog stays free of manuals.
+
+### Build the archive
+
+Start from a vault folder that already imports cleanly (Steps 1–5 above), with the manuals extracted
+to text in `documents/`. Then, on a Mac:
+
+```
+./Scripts/make-vault-archive.swift path/to/acme_rtu \
+    --publisher-id acme --publisher-name "Acme Manuals" \
+    --key-file secrets/acme-signing-key.txt
+```
+
+That writes `acme_rtu.vaultarchive` — a zip of the folder plus a small header listing every file
+with its SHA-256 and size, and a detached signature over the lot. It prints the header so you can
+check what you are about to publish.
+
+### Get a signing key, and get it listed
+
+```
+swift Scripts/skillpack-sign.swift keygen secrets/acme-signing-key.txt
+```
+
+That writes the private half to a file only you can read and prints the **public** half. Send us the
+public half, the id you want to use and the name technicians should see. It goes into the signed
+catalog, and a phone that has seen the catalog will show *Signed by Acme Manuals* on your archives.
+A key can be revoked there without an app release, which is also what happens if one is lost.
+
+Never pass a private key as a command-line argument; the tools refuse it. Arguments end up in `ps`,
+in shell history, in CI logs and in crash reports, and a key that has been through any of those has
+to be replaced.
+
+### Publishing without a key
+
+You can build an unsigned archive by leaving the key flags off. It will install — behind a warning
+block and a second acknowledgement — and stay marked *Unverified source* on the customer's phone
+for as long as it is there. It is fine for handing a vault to your own crew. It is not fine as a
+product.
+
+### On your site
+
+- Link to the `.vaultarchive` file directly, over https. That link is all the app needs.
+- A QR code of the same address works, and so does `openglasses://vault?src=<the https address>`,
+  which opens the app straight from the phone's Camera app.
+- **One-time or expiring links are worth using.** The app treats the address as a secret, but the
+  publisher is the only one who can stop it being passed around.
+- Keep archives under 250 MB. That is the ceiling the app will download and unpack; a vault of
+  extracted text is a long way under it, and the size only becomes interesting when you include the
+  manufacturers' original PDFs.
+- To publish an update, rebuild the archive from the folder with a higher `version` in
+  `manifest.json` and replace the file. A customer who installs it keeps their own edits.
+
 ## Sharing a vault: three situations
 
 Most of this guide assumes you are building a vault for your own technicians. Two other situations come up, and they work differently. Decide which one you are in before you start.
@@ -385,7 +488,7 @@ Here you assemble the whole vault for one customer: their core files, their manu
 
 The manuals in such a vault are normally the customer's own. They already hold them through their OEM portal access, their dealer relationship, or the equipment itself. What you are providing is the assembly, the text extraction and the testing. If you intend to reuse one master set of manuals across several customers, that is redistribution and it needs the manufacturer's permission, so check your agreements first.
 
-Delivery today is by hand. You install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. An enrolment profile that installs the pack, the manuals and the configuration together from one scan is planned, so this step gets shorter.
+Delivery is by hand, or by link. By hand: you install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. By link: you build a vault archive and put it on your own site, and their technicians add it from the link or the code — see **Publishing a vault** above. An enrolment profile that installs the pack, the manuals and the configuration together from one scan is planned, so the first-run setup gets shorter too.
 
 ### 3 · Publishing a pack
 

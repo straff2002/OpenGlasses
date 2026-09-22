@@ -79,6 +79,13 @@ final class SessionLogger {
             /// part-way through it, because an answer given before it and one given after it were
             /// drawn from different shelves.
             case manualRemoved = "manual_removed"
+            /// A vault offered by a link or a QR code was reviewed during the job (Plan FS). The
+            /// outcome is recorded whether or not it was installed, because refusing a tampered
+            /// or unsigned archive mid-job is as much a fact about the visit as accepting one.
+            /// The note carries the source **host** and never the link.
+            case vaultLinkReviewed = "vault_link_reviewed"
+            /// …and it was installed, with whether its signature verified.
+            case vaultReceived = "vault_received"
             /// The session learned which machine is in front of the technician (Plan EL).
             case equipmentRecognised = "equipment_recognised"
             /// …and gave it up again.

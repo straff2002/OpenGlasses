@@ -1,6 +1,7 @@
 # Plan FS — Subscriber Vaults and Vault Links (build your own, and receive one by link or QR)
 
-**Status:** 🚧 **PR1 implemented 2026-09-22 (headless).** Owner decisions 2026-09-21: a Field Assist
+**Status:** 🚧 **PR1 and PR2 implemented headless (PR1 2026-09-22, PR2 2026-09-23); one device
+check owed** — scan a QR from a web page and install over cellular. Owner decisions 2026-09-21: a Field Assist
 subscriber may build their own vaults; the perpetual unlock is retired, so monthly and annual are
 the only store products; a vault should be receivable from a URL or a QR code issued by a publisher's
 site — **receive only; the app never shares a vault** (owner correction the same day).
@@ -9,8 +10,10 @@ the evidence in one pure function, every tier comparison in the app replaced by 
 pure `CustomVaultGateState` behind the Custom Vaults screen, and the manuals-out-of-every-export
 rule with the `documents_included` manifest marker and the import message that names the files to
 supply. Copy updated across the tier descriptions, the paywall, Custom Vaults and both export
-footers; guide updated. **PR2 pending** — the vault archive, receiving by link or QR, the publisher
-list and the unverified-source path.
+footers; guide updated. PR2 shipped §2–§4: the archive format's read side, the publisher list in the catalog, the
+receive flow behind two confirmations, the unverified-source path with its badge, and the
+off-phone builder. See the PR2 bullet under **Phases** for what was built and what was found
+wrong on the way.
 **Priority:** next after the FO chain, ahead of [FR](FR-fictional-example-vault.md) (owner decision 2026-09-22). Two PRs.
 **Surfaces:** entitlement policy, Custom Vaults UI, the vault import path, one URL scheme / universal
 link route and the QR scanner. No new backend; nothing is hosted by the vendor.
@@ -145,16 +148,52 @@ import disabled unless the org profile allows it.
 
 ## Phases (one PR each)
 - **PR1 — capability gate and subscriber vaults.** §1 plus copy, and the manuals-out export rule. ✅ Implemented 2026-09-22, headless: 16 new tests (the evidence × capability table, the exhaustiveness check, the gate states, the importer gate per evidence kind, and what an export writes), plus four pre-existing export assertions inverted to the new rule; full suite green. The `received` install source is **noted, not built** — `VaultImporter` records where it goes, beside the pack sidecar.
-- **PR2 — receive a vault by link or QR.** §2–§4: signed archives, the unverified-source path, the
-  publisher list in the catalog, and the archive script. The manuals-out-of-every-export rule ships in **PR1**, because it
-  must be in place before subscribers can build vaults at all. Headless: archive round-trip, tamper/size/zip-slip
-  refusals, URL policy table, review-model rendering, update-in-place, cancellation leaves no
-  residue; a local HTTPS-less test server is not needed — inject the fetcher. Device check owed:
-  scan a QR from a web page and install over cellular. A test asserts the app has no code path that
-  renders a vault URL as a QR or hands an archive to the share sheet.
+- **PR2 — receive a vault by link or QR.** ✅ Implemented 2026-09-23, headless: 84 new tests
+  (archive header and canonicalisation, signature × publisher status table, per-entry checksum and
+  size mismatch, undeclared-file and missing-file refusals, the byte cap, zip slip, the entry-count
+  and format-version caps, the URL policy table, review-model rendering for signed / unverified /
+  each refusal, the acknowledgement gate, the whole service flow with every seam injected,
+  install-marks-received, update-in-place with the overlay surviving, cancel/failure/over-cap
+  leaving nothing staged, the badge and the work-record line, and the no-share scrape). Plus a
+  contrast suite for the warning block and a screenshot pass driven by the DEBUG-only UI-test
+  seeding, which hands the real pipeline a fixture archive and replaces nothing but the transport.
+
+  **As built, where it differs from the sketch above.**
+  - **The review comes after the download, not before it.** The header lives *inside* the zip, and
+    the zip's directory is at its end, so there is no prefix or ranged read that yields a header —
+    "fetch the header only (ranged/HEAD where possible)" is not possible for this container. The
+    flow is therefore the skill-pack sideload's shape: an **offer** naming the site and the ceiling
+    before a byte moves, then a bounded download into protected staging, then the review. Two
+    confirmations either way, and nothing is installed or trusted from the first one.
+  - **The archive is re-read and re-verified at the confirmation**, against the digest that was
+    reviewed, rather than carried in memory across it. A large vault does not sit in the heap while
+    somebody reads a sheet, and "what was installed" cannot drift from "what was reviewed".
+  - **A cross-host redirect is reviewed rather than re-reviewed.** The review names the host the
+    bytes actually came from, which for a redirected link is the final one; since the review is the
+    first confirmation the reader sees of any host, showing it there is the re-show the design asked
+    for.
+  - **The signature covers the canonical header *and* the files**, reusing `SkillPackSignature`'s
+    exact message construction. The per-file hashes in the header are checked separately, so a
+    tamper fails twice over.
+  - **Open question answered: the size ceiling is 250 MB**, the plan's proposal, as
+    `Config.vaultLinkMaxBytes`; the transport profile and the unpack share the constant and a test
+    asserts they cannot drift. The cellular warning threshold is 25 MB.
+  - **The publisher list is an optional field in the already-signed catalog**, decoded and never
+    re-encoded, so the committed `vaultpacks/catalog.json` still verifies with the production key
+    untouched — a test reads the committed bytes and checks exactly that. Nothing needs re-signing
+    until there is a publisher to list.
+  - **CT's policy hook is a `Config` value with a test**, not a profile reader: an organisation
+    profile writes `organizationAllowsUnsignedVaults`, and the refusal it produces is real today.
+  - **A plan claim found wrong:** the design says the review shows "source host in full" *and*
+    lists the link as something to keep out of logs. Those pull in opposite directions only if
+    "host in full" is read as "the URL"; it is implemented as the host and the port and nothing
+    else, everywhere, and the tests assert the absence of a value-only token from the path.
+
+  Device check owed: scan a QR from a web page and install over cellular.
 
 ## Open questions
-- Size ceiling for a link import (proposed 250 MB).
+- ~~Size ceiling for a link import (proposed 250 MB).~~ **Settled 2026-09-23: 250 MB**, as
+  `Config.vaultLinkMaxBytes`, shared by the transport profile and the unpack.
 - Publisher onboarding: who may become a listed publisher, and what they attest to about their right
   to supply the manuals — a commercial/legal step outside the repository; the catalog entry is its record.
 - One-time or expiring purchase links are the publisher's site feature; the guide should recommend them.

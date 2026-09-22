@@ -117,6 +117,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | usage | `UsageStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
 | vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |
+| vaultLinkStaging | `VaultLinkStagingStore` | documentCorpus | none | complete | yes | deleted when the install finishes, fails or is dismissed; a directory found at launch belonged to an approval that no longer exists and is swept | `VaultLinkStagingStore.removeAbandonedSessions()` | n/a — no subject linkage |
 | voiceSkills | `VoiceSkillStore` | skillDefinition | wearer | platformDefault | no | none | none — skills are removed individually by name | n/a — no subject linkage |
 <!-- END GENERATED: data-lifecycle-matrix -->
 

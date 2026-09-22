@@ -148,6 +148,23 @@ enum VaultPackCatalog {
     struct Index: Codable, Equatable {
         let version: Int
         let packs: [VaultPackCatalogEntry]
+        /// Who may sign a vault archive (Plan FS §2). Added after the catalog was first signed, so
+        /// it is **decoded as optional**: the published index that predates it verifies and reads
+        /// exactly as it did, and the key holder re-signs only when there is a publisher to list.
+        let publishers: [VaultPublisher]
+
+        init(version: Int, packs: [VaultPackCatalogEntry], publishers: [VaultPublisher] = []) {
+            self.version = version
+            self.packs = packs
+            self.publishers = publishers
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            version = try c.decode(Int.self, forKey: .version)
+            packs = try c.decodeIfPresent([VaultPackCatalogEntry].self, forKey: .packs) ?? []
+            publishers = try c.decodeIfPresent([VaultPublisher].self, forKey: .publishers) ?? []
+        }
     }
 
     private struct Envelope: Codable {
@@ -166,6 +183,12 @@ enum VaultPackCatalog {
 
     static func parse(envelopeData: Data,
                       publicKeyBase64: String = SkillPackSignature.productionPublicKeyBase64) -> Result<[VaultPackCatalogEntry], CatalogError> {
+        parseIndex(envelopeData: envelopeData, publicKeyBase64: publicKeyBase64).map(\.packs)
+    }
+
+    /// The whole index, for the callers that need the publisher list as well as the packs.
+    static func parseIndex(envelopeData: Data,
+                           publicKeyBase64: String = SkillPackSignature.productionPublicKeyBase64) -> Result<Index, CatalogError> {
         guard let envelope = try? JSONDecoder().decode(Envelope.self, from: envelopeData),
               let payloadData = Data(base64Encoded: envelope.payload) else {
             return .failure(.notAnEnvelope)
@@ -182,7 +205,7 @@ enum VaultPackCatalog {
         guard index.version <= supportedIndexVersion else {
             return .failure(.unsupportedVersion(index.version))
         }
-        return .success(index.packs)
+        return .success(index)
     }
 
     static func makeEnvelope(index: Index, privateKeyBase64: String) throws -> Data {

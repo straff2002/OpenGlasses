@@ -237,7 +237,11 @@ enum SessionExporter {
             // confirmed are the same object rendered twice.
             workRecord: WorkRecord(
                 session: session,
-                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId),
+                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId,
+                // A record drawn from a vault nobody could verify says so (Plan FS §4).
+                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                    .recordLine(vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name
+                                ?? session.vaultId)),
             // The record contains machine-written turns, so it says which machine wrote them. The
             // digest identifies the instruction version; the instructions themselves — and the
             // manual pages the answers cited — stay out of the export.

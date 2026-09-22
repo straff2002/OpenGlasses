@@ -61,6 +61,42 @@ enum UITestSupport {
         /// vaults of your own come with a subscription. It can only ever take capabilities away,
         /// which is why it is safe to have: there is no flag here that opens a gate.
         case retiredUnlockOnly = "-OGUITestRetiredUnlockOnly"
+        /// Plan FS PR2: the review sheet for a vault offered by a link, in its **signed** state.
+        /// The archive is built in-process and goes through the whole pipeline — zip reader,
+        /// header, per-file checksums, signature, publisher lookup. Only the transport is
+        /// replaced, so nothing here is a bypass of a check.
+        case vaultLinkSigned = "-OGUITestVaultLinkSigned"
+        /// …and in its **unverified** state: the same archive with no signature, which is what
+        /// raises the highlighted warning block and the second acknowledgement.
+        case vaultLinkUnverified = "-OGUITestVaultLinkUnverified"
+        /// A vault already installed from a link, unsigned — so the Custom Vaults row can be seen
+        /// with its "Unverified source" badge.
+        case vaultReceivedBadge = "-OGUITestVaultReceivedBadge"
+        /// Dark appearance, for the half of a screenshot pass that is about the dark palette.
+        case darkAppearance = "-OGUITestDarkAppearance"
+    }
+
+    /// Whether a vault-link review is being staged for a screenshot.
+    static var wantsVaultLinkReview: Bool { isSet(.vaultLinkSigned) || isSet(.vaultLinkUnverified) }
+
+    /// The link service the app runs with under a vault-link flag: the real pipeline with a
+    /// fixture archive handed to it instead of a network response, and the publisher list the
+    /// fixture's key belongs to. Nil — and the app builds its own — on every other launch.
+    @MainActor
+    static func vaultLinkService(isOnCellular: @escaping () -> Bool) -> VaultLinkService? {
+        guard wantsVaultLinkReview else { return nil }
+        let signed = isSet(.vaultLinkSigned)
+        let fixture = UITestVaultFixture.archive(signed: signed)
+        return VaultLinkService(
+            download: { _, staging, progress in
+                let file = try staging.create()
+                try staging.append(fixture.data, to: file)
+                progress(fixture.data.count)
+                return (file, URL(string: "https://\(UITestVaultFixture.host)/d/demo/acme.vaultarchive")!)
+            },
+            publishers: { fixture.publishers },
+            isOnCellular: isOnCellular,
+            audit: { _, _ in })
     }
 
     /// Whether any of the Field Assist flags is set. They are cumulative: seeding a job implies
@@ -110,6 +146,10 @@ enum UITestSupport {
             // this is only the switch that decides which card is drawn.
             UserDefaults.standard.set(true, forKey: "myDayEnabled")
             UserDefaults.standard.set(false, forKey: "myDayCollapsed")
+        }
+
+        if isSet(.darkAppearance) {
+            UserDefaults.standard.set("dark", forKey: "appAppearance")
         }
 
         if isSet(.configured) {
@@ -210,6 +250,21 @@ enum UITestSupport {
 
         if isSet(.seedMyDay) {
             appState.myDayService.seedForUITest(seededDay())
+        }
+
+        if isSet(.vaultReceivedBadge) {
+            seedReceivedVault()
+        }
+
+        if wantsVaultLinkReview {
+            // The review is reached the way a reader reaches it: the link is opened, the site is
+            // approved, the archive comes down (from the fixture) and the sheet shows what the
+            // pipeline made of it.
+            let link = appState.vaultLink
+            Task { @MainActor in
+                link.open("https://\(UITestVaultFixture.host)/d/demo/acme.vaultarchive")
+                await link.approveFetch()
+            }
         }
 
         if isSet(.seedConversations) {
@@ -329,6 +384,20 @@ enum UITestSupport {
     ///
     /// Runs before anything touches `FieldSessionService.shared`, which reads the directory in its
     /// initialiser. Only ever under `-OGUITest`, and only alongside a Field Assist flag.
+    /// Install the fixture vault through the real installer and record the receipt a link import
+    /// writes, so the Custom Vaults row renders its badge from the same sidecar production reads.
+    @MainActor
+    private static func seedReceivedVault() {
+        VaultImporter.uninstall(id: UITestVaultFixture.vaultId)
+        Task { @MainActor in
+            _ = try? await VaultLinkInstaller.install(
+                .init(files: UITestVaultFixture.files(),
+                      receipt: UITestVaultFixture.receipt(signed: false)))
+            VaultRegistry.shared.reloadUserManifests()
+            VaultRegistry.shared.resetCache()
+        }
+    }
+
     private static func clearFieldSessions() {
         guard let documents = FileManager.default.urls(for: .documentDirectory,
                                                        in: .userDomainMask).first else { return }

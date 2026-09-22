@@ -311,6 +311,33 @@ enum VaultImporter {
         try encoder.encode(pack).write(to: url, options: .atomic)
     }
 
+    // MARK: - Received vaults (Plan FS PR2)
+
+    /// Record where a vault received from a link came from, beside its baseline and in the same
+    /// shape as the pack sidecar: the publisher when a signature verified, whether it verified at
+    /// all, and the **host** — never the link, which may carry a purchase token.
+    ///
+    /// Written after `installReporting` has swapped the baseline into place, so a vault is never
+    /// badged as received before it exists, and a failed install leaves no receipt behind.
+    static func recordReceipt(_ receipt: VaultReceipt, for id: String) throws {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultReceipt.filename)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(receipt).write(to: url, options: .atomic)
+    }
+
+    /// The receipt for a received vault, or nil for every other kind — a hand-imported folder, a
+    /// bundled vault, a signed pack.
+    static func receipt(for id: String) -> VaultReceipt? {
+        let url = baselineDirectory(for: id).appendingPathComponent(VaultReceipt.filename)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(VaultReceipt.self, from: data)
+    }
+
     /// The pack an installed vault came from, or nil for a customer folder or a bundled vault.
     static func installedPack(for id: String) -> VaultPackManifest? {
         let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
