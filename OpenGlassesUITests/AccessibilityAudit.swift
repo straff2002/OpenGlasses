@@ -24,6 +24,9 @@ enum LaunchState: String {
     /// The open job as above, with one length-capped clip on it — what the Photos-and-clips
     /// section and the review's clip row need in order to have anything to measure (Plan FO P2b).
     case seedFieldClips = "-OGUITestSeedFieldClips"
+    /// The finished job carries a customer's signature, so the past job's Customer acceptance
+    /// block has something in it to audit (Plan FO P2c).
+    case seedFieldSignOff = "-OGUITestSeedFieldSignOff"
     /// Plan FS PR2 — the vault-link review sheet, signed and unverified, and a vault already
     /// received from a link so its row shows the badge.
     case vaultLinkSigned = "-OGUITestVaultLinkSigned"

@@ -59,6 +59,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// What the technician chose to send, made once at close. Nil until the review step has been
     /// reached at all; a selection with `reviewed == false` is the text-only record.
     var evidenceSelection: EvidenceSelection?
+    /// What the customer put their name to at the end of the job (Plan FO P2c). Nil on a job that
+    /// was never offered for sign-off, on one where the technician skipped the step, and on every
+    /// session recorded before this existed.
+    var signOff: CustomerSignOff?
     /// A new scope on equipment change prevents carrying work onto another machine (FM).
     var continuityScope: String = "initial"
     var taskEquipmentScopes: [String: String] = [:]
@@ -156,7 +160,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case startLocation, endLocation, escalations, billableSeconds, billingBasis
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
-        case media, evidenceSelection
+        case media, evidenceSelection, signOff
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
@@ -197,6 +201,7 @@ extension FieldSession {
         jobEvidence = try c.decodeIfPresent(Evidence.self, forKey: .jobEvidence) ?? Evidence()
         media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
+        signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
         continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]

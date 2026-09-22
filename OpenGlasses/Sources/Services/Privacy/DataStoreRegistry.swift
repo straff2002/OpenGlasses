@@ -482,6 +482,12 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .notSubjectLinked,
                           owner: "SessionLogger",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/SessionLogger.swift"],
+                          // `photos/` is the visit's media, and since Plan FO P2c it also holds the
+                          // customer's signature (`signature_*.png` and its stroke data) — a third
+                          // party's handwriting, filed under the same compliance record the
+                          // photographs are, and covered by the same posture and the same
+                          // unavailable deletion. It is shown on the sign-off sheet, the work order
+                          // and the past job's page, and is used for nothing else.
                           location: "Documents/FieldSessions/{id}/{session.json,log.jsonl,photos}")
 
         case .vaultDocuments:

@@ -42,6 +42,10 @@ struct WorkRecord: Codable, Equatable {
     /// What the technician chose to send. Carried on the record so a re-send from a past job
     /// reproduces the PDF that went out the first time rather than re-deciding it.
     let evidenceSelection: EvidenceSelection?
+    /// What the customer put their name to, when they were asked (Plan FO P2c). The summary it
+    /// carries is frozen at the moment of signing and is **not** re-derived from this record —
+    /// that is the whole point of keeping it.
+    let signOff: CustomerSignOff?
     let escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
@@ -66,6 +70,7 @@ struct WorkRecord: Codable, Equatable {
         case jobEvidence = "job_evidence"
         case media
         case evidenceSelection = "evidence_selection"
+        case signOff = "sign_off"
         case escalations
         case startedAt = "started_at"
         case endedAt = "ended_at"
@@ -97,6 +102,7 @@ struct WorkRecord: Codable, Equatable {
         self.jobEvidence = session.jobEvidence
         self.media = session.media
         self.evidenceSelection = session.evidenceSelection
+        self.signOff = session.signOff
         self.escalations = session.escalations.map {
             Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil)
         }
@@ -134,6 +140,7 @@ struct WorkRecord: Codable, Equatable {
             ?? FieldSession.Evidence()
         media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
+        signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
         escalations = try c.decodeIfPresent([Escalation].self, forKey: .escalations) ?? []
         startedAt = try c.decode(Date.self, forKey: .startedAt)
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
@@ -167,6 +174,14 @@ struct WorkRecord: Codable, Equatable {
         let byId = Dictionary(media.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return evidenceSelection.includedItemIds(kind: .clip).compactMap { byId[$0] }
     }
+
+    /// The customer's half of the record as it stands **now** — what the sign-off sheet would put
+    /// in front of somebody at this moment.
+    ///
+    /// Not the same thing as `signOff?.summaryLines`, which is what was on the screen when a
+    /// customer actually signed. The two are equal until the record moves on, and telling them
+    /// apart is the reason both exist.
+    var customerSummaryLines: [String] { CustomerSummary.lines(for: self) }
 
     func tasks(status: FieldSession.Task.Status) -> [FieldSession.Task] {
         tasks.filter { $0.status == status }

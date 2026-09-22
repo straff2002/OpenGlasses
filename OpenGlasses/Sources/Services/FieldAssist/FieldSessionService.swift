@@ -1548,6 +1548,121 @@ final class FieldSessionService: ObservableObject {
         history.first { $0.id == sessionId }?.media ?? []
     }
 
+    // MARK: Customer sign-off (Plan FO P2c)
+
+    /// Whether the organisation asks for a signature on every job. A stand-in for CT's profile —
+    /// read here so every surface asks one question rather than each reading a preference.
+    var customerSignOffRequired: Bool { Config.organizationRequiresCustomerSignOff }
+
+    /// The acceptance recorded against a session, open or finished.
+    func signOff(sessionId: String) -> CustomerSignOff? {
+        if activeSession?.id == sessionId { return activeSession?.signOff }
+        return history.first { $0.id == sessionId }?.signOff
+    }
+
+    /// Whether a finished job can still be signed.
+    ///
+    /// **Until the report has been sent**, which is the line the plan draws: a customer's signature
+    /// added after the work order left would describe a document nobody holds. Read off the
+    /// session's own append-only log rather than a flag, because that log is what actually records
+    /// a send and it survives a relaunch.
+    func signOffIsStillOpen(sessionId: String) -> Bool {
+        guard signOff(sessionId: sessionId) == nil else { return false }
+        return !reportWasSent(sessionId: sessionId)
+    }
+
+    /// Whether this session's report has gone out by any channel.
+    func reportWasSent(sessionId: String) -> Bool {
+        let events: [SessionLogger.Event]
+        if activeSession?.id == sessionId, let logger {
+            events = logger.readEvents()
+        } else {
+            events = SessionLogger.readEvents(
+                at: sessionsRoot.appendingPathComponent(sessionId, isDirectory: true))
+        }
+        return events.contains { $0.kind == .reportSent }
+    }
+
+    /// Where a session's signature picture lives, for the page and the work order.
+    func signatureURL(sessionId: String, imageId: String) -> URL {
+        photosDirectory(sessionId: sessionId).appendingPathComponent(imageId)
+    }
+
+    /// Write the customer's answer onto a session — the open one at close, or a finished one from
+    /// its page (Plan FO P2c).
+    ///
+    /// **It sends nothing.** Delivery is still the technician's Send tap, and this deliberately
+    /// touches neither `stagedDelivery` nor the offline queue: a signature is a record of what the
+    /// customer agreed to, and turning it into a trigger would make the acceptance the act of
+    /// sending, which is exactly the confusion the sign-off exists to avoid.
+    ///
+    /// The picture and its strokes are written first, so the value that lands on the session names
+    /// files that exist. A finished session is updated through a logger opened on its own directory,
+    /// which is the only owner of that directory and the one `DataStoreRegistry` registers.
+    @discardableResult
+    func recordSignOff(_ signOff: CustomerSignOff, pngData: Data? = nil, strokeData: Data? = nil,
+                       sessionId: String? = nil) -> CustomerSignOff? {
+        let targetId = sessionId ?? activeSession?.id
+        guard let targetId else { return nil }
+        let isActive = activeSession?.id == targetId
+        guard isActive || history.contains(where: { $0.id == targetId }) else { return nil }
+        // A report that has already gone cannot gain a signature afterwards. The open job is
+        // exempt by definition: its report has not been built yet.
+        guard isActive || !reportWasSent(sessionId: targetId) else { return nil }
+
+        let directory = sessionsRoot.appendingPathComponent(targetId, isDirectory: true)
+        let target: SessionLogger?
+        if isActive, let logger {
+            target = logger
+        } else if let stored = history.first(where: { $0.id == targetId }) {
+            target = SessionLogger(session: stored, root: directory)
+        } else {
+            target = nil
+        }
+
+        var filed = signOff
+        if let pngData, let target {
+            let names = target.attachSignature(pngData: pngData, strokeData: strokeData)
+            filed = signOff.filed(imageId: names.image, strokeDataId: names.strokes)
+        }
+
+        let written = filed
+        if isActive {
+            mutateSession { $0.signOff = written; return () }
+        } else if let target {
+            let updated = target.updateSession { $0.signOff = written }
+            history = history.replacingFirst(matching: targetId, with: updated)
+        }
+
+        // The log carries the fact and the digest, never the drawing and never the customer's
+        // comment: a signature is a picture of somebody's name, and an audit needs to know what
+        // was agreed to, not to hold a second copy of it.
+        target?.append(.init(timestamp: Date(), kind: .customerSignOff,
+                             text: written.method.rawValue,
+                             payload: ["method": AnyCodable(written.method.rawValue),
+                                       "summary_digest": AnyCodable(written.summaryDigest),
+                                       "summary_lines": AnyCodable(written.summaryLines.count),
+                                       "named": AnyCodable(!written.customerName.isEmpty),
+                                       "signature": AnyCodable(written.signatureImageId != nil),
+                                       "declined_reason": AnyCodable(written.declinedReason != nil)]))
+        return written
+    }
+
+    /// The hand-over sheet was put in front of a customer and closed without an answer.
+    func logSignOffCancelled(sessionId: String? = nil) {
+        let targetId = sessionId ?? activeSession?.id
+        guard let targetId else { return }
+        let event = SessionLogger.Event(timestamp: Date(), kind: .customerSignOffCancelled,
+                                        text: "cancelled", payload: nil)
+        if activeSession?.id == targetId {
+            logger?.append(event)
+        } else if let stored = history.first(where: { $0.id == targetId }) {
+            SessionLogger(session: stored,
+                          root: sessionsRoot.appendingPathComponent(targetId, isDirectory: true))
+                .append(event)
+        }
+    }
+
     // MARK: - Procedures
 
     /// "id — title" summaries of procedures available in the active session's vault.
@@ -1739,6 +1854,9 @@ enum FieldSessionError: LocalizedError {
     case taskNeedsTitle
     case taskAlreadyClosed(String, String)
     case recommendationNeedsCitation
+    /// The organisation asks for the customer's sign-off, and this job has neither a signature nor
+    /// a recorded decline (Plan FO P2c).
+    case customerSignOffRequired(String)
 
     var errorDescription: String? {
         switch self {
@@ -1755,6 +1873,7 @@ enum FieldSessionError: LocalizedError {
             return "'\(title)' is already \(status.replacingOccurrences(of: "_", with: " "))."
         case .recommendationNeedsCitation:
             return "A recommendation needs a citation. Look the answer up in the manuals first, then recommend it with the source you found."
+        case .customerSignOffRequired(let reason): return reason
         }
     }
 }

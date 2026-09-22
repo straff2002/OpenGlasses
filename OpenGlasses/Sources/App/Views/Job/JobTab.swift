@@ -47,6 +47,14 @@ private struct JobTabContent: View {
     /// Non-nil while the evidence review is in front of the technician (Plan FO P2a). It holds the
     /// selection being edited, so nothing is written onto the session until they finish.
     @State private var reviewingEvidence: EvidenceSelection?
+    /// The customer sign-off step, once the evidence has been decided and before the job closes
+    /// (Plan FO P2c). It carries the summary the customer will be shown and the evidence decision
+    /// that is waiting on it, so nothing is written onto the session until the job actually closes.
+    @State private var signOffStep: SignOffStep?
+    /// The step waiting for the evidence review to finish getting out of the way. Two sheets
+    /// raised in one runloop turn is how the second one silently never appears, so the review's
+    /// dismissal is what promotes this into `signOffStep`.
+    @State private var pendingSignOff: SignOffStep?
     @State private var problem: String?
     /// Re-read on a timer rather than every frame — see `JobClock`.
     @State private var clock = Date()
@@ -101,7 +109,7 @@ private struct JobTabContent: View {
         }
         // A job with no photos on it closes the way it always has: one question, one tap.
         .confirmationDialog("Close this job?", isPresented: $confirmingClose, titleVisibility: .visible) {
-            Button("Close job", role: .destructive) { closeJob() }
+            Button("Close job", role: .destructive) { beginSignOff(evidence: nil) }
             Button("Keep working", role: .cancel) {}
         } message: {
             Text("Time stops, the record is finished, and the job's conversation is closed with it. You can still send the report afterwards.")
@@ -109,7 +117,13 @@ private struct JobTabContent: View {
         // A job that took photos gets the review first — it carries the same warning in its
         // footer, so the confirmation is not asked twice.
         .sheet(isPresented: Binding(get: { reviewingEvidence != nil },
-                                    set: { if !$0 { reviewingEvidence = nil } })) {
+                                    set: { if !$0 { reviewingEvidence = nil } }),
+               onDismiss: {
+                   if let waiting = pendingSignOff {
+                       pendingSignOff = nil
+                       signOffStep = waiting
+                   }
+               }) {
             if let review = model.evidenceReview {
                 JobEvidenceReviewView(
                     review: review,
@@ -119,8 +133,8 @@ private struct JobTabContent: View {
                                        set: { reviewingEvidence = $0
                                               flow.updateEvidenceReview(selection: $0) }),
                     onReadOutLoud: { Task { await flow.readEvidenceOutLoud() } },
-                    onClose: { closeJob(evidence: reviewingEvidence?.confirmed()) },
-                    onSkip: { closeJob(evidence: EvidenceSelection.skipped()) },
+                    onClose: { beginSignOff(evidence: reviewingEvidence?.confirmed()) },
+                    onSkip: { beginSignOff(evidence: EvidenceSelection.skipped()) },
                     onShare: {
                         appState.presentEvidenceShare(
                             review.shareURLs(for: reviewingEvidence ?? model.evidenceSelection()))
@@ -139,9 +153,33 @@ private struct JobTabContent: View {
                     reviewingEvidence = spoken.selection
                     // "Include all", "skip photos" and the end of the read-out all settle the
                     // answer, and the answer is what closes the job.
-                    if spoken.isSettled { closeJob(evidence: spoken.outcome) }
+                    if spoken.isSettled { beginSignOff(evidence: spoken.outcome) }
                 }
             }
+        }
+        // The technician's step: what the customer would be asked to agree to, and the three
+        // answers — hand the phone over, record a decline, or close with nothing signed. The
+        // customer's own screen is presented from inside it.
+        .sheet(item: $signOffStep) { step in
+            JobSignOffStepView(
+                summaryLines: step.lines,
+                jobNumber: step.jobNumber,
+                dateLine: step.dateLine,
+                organisationName: Config.organizationDisplayName,
+                required: model.signOffRequired,
+                onSignOff: { signOff, png, strokes in
+                    model.recordSignOff(signOff, pngData: png, strokeData: strokes)
+                    closeJob(evidence: step.evidence)
+                },
+                onDeclined: { reason in
+                    model.recordSignOff(CustomerSignOff(
+                        customerName: "", method: .declined, declinedReason: reason,
+                        summaryLines: step.lines))
+                    closeJob(evidence: step.evidence)
+                },
+                onSkip: { closeJob(evidence: step.evidence) },
+                onCancelledHandOver: { model.signOffCancelled(sessionId: nil) },
+                onCancel: { signOffStep = nil })
         }
         .alert("That didn't work", isPresented: Binding(get: { problem != nil },
                                                         set: { if !$0 { problem = nil } })) {
@@ -214,9 +252,31 @@ private struct JobTabContent: View {
         flow.endEvidenceReview()
     }
 
+    /// The evidence is decided; ask about the customer's signature before anything closes.
+    ///
+    /// The summary is taken here, once, and carried through both screens: the sheet shows exactly
+    /// the lines the digest will be taken over, so what the customer read and what the record
+    /// proves they read cannot drift apart. A job that can produce no record has nothing to put in
+    /// front of anybody, and closes the way it always did.
+    private func beginSignOff(evidence: EvidenceSelection?) {
+        guard let lines = model.customerSummaryLines, let heading = model.signOffHeading else {
+            closeJob(evidence: evidence)
+            return
+        }
+        let step = SignOffStep(lines: lines, jobNumber: heading.jobNumber,
+                               dateLine: heading.dateLine, evidence: evidence)
+        if reviewingEvidence != nil {
+            pendingSignOff = step
+            endReview()
+        } else {
+            signOffStep = step
+        }
+    }
+
     private func closeJob(evidence: EvidenceSelection? = nil) {
         do {
             let closed = try model.closeJob(evidence: evidence)
+            signOffStep = nil
             endReview()
             typedReference = ""
             // Straight to the finished job: its record, its conversation, and Send report. The
@@ -283,4 +343,19 @@ struct ReadBackSheet: View {
             }
         }
     }
+}
+
+/// The customer sign-off step, while it is waiting on an answer (Plan FO P2c).
+///
+/// It holds the evidence decision the close is carrying, so that answering the sign-off is what
+/// finally writes anything: a technician who backs out of this step has changed nothing at all.
+struct SignOffStep: Identifiable, Equatable {
+    /// The customer summary, taken once when the step opened. Both screens and the digest use
+    /// exactly this, so what was read and what was recorded cannot differ.
+    let lines: [String]
+    let jobNumber: String
+    let dateLine: String
+    let evidence: EvidenceSelection?
+
+    var id: String { jobNumber + dateLine }
 }

@@ -245,6 +245,116 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         audit(app, screen: "Job tab — evidence review at AX5", deferring: formDeferrals)
     }
 
+    // MARK: - Customer sign-off
+
+    /// The step the close flow now puts in front of the technician, and the customer-facing sheet
+    /// behind its one button (Plan FO P2c).
+    ///
+    /// The hand-over sheet is the screen in this app most likely to be read by somebody who has
+    /// never seen it before, standing up, holding a phone that is not theirs — so its labels,
+    /// its touch targets and its one non-text indicator (the signature pad's border) are audited
+    /// rather than assumed.
+    func testTheSignOffStepAndTheHandOverSheet() {
+        let app = launch([.configured, .seedFieldJob])
+        openJobTab(in: app)
+        awaitScreen(app.staticTexts["Job 1005"], named: "The open job")
+
+        let close = app.buttons["Close job"]
+        scrollUntilVisible(close, in: app, named: "Close job")
+        close.tap()
+        confirmClose(app)
+
+        let step = app.navigationBars["Customer sign-off"]
+        awaitScreen(step, named: "The sign-off step")
+        XCTAssertTrue(app.buttons["Hand to customer"].exists)
+        XCTAssertTrue(app.buttons["Close without a signature"].exists,
+                      "sign-off is optional, so skipping it has to be one tap")
+        XCTAssertTrue(app.buttons["The customer declined to sign"].exists)
+
+        audit(app, screen: "Job tab — customer sign-off step", deferring: formDeferrals)
+
+        app.buttons["Hand to customer"].tap()
+        let sheet = app.navigationBars["Please sign"]
+        awaitScreen(sheet, named: "The hand-over sheet")
+        XCTAssertTrue(signaturePad(in: app).waitForExistence(timeout: 20),
+                      "the customer needs somewhere to sign that says what it is")
+        XCTAssertTrue(app.textFields["Your name"].exists)
+
+        audit(app, screen: "Job tab — the customer's hand-over sheet", deferring: formDeferrals)
+    }
+
+    /// The same sheet at the largest accessibility size. A summary, two fields and a signature pad
+    /// in one scroll view is the shape most likely to clip, and this is the screen a customer is
+    /// asked to agree to.
+    func testTheHandOverSheetAtTheLargestAccessibilitySize() {
+        let app = launch([.configured, .seedFieldJob], contentSizeCategory: Self.ax5)
+        openJobTab(in: app)
+        awaitScreen(app.staticTexts["Job 1005"], named: "The open job at AX5")
+
+        let close = app.buttons["Close job"]
+        scrollUntilVisible(close, in: app, named: "Close job at AX5")
+        close.tap()
+        confirmClose(app)
+
+        awaitScreen(app.navigationBars["Customer sign-off"], named: "The sign-off step at AX5")
+        let handOver = app.buttons["Hand to customer"]
+        scrollUntilVisible(handOver, in: app, named: "Hand to customer at AX5")
+        handOver.tap()
+
+        awaitScreen(app.navigationBars["Please sign"], named: "The hand-over sheet at AX5")
+        let pad = signaturePad(in: app)
+        scrollUntilVisible(pad, in: app, named: "The signature pad at AX5")
+        awaitStableFrame(of: pad, named: "The signature pad at AX5")
+
+        audit(app, screen: "Job tab — the hand-over sheet at AX5", deferring: formDeferrals)
+    }
+
+    /// A finished job that was signed: the acceptance block, with the summary that was agreed to,
+    /// the attribution line and the signature picture — which is pixels, so the line above it has
+    /// to carry the whole fact in words.
+    func testAPastJobsCustomerAcceptanceBlock() {
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSignOff])
+        openJobTab(in: app)
+
+        let row = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
+        awaitScreen(row, named: "A past job row")
+        row.tap()
+
+        let block = app.staticTexts["Customer acceptance"]
+        awaitScreen(block, named: "The acceptance block")
+        scrollUntilVisible(app.staticTexts["Signed on the technician's phone"], in: app,
+                           named: "The acceptance line")
+
+        audit(app, screen: "Job tab — a past job's customer acceptance",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
+    /// The signature pad, however the tree happens to expose a `PKCanvasView` wrapped in SwiftUI.
+    private func signaturePad(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Signature pad")).firstMatch
+    }
+
+    /// Confirm the "Close this job?" dialog. The destructive button carries the same words as the
+    /// row that raised it, so it is reached through the presented dialog rather than by label
+    /// alone — and a `confirmationDialog` surfaces as a sheet on the phone and as an alert in some
+    /// presentations, so both are tried.
+    private func confirmClose(_ app: XCUIApplication, file: StaticString = #filePath,
+                              line: UInt = #line) {
+        let inSheet = app.sheets.buttons["Close job"]
+        if inSheet.waitForExistence(timeout: 10) {
+            inSheet.tap()
+            return
+        }
+        let inAlert = app.alerts.buttons["Close job"]
+        if inAlert.waitForExistence(timeout: 10) {
+            inAlert.tap()
+            return
+        }
+        XCTFail("the close confirmation never appeared", file: file, line: line)
+    }
+
     private static let ax5 = "UICTContentSizeCategoryAccessibilityXXXL"
 
     /// Swipe the page up until `element` is in the tree, or fail saying it never arrived.
