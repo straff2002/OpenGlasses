@@ -13,7 +13,8 @@ audits in three states at the default and largest text sizes, screenshots in bot
 **Owner addendum 2026-09-22 (§6–§9):** a spoken job debrief in the car, a brief before site with a
 hand-off to the technician's maps app, a job that arrives by email as an `.ogjob` file, and
 customer sign-off on the phone — P2c and a P3 split into P3a / P3b / P3c below.
-P2c, P3 and P4 unbuilt.
+**P2c implemented 2026-09-23** — customer sign-off, verified headless and on a simulator; see
+*P2c as built* below. P3 and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -462,7 +463,7 @@ PDF is unchanged: the customer signs the summary, not the whole work order.
   relay, stored under the session; clips in the review grid; `video` attachment kind with the
   per-channel size budget and the share-sheet fallback; clip lines in the PDF. Tests: roster/guard
   suites stay green, over-budget never silently drops, re-send determinism.
-- **P2c — customer sign-off.** Independent of CarPlay; small; first in line after FS. The
+- **P2c — customer sign-off.** ✅ **Implemented 2026-09-23.** See *P2c as built*. Independent of CarPlay; small; first in line after FS. The
   `SignOff` model and the customer summary's digest, the hand-over sheet, the close-flow step,
   past-job re-entry, the PDF's Customer acceptance block, the JSON, the audit events, the
   organisation "required" stand-in and the `DataStoreRegistry` entry. Tests: the digest matches the
@@ -828,6 +829,129 @@ whether the two budgets above are right, are all owed to P4.
 - The office endpoint cannot take a file. `EndpointSyncSink.carriesFiles` is where that changes.
 - Clips are not grouped by unit any more than photographs are — the multi-unit export question in
   *Open questions* now covers three kinds of evidence rather than two.
+
+## P2c as built (2026-09-23)
+
+One pure file under `OpenGlasses/Sources/Services/FieldAssist/Job/` (`CustomerSignOff`, the
+`CustomerSummary` derivation and `SignOffPolicy`), one view file
+(`OpenGlasses/Sources/App/Views/Job/CustomerSignOffView.swift`: the technician's step, the
+customer's screen, the PencilKit pad and the acceptance block), and the service, exporter and Job
+tab work that gets a signature onto the record without letting it near anything that sends.
+
+### Decisions the draft left open
+
+- **The customer summary is a new derivation, and it is an allow-list.** There is no customer-facing
+  subset of the record today — the work order prints `WorkRecord.summaryLines` whole — so
+  `CustomerSummary` names the three things §9 says belong on the sheet (completed work by title,
+  parts used, time or billing units) and can only ever print those. Written as an allow-list rather
+  than as a filter over the record's lines on purpose: a deny-list would have to be extended every
+  time the record grows a field, and the field it forgot would be the one on the page somebody
+  signed. The first draft *was* a filter, and it leaked a part's verification provenance — the
+  manual and page a part number was found on, which is the technician's audit trail and not a
+  customer's business. Parts now print as number and description and nothing else.
+- **The lines are stored, not only their digest.** A digest alone proves a summary was not altered
+  and cannot say what it was. The record therefore carries both, and `digestMatchesSummary` is the
+  check. That is also what freezes the summary: a later addendum moves `customerSummaryLines` and
+  leaves `signOff.summaryLines` exactly where it was.
+- **"Not asked" is not a method.** `Method` is `drawn | typed | declined`, and skipping the step
+  writes **no sign-off at all** rather than a fourth case. A job nobody was asked about and a job
+  where the customer said no are different facts, and collapsing them would have made the record
+  claim a conversation that never happened.
+- **A decline satisfies a required sign-off only when it is stated.** "They refused", with no
+  reason, is indistinguishable from nobody having asked, so `SignOffPolicy` treats a reasonless
+  decline as unanswered — and the step's own button is disabled until a reason is typed, but only
+  where the organisation requires one.
+- **The rule is enforced at the close, not at the sheet.** `JobTabModel.closeJob` is the single
+  method every route closes through, so the check lives there and a screen that forgot to ask
+  cannot close past it. The sheet's copy states the same sentence, from the same constant.
+- **A signature is not evidence.** It is filed beside the job's photographs, under the same store
+  and the same posture, but it is deliberately **not** appended to `session.media` — the catalogue
+  the evidence review reads. A signature in that list would be offered to a customer's report as a
+  picture of the job, ticked or unticked like a photograph of a fault.
+- **The ink is black and the canvas is pinned to the light appearance.** PencilKit's default ink
+  adapts to the interface style, so a signature drawn in dark mode renders white — invisible on the
+  white page it is printed onto. The flattened PNG is drawn onto white for the same reason. The
+  colour of somebody's signature is not a theming decision.
+- **The customer's screen is presented from the step, not from the page under it.** Two
+  presentations from one view is how a full-screen cover ends up fighting the sheet that raised it;
+  the cover lives inside `JobSignOffStepView`, so cancelling it returns the technician to the step
+  rather than to a closed job.
+- **"Until the report has been sent" is read off the session's own log.** `reportWasSent` looks for
+  a `report_sent` event rather than a flag, because that log is what actually records a send and it
+  survives a relaunch — and a cancelled composer, correctly, leaves the job still signable. It is
+  read through a new static `SessionLogger.readEvents(at:)` so that asking a finished session a
+  question does not rewrite its `session.json`, and the past-job page caches the answer in view
+  state because a `List` re-evaluates its body far more often than a report is sent.
+- **Two `Config` stand-ins, not one.** The sheet has to be headed with somebody's name, and there is
+  no organisation identity anywhere in the app today. `organizationRequiresCustomerSignOff` and
+  `organizationDisplayName` are both written the way FS PR2 wrote
+  `organizationAllowsUnsignedVaults` — a documented key with a stated default — and CT P1 replaces
+  both. An unset name omits the line rather than inventing a business.
+- **No new top-level field in the audit JSON.** The sign-off rides inside `work_record`, which
+  already carries the file reference rather than the picture. A second copy at the top level would
+  be two places to disagree.
+- **The log carries the fact and the digest, and neither the drawing nor the customer's words.** An
+  audit needs to know what was agreed to; it does not need a second copy of it, and a signature is
+  a picture of somebody's name.
+
+### What the draft got wrong
+
+- §9's "the same customer-facing lines the PDF prints" describes something that does not exist. See
+  above; the PDF's own Work Record section is unchanged, and the acceptance block prints the
+  customer summary beside it.
+- §9 puts the step "after the evidence review and the read-back". There is no read-back *in* the
+  close flow: "Read back the job" is a separate control on the open job's page, and the evidence
+  review is the last thing before the close. The step goes after the review and after the close
+  confirmation for a job with no evidence.
+- §9 says the audit log records "sign-off and any cancel". It records three things, because a
+  decline is neither: `customer_sign_off` carries the method, and `customer_sign_off_cancelled` is
+  the sheet that was shown and closed without an answer.
+
+### What is on screen
+
+- **Customer sign-off** is a step, not an alert: the summary the customer would read, then *Hand to
+  customer*, *The customer declined to sign* (which reveals a reason field), and — only where the
+  organisation does not require a signature — *Close without a signature*.
+- The customer's screen has the organisation's name, the job number and date, the summary, a name
+  field, one optional line, and a large pad. It cannot be swiped away; leaving it takes a
+  confirmation; a footnote points the technician at Guided Access. The primary button reads **Done**
+  once something is drawn and **Confirm** when nothing is — two words for two different records, so
+  nobody is told they signed when they did not.
+- A finished job shows **Customer acceptance**: the summary that was agreed to, the method in words,
+  the reason or the customer's note where there is one, the attribution line, the picture, and the
+  sentence that says this is not a legal e-signature. A job that was not signed offers to ask, until
+  the report has gone, and then says plainly that it is too late.
+
+### What the screenshots changed
+
+Two things the photographs caught that no assertion would have. The customer screen's title,
+*Please check and sign*, truncated to "Please ch…" between its two toolbar buttons — on the one
+screen in this app read cold by a stranger — so the title is now two words and the sentence it was
+trying to say is a line in the page, where it fits and where it is read at AX5 as well. And the
+keyboard covers the lower half of the sheet while a name is being typed, which is correct
+behaviour and meant the first pass photographed a "signed" sheet with nothing drawn on it; the
+screenshot helper now dismisses the keyboard before it touches the pad.
+
+### The pad's border, measured
+
+The pad has no label beyond its heading: what says *where to sign* is its border. Drawn the way the
+rest of the app draws a hairline — `Color.secondary.opacity(0.6)` on
+`Color(.secondarySystemBackground)` — it measures **1.92:1 in light**, well under the 3:1 floor a
+non-text indicator has to clear. At full strength it measures **3.30:1 light / 5.95:1 dark**.
+`JobSignOffContrastTests` asserts both, the rejected pairing included, so a revert fails there.
+
+### Verification
+
+Headless: `CustomerSignOffTests` (26) and `JobSignOffContrastTests` (4) new; the P1/P2/P2a/P2b
+suites, `WorkRecordTests`, `DeliveryTests`, `FieldSessionServiceTests`, `FieldContinuityTests`,
+`DataStoreRegistryTests`, `TelemetryOptOutGuardTests` and `MedicalComplianceTests` unchanged and
+green. Full suite **6980 tests, 13 skipped, 0 failures**; Release app build green. Simulator: `JobTabAccessibilityTests` gains three
+audits (the step, the hand-over sheet, and a past job's acceptance block) plus the sheet at AX5 —
+**11 of 11 green** — with a new DEBUG-only `-OGUITestSeedFieldSignOff` that puts a real recorded sign-off on the seeded
+finished job; `JobSignOffScreenshotTests` photographs the step, the sheet empty and signed, and the
+acceptance block in both appearances and at AX5, and the headless suite writes one rendered work
+order page beside them. **No device run** — signing with a finger on real glass, and what a real
+signature looks like in the PDF at that size, are owed to P4.
 
 ## Open questions
 
