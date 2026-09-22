@@ -134,7 +134,7 @@ struct ChatListView: View {
     private func startNewChat() async {
         // A job owns its conversation, so "New chat" asks before it walks out of one (Plan FO P1).
         // The reset itself is untouched — only the question is new.
-        if let question = appState.guidedJobFlow.leaveJobThreadQuestion() {
+        if let question = appState.guidedJobFlow.raiseLeaveJobThreadQuestion() {
             pendingLeaveJob = question
             return
         }

@@ -146,9 +146,14 @@ struct JobEvidenceReviewView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .frame(minHeight: OGMetrics.minTouchTarget - 16)
-                .background(Capsule().fill(isOn ? accent.opacity(0.22)
-                                                : Color.secondary.opacity(0.12)))
-                .foregroundStyle(isOn ? Color.primary : Color.secondary)
+                // Both states carry the primary label: `.secondary` on a `.secondary` capsule
+                // measured 3.3:1 in light appearance, under WCAG AA for 12-point text. What
+                // separates marked from unmarked is the fill — the accent against a plain grey —
+                // and, for anyone not reading colour at all, the accessibility label below, which
+                // says "marked" or "not marked" in words.
+                .background(Capsule().fill(isOn ? accent.opacity(0.28)
+                                                : Color.secondary.opacity(0.18)))
+                .foregroundStyle(Color.primary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(role.label) — \(isOn ? "marked" : "not marked")")

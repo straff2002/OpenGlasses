@@ -289,8 +289,45 @@ final class GuidedJobFlowTests: XCTestCase {
         XCTAssertNil(flow.leaveJobThreadQuestion(switchingTo: service.activeSession?.conversationThreadId))
     }
 
+    /// The query said it was a query and wrote an audit event on every call. The surfaces that
+    /// only *consult* it — CarPlay, the watch — would otherwise have logged a question nobody was
+    /// ever put, and a view body asking it during a render would have filled the log.
+    func testAskingWhetherThereIsAQuestionWritesNothingToTheLog() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("on the job")
+        let before = auditKinds().filter { $0 == .jobQuestionAsked }.count
+
+        for _ in 0..<5 { _ = flow.leaveJobThreadQuestion() }
+
+        XCTAssertEqual(auditKinds().filter { $0 == .jobQuestionAsked }.count, before,
+                       "the query must not write to the audit log")
+    }
+
+    /// Putting the question to the technician still records that it was put — that is a fact about
+    /// the visit, and it is what `confirmLeaveJobThread` later answers.
+    func testRaisingTheQuestionIsWhatRecordsIt() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("on the job")
+        let before = auditKinds().filter { $0 == .jobQuestionAsked }.count
+
+        XCTAssertNotNil(flow.raiseLeaveJobThreadQuestion())
+
+        XCTAssertEqual(auditKinds().filter { $0 == .jobQuestionAsked }.count, before + 1)
+    }
+
+    // MARK: - The evidence review (Plan FO P2a)
+
+    private func evidenceItems(_ count: Int) -> [JobMediaItem] {
+        (0..<count).map {
+            JobMediaItem(id: "p\($0)", capturedAt: Date(timeIntervalSince1970: TimeInterval($0)),
+                         origin: .capture, caption: "picture \($0)", filterWasOn: false)
+        }
+    }
+
     // MARK: - The evidence review's spoken half
 
+    /// "Include all" and "skip photos" are app behaviour, not something the model has to be
+    /// trusted to understand — so the utterance is taken before it reaches the model.
     func testIncludeAllIsAnsweredByTheAppWhileTheReviewIsOpen() async throws {
         _ = try startJob(reference: "1005")
         let items = evidenceItems(3)

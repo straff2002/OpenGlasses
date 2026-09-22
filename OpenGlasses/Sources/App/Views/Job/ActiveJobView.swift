@@ -317,12 +317,18 @@ struct TaskRowView: View {
                     .foregroundStyle(Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
+                // `.secondary` on a `.secondary`-tinted capsule measured 3.2:1 against the row
+                // background in light appearance — below WCAG AA's 4.5:1 for 11-point text, and
+                // this chip is the only thing on the row that says whether the work is done. The
+                // primary label on a slightly stronger fill reads as the same quiet chip and
+                // measures 15:1 light / 11:1 dark. Nothing here is tinted with the accent: a
+                // status is not an AI affordance.
                 Text(row.statusLabel)
                     .font(.caption2.weight(.medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
-                    .foregroundStyle(.secondary)
+                    .background(Capsule().fill(Color.secondary.opacity(0.22)))
+                    .foregroundStyle(Color.primary)
             }
             if let evidence = row.evidence {
                 Text(evidence).font(.caption).foregroundStyle(Color.secondary)

@@ -234,9 +234,12 @@ final class GuidedJobFlow: ObservableObject {
     /// What has to be asked before the technician is taken out of the job's conversation, or nil
     /// when nothing does.
     ///
-    /// A query, not an action: the four surfaces that start or switch a conversation each already
-    /// know how to do their own half (the reset coordinator, a two-step resume, CarPlay's
-    /// `startVoice`). All this adds is the question, so none of them can leave the job silently.
+    /// **A query, and now actually one.** It said so from the start and wrote an audit event on
+    /// every call anyway (found by P2, fixed in P2a): P1's four callers all asked from a tap, so
+    /// nothing was wrong in practice, but a view body asking the same question during a render
+    /// would have filled the session log with questions nobody was ever put. Raising the question
+    /// is `raiseLeaveJobThreadQuestion`, and that is what the surfaces call; this one is safe to
+    /// ask from anywhere, as its documentation always claimed.
     ///
     /// - Parameter threadId: the conversation being opened, when one is. Re-opening the job's own
     ///   thread is never a question.
@@ -244,6 +247,16 @@ final class GuidedJobFlow: ObservableObject {
         let request: JobThreadPolicy.Request = threadId.map { .resumeThread(id: $0, confirmed: false) }
             ?? .newChat(confirmed: false)
         guard case .askFirst(let question) = JobThreadPolicy.resolve(request, inputs()) else { return nil }
+        return question
+    }
+
+    /// Put the question to the technician, and write into the record that it was put.
+    ///
+    /// The log entry belongs here, beside the surface that is about to show the question, and not
+    /// in the query — because "was the technician asked?" is a fact about a moment on a screen,
+    /// not about a resolution being computed. `confirmLeaveJobThread` already records the answer.
+    func raiseLeaveJobThreadQuestion(switchingTo threadId: String? = nil) -> JobThreadQuestion? {
+        guard let question = leaveJobThreadQuestion(switchingTo: threadId) else { return nil }
         logThreadQuestion(question)
         return question
     }
@@ -262,7 +275,7 @@ final class GuidedJobFlow: ObservableObject {
     /// - Returns: the question to put to the technician, or nil when the request went through.
     @discardableResult
     func requestNewChat(confirmed: Bool = false) -> JobThreadQuestion? {
-        if !confirmed, let question = leaveJobThreadQuestion() { return question }
+        if !confirmed, let question = raiseLeaveJobThreadQuestion() { return question }
         if confirmed { confirmLeaveJobThread() }
         startFresh()
         return nil
@@ -272,7 +285,7 @@ final class GuidedJobFlow: ObservableObject {
     /// never a question; leaving it for another one is.
     @discardableResult
     func requestResume(threadId: String, confirmed: Bool = false) -> JobThreadQuestion? {
-        if !confirmed, let question = leaveJobThreadQuestion(switchingTo: threadId) { return question }
+        if !confirmed, let question = raiseLeaveJobThreadQuestion(switchingTo: threadId) { return question }
         if confirmed { confirmLeaveJobThread() }
         resume(threadId)
         return nil

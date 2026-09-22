@@ -306,7 +306,17 @@ struct WorkRecord: Codable, Equatable {
         if let elapsed = task.elapsed {
             parts.append(minutesPhrase(minutes: Int((elapsed / 60.0).rounded())))
         }
-        return parts.joined(separator: ". ") + "."
+        // The full stop is added only when the last piece does not already end a sentence. A
+        // completion note is the technician's own words and routinely arrives punctuated ("New
+        // trap fitted and tested."), which used to print as "…tested..".
+        let line = parts.joined(separator: ". ")
+        return Self.terminated(line)
+    }
+
+    /// End the line with exactly one sentence-ending mark.
+    private static func terminated(_ line: String) -> String {
+        guard let last = line.last else { return line }
+        return ".!?".contains(last) ? line : line + "."
     }
 
     /// "1 reading, 2 photos, 1 page verified" — nil when nothing was recorded.

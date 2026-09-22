@@ -43,7 +43,7 @@ protocol JobFlowHosting: AnyObject {
     func supplyJobReference(_ text: String)
     func declineJobReference()
     func answerUnitChange(_ answer: JobUnitChangeAnswer) async
-    func leaveJobThreadQuestion(switchingTo threadId: String?) -> JobThreadQuestion?
+    func raiseLeaveJobThreadQuestion(switchingTo threadId: String?) -> JobThreadQuestion?
     func confirmLeaveJobThread()
     @discardableResult
     func requestResume(threadId: String, confirmed: Bool) -> JobThreadQuestion?
@@ -421,10 +421,12 @@ struct JobTabModel {
 
     /// Raise the "leaving the job's conversation" question, or nil when leaving asks nothing.
     ///
-    /// **An action, not a query**, despite its shape: the flow writes the question into the audit
-    /// log as it answers, so this must be called from a tap and never from a view body.
+    /// **An action, not a query**, despite its shape: it is what puts the question, and the flow
+    /// writes that into the audit log. Called from a tap, never from a view body. (P2 worked
+    /// around a flow that logged from the *query* as well; P2a split the two, so the query beside
+    /// this one is now safe anywhere.)
     func leaveThreadQuestion() -> ThreadQuestionCard? {
-        flow.leaveJobThreadQuestion(switchingTo: nil).map(ThreadQuestionCard.init)
+        flow.raiseLeaveJobThreadQuestion(switchingTo: nil).map(ThreadQuestionCard.init)
     }
 
     func confirmLeaveThread() { flow.confirmLeaveJobThread() }
