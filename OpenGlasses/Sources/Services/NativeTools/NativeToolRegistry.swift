@@ -135,7 +135,10 @@ final class NativeToolRegistry {
         if let camera = cameraService {
             register(BarcodeScannerTool(cameraService: camera))
             register(DocumentScanTool(cameraService: camera))
-            register(CapturePhotoTool(cameraService: camera))
+            // The job sink is the shared session service, which is where `photo_log` already
+            // files. Handed in rather than reached for, so the tool stays testable headless.
+            register(CapturePhotoTool(cameraService: camera,
+                                      jobEvidence: FieldSessionService.shared))
             register(QRContextTool(cameraService: camera))
             register(SmartCaptureTool(cameraService: camera))
             // Plan CB: sharp-frame injection for live sessions. The injector resolves through
@@ -217,7 +220,7 @@ final class NativeToolRegistry {
             // Safety Assessment (HECA) — camera high-energy hazard assessment via SafetyAssessmentService.shared.
             register(SafetyAssessmentTool())
             if let camera = cameraService {
-                register(PhotoLogTool(cameraService: camera))
+                register(PhotoLogTool(cameraService: camera, jobEvidence: FieldSessionService.shared))
             }
         }
 

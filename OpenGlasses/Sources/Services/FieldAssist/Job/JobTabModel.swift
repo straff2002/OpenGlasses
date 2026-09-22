@@ -11,6 +11,14 @@ protocol JobTabHosting: WorkRecordHosting {
     var activeVault: VaultStore? { get }
     func pauseSession() throws -> FieldSession
     func resumeSession() throws -> FieldSession
+
+    // Evidence (Plan FO P2a). On the protocol rather than reached for, so "close job writes the
+    // selection before it ends the session" is a spy assertion rather than a reading of the code.
+    var jobMedia: [JobMediaItem] { get }
+    func evidenceSelection() -> EvidenceSelection
+    func setEvidenceSelection(_ selection: EvidenceSelection)
+    func photosDirectory(sessionId: String) -> URL
+    func media(sessionId: String) -> [JobMediaItem]
 }
 
 extension FieldSessionService: JobTabHosting {}
@@ -121,6 +129,9 @@ struct JobTabModel {
         let hasConversation: Bool
         /// Whether there is a record to read back or send yet.
         let hasRecord: Bool
+        /// How many photos the job has collected so far (Plan FO P2a). Shown on the page, and
+        /// what decides whether closing puts the evidence review in front of the technician.
+        let photoCount: Int
 
         var pauseButtonTitle: String { isPaused ? "Resume job" : "Pause job" }
 
@@ -372,7 +383,8 @@ struct JobTabModel {
             currentUnit: session.equipment?.modelToken,
             visitedUnits: units,
             hasConversation: flow.boundThreadId != nil,
-            hasRecord: record != nil)
+            hasRecord: record != nil,
+            photoCount: host.jobMedia.count)
     }
 
     /// Time on the job, from the record's own arithmetic and nothing else.
@@ -454,11 +466,54 @@ struct JobTabModel {
     /// re-implement either.
     ///
     /// The record is taken *before* the close, because `workRecord()` reads the active session and
-    /// there is no active session afterwards.
-    func closeJob(outcome: FieldSession.Outcome = .resolved) throws -> (session: FieldSession, record: WorkRecord?) {
+    /// there is no active session afterwards — and the evidence selection is written before *that*,
+    /// for the same reason twice over: the record has to carry it, and the session has to be open
+    /// to receive it.
+    func closeJob(outcome: FieldSession.Outcome = .resolved,
+                  evidence: EvidenceSelection? = nil) throws -> (session: FieldSession, record: WorkRecord?) {
+        if let evidence { host.setEvidenceSelection(evidence) }
         let record = host.workRecord()
         let session = try flow.closeJob(outcome: outcome)
         return (session, record)
+    }
+
+    // MARK: - Evidence (Plan FO P2a)
+
+    /// The open job's photos, grouped for the grid. Nil when no job is open.
+    var evidenceReview: EvidenceReviewModel? {
+        guard let session = openSession else { return nil }
+        return EvidenceReviewModel(items: host.jobMedia,
+                                   taskTitles: session.tasks.map { (id: $0.id, title: $0.title) },
+                                   photosDirectory: host.photosDirectory(sessionId: session.id),
+                                   faceBlurOn: Config.privacyFilterEnabled)
+    }
+
+    /// The decision as it stands, defaults filled in — what the review step opens on.
+    func evidenceSelection() -> EvidenceSelection { host.evidenceSelection() }
+
+    /// Record a decision without closing: the Photos section's own edits, made mid-job.
+    func applyEvidenceSelection(_ selection: EvidenceSelection) {
+        host.setEvidenceSelection(selection)
+    }
+
+    /// A finished job's evidence, for its page's Photos section and its share sheet. The selection
+    /// is the one that went out, not a fresh proposal — re-sharing a past job hands out the same
+    /// files the customer's PDF was made from.
+    func pastEvidence(sessionId: String) -> (review: EvidenceReviewModel, selection: EvidenceSelection)? {
+        guard let session = host.history.first(where: { $0.id == sessionId }) else { return nil }
+        let media = host.media(sessionId: sessionId)
+        guard !media.isEmpty else { return nil }
+        // **Not** `Config.privacyFilterEnabled`. The job is finished: nothing about these files
+        // can change, the blur was applied on the way to disk, and the setting as it stands today
+        // answers a question about the next photograph rather than about these ones.
+        let review = EvidenceReviewModel(
+            items: media,
+            taskTitles: session.tasks.map { (id: $0.id, title: $0.title) },
+            photosDirectory: host.photosDirectory(sessionId: sessionId),
+            faceBlur: .recorded(from: media))
+        let selection = (session.evidenceSelection ?? EvidenceSelection.proposed(for: media))
+            .reconciled(with: media)
+        return (review, selection)
     }
 
     /// What "Read back" speaks and shows. The record's own lines, in the record's own order.

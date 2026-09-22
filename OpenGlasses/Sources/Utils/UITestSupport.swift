@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import UIKit
 
 /// Deterministic launch state for the UI-test target (Plan DF P4).
 ///
@@ -42,12 +43,19 @@ enum UITestSupport {
         case seedFieldHistory = "-OGUITestSeedFieldHistory"
         /// Field Assist as above, plus a job open with a number, a machine and two tasks on it.
         case seedFieldJob = "-OGUITestSeedFieldJob"
+        /// A **modifier**, not a state of its own: it puts photographs on whichever jobs the
+        /// flags above seeded — the finished one, the open one, or both — which is what the
+        /// past-job Photos section and the close-job evidence review need in order to have
+        /// anything to show. The pictures are drawn in-process, so no camera, no photo library
+        /// and no permission is involved.
+        case seedFieldPhotos = "-OGUITestSeedFieldPhotos"
     }
 
     /// Whether any of the Field Assist flags is set. They are cumulative: seeding a job implies
     /// the feature is on, because a job cannot exist otherwise.
     static var wantsFieldAssist: Bool {
         isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
+            || isSet(.seedFieldPhotos)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -100,6 +108,14 @@ enum UITestSupport {
             seedJourney(showsEverything: isSet(.showAllSettings))
         }
 
+        // Sessions live in Documents, which outlives the defaults wipe, so **every** UI-test
+        // launch starts from no jobs — not only a seeded one. A run with no Field Assist flags
+        // that inherited an open job from the launch before it would draw the Job tab, because the
+        // tab is shown while a session is active precisely so a licence lapsing mid-job cannot
+        // strand one. That is correct behaviour reading stale state, and it made "no Job tab
+        // without the entitlement" depend on which test ran first.
+        clearFieldSessions()
+
         if wantsFieldAssist {
             // The entitlement comes from the seam that already exists for development and demos —
             // in-memory, `#if DEBUG` only, producing an evidence case that does not compile into a
@@ -107,9 +123,6 @@ enum UITestSupport {
             // every field tool still ask the same evaluator the same question.
             FieldAssistEntitlement.shared.setInternalDeveloperGrant(true)
             applyFieldAssistSwitch()
-            // Sessions live in Documents, which outlives the defaults wipe, so a seeded run starts
-            // from no jobs rather than piling another one on every launch.
-            clearFieldSessions()
         }
     }
 
@@ -187,7 +200,7 @@ enum UITestSupport {
             seedConversations(appState)
         }
 
-        if isSet(.seedFieldHistory) || isSet(.seedFieldJob) {
+        if isSet(.seedFieldHistory) || isSet(.seedFieldJob) || isSet(.seedFieldPhotos) {
             // Deferred by one runloop turn on purpose. Starting a session builds the vault's model
             // and parts indexes on the main thread, and doing that inside launch pushes a cold
             // first launch of a large Debug build towards the watchdog — which shows up as an app
@@ -325,6 +338,21 @@ enum UITestSupport {
                                                         why: "Blocked; water in the burner box") {
                 _ = try? sessions.completeTask(id: task.id, note: "New trap fitted and tested.")
             }
+            // A finished job needs its own evidence, and its own *decision* about it: the past-job
+            // page shows the selection that went out rather than a fresh proposal, so seeding the
+            // pictures without one would show a screen no technician ever saw.
+            if isSet(.seedFieldPhotos) {
+                attach(sessions, colour: .systemTeal, caption: "Blocked trap, as found",
+                       origin: .photoLog, blurred: true)
+                attach(sessions, colour: .systemGreen, caption: "New trap fitted",
+                       origin: .photoLog, blurred: true)
+                var chosen = sessions.evidenceSelection()
+                if let first = chosen.entries.first { chosen.setRole(.fault, for: first.itemId) }
+                if let last = chosen.entries.last, chosen.entries.count > 1 {
+                    chosen.setRole(.fix, for: last.itemId)
+                }
+                sessions.setEvidenceSelection(chosen.confirmed())
+            }
             _ = try? sessions.endSession(outcome: .resolved)
         }
 
@@ -343,6 +371,34 @@ enum UITestSupport {
         }
         _ = try? sessions.addOperatorTask(title: "Clean the flame sensor",
                                           why: "Signal reading low")
+
+        guard isSet(.seedFieldPhotos) else { return }
+        // Three pictures with the shape the review has to cope with: one logged on the job (ticked
+        // by default), one taken by the assistant (offered, not assumed), and one captured while
+        // the face blur was on, so the per-item label is on screen for the audit to measure.
+        attach(sessions, colour: .systemTeal, caption: "Pressure switch tubing, reconnected",
+               origin: .photoLog, blurred: false)
+        attach(sessions, colour: .systemOrange, caption: "Flame sensor before cleaning",
+               origin: .capture, blurred: false)
+        attach(sessions, colour: .systemIndigo, caption: "Nameplate", origin: .photoLog,
+               blurred: true)
+    }
+
+    /// One seeded evidence photo, drawn rather than captured.
+    ///
+    /// A flat colour is enough: the review is being audited for its labels, its touch targets and
+    /// its contrast, none of which depend on what the photograph is of — and a bundled JPEG would
+    /// put test fixtures into the shipping app for no gain.
+    @MainActor
+    private static func attach(_ sessions: FieldSessionService, colour: UIColor, caption: String,
+                               origin: JobMediaItem.Origin, blurred: Bool) {
+        let size = CGSize(width: 480, height: 360)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            colour.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        _ = sessions.attachPhoto(data, caption: caption, origin: origin, filterWasOn: blurred)
     }
 
     /// The lines a real session would have produced. Two of the three carry a diarized speaker, so

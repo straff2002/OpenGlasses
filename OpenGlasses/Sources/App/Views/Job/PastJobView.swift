@@ -81,6 +81,15 @@ struct PastJobView: View {
                 Text("Assembled from what was recorded on the job — the same lines the work order prints.")
             }
 
+            // The evidence exactly as it went out (Plan FO P2a) — the stored selection, not a
+            // fresh proposal, so what is ticked here is what the customer's PDF was made from and
+            // "Share full-size photos" hands out those same files.
+            if let evidence = model.pastEvidence(sessionId: sessionId) {
+                JobPhotosSection(review: evidence.review, selection: evidence.selection,
+                                 onShare: { appState.presentEvidenceShare(
+                                     evidence.review.shareURLs(for: evidence.selection)) })
+            }
+
             Section {
                 if let threadId = job.threadId {
                     choice("Open the conversation") { onOpenTranscript(threadId) }

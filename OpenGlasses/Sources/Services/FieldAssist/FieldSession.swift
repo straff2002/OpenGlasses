@@ -52,6 +52,13 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var identityFields: [DeviceIdentityField] = []
     /// Readings, photos, opened citations and verified pages recorded while no task was active.
     var jobEvidence: Evidence = Evidence()
+    /// The job's evidence files, described (Plan FO P2a). `Evidence.photos` records *that* a photo
+    /// exists; this records when, by which route, against which task, and whether the face blur was
+    /// on when the bytes were written — the facts the review at close is made of.
+    var media: [JobMediaItem] = []
+    /// What the technician chose to send, made once at close. Nil until the review step has been
+    /// reached at all; a selection with `reviewed == false` is the text-only record.
+    var evidenceSelection: EvidenceSelection?
     /// A new scope on equipment change prevents carrying work onto another machine (FM).
     var continuityScope: String = "initial"
     var taskEquipmentScopes: [String: String] = [:]
@@ -149,6 +156,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case startLocation, endLocation, escalations, billableSeconds, billingBasis
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
+        case media, evidenceSelection
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
@@ -187,6 +195,8 @@ extension FieldSession {
         partsRequests = try c.decodeIfPresent([PartsRequest].self, forKey: .partsRequests) ?? []
         identityFields = try c.decodeIfPresent([DeviceIdentityField].self, forKey: .identityFields) ?? []
         jobEvidence = try c.decodeIfPresent(Evidence.self, forKey: .jobEvidence) ?? Evidence()
+        media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
+        evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
         continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]

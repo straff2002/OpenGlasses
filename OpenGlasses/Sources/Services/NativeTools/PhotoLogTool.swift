@@ -19,6 +19,10 @@ final class PhotoLogTool: NativeTool {
     /// sent to the model, so both copies must be the filtered one.
     let cameraService: any FilteredStillProviding
 
+    /// Where the still is filed. The app's shared session service; injected in a test, which must
+    /// not write into the real Documents directory to prove a caption reached a log (Plan FO P2a).
+    let jobEvidence: any JobEvidenceFiling
+
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -30,16 +34,17 @@ final class PhotoLogTool: NativeTool {
         "required": [] as [String]
     ]
 
-    init(cameraService: any FilteredStillProviding) {
+    init(cameraService: any FilteredStillProviding,
+         jobEvidence: (any JobEvidenceFiling)? = nil) {
         self.cameraService = cameraService
+        self.jobEvidence = jobEvidence ?? FieldSessionService.shared
     }
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
-        let service = FieldSessionService.shared
-        guard service.activeSession != nil else {
+        guard jobEvidence.isOpenForEvidence else {
             return "No active Field Assist session. Start a session before logging photos."
         }
         let caption = (args["caption"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,7 +55,8 @@ final class PhotoLogTool: NativeTool {
             return "Could not capture a photo. Make sure the glasses are connected and the camera is active."
         }
 
-        guard service.attachPhoto(imageData, caption: caption) != nil else {
+        guard jobEvidence.attachPhoto(imageData, caption: caption, origin: .photoLog,
+                                      filterWasOn: Config.privacyFilterEnabled) != nil else {
             return "Captured the photo but could not attach it to the session log."
         }
 

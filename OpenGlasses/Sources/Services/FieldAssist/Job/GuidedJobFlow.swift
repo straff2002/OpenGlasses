@@ -49,6 +49,17 @@ final class GuidedJobFlow: ObservableObject {
     /// it with buttons for the moments voice fails.
     @Published private(set) var pendingUnitQuestion: JobUnitChangeQuestion?
 
+    /// The evidence review, while it is open (Plan FO P2a). Published because the grid and the
+    /// spoken walk edit **one** selection: a picture ticked by voice has to appear ticked on the
+    /// screen, and one ticked on the screen has to be what the read-out says next.
+    ///
+    /// Nil whenever the review is not up, which is what stops "yes" meaning anything here during
+    /// an ordinary turn.
+    @Published private(set) var evidenceReview: EvidenceReviewVoiceState?
+    /// The evidence the open review is about. Held beside the state because the state is a pure
+    /// value and the catalogue is the job's.
+    private var evidenceItems: [JobMediaItem] = []
+
     init(sessions: FieldSessionService, store: ConversationStore, seams: Seams = Seams()) {
         self.sessions = sessions
         self.store = store
@@ -109,6 +120,36 @@ final class GuidedJobFlow: ObservableObject {
         await resolveUnitChange(answer, spoken: nil)
     }
 
+    // MARK: - The evidence review (Plan FO P2a)
+
+    /// The review is now in front of the technician, and listening.
+    func beginEvidenceReview(selection: EvidenceSelection, items: [JobMediaItem]) {
+        evidenceItems = items
+        evidenceReview = EvidenceReviewVoiceState(selection: selection)
+    }
+
+    /// The technician changed something by tapping. The spoken walk edits the same value, so it
+    /// takes the change rather than carrying on from a stale copy.
+    func updateEvidenceReview(selection: EvidenceSelection) {
+        guard evidenceReview != nil else { return }
+        evidenceReview = EvidenceReviewVoiceState(selection: selection)
+    }
+
+    /// Start reading the pictures out one at a time. Offered rather than automatic: a sheet that
+    /// starts talking the moment it appears is the wrong behaviour with a customer standing there.
+    func readEvidenceOutLoud() async {
+        guard let review = evidenceReview else { return }
+        let step = review.beginWalk(items: evidenceItems)
+        evidenceReview = step.state
+        if let spoken = step.spoken { await seams.speak(spoken) }
+    }
+
+    /// The review has closed, however it closed.
+    func endEvidenceReview() {
+        evidenceReview = nil
+        evidenceItems = []
+    }
+
     // MARK: - The turn pipeline
 
     /// Give the app's outstanding question to the next utterance before the model sees it.
@@ -118,6 +159,17 @@ final class GuidedJobFlow: ObservableObject {
     /// returns false and reaches the model untouched, with the question still outstanding.
     func handleUtterance(_ text: String) async -> Bool {
         guard sessions.activeSession != nil else { return false }
+
+        // The evidence review first, and only while it is actually open: "yes" is an answer to a
+        // question that is being put right now, and nothing else in this app may claim it.
+        if let review = evidenceReview {
+            let step = review.hearing(text, items: evidenceItems)
+            if step.consumed {
+                evidenceReview = step.state
+                if let spoken = step.spoken { await seams.speak(spoken) }
+                return true
+            }
+        }
 
         if pendingUnitQuestion != nil, let answer = JobUnitChangeClassifier.classify(text) {
             await resolveUnitChange(answer, spoken: text)

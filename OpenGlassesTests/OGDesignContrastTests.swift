@@ -385,3 +385,4 @@ final class OGDesignContrastTests: XCTestCase {
         XCTAssertFalse(ContrastRatio.meetsAA(3.2, size: .normal))
     }
 }
+

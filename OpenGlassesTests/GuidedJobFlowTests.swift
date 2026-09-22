@@ -289,6 +289,74 @@ final class GuidedJobFlowTests: XCTestCase {
         XCTAssertNil(flow.leaveJobThreadQuestion(switchingTo: service.activeSession?.conversationThreadId))
     }
 
+    // MARK: - The evidence review's spoken half
+
+    func testIncludeAllIsAnsweredByTheAppWhileTheReviewIsOpen() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(3)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let consumed = await flow.handleUtterance("include all")
+
+        XCTAssertTrue(consumed, "the utterance must not reach the model")
+        XCTAssertEqual(flow.evidenceReview?.outcome.includedCount, 3)
+        XCTAssertTrue(flow.evidenceReview?.isSettled == true)
+        XCTAssertTrue(spoken.contains { $0.contains("going with the report") })
+    }
+
+    func testSkipPhotosSettlesOnTheTextOnlyRecord() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let skipped = await flow.handleUtterance("skip photos")
+        XCTAssertTrue(skipped)
+        XCTAssertEqual(flow.evidenceReview?.outcome, EvidenceSelection.skipped())
+    }
+
+    func testTheReadOutWalksThePicturesOneAtATime() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        await flow.readEvidenceOutLoud()
+        XCTAssertEqual(spoken.last, "Photo 1 of 2, picture 0. Include it?")
+
+        let keptIt = await flow.handleUtterance("yes")
+        XCTAssertTrue(keptIt)
+        XCTAssertEqual(spoken.last, "Keeping it. Photo 2 of 2, picture 1. Include it?")
+
+        let leftOut = await flow.handleUtterance("no")
+        XCTAssertTrue(leftOut)
+        XCTAssertEqual(flow.evidenceReview?.outcome.includedItemIds, ["p0"])
+    }
+
+    /// The technician asking a question mid-review is asking a question. It reaches the model and
+    /// the review is still there afterwards.
+    func testAnUnrelatedUtteranceDuringTheReviewReachesTheModel() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let passedThrough = await flow.handleUtterance("what's the superheat target?")
+        XCTAssertFalse(passedThrough)
+        XCTAssertNotNil(flow.evidenceReview)
+        XCTAssertFalse(flow.evidenceReview?.isSettled == true)
+    }
+
+    /// "Yes" means nothing here once the review has gone, which is what stops it stealing an
+    /// answer from an ordinary turn.
+    func testYesMeansNothingOnceTheReviewIsClosed() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(1)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+        flow.endEvidenceReview()
+
+        XCTAssertNil(flow.evidenceReview)
+        let notAnAnswer = await flow.handleUtterance("yes")
+        XCTAssertFalse(notAnAnswer)
+    }
+
     // MARK: - The job number
 
     func testStartingAJobWithItsNumberAsksNothing() async throws {

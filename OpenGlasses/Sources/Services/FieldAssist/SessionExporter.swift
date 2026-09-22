@@ -66,9 +66,14 @@ enum SessionExporter {
                     fallbackName: "audit_export.json") { try writeJSON(document, to: $0) })
             }
             if formats.contains(.pdf) {
+                // The evidence the technician chose is drawn from the session's own `photos/`
+                // directory — the filtered copies, downscaled here and nowhere else.
+                let photos = sessionDir.appendingPathComponent("photos", isDirectory: true)
                 leases.append(try coordinator.makeLease(
                     fileExtension: "pdf", displayName: "work_order.pdf",
-                    fallbackName: "work_order.pdf") { try writePDF(document, to: $0) })
+                    fallbackName: "work_order.pdf") {
+                        try writePDF(document, to: $0, photosDirectory: photos)
+                    })
             }
         } catch {
             // Partial failure leaves no half-made export set: the artifact that did succeed is
@@ -142,6 +147,10 @@ enum SessionExporter {
                     photos.append(.init(timestamp: event.timestamp, path: path,
                                         caption: (event.payload?["caption"]?.value as? String) ?? event.text))
                 }
+            case .evidenceSelected:
+                // The decision itself is session state, read below. The event is there so the
+                // append-only log says when it was made, not so the export re-derives it.
+                break
             case .escalationRequested:
                 escalations.append(.init(timestamp: event.timestamp, reason: event.text ?? "Escalation requested"))
             case .captureRecordSaved:
@@ -177,6 +186,19 @@ enum SessionExporter {
 
         let proceduresRun: [SessionExport.ProcedureRun] = procOrder.map { id in
             .init(procedureId: id, stepsCompleted: procStepIds[id]?.count ?? 0, outcome: procOutcome[id])
+        }
+
+        // What the technician chose at close (Plan FO P2a). Applied to the reconstructed list
+        // rather than replacing it: every photo the job took stays in the audit JSON, and what the
+        // selection adds is whether each one travelled and how it was marked.
+        if let selection = session.evidenceSelection, selection.reviewed {
+            photos = photos.map { photo in
+                let entry = selection.entry(for: photo.path)
+                return .init(timestamp: photo.timestamp, path: photo.path,
+                             caption: entry?.caption ?? photo.caption,
+                             included: entry?.included ?? false,
+                             role: entry?.role?.rawValue)
+            }
         }
 
         return SessionExport(
@@ -240,7 +262,12 @@ enum SessionExporter {
     // MARK: - PDF
 
     /// Render the work order at exactly `url`. As with `writeJSON`, the caller owns the location.
-    static func writePDF(_ document: SessionExport, to url: URL) throws {
+    ///
+    /// - Parameter photosDirectory: the session's `photos/` directory, when the evidence the
+    ///   technician selected should be drawn into the document. Absent — or with no selection
+    ///   made — the photo section is the text bullet list the work order has always printed.
+    static func writePDF(_ document: SessionExport, to url: URL,
+                         photosDirectory: URL? = nil) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
@@ -290,7 +317,31 @@ enum SessionExporter {
                 }
             }
 
-            if !document.photos.isEmpty {
+            // The evidence the technician chose at close, drawn inline under its task (Plan FO
+            // P2a).
+            //
+            // Which of the three shapes this takes turns on **whether the review happened**, not
+            // on whether anything was selected. A job that never reached the step — skipped, or a
+            // record written before any of this existed — gets the bullet list it has always got,
+            // unchanged. A job that *was* reviewed gets what was chosen and nothing else: a
+            // technician who deliberately left every picture out has not asked for a list of them.
+            let reviewed = document.workRecord?.evidenceSelection?.reviewed == true
+            let plan = document.workRecord?.evidencePlan ?? EvidenceRenderPlan(groups: [])
+            if reviewed {
+                if let photosDirectory, !plan.isEmpty {
+                    drawEvidence(plan, from: photosDirectory, layout: layout)
+                } else if !plan.isEmpty {
+                    // Rendered without the files to hand — the audit JSON's own copy of the
+                    // record, say. Name what was chosen rather than printing nothing at all.
+                    layout.section("Photos")
+                    for entry in plan.groups.flatMap(\.entries) {
+                        layout.body("• \(entry.captionLine)")
+                    }
+                } else if !document.photos.isEmpty {
+                    layout.section("Photos")
+                    layout.body("No photos were sent with this report.")
+                }
+            } else if !document.photos.isEmpty {
                 layout.section("Photos")
                 for photo in document.photos {
                     layout.body("• \(photo.path)\(photo.caption.map { " — \($0)" } ?? "")")
@@ -313,6 +364,45 @@ enum SessionExporter {
             layout.section("Provenance")
             layout.body(document.provenance?.footerLine
                 ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
+        }
+    }
+
+    // MARK: - Evidence
+
+    /// Draw the selected evidence: a section, a heading per task, a role heading where the
+    /// technician marked one, and each picture with its caption and time underneath.
+    ///
+    /// The caption, the time and both headings are drawn as **real text**, not baked into the
+    /// image — which is as close to an accessible PDF as this layout gets, and is what lets a
+    /// reader who cannot see the photograph still find out what it was of and when it was taken.
+    private static func drawEvidence(_ plan: EvidenceRenderPlan, from directory: URL,
+                                     layout: PDFLayout) {
+        // One budget for the whole document, decided from the number of pictures actually going
+        // out — so a thirty-photo job gets smaller copies rather than an unsendable file.
+        let budget = EvidenceImageBudget.standard.plan(photoCount: plan.entryCount)
+        layout.section("Photos")
+        layout.body("\(plan.entryCount) picture\(plan.entryCount == 1 ? "" : "s") selected by the technician.")
+        for group in plan.groups {
+            layout.subheading(group.title)
+            var lastRole: EvidenceSelection.Role??
+            for entry in group.entries {
+                // Fault before Fix before unmarked, headed once per run rather than once per
+                // picture. `lastRole` is doubly optional on purpose: "no role printed yet" and
+                // "the unmarked run has started" are different states.
+                if lastRole == nil || lastRole! != entry.role {
+                    if let role = entry.role { layout.roleHeading(role.heading) }
+                    lastRole = .some(entry.role)
+                }
+                guard let image = EvidenceImageRenderer.load(entry.item.id, from: directory) else {
+                    // The file is gone. Say so rather than leaving a caption floating under
+                    // nothing — a record that quietly lost a photograph is worse than one that
+                    // admits it.
+                    layout.body("• \(entry.captionLine) — picture not found on the device")
+                    continue
+                }
+                layout.image(EvidenceImageRenderer.downscaled(image, plan: budget))
+                layout.caption(entry.captionLine)
+            }
         }
     }
 
@@ -404,6 +494,9 @@ enum SessionExporter {
 // MARK: - PDF layout helper
 
 /// Minimal top-down text layout with automatic pagination for `UIGraphicsPDFRenderer`.
+///
+/// Text only until Plan FO P2a, which added `image(_:)` — the work order could name a photograph
+/// but not show one, so the recipient of a fault report got a file path.
 private final class PDFLayout {
     private let pageRect: CGRect
     private let margin: CGFloat
@@ -434,6 +527,39 @@ private final class PDFLayout {
 
     func body(_ text: String) {
         draw(text, font: .systemFont(ofSize: 10.5), color: .black, spacingAfter: 3)
+    }
+
+    /// A task's name above the pictures recorded against it.
+    func subheading(_ text: String) {
+        spacer(4)
+        draw(text, font: .boldSystemFont(ofSize: 11), color: .black, spacingAfter: 3)
+    }
+
+    /// "The fault" / "The fix". Only printed for a run the technician actually marked.
+    func roleHeading(_ text: String) {
+        spacer(2)
+        draw(text, font: .italicSystemFont(ofSize: 10.5), color: .darkGray, spacingAfter: 2)
+    }
+
+    /// The line under a picture — what it shows and when it was taken. Real text, so it can be
+    /// read, searched and extracted.
+    func caption(_ text: String) {
+        draw(text, font: .systemFont(ofSize: 9), color: .darkGray, spacingAfter: 8)
+    }
+
+    /// Draw one evidence picture, aspect-fitted into the column and paginated like everything
+    /// else. The image handed in is already the downscaled copy — drawing small does not embed
+    /// small, so the resizing happens before this is called, not here.
+    func image(_ image: UIImage, maxHeight: CGFloat = 300) {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return }
+        let fit = min(contentWidth / size.width, maxHeight / size.height, 1)
+        let drawn = CGSize(width: size.width * fit, height: size.height * fit)
+        // A picture is never split across a page break: if it does not fit in what is left, the
+        // page ends here and it starts the next one whole.
+        if cursorY + drawn.height > pageBottom { newPage() }
+        image.draw(in: CGRect(x: margin, y: cursorY, width: drawn.width, height: drawn.height))
+        cursorY += drawn.height + 3
     }
 
     func spacer(_ height: CGFloat) {

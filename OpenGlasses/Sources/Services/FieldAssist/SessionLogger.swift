@@ -48,6 +48,10 @@ final class SessionLogger {
             case assistantMessage = "assistant_message"
             case toolCall = "tool_call"
             case photoAttached = "photo_attached"
+            /// The technician chose which evidence goes out with the report (Plan FO P2a). What
+            /// was left out is as much a fact about the visit as what was sent, so the count and
+            /// whether the step was taken at all are written down.
+            case evidenceSelected = "evidence_selected"
             case procedureStarted = "procedure_started"
             case procedureStep = "procedure_step"
             case procedureCompleted = "procedure_completed"

@@ -13,6 +13,13 @@ struct CapturePhotoTool: NativeTool {
     /// goes to the model, so the unfiltered accessor must not be within its reach.
     let cameraService: any FilteredStillProviding
 
+    /// The open job, when there is one (Plan FO P2a). A plain capture taken during a visit is
+    /// evidence of that visit — the technician said "look at this" while standing in front of the
+    /// machine — so it joins the job's photos with its time, its task and the reason it was taken,
+    /// and is then offered (not assumed) at the close-job review. Nil when nothing is wired, which
+    /// is every build of this tool that is not the app's own.
+    var jobEvidence: (any JobEvidenceFiling)?
+
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -25,19 +32,37 @@ struct CapturePhotoTool: NativeTool {
     ]
 
     func execute(args: [String: Any]) async throws -> String {
+        let reason = (args["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         // Two requests rather than one `.cachedFrameThenPhoto`, so the log still distinguishes a
         // reused stream frame from a fresh shutter — the two have different battery and latency
         // stories and the diagnostics pane reads them apart.
         if let still = await cameraService.filteredStill(for: .toolPhotoCapture).still,
            let raw = still.jpegData(compressionQuality: 0.8) {
+            fileOnTheJob(raw, reason: reason)
             return reply(LLMImagePreparer.prepared(raw), event: .captureFallbackUsed)
         }
 
+        // `source: .photoOnly` and not `CameraService.capturePhoto()`: the shutter image is exempt
+        // for its *existing* consumer — the wearer's own framed shot in their Photos library — and
+        // this one is neither. It goes to a cloud model and, while a job is open, into a record a
+        // customer will read.
         let captured = await cameraService.filteredStill(for: .toolPhotoCapture, source: .photoOnly)
         guard let raw = captured.jpegData(compressionQuality: 0.8) else {
             return "Could not capture photo. Make sure the glasses are connected and camera is active."
         }
+        fileOnTheJob(raw, reason: reason)
         return reply(LLMImagePreparer.prepared(raw), event: .photoCaptured)
+    }
+
+    /// Attach the still to the open job, if one is open. The bytes are the filtered ones the
+    /// accessor returned — the same copy the model gets — because filtering is not inherited and
+    /// the archive is the copy that survives.
+    private func fileOnTheJob(_ data: Data, reason: String?) {
+        guard let jobEvidence, jobEvidence.isOpenForEvidence else { return }
+        jobEvidence.attachPhoto(data,
+                                caption: reason?.isEmpty == false ? reason : nil,
+                                origin: .capture,
+                                filterWasOn: Config.privacyFilterEnabled)
     }
 
     /// `data` is already bounded by `LLMImagePreparer` — Anthropic's 5 MB inline cap.
