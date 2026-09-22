@@ -44,6 +44,9 @@ private struct JobTabContent: View {
     /// the audit log as it produces it.
     @State private var leaveThread: JobTabModel.ThreadQuestionCard?
     @State private var confirmingClose = false
+    /// Non-nil while the evidence review is in front of the technician (Plan FO P2a). It holds the
+    /// selection being edited, so nothing is written onto the session until they finish.
+    @State private var reviewingEvidence: EvidenceSelection?
     @State private var problem: String?
     /// Re-read on a timer rather than every frame — see `JobClock`.
     @State private var clock = Date()
@@ -64,11 +67,16 @@ private struct JobTabContent: View {
                                   typedReference: $typedReference,
                                   leaveThread: $leaveThread,
                                   unitQuestion: model.unitQuestion,
+                                  evidence: model.evidenceReview,
+                                  evidenceSelection: liveSelection,
                                   onAnswerUnit: { action in Task { await model.answer(action) } },
                                   onPauseResume: pauseOrResume,
+                                  onAddPhoto: addPhoto,
+                                  onSharePhotos: shareSelectedPhotos,
+                                  onOpenPrivacySettings: { appState.requestedTab = .settings },
                                   onOpenConversation: openConversation,
                                   onReadBack: readBackTheJob,
-                                  onClose: { confirmingClose = true })
+                                  onClose: startClosing)
                 }
             }
             .navigationTitle("Job")
@@ -88,13 +96,49 @@ private struct JobTabContent: View {
         .sheet(isPresented: Binding(get: { readBack != nil }, set: { if !$0 { readBack = nil } })) {
             ReadBackSheet(lines: readBack ?? []) { readBack = nil }
         }
+        // A job with no photos on it closes the way it always has: one question, one tap.
         .confirmationDialog("Close this job?", isPresented: $confirmingClose, titleVisibility: .visible) {
-            // Plan FO P2a slots its evidence review in here: the photos and clips are chosen
-            // before the job is closed, because closing is what makes the record final.
             Button("Close job", role: .destructive) { closeJob() }
             Button("Keep working", role: .cancel) {}
         } message: {
             Text("Time stops, the record is finished, and the job's conversation is closed with it. You can still send the report afterwards.")
+        }
+        // A job that took photos gets the review first — it carries the same warning in its
+        // footer, so the confirmation is not asked twice.
+        .sheet(isPresented: Binding(get: { reviewingEvidence != nil },
+                                    set: { if !$0 { reviewingEvidence = nil } })) {
+            if let review = model.evidenceReview {
+                JobEvidenceReviewView(
+                    review: review,
+                    // The sheet is only up while there is one, so the fallback is never reached;
+                    // it is here because a `Binding` cannot be optional.
+                    selection: Binding(get: { reviewingEvidence ?? model.evidenceSelection() },
+                                       set: { reviewingEvidence = $0
+                                              flow.updateEvidenceReview(selection: $0) }),
+                    onReadOutLoud: { Task { await flow.readEvidenceOutLoud() } },
+                    onClose: { closeJob(evidence: reviewingEvidence?.confirmed()) },
+                    onSkip: { closeJob(evidence: EvidenceSelection.skipped()) },
+                    onShare: {
+                        appState.presentEvidenceShare(
+                            review.shareURLs(for: reviewingEvidence ?? model.evidenceSelection()))
+                    },
+                    onCancel: { endReview() })
+                // The spoken half of the same step. The flow owns it, because the flow is where an
+                // utterance is offered to the app before the model sees it — so "include all" is
+                // app behaviour rather than something the model has to be trusted to understand.
+                .onAppear {
+                    flow.beginEvidenceReview(
+                        selection: reviewingEvidence ?? model.evidenceSelection(),
+                        items: review.items)
+                }
+                .onChange(of: flow.evidenceReview) { _, spoken in
+                    guard let spoken else { return }
+                    reviewingEvidence = spoken.selection
+                    // "Include all", "skip photos" and the end of the read-out all settle the
+                    // answer, and the answer is what closes the job.
+                    if spoken.isSettled { closeJob(evidence: spoken.outcome) }
+                }
+            }
         }
         .alert("That didn't work", isPresented: Binding(get: { problem != nil },
                                                         set: { if !$0 { problem = nil } })) {
@@ -119,9 +163,43 @@ private struct JobTabContent: View {
         do { _ = try model.pauseOrResume() } catch { problem = error.localizedDescription }
     }
 
-    private func closeJob() {
+    /// The selection the open job's Photos section draws against. Read fresh each time rather than
+    /// held: a photo taken while this screen is up has to appear on it.
+    private var liveSelection: Binding<EvidenceSelection> {
+        Binding(get: { model.evidenceSelection() },
+                set: { model.applyEvidenceSelection($0) })
+    }
+
+    /// Closing a job that took photos asks which of them go out first; one that took none closes
+    /// the way it always has.
+    private func startClosing() {
+        guard let review = model.evidenceReview, !review.isEmpty else {
+            confirmingClose = true
+            return
+        }
+        reviewingEvidence = model.evidenceSelection()
+    }
+
+    private func addPhoto(_ origin: JobMediaItem.Origin, _ data: Data) {
+        let outcome = appState.jobPhotoEvidence.attach(imageData: data, origin: origin)
+        if let trouble = outcome.problem { problem = trouble }
+    }
+
+    private func shareSelectedPhotos() {
+        guard let review = model.evidenceReview else { return }
+        appState.presentEvidenceShare(review.shareURLs(for: model.evidenceSelection()))
+    }
+
+    /// Put the review away without closing the job — and stop the flow listening for "yes".
+    private func endReview() {
+        reviewingEvidence = nil
+        flow.endEvidenceReview()
+    }
+
+    private func closeJob(evidence: EvidenceSelection? = nil) {
         do {
-            let closed = try model.closeJob()
+            let closed = try model.closeJob(evidence: evidence)
+            endReview()
             typedReference = ""
             // Straight to the finished job: its record, its conversation, and Send report. The
             // close, the export and the delivery are the shipped ones — nothing here re-implements

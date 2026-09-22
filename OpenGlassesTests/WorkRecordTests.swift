@@ -456,6 +456,29 @@ final class WorkRecordTests: XCTestCase {
 
     // MARK: - The record
 
+    /// A completion note is the technician's own words and routinely arrives already punctuated,
+    /// which used to print as "…tested..". One sentence-ending mark, not two.
+    func testATaskLineEndsWithExactlyOneFullStop() {
+        let punctuated = FieldSession.Task(
+            id: "p1", title: "Replaced the condensate trap", origin: .operatorAdded, status: .done,
+            completionNote: "New trap fitted and tested.")
+        let line = WorkRecord.line(for: punctuated)
+        XCTAssertTrue(line.hasSuffix("tested."), "unexpected line: \(line)")
+        XCTAssertFalse(line.contains(".."), "unexpected line: \(line)")
+
+        let unpunctuated = FieldSession.Task(
+            id: "p2", title: "Cleaned the flame sensor", origin: .operatorAdded, status: .done,
+            completionNote: "signal back to 4 microamps")
+        XCTAssertTrue(WorkRecord.line(for: unpunctuated).hasSuffix("microamps."),
+                      "a line that does not end a sentence still gets its full stop")
+
+        let questioning = FieldSession.Task(
+            id: "p3", title: "Checked the board", origin: .operatorAdded, status: .done,
+            completionNote: "is that fuse the right rating?")
+        XCTAssertTrue(WorkRecord.line(for: questioning).hasSuffix("rating?"),
+                      "a question mark already ends the sentence")
+    }
+
     func testASessionThatNeverIdentifiedAMachinePrintsNoEquipmentLine() {
         // The work order's own summary omits the line entirely in this case; the record follows the
         // same rule, so the two halves of one PDF cannot disagree about whether the machine was known.

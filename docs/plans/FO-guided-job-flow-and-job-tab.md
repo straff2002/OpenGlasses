@@ -5,7 +5,9 @@
 **P1 implemented 2026-09-22, headless and wired into Direct mode** — see *P1 as built* below;
 **P2 implemented 2026-09-22** — the Job tab, verified headless and on a simulator (accessibility
 audits in three states at the default and largest text sizes, screenshots in both appearances); see
-*P2 as built* below. P2a, P2b, P3 and P4 unbuilt.
+*P2 as built* below.
+**P2a implemented 2026-09-22** — photo evidence at close, verified headless and on a simulator; see
+*P2a as built* below. P2b, P3 and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -218,7 +220,7 @@ plain capture, a picture added in chat from the phone) are not attached to the j
 - **P2 — Job tab.** ✅ **Implemented 2026-09-22.** The three states above over existing components;
   the past-jobs list; UI audits with Field Assist off (tab absent) and on (three states, default and
   AX5 text). See *P2 as built*.
-- **P2a — photo evidence at close.** Headless first: `EvidenceSelection`, `EvidenceImageBudget`,
+- **P2a — photo evidence at close.** ✅ **Implemented 2026-09-22.** See *P2a as built*. Headless first: `EvidenceSelection`, `EvidenceImageBudget`,
   job-scoped attachment of photos from every capture route (each asking for a filtered still in its
   own right), `SessionExporter` inline rendering, the selection persisted in the work record
   (decode-if-present) and honoured on re-send. Then the close-flow review step in the Job tab with
@@ -529,6 +531,109 @@ launch argument. The UI tests address tabs by their button label through
 compatibility shim being needed anywhere; `MainTab.legacy(_:)` exists because the numbers *were* the
 API while the bare-`Int` bar shipped, and freezing the mapping is what lets P2 insert `.job` without
 auditing this again.
+
+## P2a as built (2026-09-22)
+
+Six pure types under `OpenGlasses/Sources/Services/FieldAssist/Job/` (`JobMediaItem`,
+`EvidenceSelection`, `EvidenceImageBudget`, `EvidenceRenderPlan`, `EvidenceReviewModel`,
+`EvidenceReviewVoiceState` with its classifier), one privacy chokepoint service
+(`JobPhotoEvidenceService`), an image renderer, the exporter's new image path, and three view files.
+
+### Decisions the draft left open
+
+- **Phone-sourced pictures reuse `.toolPhotoCapture` rather than getting a scope of their own.**
+  A `PrivacyFilterScope` classifies a consumer by where its pixels *go* — a still captured on the
+  wearer's instruction that is then filed in a session log or sent to a model — and that is exactly
+  what a phone-camera or library picture attached to a job is. Which lens produced the pixels
+  changes neither the egress nor the policy, and a second scope answering `isFiltered` and
+  `usesOutboundRelay` identically would be a second name for one rule. Where the source *does*
+  belong is the roster, which carries it separately as `OutboundFrameConsumer.jobPhoneEvidence`
+  with a new `tap` case, `heldImage`: pixels the consumer already holds, that never came from
+  `CameraService`, and that therefore have no camera tap to police but still have an egress. A
+  `heldImage` consumer is explicitly **not** in `typesAllowedOnARawStill`.
+- **Exclude, never delete.** `.fieldSessionLogs` is `deleteAll: .unavailable` because a session log
+  is the engineer's compliance record, and media lives under that same store. So leaving a photo
+  out of the report leaves it in the record, and the review step says so in as many words rather
+  than offering a delete that would contradict the store's posture. The deletion question stays
+  open and stays a *product* question — whether a field session can ever be deleted at all — not
+  something photographs get a private answer to.
+- **A skipped review and an emptied one are different values.** `EvidenceSelection.reviewed` starts
+  false and stays false when the step is skipped; the exporter branches on *whether the review
+  happened*, not on whether anything was selected. A job that never reached the step prints the
+  text bullets it always printed, byte for byte; a job that was reviewed and had everything
+  unticked prints "No photos were sent with this report." Collapsing the two would have made the
+  record claim a decision nobody took.
+- **The budget is arithmetic, not measurement.** `EvidenceImageBudget` picks a long edge and a JPEG
+  quality from the photo *count* alone, off a fixed ladder with a floor. It never measures the
+  actual images, so the same job always produces the same file — which is what makes a re-send
+  reproduce the PDF that went out rather than a differently compressed one — and the floor means an
+  absurd job produces an honestly larger file instead of illegible evidence.
+- **Downscaling happens before drawing, not at draw time.** A PDF that draws a 3024×4032 still into
+  a 400-point box still embeds every pixel, so `EvidenceImageRenderer` re-encodes first. Without
+  that the budget would describe a file that never existed.
+- **Captions, times and both headings are drawn as real text**, never baked into the image, so a
+  reader who cannot see a photograph can still find out what it was of and when it was taken.
+- **A finished job states the blur that was applied, not the setting as it stands.** The Job tab's
+  "Face blur: On/Off" line is the live setting while the job is open — it is what the next picture
+  gets, and it is still changeable. Once the job is closed nothing about those files can change, so
+  the past-job page counts the items' own `filterWasOn` and says "Face blur: On when these were
+  taken", or "On for 2 of 3" when the setting moved mid-visit, and offers no link to a setting that
+  could not affect them. `EvidenceReviewModel.FaceBlur` is the two-case type that keeps the two
+  questions apart.
+- **The spoken review only claims "yes" while it is actually open.** `GuidedJobFlow.evidenceReview`
+  is nil at every other moment, whole-phrase matching decides what counts as an answer, and a yes
+  or no with nothing being read out is passed through to the model untouched — "no pressure on the
+  switch" must never drop a photograph.
+
+### What the draft got wrong
+
+- §5 says photos taken any other way "are not attached to the job at all" and names `attachPhoto`'s
+  single caller. True, but it understates the fix: `attachPhoto` also had to start recording *when*,
+  *by which route*, *against which task* and *whether the blur was on*, because none of that existed
+  and all four are what the review is made of. `FieldSession.Evidence.photos` records only that a
+  file exists, and it stays that way — `JobMediaItem` is a catalogue beside it, not a replacement.
+- §5's "paused counts" was stated for the guided flow but not for evidence. It is now one property,
+  `FieldSessionService.isOpenForEvidence`, keyed on `endedAt == nil` and a non-cancelled outcome,
+  and every route asks it rather than each deciding for itself.
+- The draft assumed the close flow could write the selection whenever. It cannot: `closeJob` takes
+  the work record *before* the session ends, and `setEvidenceSelection` requires an open session, so
+  the order is selection → record → close. `JobTabModel.closeJob(outcome:evidence:)` is that order
+  in one place.
+- P2's own notes claimed `leaveJobThreadQuestion` had to be called from a tap because it logged.
+  That was a defect in the query, not a property of it — fixed here (below).
+
+### Two in-PR cleanups
+
+- `GuidedJobFlow.leaveJobThreadQuestion(switchingTo:)` documented itself as a query and wrote an
+  audit event on every call. Raising the question is now `raiseLeaveJobThreadQuestion`, which the
+  four surfaces call; the query is pure and safe from a view body. P1's tests keep their intent —
+  they assert the log entry against the raising call.
+- `WorkRecord.line(for:)` printed "…tested.." whenever a technician's completion note arrived
+  already punctuated. The line is now terminated with exactly one sentence-ending mark.
+
+### The chips, measured
+
+P2's screenshots raised the task status chip ("Done" / "In progress"). Measured against WCAG AA
+with the same arithmetic `OGDesignContrastTests` uses, `Color.secondary` on a
+`Color.secondary.opacity(0.15)` capsule over an inset-grouped row is **3.24:1 in light** — below the
+4.5:1 floor for 11-point text — and 5.14:1 in dark. The evidence review's unmarked Fault/Fix chips
+had the same shape at 0.12 opacity: **3.28:1 light**, 5.32:1 dark. Both now draw the primary label
+on a slightly stronger fill: the status chip measures **16.7:1 light / 11.8:1 dark**, the role chip
+**17.4:1 light / 12.7:1 dark**. Neither is accent-tinted — a task's status is not an AI affordance —
+and the marked role chip's coral is a fill behind an opaque label rather than coloured text.
+`JobChipContrastTests` asserts all of it, including that the pairing this replaced is still below
+AA, so a revert fails there rather than shipping.
+
+### Slots left for P2b
+
+- `JobMediaItem.Kind` already carries `.clip`, and `EvidenceSelection.Entry` carries the kind, so
+  the selection model and the grid hold a second media kind without reshaping.
+- `EvidenceRenderPlan` groups entries without caring what they are; a clip needs a line rather than
+  an image, which is a branch in `SessionExporter.drawEvidence` and nothing else.
+- `DeliveryRequest.Attachment.Kind` is still `pdf | json`; the `video` case, the per-channel size
+  budget and the over-budget share-sheet fallback are untouched and remain P2b's.
+- Clip *capture* is unwritten: it subscribes to `outboundFrames.publisher` and joins the roster as
+  a relay consumer, which is a different mechanism from anything P2a added.
 
 Related: [F Field Assist](F-field-assist.md), [EL equipment identity](EL-equipment-identity.md),
 [EM work record](EM-work-record-and-parts.md), [FM context and field continuity](FM-conversation-context-and-field-continuity.md),

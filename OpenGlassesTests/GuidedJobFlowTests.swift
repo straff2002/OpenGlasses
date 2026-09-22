@@ -289,6 +289,111 @@ final class GuidedJobFlowTests: XCTestCase {
         XCTAssertNil(flow.leaveJobThreadQuestion(switchingTo: service.activeSession?.conversationThreadId))
     }
 
+    /// The query said it was a query and wrote an audit event on every call. The surfaces that
+    /// only *consult* it — CarPlay, the watch — would otherwise have logged a question nobody was
+    /// ever put, and a view body asking it during a render would have filled the log.
+    func testAskingWhetherThereIsAQuestionWritesNothingToTheLog() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("on the job")
+        let before = auditKinds().filter { $0 == .jobQuestionAsked }.count
+
+        for _ in 0..<5 { _ = flow.leaveJobThreadQuestion() }
+
+        XCTAssertEqual(auditKinds().filter { $0 == .jobQuestionAsked }.count, before,
+                       "the query must not write to the audit log")
+    }
+
+    /// Putting the question to the technician still records that it was put — that is a fact about
+    /// the visit, and it is what `confirmLeaveJobThread` later answers.
+    func testRaisingTheQuestionIsWhatRecordsIt() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("on the job")
+        let before = auditKinds().filter { $0 == .jobQuestionAsked }.count
+
+        XCTAssertNotNil(flow.raiseLeaveJobThreadQuestion())
+
+        XCTAssertEqual(auditKinds().filter { $0 == .jobQuestionAsked }.count, before + 1)
+    }
+
+    // MARK: - The evidence review (Plan FO P2a)
+
+    private func evidenceItems(_ count: Int) -> [JobMediaItem] {
+        (0..<count).map {
+            JobMediaItem(id: "p\($0)", capturedAt: Date(timeIntervalSince1970: TimeInterval($0)),
+                         origin: .capture, caption: "picture \($0)", filterWasOn: false)
+        }
+    }
+
+    // MARK: - The evidence review's spoken half
+
+    /// "Include all" and "skip photos" are app behaviour, not something the model has to be
+    /// trusted to understand — so the utterance is taken before it reaches the model.
+    func testIncludeAllIsAnsweredByTheAppWhileTheReviewIsOpen() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(3)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let consumed = await flow.handleUtterance("include all")
+
+        XCTAssertTrue(consumed, "the utterance must not reach the model")
+        XCTAssertEqual(flow.evidenceReview?.outcome.includedCount, 3)
+        XCTAssertTrue(flow.evidenceReview?.isSettled == true)
+        XCTAssertTrue(spoken.contains { $0.contains("going with the report") })
+    }
+
+    func testSkipPhotosSettlesOnTheTextOnlyRecord() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let skipped = await flow.handleUtterance("skip photos")
+        XCTAssertTrue(skipped)
+        XCTAssertEqual(flow.evidenceReview?.outcome, EvidenceSelection.skipped())
+    }
+
+    func testTheReadOutWalksThePicturesOneAtATime() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        await flow.readEvidenceOutLoud()
+        XCTAssertEqual(spoken.last, "Photo 1 of 2, picture 0. Include it?")
+
+        let keptIt = await flow.handleUtterance("yes")
+        XCTAssertTrue(keptIt)
+        XCTAssertEqual(spoken.last, "Keeping it. Photo 2 of 2, picture 1. Include it?")
+
+        let leftOut = await flow.handleUtterance("no")
+        XCTAssertTrue(leftOut)
+        XCTAssertEqual(flow.evidenceReview?.outcome.includedItemIds, ["p0"])
+    }
+
+    /// The technician asking a question mid-review is asking a question. It reaches the model and
+    /// the review is still there afterwards.
+    func testAnUnrelatedUtteranceDuringTheReviewReachesTheModel() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(2)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+
+        let passedThrough = await flow.handleUtterance("what's the superheat target?")
+        XCTAssertFalse(passedThrough)
+        XCTAssertNotNil(flow.evidenceReview)
+        XCTAssertFalse(flow.evidenceReview?.isSettled == true)
+    }
+
+    /// "Yes" means nothing here once the review has gone, which is what stops it stealing an
+    /// answer from an ordinary turn.
+    func testYesMeansNothingOnceTheReviewIsClosed() async throws {
+        _ = try startJob(reference: "1005")
+        let items = evidenceItems(1)
+        flow.beginEvidenceReview(selection: EvidenceSelection.proposed(for: items), items: items)
+        flow.endEvidenceReview()
+
+        XCTAssertNil(flow.evidenceReview)
+        let notAnAnswer = await flow.handleUtterance("yes")
+        XCTAssertFalse(notAnAnswer)
+    }
+
     // MARK: - The job number
 
     func testStartingAJobWithItsNumberAsksNothing() async throws {

@@ -82,6 +82,35 @@ struct SessionExport: Codable, Equatable {
         let timestamp: Date
         let path: String   // relative to the session's photos/ directory
         let caption: String?
+        /// Whether the technician chose to send this one with the report (Plan FO P2a).
+        ///
+        /// **Optional on purpose.** Nil means the review step was never taken, which is a
+        /// different fact from "the technician left it out": a job that skipped the review sends
+        /// the text-only record, and reading that back as thirty deliberate exclusions would be a
+        /// consumer drawing a conclusion nobody reached.
+        let included: Bool?
+        /// "fault" or "fix", when it was marked. Marking is optional and never prompted, so nil is
+        /// the ordinary case rather than missing data.
+        let role: String?
+
+        init(timestamp: Date, path: String, caption: String?,
+             included: Bool? = nil, role: String? = nil) {
+            self.timestamp = timestamp
+            self.path = path
+            self.caption = caption
+            self.included = included
+            self.role = role
+        }
+
+        /// Hand-written so an audit exported before the evidence review existed still decodes.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            timestamp = try c.decode(Date.self, forKey: .timestamp)
+            path = try c.decode(String.self, forKey: .path)
+            caption = try c.decodeIfPresent(String.self, forKey: .caption)
+            included = try c.decodeIfPresent(Bool.self, forKey: .included)
+            role = try c.decodeIfPresent(String.self, forKey: .role)
+        }
     }
 
     struct ProcedureRun: Codable, Equatable {

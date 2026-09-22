@@ -69,7 +69,10 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     // MARK: - Past jobs
 
     func testJobTabPastJobsAndOnePastJobPage() {
-        let app = launch([.configured, .seedFieldHistory])
+        // The photos modifier is on so the past-job page's own Photos section — the selection as
+        // it was sent, and "Share full-size photos" — is part of what this audit measures rather
+        // than a screen nothing ever looks at.
+        let app = launch([.configured, .seedFieldHistory, .seedFieldPhotos])
         openJobTab(in: app)
 
         let pastJob = app.buttons.containing(
@@ -82,10 +85,19 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         pastJob.tap()
         let record = app.staticTexts["Work record"]
         awaitScreen(record, named: "The past job page")
-        XCTAssertTrue(app.buttons["Send report…"].exists,
-                      "a past job must offer to send its report again")
 
         audit(app, screen: "Job tab — one past job",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        // The page grew a Photos section between the record and the actions, so "Send report…" is
+        // now below the fold and a `List` has not built it yet. Same assertion, reached the same
+        // way the open job's controls already are.
+        let send = app.buttons["Send report…"]
+        scrollUntilVisible(send, in: app, named: "Send report…")
+        XCTAssertTrue(app.buttons["Share full-size photos"].exists,
+                      "a past job must offer its full-size pictures again")
+
+        audit(app, screen: "Job tab — a past job's photos and actions",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
     }
 
@@ -127,6 +139,69 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
 
         audit(app, screen: "Job tab — job in progress at AX5",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
+    // MARK: - The evidence review
+
+    /// The photos section on an open job, and the review step that closing puts in front of the
+    /// technician. Both carry pictures, which is exactly where a screen stops being readable by
+    /// label alone — every thumbnail has to say what it is, whether it is going out, and whether
+    /// its faces were blurred.
+    func testTheJobPhotosSectionAndTheCloseReview() {
+        let app = launch([.configured, .seedFieldJob, .seedFieldPhotos])
+        openJobTab(in: app)
+
+        let number = app.staticTexts["Job 1005"]
+        awaitScreen(number, named: "The open job with photos")
+
+        let share = app.buttons["Share full-size photos"]
+        scrollUntilVisible(share, in: app, named: "Share full-size photos")
+        XCTAssertTrue(app.buttons["Add from the photo library"].exists,
+                      "an open job must offer to add a picture from the phone")
+
+        audit(app, screen: "Job tab — photos on the job",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        let close = app.buttons["Close job"]
+        scrollUntilVisible(close, in: app, named: "Close job")
+        close.tap()
+
+        let review = app.navigationBars["Photos for the report"]
+        awaitScreen(review, named: "The evidence review")
+
+        audit(app, screen: "Job tab — evidence review at close", deferring: formDeferrals)
+
+        // The four things the step offers are under the grid, so a `List` has not built them yet.
+        let skip = app.buttons["Skip photos and close the job"]
+        scrollUntilVisible(skip, in: app, named: "Skip photos and close the job")
+        XCTAssertTrue(app.buttons["Include all"].exists,
+                      "the review must offer to take every picture in one tap")
+        XCTAssertTrue(app.buttons["Close job and send these"].exists)
+
+        audit(app, screen: "Job tab — evidence review actions", deferring: formDeferrals)
+    }
+
+    /// The review at the largest accessibility size. A grid of thumbnails beside wrapping captions
+    /// and two optional mark buttons is the shape most likely to clip, and the one a technician
+    /// with low vision most needs to be able to read before a picture goes to a customer.
+    func testTheCloseReviewAtTheLargestAccessibilitySize() {
+        let app = launch([.configured, .seedFieldJob, .seedFieldPhotos], contentSizeCategory: Self.ax5)
+        openJobTab(in: app)
+
+        let number = app.staticTexts["Job 1005"]
+        awaitScreen(number, named: "The open job with photos at AX5")
+
+        let close = app.buttons["Close job"]
+        scrollUntilVisible(close, in: app, named: "Close job at AX5")
+        close.tap()
+
+        let review = app.navigationBars["Photos for the report"]
+        awaitScreen(review, named: "The evidence review at AX5")
+        let includeAll = app.buttons["Include all"]
+        scrollUntilVisible(includeAll, in: app, named: "Include all at AX5")
+        awaitStableFrame(of: includeAll, named: "Include all at AX5")
+
+        audit(app, screen: "Job tab — evidence review at AX5", deferring: formDeferrals)
     }
 
     private static let ax5 = "UICTContentSizeCategoryAccessibilityXXXL"

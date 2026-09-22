@@ -528,7 +528,123 @@ final class JobTabModelTests: XCTestCase {
         XCTAssertNil(makeModel().pastJob(id: "not-a-session"))
     }
 
+    // MARK: - Photos (Plan FO P2a)
+
+    func testAJobWithNoPhotosSaysSoAndOffersNoReview() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+
+        XCTAssertEqual(model.state.active?.photoCount, 0)
+        let review = try XCTUnwrap(model.evidenceReview)
+        XCTAssertTrue(review.isEmpty)
+        XCTAssertTrue(model.evidenceSelection().entries.isEmpty)
+    }
+
+    func testThePhotosSectionCountsWhatTheJobHasCollected() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        attach(origin: .photoLog, caption: "leak site")
+        attach(origin: .capture, caption: "the coil")
+
+        XCTAssertEqual(model.state.active?.photoCount, 2)
+        let review = try XCTUnwrap(model.evidenceReview)
+        XCTAssertEqual(review.count, 2)
+        XCTAssertEqual(review.groups.map(\.title), [EvidenceRenderPlan.jobLevelTitle])
+        XCTAssertEqual(model.evidenceSelection().includedCount, 1,
+                       "only the logged one is ticked to start with")
+    }
+
+    /// The face-blur line is not in P2 on purpose: it arrives with the photos it describes.
+    func testTheFaceBlurLineFollowsTheGlobalSetting() throws {
+        let previous = Config.privacyFilterEnabled
+        defer { Config.setPrivacyFilterEnabled(previous) }
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+
+        Config.setPrivacyFilterEnabled(true)
+        XCTAssertEqual(model.evidenceReview?.faceBlurLine, "Face blur: On")
+        Config.setPrivacyFilterEnabled(false)
+        XCTAssertEqual(model.evidenceReview?.faceBlurLine, "Face blur: Off")
+    }
+
+    /// The ordering P2 left room for: the selection is written while the session is still open, so
+    /// the record the close takes already carries it.
+    func testClosingWritesTheSelectionOntoTheRecordBeforeTheSessionEnds() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        attach(origin: .photoLog, caption: "leak site")
+        var selection = model.evidenceSelection()
+        selection.setRole(.fault, for: selection.entries[0].itemId)
+
+        let closed = try model.closeJob(evidence: selection.confirmed())
+
+        let record = try XCTUnwrap(closed.record)
+        XCTAssertTrue(record.evidenceSelection?.reviewed == true)
+        XCTAssertEqual(record.evidenceSelection?.entries.first?.role, .fault)
+        XCTAssertEqual(record.media.count, 1)
+        XCTAssertEqual(flow.closeCount, 1, "closing still goes through the flow exactly once")
+        XCTAssertEqual(record.evidencePlan.itemIds, record.media.map(\.id))
+    }
+
+    /// Skipping is one tap, and it sends today's record: `reviewed` stays false, so the export
+    /// takes its unchanged path.
+    func testSkippingLeavesTheRecordUnreviewed() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        attach(origin: .photoLog, caption: "leak site")
+
+        let closed = try model.closeJob(evidence: EvidenceSelection.skipped())
+
+        let record = try XCTUnwrap(closed.record)
+        XCTAssertFalse(record.evidenceSelection?.reviewed ?? true)
+        XCTAssertTrue(record.evidencePlan.isEmpty)
+    }
+
+    /// Closing without going through the review at all — the path a job with no photos takes —
+    /// leaves the record exactly as it was.
+    func testClosingWithNoEvidenceArgumentTouchesNothing() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        attach(origin: .photoLog, caption: "leak site")
+
+        let closed = try model.closeJob()
+        XCTAssertNil(try XCTUnwrap(closed.record).evidenceSelection)
+    }
+
+    /// A past job shows the selection that went out, not a fresh proposal — which is what makes
+    /// "Share full-size photos" hand out the files the customer's PDF was made from.
+    func testAPastJobCarriesTheSelectionThatWentOut() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        attach(origin: .photoLog, caption: "leak site")
+        attach(origin: .capture, caption: "the van")
+        var selection = model.evidenceSelection()
+        selection.setIncluded(false, for: selection.entries[0].itemId)
+        selection.setIncluded(true, for: selection.entries[1].itemId)
+        let closed = try model.closeJob(evidence: selection.confirmed())
+
+        let past = try XCTUnwrap(model.pastEvidence(sessionId: closed.session.id))
+        XCTAssertEqual(past.review.count, 2)
+        XCTAssertEqual(past.selection.includedItemIds.count, 1)
+        XCTAssertEqual(past.review.shareURLs(for: past.selection).map(\.lastPathComponent),
+                       past.selection.includedItemIds)
+    }
+
+    func testAPastJobWithNoPhotosHasNoPhotosSection() throws {
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        let closed = try model.closeJob()
+        XCTAssertNil(model.pastEvidence(sessionId: closed.session.id))
+    }
+
     // MARK: - Helpers
+
+    /// One photograph on the open job. The bytes do not matter here — what is under test is the
+    /// catalogue, the selection and the ordering, all of which are metadata.
+    private func attach(origin: JobMediaItem.Origin, caption: String?) {
+        service.attachPhoto(Data([0xFF, 0xD8, 0xFF]), caption: caption, origin: origin,
+                            filterWasOn: false)
+    }
 
     private func runJob(reference: String) throws {
         let model = makeModel()
@@ -599,8 +715,11 @@ final class RecordingJobFlow: JobFlowHosting {
         await inner.answerUnitChange(answer)
     }
 
-    func leaveJobThreadQuestion(switchingTo threadId: String?) -> JobThreadQuestion? {
-        inner.leaveJobThreadQuestion(switchingTo: threadId)
+    /// P2a split the pure query from the act of putting the question; the tab's card is raised by
+    /// a tap, so it forwards the raising half. Same return value, same behaviour — what changed is
+    /// that the *query* beside it no longer writes an audit event.
+    func raiseLeaveJobThreadQuestion(switchingTo threadId: String?) -> JobThreadQuestion? {
+        inner.raiseLeaveJobThreadQuestion(switchingTo: threadId)
     }
 
     func confirmLeaveJobThread() {

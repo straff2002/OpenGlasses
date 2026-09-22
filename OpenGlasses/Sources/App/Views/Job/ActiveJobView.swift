@@ -16,8 +16,15 @@ struct ActiveJobView: View {
     @Binding var typedReference: String
     @Binding var leaveThread: JobTabModel.ThreadQuestionCard?
     let unitQuestion: JobTabModel.QuestionCard?
+    /// The job's photos and what is currently ticked (Plan FO P2a). Nil only if the job went away
+    /// between the state being read and this being drawn.
+    let evidence: EvidenceReviewModel?
+    @Binding var evidenceSelection: EvidenceSelection
     let onAnswerUnit: (JobTabModel.QuestionCard.Action) -> Void
     let onPauseResume: () -> Void
+    let onAddPhoto: (JobMediaItem.Origin, Data) -> Void
+    let onSharePhotos: () -> Void
+    let onOpenPrivacySettings: () -> Void
     let onOpenConversation: () -> Void
     let onReadBack: () -> Void
     let onClose: () -> Void
@@ -34,9 +41,15 @@ struct ActiveJobView: View {
             timeSection
             unitSection
             workSection
-            // Plan FO P2a adds a Photos section here — the job's evidence, grouped by task, with
-            // the face-blur state stated in plain words beside it. The close flow above it gains
-            // the review step that decides which of them go out.
+            // The job's evidence, with the face-blur state stated in plain words beside it. What
+            // of it goes out is decided at close, in `JobEvidenceReviewView`; what this section is
+            // for is knowing, mid-job, that the pictures are landing somewhere.
+            if let evidence {
+                JobPhotosSection(review: evidence, selection: evidenceSelection,
+                                 onAdd: onAddPhoto,
+                                 onOpenSettings: onOpenPrivacySettings,
+                                 onShare: onSharePhotos)
+            }
             actionsSection
         }
         .ogFormStyle()
@@ -258,7 +271,9 @@ struct ActiveJobView: View {
 
             Button("Close job", role: .destructive, action: onClose)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
-                .accessibilityHint("Stops the clock, finishes the record, and takes you to it so you can send it.")
+                .accessibilityHint(job.photoCount > 0
+                                   ? "Asks which photos go with the report, then stops the clock and finishes the record."
+                                   : "Stops the clock, finishes the record, and takes you to it so you can send it.")
         } header: {
             Text("This job")
         }
@@ -302,12 +317,18 @@ struct TaskRowView: View {
                     .foregroundStyle(Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
+                // `.secondary` on a `.secondary`-tinted capsule measured 3.2:1 against the row
+                // background in light appearance — below WCAG AA's 4.5:1 for 11-point text, and
+                // this chip is the only thing on the row that says whether the work is done. The
+                // primary label on a slightly stronger fill reads as the same quiet chip and
+                // measures 15:1 light / 11:1 dark. Nothing here is tinted with the accent: a
+                // status is not an AI affordance.
                 Text(row.statusLabel)
                     .font(.caption2.weight(.medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
-                    .foregroundStyle(.secondary)
+                    .background(Capsule().fill(Color.secondary.opacity(0.22)))
+                    .foregroundStyle(Color.primary)
             }
             if let evidence = row.evidence {
                 Text(evidence).font(.caption).foregroundStyle(Color.secondary)

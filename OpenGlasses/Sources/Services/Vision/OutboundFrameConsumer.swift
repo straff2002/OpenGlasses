@@ -97,6 +97,14 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// purpose: the saliency subscription needs raw pixels and stays exempt, while the crop it
     /// produces leaves the app and does not.
     case dwellCaptureSave
+    /// A picture the *phone* took, or one chosen from its library, attached to an open job's
+    /// evidence (Plan FO P2a). Listed although its pixels never came from `CameraService`: the
+    /// roster's question is "did these pixels pass the chokepoint before they became egress", and
+    /// a phone photo in a work order that reaches a customer is egress by any reading. It was the
+    /// one job-evidence route with no chokepoint at all — `handlePhoneCapture` filtered by
+    /// neither the relay nor the still accessor — which is precisely the gap this file exists to
+    /// stop being invisible.
+    case jobPhoneEvidence
 
     // MARK: - On-device still readers (exempt, and asked to say so)
     //
@@ -168,6 +176,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
         /// `CameraService.filteredStill(for:source:)` — a still that has already been through the
         /// chokepoint, or an explicit `.unavailable`. The tap a still reader should be using.
         case filteredStill
+        /// Pixels the consumer already holds and that never came from `CameraService` at all — a
+        /// phone-camera capture, a library picture. There is no camera tap to police, but there is
+        /// still an egress, so the consumer filters at its own chokepoint through
+        /// `StillImageFiltering` before the bytes go anywhere.
+        case heldImage
     }
 
     /// What protects the consumer.
@@ -204,6 +217,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .readingCompanion: return "ReadingCompanionService"
         case .fingerspelling: return "FingerspellingSessionService"
         case .dwellCapture, .dwellCaptureSave: return "DwellCaptureService"
+        case .jobPhoneEvidence: return "JobPhotoEvidenceService"
         case .structuredVisionAssessment: return "StructuredVisionService"
         case .safetyAssessment: return "SafetyAssessmentService"
         case .assistiveGuidanceLoop: return "AssistiveModeService"
@@ -250,7 +264,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .readingCompanion, .fingerspelling, .dwellCapture: return .onDeviceVision
         case .structuredVisionAssessment, .safetyAssessment: return .visionAssessment
         case .assistiveGuidanceLoop, .navigationAssist, .liveCoach: return .assistiveGuidance
-        case .capturePhotoTool, .photoLogTool, .moneyIdentifierTool: return .toolPhotoCapture
+        case .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
+             .jobPhoneEvidence: return .toolPhotoCapture
         case .dwellCaptureSave: return .photoLibrary
         case .mcpFrameRequest: return .remoteFrameRequest
         case .faceRecognitionTool: return .faceRecognition
@@ -272,6 +287,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .liveSessionPollFallback, .directModelTurn, .pinnedFrame, .agentAttachment,
              .sceneNarration, .fitnessPoseFrame: return .latestFrameStill
         case .dwellCaptureSave: return .rawCameraPublisher
+        case .jobPhoneEvidence: return .heldImage
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .studyScan, .teleprompterScan, .readingAccessibilityTool,
@@ -293,7 +309,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .fingerspelling, .dwellCapture: return .exemptByScope
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
-             .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture: return .chokepoint
+             .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture,
+             .jobPhoneEvidence: return .chokepoint
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
@@ -311,8 +328,12 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// Types allowed to read a raw still — `CameraService.latestFrame` — rather than going through
     /// `filteredStill(for:source:)`. Everything whose tap is a raw one: the on-device consumers, the
     /// preview, face recognition, and the chokepoint readers that filter the still themselves.
+    ///
+    /// A `heldImage` consumer is **not** among them: it never asked the camera for anything, so a
+    /// raw still appearing in it would be a new tap nobody argued for.
     static var typesAllowedOnARawStill: Set<String> {
-        Set(allCases.filter { $0.tap != .filteredStill && $0.tap != .outboundRelay }
+        Set(allCases.filter { $0.tap != .filteredStill && $0.tap != .outboundRelay
+                              && $0.tap != .heldImage }
                     .map(\.owningType))
     }
 

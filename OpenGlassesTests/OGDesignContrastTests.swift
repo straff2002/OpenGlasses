@@ -385,3 +385,99 @@ final class OGDesignContrastTests: XCTestCase {
         XCTAssertFalse(ContrastRatio.meetsAA(3.2, size: .normal))
     }
 }
+
+// MARK: - The Job tab's chips
+
+/// The two chips the Job tab draws out of **system** greys rather than out of the palette.
+///
+/// `OGTheme.contrastAudit` walks every pair the design tokens paint, and neither of these is one:
+/// the task-status chip ("Done" / "In progress") and the evidence review's optional Fault/Fix marks
+/// are `Color.secondary` over a `Color.secondary`-tinted capsule, which is a pair of *system*
+/// semantic colours. That is exactly how both shipped below AA without anything failing — so they
+/// are measured here, with the same arithmetic, against the values the system publishes for the
+/// colours the code names.
+///
+/// Nothing here is tinted with the accent. A task's status is not an AI affordance, and the
+/// marked role chip's coral is a fill behind an opaque label rather than coloured text.
+final class JobChipContrastTests: XCTestCase {
+
+    /// The system colours involved, per appearance.
+    ///
+    /// `UIColor.secondaryLabel` carries its own alpha — 0.6 — which is part of the colour rather
+    /// than something the call site chose, so a `.opacity(0.15)` capsule of it composites at
+    /// 0.6 × 0.15. Getting that wrong is what makes a chip look darker on paper than on screen.
+    private struct Appearance {
+        let secondaryLabel: SRGBColor
+        let secondaryLabelAlpha: Double
+        /// `UIColor.secondarySystemGroupedBackground` — an inset-grouped list row, which is what
+        /// both chips sit on.
+        let row: SRGBColor
+        /// `Color.primary` — `UIColor.label`, opaque in both schemes.
+        let primaryLabel: SRGBColor
+        let name: String
+
+        static let light = Appearance(secondaryLabel: SRGBColor(hex: 0x3C3C43),
+                                      secondaryLabelAlpha: 0.6,
+                                      row: SRGBColor(hex: 0xFFFFFF),
+                                      primaryLabel: .black,
+                                      name: "light")
+        static let dark = Appearance(secondaryLabel: SRGBColor(hex: 0xEBEBF5),
+                                     secondaryLabelAlpha: 0.6,
+                                     row: SRGBColor(hex: 0x1C1C1E),
+                                     primaryLabel: .white,
+                                     name: "dark")
+        static let both = [light, dark]
+
+        /// The capsule's rendered fill: the secondary grey at `opacity` over the row.
+        func capsule(opacity: Double) -> SRGBColor {
+            secondaryLabel.composited(alpha: secondaryLabelAlpha * opacity, over: row)
+        }
+
+        /// `Color.secondary` text as it renders on that capsule.
+        func secondaryText(on fill: SRGBColor) -> SRGBColor {
+            secondaryLabel.composited(alpha: secondaryLabelAlpha, over: fill)
+        }
+    }
+
+    /// Both chips are 11–12 point, which is nowhere near WCAG's "large text", so the floor is the
+    /// full 4.5:1 rather than 3:1.
+    private let floor = 4.5
+
+    // MARK: What shipped, and why it changed
+
+    /// The pairing P2 shipped, recorded as the reason this file grew a section. Left as an
+    /// assertion rather than a comment so that anyone who reverts the fix finds out here.
+    func testTheSecondaryOnSecondaryChipWasBelowAAInLight() {
+        let light = Appearance.light
+        let fill = light.capsule(opacity: 0.15)
+        let ratio = ContrastRatio.ratio(light.secondaryText(on: fill), fill)
+        XCTAssertLessThan(ratio, floor,
+                          "the pairing this section exists to replace now passes — if the system "
+                          + "greys changed, re-measure the chips rather than keeping this test")
+        XCTAssertEqual(ratio, 3.24, accuracy: 0.05)
+    }
+
+    // MARK: What is drawn now
+
+    /// "Done" / "In progress" on a task row — the only thing on the row that says whether the work
+    /// is finished.
+    func testTheTaskStatusChipMeetsAAInBothSchemes() {
+        for appearance in Appearance.both {
+            let fill = appearance.capsule(opacity: 0.22)
+            let ratio = ContrastRatio.ratio(appearance.primaryLabel, fill)
+            XCTAssertGreaterThanOrEqual(ratio, floor,
+                                        "the task status chip is \(ratio) in \(appearance.name)")
+        }
+    }
+
+    /// The optional Fault/Fix marks in the evidence review, in their unmarked state — the marked
+    /// one is an accent fill under the same opaque label.
+    func testTheEvidenceRoleChipMeetsAAInBothSchemes() {
+        for appearance in Appearance.both {
+            let fill = appearance.capsule(opacity: 0.18)
+            let ratio = ContrastRatio.ratio(appearance.primaryLabel, fill)
+            XCTAssertGreaterThanOrEqual(ratio, floor,
+                                        "the role chip is \(ratio) in \(appearance.name)")
+        }
+    }
+}

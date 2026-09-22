@@ -1348,20 +1348,92 @@ final class FieldSessionService: ObservableObject {
     /// backend when one exists — best-effort, never blocking the capture.
     var offlineQueue: OfflineQueue?
 
-    func attachPhoto(_ data: Data, caption: String? = nil) -> URL? {
-        let url = logger?.attachPhoto(data, caption: caption)
-        if let url {
-            let name = url.lastPathComponent
-            attachEvidence { evidence in
-                if !evidence.photos.contains(name) { evidence.photos.append(name) }
-            }
+    /// Whether a job is open enough to take evidence. **Paused counts**: the billing clock has
+    /// stopped, not the visit, and the same `endedAt` rule the rest of the guided flow keys on
+    /// (Plan FO P1) is the one that decides whether a photograph belongs to this job.
+    var isOpenForEvidence: Bool {
+        guard let session = activeSession else { return false }
+        return session.endedAt == nil && session.outcome != .cancelled
+    }
+
+    /// Attach a photo to the open job (Plan FO P2a).
+    ///
+    /// The bytes are expected to be the *filtered* copy: every route asks for one in its own right
+    /// — `filteredStill(for:source:)` for a glasses still, `JobPhotoEvidenceService` for a picture
+    /// the phone already holds — because filtering is not inherited, and the copy stored here is
+    /// the only one that survives. `filterWasOn` records the app-wide setting as it stood at
+    /// capture, so review can say what the recipient will see.
+    @discardableResult
+    func attachPhoto(_ data: Data, caption: String? = nil,
+                     origin: JobMediaItem.Origin = .photoLog,
+                     filterWasOn: Bool = false) -> URL? {
+        guard isOpenForEvidence, let url = logger?.attachPhoto(data, caption: caption) else {
+            return nil
         }
-        if let url, let sessionId = activeSession?.id {
+        let name = url.lastPathComponent
+        let taskId = activeSession?.tasks.last { $0.status == .inProgress }?.id
+        attachEvidence { evidence in
+            if !evidence.photos.contains(name) { evidence.photos.append(name) }
+        }
+        mutateSession { session in
+            session.media.append(JobMediaItem(
+                id: name, kind: .photo, capturedAt: Date(), origin: origin,
+                taskId: taskId,
+                caption: caption?.isEmpty == false ? caption : nil,
+                filterWasOn: filterWasOn))
+            // A selection made earlier in the visit has to learn about a photo taken after it.
+            if let selection = session.evidenceSelection {
+                session.evidenceSelection = selection.reconciled(with: session.media)
+            }
+            return ()
+        }
+        if let sessionId = activeSession?.id {
             offlineQueue?.enqueue(QueuedOp.make(
                 kind: .photoUpload, sessionId: sessionId,
                 json: ["path": url.path, "caption": caption ?? ""]))
         }
         return url
+    }
+
+    // MARK: Evidence review (Plan FO P2a)
+
+    /// The job's evidence, oldest first — what the review grid draws and the export renders.
+    var jobMedia: [JobMediaItem] { activeSession?.media ?? [] }
+
+    /// The selection as it stands, reconciled against whatever evidence the job holds right now.
+    /// A job that has never reached the review step gets the proposal: `photo_log` ticked, every
+    /// other route offered.
+    func evidenceSelection() -> EvidenceSelection {
+        let media = jobMedia
+        guard let stored = activeSession?.evidenceSelection else {
+            return EvidenceSelection.proposed(for: media)
+        }
+        return stored.reconciled(with: media)
+    }
+
+    /// Record what the technician chose. Written **before** the job is closed, so the record the
+    /// close takes already carries it and the re-send reproduces the same PDF.
+    func setEvidenceSelection(_ selection: EvidenceSelection) {
+        guard isOpenForEvidence else { return }
+        mutateSession { $0.evidenceSelection = selection; return () }
+        logger?.append(.init(timestamp: Date(), kind: .evidenceSelected,
+                             text: "evidence selection",
+                             payload: ["reviewed": AnyCodable(selection.reviewed),
+                                       "included": AnyCodable(selection.includedCount),
+                                       "total": AnyCodable(selection.entries.count)]))
+    }
+
+    /// Where a session's evidence files live. Needed by the share sheet, which hands out the
+    /// stored (already filtered) originals rather than anything re-encoded.
+    func photosDirectory(sessionId: String) -> URL {
+        sessionsRoot
+            .appendingPathComponent(sessionId, isDirectory: true)
+            .appendingPathComponent("photos", isDirectory: true)
+    }
+
+    /// The finished session's own evidence, for a past job's review and re-share.
+    func media(sessionId: String) -> [JobMediaItem] {
+        history.first { $0.id == sessionId }?.media ?? []
     }
 
     // MARK: - Procedures

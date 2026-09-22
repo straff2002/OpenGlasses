@@ -847,6 +847,13 @@ class AppState: ObservableObject, AppStateProtocol {
             personaId: { [weak self] in self?.activePersona?.id },
             persistenceEnabled: { Config.conversationPersistenceEnabled }))
         guidedJobFlow.restoreOnLaunch()
+        // The blur the phone-sourced evidence goes through. Wired here rather than constructed
+        // with the service, because `privacyFilter` is built alongside it and a filter that is
+        // merely absent would fail every attachment closed.
+        jobPhotoEvidence.connect(.init(
+            sessions: { FieldSessionService.shared },
+            filter: { [weak self] in self?.privacyFilter },
+            filterEnabled: { Config.privacyFilterEnabled }))
     }
 
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
@@ -932,6 +939,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// through it, because a binding that only covered the end of a voice turn was a binding a
     /// CarPlay tap could break.
     let guidedJobFlow: GuidedJobFlow
+
+    /// Where a picture the *phone* took — or one picked out of its library — becomes job evidence
+    /// (Plan FO P2a). It is its own service because it is its own privacy chokepoint: those pixels
+    /// never pass `CameraService`, so nothing else would have filtered them.
+    let jobPhotoEvidence = JobPhotoEvidenceService()
 
     /// A tab one surface has asked the root tab bar to show, cleared by `MainView` once it has.
     ///
@@ -3334,6 +3346,18 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Hand the selected evidence, full size, to the system share sheet (Plan FO P2a).
+    ///
+    /// The files are the stored ones — already privacy-filtered at capture, never re-encoded — so
+    /// the technician can put the originals wherever the job actually needs them (AirDrop, Files,
+    /// a job system's share extension) while the work order keeps its downscaled copies. Nothing
+    /// is chosen here and nothing is sent: the sheet opens on a tap and the technician picks the
+    /// route, which is the same rule the report composer follows.
+    func presentEvidenceShare(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        deliveryShareItem = ShareItem(items: urls)
+    }
+
     /// Send a record the queue is still holding, by email, from the sync screen. Summary only:
     /// the exported files belong to a session that may be long finished, and a body a person can
     /// read is better than an attachment that may no longer be on disk.
@@ -3458,6 +3482,11 @@ class AppState: ObservableObject, AppStateProtocol {
         guard let req = phoneCameraRequest else { return }
         phoneCameraRequest = nil
         cameraService.saveToPhotoLibrary(data)
+        // Plan FO P2a: a picture taken on the phone while a job is open belongs to that job, with
+        // its time, its task and what it was taken for. The service filters it first — the pixels
+        // never went near `CameraService`, so nothing upstream of this has blurred them — and
+        // stores nothing at all when the blur must run and cannot.
+        jobPhotoEvidence.attach(imageData: data, origin: .phoneCamera, caption: req.prompt)
         Task { await sendPhotoToLLM(imageData: data, prompt: req.prompt, userLog: req.userLog) }
     }
 

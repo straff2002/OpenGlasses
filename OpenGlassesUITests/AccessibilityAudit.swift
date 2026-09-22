@@ -18,6 +18,9 @@ enum LaunchState: String {
     case seedFieldHistory = "-OGUITestSeedFieldHistory"
     /// The above, plus a job open with a number, a machine and two tasks on it.
     case seedFieldJob = "-OGUITestSeedFieldJob"
+    /// The open job as above, with photographs on it — what the close-job evidence review needs
+    /// in order to have anything to review.
+    case seedFieldPhotos = "-OGUITestSeedFieldPhotos"
 }
 
 // MARK: - Deferrals

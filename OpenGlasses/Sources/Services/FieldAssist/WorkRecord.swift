@@ -33,6 +33,11 @@ struct WorkRecord: Codable, Equatable {
     let partsRequests: [PartsRequest]
     /// Evidence recorded when no task was active — it belongs to the visit, not to nothing.
     let jobEvidence: FieldSession.Evidence
+    /// The job's evidence files, described (Plan FO P2a).
+    let media: [JobMediaItem]
+    /// What the technician chose to send. Carried on the record so a re-send from a past job
+    /// reproduces the PDF that went out the first time rather than re-deciding it.
+    let evidenceSelection: EvidenceSelection?
     let escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
@@ -54,6 +59,8 @@ struct WorkRecord: Codable, Equatable {
         case tasks
         case partsRequests = "parts_requests"
         case jobEvidence = "job_evidence"
+        case media
+        case evidenceSelection = "evidence_selection"
         case escalations
         case startedAt = "started_at"
         case endedAt = "ended_at"
@@ -82,6 +89,8 @@ struct WorkRecord: Codable, Equatable {
         self.tasks = session.tasks
         self.partsRequests = session.partsRequests
         self.jobEvidence = session.jobEvidence
+        self.media = session.media
+        self.evidenceSelection = session.evidenceSelection
         self.escalations = session.escalations.map {
             Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil)
         }
@@ -97,7 +106,49 @@ struct WorkRecord: Codable, Equatable {
             : nil
     }
 
+    /// Hand-written so a record exported before the evidence review existed still decodes.
+    ///
+    /// The same rule `FieldSession.init(from:)` follows and for the same reason: the synthesized
+    /// decoder throws on a missing key for a non-optional property, and `media` is a collection.
+    /// A record with no catalogue simply has nothing to show at review — which is exactly what an
+    /// older job is.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try c.decode(String.self, forKey: .sessionId)
+        jobReference = try c.decodeIfPresent(String.self, forKey: .jobReference)
+        vaultId = try c.decode(String.self, forKey: .vaultId)
+        vaultName = try c.decode(String.self, forKey: .vaultName)
+        assetId = try c.decodeIfPresent(String.self, forKey: .assetId)
+        equipment = try c.decodeIfPresent(Equipment.self, forKey: .equipment)
+        identityFields = try c.decodeIfPresent([DeviceIdentityField].self, forKey: .identityFields) ?? []
+        tasks = try c.decodeIfPresent([FieldSession.Task].self, forKey: .tasks) ?? []
+        partsRequests = try c.decodeIfPresent([PartsRequest].self, forKey: .partsRequests) ?? []
+        jobEvidence = try c.decodeIfPresent(FieldSession.Evidence.self, forKey: .jobEvidence)
+            ?? FieldSession.Evidence()
+        media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
+        evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
+        escalations = try c.decodeIfPresent([Escalation].self, forKey: .escalations) ?? []
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
+        billableSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .billableSeconds)
+        billableMinutes = try c.decodeIfPresent(Int.self, forKey: .billableMinutes) ?? 0
+        billingBasis = try c.decodeIfPresent(FieldAssistBillingBasis.self, forKey: .billingBasis)
+        minutesPerBillingUnit = try c.decodeIfPresent(Int.self, forKey: .minutesPerBillingUnit)
+        billableUnits = try c.decodeIfPresent(Int.self, forKey: .billableUnits)
+    }
+
     // MARK: - Derived views
+
+    /// The evidence as the report will carry it: only what the technician chose, grouped by task,
+    /// Fault before Fix before unmarked. Empty when the review was skipped or never reached — the
+    /// record then prints the text bullets it always has.
+    var evidencePlan: EvidenceRenderPlan {
+        guard let evidenceSelection, evidenceSelection.reviewed else {
+            return EvidenceRenderPlan(groups: [])
+        }
+        return EvidenceRenderPlan.make(items: media, selection: evidenceSelection,
+                                       taskTitles: tasks.map { (id: $0.id, title: $0.title) })
+    }
 
     func tasks(status: FieldSession.Task.Status) -> [FieldSession.Task] {
         tasks.filter { $0.status == status }
@@ -255,7 +306,17 @@ struct WorkRecord: Codable, Equatable {
         if let elapsed = task.elapsed {
             parts.append(minutesPhrase(minutes: Int((elapsed / 60.0).rounded())))
         }
-        return parts.joined(separator: ". ") + "."
+        // The full stop is added only when the last piece does not already end a sentence. A
+        // completion note is the technician's own words and routinely arrives punctuated ("New
+        // trap fitted and tested."), which used to print as "…tested..".
+        let line = parts.joined(separator: ". ")
+        return Self.terminated(line)
+    }
+
+    /// End the line with exactly one sentence-ending mark.
+    private static func terminated(_ line: String) -> String {
+        guard let last = line.last else { return line }
+        return ".!?".contains(last) ? line : line + "."
     }
 
     /// "1 reading, 2 photos, 1 page verified" — nil when nothing was recorded.
