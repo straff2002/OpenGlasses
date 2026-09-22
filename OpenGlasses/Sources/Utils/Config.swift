@@ -2171,6 +2171,42 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "vaultPackCatalogURL")
     }
 
+    // MARK: - Vault links (Plan FS §3)
+
+    /// Hard ceiling on a vault received from a link: the download stops here, and so does the
+    /// unpack, so a small archive cannot inflate past it either.
+    ///
+    /// 250 MB is the plan's proposal and what ships. It is set by what a real vault is rather than
+    /// by what a phone can hold: a trade vault is core markdown plus a handful of manuals as
+    /// extracted text — a few megabytes — and the size only becomes interesting when the
+    /// manufacturers' original PDFs ride along, which is the case this ceiling is for. A 250 MB
+    /// vault is already an unusual one, and an archive that wants more is asking for something
+    /// this path is not for.
+    static let vaultLinkMaxBytes = 250 * 1024 * 1024
+
+    /// Above this, a download on a cellular connection is called out before it starts. A
+    /// technician on a job is very often on a phone plan, and a vault with manuals in it is tens
+    /// of megabytes.
+    static let vaultLinkCellularWarningBytes = 25 * 1024 * 1024
+
+    /// Whether an organisation's configuration permits installing a vault that is not signed by a
+    /// listed publisher.
+    ///
+    /// The policy hook Plan CT will set, and the behaviour that reads it, shipped together so the
+    /// refusal is real rather than promised: an organisation profile writes this key, and the link
+    /// import refuses an unsigned archive when it is false. Medical mode refuses regardless — see
+    /// `VaultLinkInstallPolicy`. Default is true, which is the behaviour of a phone that has never
+    /// been given a profile.
+    static var organizationAllowsUnsignedVaults: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: "organizationAllowsUnsignedVaults") != nil else {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: "organizationAllowsUnsignedVaults")
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults") }
+    }
+
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
     /// index verification.
     static var skillPackDevModeEnabled: Bool {

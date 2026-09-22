@@ -73,6 +73,7 @@ enum SensitiveStore: String, CaseIterable {
     case fieldSessionLogs
     case vaultDocuments
     case vaultLedger
+    case vaultLinkStaging
     case fieldDeliverySettings
     case safetyAssessments
 
@@ -506,6 +507,18 @@ enum SensitiveStore: String, CaseIterable {
                                        "OpenGlasses/Sources/Services/Vault/VaultManualRemoval.swift"],
                           location: "Documents/Vaults/{id}/_documents.json, and _removals.json beside "
                               + "it while a manual removal is in flight")
+
+        case .vaultLinkStaging:
+            return Record(store: self, dataClass: .documentCorpus, subjectLinkage: .none,
+                          protection: .complete, backupExcluded: true,
+                          retention: .policy("deleted when the install finishes, fails or is "
+                                             + "dismissed; a directory found at launch belonged to "
+                                             + "an approval that no longer exists and is swept"),
+                          deleteAll: .api("VaultLinkStagingStore.removeAbandonedSessions()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "VaultLinkStagingStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Vault/VaultLinkStagingStore.swift"],
+                          location: "Caches/VaultLinkStaging/{approval}/archive.zip")
 
         case .fieldDeliverySettings:
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,

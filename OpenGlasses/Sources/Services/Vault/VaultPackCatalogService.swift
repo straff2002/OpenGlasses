@@ -61,9 +61,12 @@ final class VaultPackCatalogService: ObservableObject {
         catalogState = .loading
         do {
             let envelope = try await fetch(url)
-            switch VaultPackCatalog.parse(envelopeData: envelope, publicKeyBase64: publicKeyBase64) {
-            case .success(let entries):
+            switch VaultPackCatalog.parseIndex(envelopeData: envelope, publicKeyBase64: publicKeyBase64) {
+            case .success(let index):
+                let entries = index.packs
                 catalogState = .loaded(entries)
+                // The same signed document carries who may sign a vault archive (Plan FS §2).
+                VaultPublisherDirectory.shared.update(publishers: index.publishers)
                 await StoreKitService.shared.loadPackProducts(ids: Set(entries.map(\.id)))
             case .failure(let error):
                 catalogState = .failed(Self.describe(error))

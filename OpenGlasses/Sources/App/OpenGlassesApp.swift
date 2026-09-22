@@ -254,6 +254,16 @@ struct OpenGlassesApp: App {
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
 
+                // A vault link scanned outside the app (Plan FS PR2). Nothing is fetched or
+                // installed from the link itself — this raises the review flow and no more.
+                Color.clear
+                    .sheet(isPresented: Binding(
+                        get: { appState.vaultLink.stage != .idle },
+                        set: { if !$0 { appState.vaultLink.dismiss() } })) {
+                        VaultLinkSheet(service: appState.vaultLink)
+                            .environmentObject(appState)
+                    }
+
                 // Apple Translation session host (BY P3) — invisible; the framework only hands
                 // out sessions through a view, so the on-device tier's session lives here.
                 TranslationEngineHost(engine: appState.translationEngine)
@@ -338,6 +348,16 @@ struct OpenGlassesApp: App {
                             PrivacyLog.deepLink(route: .skillPack, source: PrivacyToken("SwiftUI"),
                                                 verdict: .malformed, error: .refused(error))
                         }
+                        return
+                    }
+
+                    // A vault offered by a publisher's QR code or link (Plan FS PR2). Outside the
+                    // DeepLinkTrust token gate for the same reason the skill-pack route is: a
+                    // scanned code cannot carry the app-group token. Nothing is fetched from the
+                    // link — the handler raises a review, the reader approves the site, and a
+                    // second confirmation follows the archive's contents.
+                    if url.scheme == "openglasses", url.host == "vault" {
+                        Task { @MainActor in appState.vaultLink.open(url) }
                         return
                     }
 
@@ -933,6 +953,20 @@ class AppState: ObservableObject, AppStateProtocol {
     let skillPackStore: SkillPackStore
     /// QR/LAN sideload path (Plan BX P3) — fetch + preview + human-confirmed install.
     let skillPackSideload: SkillPackSideloadService
+
+    /// Receiving a vault from a publisher's link or QR code (Plan FS PR2). This instance serves
+    /// the `openglasses://vault?src=…` route — the one a code scanned with the phone's own Camera
+    /// app opens. Custom Vaults holds its own, so a sheet opened there and a link arriving from
+    /// outside never share a half-finished review.
+    let vaultLink: VaultLinkService = {
+        let metered: () -> Bool = { AppStateProvider.shared?.reachability.isExpensive ?? false }
+        #if DEBUG
+        // A UI-test launch may hand it a fixture archive instead of a network response; nothing
+        // else about the pipeline changes, and none of that seam is in a Release build.
+        if let seeded = UITestSupport.vaultLinkService(isOnCellular: metered) { return seeded }
+        #endif
+        return VaultLinkService(isOnCellular: metered)
+    }()
 
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()

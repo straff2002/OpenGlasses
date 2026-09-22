@@ -26,6 +26,10 @@ struct WorkRecord: Codable, Equatable {
     let jobReference: String?
     let vaultId: String
     let vaultName: String
+    /// Where the vault came from, when that is something the record has to say (Plan FS §4): a
+    /// vault received from a link that was not signed by a listed publisher, or one whose
+    /// publisher has since been revoked. Nil — and silent — for every other vault.
+    let vaultSourceNote: String?
     let assetId: String?
     let equipment: Equipment?
     let identityFields: [DeviceIdentityField]
@@ -53,6 +57,7 @@ struct WorkRecord: Codable, Equatable {
         case jobReference = "job_reference"
         case vaultId = "vault"
         case vaultName = "vault_name"
+        case vaultSourceNote = "vault_source_note"
         case assetId = "asset_id"
         case equipment
         case identityFields = "identity_fields"
@@ -75,11 +80,12 @@ struct WorkRecord: Codable, Equatable {
 
     /// Build the record from a session. Pure: everything it needs is already on the session, so the
     /// same session always renders the same record.
-    init(session: FieldSession, vaultName: String) {
+    init(session: FieldSession, vaultName: String, vaultSourceNote: String? = nil) {
         self.sessionId = session.id
         self.jobReference = session.jobReference
         self.vaultId = session.vaultId
         self.vaultName = vaultName
+        self.vaultSourceNote = vaultSourceNote
         self.assetId = session.assetId
         self.equipment = session.equipment.map {
             Equipment(model: $0.modelToken, heading: $0.heading,
@@ -118,6 +124,7 @@ struct WorkRecord: Codable, Equatable {
         jobReference = try c.decodeIfPresent(String.self, forKey: .jobReference)
         vaultId = try c.decode(String.self, forKey: .vaultId)
         vaultName = try c.decode(String.self, forKey: .vaultName)
+        vaultSourceNote = try c.decodeIfPresent(String.self, forKey: .vaultSourceNote)
         assetId = try c.decodeIfPresent(String.self, forKey: .assetId)
         equipment = try c.decodeIfPresent(Equipment.self, forKey: .equipment)
         identityFields = try c.decodeIfPresent([DeviceIdentityField].self, forKey: .identityFields) ?? []
@@ -198,6 +205,9 @@ struct WorkRecord: Codable, Equatable {
     /// technician says "read back the job", and what the export prints.
     var summaryLines: [String] {
         var lines: [String] = [headerLine]
+        // Said once, near the top, before anything drawn from the vault is read back: a reviewer
+        // has to know the shelf was unverified before they read what came off it.
+        if let vaultSourceNote { lines.append(vaultSourceNote) }
         if let equipmentLine { lines.append(equipmentLine) }
         lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
 

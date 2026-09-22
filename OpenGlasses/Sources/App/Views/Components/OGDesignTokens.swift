@@ -256,6 +256,37 @@ extension OGTheme {
         dark: statusLabelValue(Token.error.dark, in: .dark).hex
     )
 
+    /// Plan FS — the unverified-source notice block: a wash of the warn hue over the row, and the
+    /// label that reads on **that**, not on the row behind it.
+    ///
+    /// The distinction matters and cost a test to find: `warnLabelToken` is corrected to the least
+    /// amount that clears AA on the card, so *any* tint over the card takes it back under. A notice
+    /// that paints its own ground has to correct its label against its own ground.
+    static let noticeFillOpacity = 0.12
+
+    static func warnNoticeFillValue(in scheme: OGColorScheme) -> SRGBColor {
+        Token.warn.value(for: scheme)
+            .composited(alpha: noticeFillOpacity, over: Token.card.value(for: scheme))
+    }
+
+    static let warnNoticeFillToken = OGColorToken(
+        light: warnNoticeFillValue(in: .light).hex,
+        dark: warnNoticeFillValue(in: .dark).hex
+    )
+
+    static let warnNoticeLabelToken = OGColorToken(
+        light: ContrastRatio.readable(Token.warn.light,
+                                      on: [warnNoticeFillValue(in: .light)]).hex,
+        dark: ContrastRatio.readable(Token.warn.dark,
+                                     on: [warnNoticeFillValue(in: .dark)]).hex
+    )
+
+    /// The notice's fill, its heading and its border. The border is the heading colour at full
+    /// strength rather than a wash of the hue: a 50% wash of the warn orange measured 2.07:1
+    /// against a white row, which is under the 3:1 a non-text boundary needs.
+    static let warnNoticeFill = warnNoticeFillToken.color
+    static let warnNoticeLabel = warnNoticeLabelToken.color
+
     /// Success / attention / failure text and the glyphs that sit beside it.
     static let okLabel = okLabelToken.color
     static let warnLabel = warnLabelToken.color

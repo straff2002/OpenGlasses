@@ -30,6 +30,10 @@ struct VaultManagerView: View {
     /// What the last removal attempt came to, and — when it can be retried — what to retry.
     @State private var removalOutcome: ManualRemovalOutcome?
     @StateObject private var packs = VaultPackCatalogService()
+    /// Receiving a vault from a publisher's link or code (Plan FS PR2). The app has no matching
+    /// "send" — there is no share-as-link, no QR to show and no upload anywhere in it.
+    @StateObject private var link = VaultLinkService()
+    @State private var addingFromLink = false
     @ObservedObject private var store = StoreKitService.shared
 
     /// One manual of one vault, named the way a removal is addressed: by the manifest's file name,
@@ -61,6 +65,12 @@ struct VaultManagerView: View {
                     importing = true
                 } label: {
                     Label("Import Vault Folder…", systemImage: "square.and.arrow.down")
+                }
+                .disabled(syncProgress != nil || removalInFlight != nil || !ownVaultsGate.allowsImport)
+                Button {
+                    addingFromLink = true
+                } label: {
+                    Label("Add from Link or QR…", systemImage: "link")
                 }
                 .disabled(syncProgress != nil || removalInFlight != nil || !ownVaultsGate.allowsImport)
                 if let explanation = ownVaultsGate.explanation {
@@ -159,6 +169,15 @@ struct VaultManagerView: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
             handleImport(result)
+        }
+        .sheet(isPresented: $addingFromLink) {
+            VaultLinkSheet(service: link) {
+                reloadLedgers()
+                if let manifest = installed.first(where: { VaultImporter.needsDocumentSync(manifest: $0) }),
+                   VaultImporter.receipt(for: manifest.id) != nil {
+                    Task { await sync(manifest) }
+                }
+            }
         }
         .alert("Failed", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
@@ -281,6 +300,17 @@ struct VaultManagerView: View {
                 .font(.caption).foregroundStyle(.secondary)
             if let pack {
                 Text("Pack v\(pack.version)\(pack.author.map { " · by \($0)" } ?? "")")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if let receipt = VaultImporter.receipt(for: manifest.id) {
+                if let badge = VaultSourceBadge.forInstalledVault(id: manifest.id) {
+                    OGStatusLabel(badge.label, kind: .warn)
+                    Text(badge.explanation).font(.caption2).foregroundStyle(.secondary)
+                } else if let publisher = receipt.publisherName {
+                    OGStatusLabel("Signed by \(publisher)", kind: .ok,
+                                  systemImage: "checkmark.seal.fill")
+                }
+                Text("Received from \(receipt.sourceHost)")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if manifest.hasDocuments {

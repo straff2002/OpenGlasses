@@ -24,6 +24,13 @@ enum LaunchState: String {
     /// The open job as above, with one length-capped clip on it — what the Photos-and-clips
     /// section and the review's clip row need in order to have anything to measure (Plan FO P2b).
     case seedFieldClips = "-OGUITestSeedFieldClips"
+    /// Plan FS PR2 — the vault-link review sheet, signed and unverified, and a vault already
+    /// received from a link so its row shows the badge.
+    case vaultLinkSigned = "-OGUITestVaultLinkSigned"
+    case vaultLinkUnverified = "-OGUITestVaultLinkUnverified"
+    case vaultReceivedBadge = "-OGUITestVaultReceivedBadge"
+    /// Dark appearance, for the half of a screenshot pass that is about the dark palette.
+    case darkAppearance = "-OGUITestDarkAppearance"
 }
 
 // MARK: - Deferrals

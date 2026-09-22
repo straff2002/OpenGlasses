@@ -8,6 +8,11 @@ import Network
 final class Reachability: ObservableObject {
     @Published private(set) var isOnline: Bool
 
+    /// Whether the current path costs the wearer money — a cellular or personal-hotspot link.
+    /// Read before a large, user-initiated download so the reader is told what they are about to
+    /// spend (Plan FS §3), and driven directly in tests like `isOnline`.
+    @Published private(set) var isExpensive = false
+
     /// Fired on every *change* with the new value. AppState/`SyncEngine` use the rising edge
     /// (false → true) to trigger a flush.
     var onChange: ((Bool) -> Void)?
@@ -23,7 +28,11 @@ final class Reachability: ObservableObject {
         if let monitor {
             monitor.pathUpdateHandler = { [weak self] path in
                 let online = path.status == .satisfied
-                Task { @MainActor in self?.update(online) }
+                let expensive = path.isExpensive
+                Task { @MainActor in
+                    self?.update(online)
+                    self?.setExpensive(expensive)
+                }
             }
             monitor.start(queue: DispatchQueue(label: "reachability", qos: .utility))
         }
@@ -35,6 +44,12 @@ final class Reachability: ObservableObject {
 
     /// Test / explicit seam: drive the online state directly.
     func setOnline(_ online: Bool) { update(online) }
+
+    /// Test / explicit seam for the metered-connection flag.
+    func setExpensive(_ expensive: Bool) {
+        guard expensive != isExpensive else { return }
+        isExpensive = expensive
+    }
 
     private func update(_ online: Bool) {
         guard online != isOnline else { return }

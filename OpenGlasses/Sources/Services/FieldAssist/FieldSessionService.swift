@@ -192,8 +192,10 @@ final class FieldSessionService: ObservableObject {
         // The visit's record leaves as its own queued operation, whatever else the session does
         // with it (Plan EM). The queue's sink is unchanged — this is a durable local tombstone
         // until a configured endpoint exists.
-        let record = WorkRecord(session: session,
-                                vaultName: activeVault?.manifest.name ?? session.vaultId)
+        let endedVaultName = activeVault?.manifest.name ?? session.vaultId
+        let record = WorkRecord(session: session, vaultName: endedVaultName,
+                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                                    .recordLine(vaultName: endedVaultName))
         offlineQueue?.enqueue(QueuedOp.make(workRecord: record))
         activeSession = nil
         activeVault = nil
@@ -733,7 +735,10 @@ final class FieldSessionService: ObservableObject {
 
     func workRecord() -> WorkRecord? {
         guard let session = activeSessionSnapshot() else { return nil }
-        return WorkRecord(session: session, vaultName: activeVault?.manifest.name ?? session.vaultId)
+        let name = activeVault?.manifest.name ?? session.vaultId
+        return WorkRecord(session: session, vaultName: name,
+                          vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                              .recordLine(vaultName: name))
     }
 
     // MARK: Delivery (Plan EM P2)
@@ -784,9 +789,10 @@ final class FieldSessionService: ObservableObject {
                         sessionId: String? = nil) -> ReportDelivery {
         let record: WorkRecord?
         if let sessionId, let session = history.first(where: { $0.id == sessionId }) {
-            record = WorkRecord(session: session,
-                                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name
-                                    ?? session.vaultId)
+            let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+            record = WorkRecord(session: session, vaultName: name,
+                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                                    .recordLine(vaultName: name))
         } else {
             record = workRecord()
         }
@@ -1031,6 +1037,17 @@ final class FieldSessionService: ObservableObject {
                                        "file": AnyCodable(result.file),
                                        "vault": AnyCodable(result.vaultId),
                                        "remaining_documents": AnyCodable(result.remainingDocuments)]))
+    }
+
+    /// Plan FS §4 — record what a vault link came to, when a job is open.
+    ///
+    /// Reviewing an offered vault mid-job and refusing it is a fact about the visit: the record
+    /// says an archive was offered, from which site, and whether it was signed, installed or
+    /// turned away. The note carries the source **host** and never the link, which may be a
+    /// purchase capability. Inert when no session is running.
+    func noteVaultLink(_ note: String, installed: Bool) {
+        guard activeSession != nil else { return }
+        logger?.appendLifecycle(installed ? .vaultReceived : .vaultLinkReviewed, note: note)
     }
 
     /// Whether a staged figure came off the manual this result removed. By document id when the
