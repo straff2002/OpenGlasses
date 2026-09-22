@@ -20,8 +20,11 @@ final class DeliverReportTool: NativeTool {
     PDF and the JSON record attached on channels that can carry a file; WhatsApp and Telegram get \
     the short summary and the job reference. The composer opens on the technician's phone with \
     everything filled in and **they** tap Send; nothing leaves the device until they do. Parts \
-    requests included in the report are marked sent once it goes. If the channel is not allowed \
-    for this job, the tool says so and names the ones that are. Requires an active session.
+    requests included in the report are marked sent once it goes. Clips chosen at close travel as \
+    files of their own where the channel can take them; one that is over that channel's size limit \
+    is named in the report and offered through the share sheet instead of being dropped. If the \
+    channel is not allowed for this job, the tool says so and names the ones that are. Requires an \
+    active session.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -90,9 +93,16 @@ final class DeliverReportTool: NativeTool {
             case .refused(let reason):
                 return reason
             case .allowed(let recipients):
+                // The clips are partitioned against this channel's budget before the PDF is
+                // rendered, because the PDF prints which of them travelled (Plan FO P2b).
+                let delivery = session.reportDelivery(
+                    for: channel,
+                    canSendAttachments: channel == .messages
+                        ? ReportComposerAvailability.messagesCanAttach : true)
                 let request = DeliveryRequest.make(
                     record: record, channel: channel, recipients: recipients,
-                    attachments: session.reportAttachments())
+                    attachments: delivery.attachments,
+                    clipPlan: delivery.clipPlan, clipItems: delivery.clipItems)
                 session.stageDelivery(request)
                 return request.confirmation
             }

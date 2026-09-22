@@ -7,7 +7,9 @@
 audits in three states at the default and largest text sizes, screenshots in both appearances); see
 *P2 as built* below.
 **P2a implemented 2026-09-22** — photo evidence at close, verified headless and on a simulator; see
-*P2a as built* below. P2b, P3 and P4 unbuilt.
+*P2a as built* below.
+**P2b implemented 2026-09-22** — clips as evidence, verified headless and on a simulator; see
+*P2b as built* below. P3 and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -410,6 +412,161 @@ Full suite 6689 tests, 13 skipped, 0 failures. Simulator: `JobTabAccessibilityTe
 `performAccessibilityAudit` on the tab absent, the empty state, the past-job list, a past job, a job
 in progress and its controls, and the whole screen again at `AccessibilityXXXL`. No device run.
 
+## P2b as built (2026-09-22)
+
+Clips as evidence. One new recorder (`JobClipRecorder`, beside the P1/P2a types under
+`OpenGlasses/Sources/Services/FieldAssist/Job/`), one pure per-channel budget
+(`AttachmentBudget` + `ClipDeliveryPlan`, under `Sources/Services/FieldAssist/`), one native tool
+(`record_clip`), and the delivery, export and Job-tab work that lets a clip reach a customer
+without ever being silently dropped.
+
+### The caps, and the audio decision
+
+- **Thirty seconds by default, sixty at most** (`Config.jobClipDefaultSeconds` /
+  `jobClipMaximumSeconds`; the plan's open question asked for defaults to be confirmed on a pilot
+  device, and these are stored rather than hard-coded so that confirmation is a setting and not a
+  build). Thirty is long enough to show a fault behaving — a compressor short-cycling, a fan
+  wobbling, a flame lifting — and short enough that the file still emails. A request longer than
+  the maximum is **clamped and said out loud**, not refused: the technician gets the longest clip
+  there is and is told what they got.
+- **No audio, deliberately.** `VideoRecordingService` does capture microphone audio through
+  `CaptureAudioRouter`, so the machinery was there to reuse — but the *policy* around it does not
+  transfer. That recorder's audio is something the wearer starts, is told about and stops; a job
+  clip is started by a sentence in the middle of a service visit, in a customer's plant room, very
+  likely with the customer standing in it. Recording bystander speech onto a file that is then
+  attached to a report is a consent question this plan has not asked; it has no equivalent of the
+  face blur to fall back on, because there is no way to blur a voice; and in medical/HIPAA mode it
+  would put a third party's voice into a compliance record that `DataStoreRegistry` already refuses
+  to delete. So v1 is silent, the refusal is written at the top of `JobClipRecorder` rather than
+  left as an unset flag, and the tool's own description tells the model the clip has no sound.
+
+### Decisions the draft left open
+
+- **A clip is never pre-selected, whatever route it arrived by.** P2a's default keys on the
+  *origin* — a `photo_log` picture is in unless removed, everything else is offered. That rule
+  cannot be extended to clips by adding an origin, because the reason is different: a clip is the
+  one piece of evidence that may not fit down the channel at all, so sending it is always something
+  the technician chose. `JobMediaItem.isIncludedByDefault` is therefore `kind == .photo &&
+  origin.isIncludedByDefault`, and the new `.clipRecord` origin answers false as well — belt and
+  braces, in the one place a wrong default would put a customer's plant room on a stranger's
+  laptop.
+- **Scope `.recording`, not a scope of its own.** A `PrivacyFilterScope` classifies a consumer by
+  where its pixels go, and a clip is frames written to a file on this device, which is exactly what
+  `.recording` already means. What differs from the long-form recorder is the length cap and where
+  the file is filed — neither of which is a privacy classification. The roster carries
+  `jobClipRecording` as a `.relay`-fed consumer on the `.outboundRelay` tap, and
+  `JobClipRecorderTests` scrapes the recorder's own source to prove it names no raw tap and takes
+  its publisher as a parameter, plus `AppState`'s one call site to prove that parameter is the
+  relay's.
+- **The stall window is four seconds, not the recorder's fifteen.** A thirty-second clip cannot
+  spend half of itself waiting for a stream that is not coming. The same rule differs in a second
+  way: a clip that has never seen a frame is judged from when it *started*, while
+  `VideoRecordingService` leaves a never-started recording alone indefinitely. A technician who
+  asked for a clip asked for a clip of something they can see.
+- **The job closing is noticed by the tick, not hooked onto the four ways a job can close.**
+  `isOpenForEvidence` is asked once a second while a clip runs — the same question every other
+  evidence route asks before it writes anything — which covers the tool, the Job tab, Settings and
+  the guided flow without four hooks that can each be forgotten.
+- **The poster frame is the first frame off the relay**, kept at capture and written beside the
+  clip as `<clip>.mp4.jpg`. Decoding one out of the file at review time would be a second pass over
+  pixels whose blur is already baked in, and would fail in exactly the case where the file is the
+  thing that went wrong. It is also what lets a scrolling grid draw a clip without an
+  `AVAssetImageGenerator` per row.
+- **The clips are partitioned before the PDF is rendered, against a stated reserve.** The work
+  order prints which clips travelled and which did not, so a partition that depended on the PDF's
+  own size would depend on a file it is printed into. `FieldSessionService.reportFileReserveBytes`
+  (3 MB) is the room the PDF and the JSON are given first; the clips take what is left. Stated
+  rather than measured, for the same reason `EvidenceImageBudget` is: the same job on the same
+  channel has to produce the same report twice, or a re-send is not a re-send.
+- **The endpoint sink refuses a clip permanently, with a reason.** It POSTs one JSON envelope per
+  op to an endpoint whose upload shape nobody has agreed — the same reason it has always delegated
+  photo uploads. Falling through to the local sink would have marked the clip *delivered*, to
+  nowhere. `EndpointSyncSink.carriesFiles` is the named seam for the day that changes, and
+  `clipOutcome(carriesFiles:)` is the decision, so the branch that matters is provable without a
+  network.
+- **A clip is queued under its own `OpKind.clipUpload`, not `photoUpload`.** `prunePhotoEvidence`
+  deletes the *files* behind delivered `photoUpload` ops under disk pressure, and a clip belongs to
+  a session log the store already calls a compliance record. Nothing prunes a clip.
+- **A clip with no measured size is never attached.** The honest answer for an unmeasurable file is
+  the route with no limit, which is the share sheet the technician taps.
+
+### The budgets, and how honest they are
+
+`AttachmentBudget.standard(for:canSendAttachments:)`:
+
+| Channel | Per file | Total | Notes |
+|---|---|---|---|
+| Email | 20 MB | 20 MB | Under the ~25 MB most mail providers refuse above |
+| Messages | 5 MB | 5 MB | Zero when `MFMessageComposeViewController.canSendAttachments()` says no |
+| Share sheet | no stated limit | no stated limit | The destination states its own |
+| Endpoint | 0 | 0 | Posts JSON; has never been handed a file |
+| WhatsApp / Telegram | 0 | 0 | Opened by URL scheme, which cannot attach |
+
+**These are conservative defaults, not device measurements, and the plan should not be read as
+claiming otherwise.** Neither MessageUI composer publishes a limit: Mail accepts whatever it is
+handed and the provider refuses it later, and `canSendAttachments()` answers yes or no without
+saying how large. The two numbers are `Config` values (`jobReportEmailBudgetBytes`,
+`jobReportMessagesBudgetBytes`) precisely so a pilot device can move them without a build. The open
+question about per-channel size therefore stays open, narrowed from "what are they?" to "are these
+two numbers right?".
+
+### What the draft got wrong
+
+- §5 says `DeliveryChannel.carriesAttachments` "grows a size-aware check". It did not, and should
+  not: `carriesAttachments` answers whether a channel can carry a file *at all*, which is a
+  property of the channel, while the size question also depends on what the device said about
+  Messages and on how large the report itself is. Making one boolean answer both would have put
+  the device's answer inside an enum that has no way to ask. The size lives in `AttachmentBudget`,
+  which takes both as inputs, and `carriesAttachments` is unchanged.
+- §5's "a selected clip is sent as its own attachment where the channel can take it" is right about
+  the mechanism and silent about the *order*. The order is the design, and getting it wrong
+  produces a PDF that describes a delivery that did not happen: partition first, render second,
+  attach third.
+- P2a's "slots left for P2b" said a clip "needs a line rather than an image, which is a branch in
+  `SessionExporter.drawEvidence` and nothing else". It was one branch there plus the heading (a job
+  with clips reads "Photos and clips"), the count the image budget is derived from (a clip must not
+  shrink the pictures, since it is not one of them), and the JSON's own `clips` list — the last of
+  which did not exist at all.
+
+### What is on screen
+
+- The Job tab's Photos section becomes **"Photos and clips"** the moment the job carries one, and
+  stays "Photos" otherwise. The kit's copy allowed it: the heading is an authored `Text`, and
+  `EvidenceReviewModel.sectionTitle` is the single place that decides. The close-job review's title
+  follows the same rule — "Photos for the report" becomes "Evidence for the report".
+- **Record a clip** sits in that section with a live countdown (`0:12 of 0:30`) while one runs, and
+  becomes **Stop the clip** with a destructive role. The countdown is stated in words as the
+  button's accessibility value, because a technician who cannot see how long is left either stops
+  too early or is surprised when it stops itself.
+- A clip's tile draws its poster frame with a timecode badge and a play glyph, and plays on the
+  phone in an `AVPlayer` sheet. Both overlays are pixels, so the row's spoken label leads with
+  "Clip, twelve seconds, …" and the review's row states the length, "cut short" where it applies,
+  and that a clip is sent as a file of its own.
+- A finished job's page gains **Clips with this report**: one row per included clip saying whether
+  it goes with the report or is over the size limit for the channel, and a **Share this clip**
+  button for each one that is. That is the over-budget notice, put where the share sheet is still a
+  tap away rather than in a body that has already been sent.
+
+### Verification
+
+Headless: `JobClipEvidenceTests`, `AttachmentBudgetTests`, `JobClipRecorderTests` and
+`JobClipDeliveryTests` new; the P1/P2/P2a suites, `DeliveryTests`, `FieldSessionServiceTests`,
+`OutboundFrameConsumerTests`, `TelemetryOptOutGuardTests` and the privacy/data-store guards
+unchanged and green; full suite green; Release app build green. Simulator: `JobTabAccessibilityTests`
+gains a seeded-clip flow (`-OGUITestSeedFieldClips`, DEBUG-only seeding) auditing the
+photos-and-clips section and the review with a clip on the job, plus screenshots in both
+appearances. **No device run** — the recorder has never seen a real glasses stream, so the frame
+rate it actually receives, the file sizes a thirty-second clip really produces, and therefore
+whether the two budgets above are right, are all owed to P4.
+
+### Slots left for later
+
+- A clip is silent. If a pilot asks for sound, the consent question has to be answered first, and
+  HIPAA mode has to be decided separately from the rest.
+- The office endpoint cannot take a file. `EndpointSyncSink.carriesFiles` is where that changes.
+- Clips are not grouped by unit any more than photographs are — the multi-unit export question in
+  *Open questions* now covers three kinds of evidence rather than two.
+
 ## Open questions
 
 - ~~Should a declined job number block delivery, or only flag the record?~~ **Answered in P1:**
@@ -421,8 +578,15 @@ in progress and its controls, and the whole screen again at `AccessibilityXXXL`.
   a nag risk and touches billing; out of scope until a pilot asks.
 - Team tier: does the office need to push a job number/assignment to the phone (ops bridge)
   instead of the technician speaking it? Natural follow-on, not v1.
-- Clip limits: maximum length per clip and total size per delivery channel (defaults proposed in
-  P2b, confirmed on a pilot device).
+- ~~Clip limits: maximum length per clip and total size per delivery channel.~~ **Narrowed in
+  P2b:** 30 s default / 60 s maximum, and 20 MB (email) / 5 MB (Messages) per report, all four
+  stored in `Config` rather than compiled in. They are conservative defaults chosen from what a
+  mail provider and a carrier reliably accept, **not** device measurements — neither MessageUI
+  composer publishes a limit. Still open: whether those four numbers are right, which only a pilot
+  device with a real glasses stream can say.
+- Audio on a clip: v1 is silent, because recording a bystander's voice onto a file that goes to a
+  customer is a consent question this plan has not asked and a face blur has no equivalent for.
+  Open if a pilot asks for it, and HIPAA mode has to be answered separately.
 - Should the office also receive full-resolution originals automatically through the sync sink, in
   addition to the share-sheet route?
 - Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a

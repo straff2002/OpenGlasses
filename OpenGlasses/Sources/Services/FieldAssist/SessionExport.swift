@@ -26,6 +26,12 @@ struct SessionExport: Codable, Equatable {
     let location: Location?
     let transcript: [TranscriptEntry]
     let photos: [PhotoRef]
+    /// The job's clips (Plan FO P2b), with what the technician decided about each and how it
+    /// travelled. **Optional** for the reason every other field added to this record is: an audit
+    /// exported before clips existed has no such key, and the synthesized decoder throws on a
+    /// missing key for a non-optional collection. A job with no clips still writes an empty list,
+    /// so absence means "an older build wrote this" rather than "this job recorded nothing".
+    let clips: [ClipRef]?
     let proceduresRun: [ProcedureRun]
     let captures: [CaptureRun]
     let citations: [Citation]
@@ -110,6 +116,70 @@ struct SessionExport: Codable, Equatable {
             caption = try c.decodeIfPresent(String.self, forKey: .caption)
             included = try c.decodeIfPresent(Bool.self, forKey: .included)
             role = try c.decodeIfPresent(String.self, forKey: .role)
+        }
+    }
+
+    /// One clip, as the machine-readable record carries it.
+    ///
+    /// A clip cannot live inside the PDF, so this is where a receiving system finds out that it
+    /// exists, how long it is, what it weighs, whether the technician chose it — and whether it
+    /// actually rode along with the report or has to be asked for.
+    struct ClipRef: Codable, Equatable {
+        let timestamp: Date
+        /// The file name inside the session's `photos/` directory.
+        let path: String
+        let caption: String?
+        let durationSeconds: TimeInterval?
+        let bytes: Int?
+        /// Whether the technician chose to send it. Nil when the review was never taken — the same
+        /// distinction `PhotoRef.included` draws, and for the same reason.
+        let included: Bool?
+        /// "fault" or "fix", when it was marked.
+        let role: String?
+        /// Whether it actually travelled with the report on the channel it was sent by. False with
+        /// `included == true` means it was over that channel's size budget and was offered through
+        /// the share sheet instead. Nil when no channel had been chosen — an export taken for the
+        /// archive rather than for a send.
+        let attached: Bool?
+        /// Why it did not ride along, in plain words.
+        let notAttachedReason: String?
+        /// Whether the recording ended before the technician asked it to.
+        let cutShort: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case timestamp, path, caption, bytes, included, role, attached
+            case durationSeconds = "duration_seconds"
+            case notAttachedReason = "not_attached_reason"
+            case cutShort = "cut_short"
+        }
+
+        init(timestamp: Date, path: String, caption: String?, durationSeconds: TimeInterval?,
+             bytes: Int?, included: Bool?, role: String?, attached: Bool?,
+             notAttachedReason: String?, cutShort: Bool) {
+            self.timestamp = timestamp
+            self.path = path
+            self.caption = caption
+            self.durationSeconds = durationSeconds
+            self.bytes = bytes
+            self.included = included
+            self.role = role
+            self.attached = attached
+            self.notAttachedReason = notAttachedReason
+            self.cutShort = cutShort
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            timestamp = try c.decode(Date.self, forKey: .timestamp)
+            path = try c.decode(String.self, forKey: .path)
+            caption = try c.decodeIfPresent(String.self, forKey: .caption)
+            durationSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .durationSeconds)
+            bytes = try c.decodeIfPresent(Int.self, forKey: .bytes)
+            included = try c.decodeIfPresent(Bool.self, forKey: .included)
+            role = try c.decodeIfPresent(String.self, forKey: .role)
+            attached = try c.decodeIfPresent(Bool.self, forKey: .attached)
+            notAttachedReason = try c.decodeIfPresent(String.self, forKey: .notAttachedReason)
+            cutShort = try c.decodeIfPresent(Bool.self, forKey: .cutShort) ?? false
         }
     }
 
@@ -202,7 +272,7 @@ struct SessionExport: Codable, Equatable {
         case billingBasis = "billing_basis"
         case minutesPerBillingUnit = "minutes_per_unit"
         case billableUnits = "billable_units"
-        case location, transcript, photos
+        case location, transcript, photos, clips
         case proceduresRun = "procedures_run"
         case captures, citations, escalations
         case workRecord = "work_record"

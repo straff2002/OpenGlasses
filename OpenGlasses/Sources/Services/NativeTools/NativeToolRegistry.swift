@@ -222,6 +222,10 @@ final class NativeToolRegistry {
             if let camera = cameraService {
                 register(PhotoLogTool(cameraService: camera, jobEvidence: FieldSessionService.shared))
             }
+            // record_clip: the sibling of photo_log for a fault a still cannot show (Plan FO P2b).
+            // It needs no camera reference of its own — it records off the blurred frame relay,
+            // which only `AppState` is allowed to hand out.
+            register(RecordClipTool())
         }
 
         // Accessibility Tier (A1) — Reading Accessibility. Needs the camera for OCR.

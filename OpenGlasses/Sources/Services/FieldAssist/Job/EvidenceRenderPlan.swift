@@ -34,6 +34,14 @@ struct EvidenceRenderPlan: Equatable {
 
     var isEmpty: Bool { groups.allSatisfy { $0.entries.isEmpty } }
     var entryCount: Int { groups.reduce(0) { $0 + $1.entries.count } }
+    /// Pictures the report draws. Clips are named rather than drawn, so the image budget — which
+    /// is decided from a count — must not see them (Plan FO P2b).
+    var photoCount: Int { count(of: .photo) }
+    var clipCount: Int { count(of: .clip) }
+
+    private func count(of kind: JobMediaItem.Kind) -> Int {
+        groups.reduce(0) { $0 + $1.entries.filter { $0.item.kind == kind }.count }
+    }
     /// Every item the plan will draw, in the order it draws them.
     var itemIds: [String] { groups.flatMap { $0.entries.map(\.item.id) } }
 

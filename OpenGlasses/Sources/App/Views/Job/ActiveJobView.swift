@@ -23,6 +23,10 @@ struct ActiveJobView: View {
     let onAnswerUnit: (JobTabModel.QuestionCard.Action) -> Void
     let onPauseResume: () -> Void
     let onAddPhoto: (JobMediaItem.Origin, Data) -> Void
+    /// The clip recorder, so the record row can show its own countdown (Plan FO P2b).
+    let clips: JobClipRecorder
+    let onRecordClip: () -> Void
+    let onStopClip: () -> Void
     let onSharePhotos: () -> Void
     let onOpenPrivacySettings: () -> Void
     let onOpenConversation: () -> Void
@@ -43,11 +47,14 @@ struct ActiveJobView: View {
             workSection
             // The job's evidence, with the face-blur state stated in plain words beside it. What
             // of it goes out is decided at close, in `JobEvidenceReviewView`; what this section is
-            // for is knowing, mid-job, that the pictures are landing somewhere.
+            // for is knowing, mid-job, that the pictures and clips are landing somewhere.
             if let evidence {
                 JobPhotosSection(review: evidence, selection: evidenceSelection,
                                  onAdd: onAddPhoto,
                                  onOpenSettings: onOpenPrivacySettings,
+                                 clips: clips,
+                                 onRecordClip: onRecordClip,
+                                 onStopClip: onStopClip,
                                  onShare: onSharePhotos)
             }
             actionsSection
@@ -272,7 +279,7 @@ struct ActiveJobView: View {
             Button("Close job", role: .destructive, action: onClose)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
                 .accessibilityHint(job.photoCount > 0
-                                   ? "Asks which photos go with the report, then stops the clock and finishes the record."
+                                   ? "Asks which photos and clips go with the report, then stops the clock and finishes the record."
                                    : "Stops the clock, finishes the record, and takes you to it so you can send it.")
         } header: {
             Text("This job")

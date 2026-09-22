@@ -181,6 +181,47 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         audit(app, screen: "Job tab — evidence review actions", deferring: formDeferrals)
     }
 
+    /// A job that recorded a clip as well as photographs (Plan FO P2b).
+    ///
+    /// The clip is the case a label-only screen most easily gets wrong: what tells a sighted
+    /// technician it is a video rather than a still is a badge and a play glyph, and both are
+    /// pixels. So this walks the section and the review with one on the job, and asserts the
+    /// spoken half exists — the tile announces itself as a clip, and the record row says how long
+    /// it runs and that it travels as a file of its own.
+    func testTheJobPhotosSectionAndReviewWithAClipOnTheJob() {
+        let app = launch([.configured, .seedFieldJob, .seedFieldPhotos, .seedFieldClips])
+        openJobTab(in: app)
+
+        let number = app.staticTexts["Job 1005"]
+        awaitScreen(number, named: "The open job with a clip")
+
+        let record = app.buttons["Record a clip"]
+        scrollUntilVisible(record, in: app, named: "Record a clip")
+        // The share button says what it actually hands out once a clip is on the job.
+        XCTAssertTrue(app.buttons["Share full-size photos and clips"].exists,
+                      "a job with a clip must not offer to share only its photographs")
+        XCTAssertFalse(app.buttons["Share full-size photos"].exists)
+
+        audit(app, screen: "Job tab — photos and clips on the job",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        let close = app.buttons["Close job"]
+        scrollUntilVisible(close, in: app, named: "Close job")
+        close.tap()
+
+        // The heading changes once the job carries something that is not a photograph — a title
+        // promising only photos would be describing a different report.
+        let review = app.navigationBars["Evidence for the report"]
+        awaitScreen(review, named: "The evidence review with a clip")
+
+        audit(app, screen: "Job tab — evidence review with a clip", deferring: formDeferrals)
+
+        let skip = app.buttons["Skip photos and close the job"]
+        scrollUntilVisible(skip, in: app, named: "Skip photos and close the job")
+        audit(app, screen: "Job tab — evidence review with a clip, actions",
+              deferring: formDeferrals)
+    }
+
     /// The review at the largest accessibility size. A grid of thumbnails beside wrapping captions
     /// and two optional mark buttons is the shape most likely to clip, and the one a technician
     /// with low vision most needs to be able to read before a picture goes to a customer.

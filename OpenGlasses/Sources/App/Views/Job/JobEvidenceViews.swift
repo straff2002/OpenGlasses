@@ -1,3 +1,4 @@
+import AVKit
 import PhotosUI
 import SwiftUI
 
@@ -6,8 +7,12 @@ import SwiftUI
 /// Files, not a photo library: the session directory is the record, and asking Photos for anything
 /// would mean a permission this feature does not need.
 struct EvidenceThumbnail: View {
-    let url: URL
+    /// Nil for a clip whose poster frame is missing — the placeholder is drawn instead, rather
+    /// than a video being decoded inside a scrolling list.
+    let url: URL?
     var side: CGFloat = 72
+    /// The glyph the placeholder shows, and what a clip's overlay draws.
+    var placeholderSymbol = "photo"
 
     @State private var image: UIImage?
 
@@ -21,7 +26,7 @@ struct EvidenceThumbnail: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.secondary.opacity(0.15))
                     .overlay {
-                        Image(systemName: "photo")
+                        Image(systemName: placeholderSymbol)
                             .foregroundStyle(.secondary)
                     }
             }
@@ -36,7 +41,7 @@ struct EvidenceThumbnail: View {
     }
 
     private func load() async {
-        let target = url
+        guard let target = url else { return }
         let side = side
         let loaded = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let data = try? Data(contentsOf: target), let full = UIImage(data: data) else {
@@ -98,26 +103,122 @@ struct FaceBlurStatusRow: View {
     }
 }
 
-/// The job's photos on the page of an open or a finished job.
+/// One piece of evidence as a tile: the picture, or a clip's poster frame with its length on it
+/// and a play affordance (Plan FO P2b).
 ///
-/// On an open job it also adds them: the phone's own camera, and its library. Both go through
-/// `JobPhotoEvidenceService`, which filters before it stores — those pixels never pass
-/// `CameraService`, so nothing else would have.
+/// The badge and the glyph are both drawn, and the row's own accessibility label says "clip" and
+/// the length in words — so what kind of thing this is never depends on seeing the overlay.
+struct EvidenceMediaTile: View {
+    let item: JobMediaItem
+    let previewURL: URL?
+    var side: CGFloat = 72
+    var dimmed = false
+    /// Non-nil only where a clip can actually be played — the tile is a button then, and plain
+    /// pixels otherwise.
+    var onPlay: (() -> Void)?
+
+    var body: some View {
+        let tile = EvidenceThumbnail(url: previewURL, side: side,
+                                     placeholderSymbol: item.kind == .clip ? "video" : "photo")
+            .overlay(alignment: .bottomLeading) { durationBadge }
+            .overlay { playGlyph }
+            .opacity(dimmed ? 0.55 : 1)
+        if item.kind == .clip, let onPlay {
+            Button(action: onPlay) { tile }
+                .buttonStyle(.plain)
+                .frame(minWidth: OGMetrics.minTouchTarget, minHeight: OGMetrics.minTouchTarget)
+                .accessibilityLabel("Play this clip")
+                .accessibilityHint("Plays it on the phone. Nothing is sent.")
+        } else {
+            tile
+        }
+    }
+
+    @ViewBuilder
+    private var durationBadge: some View {
+        if let badge = item.durationBadge {
+            Text(badge)
+                .font(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                // Opaque fill behind an opaque label: a timecode over a photograph has no
+                // background it can rely on, so it brings its own.
+                .background(Capsule().fill(Color.black.opacity(0.7)))
+                .foregroundStyle(Color.white)
+                .padding(4)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private var playGlyph: some View {
+        if item.kind == .clip {
+            Image(systemName: "play.circle.fill")
+                .font(.title2)
+                .foregroundStyle(Color.white, Color.black.opacity(0.45))
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// A clip played on the phone, and nowhere else.
+struct ClipPlayerSheet: View {
+    let url: URL
+    let caption: String?
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                VideoPlayer(player: AVPlayer(url: url))
+                    .frame(maxWidth: .infinity, minHeight: 240)
+                    .accessibilityLabel(caption ?? "Job clip")
+                if let caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal)
+                }
+                Spacer(minLength: 0)
+            }
+            .navigationTitle("Clip")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { onDone() }
+                }
+            }
+        }
+    }
+}
+
+/// The job's photos and clips on the page of an open or a finished job.
+///
+/// On an open job it also adds them: the phone's own camera, its library, and — through the
+/// glasses — a length-capped clip recorded off the blurred frame relay (Plan FO P2b). Both photo
+/// routes go through `JobPhotoEvidenceService`, which filters before it stores, because those
+/// pixels never pass `CameraService` and nothing else would have.
 struct JobPhotosSection: View {
     let review: EvidenceReviewModel
     let selection: EvidenceSelection
     /// Nil on a finished job: evidence is added while the job is open, and not after.
     var onAdd: ((JobMediaItem.Origin, Data) -> Void)?
     var onOpenSettings: (() -> Void)?
+    /// The clip recorder, when this is an open job. Nil on a finished one.
+    var clips: JobClipRecorder?
+    var onRecordClip: (() -> Void)?
+    var onStopClip: (() -> Void)?
     let onShare: () -> Void
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var takingPhoto = false
+    @State private var playing: JobMediaItem?
 
     var body: some View {
         Section {
             if review.isEmpty {
-                Text("No photos on this job yet.")
+                Text("Nothing recorded on this job yet.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
@@ -141,6 +242,9 @@ struct JobPhotosSection: View {
                               isOn: review.faceBlurOn, onOpenSettings: onOpenSettings)
 
             if let onAdd {
+                if let clips, let onRecordClip, let onStopClip {
+                    ClipRecordRow(clips: clips, onRecord: onRecordClip, onStop: onStopClip)
+                }
                 Button("Take a photo for the job") { takingPhoto = true }
                     .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
                     .accessibilityHint("Uses the phone's camera. The picture is filed against this job, not sent anywhere.")
@@ -169,16 +273,33 @@ struct JobPhotosSection: View {
             }
 
             if !review.isEmpty {
-                Button("Share full-size photos", action: onShare)
-                    .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
-                    .disabled(selection.includedCount == 0)
-                    .accessibilityHint("Opens the share sheet with the selected pictures at full size. Nothing is sent until you choose where.")
+                // The button says what it actually hands out. A job with a clip on it shares a
+                // video too, and a label promising only photographs would be describing a
+                // different action. Spelled as a branch rather than a ternary so both literals
+                // reach the string catalog.
+                Group {
+                    if review.hasClips {
+                        Button("Share full-size photos and clips", action: onShare)
+                    } else {
+                        Button("Share full-size photos", action: onShare)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+                .disabled(selection.includedCount == 0)
+                .accessibilityHint("Opens the share sheet with everything selected, at full size. Nothing is sent until you choose where.")
             }
         } header: {
-            Text(review.isEmpty ? "Photos" : "Photos — \(review.count)")
+            Text(review.isEmpty ? review.sectionTitle : "\(review.sectionTitle) — \(review.count)")
         } footer: {
             if !review.isEmpty {
-                Text("The report carries smaller copies. Share sends the originals, exactly as they were stored.")
+                Text(review.hasClips
+                     ? "The report carries smaller copies of the pictures and names each clip. Share sends the originals, exactly as they were stored."
+                     : "The report carries smaller copies. Share sends the originals, exactly as they were stored.")
+            }
+        }
+        .sheet(item: $playing) { item in
+            ClipPlayerSheet(url: review.url(for: item.id), caption: item.caption) {
+                playing = nil
             }
         }
     }
@@ -187,7 +308,9 @@ struct JobPhotosSection: View {
         let entry = selection.entry(for: row.item.id)
         let included = entry?.included ?? false
         return VStack(spacing: 3) {
-            EvidenceThumbnail(url: review.url(for: row.item.id))
+            EvidenceMediaTile(item: row.item, previewURL: review.previewURL(for: row.item),
+                              dimmed: !included,
+                              onPlay: { playing = row.item })
                 .overlay(alignment: .topTrailing) {
                     if included {
                         Image(systemName: "checkmark.circle.fill")
@@ -196,7 +319,6 @@ struct JobPhotosSection: View {
                             .padding(3)
                     }
                 }
-                .opacity(included ? 1 : 0.55)
             if let role = entry?.role {
                 Text(role.label).font(.caption2).foregroundStyle(.secondary)
             } else if row.item.filterWasOn {
@@ -206,7 +328,43 @@ struct JobPhotosSection: View {
                     .accessibilityHidden(true)
             }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(row.spoken(included: included, role: entry?.role))
+    }
+}
+
+/// The record button, and the countdown while a clip runs (Plan FO P2b).
+///
+/// The countdown is the point: a clip is capped, and a technician who cannot see how long is left
+/// either stops too early or is surprised when it stops itself. It is stated in words for
+/// VoiceOver as well, and updates once a second — the granularity the cap is measured in.
+struct ClipRecordRow: View {
+    @ObservedObject var clips: JobClipRecorder
+    let onRecord: () -> Void
+    let onStop: () -> Void
+
+    var body: some View {
+        if clips.isRecording {
+            Button(role: .destructive, action: onStop) {
+                HStack {
+                    Label("Stop the clip", systemImage: "stop.circle")
+                    Spacer(minLength: 8)
+                    Text(clips.countdownLabel)
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            }
+            .accessibilityLabel("Stop the clip")
+            .accessibilityValue("\(Int(clips.remainingSeconds.rounded())) seconds left of the limit")
+        } else {
+            Button(action: onRecord) {
+                Text("Record a clip")
+                    .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                           alignment: .leading)
+            }
+            .accessibilityHint("Records up to \(Int(JobClipRecorder.defaultCapSeconds.rounded())) seconds from the glasses camera, filed against this job. It has no sound.")
+        }
     }
 }

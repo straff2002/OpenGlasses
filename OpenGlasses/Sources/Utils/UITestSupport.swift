@@ -49,13 +49,19 @@ enum UITestSupport {
         /// anything to show. The pictures are drawn in-process, so no camera, no photo library
         /// and no permission is involved.
         case seedFieldPhotos = "-OGUITestSeedFieldPhotos"
+        /// A modifier like the one above, for clips (Plan FO P2b): it puts one length-capped clip
+        /// on the open job so the Photos-and-clips section, the duration badge and the review's
+        /// clip row have something to measure. The clip's bytes are a placeholder and its poster
+        /// frame is drawn in-process — no camera and no relay is involved, which is the point: the
+        /// audit is about the labels and the touch targets, not about video.
+        case seedFieldClips = "-OGUITestSeedFieldClips"
     }
 
     /// Whether any of the Field Assist flags is set. They are cumulative: seeding a job implies
     /// the feature is on, because a job cannot exist otherwise.
     static var wantsFieldAssist: Bool {
         isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
-            || isSet(.seedFieldPhotos)
+            || isSet(.seedFieldPhotos) || isSet(.seedFieldClips)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -200,7 +206,8 @@ enum UITestSupport {
             seedConversations(appState)
         }
 
-        if isSet(.seedFieldHistory) || isSet(.seedFieldJob) || isSet(.seedFieldPhotos) {
+        if isSet(.seedFieldHistory) || isSet(.seedFieldJob) || isSet(.seedFieldPhotos)
+            || isSet(.seedFieldClips) {
             // Deferred by one runloop turn on purpose. Starting a session builds the vault's model
             // and parts indexes on the main thread, and doing that inside launch pushes a cold
             // first launch of a large Debug build towards the watchdog — which shows up as an app
@@ -372,16 +379,29 @@ enum UITestSupport {
         _ = try? sessions.addOperatorTask(title: "Clean the flame sensor",
                                           why: "Signal reading low")
 
-        guard isSet(.seedFieldPhotos) else { return }
-        // Three pictures with the shape the review has to cope with: one logged on the job (ticked
-        // by default), one taken by the assistant (offered, not assumed), and one captured while
-        // the face blur was on, so the per-item label is on screen for the audit to measure.
-        attach(sessions, colour: .systemTeal, caption: "Pressure switch tubing, reconnected",
-               origin: .photoLog, blurred: false)
-        attach(sessions, colour: .systemOrange, caption: "Flame sensor before cleaning",
-               origin: .capture, blurred: false)
-        attach(sessions, colour: .systemIndigo, caption: "Nameplate", origin: .photoLog,
-               blurred: true)
+        if isSet(.seedFieldPhotos) {
+            // Three pictures with the shape the review has to cope with: one logged on the job
+            // (ticked by default), one taken by the assistant (offered, not assumed), and one
+            // captured while the face blur was on, so the per-item label is on screen for the
+            // audit to measure.
+            attach(sessions, colour: .systemTeal, caption: "Pressure switch tubing, reconnected",
+                   origin: .photoLog, blurred: false)
+            attach(sessions, colour: .systemOrange, caption: "Flame sensor before cleaning",
+                   origin: .capture, blurred: false)
+            attach(sessions, colour: .systemIndigo, caption: "Nameplate", origin: .photoLog,
+                   blurred: true)
+        }
+
+        guard isSet(.seedFieldClips) else { return }
+        // Two clips, and an office address so the report has a channel with a size limit at all.
+        // One fits that limit and one does not, which is the only way the "too large — share it
+        // separately" row on a finished job is ever on screen to be audited.
+        var delivery = DeliverySettings.load()
+        if delivery.emailRecipients.isEmpty { delivery.emailRecipients = ["office@example.com"] }
+        delivery.save()
+        attachClip(sessions, caption: "Compressor short-cycling", seconds: 12, bytes: 640_000)
+        attachClip(sessions, caption: "Fan wobble at full speed", seconds: 28,
+                   bytes: 21 * 1024 * 1024)
     }
 
     /// One seeded evidence photo, drawn rather than captured.
@@ -399,6 +419,25 @@ enum UITestSupport {
         }
         guard let data = image.jpegData(compressionQuality: 0.8) else { return }
         _ = sessions.attachPhoto(data, caption: caption, origin: origin, filterWasOn: blurred)
+    }
+
+    /// One seeded clip: a drawn poster frame and a placeholder for the video itself.
+    ///
+    /// The bytes are not a real MP4 and are not meant to be — nothing in the audit plays one, and
+    /// encoding a video at launch would slow a cold start for no gain. What has to be right is the
+    /// catalogue entry the grid reads: a clip kind, a length, a size and a poster.
+    @MainActor
+    private static func attachClip(_ sessions: FieldSessionService, caption: String,
+                                   seconds: TimeInterval, bytes: Int) {
+        let size = CGSize(width: 480, height: 360)
+        let poster = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemBrown.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        _ = sessions.attachClip(Data(repeating: 0, count: bytes),
+                                posterJPEG: poster.jpegData(compressionQuality: 0.8),
+                                caption: caption, durationSeconds: seconds,
+                                filterWasOn: true, cutShort: false)
     }
 
     /// The lines a real session would have produced. Two of the three carry a diarized speaker, so

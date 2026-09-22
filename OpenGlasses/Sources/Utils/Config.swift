@@ -3719,6 +3719,51 @@ struct Config {
         UserDefaults.standard.set(id, forKey: "fieldAssistDefaultVaultId")
     }
 
+    // MARK: - Job clips (Plan FO P2b)
+
+    /// How long a job clip runs when nobody says otherwise, in seconds.
+    ///
+    /// Thirty is long enough to show a fault behaving and short enough to email. Stored rather than
+    /// hard-coded because Plan FO's open question asks a pilot device to confirm both caps, and a
+    /// confirmation should be a settings change rather than a build.
+    static var jobClipDefaultSeconds: TimeInterval {
+        let stored = UserDefaults.standard.double(forKey: "jobClipDefaultSeconds")
+        guard stored > 0 else { return 30 }
+        return min(stored, jobClipMaximumSeconds)
+    }
+
+    static func setJobClipDefaultSeconds(_ seconds: TimeInterval) {
+        UserDefaults.standard.set(seconds, forKey: "jobClipDefaultSeconds")
+    }
+
+    /// The longest a job clip may be asked for. Past this the technician wants the long-form
+    /// recorder, which has no limit and files its output somewhere a work order never goes.
+    static var jobClipMaximumSeconds: TimeInterval {
+        let stored = UserDefaults.standard.double(forKey: "jobClipMaximumSeconds")
+        return stored > 0 ? stored : 60
+    }
+
+    static func setJobClipMaximumSeconds(_ seconds: TimeInterval) {
+        UserDefaults.standard.set(seconds, forKey: "jobClipMaximumSeconds")
+    }
+
+    /// What a job report may weigh, per channel, when it carries clips (`AttachmentBudget`).
+    ///
+    /// Conservative defaults rather than device measurements: neither MessageUI composer publishes
+    /// a limit, so these sit where a report reliably arrives — under the ~25 MB most mail providers
+    /// refuse above, and well under the smallest carrier MMS ceiling, which is the one that
+    /// degrades silently. Decimal megabytes, because that is the unit the ceiling is *stated* in
+    /// on screen and a limit that reads "21 MB" when the setting says 20 is a limit nobody trusts.
+    static var jobReportEmailBudgetBytes: Int {
+        let stored = UserDefaults.standard.integer(forKey: "jobReportEmailBudgetBytes")
+        return stored > 0 ? stored : 20_000_000
+    }
+
+    static var jobReportMessagesBudgetBytes: Int {
+        let stored = UserDefaults.standard.integer(forKey: "jobReportMessagesBudgetBytes")
+        return stored > 0 ? stored : 5_000_000
+    }
+
     // MARK: - Per-vault model linking
 
     /// The model a given Field Assist vault is linked to (a savedModel id). nil = use
