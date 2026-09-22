@@ -1,8 +1,16 @@
 # Plan FS — Subscriber Vaults and Vault Links (build your own, and receive one by link or QR)
 
-**Status:** 📝 Drafted 2026-09-21 — nothing implemented. Owner decisions the same day: a Field Assist
+**Status:** 🚧 **PR1 implemented 2026-09-22 (headless).** Owner decisions 2026-09-21: a Field Assist
 subscriber may build their own vaults; the perpetual unlock is retired, so monthly and annual are
-the only store products; a vault should be receivable from a URL or a QR code issued by a publisher's site — **receive only; the app never shares a vault** (owner correction the same day).
+the only store products; a vault should be receivable from a URL or a QR code issued by a publisher's
+site — **receive only; the app never shares a vault** (owner correction the same day).
+PR1 shipped §1 and decision 4: `FieldAssistCapability` + `FieldAssistCapabilityCheck` resolved from
+the evidence in one pure function, every tier comparison in the app replaced by a capability ask, a
+pure `CustomVaultGateState` behind the Custom Vaults screen, and the manuals-out-of-every-export
+rule with the `documents_included` manifest marker and the import message that names the files to
+supply. Copy updated across the tier descriptions, the paywall, Custom Vaults and both export
+footers; guide updated. **PR2 pending** — the vault archive, receiving by link or QR, the publisher
+list and the unverified-source path.
 **Priority:** next after the FO chain, ahead of [FR](FR-fictional-example-vault.md) (owner decision 2026-09-22). Two PRs.
 **Surfaces:** entitlement policy, Custom Vaults UI, the vault import path, one URL scheme / universal
 link route and the QR scanner. No new backend; nothing is hosted by the vendor.
@@ -136,7 +144,7 @@ host, so the privacy manifest needs no new domain — state that in the PR. HIPA
 import disabled unless the org profile allows it.
 
 ## Phases (one PR each)
-- **PR1 — capability gate and subscriber vaults.** §1 plus copy. Headless tests are the gate.
+- **PR1 — capability gate and subscriber vaults.** §1 plus copy, and the manuals-out export rule. ✅ Implemented 2026-09-22, headless: 16 new tests (the evidence × capability table, the exhaustiveness check, the gate states, the importer gate per evidence kind, and what an export writes), plus four pre-existing export assertions inverted to the new rule; full suite green. The `received` install source is **noted, not built** — `VaultImporter` records where it goes, beside the pack sidecar.
 - **PR2 — receive a vault by link or QR.** §2–§4: signed archives, the unverified-source path, the
   publisher list in the catalog, and the archive script. The manuals-out-of-every-export rule ships in **PR1**, because it
   must be in place before subscribers can build vaults at all. Headless: archive round-trip, tamper/size/zip-slip
