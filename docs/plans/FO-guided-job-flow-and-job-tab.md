@@ -9,7 +9,11 @@ audits in three states at the default and largest text sizes, screenshots in bot
 **P2a implemented 2026-09-22** — photo evidence at close, verified headless and on a simulator; see
 *P2a as built* below.
 **P2b implemented 2026-09-22** — clips as evidence, verified headless and on a simulator; see
-*P2b as built* below. P3 and P4 unbuilt.
+*P2b as built* below.
+**Owner addendum 2026-09-22 (§6–§9):** a spoken job debrief in the car, a brief before site with a
+hand-off to the technician's maps app, a job that arrives by email as an `.ogjob` file, and
+customer sign-off on the phone — P2c and a P3 split into P3a / P3b / P3c below.
+P2c, P3 and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -210,6 +214,229 @@ plain capture, a picture added in chat from the phone) are not attached to the j
   the stakes, so P2a records the media under the same store and the deletion question moves to the
   open list rather than being answered here.
 
+### 6. Job debrief in the car (CarPlay)
+
+Owner request, 2026-09-22: after a job, the technician drives to the next one and wants to talk the
+job over with the assistant — what they found, what they'd flag, what base should know — and have
+that captured on the job without touching the phone. CarPlay is a first-class surface in this app;
+P0's inventory found its new/resume conversation paths already routed through the P1 chokepoint
+(verified again at build 417: `CarPlaySceneDelegate` and `WatchConnectivityManager` reach
+`GuidedJobFlow` for both, and neither touches `ConversationStore` directly).
+
+**What it is.** A **debrief**: a voice conversation about one chosen job, whose outcome is a short
+structured summary appended to that job's record. It is not a re-opening of the job — time on the
+job does not restart, tasks are not re-scoped, equipment is not changed — and it is not a new job.
+
+**Design.**
+- *Job selection on CarPlay.* A "Jobs" list (`CPListTemplate`) reachable from the app's CarPlay root:
+  the active job first if there is one, then recent past jobs by job number · date · outcome (a
+  declined number shows "No job number"). Selecting a past job offers one action, **Debrief**, and
+  reads the job's name aloud. Selecting the active job resumes its bound conversation exactly as the
+  phone would (P1's `requestResume`), no new mode. Nothing on the list is more than one glance: job
+  number and date only; the work record is never rendered on the car screen.
+- *The debrief conversation.* Starts a debrief turn sequence bound to the job's thread (P1's
+  `JobThreadPolicy` gains a `.debrief(jobId)` source; turns land in the job's own conversation so
+  review later shows them in place, marked as debrief). The assistant is told, through the same
+  bounded snapshot FM/FO use, which job this is, its equipment, tasks, readings and outcome, and
+  that it is in a debrief: listen, ask at most one clarifying question at a time, never propose
+  work, never treat anything said as a completed task. Voice only — no HUD, no phone screen needed,
+  wake word or steering-wheel button as the app already supports.
+- *Capture, read back, save.* When the technician says they're done (or on silence + confirmation),
+  the app asks the model for a summary in a fixed schema — `findings`, `follow_ups`, `for_base`,
+  `parts_or_materials`, `customer_notes` — each a list of short verbatim-leaning items, each citing
+  the debrief turn it came from. The app reads the summary back; the technician says "save", "change
+  <item>" or "scrap it". Only a spoken **save** writes a `WorkRecord.Debrief` entry (dated, source
+  turn ids, model provenance) to the job. Unsaved debriefs leave the turns in the thread, marked
+  unsaved, and nothing on the record. The record's PDF/JSON gain a **Debrief** section; the Job tab's
+  past-job page shows it and offers **Send addendum** through the existing delivery flow (the same
+  channel and recipients as the original send, editable) — never sent automatically. From the car
+  the same send is spoken, immediate or staged as described below.
+- *Updating and sending from the car* (owner question, 2026-09-22). **Update: yes** — a spoken
+  "save" is the write; the debrief is on the record before the car is parked. **Send: yes, by
+  voice, within what the channel can do without the phone.** After a save (or at any time on a
+  selected job: "send the job", "send the report"), the app names what would go and to whom — "the
+  work order for job 1005, with the debrief addendum, to base by email" — and only a spoken
+  **"send it"** counts as the Send tap EM requires. Then:
+  - a channel that needs no phone screen — the configured endpoint sink, or a share target the
+    organisation has set as the job-report route in Settings — sends immediately and the app says
+    when it has gone (or that it is queued offline, as the existing store-and-forward queue does);
+  - Mail and Messages need their composer on the phone, which CarPlay cannot present. The send is
+    **staged**: everything is prepared and queued as "ready to send", the app says so ("Ready on your
+    phone — one tap when you stop"), the Job tab shows the staged send at the top with one **Send**
+    button that opens the composer already filled, and a notification on the phone offers the same.
+    Nothing goes without that tap. A staged send survives restart and is cancellable.
+  Recipients are never taken from speech: they come from the job's previous delivery, the vault's
+  delivery settings, or the org profile; a spoken new address is refused with "add it on the phone".
+- *Several jobs on one journey* (owner, 2026-09-22). A drive may cover the whole day's jobs. The
+  technician moves between them by voice — "next job", "debrief job 1006", "the one before that" —
+  or from the CarPlay Jobs list at a stop; each debrief is bound to its own job's thread and each
+  save writes to its own record, so nothing said about one job can land on another (the app names
+  the job on every switch: "Job 1006, Carrier rooftop, closed at 2:15"). Sends accumulate in one
+  **delivery queue**: immediate-channel sends go as they are spoken; staged ones line up in order.
+  The Job tab shows the queue as one card — "3 reports ready to send" — with **Send all** (opens
+  the composers one after another, each pre-filled; a cancelled one stays queued) and a per-report
+  Send; the phone notification offers Send all. "What's waiting?" reads the queue back in the car.
+  The queue is persisted, survives restart, and is per device; it is separate from the offline
+  store-and-forward queue, which is for sends already authorised to an endpoint.
+- *Invariants.* Spoken items are the technician's report, not verified facts: the schema keeps them
+  as reports with a source, and the summary never promotes a "should check X" into a completed
+  check or a reading. One debrief per session may be repeated; each is its own dated entry. A job
+  whose record was already delivered keeps the original PDF unchanged; the addendum is a second
+  document. A debrief never alters a customer sign-off (§9): the summary the customer put their
+  name to is frozen at the moment they signed. Medical/HIPAA restrictions and audit logging apply
+  as to any job turn. Works on the phone too (the Job tab past-job page gets the same **Debrief**
+  action) — CarPlay is the reason, not the only surface.
+- *Driving safety.* Nothing to read, nothing to tap during the conversation; the only list is the
+  job picker, shown before the drive or at a stop as CarPlay's own templates allow; the summary
+  read-back is spoken, and "save" is spoken. If the app cannot be sure which job was meant (two
+  with the same number), it asks by date, never guesses.
+
+### 7. Brief before site (the next job, spoken on the way there)
+
+Owner request, 2026-09-22: on the way to a job the technician should get a briefing — the site's
+known equipment, the fault report against likely causes, what the organisation has learned about
+that kit, anything else on file — and be handed to their maps app for directions.
+
+**Verified starting point** (read against main at build 417). `FieldSession` carries
+`jobReference`, equipment (once read), tasks, evidence — nothing about the *site*: no customer,
+address or fault report, because today a job is born on site by voice. `get_directions` already
+opens Apple Maps or Google Maps with a destination (`comgooglemaps` is in
+`LSApplicationQueriesSchemes`; `waze` is not); there is no preferred-maps setting and no Waze.
+Session history is a flat list sorted by start date and is not indexed by site or serial.
+Organisation learnings are [FP](FP-team-learnings.md), drafted and unbuilt.
+
+**Design.**
+- *A job ahead.* A job can now exist **before** it starts: `FieldSession` gains an optional
+  `site` (customer name, address, contact — decode-if-present) and `faultReport` (the words the
+  office or customer gave, verbatim, with its source) and a `scheduled` state alongside active /
+  paused / ended. Created by voice ("next job: 1007, no heat, Smith Street, the Lennox furnace we
+  did in May"), typed on the Job tab (Upcoming section), or — when [BL](BL-ops-platform-agent-bridge.md)
+  lands — pushed by the office. Starting it on site is the same `startJob`, carrying its site and
+  fault report; the intake still confirms the number. Nothing about a scheduled job is guessed:
+  fields the technician did not give stay empty and the brief says so.
+- *The brief.* One spoken action — "brief me on the next job", the CarPlay Jobs list's **Brief**
+  action on an upcoming job, or automatic when CarPlay connects with an upcoming job selected
+  (off by default; a setting). Assembled by the app from sources it can cite, in this order, each
+  section skipped aloud when empty:
+  1. **Site and history** — customer, address, contact; previous jobs at this site or on this
+     serial/model (session history gains a site/serial index), with their outcome, open follow-ups
+     and any debrief items (§6) — "Last visit 14 May, job 0993: replaced pressure switch; follow-up
+     noted: check flue length."
+  2. **Known equipment** — models on file for the site and what the vault has for them
+     (`VaultModelIndex` sections: nameplate spellings, unit size code, accessories) so the
+     technician knows what to look for before the panel is off.
+  3. **Fault report against likely candidates** — the report's words matched to the vault's
+     error-code and symptom sections and the manual retrieval (EJ's evidence gate, citations
+     attached): "The office says E223 and no heat. In the service manual E223 is a low-pressure
+     lockout — three listed causes: blocked flue, failed pressure switch, condensate trap. Two of
+     those were the fix on this model's last two visits." Ranked by evidence, never asserted as
+     the diagnosis; every candidate carries its citation, and an unmatched report says "nothing in
+     the manual matches those words."
+  4. **What the crew learned** — FP learnings for the model/site when FP exists; until then the
+     section reads from the site's past debriefs and follow-ups only (the hook is the same
+     `RetrievalSource` seam so FP slots in without touching the brief).
+  5. **Parts and prerequisites** — parts the candidates call for (`VaultPartsIndex`), and the
+     vault's safety prerequisites for those procedures.
+  The brief is a `JobBrief` value (pure, testable), rendered to speech with a spoken length cap
+  and "say more about <section>" follow-ups; the full brief is on the Job tab's upcoming-job page
+  and saved on the job so the site visit's model context starts from it (the FM snapshot gains a
+  bounded brief section). Sources: vault, manuals, this device's session history, FP when built —
+  never the open web unless the technician asks, and then labelled as such.
+- *Directions.* "Take me there" / the CarPlay **Directions** action hands the site address to the
+  technician's **maps app of choice** — Apple Maps, Google Maps or Waze, chosen once in Settings
+  (`preferredMapsApp`; `waze` added to `LSApplicationQueriesSchemes`; falls back to Apple Maps and
+  says so if the chosen app is missing). From CarPlay the hand-off uses the CarPlay scene's
+  own open-URL path so the maps app takes the car screen; the brief can keep speaking. The
+  existing `get_directions` tool gains the preference and Waze rather than a second tool.
+- *Invariants.* A brief cites or says "nothing on file"; it never invents history, models or
+  causes. It is advisory context, not a task list: nothing in it becomes a task until the
+  technician creates one on site. Scheduled jobs count no time. Medical/HIPAA: site and customer
+  fields are personal data — covered by the session store's existing protection, listed in
+  `DataStoreRegistry`, included in deletion semantics exactly as the session is.
+
+### 8. A job that arrives by email (open with Field Assist)
+
+Owner request, 2026-09-22: the office emails the technician the job; tapping the attachment opens it
+in the app, which loads it as the job ahead (§7).
+
+**Verified starting point.** The app declares no `CFBundleDocumentTypes` and no
+`UTExportedTypeDeclarations` at all today, so there is no document type to extend — the format and
+its registration are both new.
+
+**Design.**
+- *A job file.* A small JSON document, `.ogjob` (registered as an exported UTI with
+  `CFBundleDocumentTypes`, so Mail, Files and Messages offer **Open with OpenGlasses**): format
+  version, job reference, site (customer, address, contact), fault report verbatim, known
+  equipment (model / serial if the office has them), scheduled time, notes, optional attachments
+  by reference (never embedded manuals), and an optional organisation signature over the whole
+  document. **The key that signs a job file is the organisation's, carried in its
+  [CT](CT-org-configuration-profiles.md) profile — not the vendor's content-signing key** that
+  vault packs and skill packs are verified against; an office signs its own jobs, and the app has
+  to be told whose signature to expect before it can check one. Signing and verification therefore
+  land with P3c and CT rather than here. A publisher-side helper (`Scripts/make-job-file`, and a
+  one-line spec in the vault guide) lets an office system or a person produce one; the ops bridge
+  (BL) will use the same format when it pushes jobs.
+- *Opening it.* The app receives the file through the scene's open-URL/document path (also
+  `openglasses://job?…` is **not** offered — a URL cannot carry a signed document safely and an
+  email link is a phishing shape; files only). It validates schema, size (≤ 64 KB) and content
+  (text fields only, length-capped, no HTML), then shows a **review sheet**: job number, site,
+  fault report, equipment, "Signed by <organisation>" or **"From email — not signed; check it's
+  from your office"**, and one button, **Add to upcoming jobs**. Nothing is created without that
+  tap. Same job reference already on the device → "Update job 1007 or keep both?" — never a silent
+  overwrite. In HIPAA/medical mode an unsigned job file is refused (an org profile can require
+  signing anywhere).
+- *After that* it is a scheduled job exactly as §7 defines: it appears under Upcoming on the Job tab
+  and the CarPlay Jobs list, can be briefed, navigated to, started on site (the intake confirms the
+  number it already has), debriefed and sent. The job record keeps the file's provenance (source:
+  email/file, signer, received-at) in the audit log and the export.
+- *Invariants.* Receive only — the app never emails a job file out. A job file cannot start a job,
+  change equipment, create tasks or send anything; it only proposes an upcoming job. Fields the
+  office left out stay empty. Personal data in the file is under the session store's protection
+  from the moment it is saved.
+
+### 9. Customer sign-off on the phone
+
+Owner request, 2026-09-22: at the end of the job the customer signs on the technician's phone.
+
+**Verified starting point.** There is **no customer-facing subset of the record today**, and the
+draft's "the same customer-facing lines the PDF prints" describes something that does not exist:
+the work order prints `WorkRecord.summaryLines` whole, which carries the technician's completion
+notes, why each task was recommended, escalations, verified manual pages and the evidence phrases.
+So the customer summary is a *new* derivation over the record — work done, parts used, time or
+billing units — and the acceptance block prints exactly it. The existing Work Record section of the
+PDF is unchanged: the customer signs the summary, not the whole work order.
+
+**Design.**
+- *Where it sits.* A step in the close flow after the evidence review and the read-back and
+  before delivery: **Customer sign-off**, optional per job (skip is one tap and the record says
+  "not signed"), and available again from a past job until the report has been sent.
+- *Hand-over mode.* The technician taps **Hand to customer**; the phone shows a full-screen,
+  customer-facing sheet and nothing else: the organisation/technician name, job number, date, the
+  **customer summary** (work done, parts used, time or billing units; **never** internal notes,
+  fault candidates, the brief or debriefs), an optional one-line customer comment, a **name**
+  field, a large **signature pad** (PencilKit canvas; finger or Pencil), and **Done**. The sheet
+  cannot be dismissed by a swipe; leaving it needs the technician's confirmation ("Cancel
+  sign-off?"), and it suggests Guided Access in a footnote for organisations that want the phone
+  locked to it. Dynamic Type and VoiceOver apply; a customer who cannot sign can type their name
+  and tap **Confirm** instead (recorded as typed, not drawn).
+- *What is recorded.* `WorkRecord.SignOff` (decode-if-present): the customer's name, the drawing
+  as PNG plus its stroke data, the typed comment, the time, the method, and a **digest of exactly
+  what was on the sheet** (the customer summary text) so the record can show what was agreed to.
+  The signed summary is frozen: later debrief addenda (§6) are separate documents and never alter
+  it. The PDF gets a **Customer acceptance** block — summary, name, signature image, time, method —
+  and the JSON carries the same minus the image (a file reference). The audit log records sign-off,
+  a decline and any cancel.
+- *Invariants.* Sign-off never sends anything; delivery is still the technician's Send. The
+  signature is personal data: stored under the session's protected store, listed in
+  `DataStoreRegistry`, never shown outside the sign-off sheet, the PDF and the past-job page,
+  never used for matching or anything else. This is a record of acceptance, not a legal
+  e-signature service — the copy says "signed on the technician's phone" and makes no claim
+  beyond that. An organisation can make sign-off required (close blocked until signed or an
+  explicit "customer declined to sign" reason is recorded). That switch is
+  `Config.organizationRequiresCustomerSignOff`, **a documented stand-in that CT P1 replaces** —
+  written the way FS PR2 wrote `Config.organizationAllowsUnsignedVaults`: a key with a stated
+  default, read by the behaviour it governs, and no CT machinery ahead of CT.
+
 ## Phases (one PR each)
 
 - **P0 — inventory and seams.** ✅ **Implemented 2026-09-21.** Every place a thread is
@@ -235,8 +462,43 @@ plain capture, a picture added in chat from the phone) are not attached to the j
   relay, stored under the session; clips in the review grid; `video` attachment kind with the
   per-channel size budget and the share-sheet fallback; clip lines in the PDF. Tests: roster/guard
   suites stay green, over-budget never silently drops, re-send determinism.
-- **P3 — live sessions and other surfaces.** Gemini Live / OpenAI Realtime parity via their
-  context snapshots; HUD cue for the two questions; CarPlay/watch read-only job state.
+- **P2c — customer sign-off.** Independent of CarPlay; small; first in line after FS. The
+  `SignOff` model and the customer summary's digest, the hand-over sheet, the close-flow step,
+  past-job re-entry, the PDF's Customer acceptance block, the JSON, the audit events, the
+  organisation "required" stand-in and the `DataStoreRegistry` entry. Tests: the digest matches the
+  rendered summary exactly and excludes internal content; skip / declined / typed / drawn are
+  recorded honestly; sign-off never triggers delivery; the signed summary is unchanged by a later
+  addendum; required-by-org blocks close until signed or a reason is recorded; an accessibility
+  audit of the sheet at AX5. Device acceptance: sign with a finger.
+- **P3a — live modes and surfaces.** Gemini Live / OpenAI Realtime parity via their context
+  snapshots; HUD cue for the two questions; CarPlay/watch read-only job state (the Jobs list of
+  §6, without Debrief).
+- **P3b — debrief.** `JobThreadPolicy.debrief` source, the debrief snapshot/instructions, the
+  summary schema + validation, `WorkRecord.Debrief` (decode-if-present), the read-back/save state
+  machine (pure, like `JobIntakeState`), the PDF/JSON section, Send addendum, the spoken send with
+  the immediate/staged split per channel and the staged-send card + notification on the phone, and
+  the CarPlay Debrief action and the phone's. Tests are the gate: summary items cite turns and
+  never become tasks or readings; unsaved = nothing on the record; the addendum reproduces
+  deterministically; an ambiguous job is asked about; time on job unchanged; a customer sign-off's
+  summary is unchanged by an addendum; spoken send — the endpoint channel sends and reports, Mail
+  and Messages stage and never send without the tap, spoken recipients are refused, a staged send
+  survives restart; several debriefs on one journey each land on their own job and the queue holds
+  them in order, Send all opens each composer in turn and a cancelled one stays queued; the CarPlay
+  list model (pure) shows number and date only. Device/car acceptance owed to P4.
+- **P3c — job ahead, brief, directions, and the job file.** `site`/`faultReport`/`scheduled` on the
+  session (decode-if-present), Upcoming on the Job tab and CarPlay, the site/serial history index,
+  `JobBrief` assembly with the five cited sections and its spoken renderer, the FM snapshot
+  section, `preferredMapsApp` + Waze + the CarPlay hand-off — and §8's `.ogjob` format and
+  validator (pure), the UTI/document-type registration, the open path and review sheet, duplicate
+  handling, the signature check against the organisation's key from its CT profile, and the
+  provenance on the record. Tests: a brief from fixtures cites every claim; empty sections are
+  spoken as empty; an unmatched fault report says so; ranking follows evidence; the history index
+  finds by site and by serial and never across devices; a scheduled job started on site keeps its
+  number, site and fault report; the maps preference table including the missing-app fallback;
+  legacy sessions decode; valid / invalid / oversized / HTML-bearing job files; signed vs unsigned
+  vs bad signature; a duplicate reference; the HIPAA refusal; a job file never creates tasks or
+  starts a job; a fixture `.ogjob` opens on the simulator in the audit. Car, site and device
+  acceptance (opening one from Mail on the phone) owed to P4.
 - **P4 — device acceptance (owed to a pilot run).** One real job end-to-end by a technician who
   has not been coached: start by voice, number captured, two units on one job, a forgotten-close
   caught by the change question, close and deliver, review later by job number.
@@ -592,6 +854,14 @@ whether the two budgets above are right, are all owed to P4.
 - Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a
   session log a compliance record). Photos and clips make that harder to defend — does a job's media
   need its own retention rule, separate from the log it belongs to?
+- Should base be able to trigger a debrief request ("call in when you're done") through the ops
+  bridge (BL)? Later.
+- Auto-suggest a debrief when CarPlay connects within N minutes of a close? A nag risk; off until a
+  pilot asks.
+- Office push of scheduled jobs (BL) is the natural source of a site and a fault report; until then
+  it is voice or typed.
+- Should the brief include the customer's phone number as a "call ahead" action? Leaning yes, via
+  the existing call tool, on request only.
 
 ## P0 inventory (2026-09-21)
 
