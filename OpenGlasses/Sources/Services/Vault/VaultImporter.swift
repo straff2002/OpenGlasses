@@ -28,7 +28,7 @@ enum VaultImporter {
             switch self {
             case .invalid(let issues): return "Vault failed validation:\n• " + issues.joined(separator: "\n• ")
             case .ioError(let message): return "Install failed: \(message)"
-            case .notEntitled: return "Importing manuals into a vault needs a Field Assist team licence."
+            case .notEntitled: return "Importing manuals into a vault needs a Field Assist subscription, or a team licence from your organisation. A one-time unlock covers the bundled vaults only."
             case .documentFailed(let message): return "Manual import failed: \(message)"
             }
         }
@@ -84,9 +84,13 @@ enum VaultImporter {
     /// `install(from:)` plus the validator's advisory warnings (core over budget, and so on).
     static func installReporting(from sourceDir: URL) throws -> InstallReport {
         let result = VaultValidator.validate(directory: sourceDir)
-        guard result.isValid, let manifest = result.manifest else {
+        guard result.isValid, let validated = result.manifest else {
             throw ImportError.invalid(result.issues)
         }
+        // Validation has just confirmed every listed manual is in the folder, so an installed
+        // manifest always says its manuals are present — even when the folder came from an export
+        // that said they were not and the reader supplied them (Plan FS).
+        let manifest = validated.markingDocumentsIncluded()
 
         let fm = FileManager.default
         let baseline = baselineDirectory(for: manifest.id)
@@ -160,7 +164,7 @@ enum VaultImporter {
     /// the manifest dropped or replaced, ingest what is new or changed, leave the rest alone.
     /// Idempotent — a second call with nothing changed does no work. Returns the updated ledger.
     ///
-    /// Gated on the Field Assist entitlement: *ingesting* manuals is a paid capability, and the gate
+    /// Gated on the `ownVaults` capability: *ingesting* manuals is a paid capability, and the gate
     /// belongs at the boundary where the store is written, not only where a session starts. A sync
     /// with nothing to ingest is cleanup — forgetting manuals the manifest dropped — and is not
     /// gated: a lapsed licence must not be able to leave indexed passages behind that the vault no
@@ -231,7 +235,7 @@ enum VaultImporter {
         guard !plan.isNoop else { return ledger }
         // The gate sits here rather than at the top: work that only forgets is cleanup, and a
         // vault whose licence lapsed still has to be able to shed manuals it no longer lists.
-        guard plan.toIngest.isEmpty || FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
+        guard plan.toIngest.isEmpty || FieldAssistEntitlement.shared.has(.ownVaults) else {
             throw ImportError.notEntitled
         }
 
@@ -292,6 +296,13 @@ enum VaultImporter {
 
     /// Record the pack a vault was installed from, beside its baseline, so the registry can
     /// resolve the pack's licence key and the Packs list can tell an update from a reinstall.
+    ///
+    /// Where a *received* vault goes (Plan FS PR2): the same shape — a sidecar written beside the
+    /// baseline naming the publisher and whether the archive's signature verified — read back by
+    /// the same `installedPack(for:)` pattern, so a badge ("Unverified source") and the job record
+    /// can say where a vault came from without another registry. Nothing is written for it yet;
+    /// adding the sidecar is additive and leaves every already-installed vault reading as it does
+    /// now, which is what makes it safe to leave until the receive path exists to write it.
     static func recordPack(_ pack: VaultPackManifest, for id: String) throws {
         let url = baselineDirectory(for: id).appendingPathComponent(VaultPackManifest.filename)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

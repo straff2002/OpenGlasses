@@ -48,8 +48,9 @@ enum SessionExporter {
                        sessionOverride: FieldSession? = nil,
                        clipPlan: ClipDeliveryPlan = .undecided) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
-        // Audited export is a team capability; the session log itself stays on the device at any tier.
-        guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
+        // Audited export is a team capability; the session log itself stays on the device whatever
+        // the entitlement. Manuals are not in it either way: an export carries citations, not text.
+        guard FieldAssistEntitlement.shared.has(.auditedExport) else {
             throw ExportError.notEntitled
         }
         guard FileManager.default.fileExists(atPath: sessionDir.path) else {

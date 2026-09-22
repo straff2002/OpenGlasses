@@ -188,12 +188,22 @@ final class VaultPackTests: XCTestCase {
 
     func testAccessTable() {
         let id = Self.packId
-        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], tier: .solo))
-        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [id], licensedPacks: [], tier: .solo))
-        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: ["hvac_rtu"], tier: .team))
-        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: ["other"], tier: .team))
-        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], tier: .enterprise))
-        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], tier: nil))
+        // The tiers this table used to name, as the capabilities they grant (Plan FS): a solo
+        // entitlement is the bundled vaults, a team licence adds its own, and only an enterprise
+        // licence carries `everyVaultPack`.
+        let solo: Set<FieldAssistCapability> = FieldAssistCapability.capabilities(
+            for: .verifiedStoreProduct(productID: StoreKitService.fieldAssistId, expiration: nil))
+        let team: Set<FieldAssistCapability> = FieldAssistCapability.capabilities(
+            for: .verifiedOrganizationLicense(licenseIDHash: "t", expiration: nil, tier: .team))
+        let enterprise: Set<FieldAssistCapability> = FieldAssistCapability.capabilities(
+            for: .verifiedOrganizationLicense(licenseIDHash: "e", expiration: nil, tier: .enterprise))
+        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], capabilities: solo))
+        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [id], licensedPacks: [], capabilities: solo))
+        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: ["hvac_rtu"], capabilities: team))
+        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: ["other"], capabilities: team))
+        XCTAssertTrue(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], capabilities: enterprise))
+        XCTAssertFalse(VaultPackAccess.isUnlocked(productId: id, licensePack: "hvac_rtu", purchasedProducts: [], licensedPacks: [], capabilities: []))
+        XCTAssertFalse(team.contains(.everyVaultPack), "a team licence does not include every pack")
     }
 
     func testLicencePacksClaimFlowsThroughEvidence() throws {

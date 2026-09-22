@@ -27,6 +27,14 @@ struct VaultManifest: Codable, Equatable {
     /// Reference-tier documents, retrieved per turn rather than loaded whole. Empty for a
     /// markdown-only vault (every vault before this field existed).
     let documents: [VaultDocument]
+    /// Whether the folder this manifest describes actually contains the files `documents` lists.
+    ///
+    /// False only in an **export**: manuals never leave the phone through the app (Plan FS), so an
+    /// exported vault still declares the manuals it needs — they are part of what the vault *is* —
+    /// while the files stay behind. Absent means true, so every manifest authored before the rule
+    /// existed reads exactly as it did. An import normalises it back to true once the files are
+    /// there, which is the only state an installed vault can be in.
+    let documentsIncluded: Bool
     /// Gating that controls whether this vault is unlocked for the current user.
     let gating: Gating
     /// Rules prepended to the system prompt when this vault is active.
@@ -45,6 +53,28 @@ struct VaultManifest: Codable, Equatable {
     /// Whether this vault declares a reference tier at all.
     var hasDocuments: Bool { !documents.isEmpty }
 
+    /// This manifest as an export states it: the manuals stay listed, because the vault still
+    /// requires them, but the folder does not carry the files. A manifest with no manuals is
+    /// returned unchanged — there is nothing to leave out.
+    func markingDocumentsNotIncluded() -> VaultManifest {
+        hasDocuments ? copy(documentsIncluded: false) : self
+    }
+
+    /// This manifest as an installed vault states it: the files are present. Called after
+    /// validation has confirmed exactly that.
+    func markingDocumentsIncluded() -> VaultManifest {
+        documentsIncluded ? self : copy(documentsIncluded: true)
+    }
+
+    private func copy(documentsIncluded: Bool) -> VaultManifest {
+        VaultManifest(id: id, name: name, version: version, files: files,
+                      proceduresDir: proceduresDir, documentsDir: documentsDir,
+                      documents: documents, documentsIncluded: documentsIncluded,
+                      gating: gating, promptRules: promptRules,
+                      sourceAttributionFormat: sourceAttributionFormat,
+                      sourceAttributionRequired: sourceAttributionRequired)
+    }
+
     /// Location of a document relative to the vault root.
     func documentRelativePath(_ document: VaultDocument) -> String {
         if let dir = documentsDir, !dir.isEmpty { return "\(dir)/\(document.file)" }
@@ -60,6 +90,7 @@ struct VaultManifest: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, version, files, documents
+        case documentsIncluded = "documents_included"
         case proceduresDir = "procedures_dir"
         case documentsDir = "documents_dir"
         case gating
@@ -76,6 +107,7 @@ struct VaultManifest: Codable, Equatable {
         proceduresDir: String? = nil,
         documentsDir: String? = nil,
         documents: [VaultDocument] = [],
+        documentsIncluded: Bool = true,
         gating: Gating = Gating(iap: nil),
         promptRules: [String] = [],
         sourceAttributionFormat: String? = "Source: {files}",
@@ -88,6 +120,7 @@ struct VaultManifest: Codable, Equatable {
         self.proceduresDir = proceduresDir
         self.documentsDir = documentsDir
         self.documents = documents
+        self.documentsIncluded = documentsIncluded
         self.gating = gating
         self.promptRules = promptRules
         self.sourceAttributionFormat = sourceAttributionFormat
@@ -105,6 +138,7 @@ struct VaultManifest: Codable, Equatable {
         proceduresDir = try c.decodeIfPresent(String.self, forKey: .proceduresDir)
         documentsDir = try c.decodeIfPresent(String.self, forKey: .documentsDir)
         documents = try c.decodeIfPresent([VaultDocument].self, forKey: .documents) ?? []
+        documentsIncluded = try c.decodeIfPresent(Bool.self, forKey: .documentsIncluded) ?? true
         gating = try c.decodeIfPresent(Gating.self, forKey: .gating) ?? Gating(iap: nil)
         promptRules = try c.decodeIfPresent([String].self, forKey: .promptRules) ?? []
         sourceAttributionFormat = try c.decodeIfPresent(String.self, forKey: .sourceAttributionFormat)

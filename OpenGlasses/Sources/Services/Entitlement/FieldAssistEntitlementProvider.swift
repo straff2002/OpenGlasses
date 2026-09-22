@@ -168,6 +168,13 @@ final class FieldAssistEntitlement: @unchecked Sendable {
     /// Evaluate the current evidence. Cheap enough for a gate: one lock, one defaults read, one
     /// signature check.
     func decision() -> FieldAssistEntitlementDecision {
+        let (set, now) = read()
+        return FieldAssistEntitlementEvaluator.decide(set, now: now)
+    }
+
+    /// One read of the provider and the clock, so a caller that needs both a decision and the
+    /// capabilities gets them from the same evidence rather than from two reads that could differ.
+    private func read() -> (FieldAssistEntitlementEvidenceSet, Date) {
         lock.lock()
         let provider = storedProvider
         let now = storedClock()
@@ -180,7 +187,28 @@ final class FieldAssistEntitlement: @unchecked Sendable {
         #if DEBUG
         if grantInternal { set.evidence.append(.internalDeveloper) }
         #endif
-        return FieldAssistEntitlementEvaluator.decide(set, now: now)
+        return (set, now)
+    }
+
+    /// Every capability the current evidence grants (Plan FS).
+    func capabilities() -> Set<FieldAssistCapability> {
+        let (set, now) = read()
+        return FieldAssistCapability.capabilities(for: set, now: now)
+    }
+
+    /// Whether the current evidence includes `capability`. **The gate every caller uses** — tiers
+    /// describe what a licence is, capabilities decide what the code may do.
+    func has(_ capability: FieldAssistCapability) -> Bool {
+        capabilities().contains(capability)
+    }
+
+    /// The capability gate result, with the reason a screen needs when the answer is no.
+    func check(_ capability: FieldAssistCapability) -> FieldAssistCapabilityCheck {
+        let (set, now) = read()
+        return FieldAssistCapabilityCheck.resolve(
+            capability,
+            capabilities: FieldAssistCapability.capabilities(for: set, now: now),
+            decision: FieldAssistEntitlementEvaluator.decide(set, now: now))
     }
 
     var isGranted: Bool { decision().isGranted }
@@ -194,12 +222,8 @@ final class FieldAssistEntitlement: @unchecked Sendable {
         return FieldAssistEntitlementEvaluator.livePacks(provider.evidence(), now: now)
     }
 
-    /// Whether the current evidence covers a capability that needs `required`.
-    func isGranted(atLeast required: FieldAssistTier) -> Bool {
-        decision().satisfies(required)
-    }
-
-    /// The tiered gate result, with the reason a paywall needs when the answer is no.
+    /// The tiered gate result. Describes the *licence* — what the entitlement screen reports and
+    /// what a licence renewal changes. No gate asks it: a gate asks for a capability.
     func check(atLeast required: FieldAssistTier) -> FieldAssistTierCheck {
         let decision = decision()
         guard decision.isGranted, let held = decision.tier else {

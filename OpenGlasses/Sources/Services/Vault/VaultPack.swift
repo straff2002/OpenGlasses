@@ -201,11 +201,12 @@ enum VaultPackCatalog {
 /// Who may open a pack. Pure: the registry feeds it what the evidence says.
 enum VaultPackAccess {
     /// A pack is unlocked by a verified store purchase of its product, by a licence code whose
-    /// `packs` claim names its licence key, or by an enterprise licence (which includes every pack).
+    /// `packs` claim names its licence key, or by an entitlement that includes every pack (an
+    /// enterprise licence).
     static func isUnlocked(productId: String, licensePack: String,
                            purchasedProducts: Set<String>, licensedPacks: Set<String>,
-                           tier: FieldAssistTier?) -> Bool {
-        if tier == .enterprise { return true }
+                           capabilities: Set<FieldAssistCapability>) -> Bool {
+        if capabilities.contains(.everyVaultPack) { return true }
         if purchasedProducts.contains(productId) { return true }
         return licensedPacks.contains(licensePack)
     }

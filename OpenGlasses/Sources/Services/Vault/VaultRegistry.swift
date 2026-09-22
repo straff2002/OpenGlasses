@@ -146,9 +146,9 @@ final class VaultRegistry {
         case "field_assist_refrigeration", "field_assist_it":
             return FieldAssistEntitlement.shared.isGranted
         case "enterprise":
-            // Customer-imported vaults (Plan H) are a team capability: a solo purchase covers the
-            // bundled vaults, an organisation's own vaults need its licence.
-            return FieldAssistEntitlement.shared.isGranted(atLeast: .team)
+            // A vault of the reader's own (Plan H). Gated on the capability, not a tier: a
+            // subscription and a team licence both include it, the retired one-time unlock does not.
+            return FieldAssistEntitlement.shared.has(.ownVaults)
         default:
             // A vault pack (Plan EG): its own store product, a licence that lists it, or enterprise.
             guard VaultPackManifest.isPackProductId(iap) else { return false }
@@ -158,7 +158,7 @@ final class VaultRegistry {
             return VaultPackAccess.isUnlocked(productId: iap, licensePack: licensePack,
                                               purchasedProducts: VerifiedStorePurchaseRecorder.shared.packProductIds,
                                               licensedPacks: FieldAssistEntitlement.shared.grantedPacks(),
-                                              tier: decision.tier)
+                                              capabilities: FieldAssistEntitlement.shared.capabilities())
         }
     }
 

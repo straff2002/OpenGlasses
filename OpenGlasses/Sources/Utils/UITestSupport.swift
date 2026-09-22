@@ -55,6 +55,12 @@ enum UITestSupport {
         /// frame is drawn in-process — no camera and no relay is involved, which is the point: the
         /// audit is about the labels and the touch targets, not about video.
         case seedFieldClips = "-OGUITestSeedFieldClips"
+        /// A **narrowing** modifier on the Field Assist flags (Plan FS): the entitlement becomes
+        /// the retired one-time unlock instead of the internal grant, so screens render the state
+        /// a grandfathered owner sees — the bundled vaults, and the import button explaining that
+        /// vaults of your own come with a subscription. It can only ever take capabilities away,
+        /// which is why it is safe to have: there is no flag here that opens a gate.
+        case retiredUnlockOnly = "-OGUITestRetiredUnlockOnly"
     }
 
     /// Whether any of the Field Assist flags is set. They are cumulative: seeding a job implies
@@ -128,6 +134,10 @@ enum UITestSupport {
             // Release binary. Nothing here weakens the shipped gate: `Config`, `VaultRegistry` and
             // every field tool still ask the same evaluator the same question.
             FieldAssistEntitlement.shared.setInternalDeveloperGrant(true)
+            if isSet(.retiredUnlockOnly) {
+                FieldAssistEntitlement.shared.setInternalDeveloperGrant(false)
+                FieldAssistEntitlement.shared.provider = RetiredUnlockOnlyProvider()
+            }
             applyFieldAssistSwitch()
         }
     }
@@ -463,6 +473,18 @@ enum UITestSupport {
         ]
         captions.currentCaption = "I'll send the details over this afternoon."
         captions.isActive = true
+    }
+}
+#endif
+
+#if DEBUG
+/// The retired one-time unlock, as evidence. Used only by `UITestSupport.retiredUnlockOnly`, to
+/// render the grandfathered owner's state; it grants strictly less than any live provider would.
+private struct RetiredUnlockOnlyProvider: FieldAssistEntitlementProvider {
+    func evidence() -> FieldAssistEntitlementEvidenceSet {
+        FieldAssistEntitlementEvidenceSet(evidence: [
+            .verifiedStoreProduct(productID: StoreKitService.fieldAssistId, expiration: nil)
+        ])
     }
 }
 #endif

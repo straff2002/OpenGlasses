@@ -40,6 +40,24 @@ struct StubEntitlementProvider: FieldAssistEntitlementProvider {
     func evidence() -> FieldAssistEntitlementEvidenceSet { set }
 }
 
+extension StubEntitlementProvider {
+    /// The store subscription condition: an active (or, with a past date, lapsed) monthly
+    /// subscription — since Plan FS the store product that includes vaults of your own.
+    static func subscriber(expiring: Date? = nil) -> StubEntitlementProvider {
+        StubEntitlementProvider(FieldAssistEntitlementEvidenceSet(evidence: [
+            .verifiedStoreProduct(productID: StoreKitService.fieldAssistMonthlyId, expiration: expiring)
+        ]))
+    }
+
+    /// The *other* solo condition: the retired one-time unlock, which grants the bundled vaults and
+    /// nothing else. This is what `AlwaysGrantedEntitlementProvider(tier: .solo)` also produces.
+    static func retiredUnlock() -> StubEntitlementProvider {
+        StubEntitlementProvider(FieldAssistEntitlementEvidenceSet(evidence: [
+            .verifiedStoreProduct(productID: StoreKitService.fieldAssistId, expiration: nil)
+        ]))
+    }
+}
+
 /// Swap the shared entitlement in for the duration of a test, returning the previous provider so
 /// `tearDown` can put it back. Kept explicit rather than automatic so a test that forgets to restore
 /// is obvious in review.

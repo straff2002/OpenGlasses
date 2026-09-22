@@ -2,10 +2,19 @@ import Foundation
 
 /// Inverse of `VaultImporter`: packages a vault's *effective* content into a folder laid out exactly
 /// like an import source — `manifest.json` + the listed markdown files + an optional `procedures/`
-/// directory. The output round-trips straight back through `VaultImporter.install`.
+/// directory.
 ///
 /// Files are read through `VaultStore`, which merges the user overlay over any bundled baseline, so
 /// the export captures the technician's edits rather than just the shipped files.
+///
+/// **Manuals are left out, deliberately** (Plan FS, owner decision 2026-09-21). Manuals never leave
+/// the phone through the app: not the extracted text, not the manufacturer's original beside it —
+/// and, because both are derived from those, neither the figures rendered from a page nor the
+/// recognition checkpoints, which never lived in an export folder anyway. What the export carries
+/// instead is the *claim*: the manifest still lists every manual the vault needs and marks them
+/// `documents_included: false`, so importing that folder somewhere else stops and names the files
+/// to supply rather than installing a vault that says it has manuals it has not got. This is the
+/// one vault-export implementation in the app; a pack-installed vault is not exportable at all.
 ///
 /// **Licensing:** exporting the baseline of a *paid bundled* vault (refrigeration, IT, health) would
 /// bypass the per-pack IAP gate. Export is therefore restricted to user-imported/authored vaults and
@@ -60,10 +69,11 @@ enum VaultExporter {
             try? fm.removeItem(at: root)
             try fm.createDirectory(at: root, withIntermediateDirectories: true)
 
-            // manifest.json — same shape the importer/validator expects.
+            // manifest.json — same shape the importer/validator expects, with the manuals listed
+            // as required and marked not included.
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let manifestData = try encoder.encode(manifest)
+            let manifestData = try encoder.encode(manifest.markingDocumentsNotIncluded())
             try manifestData.write(to: root.appendingPathComponent("manifest.json"), options: .atomic)
 
             // Markdown files — merged overlay-over-bundle so a tech's edits are captured.
@@ -72,21 +82,9 @@ enum VaultExporter {
                 try contents.write(to: root.appendingPathComponent(filename), atomically: true, encoding: .utf8)
             }
 
-            // Reference documents — the customer's own files, copied from the installed baseline
-            // so the folder round-trips (technicians never edit these, so there is no overlay copy).
-            for document in manifest.documents {
-                // The document and, when it bundles one, the manufacturer's original beside it —
-                // an export that dropped the original would silently downgrade the vault it came
-                // from (Plan EK P3).
-                for relative in [manifest.documentRelativePath(document),
-                                 manifest.documentSourceRelativePath(document)].compactMap({ $0 }) {
-                    guard let src = store.bundleRoot?.appendingPathComponent(relative),
-                          fm.fileExists(atPath: src.path) else { continue }
-                    let dest = root.appendingPathComponent(relative)
-                    try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try fm.copyItem(at: src, to: dest)
-                }
-            }
+            // Reference documents are **not** copied. See the type comment: the manifest above
+            // carries the list and the not-included marker, and nothing else about a manual —
+            // text, original PDF, or anything rendered from them — is written here.
 
             // procedures/ — copy whatever is present (overlay wins, else bundle).
             if let dir = manifest.proceduresDir {

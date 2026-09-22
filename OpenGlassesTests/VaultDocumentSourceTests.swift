@@ -157,15 +157,19 @@ final class VaultDocumentSourceTests: XCTestCase {
         let again = try await VaultImporter.syncDocuments(manifest: installed, into: store)
         XCTAssertEqual(again.entries.map(\.documentId), ledger.entries.map(\.documentId))
 
-        // The export carries it back out, so a vault round-trips without silently losing the page a
-        // compliance reviewer asked for.
+        // The export names the original and leaves the file on the phone (Plan FS): a manufacturer's
+        // PDF is a manual like any other, so what travels is the claim — this vault needs
+        // manual.pdf — and the folder does not validate until someone supplies it.
         let exported = try VaultExporter.export(id: Self.vaultId)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.appendingPathComponent("documents/manual.pdf").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.appendingPathComponent("documents/manual.pdf").path))
         let reimported = try JSONDecoder().decode(
             VaultManifest.self, from: Data(contentsOf: exported.appendingPathComponent("manifest.json")))
         XCTAssertEqual(reimported.documents.first?.source, "manual.pdf")
         XCTAssertEqual(reimported.documents.first?.sourceUrl, "https://example.com/m.pdf")
-        XCTAssertTrue(VaultValidator.validate(directory: exported).isValid)
+        XCTAssertFalse(reimported.documentsIncluded)
+        let validated = VaultValidator.validate(directory: exported)
+        XCTAssertFalse(validated.isValid)
+        XCTAssertTrue(validated.issues.contains { $0.contains("manual.md") }, "\(validated.issues)")
     }
 
     func testASwappedOriginalCountsAsChangedContent() {
